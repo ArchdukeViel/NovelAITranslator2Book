@@ -26,6 +26,3 @@ class ExampleSource(SourceAdapter):
         return "This is a placeholder chapter text for URL: " + url
 
 
-from novelai.sources.registry import register_source
-
-register_source("example", lambda: ExampleSource())

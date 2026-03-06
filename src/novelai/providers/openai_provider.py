@@ -63,7 +63,3 @@ class OpenAIProvider(TranslationProvider):
         }
 
 
-# Register the provider on import
-from novelai.providers.registry import register_provider
-
-register_provider("openai", lambda: OpenAIProvider())

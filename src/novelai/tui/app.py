@@ -8,27 +8,30 @@ from pathlib import Path
 from rich.console import Console
 from rich.prompt import Prompt
 
+from novelai.app.bootstrap import bootstrap
+from novelai.app.container import container
 from novelai.config.settings import settings
 from novelai.providers.registry import available_providers
-from novelai.services.export_service import ExportService
+from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.settings_service import SettingsService
-from novelai.services.storage_service import StorageService
-from novelai.services.translation_service import TranslationService
 from novelai.services.usage_service import UsageService
-from novelai.sources.registry import available_sources, get_source
-from novelai.utils.chapter_selection import parse_chapter_selection
+from novelai.sources.registry import available_sources
 
 
 class TUIApp:
     """Basic TUI application orchestration."""
 
     def __init__(self) -> None:
+        # Ensure providers/sources are registered before any user interaction.
+        bootstrap()
+
         self.console = Console()
-        self.storage = StorageService()
-        self.translation = TranslationService()
-        self.exporter = ExportService()
+        self.storage = container.storage
+        self.translation = container.translation
+        self.exporter = container.export
         self.settings = SettingsService()
         self.usage = UsageService()
+        self.orchestrator = NovelOrchestrationService(self.storage, self.translation)
 
     def run(self) -> None:
         self.console.print("[bold green]Novel AI TUI[/bold green]\n")
@@ -70,30 +73,13 @@ class TUIApp:
         for n in novels:
             self.console.print(f"- {n}")
 
-    async def _do_scrape_metadata(self, source_key: str, novel_id: str) -> None:
-        source = get_source(source_key)
-        meta = await source.fetch_metadata(novel_id)
-        self.storage.save_metadata(novel_id, meta)
+    async def _do_scrape_metadata(self, source_key: str, novel_id: str, mode: str = "update") -> None:
+        await self.orchestrator.scrape_metadata(source_key, novel_id, mode=mode)
         self.console.print(f"Saved metadata for {novel_id} from {source_key}")
 
-    async def _do_scrape_chapters(self, source_key: str, novel_id: str, chapters: str) -> None:
-        source = get_source(source_key)
-        meta = self.storage.load_metadata(novel_id)
-        if not meta:
-            raise RuntimeError("Metadata not found; run scrape-metadata first.")
-
-        selection = parse_chapter_selection(chapters)
-        chapter_map = {int(c["id"]): c for c in meta.get("chapters", [])}
-
-        for spec in selection:
-            chapter_num = spec.chapter
-            chapter = chapter_map.get(chapter_num)
-            if not chapter:
-                self.console.print(f"Skipping missing chapter {chapter_num}")
-                continue
-            text = await source.fetch_chapter(chapter["url"])
-            self.storage.save_chapter(novel_id, str(chapter_num), text)
-            self.console.print(f"Saved chapter {chapter_num}")
+    async def _do_scrape_chapters(self, source_key: str, novel_id: str, chapters: str, mode: str = "update") -> None:
+        await self.orchestrator.scrape_chapters(source_key, novel_id, chapters, mode=mode)
+        self.console.print(f"Saved chapters for {novel_id} from {source_key}")
 
     def _scrape_flow(self) -> None:
         source = Prompt.ask(
@@ -153,35 +139,14 @@ class TUIApp:
         provider_key: str | None = None,
         provider_model: str | None = None,
     ) -> None:
-        source = get_source(source_key)
-        meta = self.storage.load_metadata(novel_id)
-        if not meta:
-            raise RuntimeError("Metadata not found; run scrape-metadata first.")
-
-        selection = parse_chapter_selection(chapters)
-        chapter_map = {int(c["id"]): c for c in meta.get("chapters", [])}
-
-        for spec in selection:
-            chapter_num = spec.chapter
-            chapter = chapter_map.get(chapter_num)
-            if not chapter:
-                self.console.print(f"Skipping missing chapter {chapter_num}")
-                continue
-
-            existing = self.storage.load_translated_chapter(novel_id, str(chapter_num))
-            if existing:
-                self.console.print(f"Skipping already translated chapter {chapter_num}")
-                continue
-
-            result = await self.translation.translate_chapter(
-                source_adapter=source,
-                chapter_url=chapter["url"],
-                provider_key=provider_key,
-                provider_model=provider_model,
-            )
-            translated = result.get("final_text", "")
-            self.storage.save_translated_chapter(novel_id, str(chapter_num), translated)
-            self.console.print(f"Translated chapter {chapter_num}")
+        await self.orchestrator.translate_chapters(
+            source_key=source_key,
+            novel_id=novel_id,
+            chapters=chapters,
+            provider_key=provider_key,
+            provider_model=provider_model,
+        )
+        self.console.print(f"Translated chapters for {novel_id}")
 
     def _export_flow(self) -> None:
         novel_id = Prompt.ask("Novel ID")
@@ -196,10 +161,10 @@ class TUIApp:
         chapters = []
         for chap in meta.get("chapters", []):
             chap_id = str(chap.get("id"))
-            text = self.storage.load_translated_chapter(novel_id, chap_id)
-            if not text:
+            translated = self.storage.load_translated_chapter(novel_id, chap_id)
+            if not translated:
                 continue
-            chapters.append({"title": chap.get("title"), "text": text})
+            chapters.append({"title": chap.get("title"), "text": translated.get("text")})
 
         output_path = f"{output}/{novel_id}.{fmt}"
         if fmt == "pdf":

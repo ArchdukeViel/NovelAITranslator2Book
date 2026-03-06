@@ -121,7 +121,3 @@ class SyosetuNcodeSource(SourceAdapter):
         return text
 
 
-# Register the adapter
-from novelai.sources.registry import register_source
-
-register_source("syosetu_ncode", lambda: SyosetuNcodeSource())

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Iterable, List
+from typing import Iterable
 
+from novelai.pipeline.context import PipelineContext
 from novelai.pipeline.stages.base import PipelineStage
 
 
@@ -9,14 +10,21 @@ class TranslationPipeline:
     """Orchestrates a series of transformation stages."""
 
     def __init__(self, stages: Iterable[PipelineStage]) -> None:
-        self.stages: List[PipelineStage] = list(stages)
+        self.stages = list(stages)
 
-    async def run(self, initial_context: dict[str, Any]) -> dict[str, Any]:
+    async def run(self, initial_context: dict[str, object] | PipelineContext) -> PipelineContext:
         """Run the pipeline through all stages.
 
-        The context dictionary is passed along and may be mutated by each stage.
+        The context is converted to a typed PipelineContext instance and passed through
+        each stage. This helps make stage inputs/outputs explicit and reduces bugs.
         """
-        context = dict(initial_context)
+        context = (
+            initial_context
+            if isinstance(initial_context, PipelineContext)
+            else PipelineContext.from_dict(initial_context)
+        )
+
         for stage in self.stages:
             context = await stage.run(context)
+
         return context

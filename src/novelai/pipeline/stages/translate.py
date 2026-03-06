@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, List, Optional
-
 from datetime import datetime
+from typing import Optional
 
 from novelai.config.settings import settings
-from novelai.providers.registry import get_provider
+from novelai.pipeline.context import PipelineContext
 from novelai.pipeline.stages.base import PipelineStage
+from novelai.providers.registry import get_provider
 from novelai.services.settings_service import SettingsService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
@@ -19,11 +19,17 @@ class TranslateStage(PipelineStage):
     This stage supports caching and concurrency to reduce both cost and latency.
     """
 
-    def __init__(self, concurrency: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        concurrency: Optional[int] = None,
+        cache: TranslationCache | None = None,
+        settings_service: SettingsService | None = None,
+        usage_service: UsageService | None = None,
+    ) -> None:
         self._concurrency = concurrency or settings.TRANSLATION_CONCURRENCY
-        self._cache = TranslationCache()
-        self._settings = SettingsService()
-        self._usage = UsageService()
+        self._cache = cache or TranslationCache()
+        self._settings = settings_service or SettingsService()
+        self._usage = usage_service or UsageService()
 
     async def _translate_chunk(self, provider_key: str, model: str, chunk: str) -> str:
         provider = get_provider(provider_key)
@@ -53,10 +59,10 @@ class TranslateStage(PipelineStage):
         self._cache.set(chunk, provider.key, model, text)
         return text
 
-    async def run(self, context: dict[str, Any]) -> dict[str, Any]:
-        chunks: List[str] = context.get("chunks", [])
-        provider_key = context.get("provider_key") or self._settings.get_provider_key()
-        model = context.get("provider_model") or self._settings.get_provider_model()
+    async def run(self, context: PipelineContext) -> PipelineContext:
+        chunks = context.chunks
+        provider_key = context.provider_key or self._settings.get_provider_key()
+        model = context.provider_model or self._settings.get_provider_model()
 
         semaphore = asyncio.Semaphore(self._concurrency)
 
@@ -64,6 +70,5 @@ class TranslateStage(PipelineStage):
             async with semaphore:
                 return await self._translate_chunk(provider_key, model, chunk)
 
-        translations = await asyncio.gather(*[worker(c) for c in chunks])
-        context["translations"] = translations
+        context.translations = await asyncio.gather(*[worker(c) for c in chunks])
         return context

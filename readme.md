@@ -25,23 +25,22 @@ python -m novelai.app.web
 4. Run the TUI:
 
 ```bash
-python -m novelai.app.cli
+novelaibook tui
 ```
 
 5. Run in command mode (scraping and translation):
 
 ```bash
-python -m novelai.app.cli scrape-metadata syosetu_ncode n7133es --mode full
-python -m novelai.app.cli scrape-chapters syosetu_ncode n7133es 1-3 --mode update
-python -m novelai.app.cli translate-chapters syosetu_ncode n7133es 1-3
-python -m novelai.app.cli export-epub n7133es --output output --format epub
-python -m novelai.app.cli export-epub n7133es --output output --format pdf
+novelaibook scrape-metadata syosetu_ncode n7133es --mode full
+novelaibook scrape-chapters syosetu_ncode n7133es 1-3 --mode update
+novelaibook translate-chapters syosetu_ncode n7133es 1-3
+novelaibook export-epub n7133es --output output --format epub
+novelaibook export-epub n7133es --output output --format pdf
 ```
 
 - `--mode full` clears stored data and re-scrapes everything.
 - `--mode update` only downloads new/changed chapters.
 
-> Note: Translated metadata and chapters are mirrored under `data/web/novels/<id>/` for easy consumption by the web UI.
 
 ## Project Structure
 

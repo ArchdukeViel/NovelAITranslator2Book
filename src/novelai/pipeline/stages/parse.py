@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
-
+from novelai.pipeline.context import PipelineContext
 from novelai.pipeline.stages.base import PipelineStage
 
 
 class ParseStage(PipelineStage):
     """Clean and normalize raw chapter text."""
 
-    async def run(self, context: dict[str, Any]) -> dict[str, Any]:
-        raw = context.get("raw_text", "")
+    async def run(self, context: PipelineContext) -> PipelineContext:
+        raw = context.raw_text or ""
         # Basic normalization placeholder; implement real parsing in future.
-        normalized = raw.strip()
-        context["normalized_text"] = normalized
+        context.normalized_text = raw.strip()
         return context

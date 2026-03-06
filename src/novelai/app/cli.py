@@ -2,121 +2,21 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from typing import Optional
 
-from novelai.services.export_service import ExportService
-from novelai.services.settings_service import SettingsService
-from novelai.services.storage_service import StorageService
-from novelai.services.translation_service import TranslationService
-from novelai.sources.registry import get_source
+from novelai.app.bootstrap import bootstrap
+from novelai.app.container import container
+from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.tui.app import TUIApp
-from novelai.utils.chapter_selection import parse_chapter_selection
 
 
 def _normalize_action(action: str) -> str:
     return action.strip().lower().replace("_", "-")
 
 
-async def _do_scrape_metadata(
-    source_key: str, novel_id: str, storage: StorageService, mode: str = "update"
-) -> None:
-    source = get_source(source_key)
-    if mode == "full":
-        storage.delete_novel(novel_id)
-
-    meta = await source.fetch_metadata(novel_id)
-    storage.save_metadata(novel_id, meta)
-    folder_name = meta.get("folder_name") or novel_id
-    print(
-        f"Saved metadata for {novel_id} from {source_key} (folder: {folder_name})"
-    )
-
-
-async def _do_scrape_chapters(
-    source_key: str,
-    novel_id: str,
-    chapters: str,
-    storage: StorageService,
-    mode: str = "update",
-) -> None:
-    source = get_source(source_key)
-
-    if mode == "full":
-        storage.delete_novel(novel_id)
-        meta = await source.fetch_metadata(novel_id)
-        storage.save_metadata(novel_id, meta)
-    else:
-        meta = storage.load_metadata(novel_id)
-        if not meta:
-            raise SystemExit("Metadata not found; run scrape-metadata first.")
-
-    selection = parse_chapter_selection(chapters)
-    chapter_map = {int(c["id"]): c for c in meta.get("chapters", [])}
-
-    for spec in selection:
-        chapter_num = spec.chapter
-        chapter = chapter_map.get(chapter_num)
-        if not chapter:
-            print(f"Skipping missing chapter {chapter_num}")
-            continue
-
-        chapter_id = str(chapter_num)
-        existing_hash = storage.existing_chapter_hash(novel_id, chapter_id)
-        text = await source.fetch_chapter(chapter["url"])
-        new_hash = storage._hash_text(text)
-
-        if mode == "update" and existing_hash == new_hash:
-            print(f"Skipping chapter {chapter_num} (unchanged)")
-            continue
-
-        storage.save_chapter(novel_id, chapter_id, text)
-        print(
-            f"{'Updated' if existing_hash else 'Saved'} chapter {chapter_num}"
-        )
-
-
-async def _do_translate_chapters(
-    source_key: str,
-    novel_id: str,
-    chapters: str,
-    storage: StorageService,
-    translation: TranslationService,
-    provider_key: Optional[str],
-    provider_model: Optional[str] = None,
-) -> None:
-    source = get_source(source_key)
-    meta = storage.load_metadata(novel_id)
-    if not meta:
-        raise SystemExit("Metadata not found; run scrape-metadata first.")
-
-    selection = parse_chapter_selection(chapters)
-    chapter_map = {int(c["id"]): c for c in meta.get("chapters", [])}
-
-    for spec in selection:
-        chapter_num = spec.chapter
-        chapter = chapter_map.get(chapter_num)
-        if not chapter:
-            print(f"Skipping missing chapter {chapter_num}")
-            continue
-
-        existing = storage.load_translated_chapter(novel_id, str(chapter_num))
-        if existing:
-            print(f"Skipping already translated chapter {chapter_num}")
-            continue
-
-        result = await translation.translate_chapter(
-            source_adapter=source,
-            chapter_url=chapter["url"],
-            provider_key=provider_key,
-            provider_model=provider_model,
-        )
-        translated = result.get("final_text", "")
-        storage.save_translated_chapter(novel_id, str(chapter_num), translated)
-        print(f"Translated chapter {chapter_num}")
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="novelai")
+    parser = argparse.ArgumentParser(prog="novelaibook")
     subparsers = parser.add_subparsers(dest="command")
 
     # TUI mode (default)
@@ -168,10 +68,11 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
-    storage = StorageService()
-    translation = TranslationService()
-    exporter = ExportService()
-    settings_service = SettingsService()
+    # Ensure providers/sources are registered before we use them.
+    bootstrap()
+
+    orchestrator = NovelOrchestrationService(container.storage, container.translation)
+    exporter = container.export
 
     if args.command == "tui" or args.command is None:
         app = TUIApp()
@@ -181,37 +82,33 @@ def main(argv: list[str] | None = None) -> None:
     try:
         if args.command == "scrape-metadata":
             asyncio.run(
-                _do_scrape_metadata(
+                orchestrator.scrape_metadata(
                     args.source,
                     args.novel,
-                    storage,
                     mode=args.mode,
                 )
             )
         elif args.command == "scrape-chapters":
             asyncio.run(
-                _do_scrape_chapters(
+                orchestrator.scrape_chapters(
                     args.source,
                     args.novel,
                     args.chapters,
-                    storage,
                     mode=args.mode,
                 )
             )
         elif args.command == "translate-chapters":
             asyncio.run(
-                _do_translate_chapters(
+                orchestrator.translate_chapters(
                     args.source,
                     args.novel,
                     args.chapters,
-                    storage,
-                    translation,
-                    args.provider,
-                    args.model,
+                    provider_key=args.provider,
+                    provider_model=args.model,
                 )
             )
         elif args.command == "export-epub":
-            meta = storage.load_metadata(args.novel)
+            meta = container.storage.load_metadata(args.novel)
             if not meta:
                 raise SystemExit("Metadata not found; run scrape-metadata first.")
 
@@ -219,10 +116,11 @@ def main(argv: list[str] | None = None) -> None:
             chapters = []
             for chap in meta.get("chapters", []):
                 chap_id = str(chap.get("id"))
-                text = storage.load_translated_chapter(args.novel, chap_id)
-                if not text:
+                translated = container.storage.load_translated_chapter(args.novel, chap_id)
+                if not translated:
                     continue
-                chapters.append({"title": chap.get("title"), "text": text})
+                # ``load_translated_chapter`` now returns a dict with metadata.
+                chapters.append({"title": chap.get("title"), "text": translated.get("text")})
 
             output_path = f"{args.output}/{args.novel}.{args.format}"
             if args.format == "pdf":

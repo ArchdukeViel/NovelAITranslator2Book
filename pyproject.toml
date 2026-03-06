@@ -31,3 +31,6 @@ repository = "https://example.com/novel-ai"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.scripts]
+novelaibook = "novelai.app.cli:main"

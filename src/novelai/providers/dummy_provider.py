@@ -28,6 +28,3 @@ class DummyProvider(TranslationProvider):
         }
 
 
-from novelai.providers.registry import register_provider
-
-register_provider("dummy", lambda: DummyProvider())

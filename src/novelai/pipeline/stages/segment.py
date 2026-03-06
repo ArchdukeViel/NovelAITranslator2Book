@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
-
+from novelai.pipeline.context import PipelineContext
 from novelai.pipeline.stages.base import PipelineStage
 
 
 class SegmentStage(PipelineStage):
     """Split normalized text into chunks for translation."""
 
-    async def run(self, context: dict[str, Any]) -> dict[str, Any]:
-        text = context.get("normalized_text", "")
+    async def run(self, context: PipelineContext) -> PipelineContext:
+        text = context.normalized_text or ""
         # Simple chunking: split by paragraphs.
-        chunks = [chunk.strip() for chunk in text.split("\n\n") if chunk.strip()]
-        context["chunks"] = chunks
+        context.chunks = [chunk.strip() for chunk in text.split("\n\n") if chunk.strip()]
         return context
