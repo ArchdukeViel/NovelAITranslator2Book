@@ -1,0 +1,184 @@
+"""Tests for storage service with state tracking."""
+
+import pytest
+from datetime import datetime, timedelta
+from pathlib import Path
+import tempfile
+
+from novelai.core.chapter_state import ChapterState, ChapterMetadata, ChapterStateTransition
+from novelai.services.storage_service import StorageService
+from novelai.services.query_builder import ChapterQueryBuilder
+
+
+@pytest.fixture
+def storage():
+    """Provide temporary storage."""
+    tmpdir = tempfile.TemporaryDirectory()
+    store = StorageService(Path(tmpdir.name))
+    yield store
+    tmpdir.cleanup()
+
+
+def test_save_and_load_chapter(storage):
+    """Test saving and loading raw chapters."""
+    chapter_data = {
+        "id": "ch1",
+        "title": "Chapter 1",
+        "text": "Test chapter content",
+    }
+
+    # Save
+    path = storage.save_chapter("novel1", "ch1", "Test chapter content", title="Chapter 1")
+    assert path.exists()
+
+    # Load
+    loaded = storage.load_chapter("novel1", "ch1")
+    assert loaded is not None
+    assert loaded["text"] == "Test chapter content"
+    assert loaded["title"] == "Chapter 1"
+
+
+def test_save_and_load_translated_chapter(storage):
+    """Test saving and loading translated chapters."""
+    # Save
+    path = storage.save_translated_chapter(
+        "novel1", "ch1", "[TRANSLATED] Test content", provider="openai", model="gpt-4"
+    )
+    assert path.exists()
+
+    # Load
+    loaded = storage.load_translated_chapter("novel1", "ch1")
+    assert loaded is not None
+    assert "[TRANSLATED]" in loaded["text"]
+    assert loaded["provider"] == "openai"
+
+
+def test_chapter_state_transitions(storage):
+    """Test chapter state tracking."""
+    # Create state
+    storage.update_chapter_state("novel1", "ch1", ChapterState.SCRAPED)
+    
+    state1 = storage.load_chapter_state("novel1", "ch1")
+    assert state1 is not None
+    assert state1["current_state"] == ChapterState.SCRAPED
+    assert len(state1["transitions"]) == 1
+
+    # Transition to next state
+    storage.update_chapter_state("novel1", "ch1", ChapterState.PARSED)
+    
+    state2 = storage.load_chapter_state("novel1", "ch1")
+    assert state2["current_state"] == ChapterState.PARSED
+    assert len(state2["transitions"]) == 2
+
+
+def test_chapter_state_with_error(storage):
+    """Test chapter state transitions with errors."""
+    storage.update_chapter_state(
+        "novel1", "ch1", ChapterState.TRANSLATED, error="API timeout"
+    )
+    
+    state = storage.load_chapter_state("novel1", "ch1")
+    assert state["error_count"] == 1
+    assert state["transitions"][-1]["error"] == "API timeout"
+
+
+def test_get_chapters_by_state(storage):
+    """Test querying chapters by state."""
+    # Create multiple chapters with different states
+    storage.update_chapter_state("novel1", "ch1", ChapterState.SCRAPED)
+    storage.update_chapter_state("novel1", "ch2", ChapterState.TRANSLATED)
+    storage.update_chapter_state("novel1", "ch3", ChapterState.TRANSLATED)
+
+    # Query
+    translated = storage.get_chapters_by_state("novel1", ChapterState.TRANSLATED)
+    scraped = storage.get_chapters_by_state("novel1", ChapterState.SCRAPED)
+
+    assert len(translated) == 2
+    assert len(scraped) == 1
+    assert "ch1" in scraped
+
+
+def test_chapter_progress(storage):
+    """Test progress tracking."""
+    storage.update_chapter_state("novel1", "ch1", ChapterState.SCRAPED)
+    storage.update_chapter_state("novel1", "ch2", ChapterState.PARSED)
+    storage.update_chapter_state("novel1", "ch3", ChapterState.TRANSLATED)
+    storage.update_chapter_state("novel1", "ch4", ChapterState.EXPORTED)
+
+    progress = storage.get_chapter_progress("novel1")
+
+    assert progress["scraped"] == 1
+    assert progress["parsed"] == 1
+    assert progress["translated"] == 1
+    assert progress["exported"] == 1
+
+
+def test_get_chapters_ready_for_export(storage):
+    """Test convenience method for export-ready chapters."""
+    storage.update_chapter_state("novel1", "ch1", ChapterState.SCRAPED)
+    storage.update_chapter_state("novel1", "ch2", ChapterState.TRANSLATED)
+    storage.update_chapter_state("novel1", "ch3", ChapterState.EXPORTED)
+
+    ready = storage.get_chapters_ready_for_export("novel1")
+
+    assert len(ready) == 2
+    assert "ch1" not in ready  # Scraped, not ready
+    assert "ch2" in ready
+
+
+def test_get_chapters_with_errors(storage):
+    """Test querying chapters with errors."""
+    storage.update_chapter_state("novel1", "ch1", ChapterState.TRANSLATED)
+    storage.update_chapter_state("novel1", "ch2", ChapterState.TRANSLATED, error="Error 1")
+    storage.update_chapter_state("novel1", "ch3", ChapterState.TRANSLATED, error="Error 2")
+
+    errors = storage.get_chapters_with_errors("novel1")
+
+    assert len(errors) == 2
+    assert "ch2" in errors
+    assert "ch3" in errors
+
+
+def test_scraping_progress(storage):
+    """Test detailed progress tracking."""
+    storage.update_chapter_state("novel1", "ch1", ChapterState.SCRAPED)
+    storage.update_chapter_state("novel1", "ch2", ChapterState.TRANSLATED)
+    storage.update_chapter_state("novel1", "ch3", ChapterState.TRANSLATED, error="Error")
+
+    progress = storage.get_scraping_progress("novel1")
+
+    assert progress["total"] == 3
+    assert progress["with_errors"] == 1
+    assert progress["success_rate"] == pytest.approx(66.67, rel=0.01)
+
+
+def test_metadata_operations(storage):
+    """Test metadata save/load."""
+    metadata = {
+        "title": "Test Novel",
+        "author": "Test Author",
+        "chapters": ["ch1", "ch2"],
+    }
+
+    storage.save_metadata("novel1", metadata)
+    loaded = storage.load_metadata("novel1")
+
+    assert loaded is not None
+    assert loaded["title"] == "Test Novel"
+    assert loaded["novel_id"] == "novel1"
+
+
+def test_list_novels(storage):
+    """Test listing novels."""
+    storage.save_metadata("novel1", {"title": "Novel 1"})
+    storage.save_metadata("novel2", {"title": "Novel 2"})
+
+    novels = storage.list_novels()
+
+    assert len(novels) >= 2
+    assert "novel1" in novels
+    assert "novel2" in novels
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

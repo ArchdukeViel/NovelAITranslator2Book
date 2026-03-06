@@ -8,46 +8,42 @@ from novelai.config.settings import settings
 
 
 class SettingsService:
-    """Persistence for runtime settings (provider, model, API keys, etc.)."""
+    """Persistent user preferences for translation workflow.
+    
+    DEPRECATED: Use PreferencesService instead.
+    This class is kept for backwards compatibility but now delegates to PreferencesService.
+    
+    NOTE: API keys MUST NEVER be stored here.
+    They must ALWAYS come from environment variables only.
+    """
 
     def __init__(self, storage_dir: Path | None = None) -> None:
+        # For backwards compatibility, keep the same interface
         self.storage_dir = (storage_dir or settings.DATA_DIR).resolve()
         self.storage_dir.mkdir(parents=True, exist_ok=True)
-        self.settings_path = self.storage_dir / "settings.json"
-        self._data = self._load()
-
-    def _load(self) -> Dict[str, Any]:
-        if not self.settings_path.exists():
-            return {}
-        try:
-            return json.loads(self.settings_path.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
-
-    def _persist(self) -> None:
-        self.settings_path.write_text(json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Import here to avoid circular imports
+        from novelai.services.preferences_service import PreferencesService
+        self._prefs = PreferencesService(storage_dir=storage_dir or settings.DATA_DIR)
 
     def get(self, key: str, default: Any = None) -> Any:
-        return self._data.get(key, default)
+        return self._prefs.get(key, default)
 
     def set(self, key: str, value: Any) -> None:
-        self._data[key] = value
-        self._persist()
+        self._prefs.set(key, value)
 
     def get_provider_key(self) -> str:
-        return self.get("provider_key", settings.PROVIDER_DEFAULT)
+        return self._prefs.get_preferred_provider()
 
     def set_provider_key(self, key: str) -> None:
-        self.set("provider_key", key)
+        self._prefs.set_preferred_provider(key)
 
     def get_provider_model(self) -> str:
-        return self.get("provider_model", "gpt-4o-mini")
+        return self._prefs.get_preferred_model()
 
     def set_provider_model(self, model: str) -> None:
-        self.set("provider_model", model)
+        self._prefs.set_preferred_model(model)
 
-    def get_api_key(self) -> Optional[str]:
-        return self.get("provider_api_key")
-
-    def set_api_key(self, api_key: str) -> None:
-        self.set("provider_api_key", api_key)
+    # NOTE: API keys MUST NEVER be persisted to disk.
+    # They must always come from environment variables (PROVIDER_OPENAI_API_KEY, etc.).
+    # Use dotenv or .env file for local development, but never commit secrets to git.
+    # For production, use OS secret management or secrets vault.

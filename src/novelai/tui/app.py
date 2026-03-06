@@ -4,6 +4,7 @@ import asyncio
 
 import json
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.prompt import Prompt
@@ -73,6 +74,24 @@ class TUIApp:
         for n in novels:
             self.console.print(f"- {n}")
 
+    def _prompt_source(self) -> str | None:
+        sources = available_sources()
+        if not sources:
+            self.console.print("[red]No sources are registered.[/red]")
+            return None
+        return Prompt.ask("Source", choices=sources, default=sources[0])
+
+    def _prompt_provider(self) -> str | None:
+        providers = available_providers()
+        if not providers:
+            self.console.print("[red]No providers are registered.[/red]")
+            return None
+
+        default_provider = self.settings.get_provider_key()
+        if default_provider not in providers:
+            default_provider = providers[0]
+        return Prompt.ask("Provider", choices=providers, default=default_provider)
+
     async def _do_scrape_metadata(self, source_key: str, novel_id: str, mode: str = "update") -> None:
         await self.orchestrator.scrape_metadata(source_key, novel_id, mode=mode)
         self.console.print(f"Saved metadata for {novel_id} from {source_key}")
@@ -82,11 +101,9 @@ class TUIApp:
         self.console.print(f"Saved chapters for {novel_id} from {source_key}")
 
     def _scrape_flow(self) -> None:
-        source = Prompt.ask(
-            "Source",
-            choices=available_sources(),
-            default=available_sources()[0] if available_sources() else None,
-        )
+        source = self._prompt_source()
+        if source is None:
+            return
         novel_id = Prompt.ask("Novel ID or URL")
         chapters = Prompt.ask("Chapter selection (e.g. 1-3;5)", default="1")
         mode = Prompt.ask("Scrape mode", choices=["full", "update"], default="update")
@@ -98,21 +115,17 @@ class TUIApp:
             self.console.print(f"[red]Error:[/red] {exc}")
 
     def _translate_flow(self) -> None:
-        source = Prompt.ask(
-            "Source",
-            choices=available_sources(),
-            default=available_sources()[0] if available_sources() else None,
-        )
+        source = self._prompt_source()
+        if source is None:
+            return
         novel_id = Prompt.ask("Novel ID or URL")
         chapters = Prompt.ask("Chapter selection (e.g. 1-3;5)", default="1")
 
         # Use settings by default; allow override via prompt
         if Prompt.ask("Use settings provider/model?", choices=["yes", "no"], default="yes") == "no":
-            provider = Prompt.ask(
-                "Provider",
-                choices=available_providers(),
-                default=self.settings.get_provider_key(),
-            )
+            provider = self._prompt_provider()
+            if provider is None:
+                return
             model = Prompt.ask("Provider model", default=self.settings.get_provider_model())
         else:
             provider = None
@@ -158,13 +171,34 @@ class TUIApp:
             self.console.print("[red]Metadata not found; run scrape first.[/red]")
             return
 
-        chapters = []
-        for chap in meta.get("chapters", []):
-            chap_id = str(chap.get("id"))
+        chapters: list[dict[str, Any]] = []
+        raw_chapters = meta.get("chapters", [])
+        if not isinstance(raw_chapters, list):
+            self.console.print("[red]Stored metadata has an invalid chapter list.[/red]")
+            return
+
+        for chap in raw_chapters:
+            if not isinstance(chap, dict):
+                continue
+            chap_id_value = chap.get("id")
+            if chap_id_value is None:
+                continue
+            chap_id = str(chap_id_value)
             translated = self.storage.load_translated_chapter(novel_id, chap_id)
             if not translated:
                 continue
-            chapters.append({"title": chap.get("title"), "text": translated.get("text")})
+
+            title = chap.get("title")
+            text = translated.get("text")
+            if not isinstance(text, str):
+                continue
+
+            chapters.append(
+                {
+                    "title": title if isinstance(title, str) and title else f"Chapter {chap_id}",
+                    "text": text,
+                }
+            )
 
         output_path = f"{output}/{novel_id}.{fmt}"
         if fmt == "pdf":
@@ -224,11 +258,9 @@ class TUIApp:
         self.console.print(f"API key set: {'yes' if api_key else 'no'}")
 
         if Prompt.ask("Change settings?", choices=["yes", "no"], default="no") == "yes":
-            provider = Prompt.ask(
-                "Provider",
-                choices=available_providers(),
-                default=self.settings.get_provider_key(),
-            )
+            provider = self._prompt_provider()
+            if provider is None:
+                return
             model = Prompt.ask("Provider model", default=self.settings.get_provider_model())
             api_key = Prompt.ask("API key (leave blank to keep current)", password=True, default="")
 
