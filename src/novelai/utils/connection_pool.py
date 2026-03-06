@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Generic, Optional, TypeVar, Dict, List
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable, Generic, Optional, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -41,20 +42,27 @@ class PoolStats:
 class PooledConnection(Generic[T]):
     """Wrapper for pooled connections."""
 
-    def __init__(self, connection_id: str, connection: T, pool: ConnectionPool):
+    def __init__(
+        self,
+        connection_id: str,
+        connection: T,
+        pool: ConnectionPool[T],
+    ) -> None:
         self.connection_id = connection_id
         self.connection = connection
         self.pool = pool
         self.last_used: float = 0.0
         self.created_at: float = 0.0
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the connection."""
-        if hasattr(self.connection, "close"):
-            if asyncio.iscoroutinefunction(self.connection.close):
-                await self.connection.close()
-            else:
-                self.connection.close()
+        close_method = getattr(self.connection, "close", None)
+        if not callable(close_method):
+            return
+
+        result = close_method()
+        if inspect.isawaitable(result):
+            await result
 
 
 class ConnectionPool(Generic[T]):
@@ -62,9 +70,9 @@ class ConnectionPool(Generic[T]):
 
     def __init__(
         self,
-        factory_func,
+        factory_func: Callable[[], Awaitable[T]],
         config: Optional[PoolConfig] = None,
-    ):
+    ) -> None:
         """Initialize connection pool.
         
         Args:
@@ -75,9 +83,9 @@ class ConnectionPool(Generic[T]):
         self.config = config or PoolConfig()
         
         # Connection queues
-        self._available: asyncio.Queue = asyncio.Queue()
-        self._all_connections: Dict[str, PooledConnection] = {}
-        self._overflow_connections: List[str] = []
+        self._available: asyncio.Queue[PooledConnection[T]] = asyncio.Queue()
+        self._all_connections: dict[str, PooledConnection[T]] = {}
+        self._overflow_connections: list[str] = []
         
         # Initialization
         self._initialized = False
@@ -220,7 +228,7 @@ class ConnectionPool(Generic[T]):
         
         logger.info("Connection pool closed")
 
-    async def _create_connection(self, overflow: bool = False) -> PooledConnection:
+    async def _create_connection(self, overflow: bool = False) -> PooledConnection[T]:
         """Create a new connection.
         
         Args:
@@ -286,17 +294,17 @@ class ContextManagedPool(Generic[T]):
         self._connection = await self.pool.acquire()
         return self._connection
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
         """Release connection on context exit."""
         if self._connection:
             await self.pool.release(self._connection)
 
 
 def create_connection_pool(
-    factory_func,
+    factory_func: Callable[[], Awaitable[T]],
     min_size: int = 5,
     max_size: int = 20,
-) -> ConnectionPool:
+) -> ConnectionPool[T]:
     """Create a connection pool.
     
     Args:
@@ -313,7 +321,7 @@ def create_connection_pool(
 
 async def with_pooled_connection(
     pool: ConnectionPool[T],
-    func,
+    func: Callable[[T], Awaitable[Any]],
 ) -> Any:
     """Execute function with pooled connection.
     

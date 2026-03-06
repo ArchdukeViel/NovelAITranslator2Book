@@ -41,6 +41,21 @@ novelaibook export-epub n7133es --output output --format pdf
 - `--mode full` clears stored data and re-scrapes everything.
 - `--mode update` only downloads new/changed chapters.
 
+## Lockfiles
+
+Regenerate the pinned runtime and dev lockfiles from `pyproject.toml`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\update-lockfiles.ps1
+```
+
+Optional flags:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\update-lockfiles.ps1 -RuntimeOnly
+powershell -ExecutionPolicy Bypass -File .\scripts\update-lockfiles.ps1 -DevOnly
+```
+
 
 ## Project Structure
 

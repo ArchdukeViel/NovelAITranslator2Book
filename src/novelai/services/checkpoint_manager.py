@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -97,7 +96,7 @@ class CheckpointManager:
         self,
         novel_id: str,
         chapter_id: str,
-        checkpoint_id: Optional[str] = None,
+        checkpoint_id: str | None = None,
     ) -> bool:
         """Restore chapter from checkpoint.
         
@@ -117,7 +116,10 @@ class CheckpointManager:
                 return False
             # Use the last one (chronologically)
             checkpoint_id = checkpoints[-1]["checkpoint_name"]
-        
+
+        if checkpoint_id is None:
+            return False
+
         success = self.storage.restore_from_checkpoint(novel_id, chapter_id, checkpoint_id)
         if success:
             self._checkpoints.pop(self._get_checkpoint_id(novel_id, chapter_id), None)
@@ -137,7 +139,7 @@ class CheckpointManager:
             List of CheckpointMetadata sorted by timestamp
         """
         checkpoint_id = self._get_checkpoint_id(novel_id, chapter_id)
-        history = []
+        history: list[CheckpointMetadata] = []
         
         # Check in-memory cache
         if checkpoint_id in self._checkpoints:

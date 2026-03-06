@@ -1,20 +1,25 @@
 """Tests for query builder."""
 
-import pytest
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
-import tempfile
+from uuid import uuid4
+
+import pytest
 
 from novelai.core.chapter_state import ChapterState
-from novelai.services.storage_service import StorageService
 from novelai.services.query_builder import ChapterQueryBuilder
+from novelai.services.storage_service import StorageService
+from tests.conftest import TESTS_TMP_ROOT
 
 
 @pytest.fixture
 def storage():
     """Provide temporary storage."""
-    tmpdir = tempfile.TemporaryDirectory()
-    store = StorageService(Path(tmpdir.name))
+    TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    data_dir = TESTS_TMP_ROOT / f"query_{uuid4().hex}"
+    data_dir.mkdir(parents=True, exist_ok=False)
+    store = StorageService(data_dir)
     
     # Add test data
     store.update_chapter_state("novel1", "ch1", ChapterState.SCRAPED)
@@ -25,7 +30,7 @@ def storage():
     store.update_chapter_state("novel1", "ch6", ChapterState.TRANSLATED, error="API Error")
     
     yield store
-    tmpdir.cleanup()
+    shutil.rmtree(data_dir, ignore_errors=True)
 
 
 def test_query_by_state(storage):

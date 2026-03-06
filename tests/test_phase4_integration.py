@@ -1,12 +1,9 @@
 """Integration tests for Phase 4 resilience and performance systems."""
 
 import asyncio
+from unittest.mock import AsyncMock, patch
+
 import pytest
-import tempfile
-import json
-from pathlib import Path
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.novelai.utils.retry_decorator import (
     Retrier, RetryConfig, RetryStrategy, RetryError, BackoffCalculator
@@ -33,20 +30,23 @@ class TestRetryDecorator:
     async def test_exponential_backoff(self):
         """Test exponential backoff calculation."""
         calc = BackoffCalculator(
-            initial_delay=1.0,
-            base=2.0,
-            max_delay=30.0
+            RetryConfig(
+                initial_delay=1.0,
+                exponential_base=2.0,
+                max_delay=30.0,
+                jitter=False,
+            )
         )
         
         # Should double each attempt
-        assert calc.calculate_delay(0) == 1.0
-        assert calc.calculate_delay(1) == 2.0
-        assert calc.calculate_delay(2) == 4.0
-        assert calc.calculate_delay(3) == 8.0
-        assert calc.calculate_delay(4) == 16.0
+        assert calc.calculate(0) == 1.0
+        assert calc.calculate(1) == 2.0
+        assert calc.calculate(2) == 4.0
+        assert calc.calculate(3) == 8.0
+        assert calc.calculate(4) == 16.0
         
         # Should cap at max_delay
-        assert calc.calculate_delay(5) == 30.0
+        assert calc.calculate(5) == 30.0
 
     @pytest.mark.asyncio
     async def test_retry_success_on_first_attempt(self):
@@ -267,7 +267,7 @@ class TestConnectionPool:
             await asyncio.sleep(0.1)  # Slow creation
             return {}
         
-        config = PoolConfig(min_size=1, max_size=1, acquire_timeout=0.05)
+        config = PoolConfig(min_size=1, max_size=1, max_overflow=0, acquire_timeout=0.05)
         pool = ConnectionPool(create_conn, config)
         
         await pool.initialize()
@@ -446,10 +446,12 @@ class TestPhase4Integration:
         batch_config = BatchJobConfig(batch_size=2, max_parallel_batches=2)
         
         retrier = Retrier(retry_config)
+        attempts: dict[int, int] = {}
         
         async def process_with_retry(x):
             async def func():
-                if x == 0:
+                attempts[x] = attempts.get(x, 0) + 1
+                if x == 0 and attempts[x] == 1:
                     raise ValueError("Transient failure")
                 return x * 2
             

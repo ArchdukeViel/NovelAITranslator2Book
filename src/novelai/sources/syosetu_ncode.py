@@ -1,12 +1,23 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 import httpx
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
 from novelai.sources.base import SourceAdapter
+
+
+def _attribute_to_str(value: object) -> str | None:
+    """Normalize a BeautifulSoup attribute value to a single string."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        parts = [part for part in value if isinstance(part, str)]
+        return parts[0] if len(parts) == 1 else None
+    return None
 
 
 class SyosetuNcodeSource(SourceAdapter):
@@ -51,17 +62,19 @@ class SyosetuNcodeSource(SourceAdapter):
 
         # Chapter list: modern Syosetu uses links like /nXXXXXX/1/ /nXXXXXX/2/ ...
         # We'll gather them by regex rather than relying on a specific wrapper.
-        import re
-
         base_path = re.escape(httpx.URL(url).path)
         pattern = re.compile(rf"^{base_path}(\d+)/?$")
-        chapter_urls = {}
+        chapter_urls: dict[int, dict[str, str | int]] = {}
 
         base_url = httpx.URL(url)
         base_root = str(base_url.copy_with(path="/"))
 
         for a in soup.find_all("a", href=True):
-            href = a["href"]
+            if not isinstance(a, Tag):
+                continue
+            href = _attribute_to_str(a.get("href"))
+            if href is None:
+                continue
             match = pattern.match(href)
             if not match:
                 # also try full URL variants

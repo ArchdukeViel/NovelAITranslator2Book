@@ -85,7 +85,7 @@ async def test_translation_service_integration(integration_fixture):
         "Test content for translation."
     )
 
-    service = TranslationService()
+    service = fixture.translation_service
     result = await service.translate_chapter(
         source_adapter=fixture.mock_source,
         chapter_url="http://example.com/ch1",

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-import json
+import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
+
+from pydantic import SecretStr
 
 from novelai.config.settings import settings
 
@@ -42,6 +44,18 @@ class SettingsService:
 
     def set_provider_model(self, model: str) -> None:
         self._prefs.set_preferred_model(model)
+
+    def get_api_key(self) -> str | None:
+        """Return the runtime API key from environment-backed settings."""
+        api_key = settings.PROVIDER_OPENAI_API_KEY
+        if api_key is None:
+            return None
+        return api_key.get_secret_value()
+
+    def set_api_key(self, api_key: str) -> None:
+        """Update the runtime API key without persisting it to disk."""
+        os.environ["PROVIDER_OPENAI_API_KEY"] = api_key
+        settings.PROVIDER_OPENAI_API_KEY = SecretStr(api_key)
 
     # NOTE: API keys MUST NEVER be persisted to disk.
     # They must always come from environment variables (PROVIDER_OPENAI_API_KEY, etc.).

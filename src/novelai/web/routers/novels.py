@@ -31,7 +31,10 @@ async def get_chapter(
     chapter_id: str,
     storage: StorageService = Depends(get_storage),
 ) -> dict[str, str]:
-    text = storage.load_chapter(novel_id, chapter_id)
-    if text is None:
+    chapter = storage.load_chapter(novel_id, chapter_id)
+    if chapter is None:
         raise HTTPException(status_code=404, detail="Chapter not found")
+    text = chapter.get("text")
+    if not isinstance(text, str):
+        raise HTTPException(status_code=500, detail="Stored chapter is malformed")
     return {"novel_id": novel_id, "chapter_id": chapter_id, "text": text}

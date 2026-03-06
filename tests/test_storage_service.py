@@ -1,22 +1,27 @@
 """Tests for storage service with state tracking."""
 
-import pytest
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
-import tempfile
+from uuid import uuid4
+
+import pytest
 
 from novelai.core.chapter_state import ChapterState, ChapterMetadata, ChapterStateTransition
-from novelai.services.storage_service import StorageService
 from novelai.services.query_builder import ChapterQueryBuilder
+from novelai.services.storage_service import StorageService
+from tests.conftest import TESTS_TMP_ROOT
 
 
 @pytest.fixture
 def storage():
     """Provide temporary storage."""
-    tmpdir = tempfile.TemporaryDirectory()
-    store = StorageService(Path(tmpdir.name))
+    TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    data_dir = TESTS_TMP_ROOT / f"storage_{uuid4().hex}"
+    data_dir.mkdir(parents=True, exist_ok=False)
+    store = StorageService(data_dir)
     yield store
-    tmpdir.cleanup()
+    shutil.rmtree(data_dir, ignore_errors=True)
 
 
 def test_save_and_load_chapter(storage):
@@ -79,7 +84,7 @@ def test_chapter_state_with_error(storage):
     
     state = storage.load_chapter_state("novel1", "ch1")
     assert state["error_count"] == 1
-    assert state["transitions"][-1]["error"] == "API timeout"
+    assert state["transitions"][-1].error == "API timeout"
 
 
 def test_get_chapters_by_state(storage):

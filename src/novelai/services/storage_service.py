@@ -7,12 +7,21 @@ import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional, TypedDict
 
 from novelai.config.settings import settings
+from novelai.core.chapter_state import ChapterState, ChapterStateTransition
 from novelai.services.query_builder import ChapterQueryBuilder
 
 logger = logging.getLogger(__name__)
+
+
+class CheckpointInfo(TypedDict):
+    """Validated checkpoint metadata returned from storage."""
+
+    filename: str
+    timestamp: str
+    checkpoint_name: str
 
 
 def _utc_now() -> datetime:
@@ -281,8 +290,6 @@ class StorageService:
 
     def save_chapter_state(self, novel_id: str, chapter_id: str, state_data: dict[str, Any]) -> Path:
         """Save chapter state tracking information (including transitions)."""
-        from novelai.core.chapter_state import ChapterMetadata, ChapterState
-
         state_dir = self._get_state_dir(novel_id)
         
         # Serialize ChapterMetadata to JSON-safe format
@@ -310,8 +317,6 @@ class StorageService:
 
     def load_chapter_state(self, novel_id: str, chapter_id: str) -> Optional[dict[str, Any]]:
         """Load chapter state tracking information."""
-        from novelai.core.chapter_state import ChapterMetadata, ChapterState, ChapterStateTransition
-
         state_dir = self._get_state_dir(novel_id)
         path = state_dir / f"{chapter_id}.json"
         
@@ -346,12 +351,10 @@ class StorageService:
         self,
         novel_id: str,
         chapter_id: str,
-        new_state: "ChapterState",
+        new_state: ChapterState,
         error: Optional[str] = None,
     ) -> None:
         """Update a chapter's state with a new transition."""
-        from novelai.core.chapter_state import ChapterMetadata, ChapterState, ChapterStateTransition
-
         # Load existing state or create new
         state_data = self.load_chapter_state(novel_id, chapter_id)
         
@@ -391,10 +394,8 @@ class StorageService:
         
         self.save_chapter_state(novel_id, chapter_id, state_data)
 
-    def get_chapters_by_state(self, novel_id: str, state: "ChapterState") -> list[str]:
+    def get_chapters_by_state(self, novel_id: str, state: ChapterState) -> list[str]:
         """Get all chapters in a specific state."""
-        from novelai.core.chapter_state import ChapterState
-
         state_dir = self._get_state_dir(novel_id)
         if not state_dir.exists():
             return []
@@ -546,7 +547,7 @@ class StorageService:
         logger.info(f"Checkpoint created: {checkpoint_name} for {novel_id}/{chapter_id}")
         return path
 
-    def list_checkpoints(self, novel_id: str, chapter_id: str) -> list[dict[str, Any]]:
+    def list_checkpoints(self, novel_id: str, chapter_id: str) -> list[CheckpointInfo]:
         """List all checkpoints for a chapter.
         
         Args:
@@ -560,14 +561,22 @@ class StorageService:
         if not checkpoints_dir.exists():
             return []
         
-        checkpoints = []
+        checkpoints: list[CheckpointInfo] = []
         for checkpoint_file in sorted(checkpoints_dir.glob(f"{chapter_id}__*.json")):
             try:
                 data = json.loads(checkpoint_file.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    continue
+                timestamp = data.get("timestamp")
+                checkpoint_name = data.get("checkpoint_name")
+                if not isinstance(timestamp, str):
+                    continue
+                if not isinstance(checkpoint_name, str):
+                    continue
                 checkpoints.append({
                     "filename": checkpoint_file.name,
-                    "timestamp": data.get("timestamp"),
-                    "checkpoint_name": data.get("checkpoint_name"),
+                    "timestamp": timestamp,
+                    "checkpoint_name": checkpoint_name,
                 })
             except Exception:
                 continue
@@ -640,7 +649,7 @@ class StorageService:
             logger.error(f"Failed to restore checkpoint {checkpoint_name}: {e}")
             return False
 
-    def rollback_to_state(self, novel_id: str, chapter_id: str, target_state: "ChapterState") -> None:
+    def rollback_to_state(self, novel_id: str, chapter_id: str, target_state: ChapterState) -> None:
         """Rollback chapter to a previous state.
         
         Args:
@@ -648,8 +657,6 @@ class StorageService:
             chapter_id: Chapter identifier
             target_state: Target state to rollback to
         """
-        from novelai.core.chapter_state import ChapterState
-        
         state_data = self.load_chapter_state(novel_id, chapter_id)
         if not state_data:
             logger.warning(f"No state found for {novel_id}/{chapter_id}")

@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
 import gzip
 import json
 import logging
-import shutil
 import tarfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +37,42 @@ class BackupInfo:
     description: Optional[str] = None
 
 
+class BackupManifestEntry(TypedDict):
+    """Validated manifest entry stored on disk."""
+
+    timestamp: str
+    novel_id: str
+    size_bytes: int
+    compressed: bool
+    files_count: int
+    description: str | None
+
+
+def _parse_manifest_entry(value: object) -> BackupManifestEntry | None:
+    """Validate a manifest entry loaded from JSON."""
+    if not isinstance(value, dict):
+        return None
+
+    timestamp = value.get("timestamp")
+    novel_id = value.get("novel_id")
+    if not isinstance(timestamp, str) or not isinstance(novel_id, str):
+        return None
+
+    size_bytes = value.get("size_bytes")
+    compressed = value.get("compressed")
+    files_count = value.get("files_count")
+    description = value.get("description")
+
+    return {
+        "timestamp": timestamp,
+        "novel_id": novel_id,
+        "size_bytes": size_bytes if isinstance(size_bytes, int) else 0,
+        "compressed": compressed if isinstance(compressed, bool) else False,
+        "files_count": files_count if isinstance(files_count, int) else 0,
+        "description": description if isinstance(description, str) else None,
+    }
+
+
 class BackupManager:
     """Manages backups and restoration."""
 
@@ -53,16 +87,26 @@ class BackupManager:
         self.backups_dir.mkdir(parents=True, exist_ok=True)
         self._backup_manifest = self.backups_dir / "manifest.json"
 
-    def _load_manifest(self) -> dict[str, dict[str, Any]]:
+    def _load_manifest(self) -> dict[str, BackupManifestEntry]:
         """Load backup manifest."""
         if self._backup_manifest.exists():
             try:
-                return json.loads(self._backup_manifest.read_text(encoding="utf-8"))
+                raw_manifest = json.loads(self._backup_manifest.read_text(encoding="utf-8"))
+                if not isinstance(raw_manifest, dict):
+                    return {}
+                manifest: dict[str, BackupManifestEntry] = {}
+                for backup_id, info in raw_manifest.items():
+                    if not isinstance(backup_id, str):
+                        continue
+                    parsed = _parse_manifest_entry(info)
+                    if parsed is not None:
+                        manifest[backup_id] = parsed
+                return manifest
             except Exception:
                 return {}
         return {}
 
-    def _save_manifest(self, manifest: dict[str, dict[str, Any]]) -> None:
+    def _save_manifest(self, manifest: dict[str, BackupManifestEntry]) -> None:
         """Save backup manifest."""
         self._backup_manifest.write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -243,7 +287,7 @@ class BackupManager:
             List of BackupInfo sorted by timestamp (newest first)
         """
         manifest = self._load_manifest()
-        backups = []
+        backups: list[BackupInfo] = []
         
         for backup_id, info in manifest.items():
             if novel_id and info.get("novel_id") != novel_id:
@@ -251,12 +295,12 @@ class BackupManager:
             
             backup_info = BackupInfo(
                 backup_id=backup_id,
-                timestamp=info.get("timestamp"),
-                novel_id=info.get("novel_id"),
-                size_bytes=info.get("size_bytes", 0),
-                compressed=info.get("compressed", False),
-                files_count=info.get("files_count", 0),
-                description=info.get("description"),
+                timestamp=info["timestamp"],
+                novel_id=info["novel_id"],
+                size_bytes=info["size_bytes"],
+                compressed=info["compressed"],
+                files_count=info["files_count"],
+                description=info["description"],
             )
             backups.append(backup_info)
         
