@@ -12,7 +12,7 @@ build/
 *.egg
 *.so
 *.dylib
-.pytest_cache
+.pytest_cache/
 
 # Virtual environment
 .venv/
@@ -41,7 +41,7 @@ Desktop.ini
 .directory
 .Trash-*
 
-# Proyect output
+# Project output
 output/
 input/
 persistent_data.json
@@ -51,3 +51,7 @@ requirements.in
 
 # Logs
 gptwntranslator.log
+
+# Test temp directories
+tests_tmp/
+pytest-cache-files-*/
