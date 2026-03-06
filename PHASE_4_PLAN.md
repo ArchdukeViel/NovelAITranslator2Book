@@ -1,5 +1,12 @@
 # Phase 4 Plan: Operational Excellence & Resilience
 
+> Repository cleanup note (2026-03-07): the Phase 4 performance prototype track
+> (`batch_processor.py`, `connection_pool.py`, `cache_optimizer.py`,
+> `test_phase4_integration.py`, and `PHASE_4_OPERATIONS.md`) was retired because
+> it never integrated with runtime orchestration, the DI container, or maintained
+> smoke tests. The retained Phase 4 code is the checkpoint/backup path plus the
+> standalone `retry_decorator.py` utility.
+
 ## Objectives (Current Score: 8.5/10 → Target: 9.3/10)
 
 ### 1. Error Recovery & Retry Logic
@@ -77,6 +84,9 @@
 
 ### Deliverables Summary
 
+Cleanup status: Tasks 5 and 6 were later retired. The retained Phase 4 deliverables
+are the retry utility plus checkpoint/backup work in `src/novelai/services`.
+
 | Task | File | Lines | Status |
 |------|------|-------|--------|
 | Task 1: Retry Decorator | `src/novelai/utils/retry_decorator.py` | 240 | ✅ DONE |
@@ -116,6 +126,9 @@
 - Complete troubleshooting guide
 
 ### New Files Created
+
+Cleanup status: the list below is the historical creation list; some entries were
+later retired during repository cleanup.
 
 ```
 src/novelai/utils/

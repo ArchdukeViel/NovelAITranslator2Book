@@ -9,7 +9,7 @@ description = "A modular Japanese-to-English web novel translation platform."
 authors = [
   {name = "Your Name", email = "you@example.com"}
 ]
-readme = "README.md"
+readme = "readme.md"
 requires-python = ">=3.13"
 license = {text = "MIT"}
 

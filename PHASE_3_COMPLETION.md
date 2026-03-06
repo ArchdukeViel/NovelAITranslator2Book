@@ -1,5 +1,11 @@
 # Phase 3 Completion Summary: Logging & Scale Infrastructure
 
+> Repository cleanup note (2026-03-07): the standalone
+> `src/novelai/utils/rate_limiter.py` prototype described later in this document
+> was removed during cleanup because it was not integrated into runtime, tests,
+> or container wiring. The rest of this file is preserved as historical phase
+> documentation.
+
 ## ✅ All 6 Phase 3 Tasks Completed
 
 ### Task 1: Setup Logging Infrastructure ✅
@@ -83,19 +89,11 @@
 ### Task 5: Rate Limiting ✅
 **Status:** COMPLETED  
 **Files Created:**
-- `src/novelai/utils/rate_limiter.py` - Token bucket rate limiting
-  - `RateLimitConfig` - Configuration dataclass
-  - `TokenBucket` - Token bucket algorithm implementation
-  - `RateLimiter` - Per-provider rate limit tracking
-    - Async-first API
-    - Per-provider or global rates
-    - Wait or raise strategies
-    - Status reporting
-  - `rate_limit_async()` - Decorator for async functions
-  - `rate_limit_sync()` - Decorator for sync functions
-  - `get_rate_limiter()` - Global rate limiter registry
+- Historical note: `src/novelai/utils/rate_limiter.py` was prototyped in Phase 3
+  but later removed during repository cleanup because it was never integrated into
+  the runtime orchestration, DI container, or test flow.
 
-**Impact:** Prevents API rate limit errors with configurable quotas
+**Impact:** Preserved here as phase history only; not part of the active codebase
 
 ---
 
@@ -140,10 +138,9 @@
 
 ## Overall Phase 3 Impact
 
-### New Files Added (5)
+### New Files Added (4 active)
 - `src/novelai/core/chapter_state.py`
 - `src/novelai/services/query_builder.py`
-- `src/novelai/utils/rate_limiter.py`
 - `tests/conftest.py`
 - `tests/test_*.py` (4 files)
 
@@ -205,11 +202,10 @@
 - Flexible sorting and pagination
 - Performance-conscious (lazy evaluation)
 
-### 4. Rate Limiting
-- Token bucket algorithm with configurable rates
-- Per-provider rate limits
-- Async/await support
-- Decorators for easy integration
+### 4. Rate Limiting (retired prototype)
+- Designed as a token-bucket limiter for provider calls
+- Later removed because no runtime path or container wiring used it
+- Kept in this report only as historical phase context
 
 ### 5. Test Infrastructure
 - Isolated temporary environments
@@ -262,8 +258,6 @@ python -c "from novelai.core.chapter_state import ChapterState; print([s.value f
 # Test query builder
 python -c "from novelai.services.query_builder import ChapterQueryBuilder; print('Query builder ready')"
 
-# Test rate limiter
-python -c "from novelai.utils.rate_limiter import RateLimiter, RateLimitConfig; print('Rate limiter ready')"
 ```
 
 ---

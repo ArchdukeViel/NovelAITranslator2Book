@@ -1,5 +1,9 @@
 # Phase 2: Composition & Reliability - COMPLETED
 
+> Repository cleanup note (2026-03-07): the experimental `src/novelai/utils/retry.py`
+> and `FallbackProvider` path referenced later in this document was retired during
+> cleanup. The active retry implementation is `src/novelai/utils/retry_decorator.py`.
+
 **Status:** ✅ All 6 improvements completed  
 **Time Spent:** ~50 minutes  
 **Risk Level:** LOW (backwards compatible, incremental improvements)
@@ -263,7 +267,7 @@ def bootstrap():
 ---
 
 ### 5. ✅ Add Retry/Fallback Logic (MEDIUM)
-**File:** [src/novelai/utils/retry.py](src/novelai/utils/retry.py) (NEW)
+**File:** [src/novelai/utils/retry_decorator.py](src/novelai/utils/retry_decorator.py)
 
 **RetryConfig Class:**
 ```python
@@ -288,7 +292,7 @@ async def translate_chunk(self, text: str) -> str:
 **Usage Example:**
 ```python
 # Use in TranslateStage or other services
-from novelai.utils.retry import retry_async, RetryConfig
+from novelai.utils.retry_decorator import retry_async, RetryConfig
 
 class TranslateStage:
     @retry_async(RetryConfig(max_attempts=5))
@@ -296,29 +300,19 @@ class TranslateStage:
         return await provider.translate(chunk)
 ```
 
-**FallbackProvider Class:**
+**Manual Retrier Usage:**
 ```python
-from novelai.utils.retry import FallbackProvider
+from novelai.utils.retry_decorator import Retrier, RetryConfig
 
-fallback = FallbackProvider(
-    primary_factory=get_provider,      # get_provider("openai")
-    fallback_factory=get_provider,     # get_provider("dummy")
-)
-
-result = await fallback.translate_with_fallback(
-    primary_key="openai",
-    fallback_key="dummy",
-    prompt="Translate this...",
-)
-# Returns {"text": "...", "provider_used": "openai", "fallback_used": False}
-# If primary fails, tries dummy and sets fallback_used=True
+retrier = Retrier(RetryConfig(max_attempts=3))
+result = await retrier.execute_async(provider.translate, "Translate this...")
 ```
 
 **Features:**
 - ✅ Exponential backoff with jitter (prevents thundering herd)
 - ✅ Configurable max attempts, delays, retry conditions
 - ✅ Automatic logging of retry attempts
-- ✅ Fallback provider support (primary → fallback chain)
+- ✅ Decorator and manual `Retrier` APIs for different call sites
 - ✅ Works with async functions
 
 **Impact:**
@@ -406,7 +400,7 @@ result = glossary.translate(text)  # Substitutes terms
 ✓ Container orchestrator working
 ✓ Error hierarchy imported and functional
 ✓ RetryConfig and retry_async available
-✓ FallbackProvider working
+✓ Retry decorator working
 ✓ PostProcessStage with glossary support
 ✓ All imports successful
 ✓ No syntax errors
@@ -423,7 +417,7 @@ result = glossary.translate(text)  # Substitutes terms
 | **Orchestration** | ❌ Hidden registry dependency | ✅ Fully injected |
 | **Pipeline Context** | ❌ Mixed input/state/output/objects | ✅ Clear separation + types |
 | **Export Extensibility** | ❌ Add format = edit ExportService | ✅ Register + bootstrap |
-| **Provider Reliability** | ❌ Single failure crashes pipeline | ✅ Retry + fallback support |
+| **Provider Reliability** | ❌ Single failure crashes pipeline | ✅ Retry with backoff support |
 | **Glossary** | ❌ Dead code | ✅ Functional integration |
 
 ---
@@ -500,29 +494,19 @@ for format in formats:
     )
 ```
 
-### Using Retry/Fallback
+### Using Retry
 
 ```python
-from novelai.utils.retry import retry_async, FallbackProvider, RetryConfig
+from novelai.utils.retry_decorator import retry_async, Retrier, RetryConfig
 
 # Apply to any async function
 @retry_async(RetryConfig(max_attempts=5, initial_delay=0.5))
 async def robust_translate(text):
     return await translate_service.translate_chapter(...)
 
-# Or use fallback chain
-from novelai.providers.registry import get_provider
-
-fallback = FallbackProvider(
-    primary_factory=get_provider,
-    fallback_factory=get_provider,
-)
-
-result = await fallback.translate_with_fallback(
-    primary_key="openai",
-    fallback_key="dummy",
-    prompt="Translate this",
-)
+# Or control retries manually
+retrier = Retrier(RetryConfig(max_attempts=3))
+result = await retrier.execute_async(robust_translate, "Translate this")
 ```
 
 ### Using Glossary
@@ -565,7 +549,7 @@ stage = PostProcessStage(glossary=glossary)
 | **Dependency Injection** | 3/10 | 8/10 | ✅ Orchestration injectable, registry patterns |
 | **Type Safety** | 5/10 | 8/10 | ✅ PipelineResult, PipelineState split |
 | **Extensibility** | 4/10 | 8/10 | ✅ ExporterRegistry pattern |
-| **Reliability** | 2/10 | 6/10 | ✅ Retry + fallback support |
+| **Reliability** | 2/10 | 6/10 | ✅ Retry with backoff support |
 | **Testability** | 3/10 | 7/10 | ✅ All services injectable now |
 | **Overall** | 4.5/10 | **7.0/10** | Major improvements to composition |
 
@@ -625,7 +609,7 @@ Estimated: 30-40 hours, focuses on **Logging, Scale, and Advanced Features**
 - ✅ Error handling middleware
 - ✅ Secrets externalization
 - ✅ Dependency injection
-- ✅ Retry/fallback resilience
+- ✅ Retry resilience
 
 ---
 
@@ -637,13 +621,13 @@ Estimated: 30-40 hours, focuses on **Logging, Scale, and Advanced Features**
 - ✅ Error responses standardized for web integration
 - ✅ Type safety improved with split context types
 - ✅ Extension mechanisms clear (registry pattern)
-- ✅ Resilience improved (retry + fallback)
+- ✅ Resilience improved (retry with backoff)
 - ✅ Dead code activated (glossary functional)
 
 **The architecture is now:**
 - 🟢 **Maintainable** (clear boundaries, no hidden dependencies)
 - 🟢 **Composable** (easy to add new providers/sources/exporters)
-- 🟢 **Reliable** (retry logic, fallback support)
+- 🟢 **Reliable** (retry logic with backoff)
 - 🟢 **Type-safe** (proper types throughout pipeline)
 - 🟢 **Tested-ready** (all services injectable)
 

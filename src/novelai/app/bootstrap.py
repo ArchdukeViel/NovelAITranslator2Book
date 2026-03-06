@@ -27,11 +27,9 @@ def bootstrap_providers() -> None:
 
 def bootstrap_sources() -> None:
     """Register all known novel sources."""
-    from novelai.sources.example_source import ExampleSource
     from novelai.sources.registry import register_source
     from novelai.sources.syosetu_ncode import SyosetuNcodeSource
 
-    register_source("example", lambda: ExampleSource())
     register_source("syosetu_ncode", lambda: SyosetuNcodeSource())
 
 
