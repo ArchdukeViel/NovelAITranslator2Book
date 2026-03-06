@@ -122,24 +122,25 @@ data/
 ├── backups/                         # Backup directory (Phase 4)
 │   ├── n4423lw__20260307_120000.tar.gz
 │   └── manifest.json
-├── novels/
-│   └── n4423lw/                     # Novel directory (novel ID)
-│       ├── 1.txt                    # Raw chapter 1
-│       ├── 2.txt                    # Raw chapter 2
-│       ├── metadata.json            # Novel metadata
-│       ├── checkpoints/             # Checkpoint directory (Phase 4)
-│       │   ├── ch1_pre-translation.json
-│       │   └── ch1_post-translation.json
-│       └── translated/
-│           ├── 1.txt               # Translated chapter 1
-│           └── 2.txt               # Translated chapter 2
-└── web/                             # Web API data mirror
-    └── novels/
-        └── n4423lw/
-            ├── metadata.json
-            └── translated/
-                ├── 1.txt
-                └── 2.txt
+└── novels/
+    ├── index.json                   # Novel ID → folder mapping
+    └── n4423lw/                     # Novel directory (novel ID)
+        ├── metadata.json            # Novel metadata
+        ├── raw/                     # Raw chapters from source
+        │   ├── chapter_1.json
+        │   └── chapter_2.json
+        ├── translated/              # Translated chapters (JSON)
+        │   ├── chapter_1.json
+        │   └── chapter_2.json
+        ├── epub/                    # EPUB exports
+        │   ├── full_novel.epub
+        │   └── chapter_1.epub
+        ├── pdf/                     # PDF exports
+        │   ├── full_novel.pdf
+        │   └── chapter_1.pdf
+        └── checkpoints/             # State snapshots (Phase 4)
+            ├── chapter_1_pre-translation.json
+            └── chapter_1_post-translation.json
 ```
 
 ### Data Directory Usage
@@ -150,9 +151,11 @@ data/
 | `usage.json` | API usage tracking (tokens, cost) | `UsageService` |
 | `backups/` | Versioned backups of novels | `BackupManager` (Phase 4) |
 | `novels/{id}/` | Novel chapters and metadata | `StorageService` |
+| `novels/{id}/raw/` | Raw chapters from source | `StorageService` |
+| `novels/{id}/translated/` | Final translated chapters (JSON) | `StorageService` |
+| `novels/{id}/epub/` | EPUB export files | `ExportService` |
+| `novels/{id}/pdf/` | PDF export files | `ExportService` |
 | `novels/{id}/checkpoints/` | State snapshots for recovery | `CheckpointManager` (Phase 4) |
-| `novels/{id}/translated/` | Final translated chapters | `StorageService` |
-| `web/novels/` | Web-accessible copy of novels | `StorageService` |
 
 ## Key Architectural Principles
 
