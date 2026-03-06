@@ -1,0 +1,11 @@
+[
+  {
+    "timestamp": "2026-03-06T13:43:43.452660Z",
+    "provider": "dummy",
+    "model": "gpt-4o-mini",
+    "tokens": null,
+    "metadata": {
+      "note": "dummy provider (echo)"
+    }
+  }
+]

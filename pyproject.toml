@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "novel-ai"
+version = "0.1.0"
+description = "A modular Japanese-to-English web novel translation platform."
+authors = [
+  {name = "Your Name", email = "you@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+
+dependencies = [
+  "fastapi>=0.111",
+  "uvicorn[standard]>=0.23",
+  "pydantic>=2.6",
+  "pydantic-settings>=1.0",
+  "rich>=14.0",
+  "python-dotenv>=1.0",
+  "httpx>=0.28",
+  "beautifulsoup4>=4.13",
+  "lxml>=4.9",
+]
+
+[project.urls]
+homepage = "https://example.com"
+repository = "https://example.com/novel-ai"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,1 @@
+"""Glossary / terminology management."""
