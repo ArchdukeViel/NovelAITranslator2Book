@@ -81,8 +81,9 @@ def test_control_deck_uses_numbered_labels(tui: TUIApp) -> None:
 
     assert "1) Novel Library" in output
     assert "2) Add Novel" in output
-    assert "3) Diagnostics" in output
-    assert "4) Settings" in output
+    assert "3) Update Novel" in output
+    assert "4) Diagnostics" in output
+    assert "5) Settings" in output
     assert "0) Exit" in output
 
 
@@ -171,10 +172,10 @@ def test_numeric_menu_selection_maps_to_action_keys(tui: TUIApp) -> None:
     assert tui._resolve_menu_selection("") == "list"
     assert tui._resolve_menu_selection("1") == "list"
     assert tui._resolve_menu_selection("2") == "scrape"
-    assert tui._resolve_menu_selection("3") == "diagnostics"
-    assert tui._resolve_menu_selection("4") == "settings"
+    assert tui._resolve_menu_selection("3") == "update"
+    assert tui._resolve_menu_selection("4") == "diagnostics"
+    assert tui._resolve_menu_selection("5") == "settings"
     assert tui._resolve_menu_selection("0") == "exit"
-    assert tui._resolve_menu_selection("5") is None
     assert tui._resolve_menu_selection("6") is None
     assert tui._resolve_menu_selection("7") is None
     assert tui._resolve_menu_selection("8") is None
@@ -216,6 +217,29 @@ def test_library_screen_uses_guide_rail_instead_of_embedded_command_panel(tui: T
     assert "0) back" in output
 
 
+def test_library_frame_keeps_full_guide_rail_visible(tui: TUIApp) -> None:
+    tui.console = Console(record=True, width=120, height=30)
+    snapshots = [
+        {
+            "novel_id": f"novel-{index}",
+            "title": "A Better Story",
+            "total_chapters": 2,
+            "translated_chapters": 1,
+            "language": "Japanese",
+        }
+        for index in range(1, 25)
+    ]
+    groups = tui._group_library_snapshots(snapshots)
+    frame, _ = tui._build_library_frame(snapshots, groups, "", None, 0)
+
+    tui.console.print(frame)
+    output = tui.console.export_text()
+
+    assert "4) delete all" in output
+    assert "0) back" in output
+    assert "Command  0" in output
+
+
 def test_diagnostics_screen_uses_guide_rail_and_command_options(tui: TUIApp) -> None:
     tui.console = Console(record=True, width=140)
     tui.console.print(tui._build_diagnostics_screen())
@@ -252,6 +276,24 @@ def test_diagnostics_and_settings_command_parsers_support_numbered_actions(tui: 
     assert tui._parse_settings_command("1") == "provider"
     assert tui._parse_settings_command("2") == "model"
     assert tui._parse_settings_command("3") == "api_key"
+
+
+def test_chapter_selection_validation_accepts_full_and_ranges(tui: TUIApp) -> None:
+    assert tui._validate_chapter_selection("full") is True
+    assert tui._validate_chapter_selection("1") is True
+    assert tui._validate_chapter_selection("3-8") is True
+    assert tui._validate_chapter_selection("nope") is False
+
+
+def test_effective_translation_target_falls_back_to_dummy_without_api_key(tui: TUIApp) -> None:
+    previous_api_key = settings.PROVIDER_OPENAI_API_KEY
+    try:
+        settings.PROVIDER_OPENAI_API_KEY = None
+        provider, model, fallback_used = tui._effective_translation_target("openai", "gpt-4o-mini")
+
+        assert (provider, model, fallback_used) == ("dummy", "dummy", True)
+    finally:
+        settings.PROVIDER_OPENAI_API_KEY = previous_api_key
 
 
 def test_library_prompt_defaults_to_zero(tui: TUIApp) -> None:

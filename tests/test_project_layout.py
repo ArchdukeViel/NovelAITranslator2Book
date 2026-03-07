@@ -26,7 +26,7 @@ def test_build_export_path_defaults_to_novel_library():
             root.resolve()
             / "novel_library"
             / "novels"
-            / "Test_Novel"
+            / "novel1"
             / "epub"
             / "full_novel.epub"
         )

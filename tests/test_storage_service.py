@@ -1,5 +1,6 @@
 """Tests for storage service with state tracking."""
 
+import json
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -56,6 +57,18 @@ def test_save_and_load_translated_chapter(storage):
     assert loaded is not None
     assert "[TRANSLATED]" in loaded["text"]
     assert loaded["provider"] == "openai"
+
+
+def test_chapter_storage_uses_single_merged_file(storage):
+    storage.save_chapter("novel1", "ch1", "raw text", title="Chapter 1")
+    storage.save_translated_chapter("novel1", "ch1", "translated text", provider="dummy", model="dummy")
+
+    chapter_path = storage.base_dir / "novels" / "novel1" / "chapters" / "ch1.json"
+    assert chapter_path.exists()
+
+    payload = json.loads(chapter_path.read_text(encoding="utf-8"))
+    assert payload["raw"]["text"] == "raw text"
+    assert payload["translated"]["text"] == "translated text"
 
 
 def test_chapter_state_transitions(storage):
@@ -171,6 +184,19 @@ def test_metadata_operations(storage):
     assert loaded is not None
     assert loaded["title"] == "Test Novel"
     assert loaded["novel_id"] == "novel1"
+
+
+def test_metadata_save_merges_original_and_translated_fields(storage):
+    storage.save_metadata("novel1", {"title": "Original Title"})
+    storage.save_metadata("novel1", {"translated_title": "Translated Title"})
+
+    loaded = storage.load_metadata("novel1")
+
+    assert loaded is not None
+    assert loaded["title"] == "Original Title"
+    assert loaded["translated_title"] == "Translated Title"
+    assert loaded["titles"]["original"] == "Original Title"
+    assert loaded["titles"]["translated"] == "Translated Title"
 
 
 def test_list_novels(storage):
