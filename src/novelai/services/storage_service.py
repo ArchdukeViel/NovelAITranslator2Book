@@ -37,7 +37,7 @@ def _utc_now_iso() -> str:
 class StorageService:
     """Filesystem-backed storage service.
 
-    Each novel is stored in a folder under `data/novels/<folder_name>`.
+    Each novel is stored in a folder under `novel_library/novels/<folder_name>`.
     The folder name is derived from the translated title (when available),
     and falls back to the novel ID when no translated title exists.
 
@@ -109,6 +109,22 @@ class StorageService:
     def _novel_dir(self, novel_id: str) -> Path:
         folder = self._get_folder_name(novel_id)
         return self.novels_dir / folder
+
+    def build_export_path(
+        self,
+        novel_id: str,
+        export_format: str,
+        output_dir: str | Path | None = None,
+    ) -> Path:
+        """Resolve where an export should be written."""
+        if output_dir is not None:
+            custom_dir = Path(output_dir).expanduser()
+            custom_dir.mkdir(parents=True, exist_ok=True)
+            return custom_dir / f"{novel_id}.{export_format}"
+
+        export_dir = self._novel_dir(novel_id) / export_format
+        export_dir.mkdir(parents=True, exist_ok=True)
+        return export_dir / f"full_novel.{export_format}"
 
     def _ensure_novel_dir(self, novel_id: str, folder_name: str) -> Path:
         """Ensure the novel directory exists and the index is updated."""

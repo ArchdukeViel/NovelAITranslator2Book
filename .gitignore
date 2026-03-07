@@ -39,6 +39,8 @@ pytest-cache-files-*/
 tmp/
 .temp/
 .tmp/
+tests/.tmp/
+tests/.cache/
 tests/.pytest_cache/
 
 # IDE / editor

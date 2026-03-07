@@ -9,12 +9,21 @@ import json
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 from novelai.app.bootstrap import bootstrap
 from novelai.app.container import container
 from novelai.tui.app import TUIApp
 
 
-def test_tui_initialization():
+@pytest.fixture
+def tui():
+    """Provide a bootstrapped TUI instance for smoke tests."""
+    bootstrap()
+    return TUIApp()
+
+
+def test_tui_initialization(tui):
     """Test 1: TUI initializes without errors"""
     print("\n" + "="*60)
     print("TEST 1: TUI Initialization")

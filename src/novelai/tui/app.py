@@ -163,7 +163,7 @@ class TUIApp:
 
     def _export_flow(self) -> None:
         novel_id = Prompt.ask("Novel ID")
-        output = Prompt.ask("Output directory", default="output")
+        output = Prompt.ask("Output directory (leave blank for novel library)", default="")
         fmt = Prompt.ask("Format", choices=["epub", "pdf"], default="epub")
 
         meta = self.storage.load_metadata(novel_id)
@@ -200,7 +200,13 @@ class TUIApp:
                 }
             )
 
-        output_path = f"{output}/{novel_id}.{fmt}"
+        output_path = str(
+            self.storage.build_export_path(
+                novel_id,
+                fmt,
+                output.strip() or None,
+            )
+        )
         if fmt == "pdf":
             self.exporter.export_pdf(novel_id=novel_id, chapters=chapters, output_path=output_path)
         else:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,9 +20,12 @@ class AppSettings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # --- Storage
-    # Novel library directory - contains all downloaded novels, translations, and exports
-    NOVEL_LIBRARY_DIR: Path = Path("novel_library")
-    
+    # Main runtime library: metadata, chapters, exports, preferences, logs.
+    NOVEL_LIBRARY_DIR: Path = Field(
+        default=Path("novel_library"),
+        validation_alias=AliasChoices("NOVEL_LIBRARY_DIR", "DATA_DIR"),
+    )
+
     # Legacy alias for backward compatibility
     @property
     def DATA_DIR(self) -> Path:

@@ -20,7 +20,53 @@ from novelai.services.translation_service import TranslationService
 from novelai.services.usage_service import UsageService
 from novelai.sources.base import SourceAdapter
 
-TESTS_TMP_ROOT = Path(__file__).resolve().parent.parent / "tests_tmp" / "fixtures"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+TESTS_ROOT = Path(__file__).resolve().parent
+TESTS_TMP_ROOT = TESTS_ROOT / ".tmp" / "fixtures"
+
+
+def cleanup_test_artifacts(
+    project_root: Path = PROJECT_ROOT,
+    tests_root: Path = TESTS_ROOT,
+    *,
+    include_pytest_managed: bool = False,
+) -> tuple[list[Path], list[str]]:
+    """Remove test-generated cache and temp directories."""
+    removed: list[Path] = []
+    warnings: list[str] = []
+
+    paths_to_remove = [
+        project_root / ".pytest_cache",
+        tests_root / ".tmp" / "fixtures",
+        project_root / "tests_tmp",
+    ]
+    if include_pytest_managed:
+        paths_to_remove.extend(
+            [
+                tests_root / ".pytest_cache",
+                tests_root / ".tmp",
+            ]
+        )
+
+    for path in paths_to_remove:
+        if not path.exists():
+            continue
+        try:
+            shutil.rmtree(path)
+            removed.append(path)
+        except Exception as exc:
+            warnings.append(f"{path}: {exc}")
+
+    for path in project_root.glob("pytest-cache-files-*"):
+        if not path.is_dir():
+            continue
+        try:
+            shutil.rmtree(path)
+            removed.append(path)
+        except Exception as exc:
+            warnings.append(f"{path}: {exc}")
+
+    return removed, warnings
 
 
 class MockTranslationProvider(TranslationProvider):
@@ -327,6 +373,12 @@ def create_mock_container() -> Container:
 def cleanup_pytest_cache():
     """Auto-clean pytest cache artifacts after all tests complete."""
     yield
+    removed, warnings = cleanup_test_artifacts()
+    for path in removed:
+        print(f"cleaned: {path}")
+    for warning in warnings:
+        print(f"cleanup-warning: {warning}")
+    return
     
     # Cleanup after all tests finish
     cache_dirs = [

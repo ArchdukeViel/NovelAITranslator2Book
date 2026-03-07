@@ -58,7 +58,10 @@ def main(argv: list[str] | None = None) -> None:
         "export-epub", help="Export translated chapters to EPUB or PDF"
     )
     ec.add_argument("novel", help="Novel ID")
-    ec.add_argument("--output", default="output", help="Output directory")
+    ec.add_argument(
+        "--output",
+        help="Optional custom export directory. Defaults to the novel library.",
+    )
     ec.add_argument(
         "--format",
         choices=["epub", "pdf"],
@@ -122,20 +125,15 @@ def main(argv: list[str] | None = None) -> None:
                 # ``load_translated_chapter`` now returns a dict with metadata.
                 chapters.append({"title": chap.get("title"), "text": translated.get("text")})
 
-            # Determine output path
-            # If using default "output" directory, save to data/novels/{folder_name}/{format}/
-            # Otherwise, use the custom output directory specified by user
-            if args.output == "output":
-                # Default: save to data/novels/{folder_name}/{format}/full_novel.{format}
-                from pathlib import Path
-                novel_dir = container.storage._novel_dir(args.novel)
-                export_dir = novel_dir / args.format
-                export_dir.mkdir(parents=True, exist_ok=True)
-                output_path = str(export_dir / f"full_novel.{args.format}")
-            else:
-                # Custom output directory
-                output_path = f"{args.output}/{args.novel}.{args.format}"
-            
+            output_arg = args.output.strip() if isinstance(args.output, str) else None
+            output_path = str(
+                container.storage.build_export_path(
+                    args.novel,
+                    args.format,
+                    output_arg or None,
+                )
+            )
+
             if args.format == "pdf":
                 exporter.export_pdf(novel_id=args.novel, chapters=chapters, output_path=output_path)
             else:
