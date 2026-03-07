@@ -24,7 +24,7 @@ novelaibook [COMMAND] [ARGUMENTS] [OPTIONS]
 novelaibook tui
 ```
 
-See [TUI_GUIDE.md](TUI_GUIDE.md) for detailed walkthrough.
+See [../guides/TUI_GUIDE.md](../guides/TUI_GUIDE.md) for detailed walkthrough.
 
 ---
 
@@ -639,10 +639,10 @@ novelaibook translate-chapters ... --batch-size 5
 
 ## ðŸ“– Related Documentation
 
-- [GETTING_STARTED.md](GETTING_STARTED.md) - Installation guide
-- [TUI_GUIDE.md](TUI_GUIDE.md) - Terminal UI walkthrough
+- [../guides/GETTING_STARTED.md](../guides/GETTING_STARTED.md) - Installation guide
+- [../guides/TUI_GUIDE.md](../guides/TUI_GUIDE.md) - Terminal UI walkthrough
 - [DATA_OUTPUT_STRUCTURE.md](DATA_OUTPUT_STRUCTURE.md) - Data format reference
-- [PHASE_4_OPERATIONS.md](PHASE_4_OPERATIONS.md) - Resilience features
-- [docs/architecture.md](docs/architecture.md) - System architecture
+- [../plans/PHASE_4_PLAN.md](../plans/PHASE_4_PLAN.md) - Resilience and operations planning
+- [../architecture/architecture.md](../architecture/architecture.md) - System architecture
 
 

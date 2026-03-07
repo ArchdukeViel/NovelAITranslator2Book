@@ -74,6 +74,14 @@ def test_save_and_load_translated_chapter(storage):
     assert loaded["provider"] == "openai"
 
 
+def test_list_stored_chapters_includes_raw_and_translated_entries(storage):
+    storage.save_chapter("novel1", "1", "raw only", title="Chapter 1")
+    storage.save_translated_chapter("novel1", "2", "translated only", provider="openai", model="gpt-5.4")
+
+    assert storage.list_stored_chapters("novel1") == ["1", "2"]
+    assert storage.count_stored_chapters("novel1") == 2
+
+
 def test_chapter_storage_uses_single_merged_file(storage):
     storage.save_chapter("novel1", "ch1", "raw text", title="Chapter 1")
     storage.save_translated_chapter("novel1", "ch1", "translated text", provider="dummy", model="dummy")

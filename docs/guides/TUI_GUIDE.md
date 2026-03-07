@@ -527,9 +527,9 @@ Select an option: exit
 ## ðŸ”— Related Documentation
 
 - [GETTING_STARTED.md](GETTING_STARTED.md) - Installation & setup
-- [PYTHON_COMMANDS.md](PYTHON_COMMANDS.md) - CLI & programmatic usage
-- [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) - All documentation
-- [docs/architecture.md](docs/architecture.md) - System design
+- [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md) - CLI & programmatic usage
+- [../README.md](../README.md) - All documentation
+- [../architecture/architecture.md](../architecture/architecture.md) - System design
 
 
 
@@ -1233,8 +1233,8 @@ novelaibook tui
 ## ðŸ“– Related Documentation
 
 - [GETTING_STARTED.md](GETTING_STARTED.md) - Installation
-- [PYTHON_COMMANDS.md](PYTHON_COMMANDS.md) - CLI & programmatic usage
-- [DATA_OUTPUT_STRUCTURE.md](DATA_OUTPUT_STRUCTURE.md) - Data format
-- [docs/architecture.md](docs/architecture.md) - System design
+- [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md) - CLI & programmatic usage
+- [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md) - Data format
+- [../architecture/architecture.md](../architecture/architecture.md) - System design
 
 

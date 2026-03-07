@@ -1,5 +1,9 @@
 # Documentation Optimization Plan
 
+> Repository cleanup note (2026-03-07): the markdown reorganization described in
+> this plan has since been applied. Examples below may reference the old
+> pre-reorganization layout and are preserved as planning history.
+
 **Date**: March 7, 2026  
 **Status**: Recommendation for immediate & future implementation  
 **Prepared for**: Novel AI Project Stabilization

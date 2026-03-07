@@ -104,6 +104,29 @@ def test_parse_chapter_html_preserves_preface_afterword_and_separator_lines() ->
     )
 
 
+def test_parse_chapter_html_preserves_inline_image_placeholders() -> None:
+    source = SyosetuNcodeSource()
+    html = """
+    <html>
+      <body>
+        <div class="p-novel__text p-novel__text--body js-novel-text">
+          <p>Before the illustration.</p>
+          <img src="https://example.com/scene.png" alt="Scene illustration" />
+          <p>After the illustration.</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    chapter_text = source._parse_chapter_html(html)
+
+    assert chapter_text == (
+        "Before the illustration.\n\n"
+        "[Image: Scene illustration]\n\n"
+        "After the illustration."
+    )
+
+
 @pytest.mark.asyncio
 async def test_fetch_metadata_collects_all_paginated_chapter_pages() -> None:
     source = SyosetuNcodeSource()

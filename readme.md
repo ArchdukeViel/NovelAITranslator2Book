@@ -6,7 +6,7 @@ A modular Japanese-to-English web novel translation platform.
 
 This repository now also includes a production-minded chapter extraction framework under [`src/`](./src) with:
 
-- pluggable adapters for `Syosetu`, `Kakuyomu`, and a conservative `GenericAdapter`
+- pluggable adapters for `Syosetu` and `Kakuyomu` with more to come
 - canonical storage as cleaned chapter-body HTML fragments
 - derived JSON, plain text, and stable block-level segments
 - parser versioning so stored chapters can be reparsed later
@@ -326,26 +326,26 @@ powershell -ExecutionPolicy Bypass -File .\scripts\update-lockfiles.ps1 -DevOnly
 Comprehensive guides organized by audience and use case:
 
 ### For New Users
-- **[GETTING_STARTED.md](GETTING_STARTED.md)** - Installation (5 min) â†’ Verification â†’ First run
-- **[TUI_GUIDE.md](TUI_GUIDE.md)** - Terminal UI walkthrough with keyboard shortcuts and examples
+- **[docs/guides/GETTING_STARTED.md](docs/guides/GETTING_STARTED.md)** - Installation (5 min) â†’ Verification â†’ First run
+- **[docs/guides/TUI_GUIDE.md](docs/guides/TUI_GUIDE.md)** - Terminal UI walkthrough with keyboard shortcuts and examples
 
 ### For Developers
-- **[PYTHON_COMMANDS.md](PYTHON_COMMANDS.md)** - Complete CLI reference with 8 command examples + 8 code examples
-- **[docs/architecture.md](docs/architecture.md)** - System design, components, and data flow
+- **[docs/reference/PYTHON_COMMANDS.md](docs/reference/PYTHON_COMMANDS.md)** - Complete CLI reference with 8 command examples + 8 code examples
+- **[docs/architecture/architecture.md](docs/architecture/architecture.md)** - System design, components, and data flow
 
 ### For Operations
-- **[PHASE_4_OPERATIONS.md](PHASE_4_OPERATIONS.md)** - Resilience features, recovery procedures, and troubleshooting
-- **[DATA_OUTPUT_STRUCTURE.md](DATA_OUTPUT_STRUCTURE.md)** - Data format reference and storage structure
+- **[docs/reference/DATA_OUTPUT_STRUCTURE.md](docs/reference/DATA_OUTPUT_STRUCTURE.md)** - Data format reference and storage structure
+- **[docs/plans/PHASE_4_PLAN.md](docs/plans/PHASE_4_PLAN.md)** - Operational roadmap and resilience planning notes
 
 ### Documentation Index
-- **[DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)** - Master index explaining all 12 documentation files
-- **[DOCUMENTATION_OPTIMIZATION_PLAN.md](DOCUMENTATION_OPTIMIZATION_PLAN.md)** - Organization strategy and future structure
+- **[docs/README.md](docs/README.md)** - Master index for the reorganized documentation tree
+- **[docs/plans/DOCUMENTATION_OPTIMIZATION_PLAN.md](docs/plans/DOCUMENTATION_OPTIMIZATION_PLAN.md)** - Documentation organization strategy and planning history
 
-**ðŸ‘‰ Start here**: First-time users should read [GETTING_STARTED.md](GETTING_STARTED.md)
+**ðŸ‘‰ Start here**: First-time users should read [docs/guides/GETTING_STARTED.md](docs/guides/GETTING_STARTED.md)
 
 ---
 
 ## Project Structure
 
-The repository is organized into clear domains. For details, see `docs/architecture.md`.
+The repository is organized into clear domains. For details, see `docs/architecture/architecture.md`.
 

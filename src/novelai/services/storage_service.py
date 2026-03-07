@@ -372,6 +372,35 @@ class StorageService:
         except Exception:
             return None
 
+    def list_stored_chapters(self, novel_id: str) -> list[str]:
+        stems: set[str] = set()
+        chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
+        if chapter_dir.exists():
+            for chapter_path in chapter_dir.glob("*.json"):
+                try:
+                    payload = json.loads(chapter_path.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+                if isinstance(payload.get("raw"), dict) or isinstance(payload.get("translated"), dict):
+                    stems.add(chapter_path.stem)
+
+        for legacy_dirname in ("raw", "translated"):
+            legacy_dir = self._novel_dir(novel_id) / legacy_dirname
+            if not legacy_dir.exists():
+                continue
+            for path in legacy_dir.iterdir():
+                if not path.is_file():
+                    continue
+                if path.suffix.lower() in {".json", ".txt"}:
+                    stems.add(path.stem)
+
+        return sorted(stems)
+
+    def count_stored_chapters(self, novel_id: str) -> int:
+        return len(self.list_stored_chapters(novel_id))
+
     def list_translated_chapters(self, novel_id: str) -> list[str]:
         stems: set[str] = set()
         chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME

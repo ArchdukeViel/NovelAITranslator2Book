@@ -237,6 +237,7 @@ def test_library_screen_uses_guide_rail_instead_of_embedded_command_panel(tui: T
                 "novel_id": "novel-1",
                 "title": "A Better Story",
                 "total_chapters": 2,
+                "stored_chapters": 1,
                 "translated_chapters": 1,
                 "language": "Japanese",
             }
@@ -250,6 +251,7 @@ def test_library_screen_uses_guide_rail_instead_of_embedded_command_panel(tui: T
                         "novel_id": "novel-1",
                         "title": "A Better Story",
                         "total_chapters": 2,
+                        "stored_chapters": 1,
                         "translated_chapters": 1,
                         "language": "Japanese",
                     }
@@ -264,6 +266,7 @@ def test_library_screen_uses_guide_rail_instead_of_embedded_command_panel(tui: T
     assert "Guide Rail" in output
     assert "0) back" in output
     assert "2) delete custom" in output
+    assert "4) inspect" in output
 
 
 def test_library_snapshot_prefers_latest_added_novels(tui: TUIApp, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -300,6 +303,7 @@ def test_library_snapshot_uses_novel_title_and_novel_id_headers(tui: TUIApp, mon
             "novel_id": "novel-123",
             "title": "A Better Story",
             "total_chapters": 4,
+            "stored_chapters": 3,
             "translated_chapters": 2,
             "language": "Japanese",
         }
@@ -321,6 +325,7 @@ def test_library_frame_keeps_full_guide_rail_visible(tui: TUIApp) -> None:
             "novel_id": f"novel-{index}",
             "title": "A Better Story",
             "total_chapters": 2,
+            "stored_chapters": 1,
             "translated_chapters": 1,
             "language": "Japanese",
         }
@@ -332,7 +337,7 @@ def test_library_frame_keeps_full_guide_rail_visible(tui: TUIApp) -> None:
     tui.console.print(frame)
     output = tui.console.export_text()
 
-    assert "3) delete all" in output
+    assert "4) inspect" in output
     assert "0) back" in output
     assert "Command  0" in output
 
@@ -344,6 +349,7 @@ def test_library_frame_keeps_novel_list_visible_on_short_terminals(tui: TUIApp) 
             "novel_id": "novel-1",
             "title": "A Better Story",
             "total_chapters": 2,
+            "stored_chapters": 1,
             "translated_chapters": 1,
             "language": "Japanese",
         }
@@ -365,6 +371,7 @@ def test_library_frame_keeps_novel_list_box_closed_while_scrolled(tui: TUIApp) -
             "novel_id": f"novel-{index}",
             "title": "A Better Story",
             "total_chapters": 2,
+            "stored_chapters": 1,
             "translated_chapters": 1,
             "language": "Japanese",
         }
@@ -629,6 +636,7 @@ def test_library_list_panel_numbers_novels_and_shows_title_before_novel_id(tui: 
                 "novel_id": "novel-1",
                 "title": "A Better Story",
                 "total_chapters": 2,
+                "stored_chapters": 1,
                 "translated_chapters": 1,
                 "language": "Japanese",
             }
@@ -640,6 +648,8 @@ def test_library_list_panel_numbers_novels_and_shows_title_before_novel_id(tui: 
 
     assert "1)" in output
     assert output.index("A Better Story") < output.index("novel-1")
+    assert "Source" in output
+    assert "Stored" in output
 
 
 def test_library_command_parser_supports_delete_and_back(tui: TUIApp) -> None:
@@ -651,7 +661,8 @@ def test_library_command_parser_supports_delete_and_back(tui: TUIApp) -> None:
     assert tui._parse_library_command("delete custom") == "delete_custom"
     assert tui._parse_library_command("3") == "delete_all"
     assert tui._parse_library_command("delete all") == "delete_all"
-    assert tui._parse_library_command("4") is None
+    assert tui._parse_library_command("4") == "inspect"
+    assert tui._parse_library_command("inspect") == "inspect"
     assert tui._parse_library_command("1 2-6") is None
 
 
@@ -705,6 +716,7 @@ def test_group_library_snapshots_separates_languages(tui: TUIApp) -> None:
             "novel_id": "jp-1",
             "title": "JP Novel",
             "total_chapters": 10,
+            "stored_chapters": 6,
             "translated_chapters": 5,
             "language": "Japanese",
         },
@@ -712,6 +724,7 @@ def test_group_library_snapshots_separates_languages(tui: TUIApp) -> None:
             "novel_id": "en-1",
             "title": "EN Novel",
             "total_chapters": 4,
+            "stored_chapters": 2,
             "translated_chapters": 1,
             "language": "English",
         },
@@ -742,8 +755,49 @@ def test_collect_library_snapshot_uses_metadata(tui: TUIApp) -> None:
 
     assert matching["title"] == "A Better Story"
     assert matching["total_chapters"] == 2
+    assert matching["stored_chapters"] == 1
     assert matching["translated_chapters"] == 1
     assert matching["language"] == "Japanese"
+
+
+def test_library_inspection_panel_shows_stored_and_translated_ranges(tui: TUIApp) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    tui.storage.save_metadata(
+        novel_id,
+        {
+            "title": "Range Story",
+            "source": "syosetu_ncode",
+            "chapters": [{"id": chapter_id} for chapter_id in range(1, 46)],
+        },
+    )
+    for chapter_id in list(range(1, 21)) + list(range(41, 46)):
+        tui.storage.save_chapter(novel_id, str(chapter_id), f"raw {chapter_id}", title=f"Chapter {chapter_id}")
+    for chapter_id in range(1, 16):
+        tui.storage.save_translated_chapter(novel_id, str(chapter_id), f"translated {chapter_id}")
+
+    snapshot = {
+        "novel_id": novel_id,
+        "title": "Range Story",
+        "total_chapters": 45,
+        "stored_chapters": 25,
+        "translated_chapters": 15,
+        "language": "Japanese",
+    }
+
+    tui.console = Console(record=True, width=140)
+    tui.console.print(tui._build_library_inspection_panel(snapshot))
+    output = tui.console.export_text()
+
+    assert "Source chapters" in output
+    assert "1-45 (45)" in output
+    assert "Stored locally" in output
+    assert "1-20, 41-45 (25)" in output
+    assert "Translated" in output
+    assert "1-15 (15)" in output
+    assert "Missing locally" in output
+    assert "21-40 (20)" in output
+    assert "Stored untranslated" in output
+    assert "16-20, 41-45 (10)" in output
 
 
 def test_collect_export_chapters_can_filter_to_a_range(tui: TUIApp) -> None:

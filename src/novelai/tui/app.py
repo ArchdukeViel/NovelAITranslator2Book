@@ -47,6 +47,7 @@ class LibrarySnapshot(TypedDict):
     novel_id: str
     title: str
     total_chapters: int
+    stored_chapters: int
     translated_chapters: int
     language: str
 
@@ -731,7 +732,7 @@ class TUIApp:
             id_width = max(panel_width - 22, 12)
 
             for snapshot in snapshots:
-                progress = f"{snapshot['translated_chapters']}/{snapshot['total_chapters']} translated"
+                progress = self._snapshot_progress_text(snapshot)
                 lines.append(
                     Text.assemble(
                         ("Novel Title: ", "#9ece6a"),
@@ -767,7 +768,7 @@ class TUIApp:
                 table.add_row(
                     self._truncate(snapshot["title"], 28),
                     self._truncate(snapshot["novel_id"], 20),
-                    f"{snapshot['translated_chapters']}/{snapshot['total_chapters']}",
+                    self._snapshot_progress_text(snapshot),
                 )
 
             return Panel(
@@ -782,7 +783,8 @@ class TUIApp:
         table = Table(box=box.SIMPLE_HEAVY, expand=True, show_header=True, header_style="bold #9ece6a")
         table.add_column("Novel Title", style="bold #e5e9f0")
         table.add_column("Novel ID", style="#73daca", no_wrap=True)
-        table.add_column("Ch", justify="right", style="#73daca", no_wrap=True)
+        table.add_column("Source", justify="right", style="#73daca", no_wrap=True)
+        table.add_column("Stored", justify="right", style="#7dcfff", no_wrap=True)
         table.add_column("Tl", justify="right", style="#f6bd60", no_wrap=True)
 
         for snapshot in snapshots:
@@ -790,6 +792,7 @@ class TUIApp:
                 self._truncate(snapshot["title"], 28),
                 snapshot["novel_id"],
                 str(snapshot["total_chapters"]),
+                str(self._snapshot_stored_chapters(snapshot)),
                 str(snapshot["translated_chapters"]),
             )
 
@@ -989,6 +992,7 @@ class TUIApp:
                     "novel_id": novel_id,
                     "title": str(title),
                     "total_chapters": total_chapters,
+                    "stored_chapters": self.storage.count_stored_chapters(novel_id),
                     "translated_chapters": self.storage.count_translated_chapters(novel_id),
                     "language": self._detect_novel_language(metadata),
                 }
@@ -1189,7 +1193,7 @@ class TUIApp:
 
     def _list_novels(self) -> None:
         self._set_status(
-            "Use 1) export, 2) delete custom, 3) delete all, or 0) back.",
+            "Use 1) export, 2) delete custom, 3) delete all, 4) inspect, or 0) back.",
             "info",
         )
         while True:
@@ -1203,7 +1207,7 @@ class TUIApp:
             action = self._parse_library_command(command)
 
             if action is None:
-                self._set_status("Unknown library command. Use 1, 2, 3, or 0.", "warning")
+                self._set_status("Unknown library command. Use 1, 2, 3, 4, or 0.", "warning")
                 continue
 
             if action == "back":
@@ -1229,6 +1233,13 @@ class TUIApp:
                     self._set_status("There are no novels to export.", "warning")
                     continue
                 self._export_library_novels(snapshots, groups)
+                continue
+
+            if action == "inspect":
+                if not snapshots:
+                    self._set_status("There are no novels to inspect.", "warning")
+                    continue
+                self._inspect_library_novel(snapshots, groups)
                 continue
 
             if not snapshots:
@@ -1520,7 +1531,8 @@ class TUIApp:
             table.add_column("No.", style="#f6bd60", no_wrap=True)
             table.add_column("Title", style="bold #e5e9f0")
             table.add_column("Novel ID", style="#73daca", no_wrap=True)
-            table.add_column("Chapters", justify="right", style="#73daca", no_wrap=True)
+            table.add_column("Source", justify="right", style="#73daca", no_wrap=True)
+            table.add_column("Stored", justify="right", style="#7dcfff", no_wrap=True)
             table.add_column("Translated", justify="right", style="#f6bd60", no_wrap=True)
 
             for snapshot in group["snapshots"]:
@@ -1529,6 +1541,7 @@ class TUIApp:
                     snapshot["title"],
                     snapshot["novel_id"],
                     str(snapshot["total_chapters"]),
+                    str(self._snapshot_stored_chapters(snapshot)),
                     str(snapshot["translated_chapters"]),
                 )
                 row_number += 1
@@ -1563,7 +1576,7 @@ class TUIApp:
                     (self.last_status_message, f"bold {status_style}"),
                 ),
                 Text(
-                    "1) export  2) delete custom  3) delete all  0) back",
+                    "1) export  2) delete custom  3) delete all  4) inspect  0) back",
                     style="#cbd5e1",
                 ),
             )
@@ -1577,6 +1590,7 @@ class TUIApp:
                 Text("1) export                      Choose format, chapter scope, and which novels to export.", style="#cbd5e1"),
                 Text("2) delete custom               Filter by language, then delete all or selected novel numbers.", style="#cbd5e1"),
                 Text("3) delete all                  Remove every novel from the library.", style="#cbd5e1"),
+                Text("4) inspect                     Review source, stored, translated, and missing chapter ranges.", style="#cbd5e1"),
                 Text("0) back                        Return to the dashboard.", style="#cbd5e1"),
             )
         return Panel(
@@ -1597,6 +1611,8 @@ class TUIApp:
             return "delete_custom"
         if raw in ("3", "delete all", "remove all"):
             return "delete_all"
+        if raw in ("4", "inspect", "i", "details", "detail", "info"):
+            return "inspect"
 
         return None
 
@@ -1698,6 +1714,25 @@ class TUIApp:
         ranges.append(f"{start}-{end}" if start != end else str(start))
         return ", ".join(ranges)
 
+    def _snapshot_stored_chapters(self, snapshot: LibrarySnapshot) -> int:
+        stored = snapshot.get("stored_chapters")
+        if isinstance(stored, int):
+            return stored
+        return snapshot["total_chapters"]
+
+    def _snapshot_progress_text(self, snapshot: LibrarySnapshot) -> str:
+        stored = self._snapshot_stored_chapters(snapshot)
+        total = snapshot["total_chapters"]
+        translated = snapshot["translated_chapters"]
+        if total > 0:
+            return f"stored {stored}/{total} · tl {translated}"
+        return f"stored {stored} · tl {translated}"
+
+    def _format_chapter_inventory(self, numbers: list[int], *, empty_label: str = "none") -> str:
+        if not numbers:
+            return f"{empty_label} (0)"
+        return f"{self._format_number_ranges(numbers)} ({len(numbers)})"
+
     def _snapshot_number_map(self, snapshots: list[LibrarySnapshot]) -> dict[str, int]:
         return {snapshot["novel_id"]: index for index, snapshot in enumerate(snapshots, start=1)}
 
@@ -1763,6 +1798,87 @@ class TUIApp:
                 )
                 continue
             return selection
+
+    def _build_library_inspection_panel(
+        self,
+        snapshot: LibrarySnapshot,
+        metadata: dict[str, Any] | None = None,
+    ) -> Panel:
+        metadata = metadata or self.storage.load_metadata(snapshot["novel_id"]) or {}
+        source_numbers = self._metadata_chapter_numbers(metadata)
+        stored_numbers = self._stored_chapter_numbers(snapshot["novel_id"], metadata)
+        translated_numbers = self._translated_chapter_numbers(snapshot["novel_id"], metadata)
+        missing_numbers = sorted(set(source_numbers) - set(stored_numbers))
+        untranslated_numbers = sorted(set(stored_numbers) - set(translated_numbers))
+
+        details = Table.grid(expand=True, padding=(0, 2))
+        details.add_column(style="#9aa5ce", no_wrap=True)
+        details.add_column(style="#e5e9f0")
+        details.add_row("Title", snapshot["title"])
+        details.add_row("Novel ID", snapshot["novel_id"])
+        details.add_row("Language", snapshot["language"])
+        details.add_row("Source chapters", self._format_chapter_inventory(source_numbers, empty_label="unknown"))
+        details.add_row("Stored locally", self._format_chapter_inventory(stored_numbers))
+        details.add_row("Translated", self._format_chapter_inventory(translated_numbers))
+        details.add_row("Missing locally", self._format_chapter_inventory(missing_numbers))
+        details.add_row("Stored untranslated", self._format_chapter_inventory(untranslated_numbers))
+
+        source_key = metadata.get("source") or metadata.get("source_key")
+        if isinstance(source_key, str) and source_key.strip():
+            details.add_row("Source key", source_key.strip())
+
+        return Panel(
+            Group(
+                details,
+                Text(""),
+                Text("0) back", style="#cbd5e1"),
+            ),
+            title="Library Coverage",
+            border_style="#7aa2f7",
+            box=box.ROUNDED,
+            expand=True,
+        )
+
+    def _inspect_library_novel(
+        self,
+        snapshots: list[LibrarySnapshot],
+        groups: list[LibraryLanguageGroup],
+    ) -> None:
+        while True:
+            selection = self._prompt_library_novel_selection(
+                "Inspect Novel",
+                "Choose one novel to review which chapters are stored locally and which are translated.",
+                snapshots,
+                groups,
+                label="Novel Number",
+            )
+            if selection is None:
+                self._set_status("Inspect novel cancelled.", "warning")
+                return
+            if len(selection) != 1:
+                self._set_status("Choose exactly one novel row to inspect.", "warning")
+                continue
+
+            snapshot = snapshots[selection[0] - 1]
+            self._show_library_novel_inspection(snapshot)
+            return
+
+    def _show_library_novel_inspection(self, snapshot: LibrarySnapshot) -> None:
+        metadata = self.storage.load_metadata(snapshot["novel_id"]) or {}
+        while True:
+            command = self._prompt_renderable_command(
+                self._build_library_action_screen(
+                    "Novel Coverage",
+                    "Review remote, stored, translated, missing, and untranslated chapter ranges for this novel.",
+                    self._build_library_inspection_panel(snapshot, metadata),
+                ),
+                default_value="0",
+                label="Command",
+            ).strip()
+            if command.lower() in ("", "0", "back", "b"):
+                self._set_status(f"Reviewed chapter coverage for {snapshot['novel_id']}.", "info")
+                return
+            self._set_status("Use 0 to return to the library list.", "warning")
 
     def _prompt_library_chapter_range(self, fmt: str) -> str | None:
         while True:
@@ -2100,6 +2216,14 @@ class TUIApp:
                 numbers.append(int(chapter_id))
         return sorted(set(numbers))
 
+    def _chapter_numbers_from_ids(self, chapter_ids: list[str]) -> list[int]:
+        numbers: list[int] = []
+        for chapter_id in chapter_ids:
+            normalized = str(chapter_id).strip()
+            if normalized.isdigit():
+                numbers.append(int(normalized))
+        return sorted(set(numbers))
+
     def _chapter_in_library(self, novel_id: str, chapter_num: int) -> bool:
         chapter_id = str(chapter_num)
         return (
@@ -2111,10 +2235,23 @@ class TUIApp:
         return self.storage.load_translated_chapter(novel_id, str(chapter_num)) is not None
 
     def _stored_chapter_numbers(self, novel_id: str, metadata: dict[str, Any] | None) -> list[int]:
+        stored_numbers = self._chapter_numbers_from_ids(self.storage.list_stored_chapters(novel_id))
+        if stored_numbers:
+            return stored_numbers
         return [
             chapter_num
             for chapter_num in self._metadata_chapter_numbers(metadata)
             if self._chapter_in_library(novel_id, chapter_num)
+        ]
+
+    def _translated_chapter_numbers(self, novel_id: str, metadata: dict[str, Any] | None) -> list[int]:
+        translated_numbers = self._chapter_numbers_from_ids(self.storage.list_translated_chapters(novel_id))
+        if translated_numbers:
+            return translated_numbers
+        return [
+            chapter_num
+            for chapter_num in self._metadata_chapter_numbers(metadata)
+            if self._chapter_is_translated(novel_id, chapter_num)
         ]
 
     def _serialize_chapter_selection(self, numbers: list[int]) -> str | None:

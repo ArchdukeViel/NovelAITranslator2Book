@@ -95,6 +95,33 @@ def test_parse_chapter_html_preserves_structure_and_strips_furigana() -> None:
     )
 
 
+def test_parse_chapter_html_preserves_inline_image_placeholders() -> None:
+    source = KakuyomuSource()
+    html = """
+    <html>
+      <body>
+        <article>
+          <div class="widget-episodeBody js-episode-body">
+            <p>Scene setup.</p>
+            <figure>
+              <img src="https://kakuyomu.jp/images/scene.png" alt="Morning alley" />
+            </figure>
+            <p>Scene follow-up.</p>
+          </div>
+        </article>
+      </body>
+    </html>
+    """
+
+    chapter_text = source._parse_chapter_html(html)
+
+    assert chapter_text == (
+        "Scene setup.\n\n"
+        "[Image: Morning alley]\n\n"
+        "Scene follow-up."
+    )
+
+
 @pytest.mark.asyncio
 async def test_fetch_metadata_normalizes_episode_url_to_work_root() -> None:
     source = KakuyomuSource()

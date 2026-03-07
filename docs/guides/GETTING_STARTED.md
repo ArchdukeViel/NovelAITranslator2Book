@@ -104,8 +104,8 @@ print()
 print('Next steps:')
 print('  1. Run TUI: novelaibook tui')
 print('  2. Or use CLI: novelaibook scrape-metadata syosetu_ncode n4423lw')
-print('  3. See PYTHON_COMMANDS.md for all commands')
-print('  4. See TUI_GUIDE.md for terminal UI walkthrough')
+print('  3. See docs/reference/PYTHON_COMMANDS.md for all commands')
+print('  4. See docs/guides/TUI_GUIDE.md for terminal UI walkthrough')
 "
 ```
 
@@ -194,7 +194,7 @@ data/
         â””â”€â”€ pdf/                     # PDF exports
 ```
 
-See [DATA_OUTPUT_STRUCTURE.md](DATA_OUTPUT_STRUCTURE.md) for complete explanation.
+See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md) for complete explanation.
 
 ---
 
@@ -239,11 +239,11 @@ python -m pip install -e .
 
 ## ðŸ“š Next Steps
 
-1. **Learn CLI Commands**: See [PYTHON_COMMANDS.md](PYTHON_COMMANDS.md)
+1. **Learn CLI Commands**: See [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md)
 2. **Learn TUI**: See [TUI_GUIDE.md](TUI_GUIDE.md)
-3. **Understand Architecture**: See [docs/architecture.md](docs/architecture.md)
-4. **Learn Data Format**: See [DATA_OUTPUT_STRUCTURE.md](DATA_OUTPUT_STRUCTURE.md)
-5. **Production Deployment**: See [PHASE_4_OPERATIONS.md](PHASE_4_OPERATIONS.md)
+3. **Understand Architecture**: See [../architecture/architecture.md](../architecture/architecture.md)
+4. **Learn Data Format**: See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md)
+5. **Review Operational Planning**: See [../plans/PHASE_4_PLAN.md](../plans/PHASE_4_PLAN.md)
 
 ---
 
@@ -306,8 +306,8 @@ All settings in `.env`:
 ## ðŸ“ž Getting Help
 
 1. **Check Logs**: Logs saved to `logs/` directory
-2. **Read Docs**: Start with [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)
-3. **Check FAQ**: See [PHASE_4_OPERATIONS.md](PHASE_4_OPERATIONS.md#faq)
+2. **Read Docs**: Start with [../README.md](../README.md)
+3. **Check Planning Notes**: See [../plans/PHASE_4_PLAN.md](../plans/PHASE_4_PLAN.md)
 4. **Debug Mode**: Set `LOG_LEVEL=DEBUG` for verbose output
 
 ---
@@ -326,5 +326,5 @@ Start with TUI for easy interactive experience:
 novelaibook tui
 ```
 
-Or master the CLI from [PYTHON_COMMANDS.md](PYTHON_COMMANDS.md).
+Or master the CLI from [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md).
 

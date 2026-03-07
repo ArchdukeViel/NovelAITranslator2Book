@@ -7,7 +7,7 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
-from novelai.sources._helpers import attribute_to_str
+from novelai.sources._helpers import attribute_to_str, image_placeholder, iter_story_blocks
 from novelai.sources.base import SourceAdapter
 
 
@@ -223,7 +223,7 @@ class SyosetuNcodeSource(SourceAdapter):
         for ruby in prepared.find_all("ruby"):
             ruby.unwrap()
 
-        if not prepared.get_text(separator="\n", strip=True) and not prepared.find("hr"):
+        if not prepared.get_text(separator="\n", strip=True) and not prepared.find(["hr", "img"]):
             return None
         return prepared
 
@@ -242,6 +242,11 @@ class SyosetuNcodeSource(SourceAdapter):
         return "\n".join(normalized).strip()
 
     def _extract_text_from_tag(self, tag: Tag) -> str:
+        if tag.name.lower() == "img":
+            return image_placeholder(tag)
+
+        for image in tag.find_all("img"):
+            image.replace_with(image_placeholder(image))
         for hr in tag.find_all("hr"):
             hr.replace_with(f"\n\n{self.SEPARATOR_LINE}\n\n")
         for br in tag.find_all("br"):
@@ -250,10 +255,10 @@ class SyosetuNcodeSource(SourceAdapter):
 
     def _render_story_section(self, section: Tag) -> str:
         blocks: list[str] = []
-        for element in section.find_all(["p", "hr"], recursive=True):
+        for element in iter_story_blocks(section, ("p", "blockquote", "figure", "hr", "img")):
             if not isinstance(element, Tag):
                 continue
-            if element.name == "hr":
+            if element.name.lower() == "hr":
                 blocks.append(self.SEPARATOR_LINE)
                 continue
             block = self._extract_text_from_tag(element)
