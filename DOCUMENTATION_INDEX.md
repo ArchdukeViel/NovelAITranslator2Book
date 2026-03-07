@@ -4,50 +4,34 @@ Complete guide to all documentation files and how to use the Novel AI system.
 
 ---
 
+## ⚠️ Documentation Organization Update
+
+**See [DOCUMENTATION_OPTIMIZATION_PLAN.md](DOCUMENTATION_OPTIMIZATION_PLAN.md)** for the current organization strategy and planned restructuring at v1.0 release.
+
+**Current Status**: Active development phase. Files organized in root for visibility.  
+**Future (v1.0 Release)**: User guides remain in root; historical phase files move to `docs/history/`.
+
+---
+
 ## 📚 Documentation Files Overview
 
-| File | Purpose | Audience |
-|------|---------|----------|
-| [README.md](#readme) | Project overview and quick start | Everyone |
-| [docs/architecture.md](#architecture) | System architecture and design | Developers |
-| [DATA_OUTPUT_STRUCTURE.md](#data-output) | Data storage format and structure | Developers, DevOps |
-| [PHASE_4_OPERATIONS.md](#phase4-ops) | Phase 4 resilience and recovery guide | Operations, Developers |
-| [PHASE_4_PLAN.md](#phase4-plan) | Phase 4 completion status | Project Managers |
-| [PHASE_3_COMPLETION.md](#phase3) | Phase 3 features and validation | Project Managers |
-| [PHASE_2_COMPLETION.md](#phase2) | Phase 2 features | Project Managers |
-| [PHASE_1_COMPLETION.md](#phase1) | Phase 1 foundation | Project Managers |
-| [ARCHITECTURE_REVIEW.md](#arch-review) | Architecture evaluation notes | Architects |
-| [GETTING_STARTED.md](#getting-started) | Installation and first run | New Users |
-| [PYTHON_COMMANDS.md](#python-commands) | Python CLI and programmatic usage | Developers |
-| [TUI_GUIDE.md](#tui-guide) | Terminal UI walkthrough | End Users |
+| File | Purpose | Audience | Status |
+|------|---------|----------|--------|
+| [README.md](#readme) | Project overview and quick start | Everyone | 🟢 Keep |
+| [GETTING_STARTED.md](#getting-started) | Installation and first run | New Users | 🟢 Keep |
+| [PYTHON_COMMANDS.md](#python-commands) | Python CLI and programmatic usage | Developers | 🟢 Keep |
+| [TUI_GUIDE.md](#tui-guide) | Terminal UI walkthrough | End Users | 🟢 Keep |
+| [docs/architecture.md](#architecture) | System architecture and design | Developers | 🟢 Keep |
+| [DATA_OUTPUT_STRUCTURE.md](#data-output) | Data storage format and structure | Developers, DevOps | 🟢 Keep |
+| [PHASE_4_OPERATIONS.md](#phase4-ops) | Phase 4 resilience and recovery guide | Operations, Developers | 🟢 Keep |
+| [PHASE_4_PLAN.md](#phase4-plan) | Phase 4 completion status | Project Managers | 🔵 Archive at v1.0 |
+| [PHASE_3_COMPLETION.md](#phase3) | Phase 3 features and validation | Project Managers | 🔵 Archive at v1.0 |
+| [PHASE_2_COMPLETION.md](#phase2) | Phase 2 features | Project Managers | 🔵 Archive at v1.0 |
+| [PHASE_1_COMPLETION.md](#phase1) | Phase 1 foundation | Project Managers | 🔵 Archive at v1.0 |
+| [ARCHITECTURE_REVIEW.md](#arch-review) | Architecture evaluation notes | Architects | 🔵 Merge at v1.0 |
+| [DOCUMENTATION_OPTIMIZATION_PLAN.md](#optimization) | Organization strategy | Maintainers | 🟢 Active |
 
----
 
-## 📖 Detailed File Explanations
-
-### <a id="readme"></a>📄 README.md
-**Location**: `/readme.md`
-**Purpose**: Project entry point and overview
-**Contains**:
-- Project description
-- Quick start instructions
-- Installation steps
-- Basic configuration
-- Feature overview
-
-**Who should read**: Everyone starting with the project
-
----
-
-### <a id="architecture"></a>🏗️ docs/architecture.md
-**Location**: `/docs/architecture.md`
-**Purpose**: Technical architecture reference
-**Contains**:
-- Complete codebase structure with directory tree
-- High-level domain descriptions
-- Core architectural principles
-- System architecture diagram
-- Data flow examples
 - Component interaction patterns
 
 **Who should read**: Developers, architects

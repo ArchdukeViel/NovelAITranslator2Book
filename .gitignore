@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Novel AI - .gitignore
+# NovelAITranslator2Book - .gitignore
 # -----------------------------------------------------------------------------
 
 # Python
@@ -77,3 +77,8 @@ requirements.in
 
 # Misc logs
 *.log
+
+# Documentation (tracking)
+# Note: All .md files are tracked in git for documentation history
+# docs/history/ contains archived phase completion and review docs
+# These are intentionally committed for project memory and version history
