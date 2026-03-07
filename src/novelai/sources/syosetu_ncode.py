@@ -85,10 +85,21 @@ class SyosetuNcodeSource(SourceAdapter):
         novel_id = self.normalize_novel_id(identifier_or_url)
         return f"https://ncode.syosetu.com/{novel_id.strip('/')}/"
 
+    def _build_request_cookies(self) -> httpx.Cookies | None:
+        return None
+
+    def _validate_fetched_page(self, requested_url: str, final_url: httpx.URL, html: str) -> None:
+        return None
+
     async def _fetch_page(self, url: str) -> str:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         try:
-            async with httpx.AsyncClient(timeout=30, headers=headers, follow_redirects=True) as client:
+            async with httpx.AsyncClient(
+                timeout=30,
+                headers=headers,
+                cookies=self._build_request_cookies(),
+                follow_redirects=True,
+            ) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -98,6 +109,7 @@ class SyosetuNcodeSource(SourceAdapter):
             ) from exc
         except httpx.HTTPError as exc:
             raise SourceError(f"Failed to fetch Syosetu page from {url}: {exc}") from exc
+        self._validate_fetched_page(url, resp.url, resp.text)
         return resp.text
 
     def _extract_title(self, soup: BeautifulSoup) -> str | None:

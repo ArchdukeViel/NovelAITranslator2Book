@@ -82,6 +82,10 @@ def test_resolve_source_from_url_detects_registered_source_and_normalizes_id(tui
         "novel18_syosetu",
         "n0813kx",
     )
+    assert tui._resolve_source_from_url("https://noc.syosetu.com/n0813kx/") == (
+        "novel18_syosetu",
+        "n0813kx",
+    )
     assert tui._resolve_source_from_url("https://kakuyomu.jp/works/822139845959461179/") == (
         "kakuyomu",
         "822139845959461179",
@@ -495,6 +499,81 @@ def test_chapter_selection_upper_bound_uses_highest_requested_chapter(tui: TUIAp
     assert tui._chapter_selection_upper_bound("34-46") == 46
     assert tui._chapter_selection_upper_bound("3;7-9") == 9
     assert tui._chapter_selection_upper_bound("full") is None
+
+
+def test_scrape_flow_existing_novel_can_continue_and_skip_stored_chapters(
+    tui: TUIApp,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    tui.storage.save_metadata(
+        novel_id,
+        {
+            "title": "A Better Story",
+            "chapters": [{"id": 1}, {"id": 2}],
+        },
+    )
+    tui.storage.save_chapter(novel_id, "1", "chapter 1 raw")
+    tui.storage.save_translated_chapter(novel_id, "1", "chapter 1 translated")
+    tui.storage.save_chapter(novel_id, "2", "chapter 2 raw")
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        tui,
+        "_prompt_novel_url",
+        lambda *args, **kwargs: ("https://ncode.syosetu.com/n8733gf/", "syosetu_ncode", novel_id),
+    )
+    monkeypatch.setattr(tui, "_prompt_chapter_selection", lambda: "1-4")
+
+    def fake_confirm(message: str) -> bool:
+        captured["confirm_message"] = message
+        return True
+
+    async def fake_scrape_metadata(
+        source_key: str,
+        novel_id_arg: str,
+        mode: str = "update",
+        max_chapter: int | None = None,
+    ) -> None:
+        captured["max_chapter"] = max_chapter
+        tui.storage.save_metadata(
+            novel_id_arg,
+            {
+                "title": "A Better Story",
+                "chapters": [{"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}],
+            },
+        )
+
+    async def fake_scrape_chapters(
+        source_key: str,
+        novel_id_arg: str,
+        chapters: str,
+        mode: str = "update",
+    ) -> None:
+        captured["fetch_selection"] = chapters
+
+    def fake_run_translation_pipeline(
+        *,
+        title: str,
+        novel_id: str,
+        source: str,
+        novel_url: str,
+        chapters: str,
+    ) -> None:
+        captured["translate_selection"] = chapters
+
+    monkeypatch.setattr(tui, "_confirm_library_action", fake_confirm)
+    monkeypatch.setattr(tui, "_do_scrape_metadata", fake_scrape_metadata)
+    monkeypatch.setattr(tui, "_do_scrape_chapters", fake_scrape_chapters)
+    monkeypatch.setattr(tui, "_run_translation_pipeline", fake_run_translation_pipeline)
+
+    tui._scrape_flow()
+
+    assert "Stored chapters: 1-2." in str(captured["confirm_message"])
+    assert captured["max_chapter"] == 4
+    assert captured["fetch_selection"] == "3-4"
+    assert captured["translate_selection"] == "2-4"
 
 
 def test_effective_translation_target_falls_back_to_dummy_without_api_key(tui: TUIApp) -> None:

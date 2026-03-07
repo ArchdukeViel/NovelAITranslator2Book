@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import httpx
 import pytest
 
+from novelai.core.errors import SourceError
 from novelai.sources.novel18_syosetu import Novel18SyosetuSource
 
 
@@ -10,7 +12,31 @@ def test_novel18_matches_and_normalizes_root_and_chapter_urls() -> None:
 
     assert source.matches_url("https://novel18.syosetu.com/n0813kx/")
     assert source.matches_url("https://novel18.syosetu.com/n0813kx/1/")
+    assert source.matches_url("https://noc.syosetu.com/n0813kx/")
     assert source.normalize_novel_id("https://novel18.syosetu.com/n0813kx/1/") == "n0813kx"
+    assert source._normalize_url("https://noc.syosetu.com/n0813kx/1/") == "https://noc.syosetu.com/n0813kx/"
+
+
+def test_novel18_builds_adult_confirmation_cookie() -> None:
+    source = Novel18SyosetuSource()
+
+    cookies = source._build_request_cookies()
+
+    assert cookies.get("over18", domain="novel18.syosetu.com", path="/") == "yes"
+
+
+def test_novel18_raises_clear_error_for_age_gate_redirect() -> None:
+    source = Novel18SyosetuSource()
+
+    with pytest.raises(SourceError, match="age verification page"):
+        source._validate_fetched_page(
+            "https://novel18.syosetu.com/n0813kx/",
+            httpx.URL(
+                "https://nl.syosetu.com/redirect/ageauth/"
+                "?url=https%3A%2F%2Fnoc.syosetu.com%2Ftop%2Ftop%2F&hash=test"
+            ),
+            "<html><body>年齢確認 Cookie JavaScript redirect/ageauth/</body></html>",
+        )
 
 
 @pytest.mark.asyncio

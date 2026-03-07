@@ -2100,11 +2100,44 @@ class TUIApp:
                 numbers.append(int(chapter_id))
         return sorted(set(numbers))
 
+    def _chapter_in_library(self, novel_id: str, chapter_num: int) -> bool:
+        chapter_id = str(chapter_num)
+        return (
+            self.storage.load_chapter(novel_id, chapter_id) is not None
+            or self.storage.load_translated_chapter(novel_id, chapter_id) is not None
+        )
+
+    def _chapter_is_translated(self, novel_id: str, chapter_num: int) -> bool:
+        return self.storage.load_translated_chapter(novel_id, str(chapter_num)) is not None
+
+    def _stored_chapter_numbers(self, novel_id: str, metadata: dict[str, Any] | None) -> list[int]:
+        return [
+            chapter_num
+            for chapter_num in self._metadata_chapter_numbers(metadata)
+            if self._chapter_in_library(novel_id, chapter_num)
+        ]
+
+    def _serialize_chapter_selection(self, numbers: list[int]) -> str | None:
+        if not numbers:
+            return None
+
+        segments: list[str] = []
+        start = numbers[0]
+        end = numbers[0]
+        for number in numbers[1:]:
+            if number == end + 1:
+                end = number
+                continue
+            segments.append(f"{start}-{end}" if start != end else str(start))
+            start = number
+            end = number
+        segments.append(f"{start}-{end}" if start != end else str(start))
+        return ";".join(segments)
+
     def _latest_library_chapter(self, novel_id: str, metadata: dict[str, Any] | None) -> int:
         latest = 0
         for chapter_num in self._metadata_chapter_numbers(metadata):
-            chapter_id = str(chapter_num)
-            if self.storage.load_chapter(novel_id, chapter_id) or self.storage.load_translated_chapter(novel_id, chapter_id):
+            if self._chapter_in_library(novel_id, chapter_num):
                 latest = chapter_num
         return latest
 
@@ -2146,6 +2179,31 @@ class TUIApp:
         except Exception:
             return None
         return max(chapter_numbers) if chapter_numbers else None
+
+    def _build_add_novel_selections(
+        self,
+        novel_id: str,
+        metadata: dict[str, Any] | None,
+        requested_selection: str,
+    ) -> tuple[str | None, str | None]:
+        selected_numbers = self._selected_chapter_numbers(metadata, requested_selection)
+        if not selected_numbers:
+            return None, None
+
+        fetch_numbers = [
+            chapter_num
+            for chapter_num in selected_numbers
+            if not self._chapter_in_library(novel_id, chapter_num)
+        ]
+        translate_numbers = [
+            chapter_num
+            for chapter_num in selected_numbers
+            if not self._chapter_is_translated(novel_id, chapter_num)
+        ]
+        return (
+            self._serialize_chapter_selection(fetch_numbers),
+            self._serialize_chapter_selection(translate_numbers),
+        )
 
     def _estimate_translation_budget(
         self,
@@ -2284,16 +2342,16 @@ class TUIApp:
             lines.append(budget_estimate["note"])
         return "\n".join(lines)
 
-    def _show_existing_novel_notice(self, novel_id: str) -> None:
-        self.console.print(
-            Panel(
-                f"{novel_id} is already in the library.\nUse Update Novel to pull any newer chapters.",
-                title="Already In Library",
-                border_style="#e0af68",
-                box=box.ROUNDED,
+    def _confirm_existing_novel_add(self, novel_id: str, metadata: dict[str, Any] | None) -> bool:
+        stored_numbers = self._stored_chapter_numbers(novel_id, metadata)
+        stored_label = self._format_number_ranges(stored_numbers) if stored_numbers else "none detected"
+        return self._confirm_library_action(
+            (
+                f"{novel_id} is already in the library.\n"
+                f"Stored chapters: {stored_label}.\n"
+                "Continue Add Novel? Existing raw chapters will be skipped, and existing translations will not be re-run."
             )
         )
-        self._set_status(f"{novel_id} is already in the library. Use Update Novel.", "warning")
 
     def _show_missing_novel_notice(self, novel_id: str) -> None:
         self.console.print(
@@ -2368,7 +2426,7 @@ class TUIApp:
                 (
                     f"{title} finished for {novel_id} from {source}.\n"
                     f"Source URL: {novel_url}\n"
-                    f"Fetched and translated {selection_label} with {active_provider}/{active_model}.\n\n"
+                    f"Fetched raw text where needed and translated {selection_label} with {active_provider}/{active_model}.\n\n"
                     f"{budget_summary}"
                     f"{fallback_note}"
                 ),
@@ -2403,8 +2461,9 @@ class TUIApp:
             return
 
         novel_url, source, novel_id = prompt
-        if self.storage.load_metadata(novel_id):
-            self._show_existing_novel_notice(novel_id)
+        existing_metadata = self.storage.load_metadata(novel_id)
+        if existing_metadata is not None and not self._confirm_existing_novel_add(novel_id, existing_metadata):
+            self._set_status(f"Add Novel cancelled for {novel_id}.", "warning")
             return
 
         chapters = self._prompt_chapter_selection()
@@ -2416,10 +2475,37 @@ class TUIApp:
         try:
             with self.console.status("[bold #7dcfff]Saving novel metadata...[/bold #7dcfff]", spinner="dots"):
                 asyncio.run(self._do_scrape_metadata(source, novel_id, mode="update", max_chapter=max_chapter))
-            with self.console.status("[bold #7dcfff]Fetching raw chapters...[/bold #7dcfff]", spinner="dots"):
-                asyncio.run(self._do_scrape_chapters(source, novel_id, chapters, mode="update"))
         except Exception as exc:
             self._show_error(f"Add Novel failed: {exc}")
+            return
+
+        metadata = self.storage.load_metadata(novel_id)
+        fetch_selection, translate_selection = self._build_add_novel_selections(novel_id, metadata, chapters)
+
+        if fetch_selection is not None:
+            try:
+                with self.console.status("[bold #7dcfff]Fetching raw chapters...[/bold #7dcfff]", spinner="dots"):
+                    asyncio.run(self._do_scrape_chapters(source, novel_id, fetch_selection, mode="update"))
+            except Exception as exc:
+                self._show_error(f"Add Novel failed: {exc}")
+                return
+
+        if translate_selection is None:
+            stored_numbers = self._stored_chapter_numbers(novel_id, metadata)
+            stored_label = self._format_number_ranges(stored_numbers) if stored_numbers else "none detected"
+            self.console.print(
+                Panel(
+                    (
+                        f"{novel_id} is already in the library.\n"
+                        f"Stored chapters: {stored_label}.\n"
+                        "The selected chapters are already stored and translated, so there was nothing new to add."
+                    ),
+                    title="Add Novel",
+                    border_style="#7aa2f7",
+                    box=box.ROUNDED,
+                )
+            )
+            self._set_status(f"Add Novel found nothing new for {novel_id}.", "info")
             return
 
         self._run_translation_pipeline(
@@ -2427,7 +2513,7 @@ class TUIApp:
             novel_id=novel_id,
             source=source,
             novel_url=novel_url,
-            chapters=chapters,
+            chapters=translate_selection,
         )
 
     def _update_flow(self) -> None:
