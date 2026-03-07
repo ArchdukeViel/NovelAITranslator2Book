@@ -215,6 +215,7 @@ def test_library_screen_uses_guide_rail_instead_of_embedded_command_panel(tui: T
 
     assert "Guide Rail" in output
     assert "0) back" in output
+    assert "2) delete custom" in output
 
 
 def test_library_frame_keeps_full_guide_rail_visible(tui: TUIApp) -> None:
@@ -235,7 +236,7 @@ def test_library_frame_keeps_full_guide_rail_visible(tui: TUIApp) -> None:
     tui.console.print(frame)
     output = tui.console.export_text()
 
-    assert "4) delete all" in output
+    assert "3) delete all" in output
     assert "0) back" in output
     assert "Command  0" in output
 
@@ -259,6 +260,29 @@ def test_library_frame_keeps_novel_list_visible_on_short_terminals(tui: TUIApp) 
 
     assert "Novel List" in output
     assert "A Better Story" in output or "novel-1" in output
+
+
+def test_library_frame_keeps_novel_list_box_closed_while_scrolled(tui: TUIApp) -> None:
+    tui.console = Console(record=True, width=120, height=20)
+    snapshots = [
+        {
+            "novel_id": f"novel-{index}",
+            "title": "A Better Story",
+            "total_chapters": 2,
+            "translated_chapters": 1,
+            "language": "Japanese",
+        }
+        for index in range(1, 40)
+    ]
+    groups = tui._group_library_snapshots(snapshots)
+    frame, _ = tui._build_library_frame(snapshots, groups, "", None, 12)
+
+    tui.console.print(frame)
+    output = tui.console.export_text()
+
+    assert "Novel List" in output
+    assert "Guide Rail" in output
+    assert "9)" in output or "10)" in output
 
 
 def test_diagnostics_screen_uses_guide_rail_and_command_options(tui: TUIApp) -> None:
@@ -441,19 +465,28 @@ def test_library_list_panel_numbers_novels_and_shows_title_before_novel_id(tui: 
 
 
 def test_library_command_parser_supports_delete_and_back(tui: TUIApp) -> None:
-    assert tui._parse_library_command("") == ("back", None)
-    assert tui._parse_library_command("0") == ("back", None)
-    assert tui._parse_library_command("back") == ("back", None)
-    assert tui._parse_library_command("5") is None
-    assert tui._parse_library_command("1 2-6") == ("export", "2-6")
-    assert tui._parse_library_command("export 3, 7-10") == ("export", "3, 7-10")
-    assert tui._parse_library_command("2 3") == ("delete", "3")
-    assert tui._parse_library_command("delete 2,4-5") == ("delete", "2,4-5")
-    assert tui._parse_library_command("3 1") == ("delete_language", "1")
-    assert tui._parse_library_command("delete language 2") == ("delete_language", "2")
-    assert tui._parse_library_command("4") == ("delete_all", None)
-    assert tui._parse_library_command("delete all") == ("delete_all", None)
-    assert tui._parse_library_command("delete nope") == ("delete", "nope")
+    assert tui._parse_library_command("") == "back"
+    assert tui._parse_library_command("0") == "back"
+    assert tui._parse_library_command("back") == "back"
+    assert tui._parse_library_command("1") == "export"
+    assert tui._parse_library_command("2") == "delete_custom"
+    assert tui._parse_library_command("delete custom") == "delete_custom"
+    assert tui._parse_library_command("3") == "delete_all"
+    assert tui._parse_library_command("delete all") == "delete_all"
+    assert tui._parse_library_command("4") is None
+    assert tui._parse_library_command("1 2-6") is None
+
+
+def test_library_confirmation_screen_uses_boxed_yes_and_cancel_options(tui: TUIApp) -> None:
+    tui.console = Console(record=True, width=120)
+    tui.console.print(tui._build_library_confirmation_screen("Delete 3 novel(s) from the library?"))
+    output = tui.console.export_text()
+
+    assert "CONFIRM ACTION" in output
+    assert "1)" in output
+    assert "Yes, continue" in output
+    assert "0)" in output
+    assert "No, cancel" in output
 
 
 def test_library_selection_parser_supports_ranges_and_lists(tui: TUIApp) -> None:
@@ -533,6 +566,34 @@ def test_collect_library_snapshot_uses_metadata(tui: TUIApp) -> None:
     assert matching["total_chapters"] == 2
     assert matching["translated_chapters"] == 1
     assert matching["language"] == "Japanese"
+
+
+def test_collect_export_chapters_can_filter_to_a_range(tui: TUIApp) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    tui.storage.save_metadata(
+        novel_id,
+        {
+            "title": "Export Story",
+            "chapters": [
+                {"id": 1, "title": "One"},
+                {"id": 2, "title": "Two"},
+                {"id": 3, "title": "Three"},
+            ],
+        },
+    )
+    tui.storage.save_translated_chapter(novel_id, "1", "chapter one")
+    tui.storage.save_translated_chapter(novel_id, "2", "chapter two")
+    tui.storage.save_translated_chapter(novel_id, "3", "chapter three")
+
+    chapters = tui._collect_export_chapters(novel_id, chapter_selection="2-3")
+
+    assert [chapter["title"] for chapter in chapters] == ["Two", "Three"]
+
+
+def test_export_output_path_uses_chapter_range_filename_for_partial_exports(tui: TUIApp) -> None:
+    output_path = tui._build_export_output_path("novel-1", "epub", None, "2-4")
+
+    assert output_path.endswith("chapters_2to4.epub")
 
 
 def test_settings_round_trip(tui: TUIApp) -> None:

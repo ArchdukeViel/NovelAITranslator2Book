@@ -22,6 +22,7 @@ from rich.text import Text
 from novelai.app.bootstrap import bootstrap
 from novelai.app.container import container
 from novelai.config.settings import settings
+from novelai.export.registry import available_exporters
 from novelai.providers.registry import available_models as available_provider_models
 from novelai.providers.registry import available_providers
 from novelai.providers.registry import get_provider
@@ -488,11 +489,14 @@ class TUIApp:
         renderable: Any,
         scroll_offset: int,
         viewport_height: int,
+        *,
+        width: int | None = None,
     ) -> tuple[Segments, int]:
+        render_width = width or self._console_width()
         renderable_lines = self.console.render_lines(
             renderable,
             options=self.console.options.update_dimensions(
-                self._console_width(),
+                render_width,
                 self._console_height(),
             ),
             pad=False,
@@ -1094,7 +1098,7 @@ class TUIApp:
 
     def _list_novels(self) -> None:
         self._set_status(
-            "Use 1) export, 2) delete, 3) delete language, 4) delete all, or 0) back.",
+            "Use 1) export, 2) delete custom, 3) delete all, or 0) back.",
             "info",
         )
         while True:
@@ -1105,16 +1109,12 @@ class TUIApp:
                 self._set_status("The library is empty.", "warning")
 
             command = self._prompt_library_command(snapshots, groups)
-            parsed = self._parse_library_command(command)
+            action = self._parse_library_command(command)
 
-            if parsed is None:
-                self._set_status(
-                    "Unknown library command. Use a numbered action like 1 2-6, 2 3,7-10, 3 1, 4, or 0.",
-                    "warning",
-                )
+            if action is None:
+                self._set_status("Unknown library command. Use 1, 2, 3, or 0.", "warning")
                 continue
 
-            action, payload = parsed
             if action == "back":
                 self._set_status(f"Showing {len(snapshots)} novel(s) from the library.", "info")
                 return
@@ -1133,64 +1133,18 @@ class TUIApp:
                     self._set_status("Delete all cancelled.", "warning")
                 continue
 
-            if action == "delete_language":
-                if not groups:
-                    self._set_status("There are no language groups to delete.", "warning")
-                    continue
-                if payload is None or not payload.isdigit():
-                    self._set_status("Choose a valid language group number.", "warning")
-                    continue
-                group_index = int(payload)
-                target_group = next((group for group in groups if group["index"] == group_index), None)
-                if target_group is None:
-                    self._set_status("Choose a valid language group number.", "warning")
-                    continue
-                if self._confirm_library_action(
-                    f"Delete all novels in language group {group_index}) {target_group['language']}?"
-                ):
-                    deleted = self._delete_library_language_group(groups, group_index)
-                    self._set_status(
-                        f"Deleted {len(deleted)} novel(s) from {target_group['language']}.",
-                        "success",
-                    )
-                else:
-                    self._set_status("Delete language group cancelled.", "warning")
-                continue
-
             if action == "export":
                 if not snapshots:
                     self._set_status("There are no novels to export.", "warning")
                     continue
-                if payload is None:
-                    self._set_status("Choose one or more novel numbers to export.", "warning")
-                    continue
-                selection = self._parse_library_selection(payload, len(snapshots))
-                if selection is None:
-                    self._set_status("Use novel numbers like 2-6 or 3, 7-10.", "warning")
-                    continue
-                self._export_library_novels(snapshots, selection)
+                self._export_library_novels(snapshots, groups)
                 continue
 
             if not snapshots:
                 self._set_status("There are no novels to delete.", "warning")
                 continue
 
-            if payload is None:
-                self._set_status("Choose one or more novel numbers to delete.", "warning")
-                continue
-            selection = self._parse_library_selection(payload, len(snapshots))
-            if selection is None:
-                self._set_status("Use novel numbers like 2-6 or 3, 7-10.", "warning")
-                continue
-            names = ", ".join(f"{index}) {snapshots[index - 1]['title']}" for index in selection[:3])
-            if len(selection) > 3:
-                names = f"{names}, ..."
-            if not self._confirm_library_action(f"Delete {len(selection)} novel(s): {names}?"):
-                self._set_status("Delete cancelled.", "warning")
-                continue
-
-            deleted = self._delete_library_novels(snapshots, selection)
-            self._set_status(f"Deleted {len(deleted)} novel(s) from the library.", "success")
+            self._delete_custom_library_novels(snapshots, groups)
 
     def _build_library_screen(
         self,
@@ -1221,7 +1175,7 @@ class TUIApp:
         snapshots: list[LibrarySnapshot],
         groups: list[LibraryLanguageGroup],
     ) -> Group:
-        return Group(self._build_library_list_panel(snapshots, groups))
+        return Group(self._build_library_list_content(snapshots, groups))
 
     def _prompt_library_command(
         self,
@@ -1394,13 +1348,13 @@ class TUIApp:
             active_header = compact_header_panel
             viewport_height = self._library_viewport_height(active_header, active_guide, prompt_panel)
 
-        scrollable_content = self._build_library_scrollable_content(snapshots, groups)
-        library_view, max_scroll_offset = self._build_renderable_viewport(
-            scrollable_content,
+        library_panel, max_scroll_offset = self._build_library_list_scroll_panel(
+            snapshots,
+            groups,
             scroll_offset,
             viewport_height,
         )
-        return Group(active_header, library_view, active_guide, prompt_panel), max_scroll_offset
+        return Group(active_header, library_panel, active_guide, prompt_panel), max_scroll_offset
 
     def _renderable_height(self, renderable: Any) -> int:
         measuring_console = Console(
@@ -1428,22 +1382,46 @@ class TUIApp:
     ) -> Panel:
         return self._build_input_prompt_panel("Command", command_buffer, "0", prompt_message)
 
-    def _build_library_list_panel(
+    def _build_library_list_scroll_panel(
         self,
         snapshots: list[LibrarySnapshot],
-        groups: list[LibraryLanguageGroup] | None = None,
-    ) -> Panel:
-        if groups is None:
-            groups = self._group_library_snapshots(snapshots)
-
+        groups: list[LibraryLanguageGroup],
+        scroll_offset: int,
+        total_height: int,
+    ) -> tuple[Panel, int]:
         if not snapshots:
-            return Panel(
-                "No novels are stored yet.",
+            return self._build_library_list_panel(snapshots, groups), 0
+
+        inner_height = max(total_height - 2, 1)
+        inner_width = max(self._console_width() - 4, 20)
+        visible_content, max_scroll_offset = self._build_renderable_viewport(
+            self._build_library_list_content(snapshots, groups),
+            scroll_offset,
+            inner_height,
+            width=inner_width,
+        )
+        return (
+            Panel(
+                visible_content,
                 title="Novel List",
                 border_style="#9ece6a",
                 box=box.ROUNDED,
                 expand=True,
-            )
+                height=total_height,
+            ),
+            max_scroll_offset,
+        )
+
+    def _build_library_list_content(
+        self,
+        snapshots: list[LibrarySnapshot],
+        groups: list[LibraryLanguageGroup] | None = None,
+    ) -> Any:
+        if groups is None:
+            groups = self._group_library_snapshots(snapshots)
+
+        if not snapshots:
+            return Text("No novels are stored yet.", style="#cbd5e1")
 
         items: list[Any] = []
         row_number = 1
@@ -1477,8 +1455,15 @@ class TUIApp:
         if items:
             items.pop()
 
+        return Group(*items)
+
+    def _build_library_list_panel(
+        self,
+        snapshots: list[LibrarySnapshot],
+        groups: list[LibraryLanguageGroup] | None = None,
+    ) -> Panel:
         return Panel(
-            Group(*items),
+            self._build_library_list_content(snapshots, groups),
             title="Novel List",
             border_style="#9ece6a",
             box=box.ROUNDED,
@@ -1494,7 +1479,7 @@ class TUIApp:
                     (self.last_status_message, f"bold {status_style}"),
                 ),
                 Text(
-                    "1) export  2) delete  3) delete language  4) delete all  0) back",
+                    "1) export  2) delete custom  3) delete all  0) back",
                     style="#cbd5e1",
                 ),
             )
@@ -1505,10 +1490,9 @@ class TUIApp:
                     (self.last_status_message, f"bold {status_style}"),
                 ),
                 Text(""),
-                Text("1) export <numbers>            Export novels like 1 or 2-6 or 3, 7-10.", style="#cbd5e1"),
-                Text("2) delete <numbers>            Remove one or more novels by number.", style="#cbd5e1"),
-                Text("3) delete language <group>     Remove all novels in a language group.", style="#cbd5e1"),
-                Text("4) delete all                  Remove every novel from the library.", style="#cbd5e1"),
+                Text("1) export                      Choose format, chapter scope, and which novels to export.", style="#cbd5e1"),
+                Text("2) delete custom               Filter by language, then delete all or selected novel numbers.", style="#cbd5e1"),
+                Text("3) delete all                  Remove every novel from the library.", style="#cbd5e1"),
                 Text("0) back                        Return to the dashboard.", style="#cbd5e1"),
             )
         return Panel(
@@ -1519,28 +1503,16 @@ class TUIApp:
             expand=True,
         )
 
-    def _parse_library_command(self, command: str) -> tuple[str, str | None] | None:
+    def _parse_library_command(self, command: str) -> str | None:
         raw = command.strip().lower()
         if raw in ("", "0", "back", "b"):
-            return ("back", None)
-
-        if raw in ("4", "delete all", "remove all"):
-            return ("delete_all", None)
-
-        for prefix in ("3 ", "delete language ", "delete lang ", "remove language "):
-            if raw.startswith(prefix):
-                payload = raw[len(prefix) :].strip()
-                return ("delete_language", payload or None)
-
-        for prefix in ("1 ", "export "):
-            if raw.startswith(prefix):
-                payload = raw[len(prefix) :].strip()
-                return ("export", payload or None)
-
-        for prefix in ("2 ", "delete ", "del ", "d "):
-            if raw.startswith(prefix):
-                payload = raw[len(prefix) :].strip()
-                return ("delete", payload or None)
+            return "back"
+        if raw in ("1", "export", "e"):
+            return "export"
+        if raw in ("2", "delete custom", "delete", "del", "d"):
+            return "delete_custom"
+        if raw in ("3", "delete all", "remove all"):
+            return "delete_all"
 
         return None
 
@@ -1574,16 +1546,28 @@ class TUIApp:
             return None
         return sorted(values)
 
-    def _confirm_library_action(self, message: str) -> bool:
-        return (
-            Prompt.ask(
-                f"[bold #f6bd60]{message}[/bold #f6bd60]",
-                choices=["yes", "no"],
-                default="no",
-                console=self.console,
-            )
-            == "yes"
+    def _build_library_confirmation_screen(self, message: str) -> Group:
+        confirmation_panel = self._build_numbered_choice_panel(
+            "Confirm",
+            ["Yes, continue"],
+            descriptions=[message],
+            border_style="#e0af68",
+            back_label="No, cancel",
         )
+        return self._build_library_action_screen(
+            "Confirm Action",
+            "Review the action below, then confirm or cancel.",
+            confirmation_panel,
+        )
+
+    def _confirm_library_action(self, message: str) -> bool:
+        choice = self._prompt_numbered_choice(
+            lambda: self._build_library_confirmation_screen(message),
+            option_count=1,
+            default_value="0",
+            label="Confirm",
+        )
+        return choice == 1
 
     def _delete_library_novels(
         self,
@@ -1609,25 +1593,315 @@ class TUIApp:
             deleted.append(snapshot)
         return deleted
 
-    def _export_library_novels(self, snapshots: list[LibrarySnapshot], selections: list[int]) -> None:
-        fmt = Prompt.ask(
-            "[bold #f6bd60]Format[/bold #f6bd60]",
-            choices=["epub", "pdf"],
-            default="epub",
-            console=self.console,
+    def _build_library_action_screen(
+        self,
+        title: str,
+        description: str,
+        body: Any,
+        *,
+        snapshots: list[LibrarySnapshot] | None = None,
+        groups: list[LibraryLanguageGroup] | None = None,
+        include_list: bool = False,
+    ) -> Group:
+        sections: list[Any] = [self._build_action_header(title, description)]
+        if include_list and snapshots is not None:
+            sections.append(self._build_library_list_panel(snapshots, groups))
+        sections.append(body)
+        return Group(*sections)
+
+    def _format_number_ranges(self, numbers: list[int]) -> str:
+        if not numbers:
+            return "-"
+
+        ranges: list[str] = []
+        start = numbers[0]
+        end = numbers[0]
+        for number in numbers[1:]:
+            if number == end + 1:
+                end = number
+                continue
+            ranges.append(f"{start}-{end}" if start != end else str(start))
+            start = number
+            end = number
+        ranges.append(f"{start}-{end}" if start != end else str(start))
+        return ", ".join(ranges)
+
+    def _snapshot_number_map(self, snapshots: list[LibrarySnapshot]) -> dict[str, int]:
+        return {snapshot["novel_id"]: index for index, snapshot in enumerate(snapshots, start=1)}
+
+    def _group_allowed_numbers(
+        self,
+        snapshots: list[LibrarySnapshot],
+        groups: list[LibraryLanguageGroup],
+    ) -> dict[int, list[int]]:
+        number_map = self._snapshot_number_map(snapshots)
+        return {
+            group["index"]: [number_map[snapshot["novel_id"]] for snapshot in group["snapshots"]]
+            for group in groups
+        }
+
+    def _prompt_library_novel_selection(
+        self,
+        title: str,
+        description: str,
+        snapshots: list[LibrarySnapshot],
+        groups: list[LibraryLanguageGroup],
+        *,
+        allowed_numbers: list[int] | None = None,
+        label: str = "Novel Numbers",
+    ) -> list[int] | None:
+        allowed_numbers = sorted(allowed_numbers) if allowed_numbers is not None else None
+        allowed_text = self._format_number_ranges(allowed_numbers) if allowed_numbers is not None else "all"
+        while True:
+            selection_panel = Panel(
+                Group(
+                    Text("Enter novel numbers like 2-6 or 3, 7-10.", style="#cbd5e1"),
+                    Text.assemble(("Allowed rows  ", "#9aa5ce"), (allowed_text, "#e5e9f0")),
+                    Text("Leave blank to cancel.", style="#9aa5ce"),
+                ),
+                title="Selection",
+                border_style="#7aa2f7",
+                box=box.ROUNDED,
+                expand=True,
+            )
+            command = self._prompt_renderable_command(
+                self._build_library_action_screen(
+                    title,
+                    description,
+                    selection_panel,
+                    snapshots=snapshots,
+                    groups=groups,
+                    include_list=True,
+                ),
+                default_value="",
+                label=label,
+                extra_allowed_characters=" ,-",
+            ).strip()
+            if not command:
+                return None
+
+            selection = self._parse_library_selection(command, len(snapshots))
+            if selection is None:
+                self._set_status("Use novel numbers like 2-6 or 3, 7-10.", "warning")
+                continue
+            if allowed_numbers is not None and not set(selection).issubset(set(allowed_numbers)):
+                self._set_status(
+                    f"Choose only rows from {allowed_text} for this language selection.",
+                    "warning",
+                )
+                continue
+            return selection
+
+    def _prompt_library_chapter_range(self, fmt: str) -> str | None:
+        while True:
+            chapter_panel = Panel(
+                Group(
+                    Text("Enter chapter numbers like 1, 3-8, or 1, 4-6.", style="#cbd5e1"),
+                    Text(f"The same chapter range will be used for every {fmt.upper()} export in this run.", style="#9aa5ce"),
+                    Text("Leave blank to cancel.", style="#9aa5ce"),
+                ),
+                title="Chapter Range",
+                border_style="#7aa2f7",
+                box=box.ROUNDED,
+                expand=True,
+            )
+            selection = self._prompt_renderable_command(
+                self._build_library_action_screen(
+                    "Export Chapters",
+                    f"Choose which translated chapters to include in the {fmt.upper()} export.",
+                    chapter_panel,
+                ),
+                default_value="",
+                label="Chapter Range",
+                extra_allowed_characters=" ,-",
+            ).strip()
+            if not selection:
+                return None
+            if self._validate_chapter_selection(selection) and not is_full_chapter_selection(selection):
+                return selection
+            self._set_status("Use chapter selection like 1, 3-8, or 1, 4-6.", "warning")
+
+    def _select_library_language_scope(
+        self,
+        snapshots: list[LibrarySnapshot],
+        groups: list[LibraryLanguageGroup],
+    ) -> tuple[str, list[int]] | None:
+        group_numbers = self._group_allowed_numbers(snapshots, groups)
+        options = ["All languages"] + [group["language"] for group in groups]
+        descriptions = [f"{len(snapshots)} novel(s), rows {self._format_number_ranges(list(range(1, len(snapshots) + 1)))}."]
+        for group in groups:
+            numbers = group_numbers.get(group["index"], [])
+            descriptions.append(f"{len(numbers)} novel(s), rows {self._format_number_ranges(numbers)}.")
+
+        choice = self._prompt_numbered_choice(
+            lambda: self._build_library_action_screen(
+                "Delete Custom",
+                "Choose which language scope to work with before deleting novels.",
+                self._build_numbered_choice_panel(
+                    "Language Scope",
+                    options,
+                    descriptions=descriptions,
+                    border_style="#7aa2f7",
+                ),
+            ),
+            option_count=len(options),
+            default_value="1",
         )
-        output = Prompt.ask(
-            "[bold #f6bd60]Output directory[/bold #f6bd60] (leave blank for novel library)",
-            default="",
-            console=self.console,
+        if choice is None:
+            self._set_status("Delete custom cancelled.", "warning")
+            return None
+        if choice == 1:
+            return "All languages", list(range(1, len(snapshots) + 1))
+
+        group = groups[choice - 2]
+        return group["language"], group_numbers.get(group["index"], [])
+
+    def _select_custom_delete_mode(self, language_label: str, count: int) -> str | None:
+        choice = self._prompt_numbered_choice(
+            lambda: self._build_library_action_screen(
+                "Delete Custom",
+                f"Choose whether to delete every novel in {language_label} or only selected novel numbers.",
+                self._build_numbered_choice_panel(
+                    "Delete Mode",
+                    ["Full delete", "Choose novel numbers"],
+                    descriptions=[
+                        f"Delete all {count} novel(s) in {language_label}.",
+                        f"Delete only selected novel numbers from {language_label}.",
+                    ],
+                    border_style="#7aa2f7",
+                ),
+            ),
+            option_count=2,
+            default_value="1",
         )
+        if choice is None:
+            self._set_status("Delete custom cancelled.", "warning")
+            return None
+        return "full" if choice == 1 else "selection"
+
+    def _delete_custom_library_novels(
+        self,
+        snapshots: list[LibrarySnapshot],
+        groups: list[LibraryLanguageGroup],
+    ) -> None:
+        language_scope = self._select_library_language_scope(snapshots, groups)
+        if language_scope is None:
+            return
+
+        language_label, allowed_numbers = language_scope
+        if not allowed_numbers:
+            self._set_status(f"There are no novels in {language_label} to delete.", "warning")
+            return
+
+        delete_mode = self._select_custom_delete_mode(language_label, len(allowed_numbers))
+        if delete_mode is None:
+            return
+
+        if delete_mode == "full":
+            if not self._confirm_library_action(f"Delete all {len(allowed_numbers)} novel(s) in {language_label}?"):
+                self._set_status("Delete custom cancelled.", "warning")
+                return
+            deleted = self._delete_library_novels(snapshots, allowed_numbers)
+            self._set_status(f"Deleted {len(deleted)} novel(s) from {language_label}.", "success")
+            return
+
+        selection = self._prompt_library_novel_selection(
+            "Delete Custom",
+            f"Choose which novel numbers to delete from {language_label}.",
+            snapshots,
+            groups,
+            allowed_numbers=allowed_numbers,
+            label="Delete Rows",
+        )
+        if selection is None:
+            self._set_status("Delete custom cancelled.", "warning")
+            return
+
+        names = ", ".join(f"{index}) {snapshots[index - 1]['title']}" for index in selection[:3])
+        if len(selection) > 3:
+            names = f"{names}, ..."
+        if not self._confirm_library_action(f"Delete {len(selection)} novel(s): {names}?"):
+            self._set_status("Delete custom cancelled.", "warning")
+            return
+
+        deleted = self._delete_library_novels(snapshots, selection)
+        self._set_status(f"Deleted {len(deleted)} novel(s) from {language_label}.", "success")
+
+    def _export_library_novels(
+        self,
+        snapshots: list[LibrarySnapshot],
+        groups: list[LibraryLanguageGroup],
+    ) -> None:
+        formats = available_exporters()
+        if not formats:
+            self._set_status("No export formats are registered.", "warning")
+            return
+
+        format_descriptions = [f"Create a {fmt.upper()} file." for fmt in formats]
+        format_choice = self._prompt_numbered_choice(
+            lambda: self._build_library_action_screen(
+                "Export",
+                "Choose the export format you want to generate.",
+                self._build_numbered_choice_panel(
+                    "Formats",
+                    [fmt.upper() for fmt in formats],
+                    descriptions=format_descriptions,
+                    border_style="#7aa2f7",
+                ),
+            ),
+            option_count=len(formats),
+            default_value="1",
+        )
+        if format_choice is None:
+            self._set_status("Export cancelled.", "warning")
+            return
+        fmt = formats[format_choice - 1]
+
+        chapter_choice = self._prompt_numbered_choice(
+            lambda: self._build_library_action_screen(
+                "Export Chapters",
+                f"Choose whether the {fmt.upper()} export should include all translated chapters or a specific range.",
+                self._build_numbered_choice_panel(
+                    "Chapter Scope",
+                    ["Full translated chapters", "Custom chapter range"],
+                    descriptions=[
+                        "Export every translated chapter stored for each selected novel.",
+                        "Export only the translated chapters that match a chapter range.",
+                    ],
+                    border_style="#7aa2f7",
+                ),
+            ),
+            option_count=2,
+            default_value="1",
+        )
+        if chapter_choice is None:
+            self._set_status("Export cancelled.", "warning")
+            return
+
+        chapter_selection = "full"
+        if chapter_choice == 2:
+            chapter_selection = self._prompt_library_chapter_range(fmt) or ""
+            if not chapter_selection:
+                self._set_status("Export cancelled.", "warning")
+                return
+
+        selections = self._prompt_library_novel_selection(
+            "Export",
+            f"Choose which novel numbers to export as {fmt.upper()}.",
+            snapshots,
+            groups,
+            label="Export Rows",
+        )
+        if selections is None:
+            self._set_status("Export cancelled.", "warning")
+            return
 
         exported: list[str] = []
         failures: list[str] = []
         for selection in selections:
             snapshot = snapshots[selection - 1]
             try:
-                self._export_novel(snapshot["novel_id"], fmt, output.strip() or None)
+                self._export_novel(snapshot["novel_id"], fmt, None, chapter_selection=chapter_selection)
                 exported.append(snapshot["novel_id"])
             except Exception as exc:
                 failures.append(f"{snapshot['novel_id']}: {exc}")
@@ -1638,7 +1912,11 @@ class TUIApp:
                 summary = f"{summary}\n..."
             self.console.print(
                 Panel(
-                    f"Exported {len(exported)} novel(s) as {fmt.upper()}.\n{summary}",
+                    (
+                        f"Exported {len(exported)} novel(s) as {fmt.upper()}.\n"
+                        f"Chapters: {self._format_chapter_selection_label(chapter_selection)}\n"
+                        f"{summary}"
+                    ),
                     title="Export Complete",
                     border_style="#9ece6a",
                     box=box.ROUNDED,
@@ -1663,7 +1941,10 @@ class TUIApp:
                 self._set_status("No novels were exported.", "error")
             return
 
-        self._set_status(f"Exported {len(exported)} novel(s) as {fmt.upper()}.", "success")
+        self._set_status(
+            f"Exported {len(exported)} novel(s) as {fmt.upper()} with {self._format_chapter_selection_label(chapter_selection)}.",
+            "success",
+        )
 
     def _prompt_source(self) -> str | None:
         sources = available_sources()
@@ -1994,7 +2275,7 @@ class TUIApp:
             force=force,
         )
 
-    def _collect_export_chapters(self, novel_id: str) -> list[dict[str, Any]]:
+    def _collect_export_chapters(self, novel_id: str, chapter_selection: str = "full") -> list[dict[str, Any]]:
         meta = self.storage.load_metadata(novel_id)
         if not meta:
             raise ValueError("Metadata not found; run scrape first.")
@@ -2004,6 +2285,13 @@ class TUIApp:
         if not isinstance(raw_chapters, list):
             raise ValueError("Stored metadata has an invalid chapter list.")
 
+        selected_numbers: set[int] | None = None
+        if not is_full_chapter_selection(chapter_selection):
+            try:
+                selected_numbers = {spec.chapter for spec in parse_chapter_selection(chapter_selection)}
+            except Exception as exc:
+                raise ValueError("Use chapter selection like 1, 3-8, or 1, 4-6.") from exc
+
         for chap in raw_chapters:
             if not isinstance(chap, dict):
                 continue
@@ -2011,6 +2299,9 @@ class TUIApp:
             if chap_id_value is None:
                 continue
             chap_id = str(chap_id_value)
+            if selected_numbers is not None:
+                if not chap_id.isdigit() or int(chap_id) not in selected_numbers:
+                    continue
             translated = self.storage.load_translated_chapter(novel_id, chap_id)
             if not translated:
                 continue
@@ -2028,18 +2319,35 @@ class TUIApp:
             )
 
         if not chapters:
+            if selected_numbers is not None:
+                raise ValueError(f"No translated chapters are available for export in chapters {chapter_selection}.")
             raise ValueError("No translated chapters are available for export.")
         return chapters
 
-    def _export_novel(self, novel_id: str, fmt: str, output_dir: str | None) -> str:
-        chapters = self._collect_export_chapters(novel_id)
-        output_path = str(
-            self.storage.build_export_path(
-                novel_id,
-                fmt,
-                output_dir,
-            )
-        )
+    def _build_export_output_path(
+        self,
+        novel_id: str,
+        fmt: str,
+        output_dir: str | None,
+        chapter_selection: str,
+    ) -> str:
+        base_path = Path(self.storage.build_export_path(novel_id, fmt, output_dir))
+        if is_full_chapter_selection(chapter_selection):
+            return str(base_path)
+
+        suffix = chapter_selection.replace(" ", "").replace(",", "_").replace("-", "to")
+        return str(base_path.with_name(f"chapters_{suffix}.{fmt}"))
+
+    def _export_novel(
+        self,
+        novel_id: str,
+        fmt: str,
+        output_dir: str | None,
+        *,
+        chapter_selection: str = "full",
+    ) -> str:
+        chapters = self._collect_export_chapters(novel_id, chapter_selection=chapter_selection)
+        output_path = self._build_export_output_path(novel_id, fmt, output_dir, chapter_selection)
         if fmt == "pdf":
             self.exporter.export_pdf(novel_id=novel_id, chapters=chapters, output_path=output_path)
         else:
