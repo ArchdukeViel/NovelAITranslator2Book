@@ -33,6 +33,40 @@ class UsageService:
         self._data.append(entry)
         self._persist()
 
+    def _entry_type(self, entry: Dict[str, Any]) -> str:
+        entry_type = entry.get("entry_type")
+        if isinstance(entry_type, str) and entry_type.strip():
+            return entry_type.strip().lower()
+        return "usage"
+
+    def _int_value(self, value: Any) -> int:
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        return 0
+
+    def _float_value(self, value: Any) -> float:
+        if isinstance(value, bool):
+            return float(value)
+        if isinstance(value, (int, float)):
+            return float(value)
+        return 0.0
+
+    def _usage_cost_usd(self, entry: Dict[str, Any]) -> float:
+        explicit_cost = entry.get("actual_cost_usd")
+        if isinstance(explicit_cost, (int, float)):
+            return float(explicit_cost)
+        return self._int_value(entry.get("tokens")) * settings.COST_PER_TOKEN_USD
+
+    def _estimate_total_tokens(self, entry: Dict[str, Any]) -> int:
+        explicit_total = entry.get("estimated_total_tokens")
+        if isinstance(explicit_total, (int, float)):
+            return int(explicit_total)
+        return self._int_value(entry.get("estimated_input_tokens")) + self._int_value(entry.get("estimated_output_tokens"))
+
     def _local_today(self) -> date:
         return datetime.now().astimezone().date()
 
@@ -69,13 +103,26 @@ class UsageService:
         return filtered
 
     def _summarize_entries(self, entries: List[Dict[str, Any]]) -> Dict[str, Any]:
-        total_requests = len(entries)
-        total_tokens = sum((entry.get("tokens", 0) or 0) for entry in entries)
-        estimated_cost = total_tokens * settings.COST_PER_TOKEN_USD
+        usage_entries = [entry for entry in entries if self._entry_type(entry) != "estimate"]
+        estimate_entries = [entry for entry in entries if self._entry_type(entry) == "estimate"]
+
+        total_requests = len(usage_entries)
+        total_tokens = sum(self._int_value(entry.get("tokens")) for entry in usage_entries)
+        estimated_cost = sum(self._usage_cost_usd(entry) for entry in usage_entries)
+        estimated_input_tokens = sum(self._int_value(entry.get("estimated_input_tokens")) for entry in estimate_entries)
+        estimated_output_tokens = sum(self._int_value(entry.get("estimated_output_tokens")) for entry in estimate_entries)
+        estimated_total_tokens = sum(self._estimate_total_tokens(entry) for entry in estimate_entries)
+        estimated_projection_cost = sum(self._float_value(entry.get("estimated_cost_usd")) for entry in estimate_entries)
+
         return {
             "total_requests": total_requests,
             "total_tokens": total_tokens,
             "estimated_cost_usd": estimated_cost,
+            "total_estimates": len(estimate_entries),
+            "estimated_input_tokens": estimated_input_tokens,
+            "estimated_output_tokens": estimated_output_tokens,
+            "estimated_total_tokens": estimated_total_tokens,
+            "estimated_projection_cost_usd": estimated_projection_cost,
         }
 
     def list(

@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
 from typing import Any, Callable, TypedDict
@@ -32,6 +32,10 @@ from novelai.services.settings_service import SettingsService
 from novelai.services.usage_service import UsageService
 from novelai.sources.registry import available_sources, detect_source, get_source
 from novelai.utils.chapter_selection import is_full_chapter_selection, parse_chapter_selection
+from src.cost_estimator.compare import compare_models
+from src.cost_estimator.models import CostComparison, EstimationOptions
+from src.cost_estimator.pricing import list_supported_models
+from src.utils import format_usd
 
 if os.name == "nt":
     import msvcrt
@@ -61,6 +65,15 @@ class LibraryLanguageGroup(TypedDict):
     index: int
     language: str
     snapshots: list[LibrarySnapshot]
+
+
+class TranslationBudgetEstimate(TypedDict):
+    """Display-ready budget estimate for one add/update run."""
+
+    japanese_characters: int
+    chapter_count: int
+    comparison: CostComparison
+    note: str | None
 
 
 class TUIApp:
@@ -803,6 +816,7 @@ class TUIApp:
                 ("Providers", ", ".join(available_providers()) or "none"),
                 ("Sources", ", ".join(available_sources()) or "none"),
                 ("Cost", f"${summary.get('estimated_cost_usd', 0):.6f}"),
+                ("Budget", f"${summary.get('estimated_projection_cost_usd', 0):.6f}"),
             ]
             lines: list[Text] = [
                 Text.assemble((f"{label}: ", "#f6bd60"), (value, "#e5e9f0"))
@@ -818,7 +832,7 @@ class TUIApp:
                         Text.assemble(
                             (self._truncate(label, max(panel_width - 18, 16)), "#cbd5e1"),
                             ("  ", "#cbd5e1"),
-                            (f"{entry.get('tokens', 0)} tokens", "#f6bd60"),
+                            (self._usage_entry_metric(entry), "#f6bd60"),
                         )
                     )
             else:
@@ -844,6 +858,7 @@ class TUIApp:
             grid.add_row("Library", self._short_path(settings.DATA_DIR))
             grid.add_row("Sources", ", ".join(available_sources()) or "none")
             grid.add_row("Cost", f"${summary.get('estimated_cost_usd', 0):.6f}")
+            grid.add_row("Budget", f"${summary.get('estimated_projection_cost_usd', 0):.6f}")
 
             recent = Text("Recent  ", style="bold #7dcfff")
             if recent_usage:
@@ -851,7 +866,7 @@ class TUIApp:
                     Text.assemble(
                         (self._truncate(f"{entry.get('provider', '?')}/{entry.get('model', '?')}", 18), "#cbd5e1"),
                         ("  ", "#cbd5e1"),
-                        (str(entry.get("tokens", 0)), "#f6bd60"),
+                        (self._usage_entry_metric(entry), "#f6bd60"),
                     )
                     for entry in reversed(recent_usage)
                 ]
@@ -878,17 +893,19 @@ class TUIApp:
         grid.add_row("Providers", ", ".join(available_providers()) or "none")
         grid.add_row("Sources", ", ".join(available_sources()) or "none")
         grid.add_row("Cost", f"${summary.get('estimated_cost_usd', 0):.6f}")
+        grid.add_row("Budget", f"${summary.get('estimated_projection_cost_usd', 0):.6f}")
 
         usage_table = Table(box=box.SIMPLE, expand=True, show_header=True, header_style="bold #7dcfff")
         usage_table.add_column("Recent")
         usage_table.add_column("Tokens", justify="right", style="#f6bd60")
+        usage_table.add_column("Type", style="#9ece6a")
 
         if recent_usage:
             for entry in reversed(recent_usage):
                 label = f"{entry.get('provider', '?')}/{entry.get('model', '?')}"
-                usage_table.add_row(label, str(entry.get("tokens", 0)))
+                usage_table.add_row(label, self._usage_entry_metric(entry), self._usage_entry_type_label(entry))
         else:
-            usage_table.add_row("No usage yet", "-")
+            usage_table.add_row("No usage yet", "-", "-")
 
         return Panel(
             Group(grid, Text(""), usage_table),
@@ -1020,6 +1037,30 @@ class TUIApp:
         if isinstance(title, str) and self._contains_japanese_characters(title):
             return "Japanese"
         return "Unknown"
+
+    def _usage_entry_type_label(self, entry: dict[str, Any]) -> str:
+        return "Estimate" if str(entry.get("entry_type", "")).strip().lower() == "estimate" else "Usage"
+
+    def _usage_entry_metric(self, entry: dict[str, Any]) -> str:
+        if str(entry.get("entry_type", "")).strip().lower() == "estimate":
+            total_tokens = entry.get("estimated_total_tokens")
+            if not isinstance(total_tokens, int):
+                total_tokens = int(entry.get("estimated_input_tokens", 0) or 0) + int(
+                    entry.get("estimated_output_tokens", 0) or 0
+                )
+            return f"~{total_tokens} est"
+        return f"{entry.get('tokens', 0) or 0} tokens"
+
+    def _usage_entry_cost_usd(self, entry: dict[str, Any]) -> float:
+        if str(entry.get("entry_type", "")).strip().lower() == "estimate":
+            value = entry.get("estimated_cost_usd", 0)
+            return float(value) if isinstance(value, (int, float)) else 0.0
+        value = entry.get("actual_cost_usd")
+        if isinstance(value, (int, float)):
+            return float(value)
+        tokens = entry.get("tokens", 0)
+        token_count = int(tokens) if isinstance(tokens, (int, float)) else 0
+        return token_count * settings.COST_PER_TOKEN_USD
 
     def _contains_japanese_characters(self, value: str) -> bool:
         return any(
@@ -2082,8 +2123,157 @@ class TUIApp:
             return str(next_chapter)
         return f"{next_chapter}-{latest_remote_chapter}"
 
+    def _selected_chapter_numbers(self, metadata: dict[str, Any] | None, selection: str) -> list[int]:
+        chapter_numbers = set(self._metadata_chapter_numbers(metadata))
+        if not chapter_numbers:
+            return []
+        if is_full_chapter_selection(selection):
+            return sorted(chapter_numbers)
+        try:
+            requested = {spec.chapter for spec in parse_chapter_selection(selection)}
+        except Exception:
+            return []
+        return [chapter_num for chapter_num in sorted(requested) if chapter_num in chapter_numbers]
+
     def _format_chapter_selection_label(self, selection: str) -> str:
         return "all available chapters" if is_full_chapter_selection(selection) else f"chapters {selection}"
+
+    def _estimate_translation_budget(
+        self,
+        *,
+        title: str,
+        novel_id: str,
+        chapters: str,
+        active_provider: str,
+        active_model: str,
+        fallback_used: bool,
+    ) -> TranslationBudgetEstimate | None:
+        metadata = self.storage.load_metadata(novel_id)
+        selected_numbers = self._selected_chapter_numbers(metadata, chapters)
+        if not selected_numbers:
+            return None
+
+        japanese_characters = 0
+        chapter_count = 0
+        for chapter_num in selected_numbers:
+            raw_chapter = self.storage.load_chapter(novel_id, str(chapter_num))
+            text = raw_chapter.get("text") if isinstance(raw_chapter, dict) else None
+            if not isinstance(text, str) or not text.strip():
+                continue
+            japanese_characters += sum(1 for char in text if not char.isspace())
+            chapter_count += 1
+
+        if japanese_characters <= 0 or chapter_count <= 0:
+            return None
+
+        supported_models = list(list_supported_models())
+        note: str | None = None
+        if active_model in supported_models:
+            estimate_models = [active_model]
+        else:
+            estimate_models = supported_models
+            if fallback_used:
+                note = "Reference estimate shown for gpt-5.2 and gpt-5.4 because translation used dummy/dummy."
+            else:
+                note = (
+                    f"Reference estimate shown for gpt-5.2 and gpt-5.4 because "
+                    f"{active_provider}/{active_model} is not in the estimator catalog."
+                )
+
+        comparison = compare_models(
+            estimate_models,
+            EstimationOptions(japanese_characters=japanese_characters),
+        )
+        timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        operation = title.strip().lower().replace(" ", "_")
+        representative = comparison.estimates[0]
+        cheapest = min(comparison.estimates, key=lambda estimate: estimate.estimated_total_cost_usd)
+        model_label = representative.model_name
+        budget_basis = "selected_model"
+        if len(comparison.estimates) > 1:
+            model_label = " vs ".join(estimate.model_name for estimate in comparison.estimates)
+            budget_basis = "cheapest_model"
+
+        self.usage.record(
+            {
+                "entry_type": "estimate",
+                "timestamp": timestamp,
+                "provider": "openai",
+                "model": model_label,
+                "estimated_input_tokens": representative.estimated_input_tokens,
+                "estimated_output_tokens": representative.estimated_output_tokens,
+                "estimated_total_tokens": representative.estimated_input_tokens + representative.estimated_output_tokens,
+                "estimated_cost_usd": cheapest.estimated_total_cost_usd,
+                "metadata": {
+                    "operation": operation,
+                    "novel_id": novel_id,
+                    "chapters": chapters,
+                    "chapter_count": chapter_count,
+                    "japanese_characters": japanese_characters,
+                    "active_provider": active_provider,
+                    "active_model": active_model,
+                    "fallback_used": fallback_used,
+                    "estimate_models": [item.model_name for item in comparison.estimates],
+                    "cheapest_model": comparison.cheapest_model,
+                    "cost_difference_usd": comparison.cost_difference_usd,
+                    "percentage_difference": comparison.percentage_difference,
+                    "budget_basis": budget_basis,
+                    "per_model_estimates": [
+                        {
+                            "model_name": estimate.model_name,
+                            "estimated_total_cost_usd": estimate.estimated_total_cost_usd,
+                            "estimated_input_tokens": estimate.estimated_input_tokens,
+                            "estimated_output_tokens": estimate.estimated_output_tokens,
+                        }
+                        for estimate in comparison.estimates
+                    ],
+                    "note": note,
+                },
+            }
+        )
+
+        return {
+            "japanese_characters": japanese_characters,
+            "chapter_count": chapter_count,
+            "comparison": comparison,
+            "note": note,
+        }
+
+    def _format_budget_summary(self, budget_estimate: TranslationBudgetEstimate | None) -> str:
+        if budget_estimate is None:
+            return "Budget estimate unavailable because no source text was available from the selected chapters."
+
+        comparison = budget_estimate["comparison"]
+        lines = [
+            (
+                "Estimated source size: "
+                f"{budget_estimate['japanese_characters']} non-whitespace characters across "
+                f"{budget_estimate['chapter_count']} chapter(s)."
+            )
+        ]
+        if len(comparison.estimates) == 1:
+            estimate = comparison.estimates[0]
+            lines.append(
+                f"Estimated tokens ({estimate.model_name}): "
+                f"{estimate.estimated_input_tokens} input / {estimate.estimated_output_tokens} output."
+            )
+            lines.append(f"Estimated cost ({estimate.model_name}): {format_usd(estimate.estimated_total_cost_usd)}.")
+        else:
+            lines.append("Estimated translation budget:")
+            for estimate in comparison.estimates:
+                lines.append(
+                    f"- {estimate.model_name}: "
+                    f"{estimate.estimated_input_tokens} in / {estimate.estimated_output_tokens} out / "
+                    f"{format_usd(estimate.estimated_total_cost_usd)}"
+                )
+            lines.append(
+                f"Cheapest estimate: {comparison.cheapest_model} "
+                f"({format_usd(comparison.cost_difference_usd)} difference, "
+                f"{comparison.percentage_difference:.2f}%)."
+            )
+        if budget_estimate["note"]:
+            lines.append(budget_estimate["note"])
+        return "\n".join(lines)
 
     def _show_existing_novel_notice(self, novel_id: str) -> None:
         self.console.print(
@@ -2117,6 +2307,15 @@ class TUIApp:
         chapters: str,
     ) -> None:
         active_provider, active_model, fallback_used = self._effective_translation_target()
+        budget_estimate = self._estimate_translation_budget(
+            title=title,
+            novel_id=novel_id,
+            chapters=chapters,
+            active_provider=active_provider,
+            active_model=active_model,
+            fallback_used=fallback_used,
+        )
+        budget_summary = self._format_budget_summary(budget_estimate)
 
         try:
             with self.console.status("[bold #7dcfff]Translating chapters...[/bold #7dcfff]", spinner="dots"):
@@ -2136,7 +2335,8 @@ class TUIApp:
                     (
                         f"Saved metadata and raw chapters for {novel_id} from {source}.\n"
                         f"Source URL: {novel_url}\n"
-                        f"Translation with {active_provider}/{active_model} failed: {exc}"
+                        f"Translation with {active_provider}/{active_model} failed: {exc}\n\n"
+                        f"{budget_summary}"
                     ),
                     title=f"{title}, Translation Pending",
                     border_style="#e0af68",
@@ -2159,7 +2359,8 @@ class TUIApp:
                 (
                     f"{title} finished for {novel_id} from {source}.\n"
                     f"Source URL: {novel_url}\n"
-                    f"Fetched and translated {selection_label} with {active_provider}/{active_model}."
+                    f"Fetched and translated {selection_label} with {active_provider}/{active_model}.\n\n"
+                    f"{budget_summary}"
                     f"{fallback_note}"
                 ),
                 title=title,
@@ -2387,27 +2588,34 @@ class TUIApp:
         stats.add_row("Today's requests", str(usage_summary.get("total_requests")))
         stats.add_row("Today's tokens", str(usage_summary.get("total_tokens")))
         stats.add_row("Today's cost (USD)", f"${usage_summary.get('estimated_cost_usd', 0):.6f}")
+        stats.add_row("Today's estimates", str(usage_summary.get("total_estimates")))
+        stats.add_row("Estimated budget (USD)", f"${usage_summary.get('estimated_projection_cost_usd', 0):.6f}")
 
         usage_table = Table(box=box.SIMPLE_HEAVY, expand=True, show_header=True, header_style="bold #7dcfff")
         usage_table.add_column("Timestamp", style="#cbd5e1")
+        usage_table.add_column("Type", style="#9ece6a")
         usage_table.add_column("Provider/Model", style="#e5e9f0")
         usage_table.add_column("Tokens", justify="right", style="#f6bd60")
+        usage_table.add_column("Cost", justify="right", style="#bb9af7")
 
         if recent_usage:
             for entry in recent_usage:
                 usage_table.add_row(
                     str(entry.get("timestamp")),
+                    self._usage_entry_type_label(entry),
                     f"{entry.get('provider')}/{entry.get('model')}",
-                    str(entry.get("tokens") or 0),
+                    self._usage_entry_metric(entry),
+                    f"${self._usage_entry_cost_usd(entry):.6f}",
                 )
         else:
-            usage_table.add_row("No usage records yet for today.", "-", "-")
+            usage_table.add_row("No usage records yet for today.", "-", "-", "-", "-")
 
         history_table = Table(box=box.SIMPLE_HEAVY, expand=True, show_header=True, header_style="bold #bb9af7")
         history_table.add_column("Date", style="#cbd5e1")
         history_table.add_column("Requests", justify="right", style="#e5e9f0")
         history_table.add_column("Tokens", justify="right", style="#7dcfff")
         history_table.add_column("Cost", justify="right", style="#f6bd60")
+        history_table.add_column("Budget", justify="right", style="#9ece6a")
 
         if daily_history:
             for entry in daily_history:
@@ -2416,9 +2624,10 @@ class TUIApp:
                     str(entry.get("total_requests")),
                     str(entry.get("total_tokens")),
                     f"${entry.get('estimated_cost_usd', 0):.6f}",
+                    f"${entry.get('estimated_projection_cost_usd', 0):.6f}",
                 )
         else:
-            history_table.add_row("No stored usage history yet.", "-", "-", "-")
+            history_table.add_row("No stored usage history yet.", "-", "-", "-", "-")
 
         diagnostics_panel = Panel(
             Group(

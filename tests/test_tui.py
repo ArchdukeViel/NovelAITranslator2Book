@@ -737,6 +737,47 @@ def test_usage_service_resets_daily_but_preserves_history() -> None:
         shutil.rmtree(usage_dir, ignore_errors=True)
 
 
+def test_usage_service_summary_includes_estimate_entries() -> None:
+    usage_dir = Path("tests/.tmp") / f"usage_estimate_{uuid4().hex}"
+    usage_dir.mkdir(parents=True, exist_ok=False)
+    usage = UsageService(usage_dir)
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    try:
+        usage.record(
+            {
+                "timestamp": now,
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "tokens": 25,
+            }
+        )
+        usage.record(
+            {
+                "entry_type": "estimate",
+                "timestamp": now,
+                "provider": "openai",
+                "model": "gpt-5.2",
+                "estimated_input_tokens": 9200,
+                "estimated_output_tokens": 8000,
+                "estimated_total_tokens": 17200,
+                "estimated_cost_usd": 0.1281,
+            }
+        )
+
+        summary = usage.summary()
+        history = usage.daily_history(limit=1)
+
+        assert summary["total_requests"] == 1
+        assert summary["total_tokens"] == 25
+        assert summary["total_estimates"] == 1
+        assert summary["estimated_total_tokens"] == 17200
+        assert summary["estimated_projection_cost_usd"] == pytest.approx(0.1281)
+        assert history[0]["estimated_projection_cost_usd"] == pytest.approx(0.1281)
+    finally:
+        shutil.rmtree(usage_dir, ignore_errors=True)
+
+
 def test_diagnostics_data_is_available(tui: TUIApp) -> None:
     novels = tui.storage.list_novels()
     total_translated = sum(tui.storage.count_translated_chapters(novel_id) for novel_id in novels)
@@ -764,3 +805,59 @@ def test_exporter_has_required_methods(tui: TUIApp) -> None:
 
 def test_missing_chapter_is_handled_gracefully(tui: TUIApp) -> None:
     assert tui.storage.load_translated_chapter("fake-novel", "1") is None
+
+
+def test_tui_budget_estimate_records_usage_for_supported_model(tui: TUIApp) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    tui.storage.save_metadata(
+        novel_id,
+        {
+            "title": "Budget Story",
+            "chapters": [{"id": 1}, {"id": 2}],
+        },
+    )
+    tui.storage.save_chapter(novel_id, "1", "魔導具の光が灯った。")
+    tui.storage.save_chapter(novel_id, "2", "王都で冒険者たちが再会した。")
+
+    budget = tui._estimate_translation_budget(
+        title="Add Novel",
+        novel_id=novel_id,
+        chapters="1-2",
+        active_provider="openai",
+        active_model="gpt-5.2",
+        fallback_used=False,
+    )
+
+    assert budget is not None
+    assert budget["chapter_count"] == 2
+    assert [estimate.model_name for estimate in budget["comparison"].estimates] == ["gpt-5.2"]
+    estimate_entries = [entry for entry in tui.usage.list(limit=10) if entry.get("entry_type") == "estimate"]
+    assert len(estimate_entries) == 1
+    assert estimate_entries[0]["model"] == "gpt-5.2"
+    assert estimate_entries[0]["estimated_total_tokens"] > 0
+
+
+def test_tui_budget_estimate_falls_back_to_reference_models_for_unsupported_model(tui: TUIApp) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    tui.storage.save_metadata(
+        novel_id,
+        {
+            "title": "Budget Story",
+            "chapters": [{"id": 1}],
+        },
+    )
+    tui.storage.save_chapter(novel_id, "1", "魔王城で再戦が始まる。")
+
+    budget = tui._estimate_translation_budget(
+        title="Update Novel",
+        novel_id=novel_id,
+        chapters="1",
+        active_provider="openai",
+        active_model="gpt-4o-mini",
+        fallback_used=False,
+    )
+
+    assert budget is not None
+    assert [estimate.model_name for estimate in budget["comparison"].estimates] == ["gpt-5.2", "gpt-5.4"]
+    assert budget["note"] is not None
+    assert "gpt-4o-mini" in budget["note"]
