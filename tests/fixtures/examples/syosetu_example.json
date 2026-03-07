@@ -1,0 +1,70 @@
+{
+  "site": "syosetu",
+  "novel_id": "n8733gf",
+  "chapter_id": "1",
+  "url": "https://ncode.syosetu.com/n8733gf/1/",
+  "fetched_at": "2026-03-07T00:00:00Z",
+  "title": "第一話 旅立ち",
+  "parser_version": "1.0.0",
+  "adapter": "SyosetuAdapter",
+  "metadata": {
+    "author": "作家A",
+    "chapter_number": "1",
+    "published_at": "2026/03/01 12:00",
+    "updated_at": "2026/03/02 08:30"
+  },
+  "source_html": "<p>ギャグ<ruby>多<rt>おお</rt></ruby>めで書きたいと思います。</p><p>是非読んでみてくださいね！</p><p>主人公は<ruby>街<rt>まち</rt></ruby>を出た。</p><p>空は青い。<br/>風も静かだ。</p><hr/><p><strong>ここから</strong>冒険が始まる。</p><p>次回から過去編を連続6話投稿します！</p>",
+  "plain_text": "ギャグ多めで書きたいと思います。\n\n是非読んでみてくださいね！\n\n主人公は街を出た。\n\n空は青い。\n風も静かだ。\n\n----------\n\nここから冒険が始まる。\n\n次回から過去編を連続6話投稿します！",
+  "segments": [
+    {
+      "segment_id": "1:0000",
+      "index": 0,
+      "kind": "paragraph",
+      "html": "<p>ギャグ<ruby>多<rt>おお</rt></ruby>めで書きたいと思います。</p>",
+      "text": "ギャグ多めで書きたいと思います。"
+    },
+    {
+      "segment_id": "1:0001",
+      "index": 1,
+      "kind": "paragraph",
+      "html": "<p>是非読んでみてくださいね！</p>",
+      "text": "是非読んでみてくださいね！"
+    },
+    {
+      "segment_id": "1:0002",
+      "index": 2,
+      "kind": "paragraph",
+      "html": "<p>主人公は<ruby>街<rt>まち</rt></ruby>を出た。</p>",
+      "text": "主人公は街を出た。"
+    },
+    {
+      "segment_id": "1:0003",
+      "index": 3,
+      "kind": "paragraph",
+      "html": "<p>空は青い。<br/>風も静かだ。</p>",
+      "text": "空は青い。\n風も静かだ。"
+    },
+    {
+      "segment_id": "1:0004",
+      "index": 4,
+      "kind": "break",
+      "html": "<hr/>",
+      "text": "----------"
+    },
+    {
+      "segment_id": "1:0005",
+      "index": 5,
+      "kind": "paragraph",
+      "html": "<p><strong>ここから</strong>冒険が始まる。</p>",
+      "text": "ここから冒険が始まる。"
+    },
+    {
+      "segment_id": "1:0006",
+      "index": 6,
+      "kind": "paragraph",
+      "html": "<p>次回から過去編を連続6話投稿します！</p>",
+      "text": "次回から過去編を連続6話投稿します！"
+    }
+  ]
+}
+

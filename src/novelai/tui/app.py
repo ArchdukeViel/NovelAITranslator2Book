@@ -1009,6 +1009,7 @@ class TUIApp:
             normalized_source = source_value.strip().lower()
             source_language_map = {
                 "syosetu_ncode": "Japanese",
+                "novel18_syosetu": "Japanese",
                 "kakuyomu": "Japanese",
                 "narou": "Japanese",
             }

@@ -116,9 +116,9 @@ class StorageService:
             custom_dir.mkdir(parents=True, exist_ok=True)
             return custom_dir / f"{novel_id}.{export_format}"
 
-        export_dir = self._novel_dir(novel_id) / export_format
-        export_dir.mkdir(parents=True, exist_ok=True)
-        return export_dir / f"full_novel.{export_format}"
+        novel_dir = self._novel_dir(novel_id)
+        novel_dir.mkdir(parents=True, exist_ok=True)
+        return novel_dir / f"full_novel.{export_format}"
 
     def _ensure_novel_dir(self, novel_id: str, folder_name: str) -> Path:
         """Ensure the novel directory exists and the index is updated."""

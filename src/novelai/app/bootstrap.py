@@ -27,10 +27,14 @@ def bootstrap_providers() -> None:
 
 def bootstrap_sources() -> None:
     """Register all known novel sources."""
+    from novelai.sources.kakuyomu import KakuyomuSource
+    from novelai.sources.novel18_syosetu import Novel18SyosetuSource
     from novelai.sources.registry import register_source
     from novelai.sources.syosetu_ncode import SyosetuNcodeSource
 
     register_source("syosetu_ncode", lambda: SyosetuNcodeSource())
+    register_source("novel18_syosetu", lambda: Novel18SyosetuSource())
+    register_source("kakuyomu", lambda: KakuyomuSource())
 
 
 def bootstrap_exporters() -> None:

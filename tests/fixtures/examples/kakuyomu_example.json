@@ -1,0 +1,49 @@
+{
+  "site": "kakuyomu",
+  "novel_id": "16818093001234567890",
+  "chapter_id": "16818093001234567999",
+  "url": "https://kakuyomu.jp/works/16818093001234567890/episodes/16818093001234567999",
+  "fetched_at": "2026-03-07T00:00:00Z",
+  "title": "第一話 霧の朝",
+  "parser_version": "1.0.0",
+  "adapter": "KakuyomuAdapter",
+  "metadata": {
+    "author": "作家B",
+    "chapter_number": null,
+    "published_at": "2026-03-05T07:00:00+09:00",
+    "updated_at": "2026-03-06T08:30:00+09:00"
+  },
+  "source_html": "<p>霧の朝、<em>彼女</em>は目を覚ました。</p><p><ruby>古道具屋<rt>ふるどうぐや</rt></ruby>の前には猫がいた。</p><blockquote>「今日は何かが起きる」</blockquote><p><img alt=\"朝の路地\" src=\"https://kakuyomu.jp/images/scene.png\"/></p>",
+  "plain_text": "霧の朝、彼女は目を覚ました。\n\n古道具屋の前には猫がいた。\n\n「今日は何かが起きる」\n\n[Image: 朝の路地]",
+  "segments": [
+    {
+      "segment_id": "16818093001234567999:0000",
+      "index": 0,
+      "kind": "paragraph",
+      "html": "<p>霧の朝、<em>彼女</em>は目を覚ました。</p>",
+      "text": "霧の朝、彼女は目を覚ました。"
+    },
+    {
+      "segment_id": "16818093001234567999:0001",
+      "index": 1,
+      "kind": "paragraph",
+      "html": "<p><ruby>古道具屋<rt>ふるどうぐや</rt></ruby>の前には猫がいた。</p>",
+      "text": "古道具屋の前には猫がいた。"
+    },
+    {
+      "segment_id": "16818093001234567999:0002",
+      "index": 2,
+      "kind": "other",
+      "html": "<blockquote>「今日は何かが起きる」</blockquote>",
+      "text": "「今日は何かが起きる」"
+    },
+    {
+      "segment_id": "16818093001234567999:0003",
+      "index": 3,
+      "kind": "image",
+      "html": "<p><img alt=\"朝の路地\" src=\"https://kakuyomu.jp/images/scene.png\"/></p>",
+      "text": "[Image: 朝の路地]"
+    }
+  ]
+}
+

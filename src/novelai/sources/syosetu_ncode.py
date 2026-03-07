@@ -7,17 +7,8 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
+from novelai.sources._helpers import attribute_to_str
 from novelai.sources.base import SourceAdapter
-
-
-def _attribute_to_str(value: object) -> str | None:
-    """Normalize a BeautifulSoup attribute value to a single string."""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, list):
-        parts = [part for part in value if isinstance(part, str)]
-        return parts[0] if len(parts) == 1 else None
-    return None
 
 
 class SyosetuNcodeSource(SourceAdapter):
@@ -134,7 +125,7 @@ class SyosetuNcodeSource(SourceAdapter):
         for anchor in soup.find_all("a", href=True):
             if not isinstance(anchor, Tag):
                 continue
-            href = _attribute_to_str(anchor.get("href"))
+            href = attribute_to_str(anchor.get("href"))
             if href is None:
                 continue
 
@@ -160,7 +151,7 @@ class SyosetuNcodeSource(SourceAdapter):
         for anchor in soup.find_all("a", href=True):
             if not isinstance(anchor, Tag):
                 continue
-            href = _attribute_to_str(anchor.get("href"))
+            href = attribute_to_str(anchor.get("href"))
             if href is None:
                 continue
 
@@ -302,7 +293,7 @@ class SyosetuNcodeSource(SourceAdapter):
         published_at, updated_at = self._extract_dates(soup)
 
         return {
-            "source": "syosetu_ncode",
+            "source": self.key,
             "source_url": url,
             "title": title,
             "author": author,

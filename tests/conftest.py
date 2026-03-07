@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import pytest
+import stat
 import shutil
 from pathlib import Path
 from typing import Any
@@ -25,6 +27,19 @@ TESTS_ROOT = Path(__file__).resolve().parent
 TESTS_TMP_ROOT = TESTS_ROOT / ".tmp" / "fixtures"
 
 
+def _force_remove_tree(path: Path) -> None:
+    """Remove a directory tree even when Windows leaves read-only temp paths behind."""
+
+    def on_error(func: Any, target: str, exc_info: Any) -> None:
+        try:
+            os.chmod(target, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+        except Exception:
+            pass
+        func(target)
+
+    shutil.rmtree(path, onerror=on_error)
+
+
 def cleanup_test_artifacts(
     project_root: Path = PROJECT_ROOT,
     tests_root: Path = TESTS_ROOT,
@@ -34,6 +49,12 @@ def cleanup_test_artifacts(
     """Remove test-generated cache and temp directories."""
     removed: list[Path] = []
     warnings: list[str] = []
+    extra_test_output_roots = (
+        project_root / ".pipeline_test_runs",
+        project_root / ".pipeline_verify",
+        project_root / ".pytest_tmp",
+        tests_root / ".cache",
+    )
 
     paths_to_remove = [
         project_root / ".pytest_cache",
@@ -52,7 +73,7 @@ def cleanup_test_artifacts(
         if not path.exists():
             continue
         try:
-            shutil.rmtree(path)
+            _force_remove_tree(path)
             removed.append(path)
         except Exception as exc:
             warnings.append(f"{path}: {exc}")
@@ -61,12 +82,29 @@ def cleanup_test_artifacts(
         if not path.is_dir():
             continue
         try:
-            shutil.rmtree(path)
+            _force_remove_tree(path)
+            removed.append(path)
+        except Exception as exc:
+            warnings.append(f"{path}: {exc}")
+
+    for path in extra_test_output_roots:
+        if not path.exists():
+            continue
+        try:
+            _force_remove_tree(path)
             removed.append(path)
         except Exception as exc:
             warnings.append(f"{path}: {exc}")
 
     return removed, warnings
+
+
+@pytest.fixture(scope="session", autouse=True)
+def auto_cleanup_test_outputs() -> None:
+    """Clean test-generated filesystem output before and after the test session."""
+    cleanup_test_artifacts(include_pytest_managed=True)
+    yield
+    cleanup_test_artifacts(include_pytest_managed=True)
 
 
 class MockTranslationProvider(TranslationProvider):

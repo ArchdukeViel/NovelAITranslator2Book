@@ -12,16 +12,38 @@ from rich.console import Console
 from novelai.app.bootstrap import bootstrap
 from novelai.config.settings import settings
 from novelai.providers.registry import available_providers
+from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.sources.registry import available_sources
 from novelai.services.usage_service import UsageService
 from novelai.tui.app import TUIApp
+from tests.conftest import TestFixture as FixtureEnv
 
 
 @pytest.fixture
-def tui() -> TUIApp:
-    """Provide a bootstrapped TUI instance for tests."""
+def tui(monkeypatch: pytest.MonkeyPatch) -> TUIApp:
+    """Provide a bootstrapped TUI instance isolated from the real novel_library."""
     bootstrap()
-    return TUIApp()
+    fixture = FixtureEnv()
+
+    monkeypatch.setattr("novelai.tui.app.container", fixture.container)
+    monkeypatch.setattr("novelai.tui.app.SettingsService", lambda: fixture.settings_service)
+    monkeypatch.setattr("novelai.tui.app.UsageService", lambda: fixture.usage_service)
+    monkeypatch.setattr(
+        "novelai.tui.app.NovelOrchestrationService",
+        lambda storage, translation: NovelOrchestrationService(
+            storage=storage,
+            translation=translation,
+            source_factory=lambda key: fixture.mock_source,
+            provider_factory=lambda key: fixture.mock_provider,
+            settings_service=fixture.settings_service,
+            translation_cache=fixture.cache,
+            usage_service=fixture.usage_service,
+        ),
+    )
+
+    app = TUIApp()
+    yield app
+    fixture.cleanup()
 
 
 def test_tui_initialization(tui: TUIApp) -> None:
@@ -55,6 +77,20 @@ def test_resolve_source_from_url_detects_registered_source_and_normalizes_id(tui
     assert tui._resolve_source_from_url("https://ncode.syosetu.com/n9669bk/12/") == (
         "syosetu_ncode",
         "n9669bk",
+    )
+    assert tui._resolve_source_from_url("https://novel18.syosetu.com/n0813kx/1/") == (
+        "novel18_syosetu",
+        "n0813kx",
+    )
+    assert tui._resolve_source_from_url("https://kakuyomu.jp/works/822139845959461179/") == (
+        "kakuyomu",
+        "822139845959461179",
+    )
+    assert tui._resolve_source_from_url(
+        "https://kakuyomu.jp/works/822139845959461179/episodes/822139845959540845"
+    ) == (
+        "kakuyomu",
+        "822139845959461179",
     )
 
 

@@ -2,6 +2,129 @@
 
 A modular Japanese-to-English web novel translation platform.
 
+## Chapter Extraction Framework
+
+This repository now also includes a production-minded chapter extraction framework under [`src/`](./src) with:
+
+- pluggable adapters for `Syosetu`, `Kakuyomu`, and a conservative `GenericAdapter`
+- canonical storage as cleaned chapter-body HTML fragments
+- derived JSON, plain text, and stable block-level segments
+- parser versioning so stored chapters can be reparsed later
+
+### Why cleaned chapter HTML is canonical
+
+The framework intentionally keeps cleaned chapter-body HTML as the source of truth instead of flattening everything to plain text too early.
+
+- HTML preserves paragraph boundaries, ruby, line breaks, emphasis, blockquotes, and inline images.
+- Plain text is useful for search, quick inspection, and translation preprocessing, but it is a lossy derivative.
+- Keeping canonical HTML makes later reparsing possible when the parser improves.
+- The same canonical fragment can support future translation, diffing, QA, and EPUB rebuilding without refetching the original page.
+
+### Why JSON is derived
+
+The JSON artifact is a machine-friendly projection of the canonical HTML:
+
+- `source_html` stores the cleaned fragment exactly as normalized by the adapter and cleaner
+- `plain_text` is derived for readability and downstream NLP-style processing
+- `segments` split the fragment into stable units with both `html` and `text`
+
+This separation keeps the pipeline future-proof. If segmentation rules change, chapters can be reparsed from canonical HTML instead of being rescraped.
+
+### Why adapter-based design is better than a one-off scraper
+
+The framework isolates site-specific logic inside adapters while keeping cleaning, text derivation, segmentation, storage, and CLI orchestration shared.
+
+- `SyosetuAdapter` only needs to know Syosetu’s reading-page structure and identifiers.
+- `KakuyomuAdapter` only needs to know Kakuyomu’s reading-page structure and identifiers.
+- `GenericAdapter` gives a conservative fallback for simple chapter/article pages.
+
+That keeps selector drift and future maintenance localized instead of duplicating whole pipelines per site.
+
+### Project Structure
+
+```text
+src/
+  adapters/
+    base.py
+    syosetu.py
+    kakuyomu.py
+    generic.py
+    registry.py
+  fetch.py
+  clean.py
+  parse.py
+  segment.py
+  models.py
+  pipeline.py
+  utils.py
+novel_library/
+  source_pipeline/
+    raw/
+    chapters/
+      html/
+      json/
+tests/
+  test_adapters.py
+  test_clean.py
+  test_parse.py
+  fixtures/
+```
+
+### CLI
+
+Run the extraction pipeline directly:
+
+```bash
+python -m src.pipeline --url "https://ncode.syosetu.com/n8733gf/1/"
+python -m src.pipeline --url "https://kakuyomu.jp/works/16818093001234567890/episodes/16818093001234567999"
+```
+
+Optional flags:
+
+```bash
+python -m src.pipeline --url "<chapter_url>" --data-dir novel_library/source_pipeline --log-level DEBUG
+```
+
+The pipeline will:
+
+1. fetch the raw page HTML
+2. save raw HTML to `novel_library/source_pipeline/raw/`
+3. detect the best adapter
+4. extract just the chapter body
+5. normalize it into a cleaned HTML fragment
+6. save canonical HTML to `novel_library/source_pipeline/chapters/html/`
+7. derive JSON, plain text, and stable segments
+8. save JSON to `novel_library/source_pipeline/chapters/json/`
+
+### Example Outputs
+
+Checked-in sample outputs are under [`tests/fixtures/examples/`](./tests/fixtures/examples):
+
+- Syosetu cleaned HTML: [`tests/fixtures/examples/syosetu_example.html`](./tests/fixtures/examples/syosetu_example.html)
+- Syosetu JSON: [`tests/fixtures/examples/syosetu_example.json`](./tests/fixtures/examples/syosetu_example.json)
+- Kakuyomu cleaned HTML: [`tests/fixtures/examples/kakuyomu_example.html`](./tests/fixtures/examples/kakuyomu_example.html)
+- Kakuyomu JSON: [`tests/fixtures/examples/kakuyomu_example.json`](./tests/fixtures/examples/kakuyomu_example.json)
+
+### Future Translation and EPUB Support
+
+This design is intended to feed later translation and publishing stages:
+
+- translation can operate on stable segment units instead of reparsing raw site HTML
+- HTML-aware translation can preserve ruby, breaks, and emphasis more reliably
+- EPUB generation can rebuild chapter markup from canonical cleaned fragments instead of guessed plain text
+
+### Adding a New Adapter
+
+To add another site:
+
+1. implement a subclass of `BaseAdapter`
+2. define `can_handle()`, `extract_title()`, `extract_chapter_body()`, and `extract_metadata()`
+3. override identifier logic if the site has stable novel/chapter IDs
+4. register the adapter in [`src/adapters/registry.py`](./src/adapters/registry.py)
+5. add a fixture and parser tests for that site
+
+The shared cleaner, plain-text derivation, segmentation, and persistence layers stay unchanged.
+
 ## Quick Start
 
 1. Install dependencies:

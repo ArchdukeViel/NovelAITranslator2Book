@@ -27,7 +27,6 @@ def test_build_export_path_defaults_to_novel_library():
             / "novel_library"
             / "novels"
             / "novel1"
-            / "epub"
             / "full_novel.epub"
         )
         assert export_path == expected_path

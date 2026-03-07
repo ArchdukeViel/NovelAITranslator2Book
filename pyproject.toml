@@ -54,7 +54,7 @@ novelai = "novelai.__main__:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-cache_dir = "tests/.cache/pytest"
+addopts = "-p no:cacheprovider"
 pythonpath = ["src"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
