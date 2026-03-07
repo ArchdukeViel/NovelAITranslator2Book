@@ -56,6 +56,7 @@ def test_save_and_load_chapter_preserves_multiline_formatting(storage):
     chapter_path = storage.base_dir / "novels" / "novel1" / "chapters" / "ch2.json"
     payload = json.loads(chapter_path.read_text(encoding="utf-8"))
     assert payload["raw"]["text"] == text
+    assert payload["raw"]["paragraphs"] == ["Paragraph one.\nLine two.", "Paragraph two."]
 
 
 def test_save_and_load_translated_chapter(storage):
@@ -201,16 +202,19 @@ def test_metadata_operations(storage):
 
 
 def test_metadata_save_merges_original_and_translated_fields(storage):
-    storage.save_metadata("novel1", {"title": "Original Title"})
-    storage.save_metadata("novel1", {"translated_title": "Translated Title"})
+    storage.save_metadata("novel1", {"title": "Original Title", "author": "Original Author"})
+    storage.save_metadata("novel1", {"translated_title": "Translated Title", "translated_author": "Translated Author"})
 
     loaded = storage.load_metadata("novel1")
 
     assert loaded is not None
     assert loaded["title"] == "Original Title"
     assert loaded["translated_title"] == "Translated Title"
+    assert loaded["translated_author"] == "Translated Author"
     assert loaded["titles"]["original"] == "Original Title"
     assert loaded["titles"]["translated"] == "Translated Title"
+    assert loaded["authors"]["original"] == "Original Author"
+    assert loaded["authors"]["translated"] == "Translated Author"
 
 
 def test_list_novels(storage):

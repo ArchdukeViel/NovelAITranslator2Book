@@ -61,6 +61,13 @@ class StorageService:
     def _hash_text(text: str) -> str:
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def _text_paragraphs(text: str) -> list[str]:
+        normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+        if not normalized:
+            return []
+        return [paragraph for paragraph in re.split(r"\n{2,}", normalized) if paragraph]
+
     def __init__(self, base_dir: Path | None = None) -> None:
         self.base_dir = (base_dir or settings.DATA_DIR).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
@@ -263,6 +270,7 @@ class StorageService:
             "id": chapter_id,
             "scraped_at": _utc_now_iso(),
             "text": text,
+            "paragraphs": self._text_paragraphs(text),
         }
         return self._persist_chapter_bundle(novel_id, chapter_id, payload)
 
@@ -299,6 +307,7 @@ class StorageService:
             "model": model,
             "translated_at": _utc_now_iso(),
             "text": text,
+            "paragraphs": self._text_paragraphs(text),
         }
         return self._persist_chapter_bundle(novel_id, chapter_id, payload)
 
@@ -336,6 +345,14 @@ class StorageService:
             titles["translated"] = merged["translated_title"]
         if titles:
             merged["titles"] = titles
+
+        authors = existing.get("authors", {}) if isinstance(existing.get("authors"), dict) else {}
+        if isinstance(merged.get("author"), str) and merged.get("author"):
+            authors["original"] = merged["author"]
+        if isinstance(merged.get("translated_author"), str) and merged.get("translated_author"):
+            authors["translated"] = merged["translated_author"]
+        if authors:
+            merged["authors"] = authors
 
         folder_name = self._compute_folder_name(novel_id, merged)
         merged["folder_name"] = folder_name

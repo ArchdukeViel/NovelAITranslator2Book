@@ -28,22 +28,27 @@ class SyosetuNcodeSource(SourceAdapter):
     BODY_SELECTORS = (
         "#novel_honbun",
         ".p-novel__text--body",
-        ".p-novel__text",
         ".js-novel-text",
         ".p-novel__body .p-novel__text",
         ".p-novel__body",
+        ".p-novel__text",
         ".novel_view",
     )
-    REMOVE_FROM_BODY_SELECTORS = (
+    PREFACE_SELECTORS = (
         "#novel_p",
-        "#novel_a",
         ".p-novel__text--preface",
-        ".p-novel__text--afterword",
         ".p-novel__preface",
+    )
+    AFTERWORD_SELECTORS = (
+        "#novel_a",
+        ".p-novel__text--afterword",
         ".p-novel__afterword",
+    )
+    REMOVE_FROM_SECTION_SELECTORS = (
         ".novel_bn",
     )
     RUBY_REMOVE_SELECTORS = ("rt", "rp")
+    SEPARATOR_LINE = "-" * 60
 
     @property
     def key(self) -> str:
@@ -121,6 +126,31 @@ class SyosetuNcodeSource(SourceAdapter):
             return None
         return author_tag.get_text(strip=True) or None
 
+    def _extract_page_numbers(self, soup: BeautifulSoup, url: str) -> list[int]:
+        base_url = httpx.URL(url)
+        novel_id = self.normalize_novel_id(url)
+        page_numbers = {1}
+
+        for anchor in soup.find_all("a", href=True):
+            if not isinstance(anchor, Tag):
+                continue
+            href = _attribute_to_str(anchor.get("href"))
+            if href is None:
+                continue
+
+            absolute_url = base_url.join(href)
+            candidate = httpx.URL(str(absolute_url))
+            if self.normalize_novel_id(str(candidate)) != novel_id:
+                continue
+            if candidate.path.rstrip("/") != f"/{novel_id}":
+                continue
+
+            page_number = candidate.params.get("p")
+            if page_number and page_number.isdigit():
+                page_numbers.add(int(page_number))
+
+        return sorted(page_numbers)
+
     def _extract_chapters(self, soup: BeautifulSoup, url: str, title: str | None) -> list[dict[str, str | int]]:
         base_url = httpx.URL(url)
         novel_id = self.normalize_novel_id(url)
@@ -174,13 +204,13 @@ class SyosetuNcodeSource(SourceAdapter):
             return False
         return True
 
-    def _prepare_story_body(self, body: Tag) -> Tag | None:
-        body_soup = BeautifulSoup(str(body), "lxml")
-        prepared = body_soup.select_one(body.name)
+    def _prepare_story_section(self, section: Tag) -> Tag | None:
+        section_soup = BeautifulSoup(str(section), "lxml")
+        prepared = section_soup.select_one(section.name)
         if not isinstance(prepared, Tag):
             return None
 
-        for removable in self.REMOVE_FROM_BODY_SELECTORS:
+        for removable in self.REMOVE_FROM_SECTION_SELECTORS:
             for tag in prepared.select(removable):
                 tag.decompose()
 
@@ -190,7 +220,7 @@ class SyosetuNcodeSource(SourceAdapter):
         for ruby in prepared.find_all("ruby"):
             ruby.unwrap()
 
-        if not prepared.get_text(separator="\n", strip=True):
+        if not prepared.get_text(separator="\n", strip=True) and not prepared.find("hr"):
             return None
         return prepared
 
@@ -209,30 +239,53 @@ class SyosetuNcodeSource(SourceAdapter):
         return "\n".join(normalized).strip()
 
     def _extract_text_from_tag(self, tag: Tag) -> str:
+        for hr in tag.find_all("hr"):
+            hr.replace_with(f"\n\n{self.SEPARATOR_LINE}\n\n")
         for br in tag.find_all("br"):
             br.replace_with("\n")
         return self._normalize_story_text(tag.get_text(separator="", strip=False))
 
-    def _render_story_body(self, body: Tag) -> str:
-        paragraphs = [
-            self._extract_text_from_tag(paragraph)
-            for paragraph in body.find_all("p")
-            if isinstance(paragraph, Tag)
-        ]
-        paragraphs = [paragraph for paragraph in paragraphs if paragraph]
-        if paragraphs:
-            return "\n\n".join(paragraphs)
-        return self._extract_text_from_tag(body)
+    def _render_story_section(self, section: Tag) -> str:
+        blocks: list[str] = []
+        for element in section.find_all(["p", "hr"], recursive=True):
+            if not isinstance(element, Tag):
+                continue
+            if element.name == "hr":
+                blocks.append(self.SEPARATOR_LINE)
+                continue
+            block = self._extract_text_from_tag(element)
+            if block:
+                blocks.append(block)
 
-    def _find_story_body(self, soup: BeautifulSoup) -> Tag | None:
-        for selector in self.BODY_SELECTORS:
+        if blocks:
+            return "\n\n".join(blocks)
+        return self._extract_text_from_tag(section)
+
+    def _find_story_section(self, soup: BeautifulSoup, selectors: tuple[str, ...]) -> Tag | None:
+        for selector in selectors:
             for candidate in soup.select(selector):
-                if not isinstance(candidate, Tag) or not self._is_story_body(candidate):
+                if not isinstance(candidate, Tag):
                     continue
-                prepared = self._prepare_story_body(candidate)
+                if selector in self.BODY_SELECTORS and not self._is_story_body(candidate):
+                    continue
+                prepared = self._prepare_story_section(candidate)
                 if prepared is not None:
                     return prepared
         return None
+
+    def _find_story_body(self, soup: BeautifulSoup) -> Tag | None:
+        return self._find_story_section(soup, self.BODY_SELECTORS)
+
+    def _find_story_sections(self, soup: BeautifulSoup) -> list[Tag]:
+        sections: list[Tag] = []
+        preface = self._find_story_section(soup, self.PREFACE_SELECTORS)
+        body = self._find_story_body(soup)
+        afterword = self._find_story_section(soup, self.AFTERWORD_SELECTORS)
+
+        for section in (preface, body, afterword):
+            if section is not None:
+                sections.append(section)
+        return sections
 
     def _extract_dates(self, soup: BeautifulSoup) -> tuple[str | None, str | None]:
         date_text = soup.get_text(separator="|", strip=True)
@@ -260,11 +313,15 @@ class SyosetuNcodeSource(SourceAdapter):
 
     def _parse_chapter_html(self, html: str) -> str:
         soup = BeautifulSoup(html, "lxml")
-        body = self._find_story_body(soup)
-        if body is None:
+        sections = self._find_story_sections(soup)
+        if not sections:
             raise SourceError("Unable to find chapter text on Syosetu page")
 
-        text = self._render_story_body(body)
+        text = "\n\n".join(
+            rendered
+            for rendered in (self._render_story_section(section) for section in sections)
+            if rendered
+        )
         text = re.sub(r"\n{3,}", "\n\n", text)
         if not text:
             raise SourceError("Chapter text was empty on Syosetu page")
@@ -273,7 +330,27 @@ class SyosetuNcodeSource(SourceAdapter):
     async def fetch_metadata(self, url: str) -> dict[str, Any]:
         url = self._normalize_url(url)
         html = await self._fetch_page(url)
-        return self._parse_metadata_html(html, url)
+        metadata = self._parse_metadata_html(html, url)
+        soup = BeautifulSoup(html, "lxml")
+        page_numbers = self._extract_page_numbers(soup, url)
+        if len(page_numbers) == 1:
+            return metadata
+
+        chapters_by_number = {
+            int(chapter["num"]): chapter
+            for chapter in metadata.get("chapters", [])
+            if isinstance(chapter, dict) and isinstance(chapter.get("num"), int)
+        }
+        for page_number in page_numbers[1:]:
+            page_url = f"{url}?p={page_number}"
+            page_html = await self._fetch_page(page_url)
+            page_soup = BeautifulSoup(page_html, "lxml")
+            for chapter in self._extract_chapters(page_soup, url, metadata.get("title")):
+                if isinstance(chapter.get("num"), int):
+                    chapters_by_number[int(chapter["num"])] = chapter
+
+        metadata["chapters"] = [chapters_by_number[number] for number in sorted(chapters_by_number)]
+        return metadata
 
     async def fetch_chapter(self, url: str) -> str:
         html = await self._fetch_page(url)

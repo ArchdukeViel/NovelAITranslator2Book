@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from novelai.sources.syosetu_ncode import SyosetuNcodeSource
 
 
@@ -73,7 +75,7 @@ def test_parse_metadata_html_synthesizes_single_chapter_for_one_shot() -> None:
     ]
 
 
-def test_parse_chapter_html_ignores_preface_and_afterword_blocks() -> None:
+def test_parse_chapter_html_preserves_preface_afterword_and_separator_lines() -> None:
     source = SyosetuNcodeSource()
     html = """
     <html>
@@ -95,4 +97,43 @@ def test_parse_chapter_html_ignores_preface_and_afterword_blocks() -> None:
 
     chapter_text = source._parse_chapter_html(html)
 
-    assert chapter_text == "Kanji line one.\nLine two.\n\nSecond paragraph."
+    assert (
+        chapter_text
+        == "Preface note.\n\nKanji line one.\nLine two.\n\nSecond paragraph.\n\n"
+        "------------------------------------------------------------\n\nAfterword note."
+    )
+
+
+@pytest.mark.asyncio
+async def test_fetch_metadata_collects_all_paginated_chapter_pages() -> None:
+    source = SyosetuNcodeSource()
+    root_url = "https://ncode.syosetu.com/n8733gf/"
+    pages = {
+        root_url: """
+        <html>
+          <body>
+            <h1 class="p-novel__title">Paged Story</h1>
+            <div id="novel_writername">Author Name</div>
+            <a href="/n8733gf/1/">Chapter One</a>
+            <a href="/n8733gf/2/">Chapter Two</a>
+            <a href="/n8733gf/?p=2">2</a>
+          </body>
+        </html>
+        """,
+        f"{root_url}?p=2": """
+        <html>
+          <body>
+            <a href="/n8733gf/3/">Chapter Three</a>
+            <a href="/n8733gf/4/">Chapter Four</a>
+          </body>
+        </html>
+        """,
+    }
+
+    async def fake_fetch_page(url: str) -> str:
+        return pages[url]
+
+    source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
+    metadata = await source.fetch_metadata(root_url)
+
+    assert [chapter["id"] for chapter in metadata["chapters"]] == ["1", "2", "3", "4"]
