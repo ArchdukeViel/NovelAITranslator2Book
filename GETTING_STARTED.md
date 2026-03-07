@@ -1,10 +1,10 @@
-# Getting Started with Novel AI
+﻿# Getting Started with Novel AI
 
 Step-by-step guide to install, configure, and run Novel AI for the first time.
 
 ---
 
-## 📋 Prerequisites
+## ðŸ“‹ Prerequisites
 
 - **Python 3.13+** (check with `python --version`)
 - **Git** (for cloning the repository)
@@ -13,7 +13,7 @@ Step-by-step guide to install, configure, and run Novel AI for the first time.
 
 ---
 
-## 🔧 Installation Steps
+## ðŸ”§ Installation Steps
 
 ### Step 1: Clone Repository
 
@@ -68,7 +68,7 @@ copy .env.example .env
 
 ---
 
-## ✅ Verify Installation
+## âœ… Verify Installation
 
 Run verification script to check all systems:
 
@@ -86,11 +86,11 @@ print('NOVEL AI VERIFICATION')
 print('=' * 60)
 
 # Test imports
-logger.info('✓ Core imports working')
+logger.info('âœ“ Core imports working')
 
 # Test bootstrap
 bootstrap()
-logger.info('✓ Bootstrap successful')
+logger.info('âœ“ Bootstrap successful')
 
 # Test logging
 logger.debug('Debug level active')
@@ -102,8 +102,8 @@ print('INSTALLATION COMPLETE')
 print('=' * 60)
 print()
 print('Next steps:')
-print('  1. Run TUI: python -m novelai tui')
-print('  2. Or use CLI: python -m novelai scrape-metadata syosetu_ncode n4423lw')
+print('  1. Run TUI: novelaibook tui')
+print('  2. Or use CLI: novelaibook scrape-metadata syosetu_ncode n4423lw')
 print('  3. See PYTHON_COMMANDS.md for all commands')
 print('  4. See TUI_GUIDE.md for terminal UI walkthrough')
 "
@@ -111,33 +111,33 @@ print('  4. See TUI_GUIDE.md for terminal UI walkthrough')
 
 ---
 
-## 🎮 First Run: Using the TUI
+## ðŸŽ® First Run: Using the TUI
 
 The easiest way to get started:
 
 ```bash
-python -m novelai tui
+novelaibook tui
 ```
 
 You'll see the terminal user interface (TUI) with menus. See [TUI_GUIDE.md](TUI_GUIDE.md) for detailed walkthrough.
 
 ---
 
-## 📝 First Run: Using CLI
+## ðŸ“ First Run: Using CLI
 
 If you prefer command line:
 
 ### 1. Check Available Sources
 
 ```bash
-python -m novelai list-sources
+novelaibook list-sources
 ```
 
 ### 2. Download Novel Metadata
 
 ```bash
 # For Syosetu (Japanese web novel site)
-python -m novelai scrape-metadata syosetu_ncode n4423lw
+novelaibook scrape-metadata syosetu_ncode n4423lw
 ```
 
 This downloads metadata for novel `n4423lw` (Sword Art Online Progressive).
@@ -146,7 +146,7 @@ This downloads metadata for novel `n4423lw` (Sword Art Online Progressive).
 
 ```bash
 # Fetch first 3 chapters
-python -m novelai fetch syosetu_ncode n4423lw 1-3
+novelaibook fetch syosetu_ncode n4423lw 1-3
 ```
 
 Chapters stored in: `data/novels/sword_art_online_progressive/raw/`
@@ -155,7 +155,7 @@ Chapters stored in: `data/novels/sword_art_online_progressive/raw/`
 
 ```bash
 # Translate using default provider (OpenAI)
-python -m novelai translate-chapters syosetu_ncode n4423lw 1-3
+novelaibook translate-chapters syosetu_ncode n4423lw 1-3
 ```
 
 Translations stored in: `data/novels/sword_art_online_progressive/translated/`
@@ -164,41 +164,41 @@ Translations stored in: `data/novels/sword_art_online_progressive/translated/`
 
 ```bash
 # Export to EPUB (saved to data/novels/{folder}/epub/)
-python -m novelai export-epub n4423lw --format epub
+novelaibook export-epub n4423lw --format epub
 
 # Export to PDF (saved to data/novels/{folder}/pdf/)
-python -m novelai export-epub n4423lw --format pdf
+novelaibook export-epub n4423lw --format pdf
 ```
 
 ---
 
-## 📂 Data Directory Structure
+## ðŸ“‚ Data Directory Structure
 
 After first run, your `data/` folder looks like:
 
 ```
 data/
-├── translation_cache.json          # Cached translations
-├── usage.json                       # API usage statistics
-└── novels/
-    ├── index.json
-    └── sword_art_online_progressive/
-        ├── metadata.json            # Novel info
-        ├── raw/                     # Raw chapters
-        │   ├── chapter_1.json
-        │   └── chapter_2.json
-        ├── translated/              # Translated chapters
-        │   ├── chapter_1.json
-        │   └── chapter_2.json
-        ├── epub/                    # EPUB exports
-        └── pdf/                     # PDF exports
+â”œâ”€â”€ translation_cache.json          # Cached translations
+â”œâ”€â”€ usage.json                       # API usage statistics
+â””â”€â”€ novels/
+    â”œâ”€â”€ index.json
+    â””â”€â”€ sword_art_online_progressive/
+        â”œâ”€â”€ metadata.json            # Novel info
+        â”œâ”€â”€ raw/                     # Raw chapters
+        â”‚   â”œâ”€â”€ chapter_1.json
+        â”‚   â””â”€â”€ chapter_2.json
+        â”œâ”€â”€ translated/              # Translated chapters
+        â”‚   â”œâ”€â”€ chapter_1.json
+        â”‚   â””â”€â”€ chapter_2.json
+        â”œâ”€â”€ epub/                    # EPUB exports
+        â””â”€â”€ pdf/                     # PDF exports
 ```
 
 See [DATA_OUTPUT_STRUCTURE.md](DATA_OUTPUT_STRUCTURE.md) for complete explanation.
 
 ---
 
-## 🐛 Troubleshooting
+## ðŸ› Troubleshooting
 
 ### Issue: "ModuleNotFoundError: No module named 'novelai'"
 
@@ -226,18 +226,18 @@ python -m pip install -e .
 **Solution**:
 - Backups use about 1-2MB per novel (compressed)
 - Raw and translated chapters use about 100-200KB per chapter
-- Clear backups if needed: `python -m novelai cleanup-backups`
+- Clear backups if needed: `novelaibook cleanup-backups`
 
 ### Issue: "Rate limit exceeded"
 
 **Solution**:
 - OpenAI has rate limits (varies by API tier)
 - Wait a few moments and try again
-- Use `python -m novelai check-usage` to see your API usage
+- Use `novelaibook check-usage` to see your API usage
 
 ---
 
-## 📚 Next Steps
+## ðŸ“š Next Steps
 
 1. **Learn CLI Commands**: See [PYTHON_COMMANDS.md](PYTHON_COMMANDS.md)
 2. **Learn TUI**: See [TUI_GUIDE.md](TUI_GUIDE.md)
@@ -247,12 +247,12 @@ python -m pip install -e .
 
 ---
 
-## 💡 Tips
+## ðŸ’¡ Tips
 
 ### Tip 1: Batch Processing
 Translate multiple chapters at once for efficiency:
 ```bash
-python -m novelai translate-chapters syosetu_ncode n4423lw 1-10
+novelaibook translate-chapters syosetu_ncode n4423lw 1-10
 ```
 
 ### Tip 2: Add Custom Glossary
@@ -266,7 +266,7 @@ GLOSSARY = {
 
 ### Tip 3: Check Costs Before High-Volume Runs
 ```bash
-python -m novelai check-usage
+novelaibook check-usage
 ```
 
 ### Tip 4: Use TUI for Visual Feedback
@@ -285,7 +285,7 @@ Then run command to see detailed logs.
 
 ---
 
-## ⚙️ Configuration Reference
+## âš™ï¸ Configuration Reference
 
 All settings in `.env`:
 
@@ -303,7 +303,7 @@ All settings in `.env`:
 
 ---
 
-## 📞 Getting Help
+## ðŸ“ž Getting Help
 
 1. **Check Logs**: Logs saved to `logs/` directory
 2. **Read Docs**: Start with [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)
@@ -312,18 +312,19 @@ All settings in `.env`:
 
 ---
 
-## 🎉 Success!
+## ðŸŽ‰ Success!
 
 You're ready to:
-- ✅ Download novels from sources
-- ✅ Translate them using AI
-- ✅ Export to readable formats
-- ✅ Track costs and usage
-- ✅ Handle errors gracefully (Phase 4)
+- âœ… Download novels from sources
+- âœ… Translate them using AI
+- âœ… Export to readable formats
+- âœ… Track costs and usage
+- âœ… Handle errors gracefully (Phase 4)
 
 Start with TUI for easy interactive experience:
 ```bash
-python -m novelai tui
+novelaibook tui
 ```
 
 Or master the CLI from [PYTHON_COMMANDS.md](PYTHON_COMMANDS.md).
+

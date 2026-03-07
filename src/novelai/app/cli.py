@@ -5,7 +5,7 @@ import asyncio
 
 from novelai.app.bootstrap import bootstrap
 from novelai.app.container import container
-from novelai.services.novel_orchestration_service import NovelOrchestrationService
+from novelai.app.web import main as web_main
 from novelai.tui.app import TUIApp
 
 
@@ -18,6 +18,9 @@ def _normalize_action(action: str) -> str:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="novelaibook")
     subparsers = parser.add_subparsers(dest="command")
+
+    # Web mode
+    subparsers.add_parser("web", help="Run the web server")
 
     # TUI mode (default)
     subparsers.add_parser("tui", help="Run the interactive TUI")
@@ -74,16 +77,19 @@ def main(argv: list[str] | None = None) -> None:
     # Ensure providers/sources are registered before we use them.
     bootstrap()
 
-    orchestrator = NovelOrchestrationService(container.storage, container.translation)
-    exporter = container.export
-
     if args.command == "tui" or args.command is None:
         app = TUIApp()
         app.run()
         return
+    if args.command == "web":
+        web_main()
+        return
 
     try:
         if args.command == "scrape-metadata":
+            from novelai.services.novel_orchestration_service import NovelOrchestrationService
+
+            orchestrator = NovelOrchestrationService(container.storage, container.translation)
             asyncio.run(
                 orchestrator.scrape_metadata(
                     args.source,
@@ -92,6 +98,9 @@ def main(argv: list[str] | None = None) -> None:
                 )
             )
         elif args.command == "scrape-chapters":
+            from novelai.services.novel_orchestration_service import NovelOrchestrationService
+
+            orchestrator = NovelOrchestrationService(container.storage, container.translation)
             asyncio.run(
                 orchestrator.scrape_chapters(
                     args.source,
@@ -101,6 +110,9 @@ def main(argv: list[str] | None = None) -> None:
                 )
             )
         elif args.command == "translate-chapters":
+            from novelai.services.novel_orchestration_service import NovelOrchestrationService
+
+            orchestrator = NovelOrchestrationService(container.storage, container.translation)
             asyncio.run(
                 orchestrator.translate_chapters(
                     args.source,
@@ -111,6 +123,7 @@ def main(argv: list[str] | None = None) -> None:
                 )
             )
         elif args.command == "export-epub":
+            exporter = container.export
             meta = container.storage.load_metadata(args.novel)
             if not meta:
                 raise SystemExit("Metadata not found; run scrape-metadata first.")

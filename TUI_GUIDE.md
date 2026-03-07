@@ -1,34 +1,43 @@
-# Terminal UI (TUI) Guide
+﻿# Terminal UI (TUI) Guide
 
-Comprehensive walkthrough of the Novel AI Terminal User Interface with actual menu options and examples.
+Comprehensive walkthrough of the `novelaibook tui` dashboard and its action flows.
 
 ---
 
-## 🚀 Launch TUI
+## ðŸš€ Launch TUI
 
 ```bash
-python -m novelai tui
+novelaibook tui
 ```
 
 The interactive terminal interface will start automatically.
 
 ---
 
-## 📌 Main Menu Overview
+## ðŸ“Œ Main Menu Overview
 
-When you launch TUI, you see the main menu:
+When you launch TUI, you land on a dashboard instead of a plain prompt. The layout is built around:
+
+- a top "Reading Room" header with provider and library info
+- overview cards for novels, translated chapters, sources, and requests
+- a "Control Deck" action table
+- a "Library Snapshot" panel
+- a "System Pulse" panel for settings and recent usage
+- a bottom "Guide Rail" with status and command hints
+
+The interface design is loosely inspired by polished GitHub TUIs such as `Textualize/frogmouth`, `gitui-org/gitui`, and `charmbracelet/glow`.
+
+After the dashboard renders, you choose an action from the prompt:
 
 ```
-Novel AI TUI
-
-Select an option: (list, scrape, translate, export, diagnostics, settings, exit) [list]:
+Action [list/scrape/translate/export/diagnostics/settings/exit] (list):
 ```
 
-The TUI offers 7 main options. Use the number or keyword to select.
+The TUI offers 7 main options. Type the action name directly.
 
 ---
 
-## ⌨️ Keyboard Shortcuts
+## âŒ¨ï¸ Keyboard Shortcuts
 
 ### Navigation
 
@@ -50,7 +59,7 @@ The TUI offers 7 main options. Use the number or keyword to select.
 
 ---
 
-## 📖 Step-by-Step Guide to All 7 Options
+## ðŸ“– Step-by-Step Guide to All 7 Options
 
 ### Option 1: List Novels
 
@@ -58,16 +67,19 @@ The TUI offers 7 main options. Use the number or keyword to select.
 
 **Access**: Type `list` or press Enter (it's the default)
 
-**Example Session**:
+**What you see**:
 
 ```
-Select an option: (list, scrape, translate, export, diagnostics, settings, exit) [list]:
-- Sword Art Online Progressive
-- Re:Zero - Starting Life
++-------------------------- Library Snapshot ---------------------------+
+| Novel ID   | Title                           | Chapters | Translated |
+|------------+---------------------------------+----------+------------|
+| n4423lw    | Sword Art Online Progressive    | 120      | 120        |
+| n9669bk    | Re:Zero - Starting Life         |  90      |  34        |
++---------------------------------------------------------------------+
 ```
 
 **Output**:
-- Shows all novels stored in your `data/novels/` directory
+- Shows all novels stored in your `novel_library/novels/` directory
 - Shows empty message if no novels yet
 
 ---
@@ -106,8 +118,7 @@ Scrape mode (full, update) [update]: update
 
 **Example**:
 ```
-Saved metadata for n4423lw from syosetu_ncode
-Saved chapters for n4423lw from syosetu_ncode
+Saved metadata and chapters for n4423lw from syosetu_ncode.
 ```
 
 ---
@@ -148,7 +159,7 @@ Provider model [gpt-3.5-turbo]: gpt-4
 
 **Output**:
 ```
-Translated chapters for n4423lw
+Translated chapters 1-3 for n4423lw with openai/gpt-4.
 ```
 
 **Notes**:
@@ -171,9 +182,9 @@ Translated chapters for n4423lw
 Novel ID: n4423lw
 ```
 
-2. Choose output directory:
+2. Choose output directory (optional):
 ```
-Output directory [output]: output
+Output directory (leave blank for novel library):
 ```
 
 3. Choose format:
@@ -183,12 +194,12 @@ Format (epub, pdf) [epub]: epub
 
 **Output**:
 ```
-Exported EPUB to output/n4423lw.epub
+Exported EPUB to novel_library/novels/sword_art_online_progressive/epub/full_novel.epub
 ```
 
 **Files saved to**:
-- Custom: `{output}/{novel_id}.{format}` (e.g., `output/n4423lw.epub`)
-- Default: `data/novels/{novel_name}/{format}/full_novel.{format}`
+- Default: `novel_library/novels/{novel_name}/{format}/full_novel.{format}`
+- Custom: `{output_dir}/{novel_id}.{format}` (e.g., `exports/n4423lw.epub`)
 
 ---
 
@@ -201,21 +212,17 @@ Exported EPUB to output/n4423lw.epub
 **Display Shows**:
 
 ```
-System diagnostics
+Novels stored              2
+Translated chapters        6
+Cached translations        42
+Total translation requests 15
+Total tokens used          28500
+Estimated cost (USD)       $0.250000
 
-Novels stored: 2
-Translated chapters: 6
-Cached translations: 42
-Total translation requests: 15
-Total tokens used: 28,500
-Estimated cost (USD): $0.25
-
-Recent translation usage
-- 2026-03-07 14:30:22 | openai/gpt-3.5-turbo | tokens=1200
-- 2026-03-07 14:25:15 | openai/gpt-3.5-turbo | tokens=950
-- 2026-03-07 14:20:08 | openai/gpt-4 | tokens=2100
-
-Clear usage history? (yes, no) [no]:
+Timestamp                  Provider/Model         Tokens
+2026-03-07T14:30:22Z       openai/gpt-3.5-turbo    1200
+2026-03-07T14:25:15Z       openai/gpt-3.5-turbo     950
+2026-03-07T14:20:08Z       openai/gpt-4            2100
 ```
 
 **Information Shown**:
@@ -278,7 +285,7 @@ Returns cleanly to command prompt.
 
 ---
 
-## 🎯 Common Workflows
+## ðŸŽ¯ Common Workflows
 
 ### Workflow 1: Download and Translate a Novel
 
@@ -368,21 +375,21 @@ Returns cleanly to command prompt.
 
 ---
 
-## 📊 Menu Reference Table
+## ðŸ“Š Menu Reference Table
 
 | Option | Command | Purpose | Notes |
 |--------|---------|---------|-------|
 | 1 | list | View novels | Default option |
 | 2 | scrape | Download chapters | Choose mode (full/update) |
 | 3 | translate | Translate chapters | Uses provider settings |
-| 4 | export | Create EPUB/PDF | Saves to output/ by default |
+| 4 | export | Create EPUB/PDF | Saves to novel_library by default |
 | 5 | diagnostics | Show statistics | Shows cache, usage, costs |
 | 6 | settings | Modify settings | Update provider/model |
 | 7 | exit | Close TUI | Returns to terminal |
 
 ---
 
-## 💡 Tips & Tricks
+## ðŸ’¡ Tips & Tricks
 
 ### Tip 1: Use Default Values
 - Most options have reasonable defaults shown in `[brackets]`
@@ -412,12 +419,12 @@ Returns cleanly to command prompt.
 
 ---
 
-## 🆘 Troubleshooting
+## ðŸ†˜ Troubleshooting
 
 ### "No sources are registered"
 - **Cause**: Sources not initialized
 - **Fix**: Exit and restart TUI
-- **Command**: `python -m novelai tui`
+- **Command**: `novelaibook tui`
 
 ### "No providers are registered"
 - **Cause**: No providers configured
@@ -433,7 +440,7 @@ Returns cleanly to command prompt.
 ### Export fails "metadata not found"
 - **Cause**: Need to scrape first
 - **Fix**: Run scrape before export
-- **Sequence**: scrape → translate → export
+- **Sequence**: scrape â†’ translate â†’ export
 
 ### Chapters not translating
 - **Cause**: Chapters not downloaded yet
@@ -442,7 +449,7 @@ Returns cleanly to command prompt.
 
 ---
 
-## 📈 Performance Tips
+## ðŸ“ˆ Performance Tips
 
 **For Large Novels**:
 1. Translate in batches (1-50, then 51-100, etc.)
@@ -461,11 +468,11 @@ Returns cleanly to command prompt.
 
 ---
 
-## 📝 Example Complete Session
+## ðŸ“ Example Complete Session
 
 ```
 # Start TUI
-$ python -m novelai tui
+$ novelaibook tui
 
 # 1. List (default)
 Select an option: [list]:
@@ -506,9 +513,9 @@ Recent translation usage
 # 6. Export
 Select an option: export
 Novel ID: n4423lw
-Output directory [output]:
+Output directory (leave blank for novel library):
 Format [epub]:
-Exported EPUB to output/n4423lw.epub
+Exported EPUB to novel_library/novels/sword_art_online_progressive/epub/full_novel.epub
 
 # 7. Exit
 Select an option: exit
@@ -517,7 +524,7 @@ Select an option: exit
 
 ---
 
-## 🔗 Related Documentation
+## ðŸ”— Related Documentation
 
 - [GETTING_STARTED.md](GETTING_STARTED.md) - Installation & setup
 - [PYTHON_COMMANDS.md](PYTHON_COMMANDS.md) - CLI & programmatic usage
@@ -527,39 +534,39 @@ Select an option: exit
 
 
 ```bash
-python -m novelai tui
+novelaibook tui
 ```
 
 The interactive terminal interface will start automatically.
 
 ---
 
-## 📌 Main Menu Overview
+## ðŸ“Œ Main Menu Overview
 
 When you launch TUI, you see the main menu:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║                    NOVEL AI - Main Menu                    ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  1. Scrape Novel Metadata                                 ║
-║  2. Fetch Chapters                                        ║
-║  3. Translate Chapters                                    ║
-║  4. Export to EPUB/PDF                                   ║
-║  5. View Novels                                           ║
-║  6. Check API Usage                                       ║
-║  7. Settings                                              ║
-║  8. Exit                                                  ║
-║                                                            ║
-║  Enter your choice (1-8): _                               ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘                    NOVEL AI - Main Menu                    â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  1. Scrape Novel Metadata                                 â•‘
+â•‘  2. Fetch Chapters                                        â•‘
+â•‘  3. Translate Chapters                                    â•‘
+â•‘  4. Export to EPUB/PDF                                   â•‘
+â•‘  5. View Novels                                           â•‘
+â•‘  6. Check API Usage                                       â•‘
+â•‘  7. Settings                                              â•‘
+â•‘  8. Exit                                                  â•‘
+â•‘                                                            â•‘
+â•‘  Enter your choice (1-8): _                               â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 ---
 
-## ⌨️ Keyboard Shortcuts
+## âŒ¨ï¸ Keyboard Shortcuts
 
 ### Navigation
 
@@ -585,7 +592,7 @@ When you launch TUI, you see the main menu:
 
 ---
 
-## 📖 Step-by-Step Walkthrough
+## ðŸ“– Step-by-Step Walkthrough
 
 ### Step 1: Scrape Novel Metadata
 
@@ -596,18 +603,18 @@ When you launch TUI, you see the main menu:
 1. From main menu, select: **1. Scrape Novel Metadata**
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║          Scrape Novel Metadata - Select Source            ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  Available Sources:                                        ║
-║  1. Syosetu (syosetu_ncode)                               ║
-║  2. Kakuyomu (kakuyomu)                                   ║
-║  3. Example Source (example_source)                       ║
-║                                                            ║
-║  Select source (1-3): _                                   ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘          Scrape Novel Metadata - Select Source            â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  Available Sources:                                        â•‘
+â•‘  1. Syosetu (syosetu_ncode)                               â•‘
+â•‘  2. Kakuyomu (kakuyomu)                                   â•‘
+â•‘  3. Example Source (example_source)                       â•‘
+â•‘                                                            â•‘
+â•‘  Select source (1-3): _                                   â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 2. Select source: **1** (Syosetu is most common)
@@ -615,52 +622,52 @@ When you launch TUI, you see the main menu:
 3. Enter novel ID:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║              Scrape Novel Metadata - Novel ID              ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  Enter novel ID (e.g., n4423lw):                          ║
-║  > n4423lw                                                 ║
-║                                                            ║
-║  [Press Enter to confirm]                                ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘              Scrape Novel Metadata - Novel ID              â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  Enter novel ID (e.g., n4423lw):                          â•‘
+â•‘  > n4423lw                                                 â•‘
+â•‘                                                            â•‘
+â•‘  [Press Enter to confirm]                                â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 4. Wait for download:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║              Scraping Novel Metadata...                    ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  [████████████████░░░░░░░░░░░░░░░░░░░░░░] 50%             ║
-║  Status: Downloading chapter list...                      ║
-║                                                            ║
-║  Novel: Sword Art Online Progressive                      ║
-║  Author: Reki Kawahara                                    ║
-║  Chapters found: 120                                      ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘              Scraping Novel Metadata...                    â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  [â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘] 50%             â•‘
+â•‘  Status: Downloading chapter list...                      â•‘
+â•‘                                                            â•‘
+â•‘  Novel: Sword Art Online Progressive                      â•‘
+â•‘  Author: Reki Kawahara                                    â•‘
+â•‘  Chapters found: 120                                      â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 5. Success screen:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║                    Success!                               ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  ✓ Metadata scraped successfully                          ║
-║                                                            ║
-║  Novel: Sword Art Online Progressive                      ║
-║  ID: n4423lw                                              ║
-║  Chapters: 120                                            ║
-║  Saved to: data/novels/sword_art_online_progressive/     ║
-║                                                            ║
-║  [Press Enter to continue]                                ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘                    Success!                               â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  âœ“ Metadata scraped successfully                          â•‘
+â•‘                                                            â•‘
+â•‘  Novel: Sword Art Online Progressive                      â•‘
+â•‘  ID: n4423lw                                              â•‘
+â•‘  Chapters: 120                                            â•‘
+â•‘  Saved to: data/novels/sword_art_online_progressive/     â•‘
+â•‘                                                            â•‘
+â•‘  [Press Enter to continue]                                â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 ---
@@ -682,57 +689,57 @@ Enter novel ID: n4423lw
 3. Select chapters:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║              Fetch Chapters - Selection Menu               ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  Total chapters available: 120                            ║
-║                                                            ║
-║  Chapter Selection Syntax:                                ║
-║  • 1-5         (chapters 1 through 5)                     ║
-║  • 1,3,5       (specific chapters)                        ║
-║  • 1-10;15-20  (multiple ranges)                          ║
-║  • 1-*         (all chapters)                             ║
-║                                                            ║
-║  Enter selection: 1-3                                      ║
-║                                                            ║
-║  [Press Enter to start fetching]                          ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘              Fetch Chapters - Selection Menu               â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  Total chapters available: 120                            â•‘
+â•‘                                                            â•‘
+â•‘  Chapter Selection Syntax:                                â•‘
+â•‘  â€¢ 1-5         (chapters 1 through 5)                     â•‘
+â•‘  â€¢ 1,3,5       (specific chapters)                        â•‘
+â•‘  â€¢ 1-10;15-20  (multiple ranges)                          â•‘
+â•‘  â€¢ 1-*         (all chapters)                             â•‘
+â•‘                                                            â•‘
+â•‘  Enter selection: 1-3                                      â•‘
+â•‘                                                            â•‘
+â•‘  [Press Enter to start fetching]                          â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 4. Fetching progress:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║              Fetching Chapters 1-3...                      ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  [████████████████████████████░░░░░░░░░] 75%              ║
-║                                                            ║
-║  ✓ Chapter 1: 2,847 chars                                 ║
-║  ✓ Chapter 2: 3,102 chars                                 ║
-║  ⏳ Chapter 3: Downloading...                              ║
-║                                                            ║
-║  Estimated time: 30 seconds                               ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘              Fetching Chapters 1-3...                      â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  [â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘] 75%              â•‘
+â•‘                                                            â•‘
+â•‘  âœ“ Chapter 1: 2,847 chars                                 â•‘
+â•‘  âœ“ Chapter 2: 3,102 chars                                 â•‘
+â•‘  â³ Chapter 3: Downloading...                              â•‘
+â•‘                                                            â•‘
+â•‘  Estimated time: 30 seconds                               â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 5. Complete:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║                    Complete!                              ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  ✓ Fetched 3 chapters successfully                        ║
-║                                                            ║
-║  Saved to: data/novels/sword_art_online_progressive/raw/  ║
-║                                                            ║
-║  [Press Enter to continue]                                ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘                    Complete!                              â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  âœ“ Fetched 3 chapters successfully                        â•‘
+â•‘                                                            â•‘
+â•‘  Saved to: data/novels/sword_art_online_progressive/raw/  â•‘
+â•‘                                                            â•‘
+â•‘  [Press Enter to continue]                                â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 ---
@@ -760,80 +767,80 @@ Enter chapter selection: 1-3
 4. Choose provider:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║           Translate Chapters - Choose Provider             ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  Available Providers:                                     ║
-║  1. OpenAI (gpt-3.5-turbo)  - $0.001 per 1k tokens       ║
-║  2. OpenAI (gpt-4)          - $0.03 per 1k tokens         ║
-║  3. OpenAI (gpt-4-turbo)    - $0.01 per 1k tokens         ║
-║                                                            ║
-║  Select provider (1-3): 3  [Recommended: gpt-4-turbo]    ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘           Translate Chapters - Choose Provider             â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  Available Providers:                                     â•‘
+â•‘  1. OpenAI (gpt-3.5-turbo)  - $0.001 per 1k tokens       â•‘
+â•‘  2. OpenAI (gpt-4)          - $0.03 per 1k tokens         â•‘
+â•‘  3. OpenAI (gpt-4-turbo)    - $0.01 per 1k tokens         â•‘
+â•‘                                                            â•‘
+â•‘  Select provider (1-3): 3  [Recommended: gpt-4-turbo]    â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 5. Cost estimate before proceeding:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║              Cost Estimate                                ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  Processing 3 chapters with gpt-4-turbo:                  ║
-║                                                            ║
-║  Estimated tokens: 8,400                                  ║
-║  Estimated cost: $0.084                                   ║
-║  Current usage today: $2.45                               ║
-║  Daily budget: $10.00                                     ║
-║                                                            ║
-║  ✓ Within budget                                          ║
-║                                                            ║
-║  Continue? (Y/n): y                                        ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘              Cost Estimate                                â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  Processing 3 chapters with gpt-4-turbo:                  â•‘
+â•‘                                                            â•‘
+â•‘  Estimated tokens: 8,400                                  â•‘
+â•‘  Estimated cost: $0.084                                   â•‘
+â•‘  Current usage today: $2.45                               â•‘
+â•‘  Daily budget: $10.00                                     â•‘
+â•‘                                                            â•‘
+â•‘  âœ“ Within budget                                          â•‘
+â•‘                                                            â•‘
+â•‘  Continue? (Y/n): y                                        â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 6. Translation progress with live updates:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║              Translating Chapters 1-3...                   ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  [████████████████░░░░░░░░░░░░░░░░░░░░░░] 50%             ║
-║                                                            ║
-║  ✓ Chapter 1: 2,500 tokens (~$0.025) [cache miss]        ║
-║  ✓ Chapter 2: 2,800 tokens (~$0.028) [cache miss]        ║
-║  ⏳ Chapter 3: Processing... [cache hit - 0 tokens]       ║
-║                                                            ║
-║  Total spent: $0.053 / $0.084                             ║
-║  ETA: 45 seconds                                          ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘              Translating Chapters 1-3...                   â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  [â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘â–‘] 50%             â•‘
+â•‘                                                            â•‘
+â•‘  âœ“ Chapter 1: 2,500 tokens (~$0.025) [cache miss]        â•‘
+â•‘  âœ“ Chapter 2: 2,800 tokens (~$0.028) [cache miss]        â•‘
+â•‘  â³ Chapter 3: Processing... [cache hit - 0 tokens]       â•‘
+â•‘                                                            â•‘
+â•‘  Total spent: $0.053 / $0.084                             â•‘
+â•‘  ETA: 45 seconds                                          â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 7. Complete with summary:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║              Translation Complete!                        ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  ✓ Translated 3 chapters                                  ║
-║                                                            ║
-║  Cache hits: 1 chapter (saved $0.010)                     ║
-║  API calls: 2 chapters                                    ║
-║  Total tokens: 5,300                                      ║
-║  Total cost: $0.053                                       ║
-║                                                            ║
-║  Saved to: data/novels/sword_art_online_progressive/      ║
-║            translated/                                    ║
-║                                                            ║
-║  [Press Enter to continue]                                ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘              Translation Complete!                        â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  âœ“ Translated 3 chapters                                  â•‘
+â•‘                                                            â•‘
+â•‘  Cache hits: 1 chapter (saved $0.010)                     â•‘
+â•‘  API calls: 2 chapters                                    â•‘
+â•‘  Total tokens: 5,300                                      â•‘
+â•‘  Total cost: $0.053                                       â•‘
+â•‘                                                            â•‘
+â•‘  Saved to: data/novels/sword_art_online_progressive/      â•‘
+â•‘            translated/                                    â•‘
+â•‘                                                            â•‘
+â•‘  [Press Enter to continue]                                â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 ---
@@ -855,55 +862,55 @@ Enter novel ID: n4423lw
 3. Choose format:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║           Export Chapters - Choose Format                  ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  Available Formats:                                       ║
-║  1. EPUB (Kindle, Kobo, etc.)                             ║
-║  2. PDF (Print-ready)                                     ║
-║                                                            ║
-║  Select format (1-2): 1                                    ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘           Export Chapters - Choose Format                  â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  Available Formats:                                       â•‘
+â•‘  1. EPUB (Kindle, Kobo, etc.)                             â•‘
+â•‘  2. PDF (Print-ready)                                     â•‘
+â•‘                                                            â•‘
+â•‘  Select format (1-2): 1                                    â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 4. Export progress:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║              Exporting to EPUB...                          ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  [████████████████████████████████████░░] 90%              ║
-║                                                            ║
-║  Building document structure...                           ║
-║  Adding 3 chapters...                                     ║
-║  Creating table of contents...                            ║
-║  Generating metadata...                                   ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘              Exporting to EPUB...                          â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  [â–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–ˆâ–‘â–‘] 90%              â•‘
+â•‘                                                            â•‘
+â•‘  Building document structure...                           â•‘
+â•‘  Adding 3 chapters...                                     â•‘
+â•‘  Creating table of contents...                            â•‘
+â•‘  Generating metadata...                                   â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 5. Success:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║              Export Complete!                             ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  ✓ EPUB created successfully                              ║
-║                                                            ║
-║  File: data/novels/sword_art_online_progressive/epub/     ║
-║         full_novel.epub                                    ║
-║  Size: 2.3 MB                                             ║
-║  Chapters: 3                                              ║
-║                                                            ║
-║  Ready to read on: Kindle, Kobo, Apple Books              ║
-║                                                            ║
-║  [Press Enter to continue]                                ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘              Export Complete!                             â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  âœ“ EPUB created successfully                              â•‘
+â•‘                                                            â•‘
+â•‘  File: data/novels/sword_art_online_progressive/epub/     â•‘
+â•‘         full_novel.epub                                    â•‘
+â•‘  Size: 2.3 MB                                             â•‘
+â•‘  Chapters: 3                                              â•‘
+â•‘                                                            â•‘
+â•‘  Ready to read on: Kindle, Kobo, Apple Books              â•‘
+â•‘                                                            â•‘
+â•‘  [Press Enter to continue]                                â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 ---
@@ -919,52 +926,52 @@ Enter novel ID: n4423lw
 2. Novel list:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║                      Your Novels                          ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  📖 Sword Art Online Progressive         [n4423lw]         ║
-║     Raw chapters: 10                                      ║
-║     Translated: 3                                         ║
-║     EPUB: ✓  PDF: ✗                                       ║
-║     Last updated: 2 hours ago                             ║
-║                                                            ║
-║  📖 Re:Zero - Starting Life             [n1234ab]          ║
-║     Raw chapters: 5                                       ║
-║     Translated: 2                                         ║
-║     EPUB: ✗  PDF: ✗                                       ║
-║     Last updated: 1 day ago                               ║
-║                                                            ║
-║  [Enter for details, Q to exit]                           ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘                      Your Novels                          â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  ðŸ“– Sword Art Online Progressive         [n4423lw]         â•‘
+â•‘     Raw chapters: 10                                      â•‘
+â•‘     Translated: 3                                         â•‘
+â•‘     EPUB: âœ“  PDF: âœ—                                       â•‘
+â•‘     Last updated: 2 hours ago                             â•‘
+â•‘                                                            â•‘
+â•‘  ðŸ“– Re:Zero - Starting Life             [n1234ab]          â•‘
+â•‘     Raw chapters: 5                                       â•‘
+â•‘     Translated: 2                                         â•‘
+â•‘     EPUB: âœ—  PDF: âœ—                                       â•‘
+â•‘     Last updated: 1 day ago                               â•‘
+â•‘                                                            â•‘
+â•‘  [Enter for details, Q to exit]                           â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 3. Novel details (select one):
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║      Sword Art Online Progressive Details                  ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  Title: ソードアート・オンライン プログレッシブ              ║
-║  Title (EN): Sword Art Online Progressive                 ║
-║  Author: Reki Kawahara                                    ║
-║  Novel ID: n4423lw                                        ║
-║  Source: Syosetu                                          ║
-║                                                            ║
-║  Chapters:                                                ║
-║  ✓ Chapter 1: Beginning                 [translated]     ║
-║  ✓ Chapter 2: First Quest                [translated]     ║
-║  ✓ Chapter 3: Meeting                    [translated]     ║
-║  • Chapter 4: Exploration                [raw only]       ║
-║  • Chapter 5: Battle                     [raw only]       ║
-║                                                            ║
-║  Storage: 8.4 MB                                          ║
-║                                                            ║
-║  [Q] Back                                                 ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘      Sword Art Online Progressive Details                  â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  Title: ã‚½ãƒ¼ãƒ‰ã‚¢ãƒ¼ãƒˆãƒ»ã‚ªãƒ³ãƒ©ã‚¤ãƒ³ ãƒ—ãƒ­ã‚°ãƒ¬ãƒƒã‚·ãƒ–              â•‘
+â•‘  Title (EN): Sword Art Online Progressive                 â•‘
+â•‘  Author: Reki Kawahara                                    â•‘
+â•‘  Novel ID: n4423lw                                        â•‘
+â•‘  Source: Syosetu                                          â•‘
+â•‘                                                            â•‘
+â•‘  Chapters:                                                â•‘
+â•‘  âœ“ Chapter 1: Beginning                 [translated]     â•‘
+â•‘  âœ“ Chapter 2: First Quest                [translated]     â•‘
+â•‘  âœ“ Chapter 3: Meeting                    [translated]     â•‘
+â•‘  â€¢ Chapter 4: Exploration                [raw only]       â•‘
+â•‘  â€¢ Chapter 5: Battle                     [raw only]       â•‘
+â•‘                                                            â•‘
+â•‘  Storage: 8.4 MB                                          â•‘
+â•‘                                                            â•‘
+â•‘  [Q] Back                                                 â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 ---
@@ -980,35 +987,35 @@ Enter novel ID: n4423lw
 2. Usage dashboard:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║                  API Usage Dashboard                      ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  Total API Requests:        42                            ║
-║  Total Tokens Used:         125,000                       ║
-║  Total Cost:                $2.50 USD                     ║
-║                                                            ║
-║  Today's Usage:                                           ║
-║  • Requests: 12                                           ║
-║  • Tokens: 35,000                                         ║
-║  • Cost: $0.70                                            ║
-║                                                            ║
-║  Provider Breakdown:                                      ║
-║  • OpenAI gpt-3.5-turbo: 80,000 tokens ($0.80)           ║
-║  • OpenAI gpt-4: 45,000 tokens ($1.70)                    ║
-║                                                            ║
-║  Budget Status:                                           ║
-║  • Daily limit: $10.00                                    ║
-║  • Used today: $0.70                                      ║
-║  • Remaining: $9.30 ✓                                     ║
-║                                                            ║
-║  Monthly Estimate:                                        ║
-║  • Current pace: $21.00                                   ║
-║  • Monthly budget: $100.00                                ║
-║                                                            ║
-║  [Press Enter to continue]                                ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘                  API Usage Dashboard                      â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  Total API Requests:        42                            â•‘
+â•‘  Total Tokens Used:         125,000                       â•‘
+â•‘  Total Cost:                $2.50 USD                     â•‘
+â•‘                                                            â•‘
+â•‘  Today's Usage:                                           â•‘
+â•‘  â€¢ Requests: 12                                           â•‘
+â•‘  â€¢ Tokens: 35,000                                         â•‘
+â•‘  â€¢ Cost: $0.70                                            â•‘
+â•‘                                                            â•‘
+â•‘  Provider Breakdown:                                      â•‘
+â•‘  â€¢ OpenAI gpt-3.5-turbo: 80,000 tokens ($0.80)           â•‘
+â•‘  â€¢ OpenAI gpt-4: 45,000 tokens ($1.70)                    â•‘
+â•‘                                                            â•‘
+â•‘  Budget Status:                                           â•‘
+â•‘  â€¢ Daily limit: $10.00                                    â•‘
+â•‘  â€¢ Used today: $0.70                                      â•‘
+â•‘  â€¢ Remaining: $9.30 âœ“                                     â•‘
+â•‘                                                            â•‘
+â•‘  Monthly Estimate:                                        â•‘
+â•‘  â€¢ Current pace: $21.00                                   â•‘
+â•‘  â€¢ Monthly budget: $100.00                                â•‘
+â•‘                                                            â•‘
+â•‘  [Press Enter to continue]                                â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 ---
@@ -1024,53 +1031,53 @@ Enter novel ID: n4423lw
 2. Settings menu:
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║                    Settings Menu                          ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  1. Translation Provider                                  ║
-║     Current: OpenAI (gpt-3.5-turbo)                       ║
-║                                                            ║
-║  2. API Key Management                                    ║
-║     Status: Configured ✓                                  ║
-║                                                            ║
-║  3. Budget Settings                                       ║
-║     Daily limit: $10.00                                   ║
-║     Monthly limit: $100.00                                ║
-║                                                            ║
-║  4. Data Directory                                        ║
-║     Location: ./data                                      ║
-║                                                            ║
-║  5. Logging Level                                         ║
-║     Level: INFO                                           ║
-║                                                            ║
-║  6. Cache Settings                                        ║
-║     Max entries: 10,000                                   ║
-║     TTL: 7 days                                           ║
-║                                                            ║
-║  [Q] Back to menu                                         ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘                    Settings Menu                          â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  1. Translation Provider                                  â•‘
+â•‘     Current: OpenAI (gpt-3.5-turbo)                       â•‘
+â•‘                                                            â•‘
+â•‘  2. API Key Management                                    â•‘
+â•‘     Status: Configured âœ“                                  â•‘
+â•‘                                                            â•‘
+â•‘  3. Budget Settings                                       â•‘
+â•‘     Daily limit: $10.00                                   â•‘
+â•‘     Monthly limit: $100.00                                â•‘
+â•‘                                                            â•‘
+â•‘  4. Data Directory                                        â•‘
+â•‘     Location: ./data                                      â•‘
+â•‘                                                            â•‘
+â•‘  5. Logging Level                                         â•‘
+â•‘     Level: INFO                                           â•‘
+â•‘                                                            â•‘
+â•‘  6. Cache Settings                                        â•‘
+â•‘     Max entries: 10,000                                   â•‘
+â•‘     TTL: 7 days                                           â•‘
+â•‘                                                            â•‘
+â•‘  [Q] Back to menu                                         â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 3. Change setting (example - change model):
 
 ```
-╔════════════════════════════════════════════════════════════╗
-║           Select Translation Provider                      ║
-╠════════════════════════════════════════════════════════════╣
-║                                                            ║
-║  Available Models:                                        ║
-║  1. gpt-3.5-turbo   (Fast, cheap)      [current]         ║
-║  2. gpt-4           (Best quality)                        ║
-║  3. gpt-4-turbo     (Balanced)                            ║
-║                                                            ║
-║  Select: 2                                                ║
-║                                                            ║
-║  ✓ Model changed to gpt-4                                 ║
-║  Note: This will use more tokens per translation          ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘           Select Translation Provider                      â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘                                                            â•‘
+â•‘  Available Models:                                        â•‘
+â•‘  1. gpt-3.5-turbo   (Fast, cheap)      [current]         â•‘
+â•‘  2. gpt-4           (Best quality)                        â•‘
+â•‘  3. gpt-4-turbo     (Balanced)                            â•‘
+â•‘                                                            â•‘
+â•‘  Select: 2                                                â•‘
+â•‘                                                            â•‘
+â•‘  âœ“ Model changed to gpt-4                                 â•‘
+â•‘  Note: This will use more tokens per translation          â•‘
+â•‘                                                            â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ```
 
 ---
@@ -1081,7 +1088,7 @@ Simply press **8** or **Q** at any time to exit.
 
 ---
 
-## 🎯 Common Workflows
+## ðŸŽ¯ Common Workflows
 
 ### Workflow 1: Download and Translate a Full Novel
 
@@ -1111,7 +1118,7 @@ Simply press **8** or **Q** at any time to exit.
 
 ---
 
-## 💡 Tips & Tricks
+## ðŸ’¡ Tips & Tricks
 
 ### Tip 1: Use Cache to Save Costs
 - Translations are automatically cached
@@ -1140,45 +1147,45 @@ Simply press **8** or **Q** at any time to exit.
 
 ---
 
-## 🖥️ Screen Navigation
+## ðŸ–¥ï¸ Screen Navigation
 
 ### General Navigation Flow
 
 ```
 Main Menu
-├── 1. Scrape Metadata
-├── 2. Fetch Chapters
-├── 3. Translate Chapters
-├── 4. Export to EPUB/PDF
-├── 5. 🔍 View Novels
-│   └── See details & storage
-├── 6. 💰 Check API Usage
-│   └── Monitor costs
-├── 7. ⚙️ Settings
-│   ├── Change provider
-│   ├── Set budgets
-│   └── Configure paths
-└── 8. Exit (Q)
+â”œâ”€â”€ 1. Scrape Metadata
+â”œâ”€â”€ 2. Fetch Chapters
+â”œâ”€â”€ 3. Translate Chapters
+â”œâ”€â”€ 4. Export to EPUB/PDF
+â”œâ”€â”€ 5. ðŸ” View Novels
+â”‚   â””â”€â”€ See details & storage
+â”œâ”€â”€ 6. ðŸ’° Check API Usage
+â”‚   â””â”€â”€ Monitor costs
+â”œâ”€â”€ 7. âš™ï¸ Settings
+â”‚   â”œâ”€â”€ Change provider
+â”‚   â”œâ”€â”€ Set budgets
+â”‚   â””â”€â”€ Configure paths
+â””â”€â”€ 8. Exit (Q)
 ```
 
 ---
 
-## 📊 Progress Indicators
+## ðŸ“Š Progress Indicators
 
 | Symbol | Meaning |
 |--------|---------|
-| `✓` | Completed successfully |
-| `✗` | Failed or not completed |
-| `⏳` | In progress |
-| `⚠️` | Warning |
-| `📖` | Novel |
-| `💰` | Cost/Budget |
-| `🔍` | View/Inspect |
-| `⚙️` | Settings |
+| `âœ“` | Completed successfully |
+| `âœ—` | Failed or not completed |
+| `â³` | In progress |
+| `âš ï¸` | Warning |
+| `ðŸ“–` | Novel |
+| `ðŸ’°` | Cost/Budget |
+| `ðŸ”` | View/Inspect |
+| `âš™ï¸` | Settings |
 
 ---
 
-## ⌚ Typical Timings
+## âŒš Typical Timings
 
 | Operation | Time | Notes |
 |-----------|------|-------|
@@ -1190,7 +1197,7 @@ Main Menu
 
 ---
 
-## 🆘 Troubleshooting
+## ðŸ†˜ Troubleshooting
 
 ### TUI Won't Start
 
@@ -1200,7 +1207,7 @@ Main Menu
 source .venv/bin/activate  # macOS/Linux
 
 # Try again
-python -m novelai tui
+novelaibook tui
 ```
 
 ### Progress Stuck
@@ -1223,10 +1230,11 @@ python -m novelai tui
 
 ---
 
-## 📖 Related Documentation
+## ðŸ“– Related Documentation
 
 - [GETTING_STARTED.md](GETTING_STARTED.md) - Installation
 - [PYTHON_COMMANDS.md](PYTHON_COMMANDS.md) - CLI & programmatic usage
 - [DATA_OUTPUT_STRUCTURE.md](DATA_OUTPUT_STRUCTURE.md) - Data format
 - [docs/architecture.md](docs/architecture.md) - System design
+
 

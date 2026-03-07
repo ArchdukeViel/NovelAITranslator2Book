@@ -1,27 +1,27 @@
-# Python Commands Reference
+﻿# Python Commands Reference
 
 Complete guide to all CLI commands and programmatic usage of Novel AI.
 
 ---
 
-## 🖥️ Command Line Interface (CLI)
+## ðŸ–¥ï¸ Command Line Interface (CLI)
 
 ### General Usage
 
 ```bash
-python -m novelai [COMMAND] [ARGUMENTS] [OPTIONS]
+novelaibook [COMMAND] [ARGUMENTS] [OPTIONS]
 ```
 
 ---
 
-## 📋 Available Commands
+## ðŸ“‹ Available Commands
 
 ### 1. TUI - Terminal User Interface
 
 **Interactive visual interface** - Easiest way to use Novel AI.
 
 ```bash
-python -m novelai tui
+novelaibook tui
 ```
 
 See [TUI_GUIDE.md](TUI_GUIDE.md) for detailed walkthrough.
@@ -34,11 +34,11 @@ Download metadata (title, author, chapter list) from a novel source.
 
 ```bash
 # Basic usage
-python -m novelai scrape-metadata [SOURCE] [NOVEL_ID]
+novelaibook scrape-metadata [SOURCE] [NOVEL_ID]
 
 # Examples:
-python -m novelai scrape-metadata syosetu_ncode n4423lw
-python -m novelai scrape-metadata syosetu_ncode n1234ab
+novelaibook scrape-metadata syosetu_ncode n4423lw
+novelaibook scrape-metadata syosetu_ncode n1234ab
 ```
 
 **Parameters**:
@@ -54,7 +54,7 @@ python -m novelai scrape-metadata syosetu_ncode n1234ab
 **Output**:
 ```
 Scraped metadata for novel: Sword Art Online Progressive
-- Title: ソードアート・オンライン プログレッシブ
+- Title: ã‚½ãƒ¼ãƒ‰ã‚¢ãƒ¼ãƒˆãƒ»ã‚ªãƒ³ãƒ©ã‚¤ãƒ³ ãƒ—ãƒ­ã‚°ãƒ¬ãƒƒã‚·ãƒ–
 - Chapters: 120
 - Author: Reki Kawahara
 - Saved to: data/novels/sword_art_online_progressive/metadata.json
@@ -68,16 +68,16 @@ Download raw chapter text from the source.
 
 ```bash
 # Fetch chapters 1-3
-python -m novelai fetch syosetu_ncode n4423lw 1-3
+novelaibook fetch syosetu_ncode n4423lw 1-3
 
 # Fetch chapters 1, 3, 5
-python -m novelai fetch syosetu_ncode n4423lw 1,3,5
+novelaibook fetch syosetu_ncode n4423lw 1,3,5
 
 # Fetch chapters 1 through 10
-python -m novelai fetch syosetu_ncode n4423lw 1-10
+novelaibook fetch syosetu_ncode n4423lw 1-10
 
 # Fetch all chapters
-python -m novelai fetch syosetu_ncode n4423lw 1-*
+novelaibook fetch syosetu_ncode n4423lw 1-*
 ```
 
 **Chapter Selection Syntax**:
@@ -95,9 +95,9 @@ python -m novelai fetch syosetu_ncode n4423lw 1-*
 **Output**:
 ```
 Fetching chapters 1-3 from syosetu_ncode:n4423lw
-✓ chapter_1: 2,847 characters
-✓ chapter_2: 3,102 characters
-✓ chapter_3: 2,956 characters
+âœ“ chapter_1: 2,847 characters
+âœ“ chapter_2: 3,102 characters
+âœ“ chapter_3: 2,956 characters
 Saved 3 chapters to data/novels/sword_art_online_progressive/raw/
 ```
 
@@ -109,18 +109,18 @@ Translate chapters using configured provider (OpenAI by default).
 
 ```bash
 # Basic - uses default provider (OpenAI)
-python -m novelai translate-chapters syosetu_ncode n4423lw 1-3
+novelaibook translate-chapters syosetu_ncode n4423lw 1-3
 
 # Specify provider
-python -m novelai translate-chapters syosetu_ncode n4423lw 1-3 \
+novelaibook translate-chapters syosetu_ncode n4423lw 1-3 \
   --provider openai
 
 # Specify both provider and model
-python -m novelai translate-chapters syosetu_ncode n4423lw 1-3 \
+novelaibook translate-chapters syosetu_ncode n4423lw 1-3 \
   --provider openai --model gpt-4
 
 # Translate with specific model
-python -m novelai translate-chapters syosetu_ncode n4423lw 1-3 \
+novelaibook translate-chapters syosetu_ncode n4423lw 1-3 \
   --model gpt-4-turbo
 ```
 
@@ -148,9 +148,9 @@ python -m novelai translate-chapters syosetu_ncode n4423lw 1-3 \
 **Output**:
 ```
 Translating 3 chapters for n4423lw (gpt-3.5-turbo)
-✓ chapter_1: 2,847 → 3,100 characters (cache miss, 2,500 tokens)
-✓ chapter_2: 3,102 → 3,320 characters (cache miss, 2,800 tokens)
-✓ chapter_3: 2,956 → 3,150 characters (cache hit, 0 tokens)
+âœ“ chapter_1: 2,847 â†’ 3,100 characters (cache miss, 2,500 tokens)
+âœ“ chapter_2: 3,102 â†’ 3,320 characters (cache miss, 2,800 tokens)
+âœ“ chapter_3: 2,956 â†’ 3,150 characters (cache hit, 0 tokens)
 Total: 5,300 tokens (~$0.106)
 ```
 
@@ -162,13 +162,13 @@ Export translated chapters to EPUB or PDF format.
 
 ```bash
 # Export to EPUB (default)
-python -m novelai export-epub n4423lw
+novelaibook export-epub n4423lw
 
 # Export to PDF
-python -m novelai export-epub n4423lw --format pdf
+novelaibook export-epub n4423lw --format pdf
 
 # Export to custom location
-python -m novelai export-epub n4423lw --format epub \
+novelaibook export-epub n4423lw --format epub \
   --output /custom/path
 ```
 
@@ -200,7 +200,7 @@ Exported EPUB to: data/novels/sword_art_online_progressive/epub/full_novel.epub
 Display current API usage and cost estimates.
 
 ```bash
-python -m novelai check-usage
+novelaibook check-usage
 ```
 
 **What it shows**:
@@ -231,7 +231,7 @@ Breakdown by model:
 List all available novel sources.
 
 ```bash
-python -m novelai list-sources
+novelaibook list-sources
 ```
 
 **Output**:
@@ -249,7 +249,7 @@ Available novel sources:
 List all available translation providers.
 
 ```bash
-python -m novelai list-providers
+novelaibook list-providers
 ```
 
 **Output**:
@@ -261,7 +261,7 @@ Available translation providers:
 
 ---
 
-## 🔧 Programmatic Usage (Python API)
+## ðŸ”§ Programmatic Usage (Python API)
 
 Use Novel AI as a library in your own Python code.
 
@@ -316,7 +316,7 @@ async def translate_novel():
         translated = storage.load_translated_chapter(novel_id, ch_id)
         if translated:
             translated_chapters.append(translated)
-            logger.info(f"  ✓ Chapter {ch_id}: {len(translated['text'])} chars")
+            logger.info(f"  âœ“ Chapter {ch_id}: {len(translated['text'])} chars")
     
     logger.info(f"Successfully translated {len(translated_chapters)} chapters")
 
@@ -346,7 +346,7 @@ cache.set(
     text,
     provider="openai",
     model="gpt-3.5-turbo",
-    translation="こんにちは、世界！"
+    translation="ã“ã‚“ã«ã¡ã¯ã€ä¸–ç•Œï¼"
 )
 ```
 
@@ -536,7 +536,7 @@ optimizer = TranslationCacheOptimizer(cache)
 # Cache translation
 await optimizer.cache_translation(
     source_text="Hello world",
-    translated_text="こんにちは世界",
+    translated_text="ã“ã‚“ã«ã¡ã¯ä¸–ç•Œ",
     provider="openai"
 )
 
@@ -553,7 +553,7 @@ logger.info(f"Cache hit rate: {stats.hit_rate:.1%}")
 
 ---
 
-## 🚀 Advanced Patterns
+## ðŸš€ Advanced Patterns
 
 ### Pattern 1: Full Resilience Stack
 
@@ -591,7 +591,7 @@ async def resilient_translation():
 
 ---
 
-## 📊 Usage Examples Summary
+## ðŸ“Š Usage Examples Summary
 
 | Task | Command | Programmatic |
 |------|---------|--------------|
@@ -606,7 +606,7 @@ async def resilient_translation():
 
 ---
 
-## 🆘 Common Issues
+## ðŸ†˜ Common Issues
 
 ### Issue: Command not found
 
@@ -632,16 +632,17 @@ cat .env | grep OPENAI_API_KEY
 
 ```bash
 # Reduce batch size
-python -m novelai translate-chapters ... --batch-size 5
+novelaibook translate-chapters ... --batch-size 5
 ```
 
 ---
 
-## 📖 Related Documentation
+## ðŸ“– Related Documentation
 
 - [GETTING_STARTED.md](GETTING_STARTED.md) - Installation guide
 - [TUI_GUIDE.md](TUI_GUIDE.md) - Terminal UI walkthrough
 - [DATA_OUTPUT_STRUCTURE.md](DATA_OUTPUT_STRUCTURE.md) - Data format reference
 - [PHASE_4_OPERATIONS.md](PHASE_4_OPERATIONS.md) - Resilience features
 - [docs/architecture.md](docs/architecture.md) - System architecture
+
 

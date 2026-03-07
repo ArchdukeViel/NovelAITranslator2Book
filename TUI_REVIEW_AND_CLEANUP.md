@@ -1,4 +1,4 @@
-# TUI Review, Cache Cleanup, and Testing Analysis
+﻿# TUI Review, Cache Cleanup, and Testing Analysis
 
 **Date**: March 7, 2026  
 **Status**: Pre-Implementation Analysis
@@ -11,10 +11,10 @@
 
 | Item | Type | Location | Size | In .gitignore? | Should Delete? |
 |------|------|----------|------|----------------|----------------|
-| .tmp/ | Directory | Root | Small | ✅ Yes | ✅ YES |
-| tests_tmp/ | Directory | Root | Small | ✅ Yes | ✅ YES |
-| pytest-cache-files-*/ | Directories (6) | Root | ~Medium | ✅ Yes | ✅ YES |
-| __pycache__/ | Directories | Throughout | ~Large | ✅ Yes | ✅ YES |
+| .tmp/ | Directory | Root | Small | âœ… Yes | âœ… YES |
+| tests_tmp/ | Directory | Root | Small | âœ… Yes | âœ… YES |
+| pytest-cache-files-*/ | Directories (6) | Root | ~Medium | âœ… Yes | âœ… YES |
+| __pycache__/ | Directories | Throughout | ~Large | âœ… Yes | âœ… YES |
 
 ### Rationale for Deletion
 
@@ -24,11 +24,11 @@
 - Python bytecode compilation (__pycache__)
 
 **Why safe to delete:**
-- ✅ All are in .gitignore (not tracked)
-- ✅ All are automatically regenerated on next run
-- ✅ No data loss
-- ✅ Cleaner workspace
-- ✅ Smaller git history
+- âœ… All are in .gitignore (not tracked)
+- âœ… All are automatically regenerated on next run
+- âœ… No data loss
+- âœ… Cleaner workspace
+- âœ… Smaller git history
 
 **Recommendation**: Delete all of these. They serve no purpose in the repo and clutter the workspace.
 
@@ -68,12 +68,12 @@ The documentation shows **8 menu options** with ASCII mockups:
 
 | Guide Feature | Actual Implementation | Status |
 |---------------|----------------------|--------|
-| "Scrape Metadata" as option 1 | Combined with Fetch into "scrape" | ❌ Mismatch |
-| "Fetch Chapters" as option 2 | Part of "scrape" | ❌ Mismatch |
-| "View Novels" as option 5 | Exists as "list" (option 1) | ⚠️ Different Position |
-| "Check API Usage" as option 6 | Part of "diagnostics" (option 5) | ❌ Mismatch |
-| "Settings" as option 7 | Exists as "settings" (option 6) | ⚠️ Different Position |
-| Diagnostics option | NOT mentioned in guide | ❌ Missing |
+| "Scrape Metadata" as option 1 | Combined with Fetch into "scrape" | âŒ Mismatch |
+| "Fetch Chapters" as option 2 | Part of "scrape" | âŒ Mismatch |
+| "View Novels" as option 5 | Exists as "list" (option 1) | âš ï¸ Different Position |
+| "Check API Usage" as option 6 | Part of "diagnostics" (option 5) | âŒ Mismatch |
+| "Settings" as option 7 | Exists as "settings" (option 6) | âš ï¸ Different Position |
+| Diagnostics option | NOT mentioned in guide | âŒ Missing |
 
 ### Root Cause
 
@@ -137,7 +137,7 @@ Scrape Novel Metadata - Select Source
 
 ## 4. What Actually Works vs Guide
 
-### ✅ Working Features (Verified in Code)
+### âœ… Working Features (Verified in Code)
 
 1. **List Novels** - Lists all novels, stored in storage service
 2. **Scrape** - Downloads metadata and chapters from sources
@@ -147,13 +147,13 @@ Scrape Novel Metadata - Select Source
 6. **Settings** - Manage provider, model, API key
 7. **Exit** - Clean exit
 
-### ⚠️ Features in Guide But Implemented Differently
+### âš ï¸ Features in Guide But Implemented Differently
 
 1. **Metadata Scrape** - Works but combined with chapter scrape
 2. **API Usage** - Works but in diagnostics, not separate menu
 3. **Menu Order** - Different positions than in guide
 
-### ❌ Features in Guide But NOT in Code
+### âŒ Features in Guide But NOT in Code
 
 1. **Kakuyomu Source** - Guide mentions it, need to verify if registered
 2. **7 vs 8 Menu Items** - Guide has 8, actual has 7
@@ -172,7 +172,7 @@ Scrape Novel Metadata - Select Source
 | export | After translate | Creates EPUB/PDF | Select "export" |
 | diagnostics | Show stats | Stats screen | Select "diagnostics" |
 | settings | View current | Shows provider/model | Select "settings" |
-| settings | Change settings | Updates stored settings | Select "settings" → "yes" |
+| settings | Change settings | Updates stored settings | Select "settings" â†’ "yes" |
 | exit | Exit | Returns to shell | Select "exit" |
 
 ---
@@ -208,7 +208,7 @@ Scrape Novel Metadata - Select Source
 .venv\Scripts\Activate.ps1
 
 # Run TUI
-python -m novelai tui
+novelaibook tui
 
 # Test each menu option:
 # 1. list (should show no novels)
@@ -224,21 +224,21 @@ python -m novelai tui
 
 ## 7. Actionable Summary
 
-### Task 1: Clean Workspace ✨
+### Task 1: Clean Workspace âœ¨
 ```powershell
 Remove-Item -Path ".tmp", "tests_tmp" -Recurse -Force
 Get-ChildItem -Path "pytest-cache-files-*" -Directory | Remove-Item -Recurse -Force
 Get-ChildItem -Path "__pycache__" -Recurse -Directory | Remove-Item -Recurse -Force
 ```
 
-### Task 2: Fix TUI Documentation 📝
+### Task 2: Fix TUI Documentation ðŸ“
 - Update TUI_GUIDE.md to reflect actual 7-menu implementation
 - Rewrite menu examples to match code
 - Add diagnostics option documentation
 - Consolidate scrape explanation
 - Test all examples before finalizing
 
-### Task 3: Test TUI Functionality 🧪
+### Task 3: Test TUI Functionality ðŸ§ª
 - Run TUI and verify all 7 menu options
 - Test each flow (scrape, translate, export with valid data)
 - Verify settings persistence
@@ -253,4 +253,5 @@ Get-ChildItem -Path "__pycache__" -Recurse -Directory | Remove-Item -Recurse -Fo
 - **TUI Guide**: TUI_GUIDE.md (450 lines)
 - **Test Folder**: tests/ (4 test files)
 - **Cleanup**: 6 pytest cache dirs + 2 tmp dirs
+
 

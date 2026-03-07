@@ -1,4 +1,4 @@
-# Solutions: Cache Cleanup & Folder Consolidation
+﻿# Solutions: Cache Cleanup & Folder Consolidation
 
 **Date**: March 7, 2026  
 **Topics**: Cache deletion, auto-cleanup, and data structure optimization
@@ -154,9 +154,9 @@ addopts = "--cache-clear -p no:cacheprovider"
 ### Recommended Implementation Plan
 
 **Immediate (Now)**:
-1. ✅ `.gitignore` already ignores cache (won't be committed)
-2. ✅ `pyproject.toml` configured to use `tests/.pytest_cache`
-3. ✅ Cache doesn't affect project
+1. âœ… `.gitignore` already ignores cache (won't be committed)
+2. âœ… `pyproject.toml` configured to use `tests/.pytest_cache`
+3. âœ… Cache doesn't affect project
 
 **Short Term (Next Session)**:
 1. Add auto-cleanup fixture to `tests/conftest.py`
@@ -174,31 +174,31 @@ addopts = "--cache-clear -p no:cacheprovider"
 
 ```
 Novel AI/
-├── data/
-│   ├── novels/
-│   │   └── {novel_name}/
-│   │       ├── raw/
-│   │       ├── translated/
-│   │       ├── epub/          ← Exports go here (per design)
-│   │       ├── pdf/           ← Exports go here (per design)
-│   │       └── metadata.json
-│   ├── translation_cache.json
-│   └── usage.json
-│
-├── output/                    ← REDUNDANT - also stores EPUB/PDF
-│   ├── n4423lw.epub
-│   └── n4423lw.pdf
+â”œâ”€â”€ data/
+â”‚   â”œâ”€â”€ novels/
+â”‚   â”‚   â””â”€â”€ {novel_name}/
+â”‚   â”‚       â”œâ”€â”€ raw/
+â”‚   â”‚       â”œâ”€â”€ translated/
+â”‚   â”‚       â”œâ”€â”€ epub/          â† Exports go here (per design)
+â”‚   â”‚       â”œâ”€â”€ pdf/           â† Exports go here (per design)
+â”‚   â”‚       â””â”€â”€ metadata.json
+â”‚   â”œâ”€â”€ translation_cache.json
+â”‚   â””â”€â”€ usage.json
+â”‚
+â”œâ”€â”€ output/                    â† REDUNDANT - also stores EPUB/PDF
+â”‚   â”œâ”€â”€ n4423lw.epub
+â”‚   â””â”€â”€ n4423lw.pdf
 ```
 
 ### Analysis
 
 **Same Function?**
-- ❌ **NO** - Different purposes BUT poorly separated
+- âŒ **NO** - Different purposes BUT poorly separated
 - `data/` = Raw data, translations, processing state
 - `output/` = Final exported files (EPUB/PDF)
 
 **Should They Merge?**
-- ✅ **YES** - Already designed to merge in `data/novels/{name}/{format}/`
+- âœ… **YES** - Already designed to merge in `data/novels/{name}/{format}/`
 - Check `DATA_OUTPUT_STRUCTURE.md` - confirms exports belong in `data/`
 - Check `src/novelai/app/cli.py` - already saves to data by default!
 
@@ -212,43 +212,43 @@ The `output/` folder exists for **backward compatibility/flexibility**:
 **Current Architecture Intent**:
 ```
 # By default (best practice):
-python -m novelai export-epub n4423lw
-→ Saves to: data/novels/sword_art_online/epub/full_novel.epub
+novelaibook export-epub n4423lw
+â†’ Saves to: data/novels/sword_art_online/epub/full_novel.epub
 
 # By custom path (if needed):
-python -m novelai export-epub n4423lw --output output
-→ Saves to: output/n4423lw.epub
+novelaibook export-epub n4423lw --output output
+â†’ Saves to: output/n4423lw.epub
 ```
 
 ### Recommended Solution: Unify as "Novel Library"
 
-**Rename**: `data/` → `novel_library/`
+**Rename**: `data/` â†’ `novel_library/`
 
 **New Structure**:
 ```
 Novel AI/
-├── novel_library/              ← RENAMED: unified "novel library"
-│   ├── novels/
-│   │   └── {novel_name}/
-│   │       ├── metadata.json
-│   │       ├── raw/            ← Source chapters
-│   │       ├── translated/     ← Translations
-│   │       ├── epub/           ← Exports
-│   │       ├── pdf/
-│   │       └── checkpoints/
-│   ├── translation_cache.json
-│   ├── usage.json
-│   └── backups/                ← Backups
-│
-└── (Remove: output/ folder)    ← No longer needed as primary location
+â”œâ”€â”€ novel_library/              â† RENAMED: unified "novel library"
+â”‚   â”œâ”€â”€ novels/
+â”‚   â”‚   â””â”€â”€ {novel_name}/
+â”‚   â”‚       â”œâ”€â”€ metadata.json
+â”‚   â”‚       â”œâ”€â”€ raw/            â† Source chapters
+â”‚   â”‚       â”œâ”€â”€ translated/     â† Translations
+â”‚   â”‚       â”œâ”€â”€ epub/           â† Exports
+â”‚   â”‚       â”œâ”€â”€ pdf/
+â”‚   â”‚       â””â”€â”€ checkpoints/
+â”‚   â”œâ”€â”€ translation_cache.json
+â”‚   â”œâ”€â”€ usage.json
+â”‚   â””â”€â”€ backups/                â† Backups
+â”‚
+â””â”€â”€ (Remove: output/ folder)    â† No longer needed as primary location
 ```
 
 **Benefits**:
-- ✅ Single source of truth
-- ✅ Clear naming: "novel_library" instead of ambiguous "data"
-- ✅ All novel-related content in one place
-- ✅ Eliminates scattered `output/` folder
-- ✅ Better organization for production
+- âœ… Single source of truth
+- âœ… Clear naming: "novel_library" instead of ambiguous "data"
+- âœ… All novel-related content in one place
+- âœ… Eliminates scattered `output/` folder
+- âœ… Better organization for production
 
 **Migration Path**:
 
@@ -305,13 +305,13 @@ def migrate():
     new_path = Path("novel_library")
     
     if old_path.exists() and not new_path.exists():
-        print(f"Migrating {old_path} → {new_path}")
+        print(f"Migrating {old_path} â†’ {new_path}")
         shutil.move(str(old_path), str(new_path))
-        print("✓ Migration complete")
+        print("âœ“ Migration complete")
     elif new_path.exists():
-        print("✓ Already using novel_library structure")
+        print("âœ“ Already using novel_library structure")
     else:
-        print("✓ No migration needed")
+        print("âœ“ No migration needed")
 
 if __name__ == "__main__":
     migrate()
@@ -348,10 +348,10 @@ logs/
 ## Implementation Priority
 
 ### High Priority (Consolidate Now)
-1. ✅ Cache auto-cleanup (conftest.py fixture) - takes 5 min
-2. ✅ Rename `data/` → `novel_library/` - takes 30 min
-3. ✅ Update settings and references - takes 20 min
-4. ✅ Remove `output/` as primary location - takes 10 min
+1. âœ… Cache auto-cleanup (conftest.py fixture) - takes 5 min
+2. âœ… Rename `data/` â†’ `novel_library/` - takes 30 min
+3. âœ… Update settings and references - takes 20 min
+4. âœ… Remove `output/` as primary location - takes 10 min
 
 ### Medium Priority (Polish)
 1. Create migration script
@@ -368,13 +368,13 @@ logs/
 ## Summary Recommendation
 
 ### For Cache Cleanup
-✅ **Implement**: Add conftest.py auto-cleanup fixture (easiest)
+âœ… **Implement**: Add conftest.py auto-cleanup fixture (easiest)
 - Auto-deletes cache after tests complete
 - No manual intervention needed
 - Works on all platforms
 
 ### For Data Organization  
-✅ **Implement**: Rename `data/` → `novel_library/`
+âœ… **Implement**: Rename `data/` â†’ `novel_library/`
 - Better naming convention
 - Makes purpose clearer
 - Consolidates with exports automatically
@@ -398,4 +398,5 @@ logs/
 - All code already uses `settings.DATA_DIR` (abstracted)
 - Just need to update the setting and migrate folder
 - CLI doesn't need changes (already supports --output flag)
+
 

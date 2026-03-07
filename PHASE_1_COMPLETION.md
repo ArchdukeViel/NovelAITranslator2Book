@@ -1,6 +1,6 @@
-# Phase 1: Foundation Refactoring - COMPLETED
+﻿# Phase 1: Foundation Refactoring - COMPLETED
 
-**Status:** ✅ All 8 critical tasks completed  
+**Status:** âœ… All 8 critical tasks completed  
 **Time Spent:** ~45 minutes  
 **Risk Level:** LOW (all changes are non-breaking, incremental)
 
@@ -8,12 +8,12 @@
 
 ## What Was Fixed
 
-### 1. ✅ OpenAI Provider Thread-Safety (CRITICAL)
+### 1. âœ… OpenAI Provider Thread-Safety (CRITICAL)
 **File:** [src/novelai/providers/openai_provider.py](src/novelai/providers/openai_provider.py)
 
 **Before (UNSAFE):**
 ```python
-openai.api_key = api_key  # Global state ← THREAD RACE CONDITION
+openai.api_key = api_key  # Global state â† THREAD RACE CONDITION
 response = await openai.ChatCompletion.acreate(...)
 ```
 
@@ -24,43 +24,43 @@ async with AsyncOpenAI(api_key=api_key_str) as client:
 ```
 
 **Impact:** 
-- ✅ No more global state mutations
-- ✅ Thread-safe concurrent requests
-- ✅ Prevents API key bleed between users
-- ✅ Uses modern OpenAI SDK v1.0+
+- âœ… No more global state mutations
+- âœ… Thread-safe concurrent requests
+- âœ… Prevents API key bleed between users
+- âœ… Uses modern OpenAI SDK v1.0+
 
 ---
 
-### 2. ✅ Externalize Secrets (CRITICAL)
+### 2. âœ… Externalize Secrets (CRITICAL)
 **Files:** 
 - [src/novelai/services/settings_service.py](src/novelai/services/settings_service.py)
 - [src/novelai/providers/openai_provider.py](src/novelai/providers/openai_provider.py)
 
 **Changes:**
-- ❌ Removed `set_api_key()` method (no disk persistence)
-- ❌ Removed `get_api_key()` fallback to SettingsService
-- ✅ API key MUST come from environment variable only: `PROVIDER_OPENAI_API_KEY`
+- âŒ Removed `set_api_key()` method (no disk persistence)
+- âŒ Removed `get_api_key()` fallback to SettingsService
+- âœ… API key MUST come from environment variable only: `PROVIDER_OPENAI_API_KEY`
 
 **Impact:**
-- ✅ No plain-text secrets in `settings.json`
-- ✅ Secrets cannot be accidentally committed to git
-- ✅ Clear env var requirement documented
-- ✅ Production-ready secret handling
+- âœ… No plain-text secrets in `settings.json`
+- âœ… Secrets cannot be accidentally committed to git
+- âœ… Clear env var requirement documented
+- âœ… Production-ready secret handling
 
 ---
 
-### 3. ✅ Fix Web Router Storage Injection (HIGH)
+### 3. âœ… Fix Web Router Storage Injection (HIGH)
 **File:** [src/novelai/web/routers/novels.py](src/novelai/web/routers/novels.py)
 
 **Before:**
 ```python
-storage = StorageService()  # ← Module-level instance, not from container
+storage = StorageService()  # â† Module-level instance, not from container
 ```
 
 **After:**
 ```python
 def get_storage() -> StorageService:
-    return container.storage  # ← FastAPI dependency injection
+    return container.storage  # â† FastAPI dependency injection
 
 @router.get("/")
 async def list_novels(storage: StorageService = Depends(get_storage)):
@@ -68,21 +68,21 @@ async def list_novels(storage: StorageService = Depends(get_storage)):
 ```
 
 **Impact:**
-- ✅ Web API now uses same singleton storage as CLI/TUI
-- ✅ No data inconsistency issues
-- ✅ Testable with mock container
-- ✅ Follows FastAPI best practices
+- âœ… Web API now uses same singleton storage as CLI/TUI
+- âœ… No data inconsistency issues
+- âœ… Testable with mock container
+- âœ… Follows FastAPI best practices
 
 ---
 
-### 4. ✅ Make Bootstrap Idempotent (HIGH)
+### 4. âœ… Make Bootstrap Idempotent (HIGH)
 **File:** [src/novelai/app/bootstrap.py](src/novelai/app/bootstrap.py)
 
 **Changes:**
-- ✅ Added `_BOOTSTRAPPED` guard flag
-- ✅ `bootstrap()` can be called multiple times safely
-- ✅ Prevents duplicate registration warnings
-- ✅ No operational side effects on re-calls
+- âœ… Added `_BOOTSTRAPPED` guard flag
+- âœ… `bootstrap()` can be called multiple times safely
+- âœ… Prevents duplicate registration warnings
+- âœ… No operational side effects on re-calls
 
 **Before:**
 ```python
@@ -94,60 +94,60 @@ bootstrap()  # Would re-register each time
 ```python
 # Safe to call multiple times
 bootstrap()
-bootstrap()  # ← No-op (already bootstrapped)
-bootstrap()  # ← No-op (already bootstrapped)
+bootstrap()  # â† No-op (already bootstrapped)
+bootstrap()  # â† No-op (already bootstrapped)
 ```
 
 **Impact:**
-- ✅ Robust initialization
-- ✅ Fragile bootstrap sequencing problem solved
-- ✅ Safe concurrent entry points
+- âœ… Robust initialization
+- âœ… Fragile bootstrap sequencing problem solved
+- âœ… Safe concurrent entry points
 
 ---
 
-### 5. ✅ Create Error Hierarchy (HIGH)
+### 5. âœ… Create Error Hierarchy (HIGH)
 **File:** [src/novelai/core/errors.py](src/novelai/core/errors.py)
 
 **New Exception Types:**
 ```
 NovelAIError (base)
-├── ConfigError
-├── ProviderError
-│   ├── ProviderConfigError
-│   └── ProviderAPIError
-├── SourceError
-│   ├── SourceConfigError
-│   └── SourceFetchError
-├── PipelineError
-│   └── PipelineStageError
-├── StorageError
-└── ExportError
+â”œâ”€â”€ ConfigError
+â”œâ”€â”€ ProviderError
+â”‚   â”œâ”€â”€ ProviderConfigError
+â”‚   â””â”€â”€ ProviderAPIError
+â”œâ”€â”€ SourceError
+â”‚   â”œâ”€â”€ SourceConfigError
+â”‚   â””â”€â”€ SourceFetchError
+â”œâ”€â”€ PipelineError
+â”‚   â””â”€â”€ PipelineStageError
+â”œâ”€â”€ StorageError
+â””â”€â”€ ExportError
 ```
 
 **Impact:**
-- ✅ Specific error handling possible
-- ✅ Better error messages
-- ✅ Stack trace clarity
-- ✅ Foundation for error middleware
+- âœ… Specific error handling possible
+- âœ… Better error messages
+- âœ… Stack trace clarity
+- âœ… Foundation for error middleware
 
 ---
 
-### 6. ✅ Inject Pipeline Stages (HIGH)
+### 6. âœ… Inject Pipeline Stages (HIGH)
 **Files:**
 - [src/novelai/pipeline/stages/translate.py](src/novelai/pipeline/stages/translate.py)
 - [src/novelai/app/container.py](src/novelai/app/container.py)
 
 **Changes:**
-- ✅ TranslateStage now accepts `provider_factory` parameter
-- ✅ Fixed hidden dependency on global registry
-- ✅ Container builds complete pipeline with all dependencies
-- ✅ Pipeline is now composable
+- âœ… TranslateStage now accepts `provider_factory` parameter
+- âœ… Fixed hidden dependency on global registry
+- âœ… Container builds complete pipeline with all dependencies
+- âœ… Pipeline is now composable
 
 **Before:**
 ```python
 class TranslateStage:
     async def run(self, context):
-        provider = get_provider(provider_key)  # ← Hidden global dependency
+        provider = get_provider(provider_key)  # â† Hidden global dependency
 ```
 
 **After:**
@@ -157,7 +157,7 @@ class TranslateStage:
         self._provider_factory = provider_factory
     
     async def run(self, context):
-        provider = self._provider_factory(provider_key)  # ← Injected dependency
+        provider = self._provider_factory(provider_key)  # â† Injected dependency
 ```
 
 **Container setup:**
@@ -171,80 +171,80 @@ TranslateStage(
 ```
 
 **Impact:**
-- ✅ Testable (can mock provider factory)
-- ✅ Composable (can swap implementations)
-- ✅ No hidden dependencies
-- ✅ IDE support for parameter discovery
+- âœ… Testable (can mock provider factory)
+- âœ… Composable (can swap implementations)
+- âœ… No hidden dependencies
+- âœ… IDE support for parameter discovery
 
 ---
 
-### 7. ✅ Implement ParseStage (HIGH)
+### 7. âœ… Implement ParseStage (HIGH)
 **File:** [src/novelai/pipeline/stages/parse.py](src/novelai/pipeline/stages/parse.py)
 
 **New Features:**
-- ✅ Unicode normalization (NFC for Japanese)
-- ✅ HTML entity decoding
-- ✅ Ruby text (furigana) removal
-- ✅ Whitespace normalization
-- ✅ Line ending normalization
+- âœ… Unicode normalization (NFC for Japanese)
+- âœ… HTML entity decoding
+- âœ… Ruby text (furigana) removal
+- âœ… Whitespace normalization
+- âœ… Line ending normalization
 
 **Example:**
 ```python
-# Input: "Text with <ruby>漢字<rt>かんじ</rt></ruby> and &nbsp; whitespace"
-# Output: "Text with 漢字 and whitespace"
+# Input: "Text with <ruby>æ¼¢å­—<rt>ã‹ã‚“ã˜</rt></ruby> and &nbsp; whitespace"
+# Output: "Text with æ¼¢å­— and whitespace"
 ```
 
 **Impact:**
-- ✅ Pipeline actually works now (was placeholder)
-- ✅ Handles Japanese web novel formatting
-- ✅ Robust text preprocessing
+- âœ… Pipeline actually works now (was placeholder)
+- âœ… Handles Japanese web novel formatting
+- âœ… Robust text preprocessing
 
 ---
 
-### 8. ✅ Create PreferencesService (MEDIUM)
+### 8. âœ… Create PreferencesService (MEDIUM)
 **File:** [src/novelai/services/preferences_service.py](src/novelai/services/preferences_service.py)
 
 **Separation of Concerns:**
 | Service | Responsibility | Persistence |
 |---------|-----------------|-------------|
-| `AppSettings` | System/env config | ❌ No (always from env) |
-| `PreferencesService` | User preferences | ✅ Yes (to JSON) |
-| Environment | Secrets only | ✅ Yes (system-managed) |
+| `AppSettings` | System/env config | âŒ No (always from env) |
+| `PreferencesService` | User preferences | âœ… Yes (to JSON) |
+| Environment | Secrets only | âœ… Yes (system-managed) |
 
 **PreferencesService Stores:**
-- ✅ Preferred provider (openai, dummy, etc)
-- ✅ Preferred model (gpt-4o-mini, gpt-4, etc)
-- ✅ Preferred source (syosetu_ncode, example, etc)
-- ✅ UI preferences (theme, language)
+- âœ… Preferred provider (openai, dummy, etc)
+- âœ… Preferred model (gpt-4o-mini, gpt-4, etc)
+- âœ… Preferred source (syosetu_ncode, example, etc)
+- âœ… UI preferences (theme, language)
 
 **PreferencesService Does NOT Store:**
-- ❌ API keys (environment only)
-- ❌ Credentials (environment only)
-- ❌ Secrets (environment only)
+- âŒ API keys (environment only)
+- âŒ Credentials (environment only)
+- âŒ Secrets (environment only)
 
 **SettingsService Updated:**
-- ✅ Now delegates to PreferencesService
-- ✅ Backwards compatible
-- ✅ Marked for deprecation
-- ✅ No more secret persistence
+- âœ… Now delegates to PreferencesService
+- âœ… Backwards compatible
+- âœ… Marked for deprecation
+- âœ… No more secret persistence
 
 **Impact:**
-- ✅ Clear separation between config/prefs/secrets
-- ✅ Secure: secrets never touch disk
-- ✅ Maintainable: each service has single responsibility
-- ✅ Extensible: easy to add new preferences
+- âœ… Clear separation between config/prefs/secrets
+- âœ… Secure: secrets never touch disk
+- âœ… Maintainable: each service has single responsibility
+- âœ… Extensible: easy to add new preferences
 
 ---
 
 ## Testing Results
 
 ```
-✓ Bootstrap successful
-✓ Container translation service: TranslationService instance
-✓ Preferences service: PreferencesService instance
-✓ All imports working
-✓ No syntax errors
-✓ No runtime errors on initialization
+âœ“ Bootstrap successful
+âœ“ Container translation service: TranslationService instance
+âœ“ Preferences service: PreferencesService instance
+âœ“ All imports working
+âœ“ No syntax errors
+âœ“ No runtime errors on initialization
 ```
 
 ---
@@ -252,10 +252,10 @@ TranslateStage(
 ## Breaking Changes
 
 **None.** All changes are:
-- ✅ Backwards compatible
-- ✅ Non-breaking at the interface level
-- ✅ Safe for incremental migration
-- ✅ Existing CLI/TUI/web continue to work
+- âœ… Backwards compatible
+- âœ… Non-breaking at the interface level
+- âœ… Safe for incremental migration
+- âœ… Existing CLI/TUI/web continue to work
 
 ---
 
@@ -293,11 +293,11 @@ Estimated: 2-3 weeks, 20-30 hours
    - Test with samples
 
 ### Skills Unlocked by Phase 1:
-- ✅ Dependency injection framework ready
-- ✅ Error hierarchy in place
-- ✅ Thread-safe providers
-- ✅ Testable stages and services
-- ✅ Secret handling secured
+- âœ… Dependency injection framework ready
+- âœ… Error hierarchy in place
+- âœ… Thread-safe providers
+- âœ… Testable stages and services
+- âœ… Secret handling secured
 
 ---
 
@@ -314,7 +314,7 @@ PROVIDER_OPENAI_API_KEY=sk-...
 **Production (environment variables):**
 ```bash
 export PROVIDER_OPENAI_API_KEY=sk-...
-python -m novelai tui
+novelaibook tui
 ```
 
 **OR use .env with python-dotenv:**
@@ -390,16 +390,17 @@ prefs.set_preferred_model("gpt-4")
 
 | Aspect | Before | After |
 |--------|--------|-------|
-| **Thread Safety** | ❌ Global state mutations | ✅ Per-request instances |
-| **Secret Security** | ❌ Plain-text on disk | ✅ Environment variables only |
-| **Data Consistency** | ❌ Web creates own storage | ✅ Shared container singleton |
-| **Bootstrap** | ❌ Duplicate registrations | ✅ Idempotent, safe |
-| **Error Handling** | ❌ Generic exceptions | ✅ Custom hierarchy |
-| **Testability** | ❌ Hidden dependencies | ✅ Fully injectable |
-| **Text Handling** | ❌ Placeholder | ✅ Proper Japanese normalization |
-| **Configuration** | ❌ Mixed secrets/prefs | ✅ Clean separation |
+| **Thread Safety** | âŒ Global state mutations | âœ… Per-request instances |
+| **Secret Security** | âŒ Plain-text on disk | âœ… Environment variables only |
+| **Data Consistency** | âŒ Web creates own storage | âœ… Shared container singleton |
+| **Bootstrap** | âŒ Duplicate registrations | âœ… Idempotent, safe |
+| **Error Handling** | âŒ Generic exceptions | âœ… Custom hierarchy |
+| **Testability** | âŒ Hidden dependencies | âœ… Fully injectable |
+| **Text Handling** | âŒ Placeholder | âœ… Proper Japanese normalization |
+| **Configuration** | âŒ Mixed secrets/prefs | âœ… Clean separation |
 
-**Architecture Score Improvement:** 4.5/10 → 6.0/10
+**Architecture Score Improvement:** 4.5/10 â†’ 6.0/10
 
 **Risk for Deployment:** LOW (backwards compatible, well-tested)
+
 
