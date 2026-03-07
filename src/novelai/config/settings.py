@@ -20,7 +20,14 @@ class AppSettings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # --- Storage
-    DATA_DIR: Path = Path("data")
+    # Novel library directory - contains all downloaded novels, translations, and exports
+    NOVEL_LIBRARY_DIR: Path = Path("novel_library")
+    
+    # Legacy alias for backward compatibility
+    @property
+    def DATA_DIR(self) -> Path:
+        """Backward compatibility: DATA_DIR now points to NOVEL_LIBRARY_DIR."""
+        return self.NOVEL_LIBRARY_DIR
 
     # --- Web
     WEB_HOST: str = "127.0.0.1"

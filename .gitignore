@@ -39,6 +39,7 @@ pytest-cache-files-*/
 tmp/
 .temp/
 .tmp/
+tests/.pytest_cache/
 
 # IDE / editor
 .vscode/
@@ -62,12 +63,15 @@ __MACOSX/
 !.env.example
 
 # Runtime data
-data/
+novel_library/
 output/
 input/
 logs/
 persistent_data.json
 gptwntranslator.log
+
+# Legacy path (pre-consolidation)
+data/
 
 # Local config
 config/config.yaml

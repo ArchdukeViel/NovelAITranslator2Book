@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import shutil
 from pathlib import Path
 from typing import Any
@@ -318,3 +319,26 @@ def create_mock_container() -> Container:
     """Create a container with all mocked services."""
     fixture = TestFixture()
     return fixture.container
+
+
+# Auto-cleanup fixture
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_pytest_cache():
+    """Auto-clean pytest cache artifacts after all tests complete."""
+    yield
+    
+    # Cleanup after all tests finish
+    cache_dirs = [
+        Path(".pytest_cache"),
+        Path("tests/.pytest_cache"),
+    ]
+    
+    for cache_dir in cache_dirs:
+        if cache_dir.exists():
+            try:
+                shutil.rmtree(cache_dir)
+                print(f"✓ Cleaned up: {cache_dir}")
+            except Exception as e:
+                print(f"⚠ Could not clean {cache_dir}: {e}")
+
