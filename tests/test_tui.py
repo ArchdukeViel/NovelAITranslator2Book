@@ -95,6 +95,14 @@ def test_dashboard_panel_order_keeps_system_pulse_last(tui: TUIApp) -> None:
     assert output.index("Library Snapshot") < output.index("Control Deck") < output.index("System Pulse")
 
 
+def test_dashboard_secondary_panels_share_a_bottom_border_line_when_wide(tui: TUIApp) -> None:
+    tui.console = Console(record=True, width=140)
+    tui.console.print(tui._build_primary_panels())
+    lines = tui.console.export_text().splitlines()
+
+    assert any(line.count("└") >= 2 and line.count("┘") >= 2 for line in lines)
+
+
 @pytest.mark.parametrize("width", [80, 120])
 def test_dashboard_full_width_sections_match_the_console_width(tui: TUIApp, width: int) -> None:
     tui.console = Console(record=True, width=width)
@@ -216,6 +224,54 @@ def test_library_screen_uses_guide_rail_instead_of_embedded_command_panel(tui: T
     assert "Guide Rail" in output
     assert "0) back" in output
     assert "2) delete custom" in output
+
+
+def test_library_snapshot_prefers_latest_added_novels(tui: TUIApp, monkeypatch: pytest.MonkeyPatch) -> None:
+    metadata = {
+        "novel-old": {
+            "title": "Older Story",
+            "chapters": [{}, {}],
+            "scraped_at": "2026-03-01T10:00:00+00:00",
+        },
+        "novel-new": {
+            "title": "Newest Story",
+            "chapters": [{}, {}, {}],
+            "scraped_at": "2026-03-03T10:00:00+00:00",
+        },
+        "novel-mid": {
+            "title": "Middle Story",
+            "chapters": [{}],
+            "scraped_at": "2026-03-02T10:00:00+00:00",
+        },
+    }
+
+    monkeypatch.setattr(tui.storage, "list_novels", lambda: ["novel-old", "novel-new", "novel-mid"])
+    monkeypatch.setattr(tui.storage, "load_metadata", lambda novel_id: metadata[novel_id])
+    monkeypatch.setattr(tui.storage, "count_translated_chapters", lambda novel_id: 1)
+
+    snapshots = tui._collect_library_snapshot(limit=3)
+
+    assert [snapshot["novel_id"] for snapshot in snapshots] == ["novel-new", "novel-mid", "novel-old"]
+
+
+def test_library_snapshot_uses_novel_title_and_novel_id_headers(tui: TUIApp, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tui, "_collect_library_snapshot", lambda limit: [
+        {
+            "novel_id": "novel-123",
+            "title": "A Better Story",
+            "total_chapters": 4,
+            "translated_chapters": 2,
+            "language": "Japanese",
+        }
+    ])
+
+    tui.console = Console(record=True, width=140)
+    tui.console.print(tui._build_library_panel())
+    output = tui.console.export_text()
+
+    assert "Novel Title" in output
+    assert "Novel ID" in output
+    assert output.index("Novel Title") < output.index("Novel ID")
 
 
 def test_library_frame_keeps_full_guide_rail_visible(tui: TUIApp) -> None:

@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import time
+from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from typing import Any, Callable, TypedDict
@@ -608,16 +609,29 @@ class TUIApp:
             )
 
         control_width, system_width = self._split_row_width(width, (3, 2))
+        control_panel, system_panel = self._build_balanced_primary_row(control_width, system_width)
         secondary_row = Columns(
             [
-                self._build_actions_panel(control_width),
-                self._build_system_panel(system_width),
+                control_panel,
+                system_panel,
             ],
             expand=True,
             equal=False,
             padding=(0, 1),
         )
         return Group(library_panel, secondary_row)
+
+    def _build_balanced_primary_row(self, control_width: int, system_width: int) -> tuple[Panel, Panel]:
+        control_panel = self._build_actions_panel(control_width)
+        system_panel = self._build_system_panel(system_width)
+        shared_height = max(
+            self._renderable_height(control_panel, width=control_width),
+            self._renderable_height(system_panel, width=system_width),
+        )
+        return (
+            self._build_actions_panel(control_width, height=shared_height),
+            self._build_system_panel(system_width, height=shared_height),
+        )
 
     def _build_metric_row(self, cards: list[tuple[str, str, str]]) -> Columns:
         widths = self._split_row_width(self._console_width(), [1] * len(cards))
@@ -641,7 +655,7 @@ class TUIApp:
             width=width,
         )
 
-    def _build_actions_panel(self, width: int | None = None) -> Panel:
+    def _build_actions_panel(self, width: int | None = None, height: int | None = None) -> Panel:
         panel_width = width or self._console_width()
         numbered_options = self._menu_number_pairs()
 
@@ -660,6 +674,7 @@ class TUIApp:
                 box=box.ROUNDED,
                 expand=True,
                 width=width,
+                height=height,
             )
 
         table = Table(box=box.SIMPLE_HEAVY, expand=True, show_header=True, header_style="bold #f6bd60")
@@ -676,6 +691,7 @@ class TUIApp:
             box=box.ROUNDED,
             expand=True,
             width=width,
+            height=height,
         )
 
     def _build_library_panel(self, width: int | None = None) -> Panel:
@@ -704,10 +720,14 @@ class TUIApp:
             for snapshot in snapshots:
                 progress = f"{snapshot['translated_chapters']}/{snapshot['total_chapters']} translated"
                 lines.append(
-                    Text(self._truncate(snapshot["title"], title_width), style="bold #e5e9f0")
+                    Text.assemble(
+                        ("Novel Title: ", "#9ece6a"),
+                        (self._truncate(snapshot["title"], title_width), "bold #e5e9f0"),
+                    )
                 )
                 lines.append(
                     Text.assemble(
+                        ("Novel ID: ", "#9ece6a"),
                         (self._truncate(snapshot["novel_id"], id_width), "#73daca"),
                         ("  ", "#cbd5e1"),
                         (progress, "#f6bd60"),
@@ -726,14 +746,14 @@ class TUIApp:
 
         if panel_width < 125:
             table = Table(box=box.SIMPLE_HEAVY, expand=True, show_header=True, header_style="bold #9ece6a")
-            table.add_column("Novel", style="bold #e5e9f0")
-            table.add_column("Title", style="#cbd5e1")
+            table.add_column("Novel Title", style="bold #e5e9f0")
+            table.add_column("Novel ID", style="#73daca")
             table.add_column("Progress", justify="right", style="#f6bd60", no_wrap=True)
 
             for snapshot in snapshots:
                 table.add_row(
-                    self._truncate(snapshot["novel_id"], 20),
                     self._truncate(snapshot["title"], 28),
+                    self._truncate(snapshot["novel_id"], 20),
                     f"{snapshot['translated_chapters']}/{snapshot['total_chapters']}",
                 )
 
@@ -747,15 +767,15 @@ class TUIApp:
             )
 
         table = Table(box=box.SIMPLE_HEAVY, expand=True, show_header=True, header_style="bold #9ece6a")
-        table.add_column("Novel", style="bold #e5e9f0", no_wrap=True)
-        table.add_column("Title", style="#cbd5e1")
+        table.add_column("Novel Title", style="bold #e5e9f0")
+        table.add_column("Novel ID", style="#73daca", no_wrap=True)
         table.add_column("Ch", justify="right", style="#73daca", no_wrap=True)
         table.add_column("Tl", justify="right", style="#f6bd60", no_wrap=True)
 
         for snapshot in snapshots:
             table.add_row(
-                snapshot["novel_id"],
                 self._truncate(snapshot["title"], 28),
+                snapshot["novel_id"],
                 str(snapshot["total_chapters"]),
                 str(snapshot["translated_chapters"]),
             )
@@ -769,7 +789,7 @@ class TUIApp:
             width=width,
         )
 
-    def _build_system_panel(self, width: int | None = None) -> Panel:
+    def _build_system_panel(self, width: int | None = None, height: int | None = None) -> Panel:
         summary = self.usage.summary()
         panel_width = width or self._console_width()
         recent_usage = self.usage.list(limit=3)
@@ -811,6 +831,7 @@ class TUIApp:
                 box=box.ROUNDED,
                 expand=True,
                 width=width,
+                height=height,
             )
 
         if panel_width < 100:
@@ -844,6 +865,7 @@ class TUIApp:
                 box=box.ROUNDED,
                 expand=True,
                 width=width,
+                height=height,
             )
 
         grid = Table.grid(expand=True, padding=(0, 1))
@@ -875,6 +897,7 @@ class TUIApp:
             box=box.ROUNDED,
             expand=True,
             width=width,
+            height=height,
         )
 
     def _build_status_panel(self) -> Panel:
@@ -932,9 +955,15 @@ class TUIApp:
         self._set_status(message, "error")
 
     def _collect_library_snapshot(self, limit: int) -> list[LibrarySnapshot]:
-        snapshots: list[LibrarySnapshot] = []
-        for novel_id in self.storage.list_novels()[:limit]:
+        novels: list[tuple[float, str, dict[str, Any]]] = []
+        for novel_id in self.storage.list_novels():
             metadata = self.storage.load_metadata(novel_id) or {}
+            novels.append((self._library_snapshot_added_at(metadata), novel_id, metadata))
+
+        novels.sort(key=lambda item: (item[0], item[1].lower()), reverse=True)
+
+        snapshots: list[LibrarySnapshot] = []
+        for _, novel_id, metadata in novels[:limit]:
             raw_chapters = metadata.get("chapters", [])
             total_chapters = len(raw_chapters) if isinstance(raw_chapters, list) else 0
             title = metadata.get("translated_title") or metadata.get("title") or novel_id
@@ -948,6 +977,26 @@ class TUIApp:
                 }
             )
         return snapshots
+
+    def _library_snapshot_added_at(self, metadata: dict[str, Any]) -> float:
+        for key in ("scraped_at", "created_at", "added_at", "updated_at"):
+            timestamp = self._parse_iso_timestamp(metadata.get(key))
+            if timestamp is not None:
+                return timestamp
+        return 0.0
+
+    def _parse_iso_timestamp(self, value: Any) -> float | None:
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if normalized.endswith("Z"):
+            normalized = f"{normalized[:-1]}+00:00"
+        try:
+            return datetime.fromisoformat(normalized).timestamp()
+        except ValueError:
+            return None
 
     def _detect_novel_language(self, metadata: dict[str, Any]) -> str:
         for key in ("language", "source_language", "lang"):
@@ -1349,12 +1398,12 @@ class TUIApp:
         )
         return Group(active_header, library_panel, active_guide, prompt_panel), max_scroll_offset
 
-    def _renderable_height(self, renderable: Any) -> int:
+    def _renderable_height(self, renderable: Any, width: int | None = None) -> int:
         measuring_console = Console(
             file=StringIO(),
             force_terminal=False,
             color_system=None,
-            width=self._console_width(),
+            width=width or self._console_width(),
             record=True,
         )
         measuring_console.print(renderable)
