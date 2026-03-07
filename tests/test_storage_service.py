@@ -59,6 +59,52 @@ def test_save_and_load_chapter_preserves_multiline_formatting(storage):
     assert payload["raw"]["paragraphs"] == ["Paragraph one.\nLine two.", "Paragraph two."]
 
 
+def test_save_chapter_image_asset_and_load_export_images(storage):
+    stored_asset = storage.save_chapter_image_asset(
+        "novel1",
+        "ch-images",
+        image_index=0,
+        content=b"fake-image-bytes",
+        source_url="https://example.com/scene.jpg",
+        content_type="image/jpeg",
+    )
+
+    storage.save_chapter(
+        "novel1",
+        "ch-images",
+        "Before\n\n[Image: Scene]\n\nAfter",
+        title="Illustrated Chapter",
+        images=[
+            {
+                "index": 0,
+                "placeholder": "[Image: Scene]",
+                "original_url": "https://example.com/scene.jpg",
+                "alt": "Scene",
+                **stored_asset,
+            }
+        ],
+    )
+
+    chapter = storage.load_chapter("novel1", "ch-images")
+    assert chapter is not None
+    assert chapter["images"][0]["local_path"] == "assets/images/ch-images/0000.jpg"
+
+    export_images = storage.load_chapter_export_images("novel1", "ch-images")
+    assert export_images == [
+        {
+            "index": 0,
+            "placeholder": "[Image: Scene]",
+            "original_url": "https://example.com/scene.jpg",
+            "alt": "Scene",
+            "local_path": "assets/images/ch-images/0000.jpg",
+            "content_type": "image/jpeg",
+            "size_bytes": len(b"fake-image-bytes"),
+            "sha256": stored_asset["sha256"],
+            "asset_path": str(storage.base_dir / "novels" / "novel1" / "assets" / "images" / "ch-images" / "0000.jpg"),
+        }
+    ]
+
+
 def test_save_and_load_translated_chapter(storage):
     """Test saving and loading translated chapters."""
     # Save

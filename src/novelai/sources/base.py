@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
+
+import httpx
 
 
 class SourceAdapter(ABC):
@@ -27,6 +29,29 @@ class SourceAdapter(ABC):
     @abstractmethod
     async def fetch_chapter(self, url: str) -> str:
         """Fetch raw chapter text from the source."""
+
+    async def fetch_chapter_payload(self, url: str) -> Mapping[str, Any]:
+        """Fetch chapter text plus optional structured assets."""
+        return {
+            "text": await self.fetch_chapter(url),
+            "images": [],
+        }
+
+    async def fetch_asset(self, url: str, *, referer: str | None = None) -> Mapping[str, Any]:
+        """Download an asset referenced by chapter content."""
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        if isinstance(referer, str) and referer.strip():
+            headers["Referer"] = referer.strip()
+
+        async with httpx.AsyncClient(timeout=30, headers=headers, follow_redirects=True) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+
+        return {
+            "url": str(response.url),
+            "content": response.content,
+            "content_type": response.headers.get("content-type"),
+        }
 
 
 class SourceFactory(Protocol):

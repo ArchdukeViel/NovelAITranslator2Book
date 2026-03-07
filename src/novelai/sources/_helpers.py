@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
+from typing import Any
 
+import httpx
 from bs4 import Tag
 
 
@@ -29,6 +31,44 @@ def image_placeholder(image: Tag) -> str:
     if label:
         return f"[Image: {label}]"
     return "[Image]"
+
+
+def extract_image_references(
+    section: Tag,
+    *,
+    base_url: str | None = None,
+    start_index: int = 0,
+) -> list[dict[str, Any]]:
+    """Extract deterministic image metadata from a prepared story section."""
+    references: list[dict[str, Any]] = []
+    next_index = start_index
+
+    for element in iter_story_blocks(section, ("p", "blockquote", "figure", "hr", "img")):
+        if not isinstance(element, Tag):
+            continue
+        if element.name.lower() == "hr":
+            continue
+
+        image_nodes = [element] if element.name.lower() == "img" else list(element.find_all("img"))
+        for image in image_nodes:
+            if not isinstance(image, Tag):
+                continue
+            original_url = image_source_url(image, base_url=base_url)
+            if original_url is None:
+                continue
+            references.append(
+                {
+                    "index": next_index,
+                    "placeholder": image_placeholder(image),
+                    "original_url": original_url,
+                    "alt": attribute_to_str(image.get("alt")),
+                    "title": attribute_to_str(image.get("title")),
+                    "filename": _image_filename(original_url),
+                }
+            )
+            next_index += 1
+
+    return references
 
 
 def iter_story_blocks(section: Tag, block_names: Iterable[str]) -> Iterator[Tag]:
@@ -63,3 +103,22 @@ def _image_filename(raw_src: str | None) -> str | None:
         return None
     filename = candidate.rsplit("/", 1)[-1].strip()
     return filename or None
+
+
+def image_source_url(image: Tag, *, base_url: str | None = None) -> str | None:
+    raw_src = (
+        attribute_to_str(image.get("src"))
+        or attribute_to_str(image.get("data-src"))
+        or attribute_to_str(image.get("data-original"))
+    )
+    if raw_src is None:
+        return None
+    source = raw_src.strip()
+    if not source:
+        return None
+    if base_url is not None:
+        try:
+            return str(httpx.URL(base_url).join(source))
+        except Exception:
+            return source
+    return source

@@ -122,6 +122,43 @@ def test_parse_chapter_html_preserves_inline_image_placeholders() -> None:
     )
 
 
+def test_parse_chapter_payload_extracts_image_metadata() -> None:
+    source = KakuyomuSource()
+    html = """
+    <html>
+      <body>
+        <article>
+          <div class="widget-episodeBody js-episode-body">
+            <p>Scene setup.</p>
+            <figure>
+              <img src="/images/scene.png" alt="Morning alley" />
+            </figure>
+            <p>Scene follow-up.</p>
+          </div>
+        </article>
+      </body>
+    </html>
+    """
+
+    payload = source._parse_chapter_payload(html, "https://kakuyomu.jp/works/822139845959461179/episodes/822139845959540845")
+
+    assert payload["text"] == (
+        "Scene setup.\n\n"
+        "[Image: Morning alley]\n\n"
+        "Scene follow-up."
+    )
+    assert payload["images"] == [
+        {
+            "index": 0,
+            "placeholder": "[Image: Morning alley]",
+            "original_url": "https://kakuyomu.jp/images/scene.png",
+            "alt": "Morning alley",
+            "title": None,
+            "filename": "scene.png",
+        }
+    ]
+
+
 @pytest.mark.asyncio
 async def test_fetch_metadata_normalizes_episode_url_to_work_root() -> None:
     source = KakuyomuSource()

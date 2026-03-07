@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
@@ -83,6 +84,27 @@ class NovelOrchestrationService:
             return sorted(chapter_map.keys())
 
         return [spec.chapter for spec in parse_chapter_selection(selection)]
+
+    @staticmethod
+    def _chapter_content_signature(text: str, images: list[dict[str, Any]] | None = None) -> str:
+        image_items = []
+        for image in images or []:
+            if not isinstance(image, dict):
+                continue
+            image_items.append(
+                {
+                    "index": image.get("index"),
+                    "placeholder": image.get("placeholder"),
+                    "original_url": image.get("original_url"),
+                    "alt": image.get("alt"),
+                    "title": image.get("title"),
+                }
+            )
+        payload = {
+            "text": text,
+            "images": image_items,
+        }
+        return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
     def _resolve_provider_and_model(
         self,
@@ -246,12 +268,64 @@ class NovelOrchestrationService:
                 continue
 
             chapter_id = str(chapter_num)
-            existing_hash = self.storage.existing_chapter_hash(novel_id, chapter_id)
-            text = await source.fetch_chapter(chapter["url"])
-            new_hash = self.storage._hash_text(text)
+            payload = await source.fetch_chapter_payload(chapter["url"])
+            text = payload.get("text")
+            if not isinstance(text, str):
+                raise RuntimeError(f"Source returned invalid chapter text for {chapter['url']}.")
 
-            if mode == "update" and existing_hash == new_hash:
+            images = payload.get("images")
+            image_manifest = [image for image in images if isinstance(image, dict)] if isinstance(images, list) else []
+
+            existing = self.storage.load_chapter(novel_id, chapter_id) or {}
+            existing_text = existing.get("text")
+            existing_images = existing.get("images") if isinstance(existing.get("images"), list) else []
+            existing_signature = self._chapter_content_signature(
+                existing_text if isinstance(existing_text, str) else "",
+                existing_images,
+            )
+            new_signature = self._chapter_content_signature(text, image_manifest)
+
+            if mode == "update" and existing_signature == new_signature:
                 continue
+
+            downloaded_images: list[dict[str, Any]] = []
+            self.storage.clear_chapter_image_assets(novel_id, chapter_id)
+            for image in image_manifest:
+                entry = dict(image)
+                original_url = entry.get("original_url")
+                if not isinstance(original_url, str) or not original_url.strip():
+                    downloaded_images.append(entry)
+                    continue
+                try:
+                    asset = await source.fetch_asset(original_url, referer=chapter.get("url"))
+                    content = asset.get("content")
+                    if not isinstance(content, (bytes, bytearray)):
+                        raise RuntimeError("Source returned invalid asset bytes.")
+                    if not content:
+                        raise RuntimeError("Source returned empty asset bytes.")
+                    content_type = asset.get("content_type") if isinstance(asset.get("content_type"), str) else None
+                    if isinstance(content_type, str) and content_type.lower().startswith("text/html"):
+                        raise RuntimeError("Asset response was HTML instead of image content.")
+                    stored_asset = self.storage.save_chapter_image_asset(
+                        novel_id,
+                        chapter_id,
+                        image_index=int(entry.get("index", len(downloaded_images))),
+                        content=bytes(content),
+                        source_url=str(asset.get("url") or original_url),
+                        content_type=content_type,
+                    )
+                    entry.update(stored_asset)
+                    entry["original_url"] = str(asset.get("url") or original_url)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to download chapter image for %s/%s from %s: %s",
+                        novel_id,
+                        chapter_id,
+                        original_url,
+                        exc,
+                    )
+                    entry["download_error"] = str(exc)
+                downloaded_images.append(entry)
 
             self.storage.save_chapter(
                 novel_id,
@@ -259,6 +333,7 @@ class NovelOrchestrationService:
                 text,
                 source_key=source_key,
                 source_url=chapter.get("url"),
+                images=downloaded_images,
             )
 
     async def translate_chapters(

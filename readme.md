@@ -125,6 +125,8 @@ To add another site:
 
 The shared cleaner, plain-text derivation, segmentation, and persistence layers stay unchanged.
 
+If the source also exposes inline chapter images, implement the runtime adapter in `src/novelai/sources/` with `fetch_chapter_payload()` and `fetch_asset()` so the shared library storage and EPUB export pipeline can reuse the same image flow.
+
 ## Quick Start
 
 1. Install dependencies:
@@ -166,6 +168,16 @@ novelaibook export-epub n7133es --output exports --format epub
 - `--mode update` only downloads new/changed chapters.
 - By default, exports are written inside `novel_library/novels/<novel>/<format>/`.
 - Use `--output <dir>` only when you want a custom export destination such as `exports/`.
+
+### Chapter Image Handling
+
+Inline chapter illustrations are preserved in a source-agnostic way:
+
+- chapter text keeps deterministic `[Image: ...]` placeholders so translation does not lose image position
+- source adapters can return structured `images` metadata alongside chapter text
+- image binaries are downloaded during scraping and stored under `novel_library/novels/<novel_id>/assets/images/<chapter_id>/`
+- chapter JSON stores an image manifest with the original URL, placeholder, and local asset path
+- EPUB export embeds those local files, so later export does not depend on the source site still serving the image
 
 ## Multilingual Translation Prompts
 

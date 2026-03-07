@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import mimetypes
 import re
 import shutil
 from datetime import datetime, timezone
@@ -163,6 +164,93 @@ class StorageService:
     def _chapter_path(self, novel_id: str, chapter_id: str) -> Path:
         return self._chapter_dir(novel_id) / f"{chapter_id}.json"
 
+    def _chapter_image_dir(self, novel_id: str, chapter_id: str) -> Path:
+        image_dir = self._novel_dir(novel_id) / "assets" / "images" / str(chapter_id)
+        image_dir.mkdir(parents=True, exist_ok=True)
+        return image_dir
+
+    def _asset_relative_path(self, novel_id: str, path: Path) -> str:
+        return path.relative_to(self._novel_dir(novel_id)).as_posix()
+
+    def _guess_asset_suffix(self, source_url: str | None, content_type: str | None) -> str:
+        if isinstance(content_type, str) and content_type.strip():
+            guessed = mimetypes.guess_extension(content_type.split(";", 1)[0].strip())
+            if guessed:
+                if guessed == ".jpe":
+                    return ".jpg"
+                return guessed
+
+        if isinstance(source_url, str) and source_url.strip():
+            suffix = Path(source_url.split("?", 1)[0]).suffix.lower()
+            if suffix:
+                return suffix
+
+        return ".bin"
+
+    def clear_chapter_image_assets(self, novel_id: str, chapter_id: str) -> None:
+        image_dir = self._novel_dir(novel_id) / "assets" / "images" / str(chapter_id)
+        if image_dir.exists():
+            shutil.rmtree(image_dir, ignore_errors=True)
+
+    def save_chapter_image_asset(
+        self,
+        novel_id: str,
+        chapter_id: str,
+        *,
+        image_index: int,
+        content: bytes,
+        source_url: str | None = None,
+        content_type: str | None = None,
+    ) -> dict[str, Any]:
+        suffix = self._guess_asset_suffix(source_url, content_type)
+        filename = f"{image_index:04d}{suffix}"
+        path = self._chapter_image_dir(novel_id, chapter_id) / filename
+        path.write_bytes(content)
+        return {
+            "local_path": self._asset_relative_path(novel_id, path),
+            "content_type": content_type,
+            "size_bytes": len(content),
+            "sha256": hashlib.sha256(content).hexdigest(),
+        }
+
+    def resolve_asset_path(self, novel_id: str, local_path: str | None) -> Path | None:
+        if not isinstance(local_path, str) or not local_path.strip():
+            return None
+        return self._novel_dir(novel_id) / Path(local_path)
+
+    def load_chapter_export_images(self, novel_id: str, chapter_id: str) -> list[dict[str, Any]]:
+        """Return chapter image metadata augmented with resolved local asset paths."""
+        chapter = self.load_chapter(novel_id, chapter_id) or {}
+        raw_images = chapter.get("images") if isinstance(chapter.get("images"), list) else []
+        export_images: list[dict[str, Any]] = []
+
+        for image in raw_images:
+            if not isinstance(image, dict):
+                continue
+            entry = dict(image)
+            asset_path = self.resolve_asset_path(novel_id, entry.get("local_path"))
+            entry["asset_path"] = str(asset_path) if asset_path is not None and asset_path.exists() else None
+            export_images.append(entry)
+
+        return self._normalize_image_manifest(export_images)
+
+    @staticmethod
+    def _normalize_image_manifest(images: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+        if not images:
+            return []
+
+        normalized: list[dict[str, Any]] = []
+        for image in images:
+            if not isinstance(image, dict):
+                continue
+            item = dict(image)
+            local_path = item.get("local_path")
+            if isinstance(local_path, Path):
+                item["local_path"] = local_path.as_posix()
+            normalized.append(item)
+        normalized.sort(key=lambda item: int(item.get("index", 0)))
+        return normalized
+
     def _load_legacy_raw_chapter(self, novel_id: str, chapter_id: str) -> Optional[dict[str, Any]]:
         json_path = self._novel_dir(novel_id) / "raw" / f"{chapter_id}.json"
         txt_path = self._novel_dir(novel_id) / "raw" / f"{chapter_id}.txt"
@@ -260,17 +348,22 @@ class StorageService:
         title: str | None = None,
         source_key: str | None = None,
         source_url: str | None = None,
+        images: list[dict[str, Any]] | None = None,
     ) -> Path:
         """Save a raw / scraped chapter as structured JSON."""
         payload = self._load_chapter_bundle(novel_id, chapter_id) or {"id": chapter_id}
         payload["title"] = title if title is not None else payload.get("title")
         payload["source_key"] = source_key if source_key is not None else payload.get("source_key")
         payload["source_url"] = source_url if source_url is not None else payload.get("source_url")
+        existing_raw = payload.get("raw") if isinstance(payload.get("raw"), dict) else {}
         payload["raw"] = {
             "id": chapter_id,
             "scraped_at": _utc_now_iso(),
             "text": text,
             "paragraphs": self._text_paragraphs(text),
+            "images": self._normalize_image_manifest(images)
+            if images is not None
+            else self._normalize_image_manifest(existing_raw.get("images") if isinstance(existing_raw, dict) else None),
         }
         return self._persist_chapter_bundle(novel_id, chapter_id, payload)
 
@@ -290,6 +383,7 @@ class StorageService:
             "source_url": payload.get("source_url"),
             "scraped_at": raw.get("scraped_at"),
             "text": raw.get("text"),
+            "images": self._normalize_image_manifest(raw.get("images") if isinstance(raw, dict) else None),
         }
 
     def save_translated_chapter(
@@ -773,6 +867,7 @@ class StorageService:
                     title=raw_chapter.get("title"),
                     source_key=raw_chapter.get("source_key"),
                     source_url=raw_chapter.get("source_url"),
+                    images=raw_chapter.get("images"),
                 )
             
             # Restore translated chapter

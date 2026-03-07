@@ -19,6 +19,8 @@ from tests.conftest import MockTranslationProvider, TESTS_TMP_ROOT
 class StubSource(SourceAdapter):
     def __init__(self) -> None:
         self.requested_max_chapters: list[int | None] = []
+        self.chapter_payloads: dict[str, dict[str, object]] = {}
+        self.assets: dict[str, dict[str, object]] = {}
 
     @property
     def key(self) -> str:
@@ -39,6 +41,22 @@ class StubSource(SourceAdapter):
 
     async def fetch_chapter(self, url: str) -> str:
         return f"chapter from {url}"
+
+    async def fetch_chapter_payload(self, url: str) -> dict[str, object]:
+        payload = self.chapter_payloads.get(url)
+        if payload is not None:
+            return payload
+        return {"text": await self.fetch_chapter(url), "images": []}
+
+    async def fetch_asset(self, url: str, *, referer: str | None = None) -> dict[str, object]:
+        asset = self.assets.get(url)
+        if asset is not None:
+            return asset
+        return {
+            "url": url,
+            "content": b"asset-bytes",
+            "content_type": "image/png",
+        }
 
 
 class UnusedTranslationService:
@@ -150,3 +168,107 @@ async def test_scrape_metadata_logs_missing_openai_key_only_once(orchestration_e
     ]
 
     assert warnings == ["OpenAI API key missing; falling back to dummy provider for metadata translation."]
+
+
+@pytest.mark.asyncio
+async def test_scrape_chapters_downloads_and_stores_image_assets(orchestration_env) -> None:
+    source = StubSource()
+    chapter_url = "https://example.com/novel-1/1"
+    source.chapter_payloads[chapter_url] = {
+        "text": "Before\n\n[Image: Scene illustration]\n\nAfter",
+        "images": [
+            {
+                "index": 0,
+                "placeholder": "[Image: Scene illustration]",
+                "original_url": "https://assets.example.com/scene.jpg",
+                "alt": "Scene illustration",
+            }
+        ],
+    }
+    source.assets["https://assets.example.com/scene.jpg"] = {
+        "url": "https://assets.example.com/scene.jpg",
+        "content": b"scene-bytes",
+        "content_type": "image/jpeg",
+    }
+
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-1",
+        {
+            "title": "Original Novel",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "Chapter One", "url": chapter_url},
+            ],
+        },
+    )
+
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.scrape_chapters("stub", "novel-1", "1", mode="update")
+
+    chapter = storage.load_chapter("novel-1", "1")
+    assert chapter is not None
+    assert chapter["text"] == "Before\n\n[Image: Scene illustration]\n\nAfter"
+    assert chapter["images"][0]["local_path"] == "assets/images/1/0000.jpg"
+    assert "download_error" not in chapter["images"][0]
+
+    export_images = storage.load_chapter_export_images("novel-1", "1")
+    assert export_images[0]["asset_path"] is not None
+
+
+@pytest.mark.asyncio
+async def test_scrape_chapters_records_download_error_for_html_asset_response(orchestration_env) -> None:
+    source = StubSource()
+    chapter_url = "https://example.com/novel-1/1"
+    source.chapter_payloads[chapter_url] = {
+        "text": "[Image: Blocked image]",
+        "images": [
+            {
+                "index": 0,
+                "placeholder": "[Image: Blocked image]",
+                "original_url": "https://assets.example.com/blocked.jpg",
+                "alt": "Blocked image",
+            }
+        ],
+    }
+    source.assets["https://assets.example.com/blocked.jpg"] = {
+        "url": "https://assets.example.com/blocked.jpg",
+        "content": b"<html>blocked</html>",
+        "content_type": "text/html; charset=utf-8",
+    }
+
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-1",
+        {
+            "title": "Original Novel",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "Chapter One", "url": chapter_url},
+            ],
+        },
+    )
+
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.scrape_chapters("stub", "novel-1", "1", mode="update")
+
+    chapter = storage.load_chapter("novel-1", "1")
+    assert chapter is not None
+    assert chapter["images"][0]["download_error"] == "Asset response was HTML instead of image content."
+    assert chapter["images"][0].get("local_path") is None

@@ -7,7 +7,12 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
-from novelai.sources._helpers import attribute_to_str, image_placeholder, iter_story_blocks
+from novelai.sources._helpers import (
+    attribute_to_str,
+    extract_image_references,
+    image_placeholder,
+    iter_story_blocks,
+)
 from novelai.sources.base import SourceAdapter
 
 
@@ -108,10 +113,19 @@ class KakuyomuSource(SourceAdapter):
         work_id = self.normalize_novel_id(identifier_or_url)
         return f"https://kakuyomu.jp/works/{work_id.strip('/')}/"
 
-    async def _fetch_page(self, url: str) -> str:
+    def _request_headers(self, *, referer: str | None = None) -> dict[str, str]:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        if isinstance(referer, str) and referer.strip():
+            headers["Referer"] = referer.strip()
+        return headers
+
+    async def _fetch_page(self, url: str) -> str:
         try:
-            async with httpx.AsyncClient(timeout=30, headers=headers, follow_redirects=True) as client:
+            async with httpx.AsyncClient(
+                timeout=30,
+                headers=self._request_headers(),
+                follow_redirects=True,
+            ) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -122,6 +136,28 @@ class KakuyomuSource(SourceAdapter):
         except httpx.HTTPError as exc:
             raise SourceError(f"Failed to fetch Kakuyomu page from {url}: {exc}") from exc
         return resp.text
+
+    async def fetch_asset(self, url: str, *, referer: str | None = None) -> dict[str, Any]:
+        try:
+            async with httpx.AsyncClient(
+                timeout=30,
+                headers=self._request_headers(referer=referer),
+                follow_redirects=True,
+            ) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise SourceError(
+                f"Failed to fetch Kakuyomu asset from {url} (status={exc.response.status_code})."
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise SourceError(f"Failed to fetch Kakuyomu asset from {url}: {exc}") from exc
+
+        return {
+            "url": str(response.url),
+            "content": response.content,
+            "content_type": response.headers.get("content-type"),
+        }
 
     def _first_text(self, soup: BeautifulSoup | Tag, selectors: tuple[str, ...]) -> str | None:
         for selector in selectors:
@@ -323,7 +359,7 @@ class KakuyomuSource(SourceAdapter):
             "chapters": chapters,
         }
 
-    def _parse_chapter_html(self, html: str) -> str:
+    def _parse_chapter_payload(self, html: str, url: str) -> dict[str, Any]:
         soup = BeautifulSoup(html, "lxml")
         body = self._find_story_body(soup)
         if body is None:
@@ -333,11 +369,18 @@ class KakuyomuSource(SourceAdapter):
         if prepared is None:
             raise SourceError("Chapter text was empty on Kakuyomu page")
 
+        images = extract_image_references(prepared, base_url=url)
         text = self._render_story_body(prepared)
         text = re.sub(r"\n{3,}", "\n\n", text)
         if not text:
             raise SourceError("Chapter text was empty on Kakuyomu page")
-        return text
+        return {
+            "text": text,
+            "images": images,
+        }
+
+    def _parse_chapter_html(self, html: str, url: str = "https://kakuyomu.jp/") -> str:
+        return str(self._parse_chapter_payload(html, url).get("text", ""))
 
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         url = self._normalize_url(url)
@@ -355,4 +398,8 @@ class KakuyomuSource(SourceAdapter):
 
     async def fetch_chapter(self, url: str) -> str:
         html = await self._fetch_page(url)
-        return self._parse_chapter_html(html)
+        return str(self._parse_chapter_payload(html, url).get("text", ""))
+
+    async def fetch_chapter_payload(self, url: str) -> dict[str, Any]:
+        html = await self._fetch_page(url)
+        return self._parse_chapter_payload(html, url)

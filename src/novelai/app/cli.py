@@ -136,7 +136,13 @@ def main(argv: list[str] | None = None) -> None:
                 if not translated:
                     continue
                 # ``load_translated_chapter`` now returns a dict with metadata.
-                chapters.append({"title": chap.get("title"), "text": translated.get("text")})
+                chapters.append(
+                    {
+                        "title": chap.get("title"),
+                        "text": translated.get("text"),
+                        "images": container.storage.load_chapter_export_images(args.novel, chap_id),
+                    }
+                )
 
             output_arg = args.output.strip() if isinstance(args.output, str) else None
             output_path = str(

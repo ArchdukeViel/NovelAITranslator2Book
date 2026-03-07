@@ -2755,11 +2755,11 @@ class TUIApp:
             text = translated.get("text")
             if not isinstance(text, str):
                 continue
-
             chapters.append(
                 {
                     "title": title if isinstance(title, str) and title else f"Chapter {chap_id}",
                     "text": text,
+                    "images": self.storage.load_chapter_export_images(novel_id, chap_id),
                 }
             )
 

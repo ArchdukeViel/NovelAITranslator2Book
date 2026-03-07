@@ -127,6 +127,39 @@ def test_parse_chapter_html_preserves_inline_image_placeholders() -> None:
     )
 
 
+def test_parse_chapter_payload_extracts_image_metadata() -> None:
+    source = SyosetuNcodeSource()
+    html = """
+    <html>
+      <body>
+        <div class="p-novel__text p-novel__text--body js-novel-text">
+          <p>Before the illustration.</p>
+          <img src="/images/scene.png" alt="Scene illustration" />
+          <p>After the illustration.</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    payload = source._parse_chapter_payload(html, "https://ncode.syosetu.com/n8733gf/1/")
+
+    assert payload["text"] == (
+        "Before the illustration.\n\n"
+        "[Image: Scene illustration]\n\n"
+        "After the illustration."
+    )
+    assert payload["images"] == [
+        {
+            "index": 0,
+            "placeholder": "[Image: Scene illustration]",
+            "original_url": "https://ncode.syosetu.com/images/scene.png",
+            "alt": "Scene illustration",
+            "title": None,
+            "filename": "scene.png",
+        }
+    ]
+
+
 @pytest.mark.asyncio
 async def test_fetch_metadata_collects_all_paginated_chapter_pages() -> None:
     source = SyosetuNcodeSource()
