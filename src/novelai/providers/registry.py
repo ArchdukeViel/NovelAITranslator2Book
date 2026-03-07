@@ -30,3 +30,7 @@ def get_provider(key: str | None = None) -> TranslationProvider:
 
 def available_providers() -> list[str]:
     return list(_PROVIDER_REGISTRY.keys())
+
+
+def available_models(key: str) -> list[str]:
+    return get_provider(key).available_models()

@@ -18,6 +18,15 @@ class OpenAIProvider(TranslationProvider):
     def key(self) -> str:
         return "openai"
 
+    def available_models(self) -> list[str]:
+        return [
+            "gpt-4o-mini",
+            "gpt-4o",
+            "gpt-4.1-mini",
+            "gpt-4.1",
+            "gpt-3.5-turbo",
+        ]
+
     async def translate(
         self,
         prompt: str,

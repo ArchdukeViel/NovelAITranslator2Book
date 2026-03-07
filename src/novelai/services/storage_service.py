@@ -37,19 +37,18 @@ def _utc_now_iso() -> str:
 class StorageService:
     """Filesystem-backed storage service.
 
-    Each novel is stored in a folder under `novel_library/novels/<folder_name>`.
-    The folder name is derived from the translated title (when available),
-    and falls back to the novel ID when no translated title exists.
+    Each novel is stored in a folder under `novel_library/novels/<novel_id>`.
+    The folder name is a stable filesystem-safe variant of the novel ID.
 
     The folder contains:
       - metadata.json
-      - raw/<chapter_id>.json
-      - translated/<chapter_id>.json
+      - chapters/<chapter_id>.json
 
     A simple index file keeps the mapping from novel ID to folder name.
     """
 
     INDEX_FILENAME = "index.json"
+    CHAPTERS_DIRNAME = "chapters"
 
     @staticmethod
     def _sanitize_folder_name(name: str) -> str:
@@ -86,19 +85,7 @@ class StorageService:
         path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _compute_folder_name(self, novel_id: str, metadata: dict[str, Any]) -> str:
-        """Return a folder name for a novel.
-
-        Prefer translated title when present. Fall back to the original title,
-        then the novel ID.
-        """
-        translated_title = metadata.get("translated_title")
-        if translated_title:
-            return self._sanitize_folder_name(translated_title)
-
-        title = metadata.get("title")
-        if title:
-            return self._sanitize_folder_name(title)
-
+        """Return a stable folder name for a novel."""
         return self._sanitize_folder_name(novel_id)
 
     def _get_folder_name(self, novel_id: str) -> str:
@@ -138,6 +125,18 @@ class StorageService:
             new_dir = self.novels_dir / folder_name
             if old_dir.exists() and not new_dir.exists():
                 shutil.move(str(old_dir), str(new_dir))
+            elif old_dir.exists() and new_dir.exists():
+                for child in old_dir.iterdir():
+                    target = new_dir / child.name
+                    if not target.exists():
+                        shutil.move(str(child), str(target))
+                        continue
+                    if child.is_dir() and target.is_dir():
+                        for nested in child.iterdir():
+                            nested_target = target / nested.name
+                            if not nested_target.exists():
+                                shutil.move(str(nested), str(nested_target))
+                shutil.rmtree(old_dir, ignore_errors=True)
 
         novel_dir = self.novels_dir / folder_name
         novel_dir.mkdir(parents=True, exist_ok=True)
@@ -148,6 +147,80 @@ class StorageService:
         }
         self._persist_index(index)
         return novel_dir
+
+    def _chapter_dir(self, novel_id: str) -> Path:
+        chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
+        chapter_dir.mkdir(parents=True, exist_ok=True)
+        return chapter_dir
+
+    def _chapter_path(self, novel_id: str, chapter_id: str) -> Path:
+        return self._chapter_dir(novel_id) / f"{chapter_id}.json"
+
+    def _load_legacy_raw_chapter(self, novel_id: str, chapter_id: str) -> Optional[dict[str, Any]]:
+        json_path = self._novel_dir(novel_id) / "raw" / f"{chapter_id}.json"
+        txt_path = self._novel_dir(novel_id) / "raw" / f"{chapter_id}.txt"
+
+        if json_path.exists():
+            try:
+                return json.loads(json_path.read_text(encoding="utf-8"))
+            except Exception:
+                return None
+
+        if txt_path.exists():
+            return {"id": chapter_id, "text": txt_path.read_text(encoding="utf-8")}
+        return None
+
+    def _load_legacy_translated_chapter(self, novel_id: str, chapter_id: str) -> Optional[dict[str, Any]]:
+        json_path = self._novel_dir(novel_id) / "translated" / f"{chapter_id}.json"
+        txt_path = self._novel_dir(novel_id) / "translated" / f"{chapter_id}.txt"
+
+        if json_path.exists():
+            try:
+                return json.loads(json_path.read_text(encoding="utf-8"))
+            except Exception:
+                return None
+
+        if txt_path.exists():
+            return {"id": chapter_id, "text": txt_path.read_text(encoding="utf-8")}
+        return None
+
+    def _load_chapter_bundle(self, novel_id: str, chapter_id: str) -> Optional[dict[str, Any]]:
+        chapter_path = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME / f"{chapter_id}.json"
+        if chapter_path.exists():
+            try:
+                data = json.loads(chapter_path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                return None
+
+        raw = self._load_legacy_raw_chapter(novel_id, chapter_id)
+        translated = self._load_legacy_translated_chapter(novel_id, chapter_id)
+        if raw is None and translated is None:
+            return None
+
+        bundle: dict[str, Any] = {"id": chapter_id}
+        if raw is not None:
+            bundle["title"] = raw.get("title")
+            bundle["source_key"] = raw.get("source_key")
+            bundle["source_url"] = raw.get("source_url")
+            bundle["raw"] = {
+                "scraped_at": raw.get("scraped_at"),
+                "text": raw.get("text"),
+            }
+        if translated is not None:
+            bundle["translated"] = {
+                "provider": translated.get("provider"),
+                "model": translated.get("model"),
+                "translated_at": translated.get("translated_at"),
+                "text": translated.get("text"),
+            }
+        return bundle
+
+    def _persist_chapter_bundle(self, novel_id: str, chapter_id: str, payload: dict[str, Any]) -> Path:
+        path = self._chapter_path(novel_id, chapter_id)
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return path
 
     def delete_novel(self, novel_id: str) -> None:
         """Delete stored data for a novel (used for full re-scrapes)."""
@@ -163,14 +236,14 @@ class StorageService:
 
     def existing_chapter_hash(self, novel_id: str, chapter_id: str) -> Optional[str]:
         """Return SHA256 hash of an existing raw chapter file (if present)."""
-        json_path = self._novel_dir(novel_id) / "raw" / f"{chapter_id}.json"
-        txt_path = self._novel_dir(novel_id) / "raw" / f"{chapter_id}.txt"
+        chapter = self.load_chapter(novel_id, chapter_id)
+        if chapter is None:
+            return None
 
-        if json_path.exists():
-            return self._hash_text(json_path.read_text(encoding="utf-8"))
-        if txt_path.exists():
-            return self._hash_text(txt_path.read_text(encoding="utf-8"))
-        return None
+        text = chapter.get("text")
+        if not isinstance(text, str):
+            return None
+        return self._hash_text(text)
 
     def save_chapter(
         self,
@@ -182,38 +255,34 @@ class StorageService:
         source_url: str | None = None,
     ) -> Path:
         """Save a raw / scraped chapter as structured JSON."""
-        novel_dir = self._novel_dir(novel_id)
-        raw_dir = novel_dir / "raw"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-
-        payload = {
+        payload = self._load_chapter_bundle(novel_id, chapter_id) or {"id": chapter_id}
+        payload["title"] = title if title is not None else payload.get("title")
+        payload["source_key"] = source_key if source_key is not None else payload.get("source_key")
+        payload["source_url"] = source_url if source_url is not None else payload.get("source_url")
+        payload["raw"] = {
             "id": chapter_id,
-            "title": title,
-            "source_key": source_key,
-            "source_url": source_url,
             "scraped_at": _utc_now_iso(),
             "text": text,
         }
-
-        path = raw_dir / f"{chapter_id}.json"
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        return path
+        return self._persist_chapter_bundle(novel_id, chapter_id, payload)
 
     def load_chapter(self, novel_id: str, chapter_id: str) -> Optional[dict[str, Any]]:
-        json_path = self._novel_dir(novel_id) / "raw" / f"{chapter_id}.json"
-        txt_path = self._novel_dir(novel_id) / "raw" / f"{chapter_id}.txt"
+        payload = self._load_chapter_bundle(novel_id, chapter_id)
+        if payload is None:
+            return None
 
-        if json_path.exists():
-            try:
-                return json.loads(json_path.read_text(encoding="utf-8"))
-            except Exception:
-                return None
+        raw = payload.get("raw")
+        if not isinstance(raw, dict):
+            return None
 
-        if txt_path.exists():
-            # Backwards compatibility: older versions stored raw chapters as plain text.
-            return {"id": chapter_id, "text": txt_path.read_text(encoding="utf-8")}
-
-        return None
+        return {
+            "id": chapter_id,
+            "title": payload.get("title"),
+            "source_key": payload.get("source_key"),
+            "source_url": payload.get("source_url"),
+            "scraped_at": raw.get("scraped_at"),
+            "text": raw.get("text"),
+        }
 
     def save_translated_chapter(
         self,
@@ -224,50 +293,56 @@ class StorageService:
         model: str | None = None,
     ) -> Path:
         """Save a translated chapter as structured JSON."""
-        novel_dir = self._novel_dir(novel_id)
-        translated_dir = novel_dir / "translated"
-        translated_dir.mkdir(parents=True, exist_ok=True)
-
-        payload = {
-            "id": chapter_id,
+        payload = self._load_chapter_bundle(novel_id, chapter_id) or {"id": chapter_id}
+        payload["translated"] = {
             "provider": provider,
             "model": model,
             "translated_at": _utc_now_iso(),
             "text": text,
         }
-
-        path = translated_dir / f"{chapter_id}.json"
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        return path
+        return self._persist_chapter_bundle(novel_id, chapter_id, payload)
 
     def load_translated_chapter(self, novel_id: str, chapter_id: str) -> Optional[dict[str, Any]]:
-        json_path = self._novel_dir(novel_id) / "translated" / f"{chapter_id}.json"
-        txt_path = self._novel_dir(novel_id) / "translated" / f"{chapter_id}.txt"
+        payload = self._load_chapter_bundle(novel_id, chapter_id)
+        if payload is None:
+            return None
 
-        if json_path.exists():
-            try:
-                return json.loads(json_path.read_text(encoding="utf-8"))
-            except Exception:
-                return None
+        translated = payload.get("translated")
+        if not isinstance(translated, dict):
+            return None
 
-        if txt_path.exists():
-            # Backwards compatibility: older versions stored translated chapters as plain text.
-            return {"id": chapter_id, "text": txt_path.read_text(encoding="utf-8")}
-
-        return None
+        return {
+            "id": chapter_id,
+            "provider": translated.get("provider"),
+            "model": translated.get("model"),
+            "translated_at": translated.get("translated_at"),
+            "text": translated.get("text"),
+        }
 
     def save_metadata(self, novel_id: str, data: dict[str, Any]) -> Path:
         """Save novel metadata (chapter list, title, etc.) as JSON."""
-        # Enhance metadata with tracking fields
-        data["novel_id"] = novel_id
-        data["scraped_at"] = data.get("scraped_at") or _utc_now_iso()
+        existing = self.load_metadata(novel_id) or {}
+        merged = dict(existing)
+        merged.update(data)
 
-        folder_name = self._compute_folder_name(novel_id, data)
-        data["folder_name"] = folder_name
+        merged["novel_id"] = novel_id
+        merged["scraped_at"] = existing.get("scraped_at") or merged.get("scraped_at") or _utc_now_iso()
+        merged["updated_at"] = _utc_now_iso()
+
+        titles = existing.get("titles", {}) if isinstance(existing.get("titles"), dict) else {}
+        if isinstance(merged.get("title"), str) and merged.get("title"):
+            titles["original"] = merged["title"]
+        if isinstance(merged.get("translated_title"), str) and merged.get("translated_title"):
+            titles["translated"] = merged["translated_title"]
+        if titles:
+            merged["titles"] = titles
+
+        folder_name = self._compute_folder_name(novel_id, merged)
+        merged["folder_name"] = folder_name
 
         novel_dir = self._ensure_novel_dir(novel_id, folder_name)
         path = novel_dir / "metadata.json"
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
         return path
 
     def load_metadata(self, novel_id: str) -> Optional[dict[str, Any]]:
@@ -281,16 +356,24 @@ class StorageService:
             return None
 
     def list_translated_chapters(self, novel_id: str) -> list[str]:
-        translated_dir = self._novel_dir(novel_id) / "translated"
-        if not translated_dir.exists():
-            return []
-
         stems: set[str] = set()
-        for p in translated_dir.iterdir():
-            if not p.is_file():
-                continue
-            if p.suffix.lower() in {".json", ".txt"}:
-                stems.add(p.stem)
+        chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
+        if chapter_dir.exists():
+            for chapter_path in chapter_dir.glob("*.json"):
+                try:
+                    payload = json.loads(chapter_path.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+                if isinstance(payload, dict) and isinstance(payload.get("translated"), dict):
+                    stems.add(chapter_path.stem)
+
+        legacy_translated_dir = self._novel_dir(novel_id) / "translated"
+        if legacy_translated_dir.exists():
+            for path in legacy_translated_dir.iterdir():
+                if not path.is_file():
+                    continue
+                if path.suffix.lower() in {".json", ".txt"}:
+                    stems.add(path.stem)
         return sorted(stems)
 
     def count_translated_chapters(self, novel_id: str) -> int:
@@ -636,22 +719,25 @@ class StorageService:
             
             # Restore raw chapter
             if checkpoint_data.get("raw_chapter"):
-                raw_dir = self._novel_dir(novel_id) / "raw"
-                raw_dir.mkdir(parents=True, exist_ok=True)
-                raw_path = raw_dir / f"{chapter_id}.json"
-                raw_path.write_text(
-                    json.dumps(checkpoint_data["raw_chapter"], ensure_ascii=False, indent=2),
-                    encoding="utf-8"
+                raw_chapter = checkpoint_data["raw_chapter"]
+                self.save_chapter(
+                    novel_id,
+                    chapter_id,
+                    raw_chapter.get("text", ""),
+                    title=raw_chapter.get("title"),
+                    source_key=raw_chapter.get("source_key"),
+                    source_url=raw_chapter.get("source_url"),
                 )
             
             # Restore translated chapter
             if checkpoint_data.get("translated_chapter"):
-                translated_dir = self._novel_dir(novel_id) / "translated"
-                translated_dir.mkdir(parents=True, exist_ok=True)
-                translated_path = translated_dir / f"{chapter_id}.json"
-                translated_path.write_text(
-                    json.dumps(checkpoint_data["translated_chapter"], ensure_ascii=False, indent=2),
-                    encoding="utf-8"
+                translated_chapter = checkpoint_data["translated_chapter"]
+                self.save_translated_chapter(
+                    novel_id,
+                    chapter_id,
+                    translated_chapter.get("text", ""),
+                    provider=translated_chapter.get("provider"),
+                    model=translated_chapter.get("model"),
                 )
             
             # Restore state (if available)
@@ -698,11 +784,15 @@ class StorageService:
         
         # Delete files for states beyond target
         if target_idx < state_order.index(ChapterState.TRANSLATED):
+            chapter_payload = self._load_chapter_bundle(novel_id, chapter_id)
+            if chapter_payload and "translated" in chapter_payload:
+                del chapter_payload["translated"]
+                self._persist_chapter_bundle(novel_id, chapter_id, chapter_payload)
+                logger.debug(f"Deleted translated chapter {chapter_id}")
             translated_path = self._novel_dir(novel_id) / "translated" / f"{chapter_id}.json"
             if translated_path.exists():
                 translated_path.unlink()
-                logger.debug(f"Deleted translated chapter {chapter_id}")
-        
+
         if target_idx < state_order.index(ChapterState.SEGMENTED):
             # Segmentation is in-memory only, but we mark state
             pass

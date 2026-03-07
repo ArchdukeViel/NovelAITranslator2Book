@@ -27,11 +27,36 @@ class SyosetuNcodeSource(SourceAdapter):
     def key(self) -> str:
         return "syosetu_ncode"
 
+    def matches_url(self, identifier_or_url: str) -> bool:
+        candidate = identifier_or_url.strip()
+        if not candidate.startswith(("http://", "https://")):
+            return False
+
+        try:
+            host = httpx.URL(candidate).host or ""
+        except Exception:
+            return False
+
+        return host.lower() == "ncode.syosetu.com"
+
+    def normalize_novel_id(self, identifier_or_url: str) -> str:
+        candidate = identifier_or_url.strip().rstrip("/")
+        if not candidate:
+            return candidate
+
+        if candidate.startswith(("http://", "https://")):
+            try:
+                path_parts = [part for part in httpx.URL(candidate).path.split("/") if part]
+            except Exception:
+                return candidate
+            if path_parts:
+                return path_parts[0]
+        return candidate.strip("/")
+
     def _normalize_url(self, identifier_or_url: str) -> str:
         # Accept either a full URL or the ncode identifier.
-        if identifier_or_url.startswith("http"):
-            return identifier_or_url.rstrip("/")
-        return f"https://ncode.syosetu.com/{identifier_or_url.strip('/')}/"
+        novel_id = self.normalize_novel_id(identifier_or_url)
+        return f"https://ncode.syosetu.com/{novel_id.strip('/')}/"
 
     async def fetch_metadata(self, url: str) -> dict[str, Any]:
         url = self._normalize_url(url)

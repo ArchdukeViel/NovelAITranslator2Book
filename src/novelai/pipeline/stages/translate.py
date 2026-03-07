@@ -52,7 +52,14 @@ class TranslateStage(PipelineStage):
         self._settings = settings_service or SettingsService()
         self._usage = usage_service or UsageService()
 
+    def _resolve_provider_and_model(self, provider_key: str, model: str) -> tuple[str, str]:
+        if provider_key == "openai" and not self._settings.get_api_key():
+            logger.warning("OpenAI API key missing; falling back to dummy provider for translation.")
+            return "dummy", "dummy"
+        return provider_key, model
+
     async def _translate_chunk(self, provider_key: str, model: str, chunk: str) -> str:
+        provider_key, model = self._resolve_provider_and_model(provider_key, model)
         provider = self._provider_factory(provider_key)
         cached = self._cache.get(chunk, provider.key, model)
         if cached is not None:
@@ -87,6 +94,7 @@ class TranslateStage(PipelineStage):
         chunks = context.chunks
         provider_key = context.provider_key or self._settings.get_provider_key()
         model = context.provider_model or self._settings.get_provider_model()
+        provider_key, model = self._resolve_provider_and_model(provider_key, model)
 
         logger.info(f"Translating {len(chunks)} chunks with {provider_key}/{model}")
         semaphore = asyncio.Semaphore(self._concurrency)

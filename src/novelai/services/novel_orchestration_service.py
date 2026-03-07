@@ -6,7 +6,7 @@ from typing import Any, Callable, Optional
 from novelai.services.storage_service import StorageService
 from novelai.services.translation_service import TranslationService
 from novelai.sources.base import SourceAdapter
-from novelai.utils.chapter_selection import parse_chapter_selection
+from novelai.utils.chapter_selection import is_full_chapter_selection, parse_chapter_selection
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,17 @@ class NovelOrchestrationService:
         self.storage = storage
         self.translation = translation
         self._source_factory = source_factory
+
+    def _selected_chapter_numbers(self, metadata: dict[str, Any], selection: str) -> list[int]:
+        chapter_map = {
+            int(chapter["id"]): chapter
+            for chapter in metadata.get("chapters", [])
+            if isinstance(chapter, dict) and str(chapter.get("id", "")).isdigit()
+        }
+        if is_full_chapter_selection(selection):
+            return sorted(chapter_map.keys())
+
+        return [spec.chapter for spec in parse_chapter_selection(selection)]
 
     async def scrape_metadata(self, source_key: str, novel_id: str, mode: str = "update") -> dict[str, Any]:
         logger.info(f"Scraping metadata for {novel_id} from {source_key} (mode={mode})")
@@ -65,11 +76,10 @@ class NovelOrchestrationService:
             if not meta:
                 raise RuntimeError("Metadata not found; run scrape-metadata first.")
 
-        selection = parse_chapter_selection(chapters)
         chapter_map = {int(c["id"]): c for c in meta.get("chapters", [])}
+        selected_numbers = self._selected_chapter_numbers(meta, chapters)
 
-        for spec in selection:
-            chapter_num = spec.chapter
+        for chapter_num in selected_numbers:
             chapter = chapter_map.get(chapter_num)
             if not chapter:
                 continue
@@ -97,23 +107,23 @@ class NovelOrchestrationService:
         chapters: str,
         provider_key: Optional[str] = None,
         provider_model: Optional[str] = None,
+        force: bool = False,
     ) -> None:
         source = self._source_factory(source_key)
         meta = self.storage.load_metadata(novel_id)
         if not meta:
             raise RuntimeError("Metadata not found; run scrape-metadata first.")
 
-        selection = parse_chapter_selection(chapters)
         chapter_map = {int(c["id"]): c for c in meta.get("chapters", [])}
+        selected_numbers = self._selected_chapter_numbers(meta, chapters)
 
-        for spec in selection:
-            chapter_num = spec.chapter
+        for chapter_num in selected_numbers:
             chapter = chapter_map.get(chapter_num)
             if not chapter:
                 continue
 
             existing = self.storage.load_translated_chapter(novel_id, str(chapter_num))
-            if existing:
+            if existing and not force:
                 continue
 
             result = await self.translation.translate_chapter(

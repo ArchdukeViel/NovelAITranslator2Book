@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -11,6 +13,7 @@ from novelai.app.bootstrap import bootstrap
 from novelai.config.settings import settings
 from novelai.providers.registry import available_providers
 from novelai.sources.registry import available_sources
+from novelai.services.usage_service import UsageService
 from novelai.tui.app import TUIApp
 
 
@@ -44,6 +47,21 @@ def test_prompt_provider_detects_registered_providers() -> None:
     assert available_providers()
 
 
+def test_resolve_source_from_url_detects_registered_source_and_normalizes_id(tui: TUIApp) -> None:
+    assert tui._resolve_source_from_url("https://ncode.syosetu.com/n9669bk/") == (
+        "syosetu_ncode",
+        "n9669bk",
+    )
+    assert tui._resolve_source_from_url("https://ncode.syosetu.com/n9669bk/12/") == (
+        "syosetu_ncode",
+        "n9669bk",
+    )
+
+
+def test_resolve_source_from_url_rejects_unknown_domains(tui: TUIApp) -> None:
+    assert tui._resolve_source_from_url("https://example.com/story/123") is None
+
+
 def test_dashboard_render_contains_sections(tui: TUIApp) -> None:
     tui.console = Console(record=True, width=120)
     tui.console.print(tui._build_dashboard())
@@ -54,6 +72,18 @@ def test_dashboard_render_contains_sections(tui: TUIApp) -> None:
     assert "Library Snapshot" in output
     assert "System Pulse" in output
     assert "Guide Rail" in output
+
+
+def test_control_deck_uses_numbered_labels(tui: TUIApp) -> None:
+    tui.console = Console(record=True, width=140)
+    tui.console.print(tui._build_actions_panel())
+    output = tui.console.export_text()
+
+    assert "1) Novel Library" in output
+    assert "2) Add Novel" in output
+    assert "3) Diagnostics" in output
+    assert "4) Settings" in output
+    assert "0) Exit" in output
 
 
 def test_dashboard_panel_order_keeps_system_pulse_last(tui: TUIApp) -> None:
@@ -118,6 +148,15 @@ def test_action_prompt_panel_hides_scroll_metadata_by_default(tui: TUIApp) -> No
     assert "View " not in output
 
 
+def test_action_prompt_defaults_to_menu_number_one(tui: TUIApp) -> None:
+    panel = tui._build_action_prompt_panel("", None, 0, 0)
+    tui.console = Console(record=True, width=120)
+    tui.console.print(panel)
+    output = tui.console.export_text()
+
+    assert "Action  1" in output
+
+
 def test_console_width_can_be_locked_for_the_session(tui: TUIApp) -> None:
     tui.console = Console(width=137)
     tui._lock_layout_width()
@@ -128,6 +167,195 @@ def test_console_width_can_be_locked_for_the_session(tui: TUIApp) -> None:
     assert tui._console_width() == 137
 
 
+def test_numeric_menu_selection_maps_to_action_keys(tui: TUIApp) -> None:
+    assert tui._resolve_menu_selection("") == "list"
+    assert tui._resolve_menu_selection("1") == "list"
+    assert tui._resolve_menu_selection("2") == "scrape"
+    assert tui._resolve_menu_selection("3") == "diagnostics"
+    assert tui._resolve_menu_selection("4") == "settings"
+    assert tui._resolve_menu_selection("0") == "exit"
+    assert tui._resolve_menu_selection("5") is None
+    assert tui._resolve_menu_selection("6") is None
+    assert tui._resolve_menu_selection("7") is None
+    assert tui._resolve_menu_selection("8") is None
+    assert tui._resolve_menu_selection("list") is None
+
+
+def test_library_screen_uses_guide_rail_instead_of_embedded_command_panel(tui: TUIApp) -> None:
+    screen = tui._build_library_screen(
+        [
+            {
+                "novel_id": "novel-1",
+                "title": "A Better Story",
+                "total_chapters": 2,
+                "translated_chapters": 1,
+                "language": "Japanese",
+            }
+        ],
+        [
+            {
+                "index": 1,
+                "language": "Japanese",
+                "snapshots": [
+                    {
+                        "novel_id": "novel-1",
+                        "title": "A Better Story",
+                        "total_chapters": 2,
+                        "translated_chapters": 1,
+                        "language": "Japanese",
+                    }
+                ],
+            }
+        ],
+    )
+    tui.console = Console(record=True, width=120)
+    tui.console.print(screen)
+    output = tui.console.export_text()
+
+    assert "Guide Rail" in output
+    assert "0) back" in output
+
+
+def test_diagnostics_screen_uses_guide_rail_and_command_options(tui: TUIApp) -> None:
+    tui.console = Console(record=True, width=140)
+    tui.console.print(tui._build_diagnostics_screen())
+    output = tui.console.export_text()
+
+    assert "DIAGNOSTICS" in output
+    assert "Guide Rail" in output
+    assert "1) clear usage history" in output
+    assert "0) back" in output
+    assert "Daily History" in output
+
+
+def test_settings_screen_shows_numbered_actions_and_provider_models(tui: TUIApp) -> None:
+    tui.settings.set_provider_key("openai")
+    tui.settings.set_provider_model("gpt-3.5-turbo")
+
+    tui.console = Console(record=True, width=140)
+    tui.console.print(tui._build_settings_screen())
+    output = tui.console.export_text()
+
+    assert "SETTINGS" in output
+    assert "1) select provider" in output
+    assert "2) choose model" in output
+    assert "3) set API key" in output
+    assert "0) back" in output
+    assert "gpt-3.5-turbo" in output
+
+
+def test_diagnostics_and_settings_command_parsers_support_numbered_actions(tui: TUIApp) -> None:
+    assert tui._parse_diagnostics_command("") == "back"
+    assert tui._parse_diagnostics_command("0") == "back"
+    assert tui._parse_diagnostics_command("1") == "clear"
+    assert tui._parse_settings_command("") == "back"
+    assert tui._parse_settings_command("1") == "provider"
+    assert tui._parse_settings_command("2") == "model"
+    assert tui._parse_settings_command("3") == "api_key"
+
+
+def test_library_prompt_defaults_to_zero(tui: TUIApp) -> None:
+    panel = tui._build_library_prompt_panel("", None)
+    tui.console = Console(record=True, width=120)
+    tui.console.print(panel)
+    output = tui.console.export_text()
+
+    assert "Command  0" in output
+
+
+def test_library_list_panel_numbers_novels_and_shows_title_before_novel_id(tui: TUIApp) -> None:
+    panel = tui._build_library_list_panel(
+        [
+            {
+                "novel_id": "novel-1",
+                "title": "A Better Story",
+                "total_chapters": 2,
+                "translated_chapters": 1,
+                "language": "Japanese",
+            }
+        ]
+    )
+    tui.console = Console(record=True, width=120)
+    tui.console.print(panel)
+    output = tui.console.export_text()
+
+    assert "1)" in output
+    assert output.index("A Better Story") < output.index("novel-1")
+
+
+def test_library_command_parser_supports_delete_and_back(tui: TUIApp) -> None:
+    assert tui._parse_library_command("") == ("back", None)
+    assert tui._parse_library_command("0") == ("back", None)
+    assert tui._parse_library_command("back") == ("back", None)
+    assert tui._parse_library_command("5") is None
+    assert tui._parse_library_command("1 2-6") == ("export", "2-6")
+    assert tui._parse_library_command("export 3, 7-10") == ("export", "3, 7-10")
+    assert tui._parse_library_command("2 3") == ("delete", "3")
+    assert tui._parse_library_command("delete 2,4-5") == ("delete", "2,4-5")
+    assert tui._parse_library_command("3 1") == ("delete_language", "1")
+    assert tui._parse_library_command("delete language 2") == ("delete_language", "2")
+    assert tui._parse_library_command("4") == ("delete_all", None)
+    assert tui._parse_library_command("delete all") == ("delete_all", None)
+    assert tui._parse_library_command("delete nope") == ("delete", "nope")
+
+
+def test_library_selection_parser_supports_ranges_and_lists(tui: TUIApp) -> None:
+    assert tui._parse_library_selection("2-4", 10) == [2, 3, 4]
+    assert tui._parse_library_selection("3, 7-10", 10) == [3, 7, 8, 9, 10]
+    assert tui._parse_library_selection("4, 2, 2", 10) == [2, 4]
+    assert tui._parse_library_selection("8-6", 10) is None
+    assert tui._parse_library_selection("11", 10) is None
+    assert tui._parse_library_selection("nope", 10) is None
+
+
+def test_delete_library_novels_removes_multiple_metadata_entries(tui: TUIApp) -> None:
+    novel_ids = [f"novel-{uuid4().hex}" for _ in range(2)]
+    for novel_id in novel_ids:
+        tui.storage.save_metadata(
+            novel_id,
+            {
+                "title": f"Delete {novel_id}",
+                "chapters": [{"id": 1}],
+            },
+        )
+    snapshots = tui._order_library_snapshots(tui._collect_library_snapshot(limit=200))
+    selections = [
+        next(index for index, snapshot in enumerate(snapshots, start=1) if snapshot["novel_id"] == novel_id)
+        for novel_id in novel_ids
+    ]
+
+    deleted = tui._delete_library_novels(snapshots, selections)
+
+    assert {snapshot["novel_id"] for snapshot in deleted} == set(novel_ids)
+    for novel_id in novel_ids:
+        assert tui.storage.load_metadata(novel_id) is None
+
+
+def test_group_library_snapshots_separates_languages(tui: TUIApp) -> None:
+    snapshots = [
+        {
+            "novel_id": "jp-1",
+            "title": "JP Novel",
+            "total_chapters": 10,
+            "translated_chapters": 5,
+            "language": "Japanese",
+        },
+        {
+            "novel_id": "en-1",
+            "title": "EN Novel",
+            "total_chapters": 4,
+            "translated_chapters": 1,
+            "language": "English",
+        },
+    ]
+
+    groups = tui._group_library_snapshots(snapshots)
+
+    assert [group["language"] for group in groups] == ["English", "Japanese"]
+    assert groups[0]["index"] == 1
+    assert groups[1]["index"] == 2
+
+
 def test_collect_library_snapshot_uses_metadata(tui: TUIApp) -> None:
     novel_id = f"novel-{uuid4().hex}"
     tui.storage.save_metadata(
@@ -135,6 +363,7 @@ def test_collect_library_snapshot_uses_metadata(tui: TUIApp) -> None:
         {
             "title": "A Long Story",
             "translated_title": "A Better Story",
+            "source": "syosetu_ncode",
             "chapters": [{"id": 1}, {"id": 2}],
         },
     )
@@ -146,6 +375,7 @@ def test_collect_library_snapshot_uses_metadata(tui: TUIApp) -> None:
     assert matching["title"] == "A Better Story"
     assert matching["total_chapters"] == 2
     assert matching["translated_chapters"] == 1
+    assert matching["language"] == "Japanese"
 
 
 def test_settings_round_trip(tui: TUIApp) -> None:
@@ -154,6 +384,42 @@ def test_settings_round_trip(tui: TUIApp) -> None:
 
     assert tui.settings.get_provider_key() == "openai"
     assert tui.settings.get_provider_model() == "gpt-3.5-turbo"
+
+
+def test_usage_service_resets_daily_but_preserves_history() -> None:
+    usage_dir = Path("tests/.tmp") / f"usage_{uuid4().hex}"
+    usage_dir.mkdir(parents=True, exist_ok=False)
+    usage = UsageService(usage_dir)
+    now = datetime.now(timezone.utc)
+    two_days_ago = now - timedelta(days=2)
+
+    try:
+        usage.record(
+            {
+                "timestamp": two_days_ago.isoformat().replace("+00:00", "Z"),
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "tokens": 12,
+            }
+        )
+        usage.record(
+            {
+                "timestamp": now.isoformat().replace("+00:00", "Z"),
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "tokens": 5,
+            }
+        )
+
+        summary = usage.summary()
+        history = usage.daily_history()
+
+        assert summary["total_requests"] == 1
+        assert summary["total_tokens"] == 5
+        assert len(history) == 2
+        assert history[0]["date"] >= history[1]["date"]
+    finally:
+        shutil.rmtree(usage_dir, ignore_errors=True)
 
 
 def test_diagnostics_data_is_available(tui: TUIApp) -> None:

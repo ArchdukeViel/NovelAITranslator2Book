@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -33,20 +33,92 @@ class UsageService:
         self._data.append(entry)
         self._persist()
 
-    def list(self, limit: int | None = None) -> List[Dict[str, Any]]:
-        if limit is None:
-            return list(self._data)
-        return list(self._data[-limit:])
+    def _local_today(self) -> date:
+        return datetime.now().astimezone().date()
 
-    def summary(self) -> Dict[str, Any]:
-        total_requests = len(self._data)
-        total_tokens = sum((e.get("tokens", 0) or 0) for e in self._data)
+    def _parse_timestamp(self, value: Any) -> datetime | None:
+        if not isinstance(value, str):
+            return None
+
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone()
+
+    def _filter_entries(
+        self,
+        *,
+        day: date | None = None,
+        all_days: bool = False,
+    ) -> List[Dict[str, Any]]:
+        if all_days:
+            return list(self._data)
+
+        target_day = day or self._local_today()
+        filtered: List[Dict[str, Any]] = []
+        for entry in self._data:
+            timestamp = self._parse_timestamp(entry.get("timestamp"))
+            if timestamp is None:
+                continue
+            if timestamp.date() == target_day:
+                filtered.append(entry)
+        return filtered
+
+    def _summarize_entries(self, entries: List[Dict[str, Any]]) -> Dict[str, Any]:
+        total_requests = len(entries)
+        total_tokens = sum((entry.get("tokens", 0) or 0) for entry in entries)
         estimated_cost = total_tokens * settings.COST_PER_TOKEN_USD
         return {
             "total_requests": total_requests,
             "total_tokens": total_tokens,
             "estimated_cost_usd": estimated_cost,
         }
+
+    def list(
+        self,
+        limit: int | None = None,
+        *,
+        day: date | None = None,
+        all_days: bool = False,
+    ) -> List[Dict[str, Any]]:
+        entries = self._filter_entries(day=day, all_days=all_days)
+        if limit is None:
+            return entries
+        return list(entries[-limit:])
+
+    def summary(
+        self,
+        *,
+        day: date | None = None,
+        all_days: bool = False,
+    ) -> Dict[str, Any]:
+        return self._summarize_entries(self._filter_entries(day=day, all_days=all_days))
+
+    def daily_history(self, limit: int | None = None) -> List[Dict[str, Any]]:
+        grouped: dict[date, List[Dict[str, Any]]] = {}
+        for entry in self._data:
+            timestamp = self._parse_timestamp(entry.get("timestamp"))
+            if timestamp is None:
+                continue
+            grouped.setdefault(timestamp.date(), []).append(entry)
+
+        history: List[Dict[str, Any]] = []
+        for day_key in sorted(grouped.keys(), reverse=True):
+            summary = self._summarize_entries(grouped[day_key])
+            history.append(
+                {
+                    "date": day_key.isoformat(),
+                    **summary,
+                }
+            )
+
+        if limit is None:
+            return history
+        return history[:limit]
 
     def clear(self) -> None:
         self._data = []

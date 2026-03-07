@@ -10,6 +10,11 @@ class ChapterRange:
     subchapter: Optional[int] = None
 
 
+def is_full_chapter_selection(selection: str) -> bool:
+    normalized = selection.strip().lower()
+    return normalized in {"*", "all", "full"}
+
+
 def parse_range_segment(segment: str) -> Iterable[int]:
     """Parse a numeric range segment like '1', '3-5' into a list of ints."""
     if "-" in segment:

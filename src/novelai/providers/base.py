@@ -12,6 +12,10 @@ class TranslationProvider(ABC):
     def key(self) -> str:
         """Unique provider key used in configuration."""
 
+    def available_models(self) -> list[str]:
+        """Return user-facing model options for this provider."""
+        return []
+
     @abstractmethod
     async def translate(
         self,

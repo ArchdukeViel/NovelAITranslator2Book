@@ -19,5 +19,15 @@ def get_source(key: str) -> SourceAdapter:
     return factory()
 
 
+def detect_source(identifier_or_url: str) -> str | None:
+    for key, factory in _SOURCE_REGISTRY.items():
+        try:
+            if factory().matches_url(identifier_or_url):
+                return key
+        except Exception:
+            continue
+    return None
+
+
 def available_sources() -> list[str]:
     return list(_SOURCE_REGISTRY.keys())

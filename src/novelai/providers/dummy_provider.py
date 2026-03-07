@@ -12,6 +12,9 @@ class DummyProvider(TranslationProvider):
     def key(self) -> str:
         return "dummy"
 
+    def available_models(self) -> list[str]:
+        return ["dummy"]
+
     async def translate(
         self,
         prompt: str,
