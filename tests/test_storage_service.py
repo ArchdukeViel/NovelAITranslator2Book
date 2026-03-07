@@ -44,6 +44,20 @@ def test_save_and_load_chapter(storage):
     assert loaded["title"] == "Chapter 1"
 
 
+def test_save_and_load_chapter_preserves_multiline_formatting(storage):
+    text = "Paragraph one.\nLine two.\n\nParagraph two."
+
+    storage.save_chapter("novel1", "ch2", text, title="Chapter 2")
+
+    loaded = storage.load_chapter("novel1", "ch2")
+    assert loaded is not None
+    assert loaded["text"] == text
+
+    chapter_path = storage.base_dir / "novels" / "novel1" / "chapters" / "ch2.json"
+    payload = json.loads(chapter_path.read_text(encoding="utf-8"))
+    assert payload["raw"]["text"] == text
+
+
 def test_save_and_load_translated_chapter(storage):
     """Test saving and loading translated chapters."""
     # Save

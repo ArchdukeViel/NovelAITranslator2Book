@@ -43,6 +43,7 @@ class SyosetuNcodeSource(SourceAdapter):
         ".p-novel__afterword",
         ".novel_bn",
     )
+    RUBY_REMOVE_SELECTORS = ("rt", "rp")
 
     @property
     def key(self) -> str:
@@ -183,9 +184,45 @@ class SyosetuNcodeSource(SourceAdapter):
             for tag in prepared.select(removable):
                 tag.decompose()
 
+        for ruby_selector in self.RUBY_REMOVE_SELECTORS:
+            for tag in prepared.find_all(ruby_selector):
+                tag.decompose()
+        for ruby in prepared.find_all("ruby"):
+            ruby.unwrap()
+
         if not prepared.get_text(separator="\n", strip=True):
             return None
         return prepared
+
+    def _normalize_story_text(self, text: str) -> str:
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        lines = [line.strip(" \t") for line in text.split("\n")]
+        normalized: list[str] = []
+
+        for line in lines:
+            if line:
+                normalized.append(line)
+                continue
+            if normalized and normalized[-1] != "":
+                normalized.append("")
+
+        return "\n".join(normalized).strip()
+
+    def _extract_text_from_tag(self, tag: Tag) -> str:
+        for br in tag.find_all("br"):
+            br.replace_with("\n")
+        return self._normalize_story_text(tag.get_text(separator="", strip=False))
+
+    def _render_story_body(self, body: Tag) -> str:
+        paragraphs = [
+            self._extract_text_from_tag(paragraph)
+            for paragraph in body.find_all("p")
+            if isinstance(paragraph, Tag)
+        ]
+        paragraphs = [paragraph for paragraph in paragraphs if paragraph]
+        if paragraphs:
+            return "\n\n".join(paragraphs)
+        return self._extract_text_from_tag(body)
 
     def _find_story_body(self, soup: BeautifulSoup) -> Tag | None:
         for selector in self.BODY_SELECTORS:
@@ -227,7 +264,7 @@ class SyosetuNcodeSource(SourceAdapter):
         if body is None:
             raise SourceError("Unable to find chapter text on Syosetu page")
 
-        text = body.get_text(separator="\n", strip=True)
+        text = self._render_story_body(body)
         text = re.sub(r"\n{3,}", "\n\n", text)
         if not text:
             raise SourceError("Chapter text was empty on Syosetu page")

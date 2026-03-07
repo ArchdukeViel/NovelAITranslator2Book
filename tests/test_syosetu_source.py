@@ -82,8 +82,8 @@ def test_parse_chapter_html_ignores_preface_and_afterword_blocks() -> None:
           <p>Preface note.</p>
         </div>
         <div class="p-novel__text p-novel__text--body js-novel-text">
-          <p>First line.</p>
-          <p>Second line.</p>
+          <p><ruby>Kanji<rt>reading</rt></ruby> line one.<br />Line two.</p>
+          <p>Second paragraph.</p>
         </div>
         <div class="p-novel__text p-novel__text--afterword">
           <hr />
@@ -95,4 +95,4 @@ def test_parse_chapter_html_ignores_preface_and_afterword_blocks() -> None:
 
     chapter_text = source._parse_chapter_html(html)
 
-    assert chapter_text == "First line.\nSecond line."
+    assert chapter_text == "Kanji line one.\nLine two.\n\nSecond paragraph."
