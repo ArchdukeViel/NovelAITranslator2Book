@@ -16,6 +16,10 @@ class TranslationProvider(ABC):
         """Return user-facing model options for this provider."""
         return []
 
+    async def validate_connection(self, model: str | None = None, **kwargs: Any) -> tuple[bool, str]:
+        """Validate provider configuration and connectivity if supported."""
+        return True, f"{self.key} is ready."
+
     @abstractmethod
     async def translate(
         self,

@@ -4,8 +4,9 @@ import asyncio
 import json
 import os
 import time
+from io import StringIO
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, Callable, TypedDict
 
 from rich import box
 from rich.align import Align
@@ -23,6 +24,7 @@ from novelai.app.container import container
 from novelai.config.settings import settings
 from novelai.providers.registry import available_models as available_provider_models
 from novelai.providers.registry import available_providers
+from novelai.providers.registry import get_provider
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.settings_service import SettingsService
 from novelai.services.usage_service import UsageService
@@ -117,6 +119,8 @@ class TUIApp:
         self.orchestrator = NovelOrchestrationService(self.storage, self.translation)
         self.last_status_message = "Dashboard ready. Pick an action from the control deck."
         self.last_status_kind = "info"
+        self.api_validation_message = "Not validated yet."
+        self.api_validation_kind = "muted"
 
     def run(self) -> None:
         self._lock_layout_width()
@@ -138,8 +142,8 @@ class TUIApp:
                 self._settings_menu()
                 pause_after_action = False
             elif option == "exit":
-                self._set_status("Session closed.", "muted")
-                break
+                self.console.clear()
+                return
 
             if pause_after_action:
                 self._pause()
@@ -176,9 +180,9 @@ class TUIApp:
 
         with Live(
             console=self.console,
-            screen=False,
+            screen=True,
             auto_refresh=False,
-            transient=False,
+            transient=True,
             vertical_overflow="visible",
         ) as live:
             while True:
@@ -340,6 +344,7 @@ class TUIApp:
         default_value: str = "0",
         label: str = "Command",
         extra_allowed_characters: str = "",
+        allow_any_printable: bool = False,
     ) -> str:
         if os.name != "nt":
             self.console.clear()
@@ -354,6 +359,7 @@ class TUIApp:
             default_value=default_value,
             label=label,
             extra_allowed_characters=extra_allowed_characters,
+            allow_any_printable=allow_any_printable,
         )
 
     def _prompt_renderable_command_live(
@@ -363,6 +369,7 @@ class TUIApp:
         default_value: str,
         label: str,
         extra_allowed_characters: str,
+        allow_any_printable: bool,
     ) -> str:
         command_buffer = ""
         prompt_message: str | None = None
@@ -373,9 +380,9 @@ class TUIApp:
 
         with Live(
             console=self.console,
-            screen=False,
+            screen=True,
             auto_refresh=False,
-            transient=False,
+            transient=True,
             vertical_overflow="visible",
         ) as live:
             while True:
@@ -461,7 +468,11 @@ class TUIApp:
                     needs_refresh = True
                     continue
 
-                if len(key) == 1 and (key.isdigit() or key in extra_allowed_characters):
+                if len(key) == 1 and (
+                    (allow_any_printable and key.isprintable() and key not in ("\r", "\n", "\t"))
+                    or key.isdigit()
+                    or key in extra_allowed_characters
+                ):
                     command_buffer += key
                     needs_refresh = True
 
@@ -1187,8 +1198,22 @@ class TUIApp:
         groups: list[LibraryLanguageGroup],
     ) -> Group:
         return Group(
-            self._build_library_scrollable_content(snapshots, groups),
+            self._build_library_header_panel(),
+            self._build_library_list_panel(snapshots, groups),
             self._build_library_guide_panel(),
+        )
+
+    def _build_library_header_panel(self, compact: bool = False) -> Panel:
+        description = "Browse stored novels, export selections, and manage what stays in the library."
+        return Panel(
+            Group(
+                Text("LIBRARY", style="bold #f6bd60"),
+                Text(description, style="#d9d7ce"),
+            ),
+            border_style="#f6bd60",
+            box=box.ROUNDED,
+            padding=(0, 2) if compact else (1, 2),
+            expand=True,
         )
 
     def _build_library_scrollable_content(
@@ -1196,13 +1221,7 @@ class TUIApp:
         snapshots: list[LibrarySnapshot],
         groups: list[LibraryLanguageGroup],
     ) -> Group:
-        return Group(
-            self._build_action_header(
-                "Library",
-                "Browse stored novels, export selections, and manage what stays in the library.",
-            ),
-            self._build_library_list_panel(snapshots, groups),
-        )
+        return Group(self._build_library_list_panel(snapshots, groups))
 
     def _prompt_library_command(
         self,
@@ -1233,9 +1252,9 @@ class TUIApp:
 
         with Live(
             console=self.console,
-            screen=False,
+            screen=True,
             auto_refresh=False,
-            transient=False,
+            transient=True,
             vertical_overflow="visible",
         ) as live:
             while True:
@@ -1324,9 +1343,32 @@ class TUIApp:
                     needs_refresh = True
 
     def _library_frame_viewport_height(self, command_buffer: str, prompt_message: str | None) -> int:
+        header_panel = self._build_library_header_panel()
+        guide_panel = self._build_library_guide_panel()
+        prompt_panel = self._build_library_prompt_panel(command_buffer, prompt_message)
+        viewport_height = self._library_viewport_height(
+            header_panel,
+            guide_panel,
+            prompt_panel,
+        )
+        if viewport_height < 5:
+            guide_panel = self._build_library_guide_panel(compact=True)
+            viewport_height = self._library_viewport_height(
+                header_panel,
+                guide_panel,
+                prompt_panel,
+            )
+        if viewport_height < 5:
+            header_panel = self._build_library_header_panel(compact=True)
+            viewport_height = self._library_viewport_height(
+                header_panel,
+                guide_panel,
+                prompt_panel,
+            )
         return self._library_viewport_height(
-            self._build_library_guide_panel(),
-            self._build_library_prompt_panel(command_buffer, prompt_message),
+            header_panel,
+            guide_panel,
+            prompt_panel,
         )
 
     def _build_library_frame(
@@ -1337,32 +1379,47 @@ class TUIApp:
         prompt_message: str | None,
         scroll_offset: int,
     ) -> tuple[Group, int]:
-        scrollable_content = self._build_library_scrollable_content(snapshots, groups)
+        header_panel = self._build_library_header_panel()
+        compact_header_panel = self._build_library_header_panel(compact=True)
         guide_panel = self._build_library_guide_panel()
+        compact_guide_panel = self._build_library_guide_panel(compact=True)
         prompt_panel = self._build_library_prompt_panel(command_buffer, prompt_message)
-        viewport_height = self._library_viewport_height(guide_panel, prompt_panel)
+        active_header = header_panel
+        active_guide = guide_panel
+        viewport_height = self._library_viewport_height(active_header, active_guide, prompt_panel)
+        if viewport_height < 5:
+            active_guide = compact_guide_panel
+            viewport_height = self._library_viewport_height(active_header, active_guide, prompt_panel)
+        if viewport_height < 5:
+            active_header = compact_header_panel
+            viewport_height = self._library_viewport_height(active_header, active_guide, prompt_panel)
+
+        scrollable_content = self._build_library_scrollable_content(snapshots, groups)
         library_view, max_scroll_offset = self._build_renderable_viewport(
             scrollable_content,
             scroll_offset,
             viewport_height,
         )
-        return Group(library_view, guide_panel, prompt_panel), max_scroll_offset
+        return Group(active_header, library_view, active_guide, prompt_panel), max_scroll_offset
 
     def _renderable_height(self, renderable: Any) -> int:
-        renderable_lines = self.console.render_lines(
-            renderable,
-            options=self.console.options.update_dimensions(
-                self._console_width(),
-                self._console_height(),
-            ),
-            pad=False,
-            new_lines=False,
+        measuring_console = Console(
+            file=StringIO(),
+            force_terminal=False,
+            color_system=None,
+            width=self._console_width(),
+            record=True,
         )
-        return len(renderable_lines)
+        measuring_console.print(renderable)
+        return max(len(measuring_console.export_text().splitlines()), 1)
 
-    def _library_viewport_height(self, guide_panel: Panel, prompt_panel: Panel) -> int:
-        fixed_height = self._renderable_height(guide_panel) + self._renderable_height(prompt_panel)
-        return max(self._console_height() - fixed_height, 6)
+    def _library_viewport_height(self, header_panel: Panel, guide_panel: Panel, prompt_panel: Panel) -> int:
+        fixed_height = (
+            self._renderable_height(header_panel)
+            + self._renderable_height(guide_panel)
+            + self._renderable_height(prompt_panel)
+        )
+        return max(self._console_height() - fixed_height, 3)
 
     def _build_library_prompt_panel(
         self,
@@ -1428,20 +1485,32 @@ class TUIApp:
             expand=True,
         )
 
-    def _build_library_guide_panel(self) -> Panel:
+    def _build_library_guide_panel(self, compact: bool = False) -> Panel:
         status_style = self.STATUS_STYLES.get(self.last_status_kind, self.STATUS_STYLES["info"])
-        commands = Group(
-            Text.assemble(
-                ("Status  ", "#9aa5ce"),
-                (self.last_status_message, f"bold {status_style}"),
-            ),
-            Text(""),
-            Text("1) export <numbers>            Export novels like 1 or 2-6 or 3, 7-10.", style="#cbd5e1"),
-            Text("2) delete <numbers>            Remove one or more novels by number.", style="#cbd5e1"),
-            Text("3) delete language <group>     Remove all novels in a language group.", style="#cbd5e1"),
-            Text("4) delete all                  Remove every novel from the library.", style="#cbd5e1"),
-            Text("0) back                        Return to the dashboard.", style="#cbd5e1"),
-        )
+        if compact:
+            commands = Group(
+                Text.assemble(
+                    ("Status  ", "#9aa5ce"),
+                    (self.last_status_message, f"bold {status_style}"),
+                ),
+                Text(
+                    "1) export  2) delete  3) delete language  4) delete all  0) back",
+                    style="#cbd5e1",
+                ),
+            )
+        else:
+            commands = Group(
+                Text.assemble(
+                    ("Status  ", "#9aa5ce"),
+                    (self.last_status_message, f"bold {status_style}"),
+                ),
+                Text(""),
+                Text("1) export <numbers>            Export novels like 1 or 2-6 or 3, 7-10.", style="#cbd5e1"),
+                Text("2) delete <numbers>            Remove one or more novels by number.", style="#cbd5e1"),
+                Text("3) delete language <group>     Remove all novels in a language group.", style="#cbd5e1"),
+                Text("4) delete all                  Remove every novel from the library.", style="#cbd5e1"),
+                Text("0) back                        Return to the dashboard.", style="#cbd5e1"),
+            )
         return Panel(
             commands,
             title="Guide Rail",
@@ -1667,19 +1736,17 @@ class TUIApp:
         except Exception:
             return False
 
-    async def _do_scrape_metadata(self, source_key: str, novel_id: str, mode: str = "update") -> None:
-        await self.orchestrator.scrape_metadata(source_key, novel_id, mode=mode)
-
-    async def _do_scrape_chapters(self, source_key: str, novel_id: str, chapters: str, mode: str = "update") -> None:
-        await self.orchestrator.scrape_chapters(source_key, novel_id, chapters, mode=mode)
-
-    def _run_novel_ingest_flow(self, title: str, description: str, mode: str) -> None:
+    def _prompt_novel_url(
+        self,
+        title: str,
+        description: str,
+    ) -> tuple[str, str, str] | None:
         self.console.clear()
         self.console.print(self._build_action_header(title, description))
 
         if not available_sources():
             self._set_status(f"{title} cancelled because no source is registered.", "warning")
-            return
+            return None
 
         novel_url = Prompt.ask("[bold #f6bd60]Novel URL[/bold #f6bd60]", console=self.console).strip()
         resolved_source = self._resolve_source_from_url(novel_url)
@@ -1688,23 +1755,81 @@ class TUIApp:
                 "Could not detect a supported source from that URL. Paste a full novel URL from a registered source.",
                 "warning",
             )
-            return
+            return None
 
-        source, novel_id = resolved_source
-        chapters = self._prompt_chapter_selection()
-        if not self._validate_chapter_selection(chapters):
-            self._set_status("Use chapter selection like full, 1, or 3-8.", "warning")
-            return
+        source_key, novel_id = resolved_source
+        return novel_url, source_key, novel_id
 
-        try:
-            with self.console.status("[bold #7dcfff]Saving novel metadata...[/bold #7dcfff]", spinner="dots"):
-                asyncio.run(self._do_scrape_metadata(source, novel_id, mode=mode))
-            with self.console.status("[bold #7dcfff]Fetching raw chapters...[/bold #7dcfff]", spinner="dots"):
-                asyncio.run(self._do_scrape_chapters(source, novel_id, chapters, mode=mode))
-        except Exception as exc:
-            self._show_error(f"{title} failed: {exc}")
-            return
+    def _metadata_chapter_numbers(self, metadata: dict[str, Any] | None) -> list[int]:
+        if not isinstance(metadata, dict):
+            return []
 
+        numbers: list[int] = []
+        for chapter in metadata.get("chapters", []):
+            if not isinstance(chapter, dict):
+                continue
+            chapter_id = str(chapter.get("id", "")).strip()
+            if chapter_id.isdigit():
+                numbers.append(int(chapter_id))
+        return sorted(set(numbers))
+
+    def _latest_library_chapter(self, novel_id: str, metadata: dict[str, Any] | None) -> int:
+        latest = 0
+        for chapter_num in self._metadata_chapter_numbers(metadata):
+            chapter_id = str(chapter_num)
+            if self.storage.load_chapter(novel_id, chapter_id) or self.storage.load_translated_chapter(novel_id, chapter_id):
+                latest = chapter_num
+        return latest
+
+    def _build_update_selection(self, novel_id: str, metadata: dict[str, Any] | None) -> str | None:
+        chapter_numbers = self._metadata_chapter_numbers(metadata)
+        if not chapter_numbers:
+            return None
+
+        latest_library_chapter = self._latest_library_chapter(novel_id, metadata)
+        latest_remote_chapter = chapter_numbers[-1]
+        next_chapter = latest_library_chapter + 1
+
+        if next_chapter > latest_remote_chapter:
+            return None
+        if next_chapter == latest_remote_chapter:
+            return str(next_chapter)
+        return f"{next_chapter}-{latest_remote_chapter}"
+
+    def _format_chapter_selection_label(self, selection: str) -> str:
+        return "all available chapters" if is_full_chapter_selection(selection) else f"chapters {selection}"
+
+    def _show_existing_novel_notice(self, novel_id: str) -> None:
+        self.console.print(
+            Panel(
+                f"{novel_id} is already in the library.\nUse Update Novel to pull any newer chapters.",
+                title="Already In Library",
+                border_style="#e0af68",
+                box=box.ROUNDED,
+            )
+        )
+        self._set_status(f"{novel_id} is already in the library. Use Update Novel.", "warning")
+
+    def _show_missing_novel_notice(self, novel_id: str) -> None:
+        self.console.print(
+            Panel(
+                f"{novel_id} is not in the library yet.\nUse Add Novel first so the initial chapters can be scraped.",
+                title="Novel Not Found",
+                border_style="#e0af68",
+                box=box.ROUNDED,
+            )
+        )
+        self._set_status(f"{novel_id} is not in the library. Use Add Novel first.", "warning")
+
+    def _run_translation_pipeline(
+        self,
+        *,
+        title: str,
+        novel_id: str,
+        source: str,
+        novel_url: str,
+        chapters: str,
+    ) -> None:
         active_provider, active_model, fallback_used = self._effective_translation_target()
 
         try:
@@ -1716,7 +1841,7 @@ class TUIApp:
                         chapters,
                         active_provider,
                         active_model,
-                        force=(mode == "update"),
+                        force=False,
                     )
                 )
         except Exception as exc:
@@ -1738,6 +1863,7 @@ class TUIApp:
             )
             return
 
+        selection_label = self._format_chapter_selection_label(chapters)
         fallback_note = ""
         if fallback_used:
             fallback_note = "\nOpenAI API key was missing, so translation used dummy/dummy."
@@ -1747,7 +1873,7 @@ class TUIApp:
                 (
                     f"{title} finished for {novel_id} from {source}.\n"
                     f"Source URL: {novel_url}\n"
-                    f"Fetched and translated chapters {chapters} with {active_provider}/{active_model}."
+                    f"Fetched and translated {selection_label} with {active_provider}/{active_model}."
                     f"{fallback_note}"
                 ),
                 title=title,
@@ -1760,18 +1886,94 @@ class TUIApp:
             "success",
         )
 
+    async def _do_scrape_metadata(self, source_key: str, novel_id: str, mode: str = "update") -> None:
+        await self.orchestrator.scrape_metadata(source_key, novel_id, mode=mode)
+
+    async def _do_scrape_chapters(self, source_key: str, novel_id: str, chapters: str, mode: str = "update") -> None:
+        await self.orchestrator.scrape_chapters(source_key, novel_id, chapters, mode=mode)
+
     def _scrape_flow(self) -> None:
-        self._run_novel_ingest_flow(
+        prompt = self._prompt_novel_url(
             "Add Novel",
-            "Paste a novel URL and NovelAIBook will detect the source, scrape the novel, and translate the chapters into your library.",
-            mode="full",
+            "Paste a novel URL and NovelAIBook will detect the source, scrape the selected chapters, and translate them into your library.",
+        )
+        if prompt is None:
+            return
+
+        novel_url, source, novel_id = prompt
+        if self.storage.load_metadata(novel_id):
+            self._show_existing_novel_notice(novel_id)
+            return
+
+        chapters = self._prompt_chapter_selection()
+        if not self._validate_chapter_selection(chapters):
+            self._set_status("Use chapter selection like full, 1, or 3-8.", "warning")
+            return
+
+        try:
+            with self.console.status("[bold #7dcfff]Saving novel metadata...[/bold #7dcfff]", spinner="dots"):
+                asyncio.run(self._do_scrape_metadata(source, novel_id, mode="update"))
+            with self.console.status("[bold #7dcfff]Fetching raw chapters...[/bold #7dcfff]", spinner="dots"):
+                asyncio.run(self._do_scrape_chapters(source, novel_id, chapters, mode="update"))
+        except Exception as exc:
+            self._show_error(f"Add Novel failed: {exc}")
+            return
+
+        self._run_translation_pipeline(
+            title="Add Novel",
+            novel_id=novel_id,
+            source=source,
+            novel_url=novel_url,
+            chapters=chapters,
         )
 
     def _update_flow(self) -> None:
-        self._run_novel_ingest_flow(
+        prompt = self._prompt_novel_url(
             "Update Novel",
-            "Paste an existing novel URL to refresh metadata, raw chapters, and translated chapters for the selection you choose.",
-            mode="update",
+            "Paste an existing novel URL and NovelAIBook will refresh metadata, then fetch and translate only the chapters that are newer than your latest stored chapter.",
+        )
+        if prompt is None:
+            return
+
+        novel_url, source, novel_id = prompt
+        if self.storage.load_metadata(novel_id) is None:
+            self._show_missing_novel_notice(novel_id)
+            return
+
+        try:
+            with self.console.status("[bold #7dcfff]Refreshing novel metadata...[/bold #7dcfff]", spinner="dots"):
+                asyncio.run(self._do_scrape_metadata(source, novel_id, mode="update"))
+        except Exception as exc:
+            self._show_error(f"Update Novel failed: {exc}")
+            return
+
+        metadata = self.storage.load_metadata(novel_id)
+        chapters = self._build_update_selection(novel_id, metadata)
+        if chapters is None:
+            self.console.print(
+                Panel(
+                    f"{novel_id} is already up to date.\nNo newer chapters were detected at the source.",
+                    title="Update Novel",
+                    border_style="#7aa2f7",
+                    box=box.ROUNDED,
+                )
+            )
+            self._set_status(f"{novel_id} is already up to date.", "info")
+            return
+
+        try:
+            with self.console.status("[bold #7dcfff]Fetching new raw chapters...[/bold #7dcfff]", spinner="dots"):
+                asyncio.run(self._do_scrape_chapters(source, novel_id, chapters, mode="update"))
+        except Exception as exc:
+            self._show_error(f"Update Novel failed: {exc}")
+            return
+
+        self._run_translation_pipeline(
+            title="Update Novel",
+            novel_id=novel_id,
+            source=source,
+            novel_url=novel_url,
+            chapters=chapters,
         )
 
     async def _do_translate_chapters(
@@ -2012,7 +2214,7 @@ class TUIApp:
             self.usage.clear()
             self._set_status("Usage history cleared.", "success")
 
-    def _build_settings_screen(self) -> Group:
+    def _build_settings_summary_panel(self) -> Panel:
         provider = self.settings.get_provider_key()
         model = self.settings.get_provider_model()
         models = self._available_models_for_provider(provider)
@@ -2027,17 +2229,267 @@ class TUIApp:
         settings_table.add_row("API key", api_key_state)
         settings_table.add_row("Available models", model_text)
 
+        return Panel(settings_table, border_style="#bb9af7", box=box.ROUNDED)
+
+    def _current_api_key_text(self) -> str:
+        api_key = self.settings.get_api_key()
+        return api_key if api_key else "not set"
+
+    def _set_api_validation(self, message: str, kind: str = "muted") -> None:
+        self.api_validation_message = message
+        self.api_validation_kind = kind
+
+    async def _validate_provider_connection_async(self) -> tuple[bool, str]:
+        provider = get_provider(self.settings.get_provider_key())
+        return await provider.validate_connection(model=self.settings.get_provider_model())
+
+    def _validate_provider_connection(self) -> tuple[bool, str]:
+        try:
+            with self.console.status("[bold #7dcfff]Validating provider connection...[/bold #7dcfff]", spinner="dots"):
+                is_valid, message = asyncio.run(self._validate_provider_connection_async())
+        except Exception as exc:
+            is_valid, message = False, f"Validation failed: {exc}"
+
+        self._set_api_validation(message, "success" if is_valid else "warning")
+        return is_valid, message
+
+    def _build_numbered_choice_panel(
+        self,
+        title: str,
+        options: list[str],
+        *,
+        descriptions: list[str] | None = None,
+        border_style: str = "#7aa2f7",
+        back_label: str = "Back",
+    ) -> Panel:
+        grid = Table.grid(expand=True, padding=(0, 2))
+        grid.add_column(style="bold #f6bd60", no_wrap=True)
+        grid.add_column(style="#e5e9f0")
+
+        for index, option in enumerate(options, start=1):
+            description = descriptions[index - 1] if descriptions and index - 1 < len(descriptions) else ""
+            grid.add_row(f"{index})", Text.assemble((option, "bold #e5e9f0"), (f"  {description}" if description else "", "#cbd5e1")))
+
+        grid.add_row("0)", Text(back_label, style="#cbd5e1"))
+
+        return Panel(
+            grid,
+            title=title,
+            border_style=border_style,
+            box=box.ROUNDED,
+            expand=True,
+        )
+
+    def _build_settings_choice_screen(
+        self,
+        title: str,
+        description: str,
+        options: list[str],
+        *,
+        descriptions: list[str] | None = None,
+    ) -> Group:
+        return Group(
+            self._build_action_header(title, description),
+            self._build_settings_summary_panel(),
+            self._build_numbered_choice_panel(
+                title,
+                options,
+                descriptions=descriptions,
+                border_style="#bb9af7",
+            ),
+        )
+
+    def _build_api_key_screen(self) -> Group:
+        validation_style = self.STATUS_STYLES.get(self.api_validation_kind, self.STATUS_STYLES["muted"])
+        api_key_panel = Panel(
+            Group(
+                Text.assemble(
+                    ("Current API key  ", "#9aa5ce"),
+                    (self._current_api_key_text(), "bold #e5e9f0"),
+                ),
+                Text.assemble(
+                    ("Validation  ", "#9aa5ce"),
+                    (self.api_validation_message, f"bold {validation_style}"),
+                ),
+                Text(""),
+                Text("1) set API key                Enter or replace the runtime API key.", style="#cbd5e1"),
+                Text("2) clear API key              Remove the current runtime API key.", style="#cbd5e1"),
+                Text("3) validate connection        Check that the current provider can reach its service.", style="#cbd5e1"),
+                Text("0) back                       Return to settings.", style="#cbd5e1"),
+            ),
+            title="API Key",
+            border_style="#bb9af7",
+            box=box.ROUNDED,
+            expand=True,
+        )
+        return Group(
+            self._build_action_header(
+                "API Key",
+                "Review the current runtime API key, set a new one, or clear it.",
+            ),
+            self._build_settings_summary_panel(),
+            api_key_panel,
+        )
+
+    def _build_api_key_entry_screen(self) -> Group:
+        return Group(
+            self._build_action_header(
+                "Set API Key",
+                "Enter a runtime API key for the current provider. Press Enter on an empty line to keep the current key.",
+            ),
+            self._build_settings_summary_panel(),
+            Panel(
+                Text.assemble(
+                    ("Current API key  ", "#9aa5ce"),
+                    (self._current_api_key_text(), "bold #e5e9f0"),
+                ),
+                title="API Key",
+                border_style="#bb9af7",
+                box=box.ROUNDED,
+                expand=True,
+            ),
+        )
+
+    def _parse_api_key_command(self, command: str) -> str | None:
+        raw = command.strip().lower()
+        if raw in ("", "0", "back", "b"):
+            return "back"
+        if raw in ("1", "set", "set api key", "update", "update api key"):
+            return "set"
+        if raw in ("2", "clear", "clear api key", "remove"):
+            return "clear"
+        if raw in ("3", "validate", "validate api key", "validate connection", "test"):
+            return "validate"
+        return None
+
+    def _api_key_menu(self) -> None:
+        self._set_status("Use 1 to set the API key, 2 to clear it, 3 to validate it, or 0 to go back.", "info")
+        while True:
+            command = self._prompt_renderable_command(
+                self._build_api_key_screen(),
+                default_value="0",
+            )
+            action = self._parse_api_key_command(command)
+            if action is None:
+                self._set_status("Unknown API key command. Use 1, 2, 3, or 0.", "warning")
+                continue
+            if action == "back":
+                self._set_status("Settings ready.", "info")
+                return
+            if action == "clear":
+                if self.settings.get_api_key():
+                    self.settings.clear_api_key()
+                    self._set_api_validation("Not validated yet.", "muted")
+                    self._set_status("API key cleared.", "success")
+                else:
+                    self._set_status("API key is already not set.", "info")
+                continue
+            if action == "validate":
+                is_valid, message = self._validate_provider_connection()
+                self._set_status(message, "success" if is_valid else "warning")
+                continue
+
+            api_key = self._prompt_renderable_command(
+                self._build_api_key_entry_screen(),
+                default_value="",
+                label="API Key",
+                allow_any_printable=True,
+            ).strip()
+            if not api_key:
+                self._set_status("API key unchanged.", "info")
+                continue
+
+            self.settings.set_api_key(api_key)
+            is_valid, message = self._validate_provider_connection()
+            if is_valid:
+                self._set_status(f"API key updated for {self.settings.get_provider_key()}. {message}", "success")
+            else:
+                self._set_status(
+                    f"API key updated for {self.settings.get_provider_key()}, but validation failed. {message}",
+                    "warning",
+                )
+
+    def _prompt_numbered_choice(
+        self,
+        renderable_factory: Callable[[], Any],
+        *,
+        option_count: int,
+        default_value: str = "1",
+        label: str = "Choice",
+    ) -> int | None:
+        while True:
+            command = self._prompt_renderable_command(
+                renderable_factory(),
+                default_value=default_value,
+                label=label,
+            )
+            raw = command.strip().lower()
+            if raw in ("0", "back", "b", "cancel"):
+                return None
+            if raw.isdigit():
+                selection = int(raw)
+                if 1 <= selection <= option_count:
+                    return selection
+            self._set_status(f"Choose a number from 1 to {option_count}, or 0 to go back.", "warning")
+
+    def _select_provider_and_model(self) -> tuple[str, str] | None:
+        providers = available_providers()
+        if not providers:
+            self._set_status("No providers are registered.", "warning")
+            return None
+
+        current_provider = self.settings.get_provider_key()
+        default_provider_index = providers.index(current_provider) + 1 if current_provider in providers else 1
+        provider_choice = self._prompt_numbered_choice(
+            lambda: self._build_settings_choice_screen(
+                "Select Provider",
+                "Choose the translation provider you want to use.",
+                providers,
+            ),
+            option_count=len(providers),
+            default_value=str(default_provider_index),
+        )
+        if provider_choice is None:
+            self._set_status("Provider selection cancelled.", "warning")
+            return None
+
+        provider = providers[provider_choice - 1]
+        models = self._available_models_for_provider(provider)
+        if not models:
+            current_model = self.settings.get_provider_model()
+            return provider, current_model
+
+        current_model = self.settings.get_provider_model()
+        default_model_index = models.index(current_model) + 1 if current_model in models else 1
+        model_choice = self._prompt_numbered_choice(
+            lambda: self._build_settings_choice_screen(
+                "Select Model",
+                f"Choose the default model for {provider}.",
+                models,
+            ),
+            option_count=len(models),
+            default_value=str(default_model_index),
+        )
+        if model_choice is None:
+            self._set_status("Model selection cancelled.", "warning")
+            return None
+
+        return provider, models[model_choice - 1]
+
+    def _build_settings_screen(self) -> Group:
         return Group(
             self._build_action_header(
                 "Settings",
-                "Choose the provider, default model, and API key used by Add Novel translation.",
+                "Choose the provider, then the model for that provider, and update the API key used by Add Novel translation.",
             ),
-            Panel(settings_table, border_style="#bb9af7", box=box.ROUNDED),
-            self._build_settings_guide_panel(provider, models),
+            self._build_settings_summary_panel(),
+            self._build_settings_guide_panel(),
         )
 
-    def _build_settings_guide_panel(self, provider: str, models: list[str]) -> Panel:
+    def _build_settings_guide_panel(self) -> Panel:
         status_style = self.STATUS_STYLES.get(self.last_status_kind, self.STATUS_STYLES["info"])
+        provider = self.settings.get_provider_key()
+        models = self._available_models_for_provider(provider)
         model_text = ", ".join(models) if models else "No provider-declared models."
         return Panel(
             Group(
@@ -2047,9 +2499,8 @@ class TUIApp:
                 ),
                 Text.assemble(("Provider models  ", "#9aa5ce"), (model_text, "#cbd5e1")),
                 Text(""),
-                Text("1) select provider            Switch the active translation provider.", style="#cbd5e1"),
-                Text("2) choose model               Set the default model for the current provider.", style="#cbd5e1"),
-                Text("3) set API key                Update the runtime API key used by the provider.", style="#cbd5e1"),
+                Text("1) select provider            Pick a provider, then choose one of its models.", style="#cbd5e1"),
+                Text("2) set API key                Update the runtime API key used by the provider.", style="#cbd5e1"),
                 Text("0) back                       Return to the dashboard.", style="#cbd5e1"),
             ),
             title="Guide Rail",
@@ -2064,14 +2515,12 @@ class TUIApp:
             return "back"
         if raw in ("1", "provider", "select provider"):
             return "provider"
-        if raw in ("2", "model", "choose model"):
-            return "model"
-        if raw in ("3", "api", "api key", "set api key"):
+        if raw in ("2", "api", "api key", "set api key"):
             return "api_key"
         return None
 
     def _settings_menu(self) -> None:
-        self._set_status("Use 1 to choose a provider, 2 to choose a model, 3 to set the API key, or 0 to go back.", "info")
+        self._set_status("Use 1 to choose a provider and model, 2 to set the API key, or 0 to go back.", "info")
         while True:
             command = self._prompt_renderable_command(
                 self._build_settings_screen(),
@@ -2079,68 +2528,21 @@ class TUIApp:
             )
             action = self._parse_settings_command(command)
             if action is None:
-                self._set_status("Unknown settings command. Use 1, 2, 3, or 0.", "warning")
+                self._set_status("Unknown settings command. Use 1, 2, or 0.", "warning")
                 continue
             if action == "back":
                 self._set_status("Settings ready.", "info")
                 return
 
             if action == "provider":
-                providers = available_providers()
-                if not providers:
-                    self._set_status("No providers are registered.", "warning")
+                selection = self._select_provider_and_model()
+                if selection is None:
                     continue
-
-                current_provider = self.settings.get_provider_key()
-                default_provider = current_provider if current_provider in providers else providers[0]
-                provider = Prompt.ask(
-                    "[bold #f6bd60]Provider[/bold #f6bd60]",
-                    choices=providers,
-                    default=default_provider,
-                    console=self.console,
-                )
+                provider, model = selection
                 self.settings.set_provider_key(provider)
-
-                models = self._available_models_for_provider(provider)
-                current_model = self.settings.get_provider_model()
-                if models and current_model not in models:
-                    self.settings.set_provider_model(models[0])
-                    self._set_status(f"Provider set to {provider}. Default model changed to {models[0]}.", "success")
-                else:
-                    self._set_status(f"Provider set to {provider}.", "success")
-                continue
-
-            if action == "model":
-                provider = self.settings.get_provider_key()
-                models = self._available_models_for_provider(provider)
-                current_model = self.settings.get_provider_model()
-                if models:
-                    default_model = current_model if current_model in models else models[0]
-                    model = Prompt.ask(
-                        "[bold #f6bd60]Model[/bold #f6bd60]",
-                        choices=models,
-                        default=default_model,
-                        console=self.console,
-                    )
-                else:
-                    model = Prompt.ask(
-                        "[bold #f6bd60]Model[/bold #f6bd60]",
-                        default=current_model,
-                        console=self.console,
-                    )
                 self.settings.set_provider_model(model)
-                self._set_status(f"Default model set to {model}.", "success")
+                self._set_api_validation("Not validated yet.", "muted")
+                self._set_status(f"Provider set to {provider}. Default model set to {model}.", "success")
                 continue
 
-            api_key = Prompt.ask(
-                "[bold #f6bd60]API key[/bold #f6bd60] (leave blank to keep current)",
-                password=True,
-                default="",
-                console=self.console,
-            )
-            if not api_key:
-                self._set_status("API key unchanged.", "info")
-                continue
-
-            self.settings.set_api_key(api_key)
-            self._set_status(f"API key updated for {self.settings.get_provider_key()}.", "success")
+            self._api_key_menu()

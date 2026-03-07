@@ -57,6 +57,11 @@ class SettingsService:
         os.environ["PROVIDER_OPENAI_API_KEY"] = api_key
         settings.PROVIDER_OPENAI_API_KEY = SecretStr(api_key)
 
+    def clear_api_key(self) -> None:
+        """Remove the runtime API key from environment-backed settings."""
+        os.environ.pop("PROVIDER_OPENAI_API_KEY", None)
+        settings.PROVIDER_OPENAI_API_KEY = None
+
     # NOTE: API keys MUST NEVER be persisted to disk.
     # They must always come from environment variables (PROVIDER_OPENAI_API_KEY, etc.).
     # Use dotenv or .env file for local development, but never commit secrets to git.

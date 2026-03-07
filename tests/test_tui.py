@@ -240,6 +240,27 @@ def test_library_frame_keeps_full_guide_rail_visible(tui: TUIApp) -> None:
     assert "Command  0" in output
 
 
+def test_library_frame_keeps_novel_list_visible_on_short_terminals(tui: TUIApp) -> None:
+    tui.console = Console(record=True, width=120, height=14)
+    snapshots = [
+        {
+            "novel_id": "novel-1",
+            "title": "A Better Story",
+            "total_chapters": 2,
+            "translated_chapters": 1,
+            "language": "Japanese",
+        }
+    ]
+    groups = tui._group_library_snapshots(snapshots)
+    frame, _ = tui._build_library_frame(snapshots, groups, "", None, 0)
+
+    tui.console.print(frame)
+    output = tui.console.export_text()
+
+    assert "Novel List" in output
+    assert "A Better Story" in output or "novel-1" in output
+
+
 def test_diagnostics_screen_uses_guide_rail_and_command_options(tui: TUIApp) -> None:
     tui.console = Console(record=True, width=140)
     tui.console.print(tui._build_diagnostics_screen())
@@ -262,8 +283,7 @@ def test_settings_screen_shows_numbered_actions_and_provider_models(tui: TUIApp)
 
     assert "SETTINGS" in output
     assert "1) select provider" in output
-    assert "2) choose model" in output
-    assert "3) set API key" in output
+    assert "2) set API key" in output
     assert "0) back" in output
     assert "gpt-3.5-turbo" in output
 
@@ -274,8 +294,77 @@ def test_diagnostics_and_settings_command_parsers_support_numbered_actions(tui: 
     assert tui._parse_diagnostics_command("1") == "clear"
     assert tui._parse_settings_command("") == "back"
     assert tui._parse_settings_command("1") == "provider"
-    assert tui._parse_settings_command("2") == "model"
-    assert tui._parse_settings_command("3") == "api_key"
+    assert tui._parse_settings_command("2") == "api_key"
+    assert tui._parse_settings_command("3") is None
+    assert tui._parse_api_key_command("") == "back"
+    assert tui._parse_api_key_command("1") == "set"
+    assert tui._parse_api_key_command("2") == "clear"
+    assert tui._parse_api_key_command("3") == "validate"
+
+
+def test_settings_choice_screen_lists_numbered_options_and_back(tui: TUIApp) -> None:
+    tui.console = Console(record=True, width=120)
+    tui.console.print(
+        tui._build_settings_choice_screen(
+            "Select Provider",
+            "Choose the translation provider you want to use.",
+            ["dummy", "openai"],
+        )
+    )
+    output = tui.console.export_text()
+
+    assert "Select Provider" in output
+    assert "1)" in output
+    assert "2)" in output
+    assert "0)" in output
+    assert "dummy" in output
+    assert "openai" in output
+
+
+def test_api_key_screen_shows_current_value_and_clear_option(tui: TUIApp) -> None:
+    tui.settings.set_api_key("test-api-key")
+
+    tui.console = Console(record=True, width=120)
+    tui.console.print(tui._build_api_key_screen())
+    output = tui.console.export_text()
+
+    assert "API Key" in output
+    assert "Current API key" in output
+    assert "test-api-key" in output
+    assert "1) set API key" in output
+    assert "2) clear API key" in output
+    assert "3) validate connection" in output
+    assert "0) back" in output
+
+
+def test_api_key_screen_shows_not_set_when_empty(tui: TUIApp) -> None:
+    tui.settings.clear_api_key()
+
+    tui.console = Console(record=True, width=120)
+    tui.console.print(tui._build_api_key_screen())
+    output = tui.console.export_text()
+
+    assert "not set" in output
+
+
+def test_validate_provider_connection_updates_api_validation_status(
+    tui: TUIApp,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeProvider:
+        async def validate_connection(self, model: str | None = None) -> tuple[bool, str]:
+            return True, f"validated {model}"
+
+    tui.settings.set_provider_key("openai")
+    tui.settings.set_provider_model("gpt-4o-mini")
+    monkeypatch.setattr("novelai.tui.app.get_provider", lambda key: FakeProvider())
+
+    is_valid, message = tui._validate_provider_connection()
+
+    assert is_valid is True
+    assert message == "validated gpt-4o-mini"
+    assert tui.api_validation_message == "validated gpt-4o-mini"
+    assert tui.api_validation_kind == "success"
 
 
 def test_chapter_selection_validation_accepts_full_and_ranges(tui: TUIApp) -> None:
@@ -294,6 +383,32 @@ def test_effective_translation_target_falls_back_to_dummy_without_api_key(tui: T
         assert (provider, model, fallback_used) == ("dummy", "dummy", True)
     finally:
         settings.PROVIDER_OPENAI_API_KEY = previous_api_key
+
+
+def test_update_selection_starts_after_latest_stored_chapter(tui: TUIApp) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    metadata = {
+        "title": "A Better Story",
+        "chapters": [{"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}],
+    }
+    tui.storage.save_metadata(novel_id, metadata)
+    tui.storage.save_chapter(novel_id, "1", "chapter 1 raw")
+    tui.storage.save_translated_chapter(novel_id, "2", "chapter 2 translated")
+
+    assert tui._build_update_selection(novel_id, metadata) == "3-4"
+
+
+def test_update_selection_returns_none_when_novel_is_current(tui: TUIApp) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    metadata = {
+        "title": "A Better Story",
+        "chapters": [{"id": 1}, {"id": 2}],
+    }
+    tui.storage.save_metadata(novel_id, metadata)
+    tui.storage.save_translated_chapter(novel_id, "1", "chapter 1 translated")
+    tui.storage.save_translated_chapter(novel_id, "2", "chapter 2 translated")
+
+    assert tui._build_update_selection(novel_id, metadata) is None
 
 
 def test_library_prompt_defaults_to_zero(tui: TUIApp) -> None:
@@ -423,9 +538,14 @@ def test_collect_library_snapshot_uses_metadata(tui: TUIApp) -> None:
 def test_settings_round_trip(tui: TUIApp) -> None:
     tui.settings.set_provider_key("openai")
     tui.settings.set_provider_model("gpt-3.5-turbo")
+    tui.settings.set_api_key("demo-key")
 
     assert tui.settings.get_provider_key() == "openai"
     assert tui.settings.get_provider_model() == "gpt-3.5-turbo"
+    assert tui.settings.get_api_key() == "demo-key"
+
+    tui.settings.clear_api_key()
+    assert tui.settings.get_api_key() is None
 
 
 def test_usage_service_resets_daily_but_preserves_history() -> None:

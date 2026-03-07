@@ -30,4 +30,7 @@ class DummyProvider(TranslationProvider):
             "metadata": {"note": "dummy provider (echo)"},
         }
 
+    async def validate_connection(self, model: Optional[str] = None, **kwargs: Any) -> tuple[bool, str]:
+        return True, "Dummy provider does not require an API key."
+
 
