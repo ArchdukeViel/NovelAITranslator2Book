@@ -1170,13 +1170,6 @@ class TUIApp:
             expand=True,
         )
 
-    def _build_library_scrollable_content(
-        self,
-        snapshots: list[LibrarySnapshot],
-        groups: list[LibraryLanguageGroup],
-    ) -> Group:
-        return Group(self._build_library_list_content(snapshots, groups))
-
     def _prompt_library_command(
         self,
         snapshots: list[LibrarySnapshot],
@@ -1581,18 +1574,6 @@ class TUIApp:
             deleted.append(snapshot)
         return deleted
 
-    def _delete_library_language_group(
-        self,
-        groups: list[LibraryLanguageGroup],
-        group_index: int,
-    ) -> list[LibrarySnapshot]:
-        target_group = next(group for group in groups if group["index"] == group_index)
-        deleted: list[LibrarySnapshot] = []
-        for snapshot in target_group["snapshots"]:
-            self.storage.delete_novel(snapshot["novel_id"])
-            deleted.append(snapshot)
-        return deleted
-
     def _build_library_action_screen(
         self,
         title: str,
@@ -1944,32 +1925,6 @@ class TUIApp:
         self._set_status(
             f"Exported {len(exported)} novel(s) as {fmt.upper()} with {self._format_chapter_selection_label(chapter_selection)}.",
             "success",
-        )
-
-    def _prompt_source(self) -> str | None:
-        sources = available_sources()
-        if not sources:
-            self.console.print("[red]No sources are registered.[/red]")
-            return None
-        return Prompt.ask(
-            "[bold #f6bd60]Source[/bold #f6bd60]",
-            choices=sources,
-            default=sources[0],
-        )
-
-    def _prompt_provider(self) -> str | None:
-        providers = available_providers()
-        if not providers:
-            self.console.print("[red]No providers are registered.[/red]")
-            return None
-
-        default_provider = self.settings.get_provider_key()
-        if default_provider not in providers:
-            default_provider = providers[0]
-        return Prompt.ask(
-            "[bold #f6bd60]Provider[/bold #f6bd60]",
-            choices=providers,
-            default=default_provider,
         )
 
     def _resolve_source_from_url(self, novel_url: str) -> tuple[str, str] | None:
@@ -2353,42 +2308,6 @@ class TUIApp:
         else:
             self.exporter.export_epub(novel_id=novel_id, chapters=chapters, output_path=output_path)
         return output_path
-
-    def _export_flow(self) -> None:
-        self.console.clear()
-        self.console.print(
-            self._build_action_header(
-                "Export",
-                "Build EPUB or PDF from the translated chapters stored in the novel library.",
-            )
-        )
-
-        novel_id = Prompt.ask("[bold #f6bd60]Novel ID[/bold #f6bd60]")
-        output = Prompt.ask(
-            "[bold #f6bd60]Output directory[/bold #f6bd60] (leave blank for novel library)",
-            default="",
-        )
-        fmt = Prompt.ask(
-            "[bold #f6bd60]Format[/bold #f6bd60]",
-            choices=["epub", "pdf"],
-            default="epub",
-        )
-
-        try:
-            output_path = self._export_novel(novel_id, fmt, output.strip() or None)
-        except Exception as exc:
-            self._show_error(str(exc))
-            return
-
-        self.console.print(
-            Panel(
-                f"Exported {fmt.upper()} to {output_path}",
-                title="Export Complete",
-                border_style="#9ece6a",
-                box=box.ROUNDED,
-            )
-        )
-        self._set_status(f"Exported {novel_id} as {fmt.upper()}.", "success")
 
     def _build_diagnostics_screen(self) -> Group:
         novels = self.storage.list_novels()

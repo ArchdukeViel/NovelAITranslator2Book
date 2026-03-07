@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -22,6 +22,27 @@ def _attribute_to_str(value: object) -> str | None:
 
 class SyosetuNcodeSource(SourceAdapter):
     """Source adapter for syosetu.com novels (ncode)."""
+
+    NOVEL_ID_PATTERN = re.compile(r"^n\d{4}[a-z]{2}$", re.IGNORECASE)
+    NOVEL_ID_PATH_PATTERN = re.compile(r"/(n\d{4}[a-z]{2})(?:/|$)", re.IGNORECASE)
+    BODY_SELECTORS = (
+        "#novel_honbun",
+        ".p-novel__text--body",
+        ".p-novel__text",
+        ".js-novel-text",
+        ".p-novel__body .p-novel__text",
+        ".p-novel__body",
+        ".novel_view",
+    )
+    REMOVE_FROM_BODY_SELECTORS = (
+        "#novel_p",
+        "#novel_a",
+        ".p-novel__text--preface",
+        ".p-novel__text--afterword",
+        ".p-novel__preface",
+        ".p-novel__afterword",
+        ".novel_bn",
+    )
 
     @property
     def key(self) -> str:
@@ -44,13 +65,22 @@ class SyosetuNcodeSource(SourceAdapter):
         if not candidate:
             return candidate
 
+        if self.NOVEL_ID_PATTERN.fullmatch(candidate):
+            return candidate.lower()
+
         if candidate.startswith(("http://", "https://")):
             try:
-                path_parts = [part for part in httpx.URL(candidate).path.split("/") if part]
+                parsed_url = httpx.URL(candidate)
             except Exception:
                 return candidate
-            if path_parts:
-                return path_parts[0]
+            path = parsed_url.path
+            match = self.NOVEL_ID_PATH_PATTERN.search(path)
+            if match:
+                return match.group(1).lower()
+            path_parts = [part for part in path.split("/") if part]
+            for part in path_parts:
+                if self.NOVEL_ID_PATTERN.fullmatch(part):
+                    return part.lower()
         return candidate.strip("/")
 
     def _normalize_url(self, identifier_or_url: str) -> str:
@@ -58,73 +88,128 @@ class SyosetuNcodeSource(SourceAdapter):
         novel_id = self.normalize_novel_id(identifier_or_url)
         return f"https://ncode.syosetu.com/{novel_id.strip('/')}/"
 
-    async def fetch_metadata(self, url: str) -> dict[str, Any]:
-        url = self._normalize_url(url)
+    async def _fetch_page(self, url: str) -> str:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         try:
-            async with httpx.AsyncClient(timeout=30, headers=headers) as client:
+            async with httpx.AsyncClient(timeout=30, headers=headers, follow_redirects=True) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
             raise SourceError(
-                f"Failed to fetch metadata from {url} (status={exc.response.status_code}). "
-                "Check that the novel ID is correct and the site is accessible."
+                f"Failed to fetch Syosetu page from {url} (status={exc.response.status_code}). "
+                "Check that the novel or chapter URL is correct and the site is accessible."
             ) from exc
+        except httpx.HTTPError as exc:
+            raise SourceError(f"Failed to fetch Syosetu page from {url}: {exc}") from exc
+        return resp.text
 
-        soup = BeautifulSoup(resp.text, "lxml")
+    def _extract_title(self, soup: BeautifulSoup) -> str | None:
+        title_tag = (
+            soup.select_one(".p-novel__title")
+            or soup.select_one("h1.p-novel__title")
+            or soup.find("p", class_="novel_title")
+            or soup.find("h1", class_="novel_title")
+        )
+        if not title_tag:
+            return None
+        return title_tag.get_text(strip=True) or None
 
-        # Title / author (fallbacks for modern Syosetu HTML)
-        title = None
-        author = None
-
-        title_tag = soup.select_one(".p-novel__title") or soup.find("p", class_="novel_title")
-        if title_tag:
-            title = title_tag.get_text(strip=True)
-
+    def _extract_author(self, soup: BeautifulSoup) -> str | None:
         author_tag = soup.select_one(".p-novel__author") or soup.find(id="novel_writername")
-        if author_tag:
-            author = author_tag.get_text(strip=True)
+        if not author_tag:
+            return None
+        return author_tag.get_text(strip=True) or None
 
-        # Chapter list: modern Syosetu uses links like /nXXXXXX/1/ /nXXXXXX/2/ ...
-        # We'll gather them by regex rather than relying on a specific wrapper.
-        base_path = re.escape(httpx.URL(url).path)
-        pattern = re.compile(rf"^{base_path}(\d+)/?$")
+    def _extract_chapters(self, soup: BeautifulSoup, url: str, title: str | None) -> list[dict[str, str | int]]:
+        base_url = httpx.URL(url)
+        novel_id = self.normalize_novel_id(url)
+        chapter_pattern = re.compile(rf"^/{re.escape(novel_id)}/(\d+)/?$", re.IGNORECASE)
         chapter_urls: dict[int, dict[str, str | int]] = {}
 
-        base_url = httpx.URL(url)
-        base_root = str(base_url.copy_with(path="/"))
-
-        for a in soup.find_all("a", href=True):
-            if not isinstance(a, Tag):
+        for anchor in soup.find_all("a", href=True):
+            if not isinstance(anchor, Tag):
                 continue
-            href = _attribute_to_str(a.get("href"))
+            href = _attribute_to_str(anchor.get("href"))
             if href is None:
                 continue
-            match = pattern.match(href)
-            if not match:
-                # also try full URL variants
-                if href.startswith("http"):
-                    if href.startswith(base_root):
-                        rel = httpx.URL(href).path
-                        match = pattern.match(rel)
-                if not match:
-                    continue
 
-            chap_num = int(match.group(1))
-            chapter_urls[chap_num] = {
-                "id": str(chap_num),
-                "num": chap_num,
-                "title": a.get_text(strip=True) or f"Chapter {chap_num}",
-                "url": str(httpx.URL(url).join(href)),
+            absolute_url = str(base_url.join(href))
+            match = chapter_pattern.match(httpx.URL(absolute_url).path)
+            if not match:
+                continue
+
+            chapter_number = int(match.group(1))
+            chapter_urls[chapter_number] = {
+                "id": str(chapter_number),
+                "num": chapter_number,
+                "title": anchor.get_text(strip=True) or f"Chapter {chapter_number}",
+                "url": absolute_url,
             }
 
-        chapters = [chapter_urls[i] for i in sorted(chapter_urls)]
+        if chapter_urls:
+            return [chapter_urls[index] for index in sorted(chapter_urls)]
 
-        # Attempt to capture published/updated dates for downstream UI.
+        if self._find_story_body(soup) is None:
+            return []
+
+        return [
+            {
+                "id": "1",
+                "num": 1,
+                "title": title or "Chapter 1",
+                "url": str(base_url),
+            }
+        ]
+
+    def _is_story_body(self, candidate: Tag) -> bool:
+        classes = {
+            value.lower()
+            for value in candidate.get("class", [])
+            if isinstance(value, str)
+        }
+        if "p-novel__text--preface" in classes or "p-novel__text--afterword" in classes:
+            return False
+        if candidate.get("id") in {"novel_p", "novel_a"}:
+            return False
+        return True
+
+    def _prepare_story_body(self, body: Tag) -> Tag | None:
+        body_soup = BeautifulSoup(str(body), "lxml")
+        prepared = body_soup.select_one(body.name)
+        if not isinstance(prepared, Tag):
+            return None
+
+        for removable in self.REMOVE_FROM_BODY_SELECTORS:
+            for tag in prepared.select(removable):
+                tag.decompose()
+
+        if not prepared.get_text(separator="\n", strip=True):
+            return None
+        return prepared
+
+    def _find_story_body(self, soup: BeautifulSoup) -> Tag | None:
+        for selector in self.BODY_SELECTORS:
+            for candidate in soup.select(selector):
+                if not isinstance(candidate, Tag) or not self._is_story_body(candidate):
+                    continue
+                prepared = self._prepare_story_body(candidate)
+                if prepared is not None:
+                    return prepared
+        return None
+
+    def _extract_dates(self, soup: BeautifulSoup) -> tuple[str | None, str | None]:
         date_text = soup.get_text(separator="|", strip=True)
         dates = re.findall(r"\d{4}/\d{2}/\d{2}", date_text)
         published_at = dates[0] if dates else None
         updated_at = dates[-1] if dates else None
+        return published_at, updated_at
+
+    def _parse_metadata_html(self, html: str, url: str) -> dict[str, Any]:
+        soup = BeautifulSoup(html, "lxml")
+        title = self._extract_title(soup)
+        author = self._extract_author(soup)
+        chapters = self._extract_chapters(soup, url, title)
+        published_at, updated_at = self._extract_dates(soup)
 
         return {
             "source": "syosetu_ncode",
@@ -136,26 +221,25 @@ class SyosetuNcodeSource(SourceAdapter):
             "chapters": chapters,
         }
 
-    async def fetch_chapter(self, url: str) -> str:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        try:
-            async with httpx.AsyncClient(timeout=30, headers=headers) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            raise SourceError(
-                f"Failed to fetch chapter from {url} (status={exc.response.status_code}). "
-                "Check that the chapter URL is correct and accessible."
-            ) from exc
-
-        soup = BeautifulSoup(resp.text, "lxml")
-        # Modern Syosetu uses `.p-novel__body` as the story body container.
-        body = soup.select_one(".p-novel__body")
-        if not body:
+    def _parse_chapter_html(self, html: str) -> str:
+        soup = BeautifulSoup(html, "lxml")
+        body = self._find_story_body(soup)
+        if body is None:
             raise SourceError("Unable to find chapter text on Syosetu page")
 
-        # Preserve paragraph structure, using newline separation.
         text = body.get_text(separator="\n", strip=True)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        if not text:
+            raise SourceError("Chapter text was empty on Syosetu page")
         return text
+
+    async def fetch_metadata(self, url: str) -> dict[str, Any]:
+        url = self._normalize_url(url)
+        html = await self._fetch_page(url)
+        return self._parse_metadata_html(html, url)
+
+    async def fetch_chapter(self, url: str) -> str:
+        html = await self._fetch_page(url)
+        return self._parse_chapter_html(html)
 
 
