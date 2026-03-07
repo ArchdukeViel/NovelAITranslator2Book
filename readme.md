@@ -167,6 +167,99 @@ novelaibook export-epub n7133es --output exports --format epub
 - By default, exports are written inside `novel_library/novels/<novel>/<format>/`.
 - Use `--output <dir>` only when you want a custom export destination such as `exports/`.
 
+## Cost Estimation
+
+The repository now includes a reusable estimator under `src/cost_estimator/` for budgeting Japanese-to-English translation runs before you send chapters to an API.
+
+- It is an estimate, not an exact billing meter.
+- It uses Japanese character count as the primary input because chapter text is available before exact tokenization and the project processes Japanese fiction.
+- Prompt overhead, glossary overhead, and JSON mode overhead are modeled separately so the assumptions stay visible and configurable.
+- Pricing lives in `src/cost_estimator/pricing.py`, not inside the estimator logic, so model prices can be updated later without rewriting the estimator.
+
+### Supported models
+
+- `gpt-5.2`
+- `gpt-5.4`
+
+Default pricing:
+
+- `gpt-5.2`: input `1.75 USD / 1M tokens`, output `14.00 USD / 1M tokens`
+- `gpt-5.4`: input `2.50 USD / 1M tokens`, output `15.00 USD / 1M tokens`
+
+### Baseline heuristic
+
+The default heuristic is anchored to `10,000` Japanese characters:
+
+- source-text input tokens: `8,700`
+- prompt overhead: `500`
+- estimated total input tokens: `9,200`
+- estimated output tokens: `8,000`
+
+Optional modifiers:
+
+- glossary mode adds input overhead for terminology instructions
+- JSON mode adds input overhead for response-format instructions and output overhead for wrapper structure
+- custom overhead token values can override the defaults per request
+
+### CLI example
+
+```bash
+python -m src.cost_estimator.cli --chars 10000
+```
+
+Example output:
+
+```text
+Model: gpt-5.2
+Estimated input tokens: 9200
+Estimated output tokens: 8000
+Estimated input cost (USD): $0.0161
+Estimated output cost (USD): $0.1120
+Estimated total cost (USD): $0.1281
+
+Model: gpt-5.4
+Estimated input tokens: 9200
+Estimated output tokens: 8000
+Estimated input cost (USD): $0.0230
+Estimated output cost (USD): $0.1200
+Estimated total cost (USD): $0.1430
+
+Cheapest model: gpt-5.2
+Difference: $0.0149
+Percentage difference: 11.63%
+```
+
+Enable glossary and JSON-mode adjustments:
+
+```bash
+python -m src.cost_estimator.cli --chars 10000 --glossary --json
+```
+
+### Python usage
+
+```python
+from src.cost_estimator.compare import compare_models
+from src.cost_estimator.models import EstimationOptions
+
+options = EstimationOptions(
+    japanese_characters=10_000,
+    glossary_enabled=True,
+    json_mode=False,
+)
+comparison = compare_models(["gpt-5.2", "gpt-5.4"], options)
+
+for estimate in comparison.estimates:
+    print(estimate.model_name, estimate.estimated_total_cost_usd)
+```
+
+### Updating pricing later
+
+Update the `DEFAULT_PRICING` entries in `src/cost_estimator/pricing.py` or pass a custom pricing catalog into `estimate_cost()` and `compare_models()`.
+
+### Currency conversion extension point
+
+The estimator does not fetch exchange rates or make network calls. If you need display in another currency, inject a converter implementation into `convert_from_usd()` and keep exchange-rate policy outside the estimator.
+
 ## Runtime Data
 
 - `novel_library/` is the main runtime library. Keep it if you want to keep scraped novels, translations, metadata, preferences, and default exports.
