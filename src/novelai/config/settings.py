@@ -43,6 +43,7 @@ class AppSettings(BaseSettings):
     # --- Translation
     TRANSLATION_CONCURRENCY: int = 4
     COST_PER_TOKEN_USD: float = 0.000002
+    TRANSLATION_TARGET_LANGUAGE: str = "English"
 
 
 settings = AppSettings()

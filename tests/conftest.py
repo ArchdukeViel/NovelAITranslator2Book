@@ -115,6 +115,7 @@ class MockTranslationProvider(TranslationProvider):
         self._key = key
         self.model = model
         self.call_count = 0
+        self.last_request = None
         self.should_fail = False
         self.failure_message = "Mock provider error"
 
@@ -137,6 +138,7 @@ class MockTranslationProvider(TranslationProvider):
             raise Exception(self.failure_message)
 
         # Simple mock translation: add [TRANSLATED] prefix
+        self.last_request = kwargs.get("request")
         return {
             "text": f"[TRANSLATED] {prompt}",
             "metadata": {
@@ -210,7 +212,14 @@ class MockGlossary(Glossary):
             text = text.replace(original, f"{translated}")
         return text
 
-    def add_term(self, source: str, target: str, notes: str | None = None) -> None:
+    def add_term(
+        self,
+        source: str,
+        target: str,
+        notes: str | None = None,
+        *,
+        locked: bool = True,
+    ) -> None:
         """Add a translation term."""
         self.translations[source] = target
 

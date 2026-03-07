@@ -97,6 +97,36 @@ async def test_translation_service_integration(integration_fixture):
 
 
 @pytest.mark.asyncio
+async def test_translation_service_builds_multilingual_prompt_request(integration_fixture):
+    fixture = integration_fixture
+    fixture.add_source_chapter(
+        "http://example.com/ch1",
+        "魔導具のテストです。",
+    )
+
+    await fixture.translation_service.translate_chapter(
+        source_adapter=fixture.mock_source,
+        chapter_url="http://example.com/ch1",
+        provider_key="mock",
+        source_language="Japanese",
+        target_language="Indonesian",
+        glossary=[{"source": "魔導具", "target": "perangkat sihir"}],
+        style_preset="fantasy",
+        consistency_mode=True,
+    )
+
+    request = fixture.mock_provider.last_request
+
+    assert request is not None
+    assert request.source_language == "Japanese"
+    assert request.target_language == "Indonesian"
+    assert request.consistency_mode is True
+    assert "Project glossary:" in request.user_prompt
+    assert "perangkat sihir" in request.user_prompt
+    assert "Treat fantasy and worldbuilding terminology carefully." in request.user_prompt
+
+
+@pytest.mark.asyncio
 async def test_storage_with_pipeline(integration_fixture):
     """Test storage service integration with pipeline."""
     fixture = integration_fixture

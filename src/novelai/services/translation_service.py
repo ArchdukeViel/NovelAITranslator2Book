@@ -44,6 +44,12 @@ class TranslationService:
         chapter_url: str,
         provider_key: str | None = None,
         provider_model: str | None = None,
+        source_language: str | None = None,
+        target_language: str | None = None,
+        glossary: Any | None = None,
+        style_preset: str | None = None,
+        consistency_mode: bool = False,
+        json_output: bool = False,
     ) -> PipelineResult:
         """Run the translation pipeline for a single chapter.
         
@@ -68,6 +74,18 @@ class TranslationService:
         # Store source adapter in metadata so FetchStage can access it
         # (source_adapter is not part of the main state to keep it serializable)
         state.metadata["_source_adapter"] = source_adapter
+        if source_language is not None:
+            state.metadata["source_language"] = source_language
+        if target_language is not None:
+            state.metadata["target_language"] = target_language
+        if glossary is not None:
+            state.metadata["glossary"] = glossary
+        if style_preset is not None:
+            state.metadata["style_preset"] = style_preset
+        if consistency_mode:
+            state.metadata["consistency_mode"] = True
+        if json_output:
+            state.metadata["json_output"] = True
         
         # Run pipeline
         logger.debug(f"Running pipeline with stages: {[s.__class__.__name__ for s in self.pipeline.stages]}")

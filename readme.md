@@ -1,6 +1,6 @@
 ﻿# Novel AI
 
-A modular Japanese-to-English web novel translation platform.
+A modular web novel translation platform with a multilingual literary-prompt system.
 
 ## Chapter Extraction Framework
 
@@ -166,6 +166,125 @@ novelaibook export-epub n7133es --output exports --format epub
 - `--mode update` only downloads new/changed chapters.
 - By default, exports are written inside `novel_library/novels/<novel>/<format>/`.
 - Use `--output <dir>` only when you want a custom export destination such as `exports/`.
+
+## Multilingual Translation Prompts
+
+The project now includes an integrated prompt-management layer under `src/novelai/prompts/` for fiction translation.
+
+- It is language-pair driven, not hardcoded to one route like Japanese to English.
+- It supports normal translation mode and JSON-output mode.
+- Glossary and style presets are separate:
+  - glossary = terminology consistency layer
+  - style preset = instruction layer for tone and emphasis
+- OpenAI payload generation uses the Responses API request shape.
+
+### Supported prompt modes
+
+- default literary translation
+- strong consistency translation
+- JSON-output translation
+- optional glossary injection
+- optional style preset injection
+
+### Supported variables
+
+The prompt builders work with explicit variables:
+
+- `source_language`
+- `target_language`
+- `text`
+- `glossary_entries`
+- `style_preset`
+- `consistency_mode`
+- `json_output`
+
+Example language pairs:
+
+- Japanese -> English
+- Japanese -> Indonesian
+- Korean -> English
+- Chinese -> English
+
+### Glossary vs style preset
+
+Glossary entries are deterministic terminology mappings such as names, ranks, and recurring worldbuilding terms:
+
+```text
+Project glossary:
+- 公爵 = duke
+- 侯爵 = marquis
+- 魔導具 = magic device
+```
+
+Style presets are additional prompt instructions. They are not dictionaries and should not be used to store term mappings.
+
+Built-in presets:
+
+- `fantasy`
+- `romance`
+- `action`
+- `comedy`
+
+Add a new preset by extending `STYLE_PRESET_TEMPLATES` in `src/novelai/prompts/templates.py`.
+
+### Python usage
+
+Build a normal translation request:
+
+```python
+from novelai.prompts import build_translation_request
+from novelai.prompts.responses_api import build_translation_responses_payload
+
+request = build_translation_request(
+    text="魔導具の扱いには注意が必要だった。",
+    source_language="Japanese",
+    target_language="English",
+    glossary_entries=[
+        {"source": "魔導具", "target": "magic device"},
+    ],
+    style_preset="fantasy",
+    consistency_mode=True,
+)
+
+payload = build_translation_responses_payload("gpt-5.4", request)
+```
+
+Japanese -> English example:
+
+```python
+request = build_translation_request(
+    text="公爵が微笑んだ。",
+    source_language="Japanese",
+    target_language="English",
+    glossary_entries=[{"source": "公爵", "target": "duke"}],
+)
+```
+
+Japanese -> Indonesian example:
+
+```python
+request = build_translation_request(
+    text="魔導具が光を放った。",
+    source_language="Japanese",
+    target_language="Indonesian",
+    glossary_entries=[{"source": "魔導具", "target": "perangkat sihir"}],
+    style_preset="fantasy",
+)
+```
+
+### JSON mode
+
+Use `build_json_translation_request()` when you need paragraph-aligned JSON output. The OpenAI Responses payload builder attaches a JSON schema so the request stays structured end-to-end.
+
+```python
+from novelai.prompts import build_json_translation_request
+
+request = build_json_translation_request(
+    text="第一段落。\n\n第二段落。",
+    source_language="Japanese",
+    target_language="English",
+)
+```
 
 ## Cost Estimation
 
@@ -348,4 +467,3 @@ Comprehensive guides organized by audience and use case:
 ## Project Structure
 
 The repository is organized into clear domains. For details, see `docs/architecture/architecture.md`.
-

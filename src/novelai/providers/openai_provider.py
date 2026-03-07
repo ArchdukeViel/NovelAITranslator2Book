@@ -4,6 +4,11 @@ from typing import Any, Mapping, Optional
 
 from novelai.config.settings import settings
 from novelai.core.errors import ProviderError
+from novelai.prompts.models import TranslationRequest
+from novelai.prompts.responses_api import (
+    build_basic_responses_payload,
+    build_translation_responses_payload,
+)
 from novelai.providers.base import TranslationProvider
 
 
@@ -33,12 +38,6 @@ class OpenAIProvider(TranslationProvider):
         return api_key.get_secret_value() if hasattr(api_key, "get_secret_value") else str(api_key)
 
     @staticmethod
-    def _legacy_openai_module() -> Any:
-        import openai
-
-        return openai
-
-    @staticmethod
     def _modern_async_client() -> Any | None:
         try:
             from openai import AsyncOpenAI
@@ -48,6 +47,29 @@ class OpenAIProvider(TranslationProvider):
 
     @staticmethod
     def _extract_message_text(response: Any) -> str:
+        output_text = response.get("output_text") if isinstance(response, Mapping) else getattr(response, "output_text", None)
+        if isinstance(output_text, str) and output_text.strip():
+            return output_text.strip()
+
+        if isinstance(output_text, list):
+            fragments = [fragment for fragment in output_text if isinstance(fragment, str)]
+            if fragments:
+                return "".join(fragments).strip()
+
+        outputs = response.get("output", []) if isinstance(response, Mapping) else getattr(response, "output", [])
+        fragments: list[str] = []
+        for item in outputs or []:
+            content = item.get("content", []) if isinstance(item, Mapping) else getattr(item, "content", [])
+            for chunk in content or []:
+                chunk_type = chunk.get("type") if isinstance(chunk, Mapping) else getattr(chunk, "type", None)
+                if chunk_type not in {"output_text", "text"}:
+                    continue
+                text = chunk.get("text") if isinstance(chunk, Mapping) else getattr(chunk, "text", None)
+                if isinstance(text, str):
+                    fragments.append(text)
+        if fragments:
+            return "".join(fragments).strip()
+
         if isinstance(response, Mapping):
             choices = response.get("choices", [])
             if choices:
@@ -69,16 +91,45 @@ class OpenAIProvider(TranslationProvider):
         if usage is None:
             return None
         if isinstance(usage, Mapping):
+            input_tokens = usage.get("input_tokens", usage.get("prompt_tokens"))
+            output_tokens = usage.get("output_tokens", usage.get("completion_tokens"))
             return {
-                "prompt_tokens": usage.get("prompt_tokens"),
-                "completion_tokens": usage.get("completion_tokens"),
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "prompt_tokens": input_tokens,
+                "completion_tokens": output_tokens,
                 "total_tokens": usage.get("total_tokens"),
             }
+        input_tokens = getattr(usage, "input_tokens", getattr(usage, "prompt_tokens", None))
+        output_tokens = getattr(usage, "output_tokens", getattr(usage, "completion_tokens", None))
         return {
-            "prompt_tokens": getattr(usage, "prompt_tokens", None),
-            "completion_tokens": getattr(usage, "completion_tokens", None),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "prompt_tokens": input_tokens,
+            "completion_tokens": output_tokens,
             "total_tokens": getattr(usage, "total_tokens", None),
         }
+
+    @staticmethod
+    def _build_payload(
+        prompt: str,
+        model: str,
+        *,
+        request: TranslationRequest | None = None,
+        max_output_tokens: int | None = None,
+    ) -> dict[str, Any]:
+        if request is not None:
+            return build_translation_responses_payload(
+                model,
+                request,
+                max_output_tokens=max_output_tokens,
+            )
+        return build_basic_responses_payload(
+            model,
+            prompt,
+            system_prompt="You are a translation assistant.",
+            max_output_tokens=max_output_tokens,
+        )
 
     async def translate(
         self,
@@ -93,32 +144,24 @@ class OpenAIProvider(TranslationProvider):
         """
         api_key_str = self._api_key_string()
         model = model or "gpt-5.4"
-        messages = [
-            {"role": "system", "content": "You are a translation assistant."},
-            {"role": "user", "content": prompt},
-        ]
+        request = kwargs.pop("request", None)
+        if request is not None and not isinstance(request, TranslationRequest):
+            raise TypeError("request must be a TranslationRequest instance.")
+        payload = self._build_payload(
+            prompt,
+            model,
+            request=request,
+            max_output_tokens=max_tokens,
+        )
 
         AsyncOpenAI = self._modern_async_client()
-        if AsyncOpenAI is not None:
-            async with AsyncOpenAI(api_key=api_key_str) as client:
-                response = await client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    **kwargs,
-                )
-        else:
-            try:
-                openai = self._legacy_openai_module()
-            except ImportError as e:
-                raise ProviderError(
-                    "openai package required; install or upgrade it to a version with async support."
-                ) from e
-            response = await openai.ChatCompletion.acreate(
-                api_key=api_key_str,
-                model=model,
-                messages=messages,
-                max_tokens=max_tokens,
+        if AsyncOpenAI is None:
+            raise ProviderError(
+                "openai package required; install or upgrade it to a version with AsyncOpenAI Responses API support."
+            )
+        async with AsyncOpenAI(api_key=api_key_str) as client:
+            response = await client.responses.create(
+                **payload,
                 **kwargs,
             )
 

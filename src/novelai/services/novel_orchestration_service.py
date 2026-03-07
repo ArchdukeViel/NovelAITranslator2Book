@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
+from novelai.config.settings import settings
 from novelai.providers.base import TranslationProvider
 from novelai.services.settings_service import SettingsService
 from novelai.services.storage_service import StorageService
@@ -55,6 +56,22 @@ class NovelOrchestrationService:
         self._cache = translation_cache or TranslationCache()
         self._usage = usage_service or UsageService()
         self._missing_api_key_warning_emitted = False
+
+    @staticmethod
+    def _infer_source_language(source_key: str, metadata: dict[str, Any] | None = None) -> str | None:
+        if isinstance(metadata, dict):
+            for key in ("source_language", "language", "lang"):
+                value = metadata.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+
+        language_map = {
+            "syosetu_ncode": "Japanese",
+            "novel18_syosetu": "Japanese",
+            "kakuyomu": "Japanese",
+            "narou": "Japanese",
+        }
+        return language_map.get(source_key)
 
     def _selected_chapter_numbers(self, metadata: dict[str, Any], selection: str) -> list[int]:
         chapter_map = {
@@ -252,11 +269,20 @@ class NovelOrchestrationService:
         provider_key: Optional[str] = None,
         provider_model: Optional[str] = None,
         force: bool = False,
+        source_language: str | None = None,
+        target_language: str | None = None,
+        glossary: Any | None = None,
+        style_preset: str | None = None,
+        consistency_mode: bool = False,
+        json_output: bool = False,
     ) -> None:
         source = self._source_factory(source_key)
         meta = self.storage.load_metadata(novel_id)
         if not meta:
             raise RuntimeError("Metadata not found; run scrape-metadata first.")
+
+        effective_source_language = source_language or self._infer_source_language(source_key, meta)
+        effective_target_language = target_language or settings.TRANSLATION_TARGET_LANGUAGE
 
         chapter_map = {int(c["id"]): c for c in meta.get("chapters", [])}
         selected_numbers = self._selected_chapter_numbers(meta, chapters)
@@ -275,6 +301,12 @@ class NovelOrchestrationService:
                 chapter_url=chapter["url"],
                 provider_key=provider_key,
                 provider_model=provider_model,
+                source_language=effective_source_language,
+                target_language=effective_target_language,
+                glossary=glossary,
+                style_preset=style_preset,
+                consistency_mode=consistency_mode,
+                json_output=json_output,
             )
             translated = result.final_text or ""
             self.storage.save_translated_chapter(

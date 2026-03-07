@@ -52,10 +52,10 @@ copy .env.example .env
 
 # Edit .env with your API keys
 # Required:
-#   OPENAI_API_KEY=sk-...
+#   PROVIDER_OPENAI_API_KEY=sk-...
 # Optional:
-#   OPENAI_MODEL=gpt-4 (default: gpt-3.5-turbo)
-#   DATA_DIR=./data (default)
+#   NOVEL_LIBRARY_DIR=./novel_library (default)
+#   TRANSLATION_TARGET_LANGUAGE=English (default)
 #   LOG_LEVEL=INFO (default)
 ```
 
@@ -207,7 +207,7 @@ See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.m
 python -m pip install -e .
 ```
 
-### Issue: "OPENAI_API_KEY not found"
+### Issue: "PROVIDER_OPENAI_API_KEY not found"
 
 **Solution**: 
 1. Create `.env` file from `.env.example`
@@ -256,12 +256,19 @@ novelaibook translate-chapters syosetu_ncode n4423lw 1-10
 ```
 
 ### Tip 2: Add Custom Glossary
-Edit `src/novelai/prompts/templates.py` to add terminology:
+Glossary entries and style presets are separate. Use glossary entries for recurring terminology, and use presets for tone:
 ```python
-GLOSSARY = {
-    "SAO": "Sword Art Online",
-    "VR": "Virtual Reality",
-}
+from novelai.prompts import build_translation_request
+
+request = build_translation_request(
+    text="魔導具が光を放った。",
+    source_language="Japanese",
+    target_language="English",
+    glossary_entries=[
+        {"source": "魔導具", "target": "magic device"},
+    ],
+    style_preset="fantasy",
+)
 ```
 
 ### Tip 3: Check Costs Before High-Volume Runs
@@ -291,11 +298,11 @@ All settings in `.env`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `OPENAI_API_KEY` | (required) | Your OpenAI API key |
-| `OPENAI_MODEL` | gpt-3.5-turbo | Model to use (gpt-4 recommended) |
-| `DATA_DIR` | ./data | Where to store novels |
+| `PROVIDER_OPENAI_API_KEY` | (required for OpenAI) | Your OpenAI API key |
+| `NOVEL_LIBRARY_DIR` | ./novel_library | Where to store novels |
 | `LOG_LEVEL` | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
 | `COST_PER_TOKEN_USD` | 0.00002 | Token cost for cost estimation |
+| `TRANSLATION_TARGET_LANGUAGE` | English | Default target language for multilingual prompt requests |
 | `BATCH_SIZE` | 10 | Chapters per batch (Phase 4) |
 | `POOL_MIN_SIZE` | 5 | Min API connections (Phase 4) |
 | `POOL_MAX_SIZE` | 20 | Max API connections (Phase 4) |
