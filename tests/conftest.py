@@ -164,7 +164,7 @@ class MockSourceAdapter(SourceAdapter):
         """Return source key."""
         return self._source_key
 
-    async def fetch_metadata(self, url: str) -> dict[str, Any]:
+    async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         """Mock metadata fetching."""
         self.call_count += 1
         novel_id = url

@@ -21,7 +21,7 @@ class SourceAdapter(ABC):
         return identifier_or_url.strip()
 
     @abstractmethod
-    async def fetch_metadata(self, url: str) -> dict[str, Any]:
+    async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         """Fetch novel metadata (title/author, chapter list, etc.)."""
 
     @abstractmethod

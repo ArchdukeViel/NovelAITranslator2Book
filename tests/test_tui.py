@@ -391,7 +391,7 @@ def test_diagnostics_screen_uses_guide_rail_and_command_options(tui: TUIApp) -> 
 
 def test_settings_screen_shows_numbered_actions_and_provider_models(tui: TUIApp) -> None:
     tui.settings.set_provider_key("openai")
-    tui.settings.set_provider_model("gpt-3.5-turbo")
+    tui.settings.set_provider_model("gpt-5.4")
 
     tui.console = Console(record=True, width=140)
     tui.console.print(tui._build_settings_screen())
@@ -401,7 +401,8 @@ def test_settings_screen_shows_numbered_actions_and_provider_models(tui: TUIApp)
     assert "1) select provider" in output
     assert "2) set API key" in output
     assert "0) back" in output
-    assert "gpt-3.5-turbo" in output
+    assert "gpt-5.4" in output
+    assert "gpt-5.2" in output
 
 
 def test_diagnostics_and_settings_command_parsers_support_numbered_actions(tui: TUIApp) -> None:
@@ -472,14 +473,14 @@ def test_validate_provider_connection_updates_api_validation_status(
             return True, f"validated {model}"
 
     tui.settings.set_provider_key("openai")
-    tui.settings.set_provider_model("gpt-4o-mini")
+    tui.settings.set_provider_model("gpt-5.4")
     monkeypatch.setattr("novelai.tui.app.get_provider", lambda key: FakeProvider())
 
     is_valid, message = tui._validate_provider_connection()
 
     assert is_valid is True
-    assert message == "validated gpt-4o-mini"
-    assert tui.api_validation_message == "validated gpt-4o-mini"
+    assert message == "validated gpt-5.4"
+    assert tui.api_validation_message == "validated gpt-5.4"
     assert tui.api_validation_kind == "success"
 
 
@@ -490,11 +491,17 @@ def test_chapter_selection_validation_accepts_full_and_ranges(tui: TUIApp) -> No
     assert tui._validate_chapter_selection("nope") is False
 
 
+def test_chapter_selection_upper_bound_uses_highest_requested_chapter(tui: TUIApp) -> None:
+    assert tui._chapter_selection_upper_bound("34-46") == 46
+    assert tui._chapter_selection_upper_bound("3;7-9") == 9
+    assert tui._chapter_selection_upper_bound("full") is None
+
+
 def test_effective_translation_target_falls_back_to_dummy_without_api_key(tui: TUIApp) -> None:
     previous_api_key = settings.PROVIDER_OPENAI_API_KEY
     try:
         settings.PROVIDER_OPENAI_API_KEY = None
-        provider, model, fallback_used = tui._effective_translation_target("openai", "gpt-4o-mini")
+        provider, model, fallback_used = tui._effective_translation_target("openai", "gpt-5.4")
 
         assert (provider, model, fallback_used) == ("dummy", "dummy", True)
     finally:
@@ -690,15 +697,22 @@ def test_export_output_path_uses_chapter_range_filename_for_partial_exports(tui:
 
 def test_settings_round_trip(tui: TUIApp) -> None:
     tui.settings.set_provider_key("openai")
-    tui.settings.set_provider_model("gpt-3.5-turbo")
+    tui.settings.set_provider_model("gpt-5.2")
     tui.settings.set_api_key("demo-key")
 
     assert tui.settings.get_provider_key() == "openai"
-    assert tui.settings.get_provider_model() == "gpt-3.5-turbo"
+    assert tui.settings.get_provider_model() == "gpt-5.2"
     assert tui.settings.get_api_key() == "demo-key"
 
     tui.settings.clear_api_key()
     assert tui.settings.get_api_key() is None
+
+
+def test_settings_falls_back_to_supported_openai_model_for_legacy_preference(tui: TUIApp) -> None:
+    tui.settings.set_provider_key("openai")
+    tui.settings.set_provider_model("legacy-openai-model")
+
+    assert tui.settings.get_provider_model() == "gpt-5.4"
 
 
 def test_usage_service_resets_daily_but_preserves_history() -> None:
@@ -713,7 +727,7 @@ def test_usage_service_resets_daily_but_preserves_history() -> None:
             {
                 "timestamp": two_days_ago.isoformat().replace("+00:00", "Z"),
                 "provider": "openai",
-                "model": "gpt-4o-mini",
+                "model": "gpt-5.4",
                 "tokens": 12,
             }
         )
@@ -721,7 +735,7 @@ def test_usage_service_resets_daily_but_preserves_history() -> None:
             {
                 "timestamp": now.isoformat().replace("+00:00", "Z"),
                 "provider": "openai",
-                "model": "gpt-4o-mini",
+                "model": "gpt-5.4",
                 "tokens": 5,
             }
         )
@@ -748,7 +762,7 @@ def test_usage_service_summary_includes_estimate_entries() -> None:
             {
                 "timestamp": now,
                 "provider": "openai",
-                "model": "gpt-4o-mini",
+                "model": "gpt-5.4",
                 "tokens": 25,
             }
         )
@@ -853,11 +867,11 @@ def test_tui_budget_estimate_falls_back_to_reference_models_for_unsupported_mode
         novel_id=novel_id,
         chapters="1",
         active_provider="openai",
-        active_model="gpt-4o-mini",
+        active_model="legacy-openai-model",
         fallback_used=False,
     )
 
     assert budget is not None
     assert [estimate.model_name for estimate in budget["comparison"].estimates] == ["gpt-5.2", "gpt-5.4"]
     assert budget["note"] is not None
-    assert "gpt-4o-mini" in budget["note"]
+    assert "legacy-openai-model" in budget["note"]

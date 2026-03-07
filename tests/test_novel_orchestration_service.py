@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 from uuid import uuid4
 
@@ -16,11 +17,15 @@ from tests.conftest import MockTranslationProvider, TESTS_TMP_ROOT
 
 
 class StubSource(SourceAdapter):
+    def __init__(self) -> None:
+        self.requested_max_chapters: list[int | None] = []
+
     @property
     def key(self) -> str:
         return "stub"
 
-    async def fetch_metadata(self, url: str) -> dict[str, object]:
+    async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, object]:
+        self.requested_max_chapters.append(max_chapter)
         return {
             "source": "syosetu_ncode",
             "source_url": f"https://ncode.syosetu.com/{url}/",
@@ -93,3 +98,55 @@ async def test_scrape_metadata_translates_title_author_and_chapter_titles(orches
     assert stored["translated_author"] == "[TRANSLATED] Original Author"
     assert stored["authors"]["translated"] == "[TRANSLATED] Original Author"
     assert orchestration_env["usage"].summary(all_days=True)["total_requests"] == 4
+
+
+@pytest.mark.asyncio
+async def test_scrape_metadata_passes_max_chapter_to_source(orchestration_env) -> None:
+    provider = MockTranslationProvider(key="mock", model="mock-1.0")
+    source = StubSource()
+
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update", max_chapter=46)
+
+    assert source.requested_max_chapters == [46]
+
+
+@pytest.mark.asyncio
+async def test_scrape_metadata_logs_missing_openai_key_only_once(orchestration_env, caplog) -> None:
+    provider = MockTranslationProvider(key="dummy", model="dummy")
+    source = StubSource()
+    settings = orchestration_env["settings"]
+    settings.set_provider_key("openai")
+    settings.set_provider_model("gpt-5.4")
+    settings.clear_api_key()
+
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: provider,
+        settings_service=settings,
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    with caplog.at_level(logging.WARNING, logger="novelai.services.novel_orchestration_service"):
+        await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
+        await orchestrator.scrape_metadata("syosetu_ncode", "novel-2", mode="update")
+
+    warnings = [
+        record.message
+        for record in caplog.records
+        if "OpenAI API key missing; falling back to dummy provider for metadata translation." in record.message
+    ]
+
+    assert warnings == ["OpenAI API key missing; falling back to dummy provider for metadata translation."]

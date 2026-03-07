@@ -40,7 +40,21 @@ class SettingsService:
         self._prefs.set_preferred_provider(key)
 
     def get_provider_model(self) -> str:
-        return self._prefs.get_preferred_model()
+        model = self._prefs.get_preferred_model()
+        provider_key = self.get_provider_key()
+        if provider_key != "openai":
+            return model
+
+        try:
+            from novelai.providers.registry import available_models
+
+            supported_models = available_models(provider_key)
+        except Exception:
+            return model
+
+        if model in supported_models:
+            return model
+        return supported_models[0] if supported_models else model
 
     def set_provider_model(self, model: str) -> None:
         self._prefs.set_preferred_model(model)

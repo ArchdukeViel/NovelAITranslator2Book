@@ -137,3 +137,50 @@ async def test_fetch_metadata_collects_all_paginated_chapter_pages() -> None:
     metadata = await source.fetch_metadata(root_url)
 
     assert [chapter["id"] for chapter in metadata["chapters"]] == ["1", "2", "3", "4"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_metadata_stops_after_requested_max_chapter_page() -> None:
+    source = SyosetuNcodeSource()
+    root_url = "https://ncode.syosetu.com/n8733gf/"
+    requests: list[str] = []
+    pages = {
+        root_url: """
+        <html>
+          <body>
+            <h1 class="p-novel__title">Paged Story</h1>
+            <div id="novel_writername">Author Name</div>
+            <a href="/n8733gf/1/">Chapter One</a>
+            <a href="/n8733gf/2/">Chapter Two</a>
+            <a href="/n8733gf/?p=2">2</a>
+            <a href="/n8733gf/?p=3">3</a>
+          </body>
+        </html>
+        """,
+        f"{root_url}?p=2": """
+        <html>
+          <body>
+            <a href="/n8733gf/3/">Chapter Three</a>
+            <a href="/n8733gf/4/">Chapter Four</a>
+          </body>
+        </html>
+        """,
+        f"{root_url}?p=3": """
+        <html>
+          <body>
+            <a href="/n8733gf/5/">Chapter Five</a>
+            <a href="/n8733gf/6/">Chapter Six</a>
+          </body>
+        </html>
+        """,
+    }
+
+    async def fake_fetch_page(url: str) -> str:
+        requests.append(url)
+        return pages[url]
+
+    source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
+    metadata = await source.fetch_metadata(root_url, max_chapter=4)
+
+    assert requests == [root_url, f"{root_url}?p=2"]
+    assert [chapter["id"] for chapter in metadata["chapters"]] == ["1", "2", "3", "4"]

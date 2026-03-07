@@ -17,7 +17,7 @@ class PreferencesService:
     
     This service stores user choices like:
     - Which provider to use (openai vs dummy, etc)
-    - Which model to use (gpt-4o-mini, gpt-4, etc)
+    - Which model to use (gpt-5.4, gpt-5.2, etc)
     - User UI preferences
     
     It NEVER stores API keys or other secrets.
@@ -68,7 +68,7 @@ class PreferencesService:
 
     def get_preferred_model(self) -> str:
         """Get user's preferred translation model."""
-        return self.get("preferred_model", "gpt-4o-mini")
+        return self.get("preferred_model", "gpt-5.4")
 
     def set_preferred_model(self, model: str) -> None:
         """Set user's preferred translation model."""

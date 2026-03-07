@@ -334,10 +334,19 @@ class KakuyomuSource(SourceAdapter):
             raise SourceError("Chapter text was empty on Kakuyomu page")
         return text
 
-    async def fetch_metadata(self, url: str) -> dict[str, Any]:
+    async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         url = self._normalize_url(url)
         html = await self._fetch_page(url)
-        return self._parse_metadata_html(html, url)
+        metadata = self._parse_metadata_html(html, url)
+        if max_chapter is not None:
+            metadata["chapters"] = [
+                chapter
+                for chapter in metadata.get("chapters", [])
+                if isinstance(chapter, dict)
+                and isinstance(chapter.get("num"), int)
+                and int(chapter["num"]) <= max_chapter
+            ]
+        return metadata
 
     async def fetch_chapter(self, url: str) -> str:
         html = await self._fetch_page(url)

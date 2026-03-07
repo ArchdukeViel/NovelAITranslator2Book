@@ -2138,6 +2138,15 @@ class TUIApp:
     def _format_chapter_selection_label(self, selection: str) -> str:
         return "all available chapters" if is_full_chapter_selection(selection) else f"chapters {selection}"
 
+    def _chapter_selection_upper_bound(self, selection: str) -> int | None:
+        if is_full_chapter_selection(selection):
+            return None
+        try:
+            chapter_numbers = [spec.chapter for spec in parse_chapter_selection(selection)]
+        except Exception:
+            return None
+        return max(chapter_numbers) if chapter_numbers else None
+
     def _estimate_translation_budget(
         self,
         *,
@@ -2373,8 +2382,14 @@ class TUIApp:
             "success",
         )
 
-    async def _do_scrape_metadata(self, source_key: str, novel_id: str, mode: str = "update") -> None:
-        await self.orchestrator.scrape_metadata(source_key, novel_id, mode=mode)
+    async def _do_scrape_metadata(
+        self,
+        source_key: str,
+        novel_id: str,
+        mode: str = "update",
+        max_chapter: int | None = None,
+    ) -> None:
+        await self.orchestrator.scrape_metadata(source_key, novel_id, mode=mode, max_chapter=max_chapter)
 
     async def _do_scrape_chapters(self, source_key: str, novel_id: str, chapters: str, mode: str = "update") -> None:
         await self.orchestrator.scrape_chapters(source_key, novel_id, chapters, mode=mode)
@@ -2396,10 +2411,11 @@ class TUIApp:
         if not self._validate_chapter_selection(chapters):
             self._set_status("Use chapter selection like full, 1, or 3-8.", "warning")
             return
+        max_chapter = self._chapter_selection_upper_bound(chapters)
 
         try:
             with self.console.status("[bold #7dcfff]Saving novel metadata...[/bold #7dcfff]", spinner="dots"):
-                asyncio.run(self._do_scrape_metadata(source, novel_id, mode="update"))
+                asyncio.run(self._do_scrape_metadata(source, novel_id, mode="update", max_chapter=max_chapter))
             with self.console.status("[bold #7dcfff]Fetching raw chapters...[/bold #7dcfff]", spinner="dots"):
                 asyncio.run(self._do_scrape_chapters(source, novel_id, chapters, mode="update"))
         except Exception as exc:

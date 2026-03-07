@@ -20,11 +20,8 @@ class OpenAIProvider(TranslationProvider):
 
     def available_models(self) -> list[str]:
         return [
-            "gpt-4o-mini",
-            "gpt-4o",
-            "gpt-4.1-mini",
-            "gpt-4.1",
-            "gpt-3.5-turbo",
+            "gpt-5.4",
+            "gpt-5.2",
         ]
 
     def _api_key_string(self) -> str:
@@ -95,7 +92,7 @@ class OpenAIProvider(TranslationProvider):
         Thread-safe: Uses per-request client instance, not global state.
         """
         api_key_str = self._api_key_string()
-        model = model or "gpt-4o-mini"
+        model = model or "gpt-5.4"
         messages = [
             {"role": "system", "content": "You are a translation assistant."},
             {"role": "user", "content": prompt},

@@ -54,6 +54,7 @@ class NovelOrchestrationService:
         self._settings = settings_service or SettingsService()
         self._cache = translation_cache or TranslationCache()
         self._usage = usage_service or UsageService()
+        self._missing_api_key_warning_emitted = False
 
     def _selected_chapter_numbers(self, metadata: dict[str, Any], selection: str) -> list[int]:
         chapter_map = {
@@ -74,8 +75,11 @@ class NovelOrchestrationService:
         key = provider_key or self._settings.get_provider_key()
         model = provider_model or self._settings.get_provider_model()
         if key == "openai" and not self._settings.get_api_key():
-            logger.warning("OpenAI API key missing; falling back to dummy provider for metadata translation.")
+            if not self._missing_api_key_warning_emitted:
+                logger.warning("OpenAI API key missing; falling back to dummy provider for metadata translation.")
+                self._missing_api_key_warning_emitted = True
             return "dummy", "dummy"
+        self._missing_api_key_warning_emitted = False
         if key == "dummy":
             return "dummy", "dummy"
         return key, model
@@ -171,7 +175,13 @@ class NovelOrchestrationService:
         translated_metadata["chapters"] = translated_chapters
         return translated_metadata
 
-    async def scrape_metadata(self, source_key: str, novel_id: str, mode: str = "update") -> dict[str, Any]:
+    async def scrape_metadata(
+        self,
+        source_key: str,
+        novel_id: str,
+        mode: str = "update",
+        max_chapter: int | None = None,
+    ) -> dict[str, Any]:
         logger.info(f"Scraping metadata for {novel_id} from {source_key} (mode={mode})")
         existing_metadata = self.storage.load_metadata(novel_id) if mode != "full" else None
         if mode == "full":
@@ -179,7 +189,7 @@ class NovelOrchestrationService:
             self.storage.delete_novel(novel_id)
 
         source = self._source_factory(source_key)
-        meta = await source.fetch_metadata(novel_id)
+        meta = await source.fetch_metadata(novel_id, max_chapter=max_chapter)
         try:
             meta = await self._translate_metadata_fields(meta, existing_metadata)
         except Exception as exc:

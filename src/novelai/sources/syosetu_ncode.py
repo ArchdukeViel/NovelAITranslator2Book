@@ -318,7 +318,7 @@ class SyosetuNcodeSource(SourceAdapter):
             raise SourceError("Chapter text was empty on Syosetu page")
         return text
 
-    async def fetch_metadata(self, url: str) -> dict[str, Any]:
+    async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         url = self._normalize_url(url)
         html = await self._fetch_page(url)
         metadata = self._parse_metadata_html(html, url)
@@ -332,6 +332,16 @@ class SyosetuNcodeSource(SourceAdapter):
             for chapter in metadata.get("chapters", [])
             if isinstance(chapter, dict) and isinstance(chapter.get("num"), int)
         }
+        if max_chapter is not None and chapters_by_number:
+            highest_known_chapter = max(chapters_by_number)
+            if highest_known_chapter >= max_chapter:
+                metadata["chapters"] = [
+                    chapter
+                    for number, chapter in sorted(chapters_by_number.items())
+                    if number <= max_chapter
+                ]
+                return metadata
+
         for page_number in page_numbers[1:]:
             page_url = f"{url}?p={page_number}"
             page_html = await self._fetch_page(page_url)
@@ -339,8 +349,14 @@ class SyosetuNcodeSource(SourceAdapter):
             for chapter in self._extract_chapters(page_soup, url, metadata.get("title")):
                 if isinstance(chapter.get("num"), int):
                     chapters_by_number[int(chapter["num"])] = chapter
+            if max_chapter is not None and chapters_by_number and max(chapters_by_number) >= max_chapter:
+                break
 
-        metadata["chapters"] = [chapters_by_number[number] for number in sorted(chapters_by_number)]
+        metadata["chapters"] = [
+            chapters_by_number[number]
+            for number in sorted(chapters_by_number)
+            if max_chapter is None or number <= max_chapter
+        ]
         return metadata
 
     async def fetch_chapter(self, url: str) -> str:
