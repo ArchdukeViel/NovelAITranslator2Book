@@ -50,6 +50,7 @@ class StorageService:
 
     INDEX_FILENAME = "index.json"
     CHAPTERS_DIRNAME = "chapters"
+    SCHEMA_VERSION = 1
 
     @staticmethod
     def _sanitize_folder_name(name: str) -> str:
@@ -221,7 +222,8 @@ class StorageService:
     def load_chapter_export_images(self, novel_id: str, chapter_id: str) -> list[dict[str, Any]]:
         """Return chapter image metadata augmented with resolved local asset paths."""
         chapter = self.load_chapter(novel_id, chapter_id) or {}
-        raw_images = chapter.get("images") if isinstance(chapter.get("images"), list) else []
+        images_value = chapter.get("images")
+        raw_images: list[Any] = images_value if isinstance(images_value, list) else []
         export_images: list[dict[str, Any]] = []
 
         for image in raw_images:
@@ -313,6 +315,7 @@ class StorageService:
         return bundle
 
     def _persist_chapter_bundle(self, novel_id: str, chapter_id: str, payload: dict[str, Any]) -> Path:
+        payload["schema_version"] = self.SCHEMA_VERSION
         path = self._chapter_path(novel_id, chapter_id)
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return path
@@ -429,6 +432,7 @@ class StorageService:
         merged.update(data)
 
         merged["novel_id"] = novel_id
+        merged["schema_version"] = self.SCHEMA_VERSION
         merged["scraped_at"] = existing.get("scraped_at") or merged.get("scraped_at") or _utc_now_iso()
         merged["updated_at"] = _utc_now_iso()
 
@@ -465,6 +469,34 @@ class StorageService:
             return json.loads(content)
         except Exception:
             return None
+
+    # ---- Glossary persistence -------------------------------------------------
+
+    def save_glossary(self, novel_id: str, entries: list[dict[str, Any]]) -> Path:
+        """Persist glossary entries for a novel."""
+        novel_dir = self._novel_dir(novel_id)
+        novel_dir.mkdir(parents=True, exist_ok=True)
+        path = novel_dir / "glossary.json"
+        path.write_text(
+            json.dumps({"schema_version": self.SCHEMA_VERSION, "entries": entries}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return path
+
+    def load_glossary(self, novel_id: str) -> list[dict[str, Any]]:
+        """Load glossary entries for a novel (returns empty list if none)."""
+        path = self._novel_dir(novel_id) / "glossary.json"
+        if not path.exists():
+            return []
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("entries"), list):
+                return data["entries"]
+            if isinstance(data, list):
+                return data
+        except Exception:
+            pass
+        return []
 
     def list_stored_chapters(self, novel_id: str) -> list[str]:
         stems: set[str] = set()

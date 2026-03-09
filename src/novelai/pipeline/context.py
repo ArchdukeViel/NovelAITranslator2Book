@@ -1,7 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
+
+
+class PipelineMetadata(TypedDict, total=False):
+    """Well-known metadata keys passed through the pipeline.
+
+    Stages may read/write these keys on ``PipelineState.metadata``.
+    All keys are optional so that callers only provide what they need.
+    """
+
+    source_language: str
+    target_language: str
+    glossary: Any  # Iterable[GlossaryEntryLike] | Glossary | None
+    style_preset: str
+    consistency_mode: bool
+    json_output: bool
+    _source_adapter: Any  # SourceAdapter instance (internal)
 
 
 @dataclass

@@ -78,9 +78,9 @@ src/novelai/
 │   ├── logging.py          # Logging setup
 │   ├── chapter_selection.py # Chapter selection
 │   ├── retry_decorator.py  # Retry logic (Phase 4)
-│   ├── batch_processor.py  # Batch processing (Phase 4)
-│   ├── connection_pool.py  # Connection pooling (Phase 4)
-│   ├── cache_optimizer.py  # Cache management (Phase 4)
+│   ├── batch_processor.py  # Batch processing (Phase 4 — planned, not yet implemented)
+│   ├── connection_pool.py  # Connection pooling (Phase 4 — planned, not yet implemented)
+│   ├── cache_optimizer.py  # Cache management (Phase 4 — planned, not yet implemented)
 │   ├── rate_limiter.py     # Rate limiting
 │   ├── query_builder.py    # Query construction
 │   └── __init__.py
@@ -207,10 +207,10 @@ Storage/Export Layer
 └── BackupManager (services/backup_manager.py) [Phase 4]
         ↓
 Resilience Layer (Phase 4)
-├── Batch Processor (utils/batch_processor.py)
-├── Connection Pool (utils/connection_pool.py)
+├── Batch Processor (utils/batch_processor.py) — planned
+├── Connection Pool (utils/connection_pool.py) — planned
 ├── Retry Decorator (utils/retry_decorator.py)
-└── Cache Optimizer (utils/cache_optimizer.py)
+└── Cache Optimizer (utils/cache_optimizer.py) — planned
         ↓
 External Dependencies
 ├── OpenAI API

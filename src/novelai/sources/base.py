@@ -1,9 +1,36 @@
 from __future__ import annotations
 
+import ipaddress
+import socket
 from abc import ABC, abstractmethod
 from typing import Any, Mapping, Protocol
+from urllib.parse import urlparse
 
 import httpx
+
+from novelai.core.errors import SourceError
+
+
+def validate_url(url: str) -> str:
+    """Validate URL scheme and reject private/internal targets (SSRF protection).
+
+    Returns the validated URL unchanged, or raises ``SourceError``.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise SourceError(f"Unsupported URL scheme: {parsed.scheme!r}. Only http/https are allowed.")
+    hostname = parsed.hostname
+    if not hostname:
+        raise SourceError(f"Invalid URL (missing hostname): {url}")
+    try:
+        resolved = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+        for _family, _type, _proto, _canonname, sockaddr in resolved:
+            addr = ipaddress.ip_address(sockaddr[0])
+            if addr.is_private or addr.is_loopback or addr.is_reserved or addr.is_link_local:
+                raise SourceError(f"URL resolves to a private/reserved address: {hostname}")
+    except socket.gaierror:
+        pass  # DNS failure will be caught by httpx at request time
+    return url
 
 
 class SourceAdapter(ABC):
@@ -32,6 +59,7 @@ class SourceAdapter(ABC):
 
     async def fetch_chapter_payload(self, url: str) -> Mapping[str, Any]:
         """Fetch chapter text plus optional structured assets."""
+        validate_url(url)
         return {
             "text": await self.fetch_chapter(url),
             "images": [],
@@ -39,6 +67,7 @@ class SourceAdapter(ABC):
 
     async def fetch_asset(self, url: str, *, referer: str | None = None) -> Mapping[str, Any]:
         """Download an asset referenced by chapter content."""
+        validate_url(url)
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         if isinstance(referer, str) and referer.strip():
             headers["Referer"] = referer.strip()

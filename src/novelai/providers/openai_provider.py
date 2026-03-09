@@ -182,12 +182,10 @@ class OpenAIProvider(TranslationProvider):
 
         try:
             AsyncOpenAI = self._modern_async_client()
-            if AsyncOpenAI is not None:
-                async with AsyncOpenAI(api_key=api_key_str) as client:
-                    await client.models.list()
-            else:
-                openai = self._legacy_openai_module()
-                await openai.Model.alist(api_key=api_key_str)
+            if AsyncOpenAI is None:
+                return False, "openai package required; install or upgrade it to a version with AsyncOpenAI support."
+            async with AsyncOpenAI(api_key=api_key_str) as client:
+                await client.models.list()
         except Exception as exc:
             return False, f"Validation failed: {exc}"
 

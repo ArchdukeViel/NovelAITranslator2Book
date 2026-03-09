@@ -229,9 +229,10 @@ class SyosetuNcodeSource(SourceAdapter):
         ]
 
     def _is_story_body(self, candidate: Tag) -> bool:
+        raw_classes = candidate.get("class") or []
         classes = {
             value.lower()
-            for value in candidate.get("class", [])
+            for value in (raw_classes if isinstance(raw_classes, list) else [raw_classes])
             if isinstance(value, str)
         }
         if "p-novel__text--preface" in classes or "p-novel__text--afterword" in classes:

@@ -1,8 +1,18 @@
+"""Legacy chapter extraction pipeline.
+
+.. deprecated::
+    This module is superseded by ``src/novelai/pipeline/`` which provides
+    an async, stage-based pipeline with provider and source registries.
+    Use ``novelai.pipeline`` for all new work.  This file is kept only for
+    backward compatibility with the standalone ``python -m src.pipeline`` CLI.
+"""
+
 from __future__ import annotations
 
 import argparse
 import json
 import logging
+import warnings
 from pathlib import Path
 
 from bs4 import BeautifulSoup
@@ -105,6 +115,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    warnings.warn(
+        "src.pipeline is deprecated. Use the novelai CLI (novelaibook) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     args = build_parser().parse_args()
     logging.basicConfig(level=getattr(logging, args.log_level), format="[%(levelname)s] %(name)s: %(message)s")
     pipeline = ChapterPipeline(data_dir=args.data_dir)

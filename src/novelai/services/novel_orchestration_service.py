@@ -359,6 +359,12 @@ class NovelOrchestrationService:
         effective_source_language = source_language or self._infer_source_language(source_key, meta)
         effective_target_language = target_language or settings.TRANSLATION_TARGET_LANGUAGE
 
+        # Auto-load stored glossary when none was explicitly provided.
+        if glossary is None:
+            stored_entries = self.storage.load_glossary(novel_id)
+            if stored_entries:
+                glossary = stored_entries
+
         chapter_map = {int(c["id"]): c for c in meta.get("chapters", [])}
         selected_numbers = self._selected_chapter_numbers(meta, chapters)
 
