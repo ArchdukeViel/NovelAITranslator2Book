@@ -187,6 +187,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\update-lockfiles.ps1
 | **PDF export** | Not implemented | `PDFExporter` exists as a placeholder; raises `NotImplementedError`. Needs a PDF library (e.g. reportlab or weasyprint). |
 | **Web server** | Scaffold only | `novelaibook web` starts a FastAPI app with a novels router, but the API is incomplete — no translation or export endpoints. Use the TUI or CLI instead. |
 | **Provider support** | OpenAI only | The provider interface is pluggable, but only the OpenAI adapter is implemented. A `DummyProvider` exists for testing. |
+| **Source sites** | 3 sites only | Syosetu Ncode, Novel18, and Kakuyomu. No generic fallback adapter for unsupported sites. |
+| **Image pipeline** | Partial | Storage infrastructure and EPUB embedding work, but automatic image download is not fully wired into the translation pipeline. |
+| **Incremental backup** | Stub | `BackupManager` incremental mode silently falls back to a full backup. |
+| **Export formats** | EPUB only | No HTML, Markdown, or DOCX export beyond the PDF placeholder. |
 
 ## Documentation
 
