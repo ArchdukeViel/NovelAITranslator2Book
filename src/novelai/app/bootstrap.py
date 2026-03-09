@@ -40,11 +40,10 @@ def bootstrap_sources() -> None:
 def bootstrap_exporters() -> None:
     """Register all known export formats."""
     from novelai.export.epub_exporter import EPUBExporter
-    from novelai.export.pdf_exporter import PDFExporter
     from novelai.export.registry import register_exporter
 
     register_exporter("epub", lambda: EPUBExporter())
-    register_exporter("pdf", lambda: PDFExporter())
+    # PDF exporter is not yet implemented (requires reportlab or weasyprint).
 
 
 def bootstrap() -> None:

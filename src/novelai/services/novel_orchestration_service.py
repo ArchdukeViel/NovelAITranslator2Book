@@ -7,7 +7,7 @@ from typing import Any, Callable, Optional
 
 from novelai.config.settings import settings
 from novelai.providers.base import TranslationProvider
-from novelai.services.settings_service import SettingsService
+from novelai.services.preferences_service import PreferencesService
 from novelai.services.storage_service import StorageService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.translation_service import TranslationService
@@ -37,7 +37,7 @@ class NovelOrchestrationService:
         translation: TranslationService,
         source_factory: Optional[Callable[[str], SourceAdapter]] = None,
         provider_factory: Optional[Callable[[str], TranslationProvider]] = None,
-        settings_service: Optional[SettingsService] = None,
+        settings_service: Optional[PreferencesService] = None,
         translation_cache: Optional[TranslationCache] = None,
         usage_service: Optional[UsageService] = None,
     ) -> None:
@@ -53,7 +53,7 @@ class NovelOrchestrationService:
         self.translation = translation
         self._source_factory = source_factory
         self._provider_factory = provider_factory
-        self._settings = settings_service or SettingsService()
+        self._settings = settings_service or PreferencesService()
         self._cache = translation_cache or TranslationCache()
         self._usage = usage_service or UsageService()
         self._missing_api_key_warning_emitted = False

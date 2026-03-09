@@ -5,14 +5,53 @@ Provides structured logging with appropriate levels for different concerns.
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Generator, Optional
 
 from novelai.config.settings import settings
+
+# Context variable for request/correlation tracking
+_request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "request_id", default=None
+)
+
+
+def get_request_id() -> str | None:
+    """Return the current request/correlation ID, or None if not set."""
+    return _request_id_var.get()
+
+
+def set_request_id(request_id: str | None = None) -> str:
+    """Set a request/correlation ID for the current context.
+
+    Args:
+        request_id: Explicit ID to use, or None to auto-generate a UUID.
+
+    Returns:
+        The active request ID.
+    """
+    rid = request_id or uuid.uuid4().hex[:12]
+    _request_id_var.set(rid)
+    return rid
+
+
+def clear_request_id() -> None:
+    """Clear the current request/correlation ID."""
+    _request_id_var.set(None)
+
+
+class _RequestIdFilter(logging.Filter):
+    """Inject the current request_id into every log record."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = _request_id_var.get()  # type: ignore[attr-defined]
+        return True
 
 
 class StructuredFormatter(logging.Formatter):
@@ -31,6 +70,11 @@ class StructuredFormatter(logging.Formatter):
             "function": record.funcName,
             "line": record.lineno,
         }
+
+        # Add request/correlation ID if present
+        request_id = getattr(record, "request_id", None)
+        if request_id:
+            log_data["request_id"] = request_id
 
         # Add exception info if present
         if record.exc_info:
@@ -63,8 +107,10 @@ class SimpleFormatter(logging.Formatter):
         if use_color and levelname in self.COLORS:
             levelname = f"{self.COLORS[levelname]}{levelname}{self.COLORS['RESET']}"
 
-        # Format: [LEVEL] logger.name: message (function:line)
-        msg = f"[{levelname}] {record.name}: {record.getMessage()}"
+        # Format: [LEVEL] logger.name: message  (request_id if present)
+        request_id = getattr(record, "request_id", None)
+        rid_suffix = f" [{request_id}]" if request_id else ""
+        msg = f"[{levelname}] {record.name}: {record.getMessage()}{rid_suffix}"
         if record.exc_info:
             msg += f"\n{self.formatException(record.exc_info)}"
 
@@ -96,6 +142,7 @@ def setup_logging(
     # Console handler (always write to stderr)
     console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setLevel(level)
+    console_handler.addFilter(_RequestIdFilter())
     formatter = StructuredFormatter() if use_json else SimpleFormatter()
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
@@ -105,6 +152,7 @@ def setup_logging(
         log_file.parent.mkdir(parents=True, exist_ok=True)
         file_handler = logging.FileHandler(log_file, encoding="utf-8")
         file_handler.setLevel(level)
+        file_handler.addFilter(_RequestIdFilter())
         file_formatter = StructuredFormatter()  # Always JSON for files
         file_handler.setFormatter(file_formatter)
         root_logger.addHandler(file_handler)

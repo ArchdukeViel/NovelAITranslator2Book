@@ -26,7 +26,7 @@ def tui(monkeypatch: pytest.MonkeyPatch) -> TUIApp:
     fixture = FixtureEnv()
 
     monkeypatch.setattr("novelai.tui.app.container", fixture.container)
-    monkeypatch.setattr("novelai.tui.app.SettingsService", lambda: fixture.settings_service)
+    monkeypatch.setattr("novelai.tui.app.PreferencesService", lambda: fixture.settings_service)
     monkeypatch.setattr("novelai.tui.app.UsageService", lambda: fixture.usage_service)
     monkeypatch.setattr(
         "novelai.tui.app.NovelOrchestrationService",
@@ -485,7 +485,7 @@ def test_validate_provider_connection_updates_api_validation_status(
 
     tui.settings.set_provider_key("openai")
     tui.settings.set_provider_model("gpt-5.4")
-    monkeypatch.setattr("novelai.tui.app.get_provider", lambda key: FakeProvider())
+    monkeypatch.setattr("novelai.tui.screens.settings.get_provider", lambda key: FakeProvider())
 
     is_valid, message = tui._validate_provider_connection()
 

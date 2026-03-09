@@ -15,7 +15,7 @@ from novelai.core.chapter_state import ChapterState
 from novelai.glossary.glossary import Glossary
 from novelai.providers.base import TranslationProvider
 from novelai.services.preferences_service import PreferencesService
-from novelai.services.settings_service import SettingsService
+
 from novelai.services.storage_service import StorageService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.translation_service import TranslationService
@@ -238,7 +238,7 @@ class TestFixture:
         self.cache = TranslationCache(self.data_dir)
         self.usage_service = UsageService(self.data_dir)
         self.preferences_service = PreferencesService(self.data_dir)
-        self.settings_service = SettingsService(self.data_dir)
+        self.settings_service = PreferencesService(self.data_dir)
 
         # Create mock components
         self.mock_provider = MockTranslationProvider()

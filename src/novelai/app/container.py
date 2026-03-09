@@ -7,7 +7,7 @@ from novelai.providers.registry import get_provider
 from novelai.services.export_service import ExportService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
-from novelai.services.settings_service import SettingsService
+
 from novelai.services.storage_service import StorageService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.translation_service import TranslationService
@@ -26,7 +26,7 @@ class Container:
 
     _storage: Optional[StorageService] = None
     _translation_cache: Optional[TranslationCache] = None
-    _settings: Optional[SettingsService] = None
+    _settings: Optional[PreferencesService] = None
     _preferences: Optional[PreferencesService] = None
     _usage: Optional[UsageService] = None
     _translation: Optional[TranslationService] = None
@@ -46,9 +46,9 @@ class Container:
         return self._translation_cache
 
     @property
-    def settings(self) -> SettingsService:
+    def settings(self) -> PreferencesService:
         if self._settings is None:
-            self._settings = SettingsService()
+            self._settings = PreferencesService()
         return self._settings
 
     @property

@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
-from novelai.services.settings_service import SettingsService
+from novelai.services.preferences_service import PreferencesService
 from novelai.services.storage_service import StorageService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
@@ -70,7 +70,7 @@ def orchestration_env():
     data_dir.mkdir(parents=True, exist_ok=False)
 
     storage = StorageService(data_dir)
-    settings = SettingsService(data_dir)
+    settings = PreferencesService(data_dir)
     settings.set_provider_key("mock")
     settings.set_provider_model("mock-1.0")
     cache = TranslationCache(data_dir)

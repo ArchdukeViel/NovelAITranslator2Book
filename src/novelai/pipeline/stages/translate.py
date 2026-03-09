@@ -11,7 +11,7 @@ from novelai.pipeline.stages.base import PipelineStage
 from novelai.prompts import build_translation_request
 from novelai.prompts.models import TranslationRequest
 from novelai.providers.base import TranslationProvider
-from novelai.services.settings_service import SettingsService
+from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 
@@ -40,7 +40,7 @@ class TranslateStage(PipelineStage):
         provider_factory: Optional[Callable[[str], TranslationProvider]] = None,
         concurrency: Optional[int] = None,
         cache: Optional[TranslationCache] = None,
-        settings_service: Optional[SettingsService] = None,
+        settings_service: Optional[PreferencesService] = None,
         usage_service: Optional[UsageService] = None,
     ) -> None:
         if provider_factory is None:
@@ -51,7 +51,7 @@ class TranslateStage(PipelineStage):
         self._provider_factory = provider_factory
         self._concurrency = concurrency or settings.TRANSLATION_CONCURRENCY
         self._cache = cache or TranslationCache()
-        self._settings = settings_service or SettingsService()
+        self._settings = settings_service or PreferencesService()
         self._usage = usage_service or UsageService()
 
     def _resolve_provider_and_model(self, provider_key: str, model: str) -> tuple[str, str]:

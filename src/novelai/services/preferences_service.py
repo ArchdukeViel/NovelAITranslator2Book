@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+from pydantic import SecretStr
 
 from novelai.config.settings import settings
 
@@ -98,3 +101,55 @@ class PreferencesService:
     def set_language(self, language: str) -> None:
         """Set user's preferred UI language."""
         self.set("language", language)
+
+    # ============================================================================
+    # Backward-compatible aliases (formerly in SettingsService)
+    # ============================================================================
+
+    def get_provider_key(self) -> str:
+        """Alias for get_preferred_provider (backward compat)."""
+        return self.get_preferred_provider()
+
+    def set_provider_key(self, key: str) -> None:
+        """Alias for set_preferred_provider (backward compat)."""
+        self.set_preferred_provider(key)
+
+    def get_provider_model(self) -> str:
+        """Get preferred model with OpenAI validation."""
+        model = self.get_preferred_model()
+        provider_key = self.get_provider_key()
+        if provider_key != "openai":
+            return model
+        try:
+            from novelai.providers.registry import available_models
+            supported_models = available_models(provider_key)
+        except Exception:
+            return model
+        if model in supported_models:
+            return model
+        return supported_models[0] if supported_models else model
+
+    def set_provider_model(self, model: str) -> None:
+        """Alias for set_preferred_model (backward compat)."""
+        self.set_preferred_model(model)
+
+    # ============================================================================
+    # Runtime API key management (from environment, never persisted)
+    # ============================================================================
+
+    def get_api_key(self) -> str | None:
+        """Return the runtime API key from environment-backed settings."""
+        api_key = settings.PROVIDER_OPENAI_API_KEY
+        if api_key is None:
+            return None
+        return api_key.get_secret_value()
+
+    def set_api_key(self, api_key: str) -> None:
+        """Update the runtime API key without persisting it to disk."""
+        os.environ["PROVIDER_OPENAI_API_KEY"] = api_key
+        settings.PROVIDER_OPENAI_API_KEY = SecretStr(api_key)
+
+    def clear_api_key(self) -> None:
+        """Remove the runtime API key from environment-backed settings."""
+        os.environ.pop("PROVIDER_OPENAI_API_KEY", None)
+        settings.PROVIDER_OPENAI_API_KEY = None
