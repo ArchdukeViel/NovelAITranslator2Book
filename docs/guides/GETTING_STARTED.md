@@ -4,21 +4,20 @@ Step-by-step guide to install, configure, and run Novel AI for the first time.
 
 ---
 
-## ðŸ“‹ Prerequisites
+## Prerequisites
 
 - **Python 3.13+** (check with `python --version`)
 - **Git** (for cloning the repository)
 - **API Keys** (OpenAI or other provider for translations)
-- **Disk Space**: At least 1GB for initial setup and sample data
 
 ---
 
-## ðŸ”§ Installation Steps
+## Installation Steps
 
 ### Step 1: Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/Novel-AI.git
+git clone <repo-url>
 cd "Novel AI"
 ```
 
@@ -37,11 +36,8 @@ source .venv/bin/activate
 ### Step 3: Install Dependencies
 
 ```bash
-# Install package in development mode
-python -m pip install -e .
-
-# Install test dependencies (optional)
-python -m pip install pytest pytest-asyncio
+# Install package in development mode (includes test deps)
+python -m pip install -e ".[dev]"
 ```
 
 ### Step 4: Configure Environment
@@ -68,38 +64,22 @@ copy .env.example .env
 
 ---
 
-## âœ… Verify Installation
+## Verify Installation
 
-Run verification script to check all systems:
+Run a quick verification:
 
 ```bash
 python -c "
-import asyncio
 from novelai.app.bootstrap import bootstrap
 from novelai.utils.logging import setup_logging, get_logger
 
 setup_logging(log_level='INFO', use_json=False)
 logger = get_logger('verification')
 
-print('=' * 60)
 print('NOVEL AI VERIFICATION')
-print('=' * 60)
-
-# Test imports
-logger.info('âœ“ Core imports working')
-
-# Test bootstrap
 bootstrap()
-logger.info('âœ“ Bootstrap successful')
-
-# Test logging
-logger.debug('Debug level active')
-logger.info('Info level active')
-logger.warning('Warning level active')
-
-print('=' * 60)
+logger.info('Bootstrap successful')
 print('INSTALLATION COMPLETE')
-print('=' * 60)
 print()
 print('Next steps:')
 print('  1. Run TUI: novelaibook tui')
@@ -111,7 +91,7 @@ print('  4. See docs/guides/TUI_GUIDE.md for terminal UI walkthrough')
 
 ---
 
-## ðŸŽ® First Run: Using the TUI
+## First Run: Using the TUI
 
 The easiest way to get started:
 
@@ -119,86 +99,76 @@ The easiest way to get started:
 novelaibook tui
 ```
 
-You'll see the terminal user interface (TUI) with menus. See [TUI_GUIDE.md](TUI_GUIDE.md) for detailed walkthrough.
+You'll see a Rich dashboard with 6 actions. See [TUI_GUIDE.md](TUI_GUIDE.md) for the full walkthrough.
 
 ---
 
-## ðŸ“ First Run: Using CLI
+## First Run: Using CLI
 
 If you prefer command line:
 
-### 1. Check Available Sources
-
-```bash
-novelaibook list-sources
-```
-
-### 2. Download Novel Metadata
+### 1. Download Novel Metadata
 
 ```bash
 # For Syosetu (Japanese web novel site)
 novelaibook scrape-metadata syosetu_ncode n4423lw
 ```
 
-This downloads metadata for novel `n4423lw` (Sword Art Online Progressive).
-
-### 3. Fetch Chapters
+### 2. Fetch Chapters
 
 ```bash
 # Fetch first 3 chapters
-novelaibook fetch syosetu_ncode n4423lw 1-3
+novelaibook scrape-chapters syosetu_ncode n4423lw 1-3
 ```
 
-Chapters stored in: `data/novels/sword_art_online_progressive/raw/`
+Chapters stored in: `novel_library/novels/<novel_id>/raw/`
 
-### 4. Translate Chapters
+### 3. Translate Chapters
 
 ```bash
 # Translate using default provider (OpenAI)
 novelaibook translate-chapters syosetu_ncode n4423lw 1-3
 ```
 
-Translations stored in: `data/novels/sword_art_online_progressive/translated/`
+Translations stored in: `novel_library/novels/<novel_id>/translated/`
 
-### 5. Export to EPUB or PDF
+### 4. Export to EPUB
 
 ```bash
-# Export to EPUB (saved to data/novels/{folder}/epub/)
+# Export to EPUB (saved to novel_library/novels/<novel_id>/epub/)
 novelaibook export-epub n4423lw --format epub
-
-# Export to PDF (saved to data/novels/{folder}/pdf/)
-novelaibook export-epub n4423lw --format pdf
 ```
 
 ---
 
-## ðŸ“‚ Data Directory Structure
+## Data Directory Structure
 
-After first run, your `data/` folder looks like:
+After first run, your `novel_library/` folder looks like:
 
 ```
-data/
-â”œâ”€â”€ translation_cache.json          # Cached translations
-â”œâ”€â”€ usage.json                       # API usage statistics
-â””â”€â”€ novels/
-    â”œâ”€â”€ index.json
-    â””â”€â”€ sword_art_online_progressive/
-        â”œâ”€â”€ metadata.json            # Novel info
-        â”œâ”€â”€ raw/                     # Raw chapters
-        â”‚   â”œâ”€â”€ chapter_1.json
-        â”‚   â””â”€â”€ chapter_2.json
-        â”œâ”€â”€ translated/              # Translated chapters
-        â”‚   â”œâ”€â”€ chapter_1.json
-        â”‚   â””â”€â”€ chapter_2.json
-        â”œâ”€â”€ epub/                    # EPUB exports
-        â””â”€â”€ pdf/                     # PDF exports
+novel_library/
+├── preferences.json
+├── translation_cache.json
+├── usage.json
+└── novels/
+    ├── index.json
+    └── <novel_id>/
+        ├── metadata.json
+        ├── raw/
+        │   ├── chapter_1.json
+        │   └── chapter_2.json
+        ├── translated/
+        │   ├── chapter_1.json
+        │   └── chapter_2.json
+        └── epub/
+            └── full_novel.epub
 ```
 
-See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md) for complete explanation.
+See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md) for full details.
 
 ---
 
-## ðŸ› Troubleshooting
+## Troubleshooting
 
 ### Issue: "ModuleNotFoundError: No module named 'novelai'"
 
@@ -209,54 +179,39 @@ python -m pip install -e .
 
 ### Issue: "PROVIDER_OPENAI_API_KEY not found"
 
-**Solution**: 
+**Solution**:
 1. Create `.env` file from `.env.example`
 2. Add your API key to `.env`
 3. Restart the application
 
 ### Issue: "Connection timeout" when fetching chapters
 
-**Solution**: 
+**Solution**:
 - Check internet connection
-- The Syosetu website might be temporarily unavailable
+- The source website might be temporarily unavailable
 - Try again in a few moments
 
-### Issue: "Low disk space" errors
-
-**Solution**:
-- Backups use about 1-2MB per novel (compressed)
-- Raw and translated chapters use about 100-200KB per chapter
-- Clear backups if needed: `novelaibook cleanup-backups`
-
-### Issue: "Rate limit exceeded"
-
-**Solution**:
-- OpenAI has rate limits (varies by API tier)
-- Wait a few moments and try again
-- Use `novelaibook check-usage` to see your API usage
-
 ---
 
-## ðŸ“š Next Steps
+## Next Steps
 
-1. **Learn CLI Commands**: See [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md)
-2. **Learn TUI**: See [TUI_GUIDE.md](TUI_GUIDE.md)
+1. **Learn TUI**: See [TUI_GUIDE.md](TUI_GUIDE.md)
+2. **Learn CLI**: See [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md)
 3. **Understand Architecture**: See [../architecture/architecture.md](../architecture/architecture.md)
 4. **Learn Data Format**: See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md)
-5. **Review Operational Planning**: See [../plans/PHASE_4_PLAN.md](../plans/PHASE_4_PLAN.md)
 
 ---
 
-## ðŸ’¡ Tips
+## Tips
 
-### Tip 1: Batch Processing
+### Batch Processing
 Translate multiple chapters at once for efficiency:
 ```bash
 novelaibook translate-chapters syosetu_ncode n4423lw 1-10
 ```
 
-### Tip 2: Add Custom Glossary
-Glossary entries and style presets are separate. Use glossary entries for recurring terminology, and use presets for tone:
+### Custom Glossary
+Use glossary entries for recurring terminology:
 ```python
 from novelai.prompts import build_translation_request
 
@@ -271,28 +226,12 @@ request = build_translation_request(
 )
 ```
 
-### Tip 3: Check Costs Before High-Volume Runs
-```bash
-novelaibook check-usage
-```
-
-### Tip 4: Use TUI for Visual Feedback
-TUI shows:
-- Translation progress
-- Estimated costs in real-time
-- Error messages with recovery options
-
-### Tip 5: Enable Debug Logging
-```bash
-# Set LOG_LEVEL=DEBUG in .env
-LOG_LEVEL=DEBUG
-```
-
-Then run command to see detailed logs.
+### Enable Debug Logging
+Set `LOG_LEVEL=DEBUG` in `.env` for verbose output.
 
 ---
 
-## âš™ï¸ Configuration Reference
+## Configuration Reference
 
 All settings in `.env`:
 
@@ -301,37 +240,5 @@ All settings in `.env`:
 | `PROVIDER_OPENAI_API_KEY` | (required for OpenAI) | Your OpenAI API key |
 | `NOVEL_LIBRARY_DIR` | ./novel_library | Where to store novels |
 | `LOG_LEVEL` | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
-| `COST_PER_TOKEN_USD` | 0.00002 | Token cost for cost estimation |
-| `TRANSLATION_TARGET_LANGUAGE` | English | Default target language for multilingual prompt requests |
-| `BATCH_SIZE` | 10 | Chapters per batch (Phase 4) |
-| `POOL_MIN_SIZE` | 5 | Min API connections (Phase 4) |
-| `POOL_MAX_SIZE` | 20 | Max API connections (Phase 4) |
-| `CACHE_MAX_ENTRIES` | 10000 | Translation cache entries (Phase 4) |
-
----
-
-## ðŸ“ž Getting Help
-
-1. **Check Logs**: Logs saved to `logs/` directory
-2. **Read Docs**: Start with [../README.md](../README.md)
-3. **Check Planning Notes**: See [../plans/PHASE_4_PLAN.md](../plans/PHASE_4_PLAN.md)
-4. **Debug Mode**: Set `LOG_LEVEL=DEBUG` for verbose output
-
----
-
-## ðŸŽ‰ Success!
-
-You're ready to:
-- âœ… Download novels from sources
-- âœ… Translate them using AI
-- âœ… Export to readable formats
-- âœ… Track costs and usage
-- âœ… Handle errors gracefully (Phase 4)
-
-Start with TUI for easy interactive experience:
-```bash
-novelaibook tui
-```
-
-Or master the CLI from [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md).
+| `TRANSLATION_TARGET_LANGUAGE` | English | Default target language |
 

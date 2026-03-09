@@ -69,20 +69,10 @@ novel_library/
 output/
 input/
 logs/
-persistent_data.json
-gptwntranslator.log
+*.log
 
 # Legacy path (pre-consolidation)
 data/
-
-# Local config
-config/config.yaml
-
-# Generated dependency artifacts
-requirements.in
-
-# Misc logs
-*.log
 
 # Session exports
 SESSION_EXPORT_*.json

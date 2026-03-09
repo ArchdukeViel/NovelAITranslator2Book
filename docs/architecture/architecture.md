@@ -1,6 +1,6 @@
 # Novel AI Architecture
 
-This document summarizes the high-level architecture, key subsystems, and extension points for the Novel AI translation platform.
+High-level architecture, key subsystems, and extension points for the Novel AI translation platform.
 
 ## Codebase Structure
 
@@ -20,17 +20,22 @@ src/novelai/
 │   ├── errors.py           # Exception hierarchy
 │   ├── chapter_state.py    # ChapterState enum
 │   └── __init__.py
-├── providers/              # Translation provider adapters
-│   ├── base.py             # Provider interface
-│   ├── openai_provider.py  # OpenAI implementation
-│   ├── dummy_provider.py   # Mock provider for testing
-│   ├── registry.py         # Provider registry
+├── cost_estimator/         # Translation cost estimation
+│   ├── cli.py              # Standalone CLI for estimates
+│   ├── compare.py          # Multi-model comparison
+│   ├── estimator.py        # Core estimation logic
+│   ├── heuristics.py       # Token estimation heuristics
+│   ├── models.py           # Estimation data types
+│   ├── pricing.py          # Model pricing catalog
 │   └── __init__.py
-├── sources/                # Novel source scrapers
-│   ├── base.py             # Source interface
-│   ├── syosetu_ncode.py    # Syosetu scraper
-│   ├── example_source.py   # Example implementation
-│   ├── registry.py         # Source registry
+├── export/                 # Export formats
+│   ├── base_exporter.py    # Exporter interface
+│   ├── epub_exporter.py    # EPUB export
+│   ├── pdf_exporter.py     # PDF export
+│   ├── registry.py         # Exporter registry
+│   └── __init__.py
+├── glossary/               # Terminology management
+│   ├── glossary.py         # Glossary service
 │   └── __init__.py
 ├── pipeline/               # Translation pipeline
 │   ├── pipeline.py         # Main orchestrator
@@ -44,26 +49,51 @@ src/novelai/
 │       ├── post_process.py # Post-process stage
 │       └── __init__.py
 ├── prompts/                # Prompt templates
-│   ├── templates.py        # Template management
+│   ├── builders.py         # Prompt construction
+│   ├── models.py           # Prompt data types
+│   ├── responses_api.py    # OpenAI Responses API payloads
+│   ├── templates.py        # Template and preset definitions
 │   └── __init__.py
-├── glossary/               # Terminology management
-│   ├── glossary.py         # Glossary service
+├── providers/              # Translation provider adapters
+│   ├── base.py             # Provider interface
+│   ├── openai_provider.py  # OpenAI implementation
+│   ├── dummy_provider.py   # Mock provider for testing
+│   ├── registry.py         # Provider registry
 │   └── __init__.py
 ├── services/               # High-level services
-│   ├── storage_service.py           # Persistence layer
-│   ├── translation_service.py       # Translation orchestration
-│   ├── export_service.py            # EPUB/PDF export
-│   ├── settings_service.py          # Settings management
-│   ├── usage_service.py             # API usage tracking
-│   ├── translation_cache.py         # Cache management
-│   ├── novel_orchestration_service.py  # Business workflows
-│   ├── checkpoint_manager.py        # State checkpointing
 │   ├── backup_manager.py            # Backup & restore
+│   ├── checkpoint_manager.py        # State checkpointing
+│   ├── export_service.py            # Export orchestration
+│   ├── novel_orchestration_service.py  # Business workflows
+│   ├── preferences_service.py       # User preferences
+│   ├── query_builder.py             # Query construction
+│   ├── settings_service.py          # Settings alias (delegates to PreferencesService)
+│   ├── storage_service.py           # Persistence layer
+│   ├── translation_cache.py         # Cache management
+│   ├── translation_service.py       # Translation orchestration
+│   ├── usage_service.py             # API usage tracking
 │   └── __init__.py
-├── export/                 # Export formats
-│   ├── base_exporter.py    # Exporter interface
-│   ├── epub_exporter.py    # EPUB export
-│   ├── pdf_exporter.py     # PDF export
+├── sources/                # Novel source scrapers
+│   ├── base.py             # Source interface
+│   ├── kakuyomu.py         # Kakuyomu scraper
+│   ├── novel18_syosetu.py  # Novel18 (R-18 Syosetu)
+│   ├── syosetu_ncode.py    # Syosetu Ncode scraper
+│   ├── registry.py         # Source registry
+│   ├── _helpers.py         # Shared scraping utilities
+│   └── __init__.py
+├── tui/                    # Terminal user interface
+│   ├── app.py              # TUI application (Rich dashboard)
+│   ├── screens/            # Mixin-based screen modules
+│   │   ├── diagnostics.py  # Diagnostics screen mixin
+│   │   ├── library.py      # Library browser mixin
+│   │   ├── pipeline.py     # Scrape/update pipeline mixin
+│   │   ├── settings.py     # Settings screen mixin
+│   │   └── __init__.py
+│   └── __init__.py
+├── utils/                  # Utility modules
+│   ├── chapter_selection.py # Chapter selection parsing
+│   ├── logging.py          # Structured logging setup
+│   ├── retry_decorator.py  # Retry with exponential backoff
 │   └── __init__.py
 ├── web/                    # FastAPI backend
 │   ├── api.py              # Main API app
@@ -71,61 +101,39 @@ src/novelai/
 │   │   ├── novels.py       # Novel endpoints
 │   │   └── __init__.py
 │   └── __init__.py
-├── tui/                    # Terminal user interface
-│   ├── app.py              # TUI application
-│   └── __init__.py
-├── utils/                  # Utility modules
-│   ├── logging.py          # Logging setup
-│   ├── chapter_selection.py # Chapter selection
-│   ├── retry_decorator.py  # Retry logic (Phase 4)
-│   ├── batch_processor.py  # Batch processing (Phase 4 — planned, not yet implemented)
-│   ├── connection_pool.py  # Connection pooling (Phase 4 — planned, not yet implemented)
-│   ├── cache_optimizer.py  # Cache management (Phase 4 — planned, not yet implemented)
-│   ├── rate_limiter.py     # Rate limiting
-│   ├── query_builder.py    # Query construction
-│   └── __init__.py
-├── storage/                # Storage abstractions
-│   ├── models.py           # Data models
-│   ├── repository.py       # Repository pattern
-│   └── __init__.py
 └── __init__.py
 ```
 
 ## High-level Domains
-
-The codebase is organized into clear domains to enforce separation of concerns:
 
 | Domain | Purpose |
 |--------|---------|
 | **app/** | Application entrypoints (CLI, web server, DI container) |
 | **config/** | Centralized configuration and environment management |
 | **core/** | Shared primitives (types, errors, state machine enum) |
-| **providers/** | Language model provider adapters (OpenAI, etc.) |
-| **sources/** | Novel scraper/source adapters (Syosetu, others) |
-| **pipeline/** | Translation processing pipeline with modular stages |
-| **prompts/** | Prompt template system and management |
+| **cost_estimator/** | Translation cost estimation and model comparison |
+| **export/** | EPUB and PDF export engines |
 | **glossary/** | Terminology/glossary enforcement system |
+| **pipeline/** | Translation processing pipeline with modular stages |
+| **prompts/** | Multilingual prompt templates and payload builders |
+| **providers/** | Language model provider adapters (OpenAI, etc.) |
 | **services/** | High-level business logic services |
+| **sources/** | Novel scraper/source adapters (Syosetu Ncode, Novel18, Kakuyomu) |
+| **tui/** | Terminal user interface with mixin-based screens |
+| **utils/** | Utilities (logging, retry, chapter selection) |
 | **web/** | FastAPI backend and REST endpoints |
-| **tui/** | Terminal user interface |
-| **export/** | EPUB/PDF export engines |
-| **storage/** | Persistence layer and data access |
-| **utils/** | Utilities (logging, rate limiting, retry, batch, pool, cache) |
-| **tests/** | Unit and integration tests |
 
 ## Runtime Data Structure
 
 ```
-data/
-├── translation_cache.json          # Cached translation results
+novel_library/
+├── preferences.json                 # User preferences (provider, model, API key)
+├── translation_cache.json           # Cached translation results
 ├── usage.json                       # API usage statistics
-├── backups/                         # Backup directory (Phase 4)
-│   ├── n4423lw__20260307_120000.tar.gz
-│   └── manifest.json
 └── novels/
     ├── index.json                   # Novel ID → folder mapping
-    └── n4423lw/                     # Novel directory (novel ID)
-        ├── metadata.json            # Novel metadata
+    └── <novel_id>/                  # Novel directory
+        ├── metadata.json            # Novel metadata from source
         ├── raw/                     # Raw chapters from source
         │   ├── chapter_1.json
         │   └── chapter_2.json
@@ -133,13 +141,11 @@ data/
         │   ├── chapter_1.json
         │   └── chapter_2.json
         ├── epub/                    # EPUB exports
-        │   ├── full_novel.epub
-        │   └── chapter_1.epub
-        ├── pdf/                     # PDF exports
-        │   ├── full_novel.pdf
-        │   └── chapter_1.pdf
-        └── checkpoints/             # State snapshots (Phase 4)
-            ├── chapter_1_pre-translation.json
+        │   └── full_novel.epub
+        ├── assets/                  # Chapter images
+        │   └── images/
+        │       └── <chapter_id>/
+        └── checkpoints/             # State snapshots for recovery
             └── chapter_1_post-translation.json
 ```
 
@@ -147,15 +153,15 @@ data/
 
 | File/Folder | Purpose | Managed By |
 |-------------|---------|-----------|
-| `translation_cache.json` | Cached translations to avoid re-translation | `TranslationCacheOptimizer` |
+| `preferences.json` | Provider, model, API key | `PreferencesService` |
+| `translation_cache.json` | Cached translations to avoid re-translation | `TranslationCache` |
 | `usage.json` | API usage tracking (tokens, cost) | `UsageService` |
-| `backups/` | Versioned backups of novels | `BackupManager` (Phase 4) |
 | `novels/{id}/` | Novel chapters and metadata | `StorageService` |
 | `novels/{id}/raw/` | Raw chapters from source | `StorageService` |
 | `novels/{id}/translated/` | Final translated chapters (JSON) | `StorageService` |
 | `novels/{id}/epub/` | EPUB export files | `ExportService` |
-| `novels/{id}/pdf/` | PDF export files | `ExportService` |
-| `novels/{id}/checkpoints/` | State snapshots for recovery | `CheckpointManager` (Phase 4) |
+| `novels/{id}/assets/` | Chapter images | `StorageService` |
+| `novels/{id}/checkpoints/` | State snapshots for recovery | `CheckpointManager` |
 
 ## Key Architectural Principles
 
@@ -168,28 +174,26 @@ data/
 | **Dependency Injection** | `Container` class provides service instances | Loose coupling, testability |
 | **Orchestration Service** | `NovelOrchestrationService` centralizes workflows | No duplication between CLI/web/TUI |
 | **Configuration Centralization** | `settings.py` for all config values | Environment-aware, twelve-factor compliant |
-| **Usage Tracking** | `UsageService` logs to `data/usage.json` | Cost estimation and quota management |
+| **Usage Tracking** | `UsageService` logs to `novel_library/usage.json` | Cost estimation and quota management |
 | **Storage Isolation** | `StorageService` abstracts persistence | Future DB migration possible |
-| **Export Modularity** | Separate exporter classes (EPUB, PDF) | Extensible to new formats |
+| **Export Modularity** | Separate exporter classes (EPUB, PDF) with registry | Extensible to new formats |
+| **TUI Mixin Screens** | Screen logic in `tui/screens/` mixins, composed in `app.py` | Isolated screen concerns, testable |
 
-### Phase 4 Resilience Layer
+### Resilience Layer
 
 | Component | Purpose | Pattern |
 |-----------|---------|---------|
 | **Retry Decorator** | Auto-retry transient failures | Exponential backoff with jitter |
 | **Checkpoint Manager** | Save state at key points | Atomic snapshots, recovery points |
 | **Backup Manager** | Full/incremental backups | Tar.gz + manifest versioning |
-| **Batch Processor** | Parallel item processing | Concurrent batches with failure tolerance |
-| **Connection Pool** | Reusable API connections | Min/max sizing, overflow handling |
-| **Cache Optimizer** | Translation result caching | LRU/LFU/FIFO eviction, TTL support |
 
 ## System Architecture Diagram
 
 ```
 User Interfaces
 ├── CLI (app/cli.py)
-├── Web (web/api.py) 
-└── TUI (tui/app.py)
+├── Web (web/api.py)
+└── TUI (tui/app.py + tui/screens/)
         ↓
 NovelOrchestrationService (services/novel_orchestration_service.py)
         ↓
@@ -203,19 +207,13 @@ Translation Pipeline (pipeline/pipeline.py)
 Storage/Export Layer
 ├── StorageService (services/storage_service.py)
 ├── ExportService (services/export_service.py)
-├── CheckpointManager (services/checkpoint_manager.py) [Phase 4]
-└── BackupManager (services/backup_manager.py) [Phase 4]
-        ↓
-Resilience Layer (Phase 4)
-├── Batch Processor (utils/batch_processor.py) — planned
-├── Connection Pool (utils/connection_pool.py) — planned
-├── Retry Decorator (utils/retry_decorator.py)
-└── Cache Optimizer (utils/cache_optimizer.py) — planned
+├── CheckpointManager (services/checkpoint_manager.py)
+└── BackupManager (services/backup_manager.py)
         ↓
 External Dependencies
 ├── OpenAI API
-├── Syosetu Website
-└── File System (data/)
+├── Syosetu / Kakuyomu / Novel18 Websites
+└── File System (novel_library/)
 ```
 
 ## Data Flow Example
@@ -228,20 +226,20 @@ External Dependencies
 2. NovelOrchestrationService.translate_novel()
    ↓
 3. Pipeline executes:
-   - Fetch: Scrape chapters from Syosetu
+   - Fetch: Scrape chapters from source
    - Parse: Extract text from HTML
    - Segment: Break into paragraphs
    - Translate: Send to OpenAI (with @retry_async decorator)
    - Post-Process: Format output
    ↓
-4. Chapter stored: data/novels/n4423lw/translated/1.txt
-   Checkpoint saved: data/novels/n4423lw/checkpoints/ch1_post_translate.json
+4. Chapter stored: novel_library/novels/n4423lw/translated/chapter_1.json
+   Checkpoint saved: novel_library/novels/n4423lw/checkpoints/...
    ↓
-5. Web API: GET /api/novels/n4423lw/chapters/1
-   Served from: data/web/novels/n4423lw/translated/1.txt
+5. Export: novelaibook export-epub n4423lw --format epub
+   Output: novel_library/novels/n4423lw/epub/full_novel.epub
 ```
 
-### Error Recovery Workflow (Phase 4)
+### Error Recovery Workflow
 
 ```
 1. Translation fails (API timeout)
@@ -253,14 +251,9 @@ External Dependencies
 3. If all retries exhausted:
    - CheckpointManager.get_recovery_point() called
    - Restores to last successful state
-   - Logs error with context
+   - Logs error with correlation ID
    ↓
-4. BatchProcessor handles multiple chapters:
-   - Processes in batches of 10
-   - Retries individual failures
-   - Reports success/failure per batch
-   ↓
-5. On critical failure:
-   - BackupManager.create_full_backup() -> data/backups/n4423lw_TIMESTAMP.tar.gz
+4. On critical failure:
+   - BackupManager.create_full_backup()
    - Can restore with BackupManager.restore_backup()
 ```
