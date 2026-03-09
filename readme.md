@@ -6,7 +6,7 @@ A modular web novel translation platform with a multilingual literary-prompt sys
 
 This repository now also includes a production-minded chapter extraction framework under [`src/`](./src) with:
 
-- pluggable adapters for `Syosetu` and `Kakuyomu` with more to come
+- pluggable adapters for `Syosetu` and `Kakuyomu` with more sources to come
 - canonical storage as cleaned chapter-body HTML fragments
 - derived JSON, plain text, and stable block-level segments
 - parser versioning so stored chapters can be reparsed later
