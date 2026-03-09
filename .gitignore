@@ -84,6 +84,9 @@ requirements.in
 # Misc logs
 *.log
 
+# Session exports
+SESSION_EXPORT_*.json
+
 # Documentation (tracking)
 # Note: All .md files are tracked in git for documentation history
 # docs/history/ contains archived phase completion and review docs

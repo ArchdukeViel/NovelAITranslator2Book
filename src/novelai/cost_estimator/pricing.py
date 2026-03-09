@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from src.cost_estimator.models import CurrencyConverter, ModelPricing
+from novelai.cost_estimator.models import CurrencyConverter, ModelPricing
 
 TOKENS_PER_MILLION = 1_000_000
 

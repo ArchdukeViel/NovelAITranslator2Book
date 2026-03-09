@@ -369,8 +369,8 @@ python -m src.cost_estimator.cli --chars 10000 --glossary --json
 ### Python usage
 
 ```python
-from src.cost_estimator.compare import compare_models
-from src.cost_estimator.models import EstimationOptions
+from novelai.cost_estimator.compare import compare_models
+from novelai.cost_estimator.models import EstimationOptions
 
 options = EstimationOptions(
     japanese_characters=10_000,

@@ -4,8 +4,8 @@ import math
 
 import pytest
 
-from src.cost_estimator.estimator import estimate_cost, estimate_tokens
-from src.cost_estimator.models import EstimationOptions
+from novelai.cost_estimator.estimator import estimate_cost, estimate_tokens
+from novelai.cost_estimator.models import EstimationOptions
 
 
 def test_baseline_estimation_for_10000_characters() -> None:

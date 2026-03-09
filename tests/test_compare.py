@@ -4,8 +4,8 @@ import math
 
 import pytest
 
-from src.cost_estimator.compare import compare_models
-from src.cost_estimator.models import EstimationOptions
+from novelai.cost_estimator.compare import compare_models
+from novelai.cost_estimator.models import EstimationOptions
 
 
 def test_compare_models_returns_expected_cheapest_and_difference() -> None:

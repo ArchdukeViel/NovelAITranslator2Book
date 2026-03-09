@@ -1,9 +1,9 @@
 """Cost estimation utilities for translation budgeting."""
 
-from src.cost_estimator.compare import compare_models
-from src.cost_estimator.estimator import estimate_cost, estimate_tokens
-from src.cost_estimator.heuristics import DEFAULT_TOKEN_HEURISTICS, TokenHeuristics
-from src.cost_estimator.models import (
+from novelai.cost_estimator.compare import compare_models
+from novelai.cost_estimator.estimator import estimate_cost, estimate_tokens
+from novelai.cost_estimator.heuristics import DEFAULT_TOKEN_HEURISTICS, TokenHeuristics
+from novelai.cost_estimator.models import (
     CostComparison,
     CostEstimate,
     CurrencyConverter,
@@ -11,7 +11,7 @@ from src.cost_estimator.models import (
     ModelPricing,
     TokenEstimate,
 )
-from src.cost_estimator.pricing import DEFAULT_PRICING, get_model_pricing
+from novelai.cost_estimator.pricing import DEFAULT_PRICING, get_model_pricing
 
 __all__ = [
     "DEFAULT_PRICING",

@@ -11,6 +11,7 @@ class CurrencyConverter(Protocol):
 
     def convert_from_usd(self, amount_usd: float, target_currency: str) -> float:
         """Convert a USD amount into a target currency code."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)

@@ -4,8 +4,8 @@ import math
 
 import pytest
 
-from src.cost_estimator.models import CurrencyConverter
-from src.cost_estimator.pricing import (
+from novelai.cost_estimator.models import CurrencyConverter
+from novelai.cost_estimator.pricing import (
     DEFAULT_PRICING,
     calculate_input_cost,
     calculate_output_cost,

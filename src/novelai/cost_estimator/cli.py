@@ -3,10 +3,10 @@ from __future__ import annotations
 import argparse
 from typing import Sequence
 
-from src.cost_estimator.compare import compare_models
-from src.cost_estimator.models import EstimationOptions
-from src.cost_estimator.pricing import list_supported_models
-from src.utils import format_usd
+from novelai.cost_estimator.compare import compare_models
+from novelai.cost_estimator.models import EstimationOptions
+from novelai.cost_estimator.pricing import list_supported_models
+from novelai.utils import format_usd
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from src.cost_estimator.heuristics import (
+from novelai.cost_estimator.heuristics import (
     DEFAULT_TOKEN_HEURISTICS,
     TokenHeuristics,
     estimate_output_tokens,
     estimate_source_tokens,
 )
-from src.cost_estimator.models import CostEstimate, EstimationOptions, ModelPricing, TokenEstimate
-from src.cost_estimator.pricing import (
+from novelai.cost_estimator.models import CostEstimate, EstimationOptions, ModelPricing, TokenEstimate
+from novelai.cost_estimator.pricing import (
     calculate_input_cost,
     calculate_output_cost,
     get_model_pricing,

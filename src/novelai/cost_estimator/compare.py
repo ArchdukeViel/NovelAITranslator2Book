@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 
-from src.cost_estimator.estimator import estimate_cost
-from src.cost_estimator.heuristics import DEFAULT_TOKEN_HEURISTICS, TokenHeuristics
-from src.cost_estimator.models import CostComparison, EstimationOptions, ModelPricing
+from novelai.cost_estimator.estimator import estimate_cost
+from novelai.cost_estimator.heuristics import DEFAULT_TOKEN_HEURISTICS, TokenHeuristics
+from novelai.cost_estimator.models import CostComparison, EstimationOptions, ModelPricing
 
 
 def compare_models(

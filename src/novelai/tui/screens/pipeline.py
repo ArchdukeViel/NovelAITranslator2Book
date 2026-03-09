@@ -17,10 +17,10 @@ from novelai.config.settings import settings
 from novelai.providers.registry import available_models as available_provider_models
 from novelai.sources.registry import available_sources, detect_source, get_source
 from novelai.utils.chapter_selection import is_full_chapter_selection, parse_chapter_selection
-from src.cost_estimator.compare import compare_models
-from src.cost_estimator.models import EstimationOptions
-from src.cost_estimator.pricing import list_supported_models
-from src.utils import format_usd
+from novelai.cost_estimator.compare import compare_models
+from novelai.cost_estimator.models import EstimationOptions
+from novelai.cost_estimator.pricing import list_supported_models
+from novelai.utils import format_usd
 
 if TYPE_CHECKING:
     from novelai.tui.app import TranslationBudgetEstimate
