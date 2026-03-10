@@ -370,6 +370,8 @@ class SyosetuNcodeSource(SourceAdapter):
             raise SourceError("Unable to find chapter text on Syosetu page")
 
         images: list[dict[str, Any]] = []
+        for section in sections:
+            images.extend(extract_image_references(section, base_url=url, start_index=len(images)))
         text = "\n\n".join(
             rendered
             for rendered in (
@@ -378,8 +380,6 @@ class SyosetuNcodeSource(SourceAdapter):
             )
             if rendered
         )
-        for section in sections:
-            images.extend(extract_image_references(section, base_url=url, start_index=len(images)))
         text = re.sub(r"\n{3,}", "\n\n", text)
         if not text:
             raise SourceError("Chapter text was empty on Syosetu page")

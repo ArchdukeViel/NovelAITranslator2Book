@@ -160,6 +160,30 @@ def test_parse_chapter_payload_extracts_image_metadata() -> None:
     ]
 
 
+def test_parse_chapter_payload_extracts_images_wrapped_in_paragraph() -> None:
+    """Images inside <p><a><img/></a></p> must be extracted (regression test)."""
+    source = SyosetuNcodeSource()
+    html = """
+    <html>
+      <body>
+        <div class="p-novel__text p-novel__text--body js-novel-text">
+          <p>Some text before.</p>
+          <p><a href="https://mitemin.net/userpageimageview/viewimageid/12345">
+            <img src="https://mitemin.net/icode/12345/fitmode/1/fitsrc/1" alt="\u63d2\u7d75(By \u307f\u3066\u307f\u3093)" />
+          </a></p>
+          <p>Some text after.</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    payload = source._parse_chapter_payload(html, "https://novel18.syosetu.com/n0813kx/1/")
+
+    assert "[Image:" in payload["text"]
+    assert len(payload["images"]) == 1
+    assert payload["images"][0]["original_url"].startswith("https://mitemin.net/")
+
+
 @pytest.mark.asyncio
 async def test_fetch_metadata_collects_all_paginated_chapter_pages() -> None:
     source = SyosetuNcodeSource()
