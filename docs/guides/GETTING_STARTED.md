@@ -51,7 +51,7 @@ copy .env.example .env
 #   PROVIDER_OPENAI_API_KEY=sk-...
 # Optional:
 #   NOVEL_LIBRARY_DIR=./novel_library (default)
-#   TRANSLATION_TARGET_LANGUAGE=English (default)
+#   TRANSLATION_TARGET_LANGUAGE=English (default, 20 languages supported)
 #   LOG_LEVEL=INFO (default)
 ```
 
@@ -112,6 +112,9 @@ If you prefer command line:
 ```bash
 # For Syosetu (Japanese web novel site)
 novelaibook scrape-metadata syosetu_ncode n4423lw
+
+# For any site via the generic adapter
+novelaibook scrape-metadata generic https://example.com/novel/123
 ```
 
 ### 2. Fetch Chapters
@@ -132,11 +135,15 @@ novelaibook translate-chapters syosetu_ncode n4423lw 1-3
 
 Translations stored in: `novel_library/novels/<novel_id>/translated/`
 
-### 4. Export to EPUB
+### 4. Export
 
 ```bash
 # Export to EPUB (saved to novel_library/novels/<novel_id>/epub/)
 novelaibook export-epub n4423lw --format epub
+
+# Also supports HTML and Markdown
+novelaibook export-epub n4423lw --format html
+novelaibook export-epub n4423lw --format md
 ```
 
 ---
@@ -160,8 +167,12 @@ novel_library/
         ├── translated/
         │   ├── chapter_1.json
         │   └── chapter_2.json
-        └── epub/
-            └── full_novel.epub
+        ├── epub/
+        │   └── full_novel.epub
+        ├── html/
+        │   └── full_novel.html
+        └── md/
+            └── full_novel.md
 ```
 
 See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md) for full details.

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "novel-ai"
 version = "0.1.0"
-description = "Japanese-to-English web novel scraping, AI translation, and EPUB export platform with a Rich TUI dashboard."
+description = "Web novel scraping, multilingual AI translation, and multi-format export platform with a Rich TUI dashboard."
 authors = [
   {name = "Akmal"}
 ]

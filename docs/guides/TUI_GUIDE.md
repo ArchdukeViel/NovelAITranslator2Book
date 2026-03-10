@@ -92,7 +92,7 @@ The TUI offers 6 main options. Type the action name directly.
 
 1. Select source:
 ```
-Source (syosetu_ncode, kakuyomu, novel18_syosetu) [syosetu_ncode]: syosetu_ncode
+Source (syosetu_ncode, kakuyomu, novel18_syosetu, generic) [syosetu_ncode]: syosetu_ncode
 ```
 
 2. Enter novel ID or URL:
@@ -113,6 +113,18 @@ Scrape mode (full, update) [update]: update
 **What it does**:
 - **full**: Clears all existing data and re-downloads everything
 - **update**: Only downloads new or changed chapters
+
+**After Translation**, you are prompted to export:
+```
+Export now? (yes, no) [yes]: yes
+Export language (translated, source) [translated]: translated
+Format (epub, html, md) [epub]: epub
+Include table of contents? (yes, no) [no]: yes
+```
+
+- **Export language**: Choose between translated text or original source text
+- **Include TOC**: Adds a table of contents page in EPUB (with entries like "Chapter 1  Title")
+- EPUB exports also include a title page with the novel title and author
 
 ---
 
@@ -168,30 +180,54 @@ Timestamp                  Provider/Model         Tokens
 
 ### Option 5: Settings
 
-**Purpose**: View and modify settings (provider, model, API key)
+**Purpose**: View and modify provider, model, API key, and advanced settings
 
 **Access**: Type `settings`
 
-**Initial Display**:
+**Initial Display**: A settings summary panel followed by a guide rail prompt:
 
 ```
-Current settings
-Provider: openai
-Model: gpt-5.2
-API key set: yes
+┌── Settings Summary ─────────────────────────────────────────────┐
+│ Provider: openai          Model: gpt-5.2       API key: ✓ Set  │
+│ Target language: English   Source language: Auto-detected       │
+│ Scrape delay: 1.0s                                             │
+└─────────────────────────────────────────────────────────────────┘
 
-Change settings? (yes, no) [no]:
+Command [1=provider / 2=model / 3=api-key / 4=advanced / 0=back]:
 ```
 
-**To Change Settings** (select "yes"):
+**Commands**:
+- **1** — Change provider (openai)
+- **2** — Change model (e.g. gpt-5.2 → gpt-5.4)
+- **3** — Update API key
+- **4** — Open advanced settings submenu
+- **0** — Return to main menu
+
+#### Advanced Settings
+
+Selecting option **4** opens a focused submenu:
 
 ```
-Provider (openai) [openai]: openai
-Provider model [gpt-5.2]: gpt-5.4
-API key (leave blank to keep current): sk-...
+┌── Advanced Settings ────────────────────────────────────────────┐
+│ 1. Target language : English                                   │
+│ 2. Scrape delay    : 1.0s                                      │
+│ 0. Back                                                        │
+└─────────────────────────────────────────────────────────────────┘
 
-Settings updated.
+Command [1=language / 2=delay / 0=back]:
 ```
+
+**Target language** presents a numbered list of 20 languages:
+
+```
+ 1. English         6. Korean          11. Thai           16. Italian
+ 2. Indonesian      7. Spanish         12. Vietnamese     17. Dutch
+ 3. Japanese        8. French          13. Arabic         18. Polish
+ 4. Chinese (S)     9. German          14. Hindi          19. Turkish
+ 5. Chinese (T)    10. Portuguese      15. Russian        20. Malay
+```
+
+**Scrape delay** sets the seconds between HTTP requests (default 1.0).
 
 ---
 
@@ -205,7 +241,7 @@ Settings updated.
 
 ## Common Workflows
 
-### Workflow 1: Download and Translate a Novel
+### Workflow 1: Download, Translate, and Export a Novel
 
 1. **Add Novel**: Scrape metadata and chapters
    ```
@@ -216,14 +252,17 @@ Settings updated.
    mode: full
    ```
 
-2. **Verify**: Check with list
+2. **Export**: After translation completes, the TUI prompts to export:
    ```
-   select: list
+   Export now? yes
+   Export language: translated
+   Format: epub
+   Include table of contents? yes
    ```
 
-3. **Export**: Create EPUB via CLI
-   ```bash
-   novelaibook export-epub n4423lw --format epub
+3. **Verify**: Check with list
+   ```
+   select: list
    ```
 
 ---
@@ -268,10 +307,10 @@ Settings updated.
 | # | Command | Label | Purpose | Notes |
 |---|---------|-------|---------|-------|
 | 1 | list | Novel Library | View novels | Default option |
-| 2 | scrape | Add Novel | Download + translate chapters | Choose mode (full/update) |
+| 2 | scrape | Add Novel | Download + translate chapters | Choose mode, export after translate |
 | 3 | update | Update Novel | Refresh existing novel | Re-scrape and re-translate |
 | 4 | diagnostics | Diagnostics | Show statistics | Cache, usage, costs |
-| 5 | settings | Settings | Modify settings | Update provider/model |
+| 5 | settings | Settings | Modify settings | Provider, model, language, delay |
 | 6 | exit | Exit | Close TUI | Returns to terminal |
 
 ---

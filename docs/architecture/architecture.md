@@ -30,8 +30,10 @@ src/novelai/
 │   └── __init__.py
 ├── export/                 # Export formats
 │   ├── base_exporter.py    # Exporter interface
-│   ├── epub_exporter.py    # EPUB export
-│   ├── pdf_exporter.py     # PDF export
+│   ├── epub_exporter.py    # EPUB export (title page, TOC, images)
+│   ├── html_exporter.py    # HTML export
+│   ├── markdown_exporter.py # Markdown export
+│   ├── pdf_exporter.py     # PDF export (placeholder)
 │   ├── registry.py         # Exporter registry
 │   └── __init__.py
 ├── glossary/               # Terminology management
@@ -75,6 +77,7 @@ src/novelai/
 │   └── __init__.py
 ├── sources/                # Novel source scrapers
 │   ├── base.py             # Source interface
+│   ├── generic.py          # Generic heuristic scraper
 │   ├── kakuyomu.py         # Kakuyomu scraper
 │   ├── novel18_syosetu.py  # Novel18 (R-18 Syosetu)
 │   ├── syosetu_ncode.py    # Syosetu Ncode scraper
@@ -112,13 +115,13 @@ src/novelai/
 | **config/** | Centralized configuration and environment management |
 | **core/** | Shared primitives (types, errors, state machine enum) |
 | **cost_estimator/** | Translation cost estimation and model comparison |
-| **export/** | EPUB and PDF export engines |
+| **export/** | EPUB, HTML, Markdown, and PDF export engines |
 | **glossary/** | Terminology/glossary enforcement system |
 | **pipeline/** | Translation processing pipeline with modular stages |
 | **prompts/** | Multilingual prompt templates and payload builders |
 | **providers/** | Language model provider adapters (OpenAI, etc.) |
 | **services/** | High-level business logic services |
-| **sources/** | Novel scraper/source adapters (Syosetu Ncode, Novel18, Kakuyomu) |
+| **sources/** | Novel scraper/source adapters (Syosetu Ncode, Novel18, Kakuyomu, Generic) |
 | **tui/** | Terminal user interface with mixin-based screens |
 | **utils/** | Utilities (logging, retry, chapter selection) |
 | **web/** | FastAPI backend and REST endpoints |
@@ -142,6 +145,10 @@ novel_library/
         │   └── chapter_2.json
         ├── epub/                    # EPUB exports
         │   └── full_novel.epub
+        ├── html/                    # HTML exports
+        │   └── full_novel.html
+        ├── md/                      # Markdown exports
+        │   └── full_novel.md
         ├── assets/                  # Chapter images
         │   └── images/
         │       └── <chapter_id>/
@@ -160,6 +167,8 @@ novel_library/
 | `novels/{id}/raw/` | Raw chapters from source | `StorageService` |
 | `novels/{id}/translated/` | Final translated chapters (JSON) | `StorageService` |
 | `novels/{id}/epub/` | EPUB export files | `ExportService` |
+| `novels/{id}/html/` | HTML export files | `ExportService` |
+| `novels/{id}/md/` | Markdown export files | `ExportService` |
 | `novels/{id}/assets/` | Chapter images | `StorageService` |
 | `novels/{id}/checkpoints/` | State snapshots for recovery | `CheckpointManager` |
 
@@ -176,7 +185,7 @@ novel_library/
 | **Configuration Centralization** | `settings.py` for all config values | Environment-aware, twelve-factor compliant |
 | **Usage Tracking** | `UsageService` logs to `novel_library/usage.json` | Cost estimation and quota management |
 | **Storage Isolation** | `StorageService` abstracts persistence | Future DB migration possible |
-| **Export Modularity** | Separate exporter classes (EPUB, PDF) with registry | Extensible to new formats |
+| **Export Modularity** | Separate exporter classes (EPUB, HTML, Markdown, PDF) with registry | Extensible to new formats |
 | **TUI Mixin Screens** | Screen logic in `tui/screens/` mixins, composed in `app.py` | Isolated screen concerns, testable |
 
 ### Resilience Layer
@@ -237,6 +246,7 @@ External Dependencies
    ↓
 5. Export: novelaibook export-epub n4423lw --format epub
    Output: novel_library/novels/n4423lw/epub/full_novel.epub
+   (Also supports HTML and Markdown via --format html / --format md)
 ```
 
 ### Error Recovery Workflow

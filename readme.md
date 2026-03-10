@@ -1,6 +1,6 @@
 ﻿# Novel AI
 
-Japanese-to-English web novel scraping, AI translation, and EPUB export platform with a Rich TUI dashboard.
+Web novel scraping, multilingual AI translation, and multi-format export platform with a Rich TUI dashboard.
 
 ## Table of Contents
 
@@ -19,12 +19,13 @@ Japanese-to-English web novel scraping, AI translation, and EPUB export platform
 
 ## Features
 
-- **Source adapters** for Syosetu (ncode / novel18) and Kakuyomu with a generic fallback
+- **Source adapters** for Syosetu (ncode / novel18), Kakuyomu, and a generic heuristic fallback for arbitrary URLs
 - **AI translation** via OpenAI (pluggable provider interface for other LLMs)
-- **Multilingual prompt system** with glossary injection, style presets, and JSON-output mode
-- **Rich TUI dashboard** — add novels, update chapters, inspect your library, and manage settings
+- **Multilingual prompt system** with auto-detected source language, 20 target languages, glossary injection, style presets, and JSON-output mode
+- **Rich TUI dashboard** — add novels, update chapters, inspect your library, and manage settings through a guided menu system
 - **CLI commands** — scrape metadata, fetch chapters, translate, and export without the TUI
-- **EPUB export** with inline chapter images preserved from source
+- **Multi-format export** — EPUB (with title page, optional TOC, and inline images), HTML, and Markdown
+- **Export language choice** — export translated text or the original source text
 - **Cost estimation** for budgeting translation runs before sending chapters to an API
 - **Structured logging** with per-request correlation IDs
 - **Checkpoint and backup** for disaster recovery
@@ -52,11 +53,11 @@ See [docs/guides/GETTING_STARTED.md](docs/guides/GETTING_STARTED.md) for the ful
 
 | Key | Label | Description |
 |-----|-------|-------------|
-| list | Novel Library | Browse stored novels and translation progress |
+| list | Novel Library | Browse, export, and manage stored novels |
 | scrape | Add Novel | Detect source from a URL, fetch and translate chapters |
 | update | Update Novel | Refresh metadata, raw chapters, and translations for an existing novel |
 | diagnostics | Diagnostics | Inspect usage, cache health, and recent activity |
-| settings | Settings | Review or change provider, model, and API key |
+| settings | Settings | Provider, model, API key, target language, and scrape delay |
 | exit | Exit | Close the dashboard |
 
 ## CLI
@@ -132,17 +133,17 @@ src/novelai/
   config/         Environment and settings
   core/           Shared types, errors, chapter state enum
   cost_estimator/ Translation cost estimation
-  export/         Export engines (EPUB implemented, PDF placeholder)
+  export/         Export engines (EPUB, HTML, Markdown; PDF placeholder)
   glossary/       Terminology management
   pipeline/       Translation pipeline (fetch → parse → segment → translate → post-process)
   prompts/        Prompt templates and payload builders
   providers/      Translation provider adapters (OpenAI, dummy)
   services/       Business services (storage, translation, orchestration, backups, checkpoints)
-  sources/        Novel source scrapers (Syosetu, Kakuyomu, Novel18)
+  sources/        Novel source scrapers (Syosetu, Kakuyomu, Novel18, generic)
   tui/            Rich TUI dashboard with mixin-based screens
   utils/          Logging, retry, chapter selection, rate limiting
   web/            FastAPI backend
-tests/            pytest suite (170 tests)
+tests/            pytest suite (174 tests)
 ```
 
 ## Runtime Data
@@ -161,6 +162,8 @@ novel_library/
       raw/          raw chapters from source
       translated/   translated chapter JSON
       epub/         EPUB exports
+      html/         HTML exports
+      md/           Markdown exports
       assets/       chapter images
       checkpoints/  state snapshots
 ```
@@ -187,6 +190,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\update-lockfiles.ps1
 | **PDF export** | Not implemented | `PDFExporter` exists as a placeholder; raises `NotImplementedError`. Needs a PDF library (e.g. reportlab or weasyprint). |
 | **Provider support** | OpenAI only | The provider interface is pluggable, but only the OpenAI adapter is implemented. A `DummyProvider` exists for testing. |
 | **Export formats** | EPUB, HTML, Markdown | PDF and DOCX not yet implemented. |
+| **Image embedding** | EPUB only | HTML and Markdown exports do not embed chapter images. |
 
 ## Documentation
 
