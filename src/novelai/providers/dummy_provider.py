@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional
+from collections.abc import Mapping
+from typing import Any
 
 from novelai.providers.base import TranslationProvider
 
@@ -18,8 +19,8 @@ class DummyProvider(TranslationProvider):
     async def translate(
         self,
         prompt: str,
-        model: Optional[str] = None,
-        max_tokens: Optional[int] = None,
+        model: str | None = None,
+        max_tokens: int | None = None,
         **kwargs: Any,
     ) -> Mapping[str, Any]:
         # A very small transformation so it's obvious translation occurred.
@@ -30,7 +31,7 @@ class DummyProvider(TranslationProvider):
             "metadata": {"note": "dummy provider (echo)"},
         }
 
-    async def validate_connection(self, model: Optional[str] = None, **kwargs: Any) -> tuple[bool, str]:
+    async def validate_connection(self, model: str | None = None, **kwargs: Any) -> tuple[bool, str]:
         return True, "Dummy provider does not require an API key."
 
 

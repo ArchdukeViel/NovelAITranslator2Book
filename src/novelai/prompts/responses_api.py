@@ -4,7 +4,6 @@ from typing import Any
 
 from novelai.prompts.models import TranslationRequest
 
-
 JSON_TRANSLATION_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,

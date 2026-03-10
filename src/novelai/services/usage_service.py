@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import builtins
 import json
-from datetime import date, datetime, timezone
+import logging
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from novelai.config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 class UsageService:
@@ -15,25 +19,26 @@ class UsageService:
         self.base_dir = (base_dir or settings.DATA_DIR).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.usage_path = self.base_dir / "usage.json"
-        self._data: List[Dict[str, Any]] = self._load()
+        self._data: list[dict[str, Any]] = self._load()
 
-    def _load(self) -> List[Dict[str, Any]]:
+    def _load(self) -> builtins.list[dict[str, Any]]:
         if not self.usage_path.exists():
             return []
         try:
             return json.loads(self.usage_path.read_text(encoding="utf-8"))
         except Exception:
+            logger.warning("Corrupted usage file at %s; resetting to empty.", self.usage_path)
             return []
 
     def _persist(self) -> None:
         self.usage_path.write_text(json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def record(self, entry: Dict[str, Any]) -> None:
+    def record(self, entry: dict[str, Any]) -> None:
         """Add a usage entry. The entry should already include timestamp."""
         self._data.append(entry)
         self._persist()
 
-    def _entry_type(self, entry: Dict[str, Any]) -> str:
+    def _entry_type(self, entry: dict[str, Any]) -> str:
         entry_type = entry.get("entry_type")
         if isinstance(entry_type, str) and entry_type.strip():
             return entry_type.strip().lower()
@@ -55,13 +60,13 @@ class UsageService:
             return float(value)
         return 0.0
 
-    def _usage_cost_usd(self, entry: Dict[str, Any]) -> float:
+    def _usage_cost_usd(self, entry: dict[str, Any]) -> float:
         explicit_cost = entry.get("actual_cost_usd")
         if isinstance(explicit_cost, (int, float)):
             return float(explicit_cost)
         return self._int_value(entry.get("tokens")) * settings.COST_PER_TOKEN_USD
 
-    def _estimate_total_tokens(self, entry: Dict[str, Any]) -> int:
+    def _estimate_total_tokens(self, entry: dict[str, Any]) -> int:
         explicit_total = entry.get("estimated_total_tokens")
         if isinstance(explicit_total, (int, float)):
             return int(explicit_total)
@@ -80,7 +85,7 @@ class UsageService:
             return None
 
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
         return parsed.astimezone()
 
     def _filter_entries(
@@ -88,12 +93,12 @@ class UsageService:
         *,
         day: date | None = None,
         all_days: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> builtins.list[dict[str, Any]]:
         if all_days:
             return list(self._data)
 
         target_day = day or self._local_today()
-        filtered: List[Dict[str, Any]] = []
+        filtered: list[dict[str, Any]] = []
         for entry in self._data:
             timestamp = self._parse_timestamp(entry.get("timestamp"))
             if timestamp is None:
@@ -102,7 +107,7 @@ class UsageService:
                 filtered.append(entry)
         return filtered
 
-    def _summarize_entries(self, entries: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _summarize_entries(self, entries: builtins.list[dict[str, Any]]) -> dict[str, Any]:
         usage_entries = [entry for entry in entries if self._entry_type(entry) != "estimate"]
         estimate_entries = [entry for entry in entries if self._entry_type(entry) == "estimate"]
 
@@ -131,7 +136,7 @@ class UsageService:
         *,
         day: date | None = None,
         all_days: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> builtins.list[dict[str, Any]]:
         entries = self._filter_entries(day=day, all_days=all_days)
         if limit is None:
             return entries
@@ -142,18 +147,18 @@ class UsageService:
         *,
         day: date | None = None,
         all_days: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         return self._summarize_entries(self._filter_entries(day=day, all_days=all_days))
 
-    def daily_history(self, limit: int | None = None) -> List[Dict[str, Any]]:
-        grouped: dict[date, List[Dict[str, Any]]] = {}
+    def daily_history(self, limit: int | None = None) -> builtins.list[dict[str, Any]]:
+        grouped: dict[date, list[dict[str, Any]]] = {}
         for entry in self._data:
             timestamp = self._parse_timestamp(entry.get("timestamp"))
             if timestamp is None:
                 continue
             grouped.setdefault(timestamp.date(), []).append(entry)
 
-        history: List[Dict[str, Any]] = []
+        history: list[dict[str, Any]] = []
         for day_key in sorted(grouped.keys(), reverse=True):
             summary = self._summarize_entries(grouped[day_key])
             history.append(

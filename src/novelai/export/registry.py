@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from typing import Callable, Dict
+from collections.abc import Callable
 
 from novelai.export.base_exporter import BaseExporter
 
-_EXPORTER_REGISTRY: Dict[str, Callable[[], BaseExporter]] = {}
+_EXPORTER_REGISTRY: dict[str, Callable[[], BaseExporter]] = {}
 
 
 def register_exporter(key: str, factory: Callable[[], BaseExporter]) -> None:
     """Register an exporter factory by key.
-    
+
     Args:
         key: Unique identifier (e.g., 'epub', 'pdf', 'html')
         factory: Callable that returns a BaseExporter instance
@@ -19,13 +19,13 @@ def register_exporter(key: str, factory: Callable[[], BaseExporter]) -> None:
 
 def get_exporter(key: str) -> BaseExporter:
     """Retrieve an exporter instance by key.
-    
+
     Args:
         key: Exporter key (e.g., 'epub', 'pdf')
-        
+
     Returns:
         BaseExporter instance
-        
+
     Raises:
         KeyError: If exporter not registered
     """

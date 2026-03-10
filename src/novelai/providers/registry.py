@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from typing import Callable, Dict
+from collections.abc import Callable
 
 from novelai.config.settings import settings
 from novelai.providers.base import TranslationProvider
 
-
-_PROVIDER_REGISTRY: Dict[str, Callable[[], TranslationProvider]] = {}
+_PROVIDER_REGISTRY: dict[str, Callable[[], TranslationProvider]] = {}
 
 
 def register_provider(key: str, factory: Callable[[], TranslationProvider]) -> None:

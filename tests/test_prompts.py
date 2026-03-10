@@ -8,8 +8,8 @@ from novelai.prompts import (
     build_json_translation_request,
     build_system_prompt,
     build_translation_request,
-    build_user_prompt,
     build_translation_responses_payload,
+    build_user_prompt,
     format_glossary_block,
 )
 

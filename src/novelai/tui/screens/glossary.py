@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 # pyright: reportAttributeAccessIssue=false
-
-import os
 from typing import TYPE_CHECKING, Any
 
 from rich import box

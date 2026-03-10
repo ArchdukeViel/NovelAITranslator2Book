@@ -1,28 +1,31 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pydantic import SecretStr
 
 from novelai.config.settings import settings
 
+logger = logging.getLogger(__name__)
+
 
 class PreferencesService:
     """User preferences persistence (NOT configuration, NOT secrets).
-    
+
     IMPORTANT DISTINCTION:
     - AppSettings: System/environment configuration (from .env / env vars)
     - PreferencesService: User preferences (persisted to disk, no secrets)
     - Secrets: ALWAYS from environment variables (NEVER persisted)
-    
+
     This service stores user choices like:
     - Which provider to use (openai vs dummy, etc)
     - Which model to use (gpt-5.4, gpt-5.2, etc)
     - User UI preferences
-    
+
     It NEVER stores API keys or other secrets.
     """
 
@@ -34,12 +37,13 @@ class PreferencesService:
         self.prefs_path = self.storage_dir / self.PREFS_FILENAME
         self._data = self._load()
 
-    def _load(self) -> Dict[str, Any]:
+    def _load(self) -> dict[str, Any]:
         if not self.prefs_path.exists():
             return {}
         try:
             return json.loads(self.prefs_path.read_text(encoding="utf-8"))
         except Exception:
+            logger.warning("Corrupted preferences file at %s; resetting to defaults.", self.prefs_path)
             return {}
 
     def _persist(self) -> None:
@@ -77,7 +81,7 @@ class PreferencesService:
         """Set user's preferred translation model."""
         self.set("preferred_model", model)
 
-    def get_preferred_source(self) -> Optional[str]:
+    def get_preferred_source(self) -> str | None:
         """Get user's preferred scraping source."""
         return self.get("preferred_source")
 
@@ -124,6 +128,7 @@ class PreferencesService:
             from novelai.providers.registry import available_models
             supported_models = available_models(provider_key)
         except Exception:
+            logger.debug("Could not load available models for provider %s.", provider_key)
             return model
         if model in supported_models:
             return model

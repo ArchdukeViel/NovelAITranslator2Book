@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, TypedDict
 
 
 class PipelineMetadata(TypedDict, total=False):
@@ -23,40 +23,40 @@ class PipelineMetadata(TypedDict, total=False):
 @dataclass
 class PipelineInput:
     """Immutable input parameters for pipeline execution.
-    
+
     Does NOT include source_adapter (passed separately to stages that need it).
     """
 
     chapter_url: str
-    provider_key: Optional[str] = None
-    provider_model: Optional[str] = None
+    provider_key: str | None = None
+    provider_model: str | None = None
 
 
 @dataclass
 class PipelineState:
     """Mutable working state passed between pipeline stages.
-    
+
     This is the internal context updated as data flows through stages.
     """
 
     # Inputs (immutable)
     chapter_url: str
-    provider_key: Optional[str] = None
-    provider_model: Optional[str] = None
+    provider_key: str | None = None
+    provider_model: str | None = None
 
     # Pipeline stages' working state
-    raw_text: Optional[str] = None
-    normalized_text: Optional[str] = None
-    chunks: List[str] = field(default_factory=list)
-    translations: List[str] = field(default_factory=list)
+    raw_text: str | None = None
+    normalized_text: str | None = None
+    chunks: list[str] = field(default_factory=list)
+    translations: list[str] = field(default_factory=list)
 
     # Final output
-    final_text: Optional[str] = None
+    final_text: str | None = None
 
     # Metadata (extensible for stage-specific data)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "chapter_url": self.chapter_url,
             "provider_key": self.provider_key,
@@ -70,7 +70,7 @@ class PipelineState:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "PipelineState":
+    def from_dict(cls, data: dict[str, Any]) -> PipelineState:
         return cls(
             chapter_url=data["chapter_url"],
             provider_key=data.get("provider_key"),
@@ -90,16 +90,16 @@ class PipelineResult:
 
     final_text: str
     chapter_url: str
-    provider_key: Optional[str] = None
-    provider_model: Optional[str] = None
-    raw_text: Optional[str] = None
-    normalized_text: Optional[str] = None
-    chunks: List[str] = field(default_factory=list)
-    translations: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    provider_key: str | None = None
+    provider_model: str | None = None
+    raw_text: str | None = None
+    normalized_text: str | None = None
+    chunks: list[str] = field(default_factory=list)
+    translations: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_state(cls, state: PipelineState) -> "PipelineResult":
+    def from_state(cls, state: PipelineState) -> PipelineResult:
         """Create result from final pipeline state."""
         return cls(
             final_text=state.final_text or "",

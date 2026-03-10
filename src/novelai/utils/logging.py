@@ -10,9 +10,8 @@ import json
 import logging
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Generator, Optional
 
 from novelai.config.settings import settings
 
@@ -56,13 +55,13 @@ class _RequestIdFilter(logging.Filter):
 
 class StructuredFormatter(logging.Formatter):
     """JSON formatter for structured logging.
-    
+
     Suitable for production use with log aggregation tools.
     """
 
     def format(self, record: logging.LogRecord) -> str:
         log_data = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat().replace("+00:00", "Z"),
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat().replace("+00:00", "Z"),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -119,7 +118,7 @@ class SimpleFormatter(logging.Formatter):
 
 def setup_logging(
     log_level: str = "INFO",
-    log_file: Optional[Path] = None,
+    log_file: Path | None = None,
     use_json: bool = False,
 ) -> None:
     """Configure logging for the application.
@@ -195,3 +194,4 @@ try:
 except Exception:
     # Fallback if settings not available yet
     setup_logging(log_level="INFO")
+    logging.getLogger(__name__).debug("Settings unavailable; using default logging config.")

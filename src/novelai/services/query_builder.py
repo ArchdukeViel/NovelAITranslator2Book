@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Literal
 
 from novelai.core.chapter_state import ChapterState
 
@@ -61,9 +62,9 @@ class ChapterQueryBuilder:
         """Initialize query builder with state directory."""
         self.state_dir = state_dir
         self._filters: list[Callable[[dict[str, Any]], bool]] = []
-        self._sort_key: Optional[Callable[[ChapterQueryResult], Any]] = None
+        self._sort_key: Callable[[ChapterQueryResult], Any] | None = None
         self._sort_reverse = False
-        self._limit_val: Optional[int] = None
+        self._limit_val: int | None = None
         self._offset_val = 0
 
     def by_state(self, state: ChapterState) -> ChapterQueryBuilder:
@@ -136,7 +137,7 @@ class ChapterQueryBuilder:
             self._sort_key = lambda r: r.error_count
         elif key == "retries":
             self._sort_key = lambda r: r.retry_count
-        
+
         self._sort_reverse = reverse
         return self
 

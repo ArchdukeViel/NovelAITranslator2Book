@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, Tuple
 
 
 @dataclass(frozen=True)
 class ChapterRange:
     chapter: int
-    subchapter: Optional[int] = None
+    subchapter: int | None = None
 
 
 def is_full_chapter_selection(selection: str) -> bool:
@@ -23,13 +23,13 @@ def parse_range_segment(segment: str) -> Iterable[int]:
     return [int(segment)]
 
 
-def parse_chapter_selection(selection: str) -> List[ChapterRange]:
+def parse_chapter_selection(selection: str) -> list[ChapterRange]:
     """Parse a selection string like '1-3;5:1-2,4' into explicit ranges."""
     selection = selection.strip()
     if not selection:
         return []
 
-    out: List[ChapterRange] = []
+    out: list[ChapterRange] = []
     for part in selection.split(";"):
         part = part.strip()
         if not part:

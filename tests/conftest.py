@@ -2,21 +2,22 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
-import pytest
-import stat
 import shutil
+import stat
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+import pytest
 
 from novelai.app.container import Container
 from novelai.core.chapter_state import ChapterState
 from novelai.glossary.glossary import Glossary
 from novelai.providers.base import TranslationProvider
 from novelai.services.preferences_service import PreferencesService
-
 from novelai.services.storage_service import StorageService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.translation_service import TranslationService
@@ -32,10 +33,8 @@ def _force_remove_tree(path: Path) -> None:
     """Remove a directory tree even when Windows leaves read-only temp paths behind."""
 
     def on_error(func: Any, target: str, exc_info: Any) -> None:
-        try:
+        with contextlib.suppress(Exception):
             os.chmod(target, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
-        except Exception:
-            pass
         func(target)
 
     shutil.rmtree(path, onerror=on_error)
@@ -427,13 +426,13 @@ def cleanup_pytest_cache():
     for warning in warnings:
         print(f"cleanup-warning: {warning}")
     return
-    
+
     # Cleanup after all tests finish
     cache_dirs = [
         Path(".pytest_cache"),
         Path("tests/.pytest_cache"),
     ]
-    
+
     for cache_dir in cache_dirs:
         if cache_dir.exists():
             try:

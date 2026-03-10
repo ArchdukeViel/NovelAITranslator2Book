@@ -7,16 +7,16 @@ import json
 import logging
 import tarfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional, TypedDict
+from typing import TypedDict
 
 logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
     """Return a timezone-aware UTC timestamp."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _utc_now_iso() -> str:
@@ -34,7 +34,7 @@ class BackupInfo:
     size_bytes: int
     compressed: bool
     files_count: int
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class BackupManifestEntry(TypedDict):
@@ -78,7 +78,7 @@ class BackupManager:
 
     def __init__(self, base_dir: Path):
         """Initialize backup manager.
-        
+
         Args:
             base_dir: Base directory for backups
         """
@@ -103,6 +103,7 @@ class BackupManager:
                         manifest[backup_id] = parsed
                 return manifest
             except Exception:
+                logger.warning("Corrupted backup manifest at %s; resetting.", self._backup_manifest)
                 return {}
         return {}
 
@@ -121,25 +122,25 @@ class BackupManager:
         self,
         novel_id: str,
         source_dir: Path,
-        description: Optional[str] = None,
+        description: str | None = None,
         compress: bool = True,
     ) -> BackupInfo:
         """Create a full backup of a novel.
-        
+
         Args:
             novel_id: Novel identifier
             source_dir: Directory containing novel data
             description: Optional backup description
             compress: Whether to compress backup (gzip)
-            
+
         Returns:
             BackupInfo with backup details
         """
         backup_id = f"{novel_id}__{_utc_now().strftime('%Y%m%d_%H%M%S')}"
         backup_path = self._get_backup_path(backup_id, compress)
-        
+
         logger.info(f"Creating backup: {backup_id} from {source_dir}")
-        
+
         try:
             # Create tar archive
             if compress:
@@ -148,19 +149,18 @@ class BackupManager:
             else:
                 with tarfile.open(backup_path, "w") as tar:
                     tar.add(source_dir, arcname=Path(source_dir).name)
-            
+
             size_bytes = backup_path.stat().st_size
-            
+
             # Count files in archive
             files_count = 0
             if compress:
-                with gzip.open(backup_path, "rb") as gz:
-                    with tarfile.open(fileobj=gz) as tar:
-                        files_count = len(tar.getmembers())
+                with gzip.open(backup_path, "rb") as gz, tarfile.open(fileobj=gz) as tar:
+                    files_count = len(tar.getmembers())
             else:
                 with tarfile.open(backup_path) as tar:
                     files_count = len(tar.getmembers())
-            
+
             # Create backup info
             backup_info = BackupInfo(
                 backup_id=backup_id,
@@ -171,7 +171,7 @@ class BackupManager:
                 files_count=files_count,
                 description=description,
             )
-            
+
             # Update manifest
             manifest = self._load_manifest()
             manifest[backup_id] = {
@@ -183,13 +183,13 @@ class BackupManager:
                 "description": description,
             }
             self._save_manifest(manifest)
-            
+
             logger.info(
                 f"Backup created: {backup_id} "
                 f"({size_bytes / 1024 / 1024:.2f}MB, {files_count} files)"
             )
             return backup_info
-            
+
         except Exception as e:
             logger.error(f"Backup creation failed: {e}")
             if backup_path.exists():
@@ -204,6 +204,7 @@ class BackupManager:
         try:
             return datetime.fromisoformat(backups[0].timestamp.replace("Z", "+00:00"))
         except Exception:
+            logger.debug("Could not parse timestamp for latest backup of %s.", novel_id)
             return None
 
     @staticmethod
@@ -222,8 +223,8 @@ class BackupManager:
         self,
         novel_id: str,
         source_dir: Path,
-        last_backup_id: Optional[str] = None,
-        description: Optional[str] = None,
+        last_backup_id: str | None = None,
+        description: str | None = None,
     ) -> BackupInfo:
         """Create an incremental backup (only files modified after last backup).
 
@@ -247,6 +248,7 @@ class BackupManager:
                 try:
                     since = datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00"))
                 except Exception:
+                    logger.debug("Could not parse timestamp for backup %s.", last_backup_id)
                     pass
         if since is None:
             since = self._last_backup_timestamp(novel_id)
@@ -326,35 +328,35 @@ class BackupManager:
         overwrite: bool = False,
     ) -> bool:
         """Restore a backup to target directory.
-        
+
         Args:
             backup_id: Backup identifier to restore
             target_dir: Directory to restore to
             overwrite: Whether to overwrite existing data
-            
+
         Returns:
             True if restored successfully
         """
         manifest = self._load_manifest()
-        
+
         if backup_id not in manifest:
             logger.warning(f"Backup not found: {backup_id}")
             return False
-        
+
         backup_path = self._get_backup_path(backup_id, manifest[backup_id]["compressed"])
-        
+
         if not backup_path.exists():
             logger.warning(f"Backup file not found: {backup_path}")
             return False
-        
+
         logger.info(f"Restoring backup {backup_id} to {target_dir}")
-        
+
         try:
             # Check if target exists
             if target_dir.exists() and not overwrite:
                 logger.warning(f"Target directory exists: {target_dir} (use overwrite=True)")
                 return False
-            
+
             # Extract backup
             if manifest[backup_id]["compressed"]:
                 with tarfile.open(backup_path, "r:gz") as tar:
@@ -362,30 +364,30 @@ class BackupManager:
             else:
                 with tarfile.open(backup_path, "r") as tar:
                     tar.extractall(target_dir.parent)
-            
+
             logger.info(f"Backup restored: {backup_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Backup restoration failed: {e}")
             return False
 
-    def list_backups(self, novel_id: Optional[str] = None) -> list[BackupInfo]:
+    def list_backups(self, novel_id: str | None = None) -> list[BackupInfo]:
         """List all available backups.
-        
+
         Args:
             novel_id: Filter by novel ID (optional)
-            
+
         Returns:
             List of BackupInfo sorted by timestamp (newest first)
         """
         manifest = self._load_manifest()
         backups: list[BackupInfo] = []
-        
+
         for backup_id, info in manifest.items():
             if novel_id and info.get("novel_id") != novel_id:
                 continue
-            
+
             backup_info = BackupInfo(
                 backup_id=backup_id,
                 timestamp=info["timestamp"],
@@ -396,41 +398,41 @@ class BackupManager:
                 description=info["description"],
             )
             backups.append(backup_info)
-        
+
         # Sort by timestamp (newest first)
         backups.sort(key=lambda x: x.timestamp, reverse=True)
         return backups
 
     async def delete_backup(self, backup_id: str) -> bool:
         """Delete a backup.
-        
+
         Args:
             backup_id: Backup ID to delete
-            
+
         Returns:
             True if deleted successfully
         """
         manifest = self._load_manifest()
-        
+
         if backup_id not in manifest:
             logger.warning(f"Backup not found: {backup_id}")
             return False
-        
+
         try:
             # Delete backup file
             backup_info = manifest[backup_id]
             backup_path = self._get_backup_path(backup_id, backup_info.get("compressed", True))
-            
+
             if backup_path.exists():
                 backup_path.unlink()
-            
+
             # Update manifest
             del manifest[backup_id]
             self._save_manifest(manifest)
-            
+
             logger.info(f"Backup deleted: {backup_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to delete backup {backup_id}: {e}")
             return False
@@ -439,23 +441,23 @@ class BackupManager:
         self, novel_id: str, keep_count: int = 5, max_age_days: int = 30
     ) -> int:
         """Clean up old backups, keeping recent and within age limit.
-        
+
         Args:
             novel_id: Novel identifier
             keep_count: Minimum number of backups to keep
             max_age_days: Maximum age of backup to keep
-            
+
         Returns:
             Number of backups deleted
         """
         backups = self.list_backups(novel_id)
-        
+
         cutoff_date = _utc_now()
-        
+
         deleted_count = 0
         for i, backup in enumerate(backups):
             should_delete = False
-            
+
             # Delete if older than max_age_days and have enough recent backups
             if i >= keep_count:
                 try:
@@ -464,21 +466,22 @@ class BackupManager:
                     if age_days > max_age_days:
                         should_delete = True
                 except Exception:
+                    logger.debug("Could not parse timestamp for backup %s.", backup.backup_id)
                     pass
-            
+
             if should_delete:
                 if await self.delete_backup(backup.backup_id):
                     deleted_count += 1
-        
+
         logger.info(f"Cleanup complete: {deleted_count} backups deleted for {novel_id}")
         return deleted_count
 
     def get_backup_size(self, novel_id: str) -> int:
         """Get total size of all backups for a novel.
-        
+
         Args:
             novel_id: Novel identifier
-            
+
         Returns:
             Total size in bytes
         """

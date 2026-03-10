@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 # pyright: reportAttributeAccessIssue=false
-
 import asyncio
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from rich import box
 from rich.console import Group

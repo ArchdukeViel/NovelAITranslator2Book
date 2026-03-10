@@ -2,14 +2,11 @@
 
 import json
 import shutil
-from datetime import datetime, timedelta
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
-from novelai.core.chapter_state import ChapterState, ChapterMetadata, ChapterStateTransition
-from novelai.services.query_builder import ChapterQueryBuilder
+from novelai.core.chapter_state import ChapterState
 from novelai.services.storage_service import StorageService
 from tests.conftest import TESTS_TMP_ROOT
 
@@ -27,11 +24,6 @@ def storage():
 
 def test_save_and_load_chapter(storage):
     """Test saving and loading raw chapters."""
-    chapter_data = {
-        "id": "ch1",
-        "title": "Chapter 1",
-        "text": "Test chapter content",
-    }
 
     # Save
     path = storage.save_chapter("novel1", "ch1", "Test chapter content", title="Chapter 1")
@@ -144,7 +136,7 @@ def test_chapter_state_transitions(storage):
     """Test chapter state tracking."""
     # Create state
     storage.update_chapter_state("novel1", "ch1", ChapterState.SCRAPED)
-    
+
     state1 = storage.load_chapter_state("novel1", "ch1")
     assert state1 is not None
     assert state1["current_state"] == ChapterState.SCRAPED
@@ -152,7 +144,7 @@ def test_chapter_state_transitions(storage):
 
     # Transition to next state
     storage.update_chapter_state("novel1", "ch1", ChapterState.PARSED)
-    
+
     state2 = storage.load_chapter_state("novel1", "ch1")
     assert state2["current_state"] == ChapterState.PARSED
     assert len(state2["transitions"]) == 2
@@ -163,7 +155,7 @@ def test_chapter_state_with_error(storage):
     storage.update_chapter_state(
         "novel1", "ch1", ChapterState.TRANSLATED, error="API timeout"
     )
-    
+
     state = storage.load_chapter_state("novel1", "ch1")
     assert state["error_count"] == 1
     assert state["transitions"][-1].error == "API timeout"

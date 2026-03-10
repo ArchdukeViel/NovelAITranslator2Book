@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Mapping, Protocol
+from collections.abc import Mapping
+from typing import Any, Protocol
 
 
 class TranslationProvider(ABC):

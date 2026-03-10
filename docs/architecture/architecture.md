@@ -16,7 +16,6 @@ src/novelai/
 │   ├── settings.py         # Environment & settings
 │   └── __init__.py
 ├── core/                   # Shared primitives & types
-│   ├── types.py            # Core data types
 │   ├── errors.py           # Exception hierarchy
 │   ├── chapter_state.py    # ChapterState enum
 │   └── __init__.py
@@ -88,6 +87,7 @@ src/novelai/
 │   ├── app.py              # TUI application (Rich dashboard)
 │   ├── screens/            # Mixin-based screen modules
 │   │   ├── diagnostics.py  # Diagnostics screen mixin
+│   │   ├── glossary.py     # Glossary management mixin
 │   │   ├── library.py      # Library browser mixin
 │   │   ├── pipeline.py     # Scrape/update pipeline mixin
 │   │   ├── settings.py     # Settings screen mixin
@@ -100,10 +100,12 @@ src/novelai/
 │   └── __init__.py
 ├── web/                    # FastAPI backend
 │   ├── api.py              # Main API app
+│   ├── error_handlers.py   # HTTP error handling
 │   ├── routers/
 │   │   ├── novels.py       # Novel endpoints
 │   │   └── __init__.py
 │   └── __init__.py
+├── __main__.py             # python -m novelai entrypoint
 └── __init__.py
 ```
 
@@ -130,47 +132,35 @@ src/novelai/
 
 ```
 novel_library/
-├── preferences.json                 # User preferences (provider, model, API key)
+├── preferences.json                 # User preferences (provider, model)
 ├── translation_cache.json           # Cached translation results
 ├── usage.json                       # API usage statistics
 └── novels/
     ├── index.json                   # Novel ID → folder mapping
     └── <novel_id>/                  # Novel directory
         ├── metadata.json            # Novel metadata from source
-        ├── raw/                     # Raw chapters from source
-        │   ├── chapter_1.json
-        │   └── chapter_2.json
-        ├── translated/              # Translated chapters (JSON)
-        │   ├── chapter_1.json
-        │   └── chapter_2.json
-        ├── epub/                    # EPUB exports
-        │   └── full_novel.epub
-        ├── html/                    # HTML exports
-        │   └── full_novel.html
-        ├── md/                      # Markdown exports
-        │   └── full_novel.md
+        ├── full_novel_source.epub   # Original source EPUB (if available)
+        ├── chapters/                # Unified chapter bundles (raw + translated)
+        │   ├── <chapter_id>.json    # Chapter data (source text, translation, state)
+        │   └── ...
         ├── assets/                  # Chapter images
         │   └── images/
         │       └── <chapter_id>/
         └── checkpoints/             # State snapshots for recovery
-            └── chapter_1_post-translation.json
+            └── <chapter_id>__<checkpoint_name>.json
 ```
 
 ### Data Directory Usage
 
 | File/Folder | Purpose | Managed By |
 |-------------|---------|-----------|
-| `preferences.json` | Provider, model, API key | `PreferencesService` |
+| `preferences.json` | Provider, model, UI preferences | `PreferencesService` |
 | `translation_cache.json` | Cached translations to avoid re-translation | `TranslationCache` |
 | `usage.json` | API usage tracking (tokens, cost) | `UsageService` |
 | `novels/{id}/` | Novel chapters and metadata | `StorageService` |
-| `novels/{id}/raw/` | Raw chapters from source | `StorageService` |
-| `novels/{id}/translated/` | Final translated chapters (JSON) | `StorageService` |
-| `novels/{id}/epub/` | EPUB export files | `ExportService` |
-| `novels/{id}/html/` | HTML export files | `ExportService` |
-| `novels/{id}/md/` | Markdown export files | `ExportService` |
+| `novels/{id}/chapters/` | Unified chapter bundles (source text + translation + state) | `StorageService` |
 | `novels/{id}/assets/` | Chapter images | `StorageService` |
-| `novels/{id}/checkpoints/` | State snapshots for recovery | `CheckpointManager` |
+| `novels/{id}/checkpoints/` | State snapshots for recovery | `StorageService` / `CheckpointManager` |
 
 ## Key Architectural Principles
 
@@ -241,7 +231,7 @@ External Dependencies
    - Translate: Send to OpenAI (with @retry_async decorator)
    - Post-Process: Format output
    ↓
-4. Chapter stored: novel_library/novels/n4423lw/translated/chapter_1.json
+4. Chapter stored: novel_library/novels/n4423lw/chapters/<chapter_id>.json
    Checkpoint saved: novel_library/novels/n4423lw/checkpoints/...
    ↓
 5. Export: novelaibook export-epub n4423lw --format epub

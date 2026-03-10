@@ -9,5 +9,10 @@
   "venvPath": ".",
   "venv": ".venv",
   "pythonVersion": "3.13",
-  "pythonPlatform": "Windows"
+  "pythonPlatform": "Windows",
+  "typeCheckingMode": "standard",
+  "reportMissingTypeStubs": false,
+  "reportUnusedImport": "warning",
+  "reportUnusedVariable": "warning",
+  "reportDuplicateImport": "warning"
 }

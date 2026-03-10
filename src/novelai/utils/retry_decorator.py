@@ -6,10 +6,11 @@ import asyncio
 import logging
 import random
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
-from typing import Any, Awaitable, Callable, Optional, Type, Union
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +35,10 @@ class RetryConfig:
     strategy: RetryStrategy = RetryStrategy.EXPONENTIAL
     jitter: bool = True
     jitter_factor: float = 0.1
-    retry_on: tuple[Type[Exception], ...] = (Exception,)
-    dont_retry_on: tuple[Type[Exception], ...] = ()
-    on_retry: Optional[Callable[[int, Exception], Awaitable[None]]] = None
-    on_failure: Optional[Callable[[Exception], Awaitable[None]]] = None
+    retry_on: tuple[type[Exception], ...] = (Exception,)
+    dont_retry_on: tuple[type[Exception], ...] = ()
+    on_retry: Callable[[int, Exception], Awaitable[None]] | None = None
+    on_failure: Callable[[Exception], Awaitable[None]] | None = None
 
 
 class RetryError(Exception):
@@ -129,7 +130,7 @@ class Retrier:
         Raises:
             RetryError: If all retries exhausted
         """
-        last_exception: Optional[Exception] = None
+        last_exception: Exception | None = None
 
         for attempt in range(self.config.max_attempts):
             try:
@@ -195,7 +196,7 @@ class Retrier:
         Raises:
             RetryError: If all retries exhausted
         """
-        last_exception: Optional[Exception] = None
+        last_exception: Exception | None = None
 
         for attempt in range(self.config.max_attempts):
             try:
@@ -250,7 +251,7 @@ class Retrier:
 
 
 def retry_async(
-    config: Optional[RetryConfig] = None,
+    config: RetryConfig | None = None,
 ) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """Decorator for retrying async functions.
 
@@ -282,7 +283,7 @@ def retry_async(
 
 
 def retry_sync(
-    config: Optional[RetryConfig] = None,
+    config: RetryConfig | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator for retrying sync functions.
 

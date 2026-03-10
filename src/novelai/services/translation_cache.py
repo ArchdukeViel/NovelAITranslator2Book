@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from pathlib import Path
-from typing import Optional
 
 from novelai.config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 class TranslationCache:
@@ -27,6 +29,7 @@ class TranslationCache:
         try:
             return json.loads(self.cache_file.read_text(encoding="utf-8"))
         except Exception:
+            logger.warning("Corrupted cache file at %s; resetting to empty.", self.cache_file)
             return {}
 
     def _persist(self) -> None:
@@ -37,7 +40,7 @@ class TranslationCache:
         payload = f"{provider}:{model}:{text}"
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    def get(self, text: str, provider: str, model: str | None) -> Optional[str]:
+    def get(self, text: str, provider: str, model: str | None) -> str | None:
         key = self._hash_key(text, provider, model)
         return self._data.get(key)
 

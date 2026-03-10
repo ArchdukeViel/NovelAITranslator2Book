@@ -81,5 +81,5 @@ def test_invalid_estimation_options_raise_value_error(kwargs: dict[str, Any]) ->
 def test_unsupported_model_name_raises_clear_error() -> None:
     options = EstimationOptions(japanese_characters=10_000)
 
-    with pytest.raises(ValueError, match="Unsupported model 'gpt-5.9'"):
+    with pytest.raises(ValueError, match=r"Unsupported model 'gpt-5\.9'"):
         estimate_cost("gpt-5.9", options)

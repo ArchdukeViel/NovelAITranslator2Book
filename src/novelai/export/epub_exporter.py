@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import re
-from html import escape
 import mimetypes
+import re
+from collections.abc import Sequence
+from html import escape
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 from novelai.export.base_exporter import BaseExporter
-
 
 # Paragraph consisting entirely of repeated separator characters.
 _SEPARATOR_RE = re.compile(

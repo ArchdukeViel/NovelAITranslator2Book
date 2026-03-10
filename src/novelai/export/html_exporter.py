@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from html import escape
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from novelai.export.base_exporter import BaseExporter
 from novelai.export.epub_exporter import _CHAPTER_NUM_RE, _SEPARATOR_RE
@@ -45,7 +46,7 @@ class HTMLExporter(BaseExporter):
             heading_html = self._format_heading(raw_title)
             body_html = self._render_body(text if isinstance(text, str) else "")
 
-            parts.append(f'<div class="chapter">')
+            parts.append('<div class="chapter">')
             parts.append(heading_html)
             parts.append(body_html)
             parts.append("</div>")

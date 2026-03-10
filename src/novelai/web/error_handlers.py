@@ -6,7 +6,6 @@ Provides consistent error responses and logging for Novel AI errors.
 from __future__ import annotations
 
 import logging
-from typing import Callable
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
@@ -29,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 def add_error_handlers(app: FastAPI) -> None:
     """Register error handlers for Novel AI exceptions.
-    
+
     Usage:
         app = FastAPI()
         add_error_handlers(app)

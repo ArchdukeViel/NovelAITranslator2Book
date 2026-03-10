@@ -247,9 +247,7 @@ class SyosetuNcodeSource(SourceAdapter):
         }
         if "p-novel__text--preface" in classes or "p-novel__text--afterword" in classes:
             return False
-        if candidate.get("id") in {"novel_p", "novel_a"}:
-            return False
-        return True
+        return candidate.get("id") not in {"novel_p", "novel_a"}
 
     def _prepare_story_section(self, section: Tag) -> Tag | None:
         section_soup = BeautifulSoup(str(section), "lxml")

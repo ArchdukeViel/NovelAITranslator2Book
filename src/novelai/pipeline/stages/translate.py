@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Callable, Optional
+from collections.abc import Callable
+from datetime import UTC, datetime
 
 from novelai.config.settings import settings
 from novelai.pipeline.context import PipelineContext
@@ -20,14 +20,14 @@ logger = logging.getLogger(__name__)
 
 def _utc_now_iso() -> str:
     """Return a serialized UTC timestamp with a trailing Z."""
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class TranslateStage(PipelineStage):
     """Translate chunks using a configured provider.
 
     This stage supports caching and concurrency to reduce both cost and latency.
-    
+
     Requires injection of:
     - provider_factory: Callable that returns TranslationProvider for a given key
     - cache: TranslationCache instance
@@ -37,17 +37,17 @@ class TranslateStage(PipelineStage):
 
     def __init__(
         self,
-        provider_factory: Optional[Callable[[str], TranslationProvider]] = None,
-        concurrency: Optional[int] = None,
-        cache: Optional[TranslationCache] = None,
-        settings_service: Optional[PreferencesService] = None,
-        usage_service: Optional[UsageService] = None,
+        provider_factory: Callable[[str], TranslationProvider] | None = None,
+        concurrency: int | None = None,
+        cache: TranslationCache | None = None,
+        settings_service: PreferencesService | None = None,
+        usage_service: UsageService | None = None,
     ) -> None:
         if provider_factory is None:
             # Default: import and use registry
             from novelai.providers.registry import get_provider
             provider_factory = get_provider
-        
+
         self._provider_factory = provider_factory
         self._concurrency = concurrency or settings.TRANSLATION_CONCURRENCY
         self._cache = cache or TranslationCache()

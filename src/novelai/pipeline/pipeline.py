@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from novelai.pipeline.context import PipelineContext
 from novelai.pipeline.stages.base import PipelineStage

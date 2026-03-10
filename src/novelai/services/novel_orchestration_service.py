@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
 
 from novelai.config.settings import settings
 from novelai.providers.base import TranslationProvider
@@ -19,12 +20,12 @@ logger = logging.getLogger(__name__)
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class NovelOrchestrationService:
     """Shared orchestration logic used by CLI, TUI, and potentially web UI.
-    
+
     Requires injection of:
     - storage: StorageService
     - translation: TranslationService
@@ -35,11 +36,11 @@ class NovelOrchestrationService:
         self,
         storage: StorageService,
         translation: TranslationService,
-        source_factory: Optional[Callable[[str], SourceAdapter]] = None,
-        provider_factory: Optional[Callable[[str], TranslationProvider]] = None,
-        settings_service: Optional[PreferencesService] = None,
-        translation_cache: Optional[TranslationCache] = None,
-        usage_service: Optional[UsageService] = None,
+        source_factory: Callable[[str], SourceAdapter] | None = None,
+        provider_factory: Callable[[str], TranslationProvider] | None = None,
+        settings_service: PreferencesService | None = None,
+        translation_cache: TranslationCache | None = None,
+        usage_service: UsageService | None = None,
     ) -> None:
         if source_factory is None:
             # Default: import and use registry
@@ -48,7 +49,7 @@ class NovelOrchestrationService:
         if provider_factory is None:
             from novelai.providers.registry import get_provider
             provider_factory = get_provider
-        
+
         self.storage = storage
         self.translation = translation
         self._source_factory = source_factory
@@ -352,8 +353,8 @@ class NovelOrchestrationService:
         source_key: str,
         novel_id: str,
         chapters: str,
-        provider_key: Optional[str] = None,
-        provider_model: Optional[str] = None,
+        provider_key: str | None = None,
+        provider_model: str | None = None,
         force: bool = False,
         source_language: str | None = None,
         target_language: str | None = None,

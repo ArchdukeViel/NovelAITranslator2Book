@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Optional
 
 
 def _utc_now() -> datetime:
     """Return a timezone-aware UTC timestamp."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class ChapterState(Enum):
@@ -27,10 +26,10 @@ class ChapterState(Enum):
 class ChapterStateTransition:
     """Track state changes with timestamps."""
 
-    from_state: Optional[ChapterState] = None
+    from_state: ChapterState | None = None
     to_state: ChapterState = ChapterState.SCRAPED
     timestamp: datetime = field(default_factory=_utc_now)
-    error: Optional[str] = None  # If transition failed, store error message
+    error: str | None = None  # If transition failed, store error message
 
 
 def _default_transitions() -> list[ChapterStateTransition]:
@@ -50,12 +49,12 @@ class ChapterMetadata:
     retry_count: int = 0
 
     def transition_to(
-        self, new_state: ChapterState, error: Optional[str] = None
+        self, new_state: ChapterState, error: str | None = None
     ) -> None:
         """Record a state transition."""
         if error:
             self.error_count += 1
-        
+
         transition = ChapterStateTransition(
             from_state=self.current_state,
             to_state=new_state,
@@ -74,10 +73,10 @@ class ChapterMetadata:
             ChapterState.TRANSLATED,
             ChapterState.EXPORTED,
         ]
-        
+
         current_order = state_order.index(self.current_state)
         target_order = state_order.index(target_state)
-        
+
         # Allow proceeding to next state or same state (idempotent)
         return target_order >= current_order
 

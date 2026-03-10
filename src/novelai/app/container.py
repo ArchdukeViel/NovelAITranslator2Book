@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from novelai.providers.registry import get_provider
 from novelai.services.export_service import ExportService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
-
 from novelai.services.storage_service import StorageService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.translation_service import TranslationService
@@ -20,18 +18,18 @@ class Container:
 
     This is a simple, explicit DI container used to create and reuse shared
     services throughout the application (CLI, TUI, web).
-    
+
     All services are singletons: instantiated once and reused.
     """
 
-    _storage: Optional[StorageService] = None
-    _translation_cache: Optional[TranslationCache] = None
-    _settings: Optional[PreferencesService] = None
-    _preferences: Optional[PreferencesService] = None
-    _usage: Optional[UsageService] = None
-    _translation: Optional[TranslationService] = None
-    _export: Optional[ExportService] = None
-    _orchestrator: Optional[NovelOrchestrationService] = None
+    _storage: StorageService | None = None
+    _translation_cache: TranslationCache | None = None
+    _settings: PreferencesService | None = None
+    _preferences: PreferencesService | None = None
+    _usage: UsageService | None = None
+    _translation: TranslationService | None = None
+    _export: ExportService | None = None
+    _orchestrator: NovelOrchestrationService | None = None
 
     @property
     def storage(self) -> StorageService:
@@ -70,9 +68,9 @@ class Container:
             from novelai.pipeline.pipeline import TranslationPipeline
             from novelai.pipeline.stages.fetch import FetchStage
             from novelai.pipeline.stages.parse import ParseStage
+            from novelai.pipeline.stages.post_process import PostProcessStage
             from novelai.pipeline.stages.segment import SegmentStage
             from novelai.pipeline.stages.translate import TranslateStage
-            from novelai.pipeline.stages.post_process import PostProcessStage
 
             stages = [
                 FetchStage(),

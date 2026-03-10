@@ -1,9 +1,7 @@
 """Tests for pipeline stages."""
 
-import asyncio
 import pytest
 
-from novelai.core.chapter_state import ChapterState
 from novelai.pipeline.context import PipelineState
 from novelai.pipeline.stages.fetch import FetchStage
 from novelai.pipeline.stages.parse import ParseStage

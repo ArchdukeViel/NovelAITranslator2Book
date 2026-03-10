@@ -54,13 +54,13 @@ def bootstrap_exporters() -> None:
 
 def bootstrap() -> None:
     """Register all known providers, sources, and exporters (idempotent).
-    
+
     Safe to call multiple times; only registers once.
     """
     global _BOOTSTRAPPED
     if _BOOTSTRAPPED:
         return
-    
+
     bootstrap_providers()
     bootstrap_sources()
     bootstrap_exporters()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from novelai.glossary.glossary import Glossary, GlossaryEntryLike, GlossaryTerm, normalize_glossary_entries
 from novelai.prompts.models import TranslationRequest

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 # pyright: reportAttributeAccessIssue=false
-
 import os
-import time
 from io import StringIO
 from typing import TYPE_CHECKING, Any
 
@@ -19,7 +17,7 @@ from novelai.export.registry import available_exporters
 from novelai.utils.chapter_selection import is_full_chapter_selection
 
 if os.name == "nt":
-    import msvcrt
+    pass
 
 if TYPE_CHECKING:
     from novelai.tui.app import LibraryLanguageGroup, LibrarySnapshot

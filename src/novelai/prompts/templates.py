@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from textwrap import dedent
 
-
 MULTILINGUAL_SYSTEM_PROMPT_TEMPLATE = dedent(
     """
     You are an expert literary translator specializing in novels, web novels, light novels, and serialized fiction.

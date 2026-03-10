@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from typing import Sequence
+from collections.abc import Sequence
 
 from novelai.cost_estimator.compare import compare_models
 from novelai.cost_estimator.models import EstimationOptions

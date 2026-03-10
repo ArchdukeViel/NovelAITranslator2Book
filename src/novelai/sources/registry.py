@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from typing import Callable, Dict
+import logging
+from collections.abc import Callable
 
 from novelai.sources.base import SourceAdapter
 
-_SOURCE_REGISTRY: Dict[str, Callable[[], SourceAdapter]] = {}
+logger = logging.getLogger(__name__)
+
+_SOURCE_REGISTRY: dict[str, Callable[[], SourceAdapter]] = {}
 
 
 def register_source(key: str, factory: Callable[[], SourceAdapter]) -> None:
@@ -25,6 +28,7 @@ def detect_source(identifier_or_url: str) -> str | None:
             if factory().matches_url(identifier_or_url):
                 return key
         except Exception:
+            logger.debug("Source adapter %s failed during URL detection.", key)
             continue
     return None
 

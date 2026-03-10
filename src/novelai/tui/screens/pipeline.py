@@ -1,27 +1,26 @@
 from __future__ import annotations
 
 # pyright: reportAttributeAccessIssue=false
-
 import asyncio
-from datetime import datetime, timezone
+import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from rich import box
-from rich.console import Group
 from rich.panel import Panel
 from rich.prompt import Prompt
-from rich.text import Text
 
-from novelai.config.settings import settings
-from novelai.export.registry import available_exporters
-from novelai.providers.registry import available_models as available_provider_models
-from novelai.sources.registry import available_sources, detect_source, get_source
-from novelai.utils.chapter_selection import is_full_chapter_selection, parse_chapter_selection
 from novelai.cost_estimator.compare import compare_models
 from novelai.cost_estimator.models import EstimationOptions
 from novelai.cost_estimator.pricing import list_supported_models
+from novelai.export.registry import available_exporters
+from novelai.providers.registry import available_models as available_provider_models
+from novelai.sources.registry import available_sources, detect_source, get_source
 from novelai.utils import format_usd
+from novelai.utils.chapter_selection import is_full_chapter_selection, parse_chapter_selection
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from novelai.tui.app import TranslationBudgetEstimate
@@ -46,6 +45,7 @@ class PipelineScreenMixin:
         try:
             return available_provider_models(provider_key)
         except Exception:
+            logger.debug("Could not load models for provider %s.", provider_key)
             return []
 
     def _effective_translation_target(
@@ -73,6 +73,7 @@ class PipelineScreenMixin:
         try:
             return bool(parse_chapter_selection(selection))
         except Exception:
+            logger.debug("Invalid chapter selection: %s", selection)
             return False
 
     def _prompt_novel_url(
@@ -198,6 +199,7 @@ class PipelineScreenMixin:
         try:
             requested = {spec.chapter for spec in parse_chapter_selection(selection)}
         except Exception:
+            logger.debug("Could not parse chapter selection: %s", selection)
             return []
         return [chapter_num for chapter_num in sorted(requested) if chapter_num in chapter_numbers]
 
@@ -210,6 +212,7 @@ class PipelineScreenMixin:
         try:
             chapter_numbers = [spec.chapter for spec in parse_chapter_selection(selection)]
         except Exception:
+            logger.debug("Could not parse chapter selection: %s", selection)
             return None
         return max(chapter_numbers) if chapter_numbers else None
 
@@ -284,7 +287,7 @@ class PipelineScreenMixin:
             estimate_models,
             EstimationOptions(japanese_characters=japanese_characters),
         )
-        timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         operation = title.strip().lower().replace(" ", "_")
         representative = comparison.estimates[0]
         cheapest = min(comparison.estimates, key=lambda estimate: estimate.estimated_total_cost_usd)
@@ -379,11 +382,11 @@ class PipelineScreenMixin:
         stored_numbers = self._stored_chapter_numbers(novel_id, metadata)
         stored_label = self._format_number_ranges(stored_numbers) if stored_numbers else "none detected"
         return self._confirm_library_action(
-            (
+
                 f"{novel_id} is already in the library.\n"
                 f"Stored chapters: {stored_label}.\n"
                 "Continue Add Novel? Existing raw chapters will be skipped, and existing translations will not be re-run."
-            )
+
         )
 
     def _show_missing_novel_notice(self, novel_id: str) -> None:

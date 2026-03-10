@@ -1,10 +1,9 @@
 """Integration tests for the full pipeline."""
 
-import asyncio
-import pytest
 from pathlib import Path
-import tempfile
 from zipfile import ZipFile
+
+import pytest
 
 from novelai.app.bootstrap import bootstrap
 from novelai.core.chapter_state import ChapterState
@@ -12,18 +11,11 @@ from novelai.pipeline.context import PipelineState
 from novelai.pipeline.pipeline import TranslationPipeline
 from novelai.pipeline.stages.fetch import FetchStage
 from novelai.pipeline.stages.parse import ParseStage
+from novelai.pipeline.stages.post_process import PostProcessStage
 from novelai.pipeline.stages.segment import SegmentStage
 from novelai.pipeline.stages.translate import TranslateStage
-from novelai.pipeline.stages.post_process import PostProcessStage
-from novelai.services.storage_service import StorageService
-from novelai.services.translation_service import TranslationService
-from novelai.services.translation_cache import TranslationCache
-from novelai.services.usage_service import UsageService
 from novelai.utils.logging import setup_logging
 from tests.conftest import (
-    MockTranslationProvider,
-    MockSourceAdapter,
-    MockGlossary,
     create_test_fixture,
 )
 
@@ -131,10 +123,10 @@ async def test_translation_service_builds_multilingual_prompt_request(integratio
 async def test_storage_with_pipeline(integration_fixture):
     """Test storage service integration with pipeline."""
     fixture = integration_fixture
-    
+
     # Add test data
     fixture.add_test_metadata("novel1")
-    chapters = fixture.add_test_chapters("novel1", count=5)
+    fixture.add_test_chapters("novel1", count=5)
 
     # Query storage
     progress = fixture.storage.get_scraping_progress("novel1")
@@ -153,11 +145,11 @@ async def test_state_machine_with_storage(integration_fixture):
     # Save chapter and transition states
     fixture.storage.save_chapter("novel1", "ch1", "Test content")
     fixture.storage.update_chapter_state("novel1", "ch1", ChapterState.SCRAPED)
-    
+
     assert fixture.storage.query_chapters("novel1").by_state(ChapterState.SCRAPED).count() == 1
 
     fixture.storage.update_chapter_state("novel1", "ch1", ChapterState.PARSED)
-    
+
     assert fixture.storage.query_chapters("novel1").by_state(ChapterState.PARSED).count() == 1
     assert fixture.storage.query_chapters("novel1").by_state(ChapterState.SCRAPED).count() == 0
 
@@ -193,8 +185,6 @@ async def test_bootstrap_and_registry(integration_fixture):
     """Test bootstrap and provider registry."""
     bootstrap()
 
-    from novelai.providers.registry import get_provider
-    from novelai.sources.registry import get_source
     from novelai.export.registry import available_exporters
 
     # Providers and sources should be registered
@@ -206,8 +196,9 @@ async def test_bootstrap_and_registry(integration_fixture):
 def test_logging_integration():
     """Test logging setup integration."""
     setup_logging(log_level="INFO", use_json=False)
-    
+
     import logging
+
     from novelai.utils.logging import get_logger
 
     logger = get_logger("test")
@@ -219,14 +210,14 @@ def test_logging_integration():
 async def test_provider_failure_recovery(integration_fixture):
     """Test handling provider failures."""
     fixture = integration_fixture
-    
+
     # Set provider to fail
     fixture.set_provider_failure(True, "Test failure")
-    
+
     # Should raise exception
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match="Test failure"):
         await fixture.mock_provider.translate("test")
-    
+
     # Reset and verify it works again
     fixture.set_provider_failure(False)
     result = await fixture.mock_provider.translate("test")
@@ -236,22 +227,22 @@ async def test_provider_failure_recovery(integration_fixture):
 def test_mock_glossary_integration(integration_fixture):
     """Test mock glossary functionality."""
     fixture = integration_fixture
-    
+
     fixture.mock_glossary.add_term("original", "REPLACED")
     result = fixture.mock_glossary.translate("Use original term here")
-    
+
     assert "REPLACED" in result
 
 
 def test_storage_stats(integration_fixture):
     """Test storage statistics."""
     fixture = integration_fixture
-    
+
     fixture.add_test_metadata("novel1")
     fixture.add_test_chapters("novel1", count=3)
-    
+
     stats = fixture.get_storage_stats()
-    
+
     assert stats["novel_count"] == 1
     assert stats["data_dir_size"] > 0
     assert "novel1" in stats["novels"]

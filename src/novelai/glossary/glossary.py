@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, Mapping, Optional
+from typing import Any
 
 
 @dataclass
@@ -9,9 +10,9 @@ class GlossaryTerm:
     source: str
     target: str
     locked: bool = True
-    notes: Optional[str] = None
+    notes: str | None = None
 
-    def normalized(self) -> "GlossaryTerm":
+    def normalized(self) -> GlossaryTerm:
         source = str(self.source).strip()
         target = str(self.target).strip()
         if not source:
@@ -31,13 +32,13 @@ class GlossaryTerm:
 class Glossary:
     """A glossary of terms used to enforce consistent translations."""
 
-    terms: Dict[str, GlossaryTerm] = field(default_factory=dict)
+    terms: dict[str, GlossaryTerm] = field(default_factory=dict)
 
     def add_term(
         self,
         source: str,
         target: str,
-        notes: Optional[str] = None,
+        notes: str | None = None,
         *,
         locked: bool = True,
     ) -> None:
@@ -51,7 +52,7 @@ class Glossary:
         )
 
     @classmethod
-    def from_entries(cls, entries: Iterable["GlossaryEntryLike"]) -> "Glossary":
+    def from_entries(cls, entries: Iterable[GlossaryEntryLike]) -> Glossary:
         glossary = cls()
         for entry in normalize_glossary_entries(entries):
             glossary.terms[entry.source] = entry

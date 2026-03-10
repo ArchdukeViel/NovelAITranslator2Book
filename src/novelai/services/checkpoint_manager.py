@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from novelai.core.chapter_state import ChapterState
 from novelai.services.storage_service import StorageService
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def _utc_now_iso() -> str:
     """Return a serialized UTC timestamp with a trailing Z."""
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass
@@ -29,8 +29,8 @@ class CheckpointMetadata:
     checkpoint_id: str  # Unique identifier
     timestamp: str  # ISO format
     state: str  # ChapterState value
-    error: Optional[str] = None
-    progress: Optional[dict[str, Any]] = None
+    error: str | None = None
+    progress: dict[str, Any] | None = None
 
 
 class CheckpointManager:
@@ -38,7 +38,7 @@ class CheckpointManager:
 
     def __init__(self, storage: StorageService):
         """Initialize checkpoint manager.
-        
+
         Args:
             storage: StorageService instance
         """
@@ -56,23 +56,23 @@ class CheckpointManager:
         novel_id: str,
         chapter_id: str,
         state: ChapterState,
-        error: Optional[str] = None,
-        progress: Optional[dict[str, Any]] = None,
+        error: str | None = None,
+        progress: dict[str, Any] | None = None,
     ) -> CheckpointMetadata:
         """Create a checkpoint.
-        
+
         Args:
             novel_id: Novel identifier
             chapter_id: Chapter identifier
             state: Current chapter state
             error: Optional error message
             progress: Optional progress data
-            
+
         Returns:
             CheckpointMetadata
         """
         checkpoint_id = self._get_checkpoint_id(novel_id, chapter_id)
-        
+
         metadata = CheckpointMetadata(
             novel_id=novel_id,
             chapter_id=chapter_id,
@@ -82,13 +82,13 @@ class CheckpointManager:
             error=error,
             progress=progress or {},
         )
-        
+
         # Save to storage
         self.storage.create_checkpoint(novel_id, chapter_id, checkpoint_id)
-        
+
         # Track in memory
         self._checkpoints[checkpoint_id] = metadata
-        
+
         logger.debug(f"Checkpoint created: {checkpoint_id}")
         return metadata
 
@@ -99,12 +99,12 @@ class CheckpointManager:
         checkpoint_id: str | None = None,
     ) -> bool:
         """Restore chapter from checkpoint.
-        
+
         Args:
             novel_id: Novel identifier
             chapter_id: Chapter identifier
             checkpoint_id: Checkpoint to restore (latest if not specified)
-            
+
         Returns:
             True if restored successfully
         """
@@ -123,28 +123,28 @@ class CheckpointManager:
         success = self.storage.restore_from_checkpoint(novel_id, chapter_id, checkpoint_id)
         if success:
             self._checkpoints.pop(self._get_checkpoint_id(novel_id, chapter_id), None)
-        
+
         return success
 
     def get_checkpoint_history(
         self, novel_id: str, chapter_id: str
     ) -> list[CheckpointMetadata]:
         """Get checkpoint history for a chapter.
-        
+
         Args:
             novel_id: Novel identifier
             chapter_id: Chapter identifier
-            
+
         Returns:
             List of CheckpointMetadata sorted by timestamp
         """
         checkpoint_id = self._get_checkpoint_id(novel_id, chapter_id)
         history: list[CheckpointMetadata] = []
-        
+
         # Check in-memory cache
         if checkpoint_id in self._checkpoints:
             history.append(self._checkpoints[checkpoint_id])
-        
+
         # Load from storage
         checkpoints = self.storage.list_checkpoints(novel_id, chapter_id)
         for cp in checkpoints:
@@ -159,8 +159,9 @@ class CheckpointManager:
                 )
                 history.append(metadata)
             except Exception:
+                logger.debug("Skipping unreadable checkpoint entry for %s/%s.", novel_id, chapter_id)
                 continue
-        
+
         # Sort by timestamp
         history.sort(key=lambda x: x.timestamp)
         return history
@@ -169,24 +170,24 @@ class CheckpointManager:
         self, novel_id: str, chapter_id: str, keep_count: int = 5
     ) -> int:
         """Remove old checkpoints, keeping only recent ones.
-        
+
         Args:
             novel_id: Novel identifier
             chapter_id: Chapter identifier
             keep_count: Number of recent checkpoints to keep
-            
+
         Returns:
             Number of checkpoints deleted
         """
         checkpoints = self.storage.list_checkpoints(novel_id, chapter_id)
-        
+
         if len(checkpoints) <= keep_count:
             return 0
-        
+
         # Delete older checkpoints
         to_delete = checkpoints[:-keep_count]
         deleted_count = 0
-        
+
         for cp in to_delete:
             try:
                 checkpoint_file = self.storage._get_checkpoints_dir(novel_id) / cp["filename"]
@@ -196,23 +197,23 @@ class CheckpointManager:
                     logger.debug(f"Deleted checkpoint: {cp['filename']}")
             except Exception as e:
                 logger.error(f"Failed to delete checkpoint {cp['filename']}: {e}")
-        
+
         return deleted_count
 
-    async def get_recovery_point(self, novel_id: str, chapter_id: str) -> Optional[ChapterState]:
+    async def get_recovery_point(self, novel_id: str, chapter_id: str) -> ChapterState | None:
         """Get the last successful state for recovery.
-        
+
         Args:
             novel_id: Novel identifier
             chapter_id: Chapter identifier
-            
+
         Returns:
             Last successful ChapterState, or None
         """
         state_data = self.storage.load_chapter_state(novel_id, chapter_id)
         if state_data and state_data.get("error_count", 0) == 0:
             return state_data["current_state"]
-        
+
         # If current state has errors, check checkpoints
         history = self.get_checkpoint_history(novel_id, chapter_id)
         for checkpoint in reversed(history):
@@ -221,7 +222,7 @@ class CheckpointManager:
                     return ChapterState(checkpoint.state)
                 except ValueError:
                     continue
-        
+
         return None
 
 
@@ -230,7 +231,7 @@ class AutoCheckpointHandler:
 
     def __init__(self, checkpoint_manager: CheckpointManager, interval: float = 60.0):
         """Initialize auto-checkpoint handler.
-        
+
         Args:
             checkpoint_manager: CheckpointManager instance
             interval: Checkpoint interval in seconds
@@ -244,7 +245,7 @@ class AutoCheckpointHandler:
         self, novel_id: str, chapter_id: str, state: ChapterState
     ) -> None:
         """Start tracking a chapter for auto-checkpointing.
-        
+
         Args:
             novel_id: Novel identifier
             chapter_id: Chapter identifier
@@ -258,10 +259,10 @@ class AutoCheckpointHandler:
         novel_id: str,
         chapter_id: str,
         state: ChapterState,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> None:
         """Update chapter state (and create checkpoint if needed).
-        
+
         Args:
             novel_id: Novel identifier
             chapter_id: Chapter identifier
@@ -270,7 +271,7 @@ class AutoCheckpointHandler:
         """
         key = f"{novel_id}_{chapter_id}"
         self._active_chapters[key] = state
-        
+
         # Create checkpoint
         await self.checkpoint_manager.create_checkpoint(
             novel_id, chapter_id, state, error=error
@@ -280,14 +281,14 @@ class AutoCheckpointHandler:
         """Start periodic checkpointing for all active chapters."""
         if self._running:
             return
-        
+
         self._running = True
         logger.info("Starting periodic checkpointing")
-        
+
         while self._running:
             try:
                 await asyncio.sleep(self.interval)
-                
+
                 # Create checkpoints for all active chapters
                 for key, state in list(self._active_chapters.items()):
                     try:
@@ -297,7 +298,7 @@ class AutoCheckpointHandler:
                         )
                     except Exception as e:
                         logger.error(f"Failed to checkpoint {key}: {e}")
-                
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -311,9 +312,9 @@ class AutoCheckpointHandler:
     async def cleanup(self) -> None:
         """Clean up old checkpoints for all tracked chapters."""
         logger.info("Cleaning up old checkpoints")
-        
+
         total_deleted = 0
-        for key in self._active_chapters.keys():
+        for key in self._active_chapters:
             try:
                 novel_id, chapter_id = key.split("_", 1)
                 deleted = await self.checkpoint_manager.cleanup_old_checkpoints(
@@ -322,5 +323,5 @@ class AutoCheckpointHandler:
                 total_deleted += deleted
             except Exception as e:
                 logger.error(f"Failed to cleanup {key}: {e}")
-        
+
         logger.info(f"Cleanup complete: {total_deleted} checkpoints deleted")

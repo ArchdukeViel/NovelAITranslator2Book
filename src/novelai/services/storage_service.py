@@ -6,9 +6,9 @@ import logging
 import mimetypes
 import re
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional, TypedDict
+from typing import Any, TypedDict
 
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState, ChapterStateTransition
@@ -27,7 +27,7 @@ class CheckpointInfo(TypedDict):
 
 def _utc_now() -> datetime:
     """Return a timezone-aware UTC timestamp."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _utc_now_iso() -> str:
@@ -87,6 +87,7 @@ class StorageService:
         try:
             return json.loads(path.read_text(encoding="utf-8"))
         except Exception:
+            logger.warning("Corrupted novel index at %s; resetting to empty.", path)
             return {}
 
     def _persist_index(self, index: dict[str, dict[str, Any]]) -> None:
@@ -253,7 +254,7 @@ class StorageService:
         normalized.sort(key=lambda item: int(item.get("index", 0)))
         return normalized
 
-    def _load_legacy_raw_chapter(self, novel_id: str, chapter_id: str) -> Optional[dict[str, Any]]:
+    def _load_legacy_raw_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
         json_path = self._novel_dir(novel_id) / "raw" / f"{chapter_id}.json"
         txt_path = self._novel_dir(novel_id) / "raw" / f"{chapter_id}.txt"
 
@@ -261,13 +262,14 @@ class StorageService:
             try:
                 return json.loads(json_path.read_text(encoding="utf-8"))
             except Exception:
+                logger.warning("Failed to parse legacy raw chapter %s/%s.", novel_id, chapter_id)
                 return None
 
         if txt_path.exists():
             return {"id": chapter_id, "text": txt_path.read_text(encoding="utf-8")}
         return None
 
-    def _load_legacy_translated_chapter(self, novel_id: str, chapter_id: str) -> Optional[dict[str, Any]]:
+    def _load_legacy_translated_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
         json_path = self._novel_dir(novel_id) / "translated" / f"{chapter_id}.json"
         txt_path = self._novel_dir(novel_id) / "translated" / f"{chapter_id}.txt"
 
@@ -275,13 +277,14 @@ class StorageService:
             try:
                 return json.loads(json_path.read_text(encoding="utf-8"))
             except Exception:
+                logger.warning("Failed to parse legacy translated chapter %s/%s.", novel_id, chapter_id)
                 return None
 
         if txt_path.exists():
             return {"id": chapter_id, "text": txt_path.read_text(encoding="utf-8")}
         return None
 
-    def _load_chapter_bundle(self, novel_id: str, chapter_id: str) -> Optional[dict[str, Any]]:
+    def _load_chapter_bundle(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
         chapter_path = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME / f"{chapter_id}.json"
         if chapter_path.exists():
             try:
@@ -289,6 +292,7 @@ class StorageService:
                 if isinstance(data, dict):
                     return data
             except Exception:
+                logger.warning("Failed to parse chapter bundle %s/%s.", novel_id, chapter_id)
                 return None
 
         raw = self._load_legacy_raw_chapter(novel_id, chapter_id)
@@ -332,7 +336,7 @@ class StorageService:
             del index[novel_id]
             self._persist_index(index)
 
-    def existing_chapter_hash(self, novel_id: str, chapter_id: str) -> Optional[str]:
+    def existing_chapter_hash(self, novel_id: str, chapter_id: str) -> str | None:
         """Return SHA256 hash of an existing raw chapter file (if present)."""
         chapter = self.load_chapter(novel_id, chapter_id)
         if chapter is None:
@@ -370,7 +374,7 @@ class StorageService:
         }
         return self._persist_chapter_bundle(novel_id, chapter_id, payload)
 
-    def load_chapter(self, novel_id: str, chapter_id: str) -> Optional[dict[str, Any]]:
+    def load_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
         payload = self._load_chapter_bundle(novel_id, chapter_id)
         if payload is None:
             return None
@@ -408,7 +412,7 @@ class StorageService:
         }
         return self._persist_chapter_bundle(novel_id, chapter_id, payload)
 
-    def load_translated_chapter(self, novel_id: str, chapter_id: str) -> Optional[dict[str, Any]]:
+    def load_translated_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
         payload = self._load_chapter_bundle(novel_id, chapter_id)
         if payload is None:
             return None
@@ -460,7 +464,7 @@ class StorageService:
         path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
         return path
 
-    def load_metadata(self, novel_id: str) -> Optional[dict[str, Any]]:
+    def load_metadata(self, novel_id: str) -> dict[str, Any] | None:
         path = self._novel_dir(novel_id) / "metadata.json"
         if not path.exists():
             return None
@@ -468,6 +472,7 @@ class StorageService:
         try:
             return json.loads(content)
         except Exception:
+            logger.warning("Corrupted metadata for novel %s.", novel_id)
             return None
 
     # ---- Glossary persistence -------------------------------------------------
@@ -495,6 +500,7 @@ class StorageService:
             if isinstance(data, list):
                 return data
         except Exception:
+            logger.warning("Failed to parse glossary for novel %s.", novel_id)
             pass
         return []
 
@@ -506,6 +512,7 @@ class StorageService:
                 try:
                     payload = json.loads(chapter_path.read_text(encoding="utf-8"))
                 except Exception:
+                    logger.debug("Skipping unreadable chapter file %s.", chapter_path)
                     continue
                 if not isinstance(payload, dict):
                     continue
@@ -535,6 +542,7 @@ class StorageService:
                 try:
                     payload = json.loads(chapter_path.read_text(encoding="utf-8"))
                 except Exception:
+                    logger.debug("Skipping unreadable chapter file %s.", chapter_path)
                     continue
                 if isinstance(payload, dict) and isinstance(payload.get("translated"), dict):
                     stems.add(chapter_path.stem)
@@ -562,7 +570,7 @@ class StorageService:
     def save_chapter_state(self, novel_id: str, chapter_id: str, state_data: dict[str, Any]) -> Path:
         """Save chapter state tracking information (including transitions)."""
         state_dir = self._get_state_dir(novel_id)
-        
+
         # Serialize ChapterMetadata to JSON-safe format
         transitions = []
         for transition in state_data.get("transitions", []):
@@ -572,7 +580,7 @@ class StorageService:
                 "timestamp": transition.timestamp.isoformat() if isinstance(transition.timestamp, datetime) else transition.timestamp,
                 "error": transition.error,
             })
-        
+
         payload = {
             "chapter_id": chapter_id,
             "current_state": state_data["current_state"].value if isinstance(state_data["current_state"], ChapterState) else state_data["current_state"],
@@ -581,22 +589,22 @@ class StorageService:
             "error_count": state_data.get("error_count", 0),
             "retry_count": state_data.get("retry_count", 0),
         }
-        
+
         path = state_dir / f"{chapter_id}.json"
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return path
 
-    def load_chapter_state(self, novel_id: str, chapter_id: str) -> Optional[dict[str, Any]]:
+    def load_chapter_state(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
         """Load chapter state tracking information."""
         state_dir = self._get_state_dir(novel_id)
         path = state_dir / f"{chapter_id}.json"
-        
+
         if not path.exists():
             return None
-        
+
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            
+
             # Deserialize to proper types
             transitions = []
             for t in data.get("transitions", []):
@@ -606,7 +614,7 @@ class StorageService:
                     timestamp=datetime.fromisoformat(t["timestamp"]) if isinstance(t["timestamp"], str) else t["timestamp"],
                     error=t.get("error"),
                 ))
-            
+
             return {
                 "chapter_id": data["chapter_id"],
                 "current_state": ChapterState(data["current_state"]),
@@ -616,6 +624,7 @@ class StorageService:
                 "retry_count": data.get("retry_count", 0),
             }
         except Exception:
+            logger.warning("Failed to load chapter state %s/%s.", novel_id, chapter_id)
             return None
 
     def update_chapter_state(
@@ -623,12 +632,12 @@ class StorageService:
         novel_id: str,
         chapter_id: str,
         new_state: ChapterState,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> None:
         """Update a chapter's state with a new transition."""
         # Load existing state or create new
         state_data = self.load_chapter_state(novel_id, chapter_id)
-        
+
         if state_data is None:
             # Create new state
             state_data = {
@@ -651,7 +660,7 @@ class StorageService:
                 state_data["error_count"] += 1
             else:
                 state_data["retry_count"] = 0
-            
+
             # Add transition
             state_data["transitions"].append(
                 ChapterStateTransition(
@@ -662,7 +671,7 @@ class StorageService:
             )
             state_data["current_state"] = new_state
             state_data["last_updated"] = _utc_now()
-        
+
         self.save_chapter_state(novel_id, chapter_id, state_data)
 
     def get_chapters_by_state(self, novel_id: str, state: ChapterState) -> list[str]:
@@ -670,7 +679,7 @@ class StorageService:
         state_dir = self._get_state_dir(novel_id)
         if not state_dir.exists():
             return []
-        
+
         chapters = []
         for state_file in state_dir.glob("*.json"):
             try:
@@ -678,8 +687,9 @@ class StorageService:
                 if ChapterState(state_data["current_state"]) == state:
                     chapters.append(state_data["chapter_id"])
             except Exception:
+                logger.debug("Skipping unreadable state file %s.", state_file)
                 continue
-        
+
         return sorted(chapters)
 
     def get_chapter_progress(self, novel_id: str) -> dict[str, int]:
@@ -687,19 +697,20 @@ class StorageService:
         from novelai.core.chapter_state import ChapterState
 
         progress = {s.value: 0 for s in ChapterState}
-        
+
         state_dir = self._get_state_dir(novel_id)
         if not state_dir.exists():
             return progress
-        
+
         for state_file in state_dir.glob("*.json"):
             try:
                 state_data = json.loads(state_file.read_text(encoding="utf-8"))
                 current_state = state_data["current_state"]
                 progress[current_state] += 1
             except Exception:
+                logger.debug("Skipping unreadable state file %s.", state_file)
                 continue
-        
+
         return progress
 
     # Query Methods
@@ -735,7 +746,6 @@ class StorageService:
 
     def get_scraping_progress(self, novel_id: str) -> dict[str, Any]:
         """Get detailed scraping progress for a novel."""
-        from novelai.core.chapter_state import ChapterState
 
         progress = {
             "total": 0,
@@ -758,6 +768,7 @@ class StorageService:
                 if state_data.get("error_count", 0) > 0:
                     error_count += 1
             except Exception:
+                logger.debug("Skipping unreadable state file %s.", state_file)
                 continue
 
         progress["total"] = total_files
@@ -781,22 +792,22 @@ class StorageService:
 
     def create_checkpoint(self, novel_id: str, chapter_id: str, checkpoint_name: str = "auto") -> Path:
         """Create a checkpoint of current chapter state.
-        
+
         Args:
             novel_id: Novel identifier
             chapter_id: Chapter identifier
             checkpoint_name: Name for checkpoint (auto-generates if not provided)
-            
+
         Returns:
             Path to checkpoint file
         """
         checkpoints_dir = self._get_checkpoints_dir(novel_id)
-        
+
         # Load current state
         raw_chapter = self.load_chapter(novel_id, chapter_id)
         translated_chapter = self.load_translated_chapter(novel_id, chapter_id)
         chapter_state = self.load_chapter_state(novel_id, chapter_id)
-        
+
         # Create checkpoint
         checkpoint_data = {
             "chapter_id": chapter_id,
@@ -806,13 +817,13 @@ class StorageService:
             "translated_chapter": translated_chapter,
             "chapter_state": chapter_state,
         }
-        
+
         # Use timestamp in filename if no name provided
         if checkpoint_name == "auto":
             filename = f"{chapter_id}__{_utc_now().strftime('%Y%m%d_%H%M%S')}.json"
         else:
             filename = f"{chapter_id}__{checkpoint_name}.json"
-        
+
         path = checkpoints_dir / filename
         path.write_text(json.dumps(checkpoint_data, ensure_ascii=False, indent=2), encoding="utf-8")
         logger.info(f"Checkpoint created: {checkpoint_name} for {novel_id}/{chapter_id}")
@@ -820,18 +831,18 @@ class StorageService:
 
     def list_checkpoints(self, novel_id: str, chapter_id: str) -> list[CheckpointInfo]:
         """List all checkpoints for a chapter.
-        
+
         Args:
             novel_id: Novel identifier
             chapter_id: Chapter identifier
-            
+
         Returns:
             List of checkpoint info dicts
         """
         checkpoints_dir = self._get_checkpoints_dir(novel_id)
         if not checkpoints_dir.exists():
             return []
-        
+
         checkpoints: list[CheckpointInfo] = []
         for checkpoint_file in sorted(checkpoints_dir.glob(f"{chapter_id}__*.json")):
             try:
@@ -850,8 +861,9 @@ class StorageService:
                     "checkpoint_name": checkpoint_name,
                 })
             except Exception:
+                logger.debug("Skipping unreadable checkpoint file %s.", checkpoint_file)
                 continue
-        
+
         return checkpoints
 
     def restore_from_checkpoint(
@@ -861,18 +873,18 @@ class StorageService:
         checkpoint_name: str,
     ) -> bool:
         """Restore a chapter from a checkpoint.
-        
+
         Args:
             novel_id: Novel identifier
             chapter_id: Chapter identifier
             checkpoint_name: Name of checkpoint to restore from
-            
+
         Returns:
             True if restored successfully
         """
         checkpoints_dir = self._get_checkpoints_dir(novel_id)
         checkpoint_file = None
-        
+
         for cf in checkpoints_dir.glob(f"{chapter_id}__*.json"):
             try:
                 data = json.loads(cf.read_text(encoding="utf-8"))
@@ -880,15 +892,16 @@ class StorageService:
                     checkpoint_file = cf
                     break
             except Exception:
+                logger.debug("Skipping unreadable checkpoint file %s.", cf)
                 continue
-        
+
         if not checkpoint_file:
             logger.warning(f"Checkpoint not found: {checkpoint_name}")
             return False
-        
+
         try:
             checkpoint_data = json.loads(checkpoint_file.read_text(encoding="utf-8"))
-            
+
             # Restore raw chapter
             if checkpoint_data.get("raw_chapter"):
                 raw_chapter = checkpoint_data["raw_chapter"]
@@ -901,7 +914,7 @@ class StorageService:
                     source_url=raw_chapter.get("source_url"),
                     images=raw_chapter.get("images"),
                 )
-            
+
             # Restore translated chapter
             if checkpoint_data.get("translated_chapter"):
                 translated_chapter = checkpoint_data["translated_chapter"]
@@ -912,21 +925,21 @@ class StorageService:
                     provider=translated_chapter.get("provider"),
                     model=translated_chapter.get("model"),
                 )
-            
+
             # Restore state (if available)
             if checkpoint_data.get("chapter_state"):
                 self.save_chapter_state(novel_id, chapter_id, checkpoint_data["chapter_state"])
-            
+
             logger.info(f"Restored from checkpoint: {checkpoint_name} for {novel_id}/{chapter_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to restore checkpoint {checkpoint_name}: {e}")
             return False
 
     def rollback_to_state(self, novel_id: str, chapter_id: str, target_state: ChapterState) -> None:
         """Rollback chapter to a previous state.
-        
+
         Args:
             novel_id: Novel identifier
             chapter_id: Chapter identifier
@@ -936,9 +949,9 @@ class StorageService:
         if not state_data:
             logger.warning(f"No state found for {novel_id}/{chapter_id}")
             return
-        
+
         current_state = state_data["current_state"]
-        
+
         # Check if rolling back
         state_order = [
             ChapterState.SCRAPED,
@@ -947,14 +960,14 @@ class StorageService:
             ChapterState.TRANSLATED,
             ChapterState.EXPORTED,
         ]
-        
+
         current_idx = state_order.index(current_state)
         target_idx = state_order.index(target_state)
-        
+
         if target_idx >= current_idx:
             logger.warning(f"Cannot rollback to {target_state.value} from {current_state.value}")
             return
-        
+
         # Delete files for states beyond target
         if target_idx < state_order.index(ChapterState.TRANSLATED):
             chapter_payload = self._load_chapter_bundle(novel_id, chapter_id)
@@ -969,7 +982,7 @@ class StorageService:
         if target_idx < state_order.index(ChapterState.SEGMENTED):
             # Segmentation is in-memory only, but we mark state
             pass
-        
+
         # Update state
         self.update_chapter_state(novel_id, chapter_id, target_state)
         logger.info(f"Rolled back {novel_id}/{chapter_id} to {target_state.value}")

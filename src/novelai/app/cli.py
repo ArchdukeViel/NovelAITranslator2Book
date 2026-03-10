@@ -79,14 +79,14 @@ def main(argv: list[str] | None = None) -> None:
     gc = subparsers.add_parser("glossary", help="Manage translation glossary for a novel")
     gc.add_argument("novel", help="Novel ID")
     gc_sub = gc.add_subparsers(dest="glossary_action")
-    gc_list = gc_sub.add_parser("list", help="List glossary terms")
+    gc_sub.add_parser("list", help="List glossary terms")
     gc_add = gc_sub.add_parser("add", help="Add a glossary term")
     gc_add.add_argument("source", help="Source term (original language)")
     gc_add.add_argument("target", help="Target term (translation)")
     gc_add.add_argument("--notes", help="Optional notes about this term")
     gc_remove = gc_sub.add_parser("remove", help="Remove a glossary term")
     gc_remove.add_argument("source", help="Source term to remove")
-    gc_clear = gc_sub.add_parser("clear", help="Remove all glossary terms")
+    gc_sub.add_parser("clear", help="Remove all glossary terms")
 
     args = parser.parse_args(argv)
 
@@ -234,7 +234,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"Error: {exc} (caused by: {exc.__cause__})")
         else:
             print(f"Error: {exc}")
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
 
 
 if __name__ == "__main__":

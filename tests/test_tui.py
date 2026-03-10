@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,8 +14,8 @@ from novelai.app.bootstrap import bootstrap
 from novelai.config.settings import settings
 from novelai.providers.registry import available_providers
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
-from novelai.sources.registry import available_sources
 from novelai.services.usage_service import UsageService
+from novelai.sources.registry import available_sources
 from novelai.tui.app import LibrarySnapshot, TUIApp
 from tests.conftest import TestFixture as FixtureEnv
 
@@ -856,7 +856,7 @@ def test_usage_service_resets_daily_but_preserves_history() -> None:
     usage_dir = Path("tests/.tmp") / f"usage_{uuid4().hex}"
     usage_dir.mkdir(parents=True, exist_ok=False)
     usage = UsageService(usage_dir)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     two_days_ago = now - timedelta(days=2)
 
     try:
@@ -892,7 +892,7 @@ def test_usage_service_summary_includes_estimate_entries() -> None:
     usage_dir = Path("tests/.tmp") / f"usage_estimate_{uuid4().hex}"
     usage_dir.mkdir(parents=True, exist_ok=False)
     usage = UsageService(usage_dir)
-    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
     try:
         usage.record(

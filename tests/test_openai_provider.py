@@ -130,7 +130,7 @@ class _RaisingResponsesAPI:
     def __init__(self, exc: Exception) -> None:
         self._exc = exc
 
-    async def create(self, **kwargs):  # noqa: ANN003
+    async def create(self, **kwargs):
         raise self._exc
 
 
@@ -200,7 +200,7 @@ class _FakeModelsAPI:
     def __init__(self, exc: Exception | None = None) -> None:
         self._exc = exc
 
-    async def list(self):  # noqa: ANN001
+    async def list(self):
         if self._exc:
             raise self._exc
         return []

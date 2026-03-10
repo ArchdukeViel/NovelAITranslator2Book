@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 # pyright: reportAttributeAccessIssue=false
-
 import json
 import time
 from pathlib import Path
-from typing import Any
 
 from rich import box
 from rich.console import Group

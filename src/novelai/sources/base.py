@@ -6,7 +6,8 @@ import logging
 import socket
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Awaitable, Callable, Mapping, Protocol, TypeVar
+from collections.abc import Awaitable, Callable, Mapping
+from typing import Any, Protocol, TypeVar
 from urllib.parse import urlparse
 
 import httpx
@@ -98,7 +99,8 @@ class SourceAdapter(ABC):
                 )
                 await asyncio.sleep(delay)
 
-        raise last_exc  # type: ignore[misc]
+        assert last_exc is not None  # guaranteed after at least one iteration
+        raise last_exc
 
     @property
     @abstractmethod

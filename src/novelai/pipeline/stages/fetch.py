@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class FetchStage(PipelineStage):
     """Fetch raw text from a source adapter.
-    
+
     Expects source_adapter in context.metadata["_source_adapter"].
     """
 
@@ -21,7 +21,7 @@ class FetchStage(PipelineStage):
             raise PipelineStageError(
                 "FetchStage requires source_adapter in context.metadata['_source_adapter']"
             )
-        
+
         logger.info(f"Fetching chapter from {context.chapter_url}")
         try:
             raw_text = await source_adapter.fetch_chapter(context.chapter_url)
@@ -30,5 +30,5 @@ class FetchStage(PipelineStage):
         except Exception as e:
             logger.error(f"Failed to fetch chapter: {e}", exc_info=True)
             raise PipelineStageError(f"Failed to fetch chapter: {e}") from e
-        
+
         return context

@@ -12,10 +12,10 @@ def create_app() -> FastAPI:
     bootstrap()
 
     app = FastAPI(title="Novel AI")
-    
+
     # Register error handlers
     add_error_handlers(app)
-    
+
     app.include_router(novels.router, prefix="/novels", tags=["novels"])
     return app
 

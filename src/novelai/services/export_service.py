@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from typing import Any
 
 from novelai.export.registry import get_exporter
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 class ExportService:
     """High-level export service for generating documents from translated works.
-    
+
     Supports multiple export formats via ExporterRegistry.
     """
 
@@ -24,17 +24,17 @@ class ExportService:
         **options: Any,
     ) -> str:
         """Export chapters to file in specified format.
-        
+
         Args:
             format: Export format ('epub', 'pdf', 'html', etc.)
             novel_id: Novel identifier
             chapters: List of chapter data dicts (must include 'text' key)
             output_path: Where to save the exported file
             **options: Format-specific options
-            
+
         Returns:
             Path to generated file
-            
+
         Raises:
             KeyError: If format not registered
         """

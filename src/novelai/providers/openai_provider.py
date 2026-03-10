@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional
+from collections.abc import Mapping
+from typing import Any
 
 from novelai.config.settings import settings
 from novelai.core.errors import ProviderError
@@ -14,7 +15,7 @@ from novelai.providers.base import TranslationProvider
 
 class OpenAIProvider(TranslationProvider):
     """OpenAI translation provider using per-request client instances.
-    
+
     IMPORTANT: Uses thread-safe per-request client instances. API key is passed
     directly to each client, never stored globally. This is safe for concurrent requests.
     """
@@ -134,12 +135,12 @@ class OpenAIProvider(TranslationProvider):
     async def translate(
         self,
         prompt: str,
-        model: Optional[str] = None,
-        max_tokens: Optional[int] = None,
+        model: str | None = None,
+        max_tokens: int | None = None,
         **kwargs: Any,
     ) -> Mapping[str, Any]:
         """Translate by calling OpenAI chat endpoint.
-        
+
         Thread-safe: Uses per-request client instance, not global state.
         """
         api_key_str = self._api_key_string()
@@ -174,7 +175,7 @@ class OpenAIProvider(TranslationProvider):
             },
         }
 
-    async def validate_connection(self, model: Optional[str] = None, **kwargs: Any) -> tuple[bool, str]:
+    async def validate_connection(self, model: str | None = None, **kwargs: Any) -> tuple[bool, str]:
         try:
             api_key_str = self._api_key_string()
         except ProviderError as exc:
