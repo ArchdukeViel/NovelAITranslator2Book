@@ -12,7 +12,7 @@ class PDFExporter(BaseExporter):
     reportlab or weasyprint to produce real PDF output.
     """
 
-    def export(self, *, novel_id: str, chapters: Sequence[dict[str, Any]], output_path: str) -> str:
+    def export(self, *, novel_id: str, chapters: Sequence[dict[str, Any]], output_path: str, **options: Any) -> str:
         raise NotImplementedError(
             "PDF export is not yet available. "
             "Install a PDF library (e.g. reportlab) and implement PDFExporter.export()."

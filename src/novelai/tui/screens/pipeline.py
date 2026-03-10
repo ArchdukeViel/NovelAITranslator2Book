@@ -532,8 +532,29 @@ class PipelineScreenMixin:
             return
         language = "source" if language_choice == 2 else "translated"
 
+        include_toc = False
+        if fmt == "epub":
+            toc_choice = self._prompt_numbered_choice(
+                lambda: self._build_settings_choice_screen(
+                    "Table of Contents",
+                    "Include a table of contents page in the EPUB?",
+                    ["No", "Yes"],
+                    descriptions=[
+                        "Skip the table of contents page.",
+                        "Add a table of contents page after the title page.",
+                    ],
+                ),
+                option_count=2,
+                default_value="1",
+                label="TOC",
+            )
+            if toc_choice is None:
+                self._set_status("Export skipped.", "info")
+                return
+            include_toc = toc_choice == 2
+
         try:
-            output_path = self._export_novel(novel_id, fmt, None, language=language)
+            output_path = self._export_novel(novel_id, fmt, None, language=language, include_toc=include_toc)
             self._set_status(f"Exported {fmt.upper()} to {output_path}", "success")
         except Exception as exc:
             self._set_status(f"Export failed: {exc}", "error")
@@ -762,9 +783,23 @@ class PipelineScreenMixin:
         *,
         chapter_selection: str = "full",
         language: str = "translated",
+        include_toc: bool = False,
     ) -> str:
         chapters = self._collect_export_chapters(novel_id, chapter_selection=chapter_selection, language=language)
         output_path = self._build_export_output_path(novel_id, fmt, output_dir, chapter_selection, language=language)
-        self.exporter.export(fmt, novel_id=novel_id, chapters=chapters, output_path=output_path)
+
+        meta = self.storage.load_metadata(novel_id) or {}
+        book_title = meta.get("translated_title") or meta.get("title") or novel_id
+        book_author = meta.get("translated_author") or meta.get("author") or ""
+
+        self.exporter.export(
+            fmt,
+            novel_id=novel_id,
+            chapters=chapters,
+            output_path=output_path,
+            title=book_title,
+            author=book_author,
+            include_toc=include_toc,
+        )
         return output_path
 

@@ -25,17 +25,51 @@ _CHAPTER_NUM_RE = re.compile(
 class EPUBExporter(BaseExporter):
     """Minimal EPUB 3 exporter with optional embedded chapter images."""
 
-    def export(self, *, novel_id: str, chapters: Sequence[dict[str, Any]], output_path: str) -> str:
+    def export(self, *, novel_id: str, chapters: Sequence[dict[str, Any]], output_path: str, **options: Any) -> str:
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
 
+        book_title = options.get("title") or novel_id
+        book_author = options.get("author") or ""
+        include_toc = bool(options.get("include_toc", False))
+
         prepared_chapters = [self._prepare_chapter(index, chapter) for index, chapter in enumerate(chapters, start=1)]
+
+        front_matter: list[dict[str, Any]] = []
+
+        # Title page
+        title_page = {
+            "id": "title_page",
+            "href": "title.xhtml",
+            "xhtml": self._title_page_document(book_title, book_author),
+        }
+        front_matter.append(title_page)
+
+        # Optional inline TOC page
+        if include_toc:
+            toc_page = {
+                "id": "toc_page",
+                "href": "toc.xhtml",
+                "xhtml": self._toc_page_document(book_title, prepared_chapters),
+            }
+            front_matter.append(toc_page)
 
         with ZipFile(output, "w") as epub:
             epub.writestr("mimetype", "application/epub+zip", compress_type=ZIP_STORED)
             epub.writestr("META-INF/container.xml", self._container_xml(), compress_type=ZIP_DEFLATED)
-            epub.writestr("OEBPS/nav.xhtml", self._navigation_document(novel_id, prepared_chapters), compress_type=ZIP_DEFLATED)
-            epub.writestr("OEBPS/content.opf", self._package_document(novel_id, prepared_chapters), compress_type=ZIP_DEFLATED)
+            epub.writestr(
+                "OEBPS/nav.xhtml",
+                self._navigation_document(book_title, prepared_chapters),
+                compress_type=ZIP_DEFLATED,
+            )
+            epub.writestr(
+                "OEBPS/content.opf",
+                self._package_document(book_title, prepared_chapters, front_matter=front_matter, author=book_author),
+                compress_type=ZIP_DEFLATED,
+            )
+
+            for page in front_matter:
+                epub.writestr(f"OEBPS/{page['href']}", page["xhtml"], compress_type=ZIP_DEFLATED)
 
             for chapter in prepared_chapters:
                 epub.writestr(f"OEBPS/{chapter['href']}", chapter["xhtml"], compress_type=ZIP_DEFLATED)
@@ -247,11 +281,89 @@ class EPUBExporter(BaseExporter):
             "</html>\n"
         )
 
-    def _package_document(self, novel_id: str, chapters: list[dict[str, Any]]) -> str:
+    def _title_page_document(self, title: str, author: str) -> str:
+        author_html = f"\n<p class=\"author\">{escape(author)}</p>" if author else ""
+        return (
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+            "<!DOCTYPE html>\n"
+            "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"ja\">\n"
+            "<head>\n"
+            f"  <title>{escape(title)}</title>\n"
+            "  <meta charset=\"utf-8\"/>\n"
+            "  <style>\n"
+            "    body{font-family:\"Noto Serif CJK JP\",\"Hiragino Mincho Pro\",\"Yu Mincho\",\"MS Mincho\",serif;"
+            "margin:0;padding:0;display:flex;align-items:center;justify-content:center;min-height:95vh;"
+            "text-align:center;}\n"
+            "    .title-block{padding:2em;}\n"
+            "    h1{font-size:2em;line-height:1.4;margin-bottom:0.5em;}\n"
+            "    .author{font-size:1.2em;color:#555;margin-top:1em;}\n"
+            "  </style>\n"
+            "</head>\n"
+            "<body>\n"
+            "<div class=\"title-block\">\n"
+            f"<h1>{escape(title)}</h1>{author_html}\n"
+            "</div>\n"
+            "</body>\n"
+            "</html>\n"
+        )
+
+    @staticmethod
+    def _toc_entry_label(index: int, raw_title: str) -> str:
+        """Build a TOC label like 'Chapter 1  rest of title'."""
+        match = _CHAPTER_NUM_RE.match(raw_title)
+        if match:
+            return f"Chapter {index}\u3000{match.group(3)}"
+        return f"Chapter {index}\u3000{raw_title}"
+
+    def _toc_page_document(self, title: str, chapters: list[dict[str, Any]]) -> str:
+        toc_items = "\n".join(
+            f"<li><a href=\"{escape(chapter['href'])}\">"
+            f"{escape(self._toc_entry_label(index, str(chapter['title'])))}</a></li>"
+            for index, chapter in enumerate(chapters, start=1)
+        )
+        return (
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+            "<!DOCTYPE html>\n"
+            "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"ja\">\n"
+            "<head>\n"
+            f"  <title>Table of Contents — {escape(title)}</title>\n"
+            "  <meta charset=\"utf-8\"/>\n"
+            "  <style>\n"
+            "    body{font-family:\"Noto Serif CJK JP\",\"Hiragino Mincho Pro\",\"Yu Mincho\",\"MS Mincho\",serif;"
+            "font-size:1em;line-height:1.8;margin:1em;}\n"
+            "    h1{text-align:center;font-size:1.4em;margin-bottom:1em;}\n"
+            "    ul{list-style:none;padding-left:0;}\n"
+            "    li{margin:0.4em 0;}\n"
+            "    a{color:#1a1a1a;text-decoration:none;}\n"
+            "  </style>\n"
+            "</head>\n"
+            "<body>\n"
+            "<h1>Table of Contents</h1>\n"
+            "<ul>\n"
+            f"{toc_items}\n"
+            "</ul>\n"
+            "</body>\n"
+            "</html>\n"
+        )
+
+    def _package_document(
+        self,
+        novel_id: str,
+        chapters: list[dict[str, Any]],
+        *,
+        front_matter: list[dict[str, Any]] | None = None,
+        author: str = "",
+    ) -> str:
         manifest_items = [
             '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
         ]
         spine_items = []
+
+        for page in front_matter or []:
+            manifest_items.append(
+                f'<item id="{page["id"]}" href="{page["href"]}" media-type="application/xhtml+xml"/>'
+            )
+            spine_items.append(f'<itemref idref="{page["id"]}"/>')
 
         for chapter in chapters:
             manifest_items.append(
@@ -266,6 +378,7 @@ class EPUBExporter(BaseExporter):
         manifest_xml = "\n    ".join(manifest_items)
         spine_xml = "\n    ".join(spine_items)
         book_id = f"urn:uuid:{uuid4()}"
+        author_xml = f"\n    <dc:creator>{escape(author)}</dc:creator>" if author else ""
         return (
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
             "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"bookid\">\n"
@@ -273,6 +386,7 @@ class EPUBExporter(BaseExporter):
             f"    <dc:identifier id=\"bookid\">{escape(book_id)}</dc:identifier>\n"
             f"    <dc:title>{escape(novel_id)}</dc:title>\n"
             "    <dc:language>ja</dc:language>\n"
+            f"{author_xml}"
             "  </metadata>\n"
             "  <manifest>\n"
             f"    {manifest_xml}\n"

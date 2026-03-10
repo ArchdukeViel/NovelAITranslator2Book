@@ -11,7 +11,7 @@ from novelai.export.base_exporter import BaseExporter
 class MarkdownExporter(BaseExporter):
     """Export translated chapters as a single Markdown file."""
 
-    def export(self, *, novel_id: str, chapters: Sequence[dict[str, Any]], output_path: str) -> str:
+    def export(self, *, novel_id: str, chapters: Sequence[dict[str, Any]], output_path: str, **options: Any) -> str:
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
 

@@ -8,5 +8,5 @@ class BaseExporter(ABC):
     """Base exporter interface."""
 
     @abstractmethod
-    def export(self, *, novel_id: str, chapters: Sequence[dict[str, Any]], output_path: str) -> str:
+    def export(self, *, novel_id: str, chapters: Sequence[dict[str, Any]], output_path: str, **options: Any) -> str:
         """Export chapters to a file and return the output path."""

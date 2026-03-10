@@ -13,7 +13,7 @@ from novelai.export.epub_exporter import _CHAPTER_NUM_RE, _SEPARATOR_RE
 class HTMLExporter(BaseExporter):
     """Export translated chapters as a single self-contained HTML file."""
 
-    def export(self, *, novel_id: str, chapters: Sequence[dict[str, Any]], output_path: str) -> str:
+    def export(self, *, novel_id: str, chapters: Sequence[dict[str, Any]], output_path: str, **options: Any) -> str:
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
 

@@ -934,6 +934,30 @@ class LibraryScreenMixin:
             return
         language = "source" if language_choice == 2 else "translated"
 
+        include_toc = False
+        if fmt == "epub":
+            toc_choice = self._prompt_numbered_choice(
+                lambda: self._build_library_action_screen(
+                    "Table of Contents",
+                    "Include a table of contents page in the EPUB?",
+                    self._build_numbered_choice_panel(
+                        "TOC",
+                        ["No", "Yes"],
+                        descriptions=[
+                            "Skip the table of contents page.",
+                            "Add a table of contents page after the title page.",
+                        ],
+                        border_style="#7aa2f7",
+                    ),
+                ),
+                option_count=2,
+                default_value="1",
+            )
+            if toc_choice is None:
+                self._set_status("Export cancelled.", "warning")
+                return
+            include_toc = toc_choice == 2
+
         selections = self._prompt_library_novel_selection(
             "Export",
             f"Choose which novel numbers to export as {fmt.upper()}.",
@@ -951,7 +975,10 @@ class LibraryScreenMixin:
         for selection in selections:
             snapshot = snapshots[selection - 1]
             try:
-                self._export_novel(snapshot["novel_id"], fmt, None, chapter_selection=chapter_selection, language=language)
+                self._export_novel(
+                    snapshot["novel_id"], fmt, None,
+                    chapter_selection=chapter_selection, language=language, include_toc=include_toc,
+                )
                 exported.append(snapshot["novel_id"])
             except Exception as exc:
                 failures.append(f"{snapshot['novel_id']}: {exc}")

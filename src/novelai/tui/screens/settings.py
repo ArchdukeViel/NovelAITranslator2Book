@@ -8,7 +8,6 @@ from typing import Any, Callable
 from rich import box
 from rich.console import Group
 from rich.panel import Panel
-from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
 
@@ -362,31 +361,105 @@ class SettingsScreenMixin:
 
             self._api_key_menu()
 
-    def _advanced_settings_menu(self) -> None:
-        """Prompt user to change target language and scrape delay."""
-        lang = Prompt.ask(
-            "[bold #f6bd60]Target language[/bold #f6bd60]",
-            default=app_settings.TRANSLATION_TARGET_LANGUAGE,
-            console=self.console,
-        ).strip()
-        if lang:
-            app_settings.TRANSLATION_TARGET_LANGUAGE = lang
-
-        delay_str = Prompt.ask(
-            "[bold #f6bd60]Scrape delay (seconds)[/bold #f6bd60]",
-            default=str(app_settings.SCRAPE_DELAY_SECONDS),
-            console=self.console,
-        ).strip()
-        try:
-            delay = float(delay_str)
-            if delay < 0:
-                raise ValueError
-            app_settings.SCRAPE_DELAY_SECONDS = delay
-        except ValueError:
-            self._set_status("Invalid delay value — keeping current setting.", "warning")
-            return
-
-        self._set_status(
-            f"Target language set to '{lang}', scrape delay set to {app_settings.SCRAPE_DELAY_SECONDS}s.",
-            "success",
+    def _build_advanced_settings_screen(self) -> Group:
+        return Group(
+            self._build_action_header(
+                "Advanced Settings",
+                "Change the target language and scrape delay used by the translation pipeline.",
+            ),
+            self._build_settings_summary_panel(),
+            self._build_advanced_guide_panel(),
         )
+
+    def _build_advanced_guide_panel(self) -> Panel:
+        status_style = self.STATUS_STYLES.get(self.last_status_kind, self.STATUS_STYLES["info"])
+        return Panel(
+            Group(
+                Text.assemble(
+                    ("Status  ", "#9aa5ce"),
+                    (self.last_status_message, f"bold {status_style}"),
+                ),
+                Text(""),
+                Text("1) target language            Set the language translations are produced in.", style="#cbd5e1"),
+                Text("2) scrape delay               Set the minimum delay between HTTP requests.", style="#cbd5e1"),
+                Text("0) back                       Return to settings.", style="#cbd5e1"),
+            ),
+            title="Guide Rail",
+            border_style=status_style,
+            box=box.ROUNDED,
+            expand=True,
+        )
+
+    def _parse_advanced_command(self, command: str) -> str | None:
+        raw = command.strip().lower()
+        if raw in ("", "0", "back", "b"):
+            return "back"
+        if raw in ("1", "language", "target language", "lang"):
+            return "language"
+        if raw in ("2", "delay", "scrape delay"):
+            return "delay"
+        return None
+
+    def _advanced_settings_menu(self) -> None:
+        """Interactive advanced settings menu with the standard guide-rail UI."""
+        self._set_status("Use 1 to change target language, 2 to change scrape delay, or 0 to go back.", "info")
+        while True:
+            command = self._prompt_renderable_command(
+                self._build_advanced_settings_screen(),
+                default_value="0",
+            )
+            action = self._parse_advanced_command(command)
+            if action is None:
+                self._set_status("Unknown command. Use 1, 2, or 0.", "warning")
+                continue
+            if action == "back":
+                self._set_status("Settings ready.", "info")
+                return
+
+            if action == "language":
+                languages = [
+                    "English", "Indonesian", "Japanese", "Chinese (Simplified)",
+                    "Chinese (Traditional)", "Korean", "Spanish", "French",
+                    "German", "Portuguese", "Russian", "Thai", "Vietnamese",
+                    "Arabic", "Hindi", "Italian", "Dutch", "Polish",
+                    "Turkish", "Malay",
+                ]
+                current = app_settings.TRANSLATION_TARGET_LANGUAGE
+                default_index = str(languages.index(current) + 1) if current in languages else "1"
+                lang_choice = self._prompt_numbered_choice(
+                    lambda: self._build_settings_choice_screen(
+                        "Target Language",
+                        "Choose the language that translations should be produced in.",
+                        languages,
+                    ),
+                    option_count=len(languages),
+                    default_value=default_index,
+                )
+                if lang_choice is not None:
+                    app_settings.TRANSLATION_TARGET_LANGUAGE = languages[lang_choice - 1]
+                    self._set_status(f"Target language set to '{languages[lang_choice - 1]}'.", "success")
+                else:
+                    self._set_status("Target language unchanged.", "info")
+                continue
+
+            if action == "delay":
+                delay_str = self._prompt_renderable_command(
+                    Group(
+                        self._build_action_header(
+                            "Scrape Delay",
+                            "Enter the minimum delay in seconds between HTTP requests to source sites.",
+                        ),
+                        self._build_settings_summary_panel(),
+                    ),
+                    default_value=str(app_settings.SCRAPE_DELAY_SECONDS),
+                    label="Seconds",
+                    extra_allowed_characters=".",
+                ).strip()
+                try:
+                    delay = float(delay_str)
+                    if delay < 0:
+                        raise ValueError
+                    app_settings.SCRAPE_DELAY_SECONDS = delay
+                    self._set_status(f"Scrape delay set to {delay}s.", "success")
+                except ValueError:
+                    self._set_status("Invalid delay value — keeping current setting.", "warning")
