@@ -143,7 +143,7 @@ src/novelai/
   tui/            Rich TUI dashboard with mixin-based screens
   utils/          Logging, retry, chapter selection, rate limiting
   web/            FastAPI backend
-tests/            pytest suite (174 tests)
+tests/            pytest suite (326 tests)
 ```
 
 ## Runtime Data
@@ -159,13 +159,9 @@ novel_library/
     index.json
     <novel_id>/
       metadata.json
-      raw/          raw chapters from source
-      translated/   translated chapter JSON
-      epub/         EPUB exports
-      html/         HTML exports
-      md/           Markdown exports
+      chapters/     chapter bundles (raw + translated + state)
       assets/       chapter images
-      checkpoints/  state snapshots
+      checkpoints/  state snapshots (created on demand)
 ```
 
 See [docs/reference/DATA_OUTPUT_STRUCTURE.md](docs/reference/DATA_OUTPUT_STRUCTURE.md) for field-level detail.

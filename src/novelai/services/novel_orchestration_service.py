@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from collections.abc import Callable
@@ -7,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from novelai.config.settings import settings
+from novelai.core.chapter_state import ChapterState, ChapterStateTransition
 from novelai.providers.base import TranslationProvider
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.storage_service import StorageService
@@ -21,6 +23,47 @@ logger = logging.getLogger(__name__)
 
 def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _make_state_data(
+    state: ChapterState,
+    *,
+    error: str | None = None,
+    previous: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a state_data dict suitable for StorageService.save_chapter_state."""
+    now = datetime.now(UTC)
+    prev_state = None
+    transitions: list[ChapterStateTransition] = []
+    error_count = 0
+
+    if previous:
+        prev_state_raw = previous.get("current_state")
+        if isinstance(prev_state_raw, ChapterState):
+            prev_state = prev_state_raw
+        elif isinstance(prev_state_raw, str):
+            with contextlib.suppress(ValueError):
+                prev_state = ChapterState(prev_state_raw)
+        transitions = previous.get("transitions", [])
+        error_count = previous.get("error_count", 0)
+
+    transitions.append(ChapterStateTransition(
+        from_state=prev_state,
+        to_state=state,
+        timestamp=now,
+        error=error,
+    ))
+
+    if error:
+        error_count += 1
+
+    return {
+        "current_state": state,
+        "transitions": transitions,
+        "last_updated": now,
+        "error_count": error_count,
+        "retry_count": previous.get("retry_count", 0) if previous else 0,
+    }
 
 
 class NovelOrchestrationService:
@@ -385,27 +428,48 @@ class NovelOrchestrationService:
             if not chapter:
                 continue
 
-            existing = self.storage.load_translated_chapter(novel_id, str(chapter_num))
+            chapter_id = str(chapter_num)
+
+            existing = self.storage.load_translated_chapter(novel_id, chapter_id)
             if existing and not force:
                 continue
 
-            result = await self.translation.translate_chapter(
-                source_adapter=source,
-                chapter_url=chapter["url"],
-                provider_key=provider_key,
-                provider_model=provider_model,
-                source_language=effective_source_language,
-                target_language=effective_target_language,
-                glossary=glossary,
-                style_preset=style_preset,
-                consistency_mode=consistency_mode,
-                json_output=json_output,
+            # Checkpoint: mark chapter as in-progress
+            prev_state = self.storage.load_chapter_state(novel_id, chapter_id)
+            self.storage.save_chapter_state(
+                novel_id, chapter_id,
+                _make_state_data(ChapterState.SEGMENTED, previous=prev_state),
             )
-            translated = result.final_text or ""
-            self.storage.save_translated_chapter(
-                novel_id,
-                str(chapter_num),
-                translated,
-                provider=result.provider_key,
-                model=result.provider_model,
-            )
+
+            try:
+                result = await self.translation.translate_chapter(
+                    source_adapter=source,
+                    chapter_url=chapter["url"],
+                    provider_key=provider_key,
+                    provider_model=provider_model,
+                    source_language=effective_source_language,
+                    target_language=effective_target_language,
+                    glossary=glossary,
+                    style_preset=style_preset,
+                    consistency_mode=consistency_mode,
+                    json_output=json_output,
+                )
+                translated = result.final_text or ""
+                self.storage.save_translated_chapter(
+                    novel_id,
+                    chapter_id,
+                    translated,
+                    provider=result.provider_key,
+                    model=result.provider_model,
+                )
+                self.storage.save_chapter_state(
+                    novel_id, chapter_id,
+                    _make_state_data(ChapterState.TRANSLATED, previous=prev_state),
+                )
+            except Exception as exc:
+                logger.error("Failed to translate chapter %s/%s: %s", novel_id, chapter_id, exc)
+                self.storage.save_chapter_state(
+                    novel_id, chapter_id,
+                    _make_state_data(ChapterState.SEGMENTED, error=str(exc), previous=prev_state),
+                )
+                raise

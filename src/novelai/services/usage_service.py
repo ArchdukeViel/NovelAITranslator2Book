@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from novelai.config.settings import settings
+from novelai.utils import atomic_write
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +32,22 @@ class UsageService:
             return []
 
     def _persist(self) -> None:
-        self.usage_path.write_text(json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write(self.usage_path, json.dumps(self._data, ensure_ascii=False, indent=2))
 
     def record(self, entry: dict[str, Any]) -> None:
         """Add a usage entry. The entry should already include timestamp."""
         self._data.append(entry)
+        self._evict_if_needed()
         self._persist()
+
+    def _evict_if_needed(self) -> None:
+        """Drop oldest entries when the log exceeds the configured maximum."""
+        max_entries = settings.USAGE_LOG_MAX_ENTRIES
+        if len(self._data) <= max_entries:
+            return
+        excess = len(self._data) - max_entries
+        self._data = self._data[excess:]
+        logger.info("Trimmed %d oldest usage entries (max %d).", excess, max_entries)
 
     def _entry_type(self, entry: dict[str, Any]) -> str:
         entry_type = entry.get("entry_type")

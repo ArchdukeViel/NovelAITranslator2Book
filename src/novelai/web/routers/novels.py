@@ -1,17 +1,66 @@
 from __future__ import annotations
 
+import time
+from collections import defaultdict
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from novelai.app.container import container
+from novelai.config.settings import settings
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.storage_service import StorageService
 from novelai.sources.registry import available_sources, detect_source
 
 router = APIRouter()
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def verify_api_key(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> None:
+    """Reject requests when WEB_API_KEY is set and no valid token is provided."""
+    expected = settings.WEB_API_KEY
+    if expected is None:
+        return  # auth disabled
+    if credentials is None or credentials.credentials != expected.get_secret_value():
+        raise HTTPException(status_code=403, detail="Invalid or missing API key")
+
+
+# ---------------------------------------------------------------------------
+# Simple in-process rate limiter (per-client IP, per-endpoint)
+# ---------------------------------------------------------------------------
+
+_RATE_WINDOW = 60  # seconds
+_RATE_LIMITS: dict[str, int] = {
+    "scrape": 5,
+    "translate": 5,
+    "export": 10,
+    "delete": 10,
+}
+_hits: dict[str, list[float]] = defaultdict(list)
+
+
+def _rate_limit(request: Request, action: str) -> None:
+    limit = _RATE_LIMITS.get(action)
+    if limit is None:
+        return
+    client = request.client.host if request.client else "unknown"
+    key = f"{client}:{action}"
+    now = time.monotonic()
+    window = [t for t in _hits[key] if now - t < _RATE_WINDOW]
+    if len(window) >= limit:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    window.append(now)
+    _hits[key] = window
 
 
 def get_storage() -> StorageService:
@@ -62,11 +111,23 @@ class ExportRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Sources (must come before /{novel_id} to avoid route collision)
+# ---------------------------------------------------------------------------
+
+@router.get("/sources", response_model=list[str])
+async def list_sources(_auth: None = Depends(verify_api_key)) -> list[str]:
+    return available_sources()
+
+
+# ---------------------------------------------------------------------------
 # List / Detail
 # ---------------------------------------------------------------------------
 
 @router.get("/", response_model=list[NovelSummary])
-async def list_novels(storage: StorageService = Depends(get_storage)) -> list[NovelSummary]:
+async def list_novels(
+    storage: StorageService = Depends(get_storage),
+    _auth: None = Depends(verify_api_key),
+) -> list[NovelSummary]:
     summaries: list[NovelSummary] = []
     for novel_id in storage.list_novels():
         meta = storage.load_metadata(novel_id) or {}
@@ -85,6 +146,7 @@ async def list_novels(storage: StorageService = Depends(get_storage)) -> list[No
 async def get_novel(
     novel_id: str,
     storage: StorageService = Depends(get_storage),
+    _auth: None = Depends(verify_api_key),
 ) -> dict[str, Any]:
     meta = storage.load_metadata(novel_id)
     if meta is None:
@@ -95,8 +157,11 @@ async def get_novel(
 @router.delete("/{novel_id}", status_code=204)
 async def delete_novel(
     novel_id: str,
+    request: Request,
     storage: StorageService = Depends(get_storage),
+    _auth: None = Depends(verify_api_key),
 ) -> None:
+    _rate_limit(request, "delete")
     if storage.load_metadata(novel_id) is None:
         raise HTTPException(status_code=404, detail="Novel not found")
     storage.delete_novel(novel_id)
@@ -110,6 +175,7 @@ async def delete_novel(
 async def list_chapters(
     novel_id: str,
     storage: StorageService = Depends(get_storage),
+    _auth: None = Depends(verify_api_key),
 ) -> list[ChapterSummary]:
     meta = storage.load_metadata(novel_id)
     if meta is None:
@@ -132,6 +198,7 @@ async def get_chapter(
     novel_id: str,
     chapter_id: str,
     storage: StorageService = Depends(get_storage),
+    _auth: None = Depends(verify_api_key),
 ) -> dict[str, Any]:
     chapter = storage.load_chapter(novel_id, chapter_id)
     if chapter is None:
@@ -147,6 +214,7 @@ async def get_translated_chapter(
     novel_id: str,
     chapter_id: str,
     storage: StorageService = Depends(get_storage),
+    _auth: None = Depends(verify_api_key),
 ) -> dict[str, Any]:
     translated = storage.load_translated_chapter(novel_id, chapter_id)
     if translated is None:
@@ -162,8 +230,11 @@ async def get_translated_chapter(
 async def scrape_novel(
     novel_id: str,
     body: ScrapeRequest,
+    request: Request,
     orchestrator: NovelOrchestrationService = Depends(get_orchestrator),
+    _auth: None = Depends(verify_api_key),
 ) -> dict[str, Any]:
+    _rate_limit(request, "scrape")
     source_key = body.source_key or detect_source(body.url) or "generic"
     meta = await orchestrator.scrape_metadata(
         source_key, novel_id, mode=body.mode, max_chapter=body.max_chapter,
@@ -178,8 +249,11 @@ async def scrape_novel(
 async def translate_novel(
     novel_id: str,
     body: TranslateRequest,
+    request: Request,
     orchestrator: NovelOrchestrationService = Depends(get_orchestrator),
+    _auth: None = Depends(verify_api_key),
 ) -> dict[str, str]:
+    _rate_limit(request, "translate")
     await orchestrator.translate_chapters(
         body.source_key,
         novel_id,
@@ -195,8 +269,11 @@ async def translate_novel(
 async def export_novel(
     novel_id: str,
     body: ExportRequest,
+    request: Request,
     storage: StorageService = Depends(get_storage),
+    _auth: None = Depends(verify_api_key),
 ) -> FileResponse:
+    _rate_limit(request, "export")
     meta = storage.load_metadata(novel_id)
     if meta is None:
         raise HTTPException(status_code=404, detail="Novel not found")
@@ -233,13 +310,14 @@ async def export_novel(
 
 
 # ---------------------------------------------------------------------------
-# Progress / Sources
+# Progress
 # ---------------------------------------------------------------------------
 
 @router.get("/{novel_id}/progress")
 async def get_progress(
     novel_id: str,
     storage: StorageService = Depends(get_storage),
+    _auth: None = Depends(verify_api_key),
 ) -> dict[str, Any]:
     meta = storage.load_metadata(novel_id)
     if meta is None:
@@ -248,8 +326,3 @@ async def get_progress(
     scraped = storage.count_stored_chapters(novel_id)
     translated = storage.count_translated_chapters(novel_id)
     return {"novel_id": novel_id, "total": total, "scraped": scraped, "translated": translated}
-
-
-@router.get("/sources", response_model=list[str])
-async def list_sources() -> list[str]:
-    return available_sources()

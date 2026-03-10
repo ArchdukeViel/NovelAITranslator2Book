@@ -13,6 +13,7 @@ from typing import Any, TypedDict
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState, ChapterStateTransition
 from novelai.services.query_builder import ChapterQueryBuilder
+from novelai.utils import atomic_write
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ class StorageService:
 
     def _persist_index(self, index: dict[str, dict[str, Any]]) -> None:
         path = self._index_path()
-        path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write(path, json.dumps(index, ensure_ascii=False, indent=2))
 
     def _compute_folder_name(self, novel_id: str, metadata: dict[str, Any]) -> str:
         """Return a stable folder name for a novel."""
@@ -321,7 +322,7 @@ class StorageService:
     def _persist_chapter_bundle(self, novel_id: str, chapter_id: str, payload: dict[str, Any]) -> Path:
         payload["schema_version"] = self.SCHEMA_VERSION
         path = self._chapter_path(novel_id, chapter_id)
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write(path, json.dumps(payload, ensure_ascii=False, indent=2))
         return path
 
     def delete_novel(self, novel_id: str) -> None:
@@ -461,7 +462,7 @@ class StorageService:
 
         novel_dir = self._ensure_novel_dir(novel_id, folder_name)
         path = novel_dir / "metadata.json"
-        path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write(path, json.dumps(merged, ensure_ascii=False, indent=2))
         return path
 
     def load_metadata(self, novel_id: str) -> dict[str, Any] | None:
@@ -482,9 +483,9 @@ class StorageService:
         novel_dir = self._novel_dir(novel_id)
         novel_dir.mkdir(parents=True, exist_ok=True)
         path = novel_dir / "glossary.json"
-        path.write_text(
+        atomic_write(
+            path,
             json.dumps({"schema_version": self.SCHEMA_VERSION, "entries": entries}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
         return path
 
@@ -591,7 +592,7 @@ class StorageService:
         }
 
         path = state_dir / f"{chapter_id}.json"
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write(path, json.dumps(payload, ensure_ascii=False, indent=2))
         return path
 
     def load_chapter_state(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
@@ -825,7 +826,7 @@ class StorageService:
             filename = f"{chapter_id}__{checkpoint_name}.json"
 
         path = checkpoints_dir / filename
-        path.write_text(json.dumps(checkpoint_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write(path, json.dumps(checkpoint_data, ensure_ascii=False, indent=2))
         logger.info(f"Checkpoint created: {checkpoint_name} for {novel_id}/{chapter_id}")
         return path
 

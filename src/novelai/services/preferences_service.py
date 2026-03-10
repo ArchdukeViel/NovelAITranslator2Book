@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import SecretStr
 
 from novelai.config.settings import settings
+from novelai.utils import atomic_write
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +48,9 @@ class PreferencesService:
             return {}
 
     def _persist(self) -> None:
-        self.prefs_path.write_text(
+        atomic_write(
+            self.prefs_path,
             json.dumps(self._data, ensure_ascii=False, indent=2),
-            encoding="utf-8"
         )
 
     def get(self, key: str, default: Any = None) -> Any:

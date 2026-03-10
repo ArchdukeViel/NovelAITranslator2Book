@@ -31,7 +31,7 @@ class TranslateStage(PipelineStage):
     Requires injection of:
     - provider_factory: Callable that returns TranslationProvider for a given key
     - cache: TranslationCache instance
-    - settings_service: SettingsService instance
+    - settings_service: PreferencesService instance
     - usage_service: UsageService instance
     """
 

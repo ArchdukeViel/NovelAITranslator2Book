@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 from novelai.config.settings import settings
+from novelai.utils import atomic_write
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class TranslationCache:
             return {}
 
     def _persist(self) -> None:
-        self.cache_file.write_text(json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write(self.cache_file, json.dumps(self._data, ensure_ascii=False, indent=2))
 
     @staticmethod
     def _hash_key(text: str, provider: str, model: str | None) -> str:
@@ -47,4 +48,16 @@ class TranslationCache:
     def set(self, text: str, provider: str, model: str | None, translation: str) -> None:
         key = self._hash_key(text, provider, model)
         self._data[key] = translation
+        self._evict_if_needed()
         self._persist()
+
+    def _evict_if_needed(self) -> None:
+        """Remove oldest entries when cache exceeds the configured maximum."""
+        max_entries = settings.TRANSLATION_CACHE_MAX_ENTRIES
+        if len(self._data) <= max_entries:
+            return
+        excess = len(self._data) - max_entries
+        keys_to_remove = list(self._data.keys())[:excess]
+        for key in keys_to_remove:
+            del self._data[key]
+        logger.info("Evicted %d entries from translation cache (max %d).", excess, max_entries)

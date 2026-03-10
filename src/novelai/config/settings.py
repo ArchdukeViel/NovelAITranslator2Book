@@ -35,6 +35,8 @@ class AppSettings(BaseSettings):
     # --- Web
     WEB_HOST: str = "127.0.0.1"
     WEB_PORT: int = 8000
+    WEB_API_KEY: SecretStr | None = None
+    WEB_CORS_ORIGINS: list[str] = Field(default_factory=list)
 
     # --- Provider / Model
     PROVIDER_DEFAULT: str = "dummy"
@@ -50,6 +52,10 @@ class AppSettings(BaseSettings):
     TRANSLATION_CONCURRENCY: int = 4
     COST_PER_TOKEN_USD: float = 0.000002
     TRANSLATION_TARGET_LANGUAGE: str = "English"
+
+    # --- Cache
+    TRANSLATION_CACHE_MAX_ENTRIES: int = 50_000
+    USAGE_LOG_MAX_ENTRIES: int = 10_000
 
 
 settings = AppSettings()
