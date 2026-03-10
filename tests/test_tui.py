@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -15,12 +16,12 @@ from novelai.providers.registry import available_providers
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.sources.registry import available_sources
 from novelai.services.usage_service import UsageService
-from novelai.tui.app import TUIApp
+from novelai.tui.app import LibrarySnapshot, TUIApp
 from tests.conftest import TestFixture as FixtureEnv
 
 
 @pytest.fixture
-def tui(monkeypatch: pytest.MonkeyPatch) -> TUIApp:
+def tui(monkeypatch: pytest.MonkeyPatch) -> Iterator[TUIApp]:
     """Provide a bootstrapped TUI instance isolated from the real novel_library."""
     bootstrap()
     fixture = FixtureEnv()
@@ -140,7 +141,10 @@ def test_dashboard_secondary_panels_share_a_bottom_border_line_when_wide(tui: TU
     tui.console.print(tui._build_primary_panels())
     lines = tui.console.export_text().splitlines()
 
-    assert any(line.count("└") >= 2 and line.count("┘") >= 2 for line in lines)
+    assert any(
+        line.count("└") + line.count("╰") >= 2 and line.count("┘") + line.count("╯") >= 2
+        for line in lines
+    )
 
 
 @pytest.mark.parametrize("width", [80, 120])
@@ -320,15 +324,15 @@ def test_library_snapshot_uses_novel_title_and_novel_id_headers(tui: TUIApp, mon
 
 def test_library_frame_keeps_full_guide_rail_visible(tui: TUIApp) -> None:
     tui.console = Console(record=True, width=120, height=30)
-    snapshots = [
-        {
-            "novel_id": f"novel-{index}",
-            "title": "A Better Story",
-            "total_chapters": 2,
-            "stored_chapters": 1,
-            "translated_chapters": 1,
-            "language": "Japanese",
-        }
+    snapshots: list[LibrarySnapshot] = [
+        LibrarySnapshot(
+            novel_id=f"novel-{index}",
+            title="A Better Story",
+            total_chapters=2,
+            stored_chapters=1,
+            translated_chapters=1,
+            language="Japanese",
+        )
         for index in range(1, 25)
     ]
     groups = tui._group_library_snapshots(snapshots)
@@ -344,15 +348,15 @@ def test_library_frame_keeps_full_guide_rail_visible(tui: TUIApp) -> None:
 
 def test_library_frame_keeps_novel_list_visible_on_short_terminals(tui: TUIApp) -> None:
     tui.console = Console(record=True, width=120, height=14)
-    snapshots = [
-        {
-            "novel_id": "novel-1",
-            "title": "A Better Story",
-            "total_chapters": 2,
-            "stored_chapters": 1,
-            "translated_chapters": 1,
-            "language": "Japanese",
-        }
+    snapshots: list[LibrarySnapshot] = [
+        LibrarySnapshot(
+            novel_id="novel-1",
+            title="A Better Story",
+            total_chapters=2,
+            stored_chapters=1,
+            translated_chapters=1,
+            language="Japanese",
+        )
     ]
     groups = tui._group_library_snapshots(snapshots)
     frame, _ = tui._build_library_frame(snapshots, groups, "", None, 0)
@@ -366,15 +370,15 @@ def test_library_frame_keeps_novel_list_visible_on_short_terminals(tui: TUIApp) 
 
 def test_library_frame_keeps_novel_list_box_closed_while_scrolled(tui: TUIApp) -> None:
     tui.console = Console(record=True, width=120, height=20)
-    snapshots = [
-        {
-            "novel_id": f"novel-{index}",
-            "title": "A Better Story",
-            "total_chapters": 2,
-            "stored_chapters": 1,
-            "translated_chapters": 1,
-            "language": "Japanese",
-        }
+    snapshots: list[LibrarySnapshot] = [
+        LibrarySnapshot(
+            novel_id=f"novel-{index}",
+            title="A Better Story",
+            total_chapters=2,
+            stored_chapters=1,
+            translated_chapters=1,
+            language="Japanese",
+        )
         for index in range(1, 40)
     ]
     groups = tui._group_library_snapshots(snapshots)
@@ -711,23 +715,23 @@ def test_delete_library_novels_removes_multiple_metadata_entries(tui: TUIApp) ->
 
 
 def test_group_library_snapshots_separates_languages(tui: TUIApp) -> None:
-    snapshots = [
-        {
-            "novel_id": "jp-1",
-            "title": "JP Novel",
-            "total_chapters": 10,
-            "stored_chapters": 6,
-            "translated_chapters": 5,
-            "language": "Japanese",
-        },
-        {
-            "novel_id": "en-1",
-            "title": "EN Novel",
-            "total_chapters": 4,
-            "stored_chapters": 2,
-            "translated_chapters": 1,
-            "language": "English",
-        },
+    snapshots: list[LibrarySnapshot] = [
+        LibrarySnapshot(
+            novel_id="jp-1",
+            title="JP Novel",
+            total_chapters=10,
+            stored_chapters=6,
+            translated_chapters=5,
+            language="Japanese",
+        ),
+        LibrarySnapshot(
+            novel_id="en-1",
+            title="EN Novel",
+            total_chapters=4,
+            stored_chapters=2,
+            translated_chapters=1,
+            language="English",
+        ),
     ]
 
     groups = tui._group_library_snapshots(snapshots)
@@ -775,14 +779,14 @@ def test_library_inspection_panel_shows_stored_and_translated_ranges(tui: TUIApp
     for chapter_id in range(1, 16):
         tui.storage.save_translated_chapter(novel_id, str(chapter_id), f"translated {chapter_id}")
 
-    snapshot = {
-        "novel_id": novel_id,
-        "title": "Range Story",
-        "total_chapters": 45,
-        "stored_chapters": 25,
-        "translated_chapters": 15,
-        "language": "Japanese",
-    }
+    snapshot = LibrarySnapshot(
+        novel_id=novel_id,
+        title="Range Story",
+        total_chapters=45,
+        stored_chapters=25,
+        translated_chapters=15,
+        language="Japanese",
+    )
 
     tui.console = Console(record=True, width=140)
     tui.console.print(tui._build_library_inspection_panel(snapshot))
