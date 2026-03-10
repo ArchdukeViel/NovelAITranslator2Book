@@ -119,6 +119,11 @@ class NovelOrchestrationService:
         return language_map.get(source_key)
 
     def _selected_chapter_numbers(self, metadata: dict[str, Any], selection: str) -> list[int]:
+        """Resolve a chapter selection string into concrete chapter numbers.
+
+        Returns all chapter IDs when *selection* is ``"all"``; otherwise
+        parses the DSL (e.g. ``"1-3;5"``) via :func:`parse_chapter_selection`.
+        """
         chapter_map = {
             int(chapter["id"]): chapter
             for chapter in metadata.get("chapters", [])
@@ -207,6 +212,11 @@ class NovelOrchestrationService:
         metadata: dict[str, Any],
         existing_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Translate title, author, and per-chapter titles in *metadata*.
+
+        Reuses previously translated values from *existing_metadata* when the
+        source text has not changed, avoiding redundant API calls.
+        """
         translated_metadata = dict(metadata)
         previous = existing_metadata or {}
 
@@ -295,6 +305,13 @@ class NovelOrchestrationService:
         chapters: str,
         mode: str = "update",
     ) -> None:
+        """Fetch chapter content from the source site and persist it.
+
+        In ``full`` mode, existing data is deleted before re-scraping.
+        In ``update`` mode (default), only new or changed chapters are fetched.
+        Chapters are identified by the *chapters* selection string (e.g.
+        ``"all"`` or ``"1-5"``).
+        """
         source = self._source_factory(source_key)
 
         if mode == "full":
@@ -406,6 +423,13 @@ class NovelOrchestrationService:
         consistency_mode: bool = False,
         json_output: bool = False,
     ) -> None:
+        """Translate selected chapters through the pipeline.
+
+        Loads metadata and glossary, then iterates over the requested
+        chapters.  Each chapter's state is tracked via checkpoints
+        (SEGMENTED → TRANSLATED) for crash recovery.  Already-translated
+        chapters are skipped unless *force* is ``True``.
+        """
         source = self._source_factory(source_key)
         meta = self.storage.load_metadata(novel_id)
         if not meta:

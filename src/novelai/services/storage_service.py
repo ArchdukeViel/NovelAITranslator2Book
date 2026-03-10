@@ -87,7 +87,7 @@ class StorageService:
             return {}
         try:
             return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
+        except (json.JSONDecodeError, OSError):
             logger.warning("Corrupted novel index at %s; resetting to empty.", path)
             return {}
 
@@ -262,7 +262,7 @@ class StorageService:
         if json_path.exists():
             try:
                 return json.loads(json_path.read_text(encoding="utf-8"))
-            except Exception:
+            except (json.JSONDecodeError, OSError):
                 logger.warning("Failed to parse legacy raw chapter %s/%s.", novel_id, chapter_id)
                 return None
 
@@ -277,7 +277,7 @@ class StorageService:
         if json_path.exists():
             try:
                 return json.loads(json_path.read_text(encoding="utf-8"))
-            except Exception:
+            except (json.JSONDecodeError, OSError):
                 logger.warning("Failed to parse legacy translated chapter %s/%s.", novel_id, chapter_id)
                 return None
 
@@ -286,13 +286,18 @@ class StorageService:
         return None
 
     def _load_chapter_bundle(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
+        """Load a chapter bundle (raw + translated + metadata) from disk.
+
+        Falls back to legacy ``raw/`` and ``translated/`` directories if the
+        unified bundle file does not exist.
+        """
         chapter_path = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME / f"{chapter_id}.json"
         if chapter_path.exists():
             try:
                 data = json.loads(chapter_path.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
                     return data
-            except Exception:
+            except (json.JSONDecodeError, OSError):
                 logger.warning("Failed to parse chapter bundle %s/%s.", novel_id, chapter_id)
                 return None
 
@@ -376,6 +381,11 @@ class StorageService:
         return self._persist_chapter_bundle(novel_id, chapter_id, payload)
 
     def load_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
+        """Load the raw (source) content for a single chapter.
+
+        Returns a dict with id, title, text, images, and source metadata,
+        or ``None`` if the chapter has not been scraped.
+        """
         payload = self._load_chapter_bundle(novel_id, chapter_id)
         if payload is None:
             return None
@@ -414,6 +424,11 @@ class StorageService:
         return self._persist_chapter_bundle(novel_id, chapter_id, payload)
 
     def load_translated_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
+        """Load the translated content for a single chapter.
+
+        Returns a dict with id, text, provider, model, and timestamp,
+        or ``None`` if the chapter has not been translated.
+        """
         payload = self._load_chapter_bundle(novel_id, chapter_id)
         if payload is None:
             return None
@@ -472,7 +487,7 @@ class StorageService:
         content = path.read_text(encoding="utf-8")
         try:
             return json.loads(content)
-        except Exception:
+        except (json.JSONDecodeError, OSError):
             logger.warning("Corrupted metadata for novel %s.", novel_id)
             return None
 
@@ -500,19 +515,24 @@ class StorageService:
                 return data["entries"]
             if isinstance(data, list):
                 return data
-        except Exception:
+        except (json.JSONDecodeError, OSError):
             logger.warning("Failed to parse glossary for novel %s.", novel_id)
             pass
         return []
 
     def list_stored_chapters(self, novel_id: str) -> list[str]:
+        """Return sorted chapter IDs that have raw or translated data on disk.
+
+        Checks both the unified ``chapters/`` directory and legacy
+        ``raw/`` / ``translated/`` directories.
+        """
         stems: set[str] = set()
         chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
         if chapter_dir.exists():
             for chapter_path in chapter_dir.glob("*.json"):
                 try:
                     payload = json.loads(chapter_path.read_text(encoding="utf-8"))
-                except Exception:
+                except (json.JSONDecodeError, OSError):
                     logger.debug("Skipping unreadable chapter file %s.", chapter_path)
                     continue
                 if not isinstance(payload, dict):
@@ -536,13 +556,14 @@ class StorageService:
         return len(self.list_stored_chapters(novel_id))
 
     def list_translated_chapters(self, novel_id: str) -> list[str]:
+        """Return sorted chapter IDs that have translated content on disk."""
         stems: set[str] = set()
         chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
         if chapter_dir.exists():
             for chapter_path in chapter_dir.glob("*.json"):
                 try:
                     payload = json.loads(chapter_path.read_text(encoding="utf-8"))
-                except Exception:
+                except (json.JSONDecodeError, OSError):
                     logger.debug("Skipping unreadable chapter file %s.", chapter_path)
                     continue
                 if isinstance(payload, dict) and isinstance(payload.get("translated"), dict):
@@ -624,7 +645,7 @@ class StorageService:
                 "error_count": data.get("error_count", 0),
                 "retry_count": data.get("retry_count", 0),
             }
-        except Exception:
+        except (json.JSONDecodeError, OSError, KeyError, ValueError):
             logger.warning("Failed to load chapter state %s/%s.", novel_id, chapter_id)
             return None
 
@@ -687,7 +708,7 @@ class StorageService:
                 state_data = json.loads(state_file.read_text(encoding="utf-8"))
                 if ChapterState(state_data["current_state"]) == state:
                     chapters.append(state_data["chapter_id"])
-            except Exception:
+            except (json.JSONDecodeError, OSError, KeyError, ValueError):
                 logger.debug("Skipping unreadable state file %s.", state_file)
                 continue
 
@@ -708,7 +729,7 @@ class StorageService:
                 state_data = json.loads(state_file.read_text(encoding="utf-8"))
                 current_state = state_data["current_state"]
                 progress[current_state] += 1
-            except Exception:
+            except (json.JSONDecodeError, OSError, KeyError, ValueError):
                 logger.debug("Skipping unreadable state file %s.", state_file)
                 continue
 
@@ -768,7 +789,7 @@ class StorageService:
                 total_files += 1
                 if state_data.get("error_count", 0) > 0:
                     error_count += 1
-            except Exception:
+            except (json.JSONDecodeError, OSError):
                 logger.debug("Skipping unreadable state file %s.", state_file)
                 continue
 
@@ -861,7 +882,7 @@ class StorageService:
                     "timestamp": timestamp,
                     "checkpoint_name": checkpoint_name,
                 })
-            except Exception:
+            except (json.JSONDecodeError, OSError):
                 logger.debug("Skipping unreadable checkpoint file %s.", checkpoint_file)
                 continue
 
@@ -892,7 +913,7 @@ class StorageService:
                 if data.get("checkpoint_name") == checkpoint_name:
                     checkpoint_file = cf
                     break
-            except Exception:
+            except (json.JSONDecodeError, OSError):
                 logger.debug("Skipping unreadable checkpoint file %s.", cf)
                 continue
 
@@ -934,7 +955,7 @@ class StorageService:
             logger.info(f"Restored from checkpoint: {checkpoint_name} for {novel_id}/{chapter_id}")
             return True
 
-        except Exception as e:
+        except (json.JSONDecodeError, OSError, KeyError) as e:
             logger.error(f"Failed to restore checkpoint {checkpoint_name}: {e}")
             return False
 

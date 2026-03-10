@@ -37,6 +37,7 @@ class AppSettings(BaseSettings):
     WEB_PORT: int = 8000
     WEB_API_KEY: SecretStr | None = None
     WEB_CORS_ORIGINS: list[str] = Field(default_factory=list)
+    WEB_REQUEST_TIMEOUT_SECONDS: int = 600
 
     # --- Provider / Model
     PROVIDER_DEFAULT: str = "dummy"

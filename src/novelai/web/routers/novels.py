@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from collections import defaultdict
 from typing import Any
@@ -236,12 +237,22 @@ async def scrape_novel(
 ) -> dict[str, Any]:
     _rate_limit(request, "scrape")
     source_key = body.source_key or detect_source(body.url) or "generic"
-    meta = await orchestrator.scrape_metadata(
-        source_key, novel_id, mode=body.mode, max_chapter=body.max_chapter,
-    )
-    await orchestrator.scrape_chapters(
-        source_key, novel_id, body.chapters, mode=body.mode,
-    )
+    timeout = settings.WEB_REQUEST_TIMEOUT_SECONDS
+    try:
+        meta = await asyncio.wait_for(
+            orchestrator.scrape_metadata(
+                source_key, novel_id, mode=body.mode, max_chapter=body.max_chapter,
+            ),
+            timeout=timeout,
+        )
+        await asyncio.wait_for(
+            orchestrator.scrape_chapters(
+                source_key, novel_id, body.chapters, mode=body.mode,
+            ),
+            timeout=timeout,
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Operation timed out") from None
     return {"novel_id": novel_id, "source_key": source_key, "chapters": len(meta.get("chapters", []))}
 
 
@@ -254,14 +265,20 @@ async def translate_novel(
     _auth: None = Depends(verify_api_key),
 ) -> dict[str, str]:
     _rate_limit(request, "translate")
-    await orchestrator.translate_chapters(
-        body.source_key,
-        novel_id,
-        body.chapters,
-        provider_key=body.provider_key,
-        provider_model=body.provider_model,
-        force=body.force,
-    )
+    try:
+        await asyncio.wait_for(
+            orchestrator.translate_chapters(
+                body.source_key,
+                novel_id,
+                body.chapters,
+                provider_key=body.provider_key,
+                provider_model=body.provider_model,
+                force=body.force,
+            ),
+            timeout=settings.WEB_REQUEST_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Operation timed out") from None
     return {"novel_id": novel_id, "status": "ok"}
 
 

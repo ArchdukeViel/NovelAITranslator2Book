@@ -360,10 +360,10 @@ class BackupManager:
             # Extract backup
             if manifest[backup_id]["compressed"]:
                 with tarfile.open(backup_path, "r:gz") as tar:
-                    tar.extractall(target_dir.parent)
+                    tar.extractall(target_dir.parent, filter="data")
             else:
                 with tarfile.open(backup_path, "r") as tar:
-                    tar.extractall(target_dir.parent)
+                    tar.extractall(target_dir.parent, filter="data")
 
             logger.info(f"Backup restored: {backup_id}")
             return True
