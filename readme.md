@@ -183,10 +183,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\update-lockfiles.ps1
 
 | Area | Status | Notes |
 |------|--------|-------|
+| **Web frontend** | API only | FastAPI backend serves JSON endpoints; no browser UI. Use the TUI or CLI instead. |
 | **PDF export** | Not implemented | `PDFExporter` exists as a placeholder; raises `NotImplementedError`. Needs a PDF library (e.g. reportlab or weasyprint). |
 | **Provider support** | OpenAI only | The provider interface is pluggable, but only the OpenAI adapter is implemented. A `DummyProvider` exists for testing. |
 | **Export formats** | EPUB, HTML, Markdown | PDF and DOCX not yet implemented. |
 | **Image embedding** | EPUB only | HTML and Markdown exports do not embed chapter images. |
+| **Schema migration** | Not implemented | Storage writes a `schema_version` field but there is no migration logic for older formats. |
+| **Concurrent writes** | No protection | Simultaneous writes to the same novel may race; no file locking in the storage layer. |
 
 ## Documentation
 
