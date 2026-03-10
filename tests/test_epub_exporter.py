@@ -56,3 +56,21 @@ def test_epub_exporter_embeds_chapter_images_and_references_them() -> None:
             assert "<img " in chapter_document
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_epub_exporter_converts_separator_to_hr() -> None:
+    """Separator characters like ーーーーー should become <hr/> in EPUB."""
+    exporter = EPUBExporter()
+    chapter = {"title": "Ch1", "text": "Before\n\nーーーーー\n\nAfter"}
+    prepared = exporter._prepare_chapter(1, chapter)
+    assert "<hr/>" in prepared["xhtml"]
+    assert "ーーーーー" not in prepared["xhtml"]
+
+
+def test_epub_exporter_splits_japanese_chapter_title() -> None:
+    """第1話　タイトル should render chapter number and title on separate lines."""
+    exporter = EPUBExporter()
+    chapter = {"title": "第1話　結婚式＆ウェディングドレス編　前編", "text": "Hello"}
+    prepared = exporter._prepare_chapter(1, chapter)
+    assert "第1話<br/>" in prepared["xhtml"]
+    assert "結婚式" in prepared["xhtml"]

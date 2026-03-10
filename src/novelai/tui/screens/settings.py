@@ -34,6 +34,7 @@ class SettingsScreenMixin:
         settings_table.add_row("API key", api_key_state)
         settings_table.add_row("Available models", model_text)
         settings_table.add_row("Target language", app_settings.TRANSLATION_TARGET_LANGUAGE)
+        settings_table.add_row("Source language", "Auto-detected from source site")
         settings_table.add_row("Scrape delay", f"{app_settings.SCRAPE_DELAY_SECONDS}s")
 
         return Panel(settings_table, border_style="#bb9af7", box=box.ROUNDED)

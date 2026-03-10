@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from html import escape
 import mimetypes
 from pathlib import Path
@@ -8,6 +9,17 @@ from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 from novelai.export.base_exporter import BaseExporter
+
+
+# Paragraph consisting entirely of repeated separator characters.
+_SEPARATOR_RE = re.compile(
+    r"^[\-\u30FC\u2500\u2015\u2014\uff0d*\uff0a=\uff1d]{3,}$",
+)
+
+# Japanese chapter number prefix: 第N話, 第N章, etc.
+_CHAPTER_NUM_RE = re.compile(
+    r"^(第[\d一二三四五六七八九十百千]+[話章部回節編幕])([\s\u3000]+)(.+)$",
+)
 
 
 class EPUBExporter(BaseExporter):
@@ -104,23 +116,39 @@ class EPUBExporter(BaseExporter):
         guessed, _ = mimetypes.guess_type(asset_path.name)
         return guessed or "application/octet-stream"
 
+    @staticmethod
+    def _format_title_html(title: str) -> str:
+        """Split a Japanese chapter number prefix onto its own line."""
+        match = _CHAPTER_NUM_RE.match(title)
+        if match:
+            num = escape(match.group(1))
+            rest = escape(match.group(3))
+            return f'{num}<br/>{rest}'
+        return escape(title)
+
     def _chapter_document(self, title: str, text: str, images: list[dict[str, Any]]) -> str:
         body = self._render_chapter_body(text, images)
+        title_html = self._format_title_html(title)
         escaped_title = escape(title)
         return (
             "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
             "<!DOCTYPE html>\n"
-            "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\">\n"
+            "<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"ja\">\n"
             "<head>\n"
             f"  <title>{escaped_title}</title>\n"
             "  <meta charset=\"utf-8\"/>\n"
             "  <style>"
-            "body{font-family:serif;line-height:1.6;}figure{margin:1em 0;text-align:center;}"
+            "body{font-family:\"Noto Serif CJK JP\",\"Hiragino Mincho Pro\",\"Yu Mincho\",\"MS Mincho\",serif;"
+            "font-size:1em;line-height:1.8;margin:1em;}"
+            "h1{text-align:center;line-height:1.4;font-size:1.4em;margin-bottom:1em;}"
+            "p{margin:0.6em 0;text-indent:1em;}"
+            "hr{border:none;border-top:1px solid #ccc;margin:1.5em 0;}"
+            "figure{margin:1em 0;text-align:center;}"
             "img{max-width:100%;height:auto;}figcaption{font-size:0.9em;color:#555;}"
             "</style>\n"
             "</head>\n"
             "<body>\n"
-            f"<h1>{escaped_title}</h1>\n"
+            f"<h1>{title_html}</h1>\n"
             f"{body}\n"
             "</body>\n"
             "</html>\n"
@@ -132,7 +160,11 @@ class EPUBExporter(BaseExporter):
         used_indexes: set[int] = set()
 
         for paragraph in paragraphs:
-            if not paragraph.strip():
+            stripped = paragraph.strip()
+            if not stripped:
+                continue
+            if _SEPARATOR_RE.match(stripped):
+                rendered.append("<hr/>")
                 continue
             rendered.append(self._render_paragraph(paragraph, images, used_indexes))
 
@@ -240,7 +272,7 @@ class EPUBExporter(BaseExporter):
             "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n"
             f"    <dc:identifier id=\"bookid\">{escape(book_id)}</dc:identifier>\n"
             f"    <dc:title>{escape(novel_id)}</dc:title>\n"
-            "    <dc:language>en</dc:language>\n"
+            "    <dc:language>ja</dc:language>\n"
             "  </metadata>\n"
             "  <manifest>\n"
             f"    {manifest_xml}\n"

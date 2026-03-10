@@ -229,6 +229,13 @@ class NovelOrchestrationService:
 
         source = self._source_factory(source_key)
         meta = await source.fetch_metadata(novel_id, max_chapter=max_chapter)
+
+        # Persist detected source language so prompts and exports can use it.
+        if not meta.get("source_language"):
+            detected = self._infer_source_language(source_key, meta)
+            if detected:
+                meta["source_language"] = detected
+
         try:
             meta = await self._translate_metadata_fields(meta, existing_metadata)
         except Exception as exc:
@@ -249,6 +256,10 @@ class NovelOrchestrationService:
         if mode == "full":
             self.storage.delete_novel(novel_id)
             meta = await source.fetch_metadata(novel_id)
+            if not meta.get("source_language"):
+                detected = self._infer_source_language(source_key, meta)
+                if detected:
+                    meta["source_language"] = detected
             try:
                 meta = await self._translate_metadata_fields(meta)
             except Exception as exc:

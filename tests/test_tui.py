@@ -825,7 +825,7 @@ def test_collect_export_chapters_can_filter_to_a_range(tui: TUIApp) -> None:
 def test_export_output_path_uses_chapter_range_filename_for_partial_exports(tui: TUIApp) -> None:
     output_path = tui._build_export_output_path("novel-1", "epub", None, "2-4")
 
-    assert output_path.endswith("chapters_2to4.epub")
+    assert output_path.endswith("full_novel_ch2to4.epub")
 
 
 def test_settings_round_trip(tui: TUIApp) -> None:

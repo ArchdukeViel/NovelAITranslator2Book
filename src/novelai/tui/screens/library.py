@@ -912,6 +912,28 @@ class LibraryScreenMixin:
                 self._set_status("Export cancelled.", "warning")
                 return
 
+        language_choice = self._prompt_numbered_choice(
+            lambda: self._build_library_action_screen(
+                "Export Language",
+                "Choose which language version to export.",
+                self._build_numbered_choice_panel(
+                    "Language",
+                    ["Translated", "Source (original)"],
+                    descriptions=[
+                        "Export the translated text.",
+                        "Export the original source text.",
+                    ],
+                    border_style="#7aa2f7",
+                ),
+            ),
+            option_count=2,
+            default_value="1",
+        )
+        if language_choice is None:
+            self._set_status("Export cancelled.", "warning")
+            return
+        language = "source" if language_choice == 2 else "translated"
+
         selections = self._prompt_library_novel_selection(
             "Export",
             f"Choose which novel numbers to export as {fmt.upper()}.",
@@ -923,12 +945,13 @@ class LibraryScreenMixin:
             self._set_status("Export cancelled.", "warning")
             return
 
+        language_label_text = "source" if language == "source" else "translated"
         exported: list[str] = []
         failures: list[str] = []
         for selection in selections:
             snapshot = snapshots[selection - 1]
             try:
-                self._export_novel(snapshot["novel_id"], fmt, None, chapter_selection=chapter_selection)
+                self._export_novel(snapshot["novel_id"], fmt, None, chapter_selection=chapter_selection, language=language)
                 exported.append(snapshot["novel_id"])
             except Exception as exc:
                 failures.append(f"{snapshot['novel_id']}: {exc}")
@@ -940,7 +963,7 @@ class LibraryScreenMixin:
             self.console.print(
                 Panel(
                     (
-                        f"Exported {len(exported)} novel(s) as {fmt.upper()}.\n"
+                        f"Exported {len(exported)} novel(s) as {fmt.upper()} ({language_label_text}).\n"
                         f"Chapters: {self._format_chapter_selection_label(chapter_selection)}\n"
                         f"{summary}"
                     ),

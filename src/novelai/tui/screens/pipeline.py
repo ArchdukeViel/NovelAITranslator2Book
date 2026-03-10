@@ -512,8 +512,28 @@ class PipelineScreenMixin:
             return
 
         fmt = formats[choice - 1]
+
+        language_choice = self._prompt_numbered_choice(
+            lambda: self._build_settings_choice_screen(
+                "Export Language",
+                "Choose which language version to export.",
+                ["Translated", "Source (original)"],
+                descriptions=[
+                    "Export the translated text.",
+                    "Export the original source text.",
+                ],
+            ),
+            option_count=2,
+            default_value="1",
+            label="Language",
+        )
+        if language_choice is None:
+            self._set_status("Export skipped.", "info")
+            return
+        language = "source" if language_choice == 2 else "translated"
+
         try:
-            output_path = self._export_novel(novel_id, fmt, None)
+            output_path = self._export_novel(novel_id, fmt, None, language=language)
             self._set_status(f"Exported {fmt.upper()} to {output_path}", "success")
         except Exception as exc:
             self._set_status(f"Export failed: {exc}", "error")
@@ -649,7 +669,12 @@ class PipelineScreenMixin:
             force=force,
         )
 
-    def _collect_export_chapters(self, novel_id: str, chapter_selection: str = "full") -> list[dict[str, Any]]:
+    def _collect_export_chapters(
+        self,
+        novel_id: str,
+        chapter_selection: str = "full",
+        language: str = "translated",
+    ) -> list[dict[str, Any]]:
         meta = self.storage.load_metadata(novel_id)
         if not meta:
             raise ValueError("Metadata not found; run scrape first.")
@@ -666,6 +691,8 @@ class PipelineScreenMixin:
             except Exception as exc:
                 raise ValueError("Use chapter selection like 1, 3-8, or 1, 4-6.") from exc
 
+        use_source = language == "source"
+
         for chap in raw_chapters:
             if not isinstance(chap, dict):
                 continue
@@ -676,14 +703,22 @@ class PipelineScreenMixin:
             if selected_numbers is not None:
                 if not chap_id.isdigit() or int(chap_id) not in selected_numbers:
                     continue
-            translated = self.storage.load_translated_chapter(novel_id, chap_id)
-            if not translated:
+
+            if use_source:
+                raw_data = self.storage.load_chapter(novel_id, chap_id)
+                if not raw_data:
+                    continue
+                text = raw_data.get("text")
+            else:
+                translated = self.storage.load_translated_chapter(novel_id, chap_id)
+                if not translated:
+                    continue
+                text = translated.get("text")
+
+            if not isinstance(text, str):
                 continue
 
             title = chap.get("title")
-            text = translated.get("text")
-            if not isinstance(text, str):
-                continue
             chapters.append(
                 {
                     "title": title if isinstance(title, str) and title else f"Chapter {chap_id}",
@@ -693,9 +728,10 @@ class PipelineScreenMixin:
             )
 
         if not chapters:
+            label = "source" if use_source else "translated"
             if selected_numbers is not None:
-                raise ValueError(f"No translated chapters are available for export in chapters {chapter_selection}.")
-            raise ValueError("No translated chapters are available for export.")
+                raise ValueError(f"No {label} chapters are available for export in chapters {chapter_selection}.")
+            raise ValueError(f"No {label} chapters are available for export.")
         return chapters
 
     def _build_export_output_path(
@@ -704,13 +740,19 @@ class PipelineScreenMixin:
         fmt: str,
         output_dir: str | None,
         chapter_selection: str,
+        language: str = "translated",
     ) -> str:
         base_path = Path(self.storage.build_export_path(novel_id, fmt, output_dir))
-        if is_full_chapter_selection(chapter_selection):
-            return str(base_path)
+        name = base_path.stem
 
-        suffix = chapter_selection.replace(" ", "").replace(",", "_").replace("-", "to")
-        return str(base_path.with_name(f"chapters_{suffix}.{fmt}"))
+        if language == "source":
+            name = f"{name}_source"
+
+        if not is_full_chapter_selection(chapter_selection):
+            suffix = chapter_selection.replace(" ", "").replace(",", "_").replace("-", "to")
+            name = f"{name}_ch{suffix}"
+
+        return str(base_path.with_name(f"{name}.{fmt}"))
 
     def _export_novel(
         self,
@@ -719,9 +761,10 @@ class PipelineScreenMixin:
         output_dir: str | None,
         *,
         chapter_selection: str = "full",
+        language: str = "translated",
     ) -> str:
-        chapters = self._collect_export_chapters(novel_id, chapter_selection=chapter_selection)
-        output_path = self._build_export_output_path(novel_id, fmt, output_dir, chapter_selection)
+        chapters = self._collect_export_chapters(novel_id, chapter_selection=chapter_selection, language=language)
+        output_path = self._build_export_output_path(novel_id, fmt, output_dir, chapter_selection, language=language)
         self.exporter.export(fmt, novel_id=novel_id, chapters=chapters, output_path=output_path)
         return output_path
 
