@@ -7,7 +7,7 @@ name = "novel-ai"
 version = "0.1.0"
 description = "Web novel scraping, multilingual AI translation, and multi-format export platform with a Rich TUI dashboard."
 authors = [
-  {name = "Akmal"}
+  {name = "Akmal Safari Pellu", email = "pelluakmal@gmail.com"}
 ]
 readme = "readme.md"
 requires-python = ">=3.13"
