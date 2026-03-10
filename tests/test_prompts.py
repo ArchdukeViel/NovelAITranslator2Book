@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from novelai.prompts import (
@@ -93,7 +95,7 @@ def test_format_glossary_block_is_deterministic_and_last_duplicate_wins() -> Non
         ({"text": "x", "source_language": "Japanese", "target_language": ""}, "target_language cannot be empty."),
     ],
 )
-def test_build_translation_request_validates_required_fields(kwargs: dict[str, str], message: str) -> None:
+def test_build_translation_request_validates_required_fields(kwargs: dict[str, Any], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         build_translation_request(**kwargs)
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import pytest
 
@@ -72,7 +73,7 @@ def test_custom_overhead_overrides_are_used() -> None:
         {"japanese_characters": 1_000, "json_output_overhead_tokens": -1},
     ],
 )
-def test_invalid_estimation_options_raise_value_error(kwargs: dict[str, int]) -> None:
+def test_invalid_estimation_options_raise_value_error(kwargs: dict[str, Any]) -> None:
     with pytest.raises(ValueError):
         EstimationOptions(**kwargs)
 

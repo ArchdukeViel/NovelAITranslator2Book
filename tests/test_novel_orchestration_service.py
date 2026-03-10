@@ -12,6 +12,7 @@ from novelai.services.preferences_service import PreferencesService
 from novelai.services.storage_service import StorageService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
+from novelai.services.translation_service import TranslationService
 from novelai.sources.base import SourceAdapter
 from tests.conftest import MockTranslationProvider, TESTS_TMP_ROOT
 
@@ -59,7 +60,7 @@ class StubSource(SourceAdapter):
         }
 
 
-class UnusedTranslationService:
+class UnusedTranslationService(TranslationService):
     pass
 
 

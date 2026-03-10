@@ -6,6 +6,7 @@ import os
 import pytest
 import stat
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -100,7 +101,7 @@ def cleanup_test_artifacts(
 
 
 @pytest.fixture(scope="session", autouse=True)
-def auto_cleanup_test_outputs() -> None:
+def auto_cleanup_test_outputs() -> Iterator[None]:
     """Clean test-generated filesystem output before and after the test session."""
     cleanup_test_artifacts(include_pytest_managed=True)
     yield

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from pydantic import SecretStr
@@ -42,7 +43,7 @@ async def _run_provider_call(request):
 
 
 def test_openai_provider_uses_responses_payload(monkeypatch):
-    state: dict[str, object] = {}
+    state: dict[str, Any] = {}
     previous_api_key = settings.PROVIDER_OPENAI_API_KEY
     settings.PROVIDER_OPENAI_API_KEY = SecretStr("test-key")
     monkeypatch.setattr(
@@ -78,7 +79,7 @@ def test_openai_provider_uses_responses_payload(monkeypatch):
 
 
 def test_openai_provider_adds_json_schema_for_json_mode(monkeypatch):
-    state: dict[str, object] = {}
+    state: dict[str, Any] = {}
     previous_api_key = settings.PROVIDER_OPENAI_API_KEY
     settings.PROVIDER_OPENAI_API_KEY = SecretStr("test-key")
     monkeypatch.setattr(
