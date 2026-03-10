@@ -14,6 +14,7 @@ from rich.prompt import Prompt
 from rich.text import Text
 
 from novelai.config.settings import settings
+from novelai.export.registry import available_exporters
 from novelai.providers.registry import available_models as available_provider_models
 from novelai.sources.registry import available_sources, detect_source, get_source
 from novelai.utils.chapter_selection import is_full_chapter_selection, parse_chapter_selection
@@ -472,6 +473,9 @@ class PipelineScreenMixin:
             "success",
         )
 
+        # Offer to export immediately after translation.
+        self._offer_post_translation_export(novel_id)
+
     async def _do_scrape_metadata(
         self,
         source_key: str,
@@ -483,6 +487,36 @@ class PipelineScreenMixin:
 
     async def _do_scrape_chapters(self, source_key: str, novel_id: str, chapters: str, mode: str = "update") -> None:
         await self.orchestrator.scrape_chapters(source_key, novel_id, chapters, mode=mode)
+
+    def _offer_post_translation_export(self, novel_id: str) -> None:
+        """Prompt the user to export immediately after translation finishes."""
+        formats = available_exporters()
+        if not formats:
+            return
+
+        format_labels = [fmt.upper() for fmt in formats]
+        format_descriptions = [f"Export {novel_id} as {fmt.upper()}." for fmt in formats]
+        choice = self._prompt_numbered_choice(
+            lambda: self._build_settings_choice_screen(
+                "Export Now?",
+                f"Translation finished for {novel_id}. Choose a format to export, or 0 to skip.",
+                format_labels,
+                descriptions=format_descriptions,
+            ),
+            option_count=len(formats),
+            default_value="0",
+            label="Export",
+        )
+        if choice is None:
+            self._set_status("Export skipped.", "info")
+            return
+
+        fmt = formats[choice - 1]
+        try:
+            output_path = self._export_novel(novel_id, fmt, None)
+            self._set_status(f"Exported {fmt.upper()} to {output_path}", "success")
+        except Exception as exc:
+            self._set_status(f"Export failed: {exc}", "error")
 
     def _scrape_flow(self) -> None:
         prompt = self._prompt_novel_url(
@@ -688,9 +722,6 @@ class PipelineScreenMixin:
     ) -> str:
         chapters = self._collect_export_chapters(novel_id, chapter_selection=chapter_selection)
         output_path = self._build_export_output_path(novel_id, fmt, output_dir, chapter_selection)
-        if fmt == "pdf":
-            self.exporter.export_pdf(novel_id=novel_id, chapters=chapters, output_path=output_path)
-        else:
-            self.exporter.export_epub(novel_id=novel_id, chapters=chapters, output_path=output_path)
+        self.exporter.export(fmt, novel_id=novel_id, chapters=chapters, output_path=output_path)
         return output_path
 

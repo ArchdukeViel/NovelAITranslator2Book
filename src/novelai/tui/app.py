@@ -42,6 +42,7 @@ if os.name == "nt":
 
 from novelai.tui.screens import (
     DiagnosticsScreenMixin,
+    GlossaryScreenMixin,
     LibraryScreenMixin,
     PipelineScreenMixin,
     SettingsScreenMixin,
@@ -90,6 +91,7 @@ class TUIApp(
     PipelineScreenMixin,
     DiagnosticsScreenMixin,
     SettingsScreenMixin,
+    GlossaryScreenMixin,
 ):
     """Rich dashboard for adding, translating, and exporting novels."""
 
@@ -118,6 +120,11 @@ class TUIApp(
             "key": "settings",
             "label": "Settings",
             "description": "Review or change provider, model, and API key",
+        },
+        {
+            "key": "glossary",
+            "label": "Glossary",
+            "description": "Manage translation glossary terms for a novel",
         },
         {
             "key": "exit",
@@ -169,6 +176,9 @@ class TUIApp(
                 pause_after_action = False
             elif option == "settings":
                 self._settings_menu()
+                pause_after_action = False
+            elif option == "glossary":
+                self._glossary_menu()
                 pause_after_action = False
             elif option == "exit":
                 self.console.clear()

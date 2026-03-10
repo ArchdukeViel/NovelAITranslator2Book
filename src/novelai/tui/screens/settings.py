@@ -8,9 +8,11 @@ from typing import Any, Callable
 from rich import box
 from rich.console import Group
 from rich.panel import Panel
+from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
 
+from novelai.config.settings import settings as app_settings
 from novelai.providers.registry import available_providers, get_provider
 
 
@@ -31,6 +33,8 @@ class SettingsScreenMixin:
         settings_table.add_row("Model", model)
         settings_table.add_row("API key", api_key_state)
         settings_table.add_row("Available models", model_text)
+        settings_table.add_row("Target language", app_settings.TRANSLATION_TARGET_LANGUAGE)
+        settings_table.add_row("Scrape delay", f"{app_settings.SCRAPE_DELAY_SECONDS}s")
 
         return Panel(settings_table, border_style="#bb9af7", box=box.ROUNDED)
 
@@ -304,6 +308,7 @@ class SettingsScreenMixin:
                 Text(""),
                 Text("1) select provider            Pick a provider, then choose one of its models.", style="#cbd5e1"),
                 Text("2) set API key                Update the runtime API key used by the provider.", style="#cbd5e1"),
+                Text("3) advanced                   Change target language and scrape delay.", style="#cbd5e1"),
                 Text("0) back                       Return to the dashboard.", style="#cbd5e1"),
             ),
             title="Guide Rail",
@@ -320,10 +325,12 @@ class SettingsScreenMixin:
             return "provider"
         if raw in ("2", "api", "api key", "set api key"):
             return "api_key"
+        if raw in ("3", "advanced"):
+            return "advanced"
         return None
 
     def _settings_menu(self) -> None:
-        self._set_status("Use 1 to choose a provider and model, 2 to set the API key, or 0 to go back.", "info")
+        self._set_status("Use 1 to choose a provider and model, 2 to set the API key, 3 for advanced, or 0 to go back.", "info")
         while True:
             command = self._prompt_renderable_command(
                 self._build_settings_screen(),
@@ -331,7 +338,7 @@ class SettingsScreenMixin:
             )
             action = self._parse_settings_command(command)
             if action is None:
-                self._set_status("Unknown settings command. Use 1, 2, or 0.", "warning")
+                self._set_status("Unknown settings command. Use 1, 2, 3, or 0.", "warning")
                 continue
             if action == "back":
                 self._set_status("Settings ready.", "info")
@@ -348,4 +355,37 @@ class SettingsScreenMixin:
                 self._set_status(f"Provider set to {provider}. Default model set to {model}.", "success")
                 continue
 
+            if action == "advanced":
+                self._advanced_settings_menu()
+                continue
+
             self._api_key_menu()
+
+    def _advanced_settings_menu(self) -> None:
+        """Prompt user to change target language and scrape delay."""
+        lang = Prompt.ask(
+            "[bold #f6bd60]Target language[/bold #f6bd60]",
+            default=app_settings.TRANSLATION_TARGET_LANGUAGE,
+            console=self.console,
+        ).strip()
+        if lang:
+            app_settings.TRANSLATION_TARGET_LANGUAGE = lang
+
+        delay_str = Prompt.ask(
+            "[bold #f6bd60]Scrape delay (seconds)[/bold #f6bd60]",
+            default=str(app_settings.SCRAPE_DELAY_SECONDS),
+            console=self.console,
+        ).strip()
+        try:
+            delay = float(delay_str)
+            if delay < 0:
+                raise ValueError
+            app_settings.SCRAPE_DELAY_SECONDS = delay
+        except ValueError:
+            self._set_status("Invalid delay value — keeping current setting.", "warning")
+            return
+
+        self._set_status(
+            f"Target language set to '{lang}', scrape delay set to {app_settings.SCRAPE_DELAY_SECONDS}s.",
+            "success",
+        )

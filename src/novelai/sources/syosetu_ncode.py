@@ -103,15 +103,20 @@ class SyosetuNcodeSource(SourceAdapter):
         return headers
 
     async def _fetch_page(self, url: str) -> str:
+        await self._rate_limit()
         try:
-            async with httpx.AsyncClient(
-                timeout=30,
-                headers=self._request_headers(),
-                cookies=self._build_request_cookies(),
-                follow_redirects=True,
-            ) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
+            async def _do_request() -> httpx.Response:
+                async with httpx.AsyncClient(
+                    timeout=30,
+                    headers=self._request_headers(),
+                    cookies=self._build_request_cookies(),
+                    follow_redirects=True,
+                ) as client:
+                    resp = await client.get(url)
+                    resp.raise_for_status()
+                    return resp
+
+            resp = await self._with_retry(_do_request)
         except httpx.HTTPStatusError as exc:
             raise SourceError(
                 f"Failed to fetch Syosetu page from {url} (status={exc.response.status_code}). "
@@ -123,15 +128,20 @@ class SyosetuNcodeSource(SourceAdapter):
         return resp.text
 
     async def fetch_asset(self, url: str, *, referer: str | None = None) -> dict[str, Any]:
+        await self._rate_limit()
         try:
-            async with httpx.AsyncClient(
-                timeout=30,
-                headers=self._request_headers(referer=referer),
-                cookies=self._build_request_cookies(),
-                follow_redirects=True,
-            ) as client:
-                response = await client.get(url)
-                response.raise_for_status()
+            async def _do_request() -> httpx.Response:
+                async with httpx.AsyncClient(
+                    timeout=30,
+                    headers=self._request_headers(referer=referer),
+                    cookies=self._build_request_cookies(),
+                    follow_redirects=True,
+                ) as client:
+                    response = await client.get(url)
+                    response.raise_for_status()
+                    return response
+
+            response = await self._with_retry(_do_request)
         except httpx.HTTPStatusError as exc:
             raise SourceError(
                 f"Failed to fetch Syosetu asset from {url} (status={exc.response.status_code})."

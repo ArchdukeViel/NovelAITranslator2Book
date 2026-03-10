@@ -27,6 +27,7 @@ def bootstrap_providers() -> None:
 
 def bootstrap_sources() -> None:
     """Register all known novel sources."""
+    from novelai.sources.generic import GenericSource
     from novelai.sources.kakuyomu import KakuyomuSource
     from novelai.sources.novel18_syosetu import Novel18SyosetuSource
     from novelai.sources.registry import register_source
@@ -35,14 +36,19 @@ def bootstrap_sources() -> None:
     register_source("syosetu_ncode", lambda: SyosetuNcodeSource())
     register_source("novel18_syosetu", lambda: Novel18SyosetuSource())
     register_source("kakuyomu", lambda: KakuyomuSource())
+    register_source("generic", lambda: GenericSource())
 
 
 def bootstrap_exporters() -> None:
     """Register all known export formats."""
     from novelai.export.epub_exporter import EPUBExporter
+    from novelai.export.html_exporter import HTMLExporter
+    from novelai.export.markdown_exporter import MarkdownExporter
     from novelai.export.registry import register_exporter
 
     register_exporter("epub", lambda: EPUBExporter())
+    register_exporter("html", lambda: HTMLExporter())
+    register_exporter("md", lambda: MarkdownExporter())
     # PDF exporter is not yet implemented (requires reportlab or weasyprint).
 
 

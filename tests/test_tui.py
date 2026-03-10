@@ -223,8 +223,8 @@ def test_numeric_menu_selection_maps_to_action_keys(tui: TUIApp) -> None:
     assert tui._resolve_menu_selection("3") == "update"
     assert tui._resolve_menu_selection("4") == "diagnostics"
     assert tui._resolve_menu_selection("5") == "settings"
+    assert tui._resolve_menu_selection("6") == "glossary"
     assert tui._resolve_menu_selection("0") == "exit"
-    assert tui._resolve_menu_selection("6") is None
     assert tui._resolve_menu_selection("7") is None
     assert tui._resolve_menu_selection("8") is None
     assert tui._resolve_menu_selection("list") is None
@@ -423,7 +423,7 @@ def test_diagnostics_and_settings_command_parsers_support_numbered_actions(tui: 
     assert tui._parse_settings_command("") == "back"
     assert tui._parse_settings_command("1") == "provider"
     assert tui._parse_settings_command("2") == "api_key"
-    assert tui._parse_settings_command("3") is None
+    assert tui._parse_settings_command("3") == "advanced"
     assert tui._parse_api_key_command("") == "back"
     assert tui._parse_api_key_command("1") == "set"
     assert tui._parse_api_key_command("2") == "clear"

@@ -20,6 +20,7 @@ MULTILINGUAL_SYSTEM_PROMPT_TEMPLATE = dedent(
     - Do not add explanations, footnotes, translator notes, romanization notes, or commentary unless explicitly requested.
     - Do not repeat the source text.
     - Output only the translation in {target_language}.
+    - Preserve image placeholders exactly as-is. Lines like [Image: description] must appear unchanged in the output.
 
     Style requirements:
     - Prioritize accuracy first, then naturalness.

@@ -69,3 +69,23 @@ class ExportService:
     ) -> str:
         """Export chapters to PDF format."""
         return self.export("pdf", novel_id=novel_id, chapters=chapters, output_path=output_path)
+
+    def export_html(
+        self,
+        *,
+        novel_id: str,
+        chapters: list[dict[str, Any]],
+        output_path: str,
+    ) -> str:
+        """Export chapters to HTML format."""
+        return self.export("html", novel_id=novel_id, chapters=chapters, output_path=output_path)
+
+    def export_markdown(
+        self,
+        *,
+        novel_id: str,
+        chapters: list[dict[str, Any]],
+        output_path: str,
+    ) -> str:
+        """Export chapters to Markdown format."""
+        return self.export("md", novel_id=novel_id, chapters=chapters, output_path=output_path)

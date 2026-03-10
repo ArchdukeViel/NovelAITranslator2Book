@@ -196,6 +196,28 @@ class BackupManager:
                 backup_path.unlink()
             raise
 
+    def _last_backup_timestamp(self, novel_id: str) -> datetime | None:
+        """Return the timestamp of the most recent backup for *novel_id*."""
+        backups = self.list_backups(novel_id)
+        if not backups:
+            return None
+        try:
+            return datetime.fromisoformat(backups[0].timestamp.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _collect_changed_files(source_dir: Path, since: datetime) -> list[Path]:
+        """Return files under *source_dir* whose mtime is newer than *since*."""
+        since_ts = since.timestamp()
+        changed: list[Path] = []
+        for path in source_dir.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.stat().st_mtime > since_ts:
+                changed.append(path)
+        return changed
+
     async def create_incremental_backup(
         self,
         novel_id: str,
@@ -204,27 +226,98 @@ class BackupManager:
         description: Optional[str] = None,
     ) -> BackupInfo:
         """Create an incremental backup (only files modified after last backup).
-        
+
+        If no previous backup exists, falls back to a full backup automatically.
+
         Args:
             novel_id: Novel identifier
             source_dir: Directory containing novel data
-            last_backup_id: Last backup ID to base incremental on
+            last_backup_id: Last backup ID to base incremental on (auto-detected if omitted)
             description: Optional backup description
-            
+
         Returns:
             BackupInfo with backup details
         """
-        # For simplicity, just create a full backup seeded with metadata
+        # Determine the reference timestamp.
+        since: datetime | None = None
+        if last_backup_id:
+            manifest = self._load_manifest()
+            entry = manifest.get(last_backup_id)
+            if entry:
+                try:
+                    since = datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00"))
+                except Exception:
+                    pass
+        if since is None:
+            since = self._last_backup_timestamp(novel_id)
+
+        # No prior backup → fall back to a full backup.
+        if since is None:
+            logger.info("No prior backup found for %s; falling back to full backup.", novel_id)
+            return await self.create_full_backup(
+                novel_id, source_dir, description=description or "Incremental (initial full)"
+            )
+
+        changed = self._collect_changed_files(source_dir, since)
+        if not changed:
+            logger.info("No files changed since last backup for %s.", novel_id)
+            # Return a zero-file info entry without creating an archive.
+            return BackupInfo(
+                backup_id=f"{novel_id}_inc_{_utc_now().strftime('%Y%m%d_%H%M%S')}",
+                timestamp=_utc_now_iso(),
+                novel_id=novel_id,
+                size_bytes=0,
+                compressed=True,
+                files_count=0,
+                description=description or "Incremental backup (no changes)",
+            )
+
         backup_id = f"{novel_id}_inc_{_utc_now().strftime('%Y%m%d_%H%M%S')}"
-        
-        logger.info(f"Creating incremental backup: {backup_id}")
-        
-        # Full backup for now (incremental would require tracking mtime of files)
-        backup_info = await self.create_full_backup(
-            novel_id, source_dir, description=description or "Incremental backup"
-        )
-        
-        return backup_info
+        backup_path = self._get_backup_path(backup_id, compressed=True)
+
+        logger.info("Creating incremental backup %s (%d changed files).", backup_id, len(changed))
+
+        try:
+            with tarfile.open(backup_path, "w:gz") as tar:
+                for file_path in changed:
+                    arcname = str(Path(source_dir.name) / file_path.relative_to(source_dir))
+                    tar.add(file_path, arcname=arcname)
+
+            size_bytes = backup_path.stat().st_size
+            files_count = len(changed)
+
+            backup_info = BackupInfo(
+                backup_id=backup_id,
+                timestamp=_utc_now_iso(),
+                novel_id=novel_id,
+                size_bytes=size_bytes,
+                compressed=True,
+                files_count=files_count,
+                description=description or "Incremental backup",
+            )
+
+            manifest = self._load_manifest()
+            manifest[backup_id] = {
+                "timestamp": backup_info.timestamp,
+                "novel_id": novel_id,
+                "size_bytes": size_bytes,
+                "compressed": True,
+                "files_count": files_count,
+                "description": backup_info.description,
+            }
+            self._save_manifest(manifest)
+
+            logger.info(
+                "Incremental backup created: %s (%d files, %.2f MB).",
+                backup_id, files_count, size_bytes / 1024 / 1024,
+            )
+            return backup_info
+
+        except Exception as e:
+            logger.error("Incremental backup failed: %s", e)
+            if backup_path.exists():
+                backup_path.unlink()
+            raise
 
     async def restore_backup(
         self,

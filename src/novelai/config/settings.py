@@ -40,6 +40,12 @@ class AppSettings(BaseSettings):
     PROVIDER_DEFAULT: str = "dummy"
     PROVIDER_OPENAI_API_KEY: SecretStr | None = None
 
+    # --- Scraping
+    SCRAPE_DELAY_SECONDS: float = Field(
+        default=1.0,
+        description="Minimum delay (seconds) between HTTP requests to source sites.",
+    )
+
     # --- Translation
     TRANSLATION_CONCURRENCY: int = 4
     COST_PER_TOKEN_USD: float = 0.000002
