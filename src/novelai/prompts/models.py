@@ -31,6 +31,11 @@ class TranslationRequest:
                     "target": entry.target,
                     "locked": entry.locked,
                     "notes": entry.notes,
+                    "status": entry.status,
+                    "context_history": list(entry.context_history),
+                    "context_summary": entry.context_summary,
+                    "occurrence_count": entry.occurrence_count,
+                    "last_seen_index": entry.last_seen_index,
                 }
                 for entry in self.glossary_entries
             ],

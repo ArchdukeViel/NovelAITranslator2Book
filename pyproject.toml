@@ -33,6 +33,16 @@ test = [
   "pytest>=9.0.2",
   "pytest-asyncio>=1.3.0",
 ]
+desktop = [
+  "PySide6>=6.8.0",
+  "watchfiles>=1.1.1",
+]
+documents = [
+  "pypdf>=5.4.0",
+]
+build = [
+  "pyinstaller>=6.16.0",
+]
 dev = [
   "openai>=2.26.0",
   "pip-tools>=7.5.3",
@@ -40,6 +50,7 @@ dev = [
   "pytest>=9.0.2",
   "pytest-asyncio>=1.3.0",
   "ruff>=0.15.0",
+  "watchfiles>=1.1.1",
 ]
 
 [project.urls]
@@ -52,6 +63,7 @@ where = ["src"]
 [project.scripts]
 novelaibook = "novelai.app.cli:main"
 novelai = "novelai.__main__:main"
+novelaibook-gui = "novelai.desktop.app:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

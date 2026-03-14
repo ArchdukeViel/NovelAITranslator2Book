@@ -14,6 +14,7 @@ from novelai.app.container import container
 from novelai.config.settings import settings
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.storage_service import StorageService
+from novelai.inputs.registry import available_input_adapters
 from novelai.sources.registry import available_sources, detect_source
 
 router = APIRouter()
@@ -111,6 +112,12 @@ class ExportRequest(BaseModel):
     chapters: str | None = None
 
 
+class ImportRequest(BaseModel):
+    adapter_key: str
+    source: str
+    max_units: int | None = None
+
+
 # ---------------------------------------------------------------------------
 # Sources (must come before /{novel_id} to avoid route collision)
 # ---------------------------------------------------------------------------
@@ -118,6 +125,11 @@ class ExportRequest(BaseModel):
 @router.get("/sources", response_model=list[str])
 async def list_sources(_auth: None = Depends(verify_api_key)) -> list[str]:
     return available_sources()
+
+
+@router.get("/input-adapters", response_model=list[str])
+async def list_input_adapters(_auth: None = Depends(verify_api_key)) -> list[str]:
+    return available_input_adapters()
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +266,35 @@ async def scrape_novel(
     except TimeoutError:
         raise HTTPException(status_code=504, detail="Operation timed out") from None
     return {"novel_id": novel_id, "source_key": source_key, "chapters": len(meta.get("chapters", []))}
+
+
+@router.post("/{novel_id}/import")
+async def import_document(
+    novel_id: str,
+    body: ImportRequest,
+    request: Request,
+    orchestrator: NovelOrchestrationService = Depends(get_orchestrator),
+    _auth: None = Depends(verify_api_key),
+) -> dict[str, Any]:
+    _rate_limit(request, "scrape")
+    try:
+        metadata = await asyncio.wait_for(
+            orchestrator.import_document(
+                body.adapter_key,
+                novel_id,
+                body.source,
+                max_units=body.max_units,
+            ),
+            timeout=settings.WEB_REQUEST_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Operation timed out") from None
+    return {
+        "novel_id": novel_id,
+        "adapter_key": body.adapter_key,
+        "chapters": len(metadata.get("chapters", [])),
+        "document_type": metadata.get("document_type"),
+    }
 
 
 @router.post("/{novel_id}/translate")

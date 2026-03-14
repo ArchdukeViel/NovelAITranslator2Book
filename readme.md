@@ -1,6 +1,6 @@
 ﻿# Novel AI
 
-Web novel scraping, multilingual AI translation, and multi-format export platform with a Rich TUI dashboard.
+Web/document import, multilingual AI translation, and multi-format export platform with a Rich TUI dashboard and desktop GUI entrypoint.
 
 ## Table of Contents
 
@@ -8,6 +8,7 @@ Web novel scraping, multilingual AI translation, and multi-format export platfor
 - [Quick Start](#quick-start)
 - [TUI Menu](#tui-menu)
 - [CLI](#cli)
+- [Glossary Review Workflow](#glossary-review-workflow)
 - [Prompt System](#prompt-system)
   - [Glossary vs Style Preset](#glossary-vs-style-preset)
 - [Cost Estimation](#cost-estimation)
@@ -19,11 +20,18 @@ Web novel scraping, multilingual AI translation, and multi-format export platfor
 
 ## Features
 
+- **Input adapters** for web URLs, `.txt` / `.md`, `.epub`, `.pdf` (optional dependency), image folders, and `.cbz`
 - **Source adapters** for Syosetu (ncode / novel18), Kakuyomu, and a generic heuristic fallback for arbitrary URLs
 - **AI translation** via OpenAI (pluggable provider interface for other LLMs)
+- **Desktop GUI shell** via `novelaibook gui` with workspace tabs for Import, OCR Review, Glossary, Translate, Re-embed, Export, and Activity
 - **Multilingual prompt system** with auto-detected source language, 20 target languages, glossary injection, style presets, and JSON-output mode
 - **Rich TUI dashboard** — add novels, update chapters, inspect your library, and manage settings through a guided menu system
+- **Workflow profiles** for term extraction, term summarization, term translation, body translation, OCR, and re-embedding
 - **CLI commands** — scrape metadata, fetch chapters, translate, and export without the TUI
+- **Glossary extraction** — build pending glossary candidates from recurring imported text before translation
+- **Glossary review workflow** — term statuses (`pending`, `approved`, `ignored`, `translated`) with preflight enforcement before translation
+- **OCR review workflow** — chapter-level OCR candidate ingestion plus review status enforcement before translation when required
+- **Single-chapter retranslate** — force a retranslation for one chapter without rerunning full ranges
 - **Multi-format export** — EPUB (with title page, optional TOC, and inline images), HTML, and Markdown
 - **Export language choice** — export translated text or the original source text
 - **Cost estimation** for budgeting translation runs before sending chapters to an API
@@ -45,6 +53,9 @@ copy .env.example .env        # then edit .env
 
 # 3. Launch the TUI dashboard
 novelaibook tui
+
+# or launch the desktop GUI (install desktop extras first)
+novelaibook gui
 ```
 
 See [docs/guides/GETTING_STARTED.md](docs/guides/GETTING_STARTED.md) for the full walkthrough.
@@ -58,21 +69,68 @@ See [docs/guides/GETTING_STARTED.md](docs/guides/GETTING_STARTED.md) for the ful
 | update | Update Novel | Refresh metadata, raw chapters, and translations for an existing novel |
 | diagnostics | Diagnostics | Inspect usage, cache health, and recent activity |
 | settings | Settings | Provider, model, API key, target language, and scrape delay |
+| glossary | Glossary | Manage terms and review statuses for a novel |
 | exit | Exit | Close the dashboard |
 
 ## CLI
 
 ```bash
 novelaibook tui                                          # interactive dashboard
+novelaibook gui                                          # desktop GUI
+novelaibook import-document text my_novel .\book\        # import text/markdown files
+novelaibook import-document epub my_novel .\book.epub    # import EPUB
 novelaibook scrape-metadata syosetu_ncode n7133es        # download metadata
 novelaibook scrape-chapters syosetu_ncode n7133es 1-3    # fetch raw chapters
 novelaibook translate-chapters syosetu_ncode n7133es 1-3 # translate
+novelaibook translate-chapters syosetu_ncode n7133es 1-3 --force # retranslate range
+novelaibook retranslate-chapter syosetu_ncode n7133es 2   # retranslate one chapter
 novelaibook export-epub n7133es --format epub            # export EPUB
+novelaibook glossary n7133es list                         # show glossary + status
+novelaibook glossary n7133es extract --chapters all       # extract glossary candidates from stored text
+novelaibook glossary n7133es review "魔導具" approved      # set status for a term
+novelaibook glossary n7133es approve-all                  # approve all pending terms
+novelaibook ocr n7133es ingest all                         # build OCR candidates from image manifests
+novelaibook ocr n7133es list-pending                       # list OCR-required chapters pending review
+novelaibook ocr n7133es review 12 --text "corrected text" # mark chapter OCR reviewed
+novelaibook ocr n7133es set-status 12 failed               # set explicit OCR status
 ```
 
 - `--mode full` clears stored data and re-scrapes everything.
 - `--mode update` (default) only downloads new/changed chapters.
+- Translation preflight blocks runs with pending glossary terms until reviewed.
+- Translation preflight also blocks chapters where `ocr_required=true` and OCR status is not `reviewed`.
 - Exports go to `novel_library/novels/<novel>/<format>/` by default; use `--output <dir>` for a custom path.
+
+## Glossary Review Workflow
+
+Glossary terms now carry a review status:
+
+- `pending`: newly added, must be reviewed before translation
+- `approved`: accepted and eligible for translation prompts
+- `ignored`: intentionally excluded from glossary injection
+- `translated`: finalized term mapping
+
+Recommended flow:
+
+1. Add terms (`glossary add`) or use TUI Glossary screen.
+2. Review statuses (`glossary review` / TUI review action).
+3. Run translation after pending terms are resolved.
+
+## OCR Review Workflow
+
+For image-heavy chapters, use OCR candidate ingestion and review:
+
+1. Build OCR candidates from stored chapter image metadata (`ocr ingest`).
+2. Inspect pending chapters (`ocr list-pending`).
+3. Mark reviewed chapters (`ocr review` or `ocr set-status`).
+4. Run translation once OCR-required chapters are reviewed.
+
+In TUI:
+
+1. Open `Glossary` from dashboard.
+2. Use `5) ocr ingest`, `6) ocr list`, and `7) ocr review`.
+
+Diagnostics and Library inspection now include OCR/re-embedding counters for operational visibility.
 
 ## Prompt System
 
@@ -183,7 +241,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\update-lockfiles.ps1
 
 | Area | Status | Notes |
 |------|--------|-------|
-| **Web frontend** | API only | FastAPI backend serves JSON endpoints; no browser UI. Use the TUI or CLI instead. |
+| **Browser frontend** | API only | FastAPI backend serves JSON endpoints; no browser UI yet. Use the desktop GUI, TUI, or CLI instead. |
+| **Desktop GUI deps** | Optional | `PySide6` is not part of the base install; install the `desktop` extra before running `novelaibook gui`. |
 | **PDF export** | Not implemented | `PDFExporter` exists as a placeholder; raises `NotImplementedError`. Needs a PDF library (e.g. reportlab or weasyprint). |
 | **Provider support** | OpenAI only | The provider interface is pluggable, but only the OpenAI adapter is implemented. A `DummyProvider` exists for testing. |
 | **Export formats** | EPUB, HTML, Markdown | PDF and DOCX not yet implemented. |
@@ -200,4 +259,5 @@ powershell -ExecutionPolicy Bypass -File .\scripts\update-lockfiles.ps1
 | [docs/reference/PYTHON_COMMANDS.md](docs/reference/PYTHON_COMMANDS.md) | Developers — CLI and Python API reference |
 | [docs/reference/DATA_OUTPUT_STRUCTURE.md](docs/reference/DATA_OUTPUT_STRUCTURE.md) | Operations — data format and storage layout |
 | [docs/architecture/architecture.md](docs/architecture/architecture.md) | Developers — system design and data flow |
+| [docs/architecture/RELEASE_D_PLAN.md](docs/architecture/RELEASE_D_PLAN.md) | Developers — OCR and re-embedding implementation roadmap |
 | [docs/history/](docs/history/) | Archive — phase completion records |

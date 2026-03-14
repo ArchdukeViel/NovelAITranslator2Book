@@ -99,7 +99,7 @@ The easiest way to get started:
 novelaibook tui
 ```
 
-You'll see a Rich dashboard with 6 actions. See [TUI_GUIDE.md](TUI_GUIDE.md) for the full walkthrough.
+You'll see a Rich dashboard with 7 actions. See [TUI_GUIDE.md](TUI_GUIDE.md) for the full walkthrough.
 
 ---
 
@@ -124,16 +124,58 @@ novelaibook scrape-metadata generic https://example.com/novel/123
 novelaibook scrape-chapters syosetu_ncode n4423lw 1-3
 ```
 
-Chapters stored in: `novel_library/novels/<novel_id>/raw/`
+Chapter bundles (raw + translated + state) stored in: `novel_library/novels/<novel_id>/chapters/<chapter_id>.json`
 
 ### 3. Translate Chapters
 
 ```bash
 # Translate using default provider (OpenAI)
 novelaibook translate-chapters syosetu_ncode n4423lw 1-3
+
+# Force retranslate existing translated chapters
+novelaibook translate-chapters syosetu_ncode n4423lw 1-3 --force
+
+# Force retranslate a single chapter
+novelaibook retranslate-chapter syosetu_ncode n4423lw 2
 ```
 
-Translations stored in: `novel_library/novels/<novel_id>/translated/`
+Translations stored in: `novel_library/novels/<novel_id>/chapters/<chapter_id>.json`
+
+### 3.1 Review Glossary Terms Before Translation
+
+```bash
+# List glossary terms and statuses
+novelaibook glossary n4423lw list
+
+# Add term (new terms default to pending)
+novelaibook glossary n4423lw add "魔導具" "magic device"
+
+# Review one term status
+novelaibook glossary n4423lw review "魔導具" approved
+
+# Approve all pending terms
+novelaibook glossary n4423lw approve-all
+```
+
+Translations now run preflight checks and can block if glossary has pending terms.
+
+### 3.2 OCR Workflow for Image-Heavy Chapters
+
+```bash
+# Build OCR candidates from stored image manifests
+novelaibook ocr n4423lw ingest all
+
+# List OCR-required chapters that are still pending review
+novelaibook ocr n4423lw list-pending
+
+# Mark chapter OCR as reviewed (optionally save corrected OCR text)
+novelaibook ocr n4423lw review 2 --text "Corrected OCR text"
+
+# Set explicit status when needed
+novelaibook ocr n4423lw set-status 2 failed
+```
+
+When `ocr_required=true`, translation preflight blocks until chapter OCR status is `reviewed`.
 
 ### 4. Export
 
@@ -161,18 +203,13 @@ novel_library/
     ├── index.json
     └── <novel_id>/
         ├── metadata.json
-        ├── raw/
-        │   ├── chapter_1.json
-        │   └── chapter_2.json
-        ├── translated/
-        │   ├── chapter_1.json
-        │   └── chapter_2.json
-        ├── epub/
-        │   └── full_novel.epub
-        ├── html/
-        │   └── full_novel.html
-        └── md/
-            └── full_novel.md
+        ├── glossary.json
+        ├── chapters/
+        │   ├── 1.json
+        │   └── 2.json
+        ├── assets/
+        ├── checkpoints/
+        └── full_novel.epub
 ```
 
 See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md) for full details.

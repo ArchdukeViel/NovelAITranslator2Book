@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import SecretStr
 
 from novelai.config.settings import settings
+from novelai.config.workflow_profiles import WORKFLOW_PROFILE_STEPS, normalize_workflow_profiles
 from novelai.utils import atomic_write
 
 logger = logging.getLogger(__name__)
@@ -106,6 +107,31 @@ class PreferencesService:
     def set_language(self, language: str) -> None:
         """Set user's preferred UI language."""
         self.set("language", language)
+
+    def get_workflow_profiles(self) -> dict[str, dict[str, str | None]]:
+        """Return per-step provider/model preferences."""
+        return normalize_workflow_profiles(self.get("workflow_profiles", {}))
+
+    def get_workflow_profile(self, step: str) -> dict[str, str | None]:
+        if step not in WORKFLOW_PROFILE_STEPS:
+            raise ValueError(f"Unsupported workflow profile step: {step}")
+        return self.get_workflow_profiles()[step]
+
+    def set_workflow_profile(
+        self,
+        step: str,
+        *,
+        provider: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        if step not in WORKFLOW_PROFILE_STEPS:
+            raise ValueError(f"Unsupported workflow profile step: {step}")
+        profiles = self.get_workflow_profiles()
+        profiles[step] = {
+            "provider": provider.strip() if isinstance(provider, str) and provider.strip() else None,
+            "model": model.strip() if isinstance(model, str) and model.strip() else None,
+        }
+        self.set("workflow_profiles", profiles)
 
     # ============================================================================
     # Backward-compatible aliases (formerly in SettingsService)

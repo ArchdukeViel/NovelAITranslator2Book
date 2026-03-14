@@ -6,6 +6,13 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from novelai.config.settings import settings
+from novelai.glossary import (
+    GlossaryTerm,
+    extract_term_context,
+    normalize_glossary_entries,
+    rank_glossary_terms_for_text,
+    summarize_term_context,
+)
 from novelai.pipeline.context import PipelineContext
 from novelai.pipeline.stages.base import PipelineStage
 from novelai.prompts import build_translation_request
@@ -78,7 +85,68 @@ class TranslateStage(PipelineStage):
             return source_language_map.get(source_key)
         return None
 
-    def _build_prompt_request(self, context: PipelineContext, chunk: str) -> TranslationRequest | None:
+    @staticmethod
+    def _normalize_runtime_glossary(context: PipelineContext) -> dict[str, GlossaryTerm]:
+        raw_entries = context.metadata.get("glossary")
+        runtime: dict[str, GlossaryTerm] = {}
+        for entry in normalize_glossary_entries(raw_entries):
+            runtime[entry.source] = entry
+        return runtime
+
+    @staticmethod
+    def _select_chunk_glossary(
+        chunk: str,
+        glossary_state: dict[str, GlossaryTerm],
+        *,
+        chunk_index: int,
+        max_entries: int,
+        max_context_chars: int,
+    ) -> list[GlossaryTerm]:
+        return rank_glossary_terms_for_text(
+            chunk,
+            glossary_state.values(),
+            chunk_index=chunk_index,
+            max_entries=max_entries,
+            max_context_chars=max_context_chars,
+        )
+
+    @staticmethod
+    def _observe_chunk_context(
+        chunk: str,
+        glossary_state: dict[str, GlossaryTerm],
+        *,
+        chunk_index: int,
+        max_history: int = 8,
+    ) -> None:
+        for key, term in glossary_state.items():
+            snippet = extract_term_context(chunk, term.source)
+            if snippet is None:
+                continue
+
+            history = list(term.context_history)
+            history.append(snippet)
+            if len(history) > max_history:
+                history = history[-max_history:]
+
+            glossary_state[key] = GlossaryTerm(
+                source=term.source,
+                target=term.target,
+                locked=term.locked,
+                notes=term.notes,
+                status=term.status,
+                context_history=tuple(history),
+                context_summary=summarize_term_context(history),
+                occurrence_count=term.occurrence_count + 1,
+                last_seen_index=chunk_index,
+            ).normalized()
+
+    def _build_prompt_request(
+        self,
+        context: PipelineContext,
+        chunk: str,
+        *,
+        chunk_glossary: list[GlossaryTerm],
+    ) -> TranslationRequest | None:
         source_language = self._infer_source_language(context)
         target_language = context.metadata.get("target_language") or settings.TRANSLATION_TARGET_LANGUAGE
         if not isinstance(source_language, str) or not source_language.strip():
@@ -86,7 +154,6 @@ class TranslateStage(PipelineStage):
         if not isinstance(target_language, str) or not target_language.strip():
             return None
 
-        glossary = context.metadata.get("glossary")
         style_preset = context.metadata.get("style_preset")
         consistency_mode = bool(context.metadata.get("consistency_mode", False))
         json_output = bool(context.metadata.get("json_output", False))
@@ -94,7 +161,7 @@ class TranslateStage(PipelineStage):
             text=chunk,
             source_language=source_language,
             target_language=target_language,
-            glossary_entries=glossary,
+            glossary_entries=chunk_glossary,
             style_preset=style_preset if isinstance(style_preset, str) else None,
             consistency_mode=consistency_mode,
             json_output=json_output,
@@ -145,14 +212,41 @@ class TranslateStage(PipelineStage):
         model = context.provider_model or self._settings.get_provider_model()
         provider_key, model = self._resolve_provider_and_model(provider_key, model)
 
+        glossary_state = self._normalize_runtime_glossary(context)
+        max_glossary_entries = int(context.metadata.get("glossary_max_entries", 12) or 12)
+        max_glossary_context_chars = int(context.metadata.get("glossary_max_context_chars", 1200) or 1200)
+
         logger.info(f"Translating {len(chunks)} chunks with {provider_key}/{model}")
         semaphore = asyncio.Semaphore(self._concurrency)
+        glossary_lock = asyncio.Lock()
 
-        async def worker(chunk: str) -> str:
+        async def worker(chunk_index: int, chunk: str) -> str:
             async with semaphore:
-                request = self._build_prompt_request(context, chunk)
-                return await self._translate_chunk(provider_key, model, chunk, request=request)
+                async with glossary_lock:
+                    selected_glossary = self._select_chunk_glossary(
+                        chunk,
+                        glossary_state,
+                        chunk_index=chunk_index,
+                        max_entries=max_glossary_entries,
+                        max_context_chars=max_glossary_context_chars,
+                    )
+                request = self._build_prompt_request(context, chunk, chunk_glossary=selected_glossary)
+                translated = await self._translate_chunk(provider_key, model, chunk, request=request)
+                async with glossary_lock:
+                    self._observe_chunk_context(chunk, glossary_state, chunk_index=chunk_index)
+                return translated
 
-        context.translations = await asyncio.gather(*[worker(c) for c in chunks])
+        context.translations = await asyncio.gather(*[worker(i, c) for i, c in enumerate(chunks)])
+        context.metadata["glossary_runtime_state"] = [
+            {
+                "source": term.source,
+                "target": term.target,
+                "status": term.status,
+                "context_summary": term.context_summary,
+                "occurrence_count": term.occurrence_count,
+                "last_seen_index": term.last_seen_index,
+            }
+            for term in sorted(glossary_state.values(), key=lambda item: (item.source.casefold(), item.source))
+        ]
         logger.info(f"Translation complete: {len(context.translations)} chunks processed")
         return context

@@ -51,6 +51,8 @@ def format_glossary_block(glossary_entries: Iterable[GlossaryEntryLike] | Glossa
     lines = ["Project glossary:"]
     for entry in entries:
         lines.append(f"- {entry.source} = {entry.target}")
+        if entry.context_summary:
+            lines.append(f"  Context: {entry.context_summary}")
     return "\n".join(lines)
 
 

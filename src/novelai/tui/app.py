@@ -4,7 +4,7 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 from rich import box
 from rich.align import Align
@@ -21,6 +21,7 @@ from novelai.app.bootstrap import bootstrap
 from novelai.app.container import container
 from novelai.config.settings import settings
 from novelai.cost_estimator.models import CostComparison
+from novelai.glossary import glossary_status_counts
 from novelai.providers.registry import available_providers
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
@@ -48,6 +49,16 @@ class LibrarySnapshot(TypedDict):
     stored_chapters: int
     translated_chapters: int
     language: str
+    glossary_total: NotRequired[int]
+    glossary_reviewed: NotRequired[int]
+    glossary_pending: NotRequired[int]
+    ocr_required: NotRequired[int]
+    ocr_reviewed: NotRequired[int]
+    ocr_pending: NotRequired[int]
+    ocr_failed: NotRequired[int]
+    reembed_completed: NotRequired[int]
+    reembed_pending: NotRequired[int]
+    reembed_failed: NotRequired[int]
 
 
 class MenuOption(TypedDict):
@@ -798,6 +809,8 @@ class TUIApp(
         table.add_column("Source", justify="right", style="#73daca", no_wrap=True)
         table.add_column("Stored", justify="right", style="#7dcfff", no_wrap=True)
         table.add_column("Tl", justify="right", style="#f6bd60", no_wrap=True)
+        table.add_column("Glossary", justify="right", style="#e0af68", no_wrap=True)
+        table.add_column("Media", justify="right", style="#bb9af7", no_wrap=True)
 
         for snapshot in snapshots:
             table.add_row(
@@ -806,6 +819,8 @@ class TUIApp(
                 str(snapshot["total_chapters"]),
                 str(self._snapshot_stored_chapters(snapshot)),
                 str(snapshot["translated_chapters"]),
+                self._snapshot_glossary_review_text(snapshot),
+                self._snapshot_media_overview_text(snapshot),
             )
 
         return Panel(
@@ -999,6 +1014,8 @@ class TUIApp(
             raw_chapters = metadata.get("chapters", [])
             total_chapters = len(raw_chapters) if isinstance(raw_chapters, list) else 0
             title = metadata.get("translated_title") or metadata.get("title") or novel_id
+            glossary_counts = glossary_status_counts(self.storage.load_glossary(novel_id))
+            media_counts = self._snapshot_media_counts(novel_id)
             snapshots.append(
                 {
                     "novel_id": novel_id,
@@ -1007,9 +1024,56 @@ class TUIApp(
                     "stored_chapters": self.storage.count_stored_chapters(novel_id),
                     "translated_chapters": self.storage.count_translated_chapters(novel_id),
                     "language": self._detect_novel_language(metadata),
+                    "glossary_total": glossary_counts["total"],
+                    "glossary_reviewed": glossary_counts["reviewed"],
+                    "glossary_pending": glossary_counts["pending"],
+                    "ocr_required": media_counts["ocr_required"],
+                    "ocr_reviewed": media_counts["ocr_reviewed"],
+                    "ocr_pending": media_counts["ocr_pending"],
+                    "ocr_failed": media_counts["ocr_failed"],
+                    "reembed_completed": media_counts["reembed_completed"],
+                    "reembed_pending": media_counts["reembed_pending"],
+                    "reembed_failed": media_counts["reembed_failed"],
                 }
             )
         return snapshots
+
+    def _snapshot_media_counts(self, novel_id: str) -> dict[str, int]:
+        counts = {
+            "ocr_required": 0,
+            "ocr_reviewed": 0,
+            "ocr_pending": 0,
+            "ocr_failed": 0,
+            "reembed_completed": 0,
+            "reembed_pending": 0,
+            "reembed_failed": 0,
+        }
+
+        for chapter_id in self.storage.list_stored_chapters(novel_id):
+            media_state = self.storage.load_chapter_media_state(novel_id, chapter_id)
+            if media_state is None:
+                continue
+
+            if bool(media_state.get("ocr_required", False)):
+                counts["ocr_required"] += 1
+
+            ocr_status = str(media_state.get("ocr_status") or "skipped").strip().lower()
+            if ocr_status == "reviewed":
+                counts["ocr_reviewed"] += 1
+            elif ocr_status == "pending":
+                counts["ocr_pending"] += 1
+            elif ocr_status == "failed":
+                counts["ocr_failed"] += 1
+
+            reembed_status = str(media_state.get("reembed_status") or "skipped").strip().lower()
+            if reembed_status == "completed":
+                counts["reembed_completed"] += 1
+            elif reembed_status == "pending":
+                counts["reembed_pending"] += 1
+            elif reembed_status == "failed":
+                counts["reembed_failed"] += 1
+
+        return counts
 
     def _library_snapshot_added_at(self, metadata: dict[str, Any]) -> float:
         for key in ("scraped_at", "created_at", "added_at", "updated_at"):

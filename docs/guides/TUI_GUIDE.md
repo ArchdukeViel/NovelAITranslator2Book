@@ -28,10 +28,10 @@ When you launch TUI, you land on a Rich dashboard with:
 After the dashboard renders, you choose an action from the prompt:
 
 ```
-Action [list/scrape/update/diagnostics/settings/exit] (list):
+Action [1-7, 0=exit] (1):
 ```
 
-The TUI offers 6 main options. Type the action name directly.
+The TUI offers 7 main options.
 
 ---
 
@@ -57,7 +57,7 @@ The TUI offers 6 main options. Type the action name directly.
 
 ---
 
-## Step-by-Step Guide to All 6 Options
+## Step-by-Step Guide to All 7 Options
 
 ### Option 1: List — Novel Library
 
@@ -171,6 +171,8 @@ Timestamp                  Provider/Model         Tokens
 **Information Shown**:
 - Total novels stored
 - Total translated chapters
+- OCR required/reviewed/pending/failed chapter counters
+- Re-embedding completed/pending/failed counters
 - Cache entries (for cost savings)
 - API requests and tokens
 - Estimated cost in USD
@@ -231,7 +233,37 @@ Command [1=language / 2=delay / 0=back]:
 
 ---
 
-### Option 6: Exit
+### Option 6: Glossary
+
+**Purpose**: Manage glossary terms and review status before translation
+
+**Access**: Type `6` from dashboard prompt
+
+**Flow**:
+
+1. Select a novel
+2. Use glossary commands:
+
+```
+1) add  2) remove  3) clear  4) review status  5) ocr ingest  6) ocr list  7) ocr review  0) back
+```
+
+**Review statuses**:
+- `pending`: newly added; translation preflight blocks while terms remain pending
+- `approved`: reviewed and ready
+- `ignored`: excluded from prompt injection
+- `translated`: finalized glossary mapping
+
+**OCR actions**:
+- `5) ocr ingest`: build OCR candidate text from stored chapter image manifests
+- `6) ocr list`: show chapters with `ocr_required=true` not yet reviewed
+- `7) ocr review`: set chapter OCR status (`pending/reviewed/skipped/failed`) and optional OCR text
+
+Translation preflight blocks OCR-required chapters until OCR status is `reviewed`.
+
+---
+
+### Option 7: Exit
 
 **Purpose**: Close the TUI and return to terminal
 
@@ -309,9 +341,10 @@ Command [1=language / 2=delay / 0=back]:
 | 1 | list | Novel Library | View novels | Default option |
 | 2 | scrape | Add Novel | Download + translate chapters | Choose mode, export after translate |
 | 3 | update | Update Novel | Refresh existing novel | Re-scrape and re-translate |
-| 4 | diagnostics | Diagnostics | Show statistics | Cache, usage, costs |
+| 4 | diagnostics | Diagnostics | Show statistics | Cache, usage, glossary review counters, OCR/re-embed counters |
 | 5 | settings | Settings | Modify settings | Provider, model, language, delay |
-| 6 | exit | Exit | Close TUI | Returns to terminal |
+| 6 | glossary | Glossary | Manage terms and statuses | Includes OCR ingest/list/review actions |
+| 7 | exit | Exit | Close TUI | Returns to terminal |
 
 ---
 

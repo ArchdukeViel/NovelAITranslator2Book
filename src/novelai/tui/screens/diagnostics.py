@@ -12,6 +12,7 @@ from rich.table import Table
 from rich.text import Text
 
 from novelai.config.settings import settings
+from novelai.glossary import glossary_status_counts
 
 
 class DiagnosticsScreenMixin:
@@ -21,6 +22,45 @@ class DiagnosticsScreenMixin:
         novels = self.storage.list_novels()
         total_novels = len(novels)
         total_translated = sum(self.storage.count_translated_chapters(novel_id) for novel_id in novels)
+        glossary_total = 0
+        glossary_reviewed = 0
+        glossary_pending = 0
+        ocr_required = 0
+        ocr_reviewed = 0
+        ocr_pending = 0
+        ocr_failed = 0
+        reembed_completed = 0
+        reembed_pending = 0
+        reembed_failed = 0
+        for novel_id in novels:
+            counts = glossary_status_counts(self.storage.load_glossary(novel_id))
+            glossary_total += counts["total"]
+            glossary_reviewed += counts["reviewed"]
+            glossary_pending += counts["pending"]
+
+            for chapter_id in self.storage.list_stored_chapters(novel_id):
+                media_state = self.storage.load_chapter_media_state(novel_id, chapter_id)
+                if media_state is None:
+                    continue
+
+                if bool(media_state.get("ocr_required", False)):
+                    ocr_required += 1
+
+                ocr_status = str(media_state.get("ocr_status") or "skipped").strip().lower()
+                if ocr_status == "reviewed":
+                    ocr_reviewed += 1
+                elif ocr_status == "pending":
+                    ocr_pending += 1
+                elif ocr_status == "failed":
+                    ocr_failed += 1
+
+                reembed_status = str(media_state.get("reembed_status") or "skipped").strip().lower()
+                if reembed_status == "completed":
+                    reembed_completed += 1
+                elif reembed_status == "pending":
+                    reembed_pending += 1
+                elif reembed_status == "failed":
+                    reembed_failed += 1
 
         cache_path = Path(settings.DATA_DIR) / "translation_cache.json"
         cache_entries = 0
@@ -41,6 +81,16 @@ class DiagnosticsScreenMixin:
         stats.add_row("Usage day", f"{local_day} (local)")
         stats.add_row("Novels stored", str(total_novels))
         stats.add_row("Translated chapters", str(total_translated))
+        stats.add_row("Glossary terms", str(glossary_total))
+        stats.add_row("Glossary reviewed", str(glossary_reviewed))
+        stats.add_row("Glossary pending", str(glossary_pending))
+        stats.add_row("OCR required chapters", str(ocr_required))
+        stats.add_row("OCR reviewed", str(ocr_reviewed))
+        stats.add_row("OCR pending", str(ocr_pending))
+        stats.add_row("OCR failed", str(ocr_failed))
+        stats.add_row("Re-embed completed", str(reembed_completed))
+        stats.add_row("Re-embed pending", str(reembed_pending))
+        stats.add_row("Re-embed failed", str(reembed_failed))
         stats.add_row("Cached translations", str(cache_entries if cache_entries >= 0 else "error"))
         stats.add_row("Today's requests", str(usage_summary.get("total_requests")))
         stats.add_row("Today's tokens", str(usage_summary.get("total_tokens")))

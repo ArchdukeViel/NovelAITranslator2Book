@@ -14,10 +14,15 @@ class PipelineMetadata(TypedDict, total=False):
     source_language: str
     target_language: str
     glossary: Any  # Iterable[GlossaryEntryLike] | Glossary | None
+    glossary_max_entries: int
+    glossary_max_context_chars: int
+    glossary_runtime_state: list[dict[str, Any]]
     style_preset: str
     consistency_mode: bool
     json_output: bool
     _source_adapter: Any  # SourceAdapter instance (internal)
+    _prefetched_text: str
+    _prefetched_images: list[dict[str, Any]]
 
 
 @dataclass

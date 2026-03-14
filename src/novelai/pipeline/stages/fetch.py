@@ -16,6 +16,12 @@ class FetchStage(PipelineStage):
     """
 
     async def run(self, context: PipelineContext) -> PipelineContext:
+        prefetched_text = context.metadata.get("_prefetched_text")
+        if isinstance(prefetched_text, str):
+            logger.info("Using prefetched chapter text for %s", context.chapter_url)
+            context.raw_text = prefetched_text
+            return context
+
         source_adapter = context.metadata.get("_source_adapter")
         if not source_adapter:
             raise PipelineStageError(

@@ -62,6 +62,59 @@ def test_library_snapshot_returns_a_list(tui: TUIApp) -> None:
     assert isinstance(snapshots, list)
 
 
+def test_glossary_panel_lists_ocr_actions(tui: TUIApp) -> None:
+    panel = tui._build_glossary_panel("novel-1", [])
+    tui.console = Console(record=True, width=160)
+    tui.console.print(panel)
+    output = tui.console.export_text()
+
+    assert "ocr ingest" in output
+    assert "ocr list" in output
+    assert "ocr review" in output
+
+
+def test_glossary_ocr_list_pending_sets_status_message(tui: TUIApp) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    tui.storage.save_metadata(novel_id, {"title": "A Better Story", "chapters": [{"id": 1}]})
+    tui.storage.save_chapter(novel_id, "1", "raw")
+    tui.storage.save_chapter_media_state(
+        novel_id,
+        "1",
+        ocr_required=True,
+        ocr_status="pending",
+        ocr_text="candidate",
+    )
+
+    tui._glossary_ocr_list_pending(novel_id)
+
+    assert "OCR pending chapters" in tui.last_status_message
+    assert "1(pending)" in tui.last_status_message
+
+
+def test_glossary_ocr_review_updates_chapter_media_state(
+    tui: TUIApp,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    tui.storage.save_metadata(novel_id, {"title": "A Better Story", "chapters": [{"id": 1}]})
+    tui.storage.save_chapter(novel_id, "1", "raw")
+
+    answers = iter(["1", "reviewed", "Corrected OCR text"])
+
+    monkeypatch.setattr(
+        "novelai.tui.screens.glossary.Prompt.ask",
+        lambda *args, **kwargs: next(answers),
+    )
+
+    tui._glossary_ocr_review(novel_id)
+
+    media_state = tui.storage.load_chapter_media_state(novel_id, "1")
+    assert media_state is not None
+    assert media_state["ocr_required"] is True
+    assert media_state["ocr_status"] == "reviewed"
+    assert media_state["ocr_text"] == "Corrected OCR text"
+
+
 def test_prompt_source_detects_registered_sources() -> None:
     assert available_sources()
 
@@ -319,7 +372,95 @@ def test_library_snapshot_uses_novel_title_and_novel_id_headers(tui: TUIApp, mon
 
     assert "Novel Title" in output
     assert "Novel ID" in output
+    assert "Media" in output
     assert output.index("Novel Title") < output.index("Novel ID")
+
+
+def test_collect_library_snapshot_includes_media_state_counts(tui: TUIApp) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    tui.storage.save_metadata(
+        novel_id,
+        {
+            "title": "Media Story",
+            "source": "syosetu_ncode",
+            "chapters": [{"id": 1}, {"id": 2}],
+        },
+    )
+    tui.storage.save_chapter(novel_id, "1", "raw 1")
+    tui.storage.save_chapter(novel_id, "2", "raw 2")
+    tui.storage.save_chapter_media_state(
+        novel_id,
+        "1",
+        ocr_required=True,
+        ocr_status="reviewed",
+        reembed_status="completed",
+    )
+    tui.storage.save_chapter_media_state(
+        novel_id,
+        "2",
+        ocr_required=True,
+        ocr_status="pending",
+        reembed_status="pending",
+    )
+
+    snapshots = tui._collect_library_snapshot(limit=100)
+    matching = next(snapshot for snapshot in snapshots if snapshot["novel_id"] == novel_id)
+
+    assert matching.get("ocr_required") == 2
+    assert matching.get("ocr_reviewed") == 1
+    assert matching.get("ocr_pending") == 1
+    assert matching.get("ocr_failed") == 0
+    assert matching.get("reembed_completed") == 1
+    assert matching.get("reembed_pending") == 1
+    assert matching.get("reembed_failed") == 0
+
+
+def test_snapshot_progress_text_includes_media_summary_when_available(tui: TUIApp) -> None:
+    snapshot: LibrarySnapshot = {
+        "novel_id": "novel-1",
+        "title": "A Better Story",
+        "total_chapters": 4,
+        "stored_chapters": 3,
+        "translated_chapters": 2,
+        "language": "Japanese",
+        "glossary_total": 2,
+        "glossary_reviewed": 1,
+        "glossary_pending": 1,
+        "ocr_required": 2,
+        "ocr_reviewed": 1,
+        "ocr_pending": 1,
+        "ocr_failed": 0,
+        "reembed_completed": 1,
+        "reembed_pending": 1,
+        "reembed_failed": 0,
+    }
+
+    progress = tui._snapshot_progress_text(snapshot)
+
+    assert "stored 3/4" in progress
+    assert "glossary 1/2 (1 pending)" in progress
+    assert "ocr 1/2" in progress
+    assert "re 1" in progress
+
+
+def test_snapshot_progress_text_omits_media_summary_when_unavailable(tui: TUIApp) -> None:
+    snapshot: LibrarySnapshot = {
+        "novel_id": "novel-1",
+        "title": "A Better Story",
+        "total_chapters": 4,
+        "stored_chapters": 3,
+        "translated_chapters": 2,
+        "language": "Japanese",
+        "glossary_total": 0,
+        "glossary_reviewed": 0,
+        "glossary_pending": 0,
+    }
+
+    progress = tui._snapshot_progress_text(snapshot)
+
+    assert "stored 3/4" in progress
+    assert "glossary 0/0" in progress
+    assert "ocr " not in progress
 
 
 def test_library_frame_keeps_full_guide_rail_visible(tui: TUIApp) -> None:
@@ -402,6 +543,43 @@ def test_diagnostics_screen_uses_guide_rail_and_command_options(tui: TUIApp) -> 
     assert "1) clear usage history" in output
     assert "0) back" in output
     assert "Daily History" in output
+
+
+def test_diagnostics_screen_displays_ocr_and_reembed_counters(tui: TUIApp) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    tui.storage.save_metadata(
+        novel_id,
+        {
+            "title": "A Better Story",
+            "chapters": [{"id": 1}, {"id": 2}],
+        },
+    )
+    tui.storage.save_chapter(novel_id, "1", "raw 1")
+    tui.storage.save_chapter(novel_id, "2", "raw 2")
+    tui.storage.save_chapter_media_state(
+        novel_id,
+        "1",
+        ocr_required=True,
+        ocr_status="reviewed",
+        reembed_status="completed",
+    )
+    tui.storage.save_chapter_media_state(
+        novel_id,
+        "2",
+        ocr_required=True,
+        ocr_status="pending",
+        reembed_status="failed",
+    )
+
+    tui.console = Console(record=True, width=140)
+    tui.console.print(tui._build_diagnostics_screen())
+    output = tui.console.export_text()
+
+    assert "OCR required chapters" in output
+    assert "OCR reviewed" in output
+    assert "OCR pending" in output
+    assert "Re-embed completed" in output
+    assert "Re-embed failed" in output
 
 
 def test_settings_screen_shows_numbered_actions_and_provider_models(tui: TUIApp) -> None:
@@ -762,6 +940,54 @@ def test_collect_library_snapshot_uses_metadata(tui: TUIApp) -> None:
     assert matching["stored_chapters"] == 1
     assert matching["translated_chapters"] == 1
     assert matching["language"] == "Japanese"
+
+
+def test_library_inspection_panel_shows_media_state_summaries(tui: TUIApp) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    metadata = {
+        "title": "A Better Story",
+        "source": "syosetu_ncode",
+        "chapters": [{"id": 1}, {"id": 2}],
+    }
+    tui.storage.save_metadata(novel_id, metadata)
+    tui.storage.save_chapter(novel_id, "1", "raw 1")
+    tui.storage.save_chapter(novel_id, "2", "raw 2")
+    tui.storage.save_translated_chapter(novel_id, "1", "translated 1")
+    tui.storage.save_chapter_media_state(
+        novel_id,
+        "1",
+        ocr_required=True,
+        ocr_status="reviewed",
+        reembed_status="completed",
+    )
+    tui.storage.save_chapter_media_state(
+        novel_id,
+        "2",
+        ocr_required=True,
+        ocr_status="pending",
+        reembed_status="pending",
+    )
+
+    snapshot: LibrarySnapshot = {
+        "novel_id": novel_id,
+        "title": "A Better Story",
+        "total_chapters": 2,
+        "stored_chapters": 2,
+        "translated_chapters": 1,
+        "language": "Japanese",
+    }
+
+    panel = tui._build_library_inspection_panel(snapshot, metadata)
+    tui.console = Console(record=True, width=140)
+    tui.console.print(panel)
+    output = tui.console.export_text()
+
+    assert "OCR readiness" in output
+    assert "required 2" in output
+    assert "reviewed 1" in output
+    assert "pending 1" in output
+    assert "Re-embedding" in output
+    assert "completed 1" in output
 
 
 def test_library_inspection_panel_shows_stored_and_translated_ranges(tui: TUIApp) -> None:

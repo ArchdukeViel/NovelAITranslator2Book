@@ -7,6 +7,9 @@ import pytest
 from novelai.glossary.glossary import (
     Glossary,
     GlossaryTerm,
+    glossary_status_counts,
+    rank_glossary_terms_for_text,
+    summarize_term_context,
     normalize_glossary_entries,
     normalize_glossary_entry,
 )
@@ -34,6 +37,19 @@ class TestGlossaryTerm:
     def test_normalized_keeps_valid_notes(self) -> None:
         term = GlossaryTerm(source="a", target="b", notes=" hint ")
         assert term.normalized().notes == "hint"
+
+    def test_normalized_rejects_invalid_status(self) -> None:
+        with pytest.raises(ValueError, match="status"):
+            GlossaryTerm(source="a", target="b", status="bad").normalized()
+
+    def test_normalized_derives_context_summary_from_history(self) -> None:
+        term = GlossaryTerm(
+            source="hero",
+            target="Hero",
+            context_history=("Brave hero arrives", "Hero protects town"),
+        ).normalized()
+        assert term.context_summary is not None
+        assert "hero" in term.context_summary.casefold()
 
 
 class TestGlossary:
@@ -112,3 +128,57 @@ class TestNormalizeFunctions:
         g.add_term("x", "y")
         result = normalize_glossary_entries(g)
         assert len(result) == 1
+
+
+class TestGlossaryContextRanking:
+    def test_summarize_term_context_deduplicates_and_limits(self) -> None:
+        summary = summarize_term_context(
+            [
+                "The hero enters the city",
+                "The hero enters the city",
+                "The hero saves the village",
+                "The hero meets the king",
+            ],
+            max_items=2,
+        )
+        assert summary == "The hero enters the city | The hero saves the village"
+
+    def test_rank_glossary_terms_prefers_direct_mentions(self) -> None:
+        terms = [
+            GlossaryTerm(source="hero", target="Hero", status="approved"),
+            GlossaryTerm(source="village chief", target="Village Chief", status="approved"),
+            GlossaryTerm(source="artifact", target="Artifact", status="pending"),
+        ]
+        ranked = rank_glossary_terms_for_text(
+            "The hero bowed before the village chief.",
+            terms,
+            chunk_index=3,
+            max_entries=2,
+        )
+        assert [term.source for term in ranked] == ["hero", "village chief"]
+
+    def test_rank_glossary_terms_excludes_ignored_terms(self) -> None:
+        terms = [
+            GlossaryTerm(source="hero", target="Hero", status="ignored"),
+            GlossaryTerm(source="mage", target="Mage", status="approved"),
+        ]
+        ranked = rank_glossary_terms_for_text("The hero and mage arrived.", terms)
+        assert [term.source for term in ranked] == ["mage"]
+
+
+class TestGlossaryStatusCounts:
+    def test_glossary_status_counts_tracks_reviewed_and_pending(self) -> None:
+        counts = glossary_status_counts(
+            [
+                {"source": "a", "target": "A", "status": "pending"},
+                {"source": "b", "target": "B", "status": "approved"},
+                {"source": "c", "target": "C", "status": "ignored"},
+                {"source": "d", "target": "D", "status": "translated"},
+            ]
+        )
+        assert counts["total"] == 4
+        assert counts["pending"] == 1
+        assert counts["approved"] == 1
+        assert counts["ignored"] == 1
+        assert counts["translated"] == 1
+        assert counts["reviewed"] == 3

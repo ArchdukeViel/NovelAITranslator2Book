@@ -132,6 +132,126 @@ def test_chapter_storage_uses_single_merged_file(storage):
     assert payload["translated"]["text"] == "translated text"
 
 
+def test_chapter_storage_media_fields_default_for_existing_chapters(storage):
+    storage.save_chapter("novel1", "ch-media-default", "raw text", title="Chapter 1")
+
+    chapter_path = storage.base_dir / "novels" / "novel1" / "chapters" / "ch-media-default.json"
+    payload = json.loads(chapter_path.read_text(encoding="utf-8"))
+
+    assert payload["ocr_required"] is False
+    assert payload["ocr_text"] is None
+    assert payload["ocr_status"] == "skipped"
+    assert payload["reembed_status"] == "skipped"
+
+    loaded = storage.load_chapter("novel1", "ch-media-default")
+    assert loaded is not None
+    assert loaded["ocr_required"] is False
+    assert loaded["ocr_text"] is None
+    assert loaded["ocr_status"] == "skipped"
+    assert loaded["reembed_status"] == "skipped"
+
+
+def test_load_legacy_chapter_bundle_adds_media_defaults(storage):
+    chapter_dir = storage.base_dir / "novels" / "novel1" / "chapters"
+    chapter_dir.mkdir(parents=True, exist_ok=True)
+    chapter_path = chapter_dir / "legacy.json"
+    chapter_path.write_text(
+        json.dumps(
+            {
+                "id": "legacy",
+                "title": "Legacy Chapter",
+                "raw": {"text": "legacy raw", "scraped_at": "2024-01-01T00:00:00Z"},
+                "translated": {"text": "legacy translated", "translated_at": "2024-01-01T00:01:00Z"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    raw = storage.load_chapter("novel1", "legacy")
+    translated = storage.load_translated_chapter("novel1", "legacy")
+
+    assert raw is not None
+    assert raw["ocr_required"] is False
+    assert raw["ocr_text"] is None
+    assert raw["ocr_status"] == "skipped"
+    assert raw["reembed_status"] == "skipped"
+
+    assert translated is not None
+    assert translated["ocr_required"] is False
+    assert translated["ocr_text"] is None
+    assert translated["ocr_status"] == "skipped"
+    assert translated["reembed_status"] == "skipped"
+
+
+def test_save_translated_chapter_preserves_media_fields(storage):
+    chapter_dir = storage.base_dir / "novels" / "novel1" / "chapters"
+    chapter_dir.mkdir(parents=True, exist_ok=True)
+    chapter_path = chapter_dir / "ch-media-roundtrip.json"
+    chapter_path.write_text(
+        json.dumps(
+            {
+                "id": "ch-media-roundtrip",
+                "raw": {"text": "raw", "scraped_at": "2024-01-01T00:00:00Z"},
+                "ocr_required": True,
+                "ocr_text": "OCR corrected text",
+                "ocr_status": "reviewed",
+                "reembed_status": "pending",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    storage.save_translated_chapter(
+        "novel1",
+        "ch-media-roundtrip",
+        "translated",
+        provider="openai",
+        model="gpt-5.4",
+    )
+
+    payload = json.loads(chapter_path.read_text(encoding="utf-8"))
+    assert payload["ocr_required"] is True
+    assert payload["ocr_text"] == "OCR corrected text"
+    assert payload["ocr_status"] == "reviewed"
+    assert payload["reembed_status"] == "pending"
+
+
+def test_save_and_load_chapter_media_state_helpers(storage):
+    storage.save_chapter("novel1", "ch-media-helper", "raw text", title="Chapter 1")
+
+    storage.save_chapter_media_state(
+        "novel1",
+        "ch-media-helper",
+        ocr_required=True,
+        ocr_text="Extracted OCR",
+        ocr_status="reviewed",
+        reembed_status="pending",
+    )
+
+    media = storage.load_chapter_media_state("novel1", "ch-media-helper")
+    assert media is not None
+    assert media["ocr_required"] is True
+    assert media["ocr_text"] == "Extracted OCR"
+    assert media["ocr_status"] == "reviewed"
+    assert media["reembed_status"] == "pending"
+
+
+def test_save_chapter_media_state_normalizes_invalid_status_values(storage):
+    storage.save_chapter_media_state(
+        "novel1",
+        "ch-media-invalid",
+        ocr_required=True,
+        ocr_status="unknown",
+        reembed_status="invalid",
+    )
+
+    media = storage.load_chapter_media_state("novel1", "ch-media-invalid")
+    assert media is not None
+    assert media["ocr_required"] is True
+    assert media["ocr_status"] == "pending"
+    assert media["reembed_status"] == "skipped"
+
+
 def test_chapter_state_transitions(storage):
     """Test chapter state tracking."""
     # Create state

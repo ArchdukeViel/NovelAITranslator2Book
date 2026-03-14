@@ -87,6 +87,21 @@ def test_format_glossary_block_is_deterministic_and_last_duplicate_wins() -> Non
     assert block == "Project glossary:\n- alpha = A2\n- beta = B"
 
 
+def test_format_glossary_block_includes_context_summary_when_available() -> None:
+    block = format_glossary_block(
+        [
+            {
+                "source": "魔導具",
+                "target": "magic device",
+                "context_summary": "Used by artificers in dungeon raids",
+            }
+        ]
+    )
+
+    assert "- 魔導具 = magic device" in block
+    assert "Context: Used by artificers in dungeon raids" in block
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [

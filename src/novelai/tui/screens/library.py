@@ -371,6 +371,7 @@ class LibraryScreenMixin:
             table.add_column("Source", justify="right", style="#73daca", no_wrap=True)
             table.add_column("Stored", justify="right", style="#7dcfff", no_wrap=True)
             table.add_column("Translated", justify="right", style="#f6bd60", no_wrap=True)
+            table.add_column("Glossary", justify="right", style="#e0af68", no_wrap=True)
 
             for snapshot in group["snapshots"]:
                 table.add_row(
@@ -380,6 +381,7 @@ class LibraryScreenMixin:
                     str(snapshot["total_chapters"]),
                     str(self._snapshot_stored_chapters(snapshot)),
                     str(snapshot["translated_chapters"]),
+                    self._snapshot_glossary_review_text(snapshot),
                 )
                 row_number += 1
 
@@ -561,9 +563,62 @@ class LibraryScreenMixin:
         stored = self._snapshot_stored_chapters(snapshot)
         total = snapshot["total_chapters"]
         translated = snapshot["translated_chapters"]
+        glossary = self._snapshot_glossary_review_text(snapshot)
+        media = self._snapshot_media_overview_text(snapshot)
         if total > 0:
-            return f"stored {stored}/{total} · tl {translated}"
-        return f"stored {stored} · tl {translated}"
+            progress = f"stored {stored}/{total} · tl {translated} · glossary {glossary}"
+        else:
+            progress = f"stored {stored} · tl {translated} · glossary {glossary}"
+
+        if media != "-":
+            progress += f" · {media}"
+        return progress
+
+    def _snapshot_glossary_review_text(self, snapshot: LibrarySnapshot) -> str:
+        reviewed = snapshot.get("glossary_reviewed")
+        total = snapshot.get("glossary_total")
+        pending = snapshot.get("glossary_pending")
+        reviewed_count = reviewed if isinstance(reviewed, int) else 0
+        total_count = total if isinstance(total, int) else 0
+        pending_count = pending if isinstance(pending, int) else max(total_count - reviewed_count, 0)
+        if total_count <= 0:
+            return "0/0"
+        if pending_count > 0:
+            return f"{reviewed_count}/{total_count} ({pending_count} pending)"
+        return f"{reviewed_count}/{total_count}"
+
+    def _snapshot_media_overview_text(self, snapshot: LibrarySnapshot) -> str:
+        ocr_required = snapshot.get("ocr_required")
+        ocr_reviewed = snapshot.get("ocr_reviewed")
+        ocr_pending = snapshot.get("ocr_pending")
+        ocr_failed = snapshot.get("ocr_failed")
+        reembed_completed = snapshot.get("reembed_completed")
+        reembed_pending = snapshot.get("reembed_pending")
+        reembed_failed = snapshot.get("reembed_failed")
+
+        required_count = ocr_required if isinstance(ocr_required, int) else 0
+        reviewed_count = ocr_reviewed if isinstance(ocr_reviewed, int) else 0
+        pending_count = ocr_pending if isinstance(ocr_pending, int) else 0
+        failed_count = ocr_failed if isinstance(ocr_failed, int) else 0
+        completed_count = reembed_completed if isinstance(reembed_completed, int) else 0
+        reembed_pending_count = reembed_pending if isinstance(reembed_pending, int) else 0
+        reembed_failed_count = reembed_failed if isinstance(reembed_failed, int) else 0
+
+        if (
+            required_count == 0
+            and reviewed_count == 0
+            and pending_count == 0
+            and failed_count == 0
+            and completed_count == 0
+            and reembed_pending_count == 0
+            and reembed_failed_count == 0
+        ):
+            return "-"
+
+        return (
+            f"ocr {reviewed_count}/{required_count} (p{pending_count}, f{failed_count}) · "
+            f"re {completed_count} (p{reembed_pending_count}, f{reembed_failed_count})"
+        )
 
     def _format_chapter_inventory(self, numbers: list[int], *, empty_label: str = "none") -> str:
         if not numbers:
@@ -647,6 +702,7 @@ class LibraryScreenMixin:
         translated_numbers = self._translated_chapter_numbers(snapshot["novel_id"], metadata)
         missing_numbers = sorted(set(source_numbers) - set(stored_numbers))
         untranslated_numbers = sorted(set(stored_numbers) - set(translated_numbers))
+        media_counts = self._collect_media_state_counts(snapshot["novel_id"])
 
         details = Table.grid(expand=True, padding=(0, 2))
         details.add_column(style="#9aa5ce", no_wrap=True)
@@ -657,6 +713,9 @@ class LibraryScreenMixin:
         details.add_row("Source chapters", self._format_chapter_inventory(source_numbers, empty_label="unknown"))
         details.add_row("Stored locally", self._format_chapter_inventory(stored_numbers))
         details.add_row("Translated", self._format_chapter_inventory(translated_numbers))
+        details.add_row("Glossary review", self._snapshot_glossary_review_text(snapshot))
+        details.add_row("OCR readiness", self._format_ocr_readiness_summary(media_counts))
+        details.add_row("Re-embedding", self._format_reembed_summary(media_counts))
         details.add_row("Missing locally", self._format_chapter_inventory(missing_numbers))
         details.add_row("Stored untranslated", self._format_chapter_inventory(untranslated_numbers))
 
@@ -674,6 +733,60 @@ class LibraryScreenMixin:
             border_style="#7aa2f7",
             box=box.ROUNDED,
             expand=True,
+        )
+
+    def _collect_media_state_counts(self, novel_id: str) -> dict[str, int]:
+        counts = {
+            "ocr_required": 0,
+            "ocr_reviewed": 0,
+            "ocr_pending": 0,
+            "ocr_failed": 0,
+            "reembed_completed": 0,
+            "reembed_pending": 0,
+            "reembed_failed": 0,
+        }
+
+        for chapter_id in self.storage.list_stored_chapters(novel_id):
+            media_state = self.storage.load_chapter_media_state(novel_id, chapter_id)
+            if media_state is None:
+                continue
+
+            if bool(media_state.get("ocr_required", False)):
+                counts["ocr_required"] += 1
+
+            ocr_status = str(media_state.get("ocr_status") or "skipped").strip().lower()
+            if ocr_status == "reviewed":
+                counts["ocr_reviewed"] += 1
+            elif ocr_status == "pending":
+                counts["ocr_pending"] += 1
+            elif ocr_status == "failed":
+                counts["ocr_failed"] += 1
+
+            reembed_status = str(media_state.get("reembed_status") or "skipped").strip().lower()
+            if reembed_status == "completed":
+                counts["reembed_completed"] += 1
+            elif reembed_status == "pending":
+                counts["reembed_pending"] += 1
+            elif reembed_status == "failed":
+                counts["reembed_failed"] += 1
+
+        return counts
+
+    @staticmethod
+    def _format_ocr_readiness_summary(counts: dict[str, int]) -> str:
+        return (
+            f"required {counts['ocr_required']} | "
+            f"reviewed {counts['ocr_reviewed']} | "
+            f"pending {counts['ocr_pending']} | "
+            f"failed {counts['ocr_failed']}"
+        )
+
+    @staticmethod
+    def _format_reembed_summary(counts: dict[str, int]) -> str:
+        return (
+            f"completed {counts['reembed_completed']} | "
+            f"pending {counts['reembed_pending']} | "
+            f"failed {counts['reembed_failed']}"
         )
 
     def _inspect_library_novel(

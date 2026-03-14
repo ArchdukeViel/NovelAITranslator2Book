@@ -11,11 +11,13 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from novelai.config.settings import settings
+from novelai.config.workflow_profiles import normalize_workflow_profiles
 from novelai.core.chapter_state import ChapterState, ChapterStateTransition
 from novelai.services.query_builder import ChapterQueryBuilder
 from novelai.utils import atomic_write
 
 logger = logging.getLogger(__name__)
+_UNSET = object()
 
 
 class CheckpointInfo(TypedDict):
@@ -51,7 +53,9 @@ class StorageService:
 
     INDEX_FILENAME = "index.json"
     CHAPTERS_DIRNAME = "chapters"
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
+    OCR_STATUSES = {"pending", "reviewed", "skipped", "failed"}
+    REEMBED_STATUSES = {"pending", "completed", "failed", "skipped"}
 
     @staticmethod
     def _sanitize_folder_name(name: str) -> str:
@@ -255,6 +259,23 @@ class StorageService:
         normalized.sort(key=lambda item: int(item.get("index", 0)))
         return normalized
 
+    @staticmethod
+    def _normalize_named_dict_items(value: Any) -> list[dict[str, Any]]:
+        if not isinstance(value, list):
+            return []
+        normalized: list[dict[str, Any]] = []
+        for item in value:
+            if isinstance(item, dict):
+                normalized.append(dict(item))
+        return normalized
+
+    @staticmethod
+    def _normalize_optional_int(value: Any) -> int | None:
+        try:
+            return int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
     def _load_legacy_raw_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
         json_path = self._novel_dir(novel_id) / "raw" / f"{chapter_id}.json"
         txt_path = self._novel_dir(novel_id) / "raw" / f"{chapter_id}.txt"
@@ -296,7 +317,7 @@ class StorageService:
             try:
                 data = json.loads(chapter_path.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
-                    return data
+                    return self._normalize_media_fields(data)
             except (json.JSONDecodeError, OSError):
                 logger.warning("Failed to parse chapter bundle %s/%s.", novel_id, chapter_id)
                 return None
@@ -322,9 +343,60 @@ class StorageService:
                 "translated_at": translated.get("translated_at"),
                 "text": translated.get("text"),
             }
-        return bundle
+        return self._normalize_media_fields(bundle)
+
+    def _normalize_media_fields(self, payload: dict[str, Any]) -> dict[str, Any]:
+        ocr_required = bool(payload.get("ocr_required", False))
+
+        ocr_status = payload.get("ocr_status")
+        if ocr_status not in self.OCR_STATUSES:
+            ocr_status = "pending" if ocr_required else "skipped"
+
+        reembed_status = payload.get("reembed_status")
+        if reembed_status not in self.REEMBED_STATUSES:
+            reembed_status = "skipped"
+
+        payload["ocr_required"] = ocr_required
+        payload["ocr_text"] = payload.get("ocr_text") if isinstance(payload.get("ocr_text"), str) else None
+        payload["ocr_status"] = ocr_status
+        payload["reembed_status"] = reembed_status
+        payload["input_adapter_key"] = (
+            payload.get("input_adapter_key").strip()
+            if isinstance(payload.get("input_adapter_key"), str) and payload.get("input_adapter_key").strip()
+            else None
+        )
+        payload["origin_type"] = (
+            payload.get("origin_type").strip()
+            if isinstance(payload.get("origin_type"), str) and payload.get("origin_type").strip()
+            else "web"
+        )
+        payload["origin_uri_or_path"] = (
+            payload.get("origin_uri_or_path").strip()
+            if isinstance(payload.get("origin_uri_or_path"), str) and payload.get("origin_uri_or_path").strip()
+            else None
+        )
+        payload["document_type"] = (
+            payload.get("document_type").strip()
+            if isinstance(payload.get("document_type"), str) and payload.get("document_type").strip()
+            else "web_novel"
+        )
+        payload["unit_type"] = (
+            payload.get("unit_type").strip()
+            if isinstance(payload.get("unit_type"), str) and payload.get("unit_type").strip()
+            else "chapter"
+        )
+        payload["import_order"] = self._normalize_optional_int(payload.get("import_order"))
+        payload["context_group_id"] = (
+            payload.get("context_group_id").strip()
+            if isinstance(payload.get("context_group_id"), str) and payload.get("context_group_id").strip()
+            else None
+        )
+        payload["region_metadata"] = self._normalize_named_dict_items(payload.get("region_metadata"))
+        payload["ocr_artifacts"] = self._normalize_named_dict_items(payload.get("ocr_artifacts"))
+        return payload
 
     def _persist_chapter_bundle(self, novel_id: str, chapter_id: str, payload: dict[str, Any]) -> Path:
+        self._normalize_media_fields(payload)
         payload["schema_version"] = self.SCHEMA_VERSION
         path = self._chapter_path(novel_id, chapter_id)
         atomic_write(path, json.dumps(payload, ensure_ascii=False, indent=2))
@@ -362,12 +434,39 @@ class StorageService:
         source_key: str | None = None,
         source_url: str | None = None,
         images: list[dict[str, Any]] | None = None,
+        input_adapter_key: str | None = None,
+        origin_type: str | None = None,
+        origin_uri_or_path: str | None = None,
+        document_type: str | None = None,
+        unit_type: str | None = None,
+        import_order: int | None = None,
+        context_group_id: str | None = None,
+        region_metadata: list[dict[str, Any]] | None = None,
+        ocr_artifacts: list[dict[str, Any]] | None = None,
     ) -> Path:
         """Save a raw / scraped chapter as structured JSON."""
         payload = self._load_chapter_bundle(novel_id, chapter_id) or {"id": chapter_id}
         payload["title"] = title if title is not None else payload.get("title")
         payload["source_key"] = source_key if source_key is not None else payload.get("source_key")
         payload["source_url"] = source_url if source_url is not None else payload.get("source_url")
+        if input_adapter_key is not None:
+            payload["input_adapter_key"] = input_adapter_key
+        if origin_type is not None:
+            payload["origin_type"] = origin_type
+        if origin_uri_or_path is not None:
+            payload["origin_uri_or_path"] = origin_uri_or_path
+        if document_type is not None:
+            payload["document_type"] = document_type
+        if unit_type is not None:
+            payload["unit_type"] = unit_type
+        if import_order is not None:
+            payload["import_order"] = int(import_order)
+        if context_group_id is not None:
+            payload["context_group_id"] = context_group_id
+        if region_metadata is not None:
+            payload["region_metadata"] = self._normalize_named_dict_items(region_metadata)
+        if ocr_artifacts is not None:
+            payload["ocr_artifacts"] = self._normalize_named_dict_items(ocr_artifacts)
         existing_raw = payload.get("raw") if isinstance(payload.get("raw"), dict) else {}
         payload["raw"] = {
             "id": chapter_id,
@@ -399,9 +498,22 @@ class StorageService:
             "title": payload.get("title"),
             "source_key": payload.get("source_key"),
             "source_url": payload.get("source_url"),
+            "input_adapter_key": payload.get("input_adapter_key"),
+            "origin_type": payload.get("origin_type"),
+            "origin_uri_or_path": payload.get("origin_uri_or_path"),
+            "document_type": payload.get("document_type"),
+            "unit_type": payload.get("unit_type"),
+            "import_order": payload.get("import_order"),
+            "context_group_id": payload.get("context_group_id"),
+            "region_metadata": self._normalize_named_dict_items(payload.get("region_metadata")),
+            "ocr_artifacts": self._normalize_named_dict_items(payload.get("ocr_artifacts")),
             "scraped_at": raw.get("scraped_at"),
             "text": raw.get("text"),
             "images": self._normalize_image_manifest(raw.get("images") if isinstance(raw, dict) else None),
+            "ocr_required": payload.get("ocr_required", False),
+            "ocr_text": payload.get("ocr_text"),
+            "ocr_status": payload.get("ocr_status", "skipped"),
+            "reembed_status": payload.get("reembed_status", "skipped"),
         }
 
     def save_translated_chapter(
@@ -443,7 +555,67 @@ class StorageService:
             "model": translated.get("model"),
             "translated_at": translated.get("translated_at"),
             "text": translated.get("text"),
+            "input_adapter_key": payload.get("input_adapter_key"),
+            "origin_type": payload.get("origin_type"),
+            "origin_uri_or_path": payload.get("origin_uri_or_path"),
+            "document_type": payload.get("document_type"),
+            "unit_type": payload.get("unit_type"),
+            "import_order": payload.get("import_order"),
+            "context_group_id": payload.get("context_group_id"),
+            "region_metadata": self._normalize_named_dict_items(payload.get("region_metadata")),
+            "ocr_artifacts": self._normalize_named_dict_items(payload.get("ocr_artifacts")),
+            "ocr_required": payload.get("ocr_required", False),
+            "ocr_text": payload.get("ocr_text"),
+            "ocr_status": payload.get("ocr_status", "skipped"),
+            "reembed_status": payload.get("reembed_status", "skipped"),
         }
+
+    def load_chapter_media_state(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
+        """Load OCR and re-embedding fields for a chapter bundle."""
+        payload = self._load_chapter_bundle(novel_id, chapter_id)
+        if payload is None:
+            return None
+
+        return {
+            "id": chapter_id,
+            "input_adapter_key": payload.get("input_adapter_key"),
+            "origin_type": payload.get("origin_type"),
+            "origin_uri_or_path": payload.get("origin_uri_or_path"),
+            "document_type": payload.get("document_type"),
+            "unit_type": payload.get("unit_type"),
+            "import_order": payload.get("import_order"),
+            "context_group_id": payload.get("context_group_id"),
+            "region_metadata": self._normalize_named_dict_items(payload.get("region_metadata")),
+            "ocr_artifacts": self._normalize_named_dict_items(payload.get("ocr_artifacts")),
+            "ocr_required": payload.get("ocr_required", False),
+            "ocr_text": payload.get("ocr_text"),
+            "ocr_status": payload.get("ocr_status", "skipped"),
+            "reembed_status": payload.get("reembed_status", "skipped"),
+        }
+
+    def save_chapter_media_state(
+        self,
+        novel_id: str,
+        chapter_id: str,
+        *,
+        ocr_required: bool | object = _UNSET,
+        ocr_text: str | None | object = _UNSET,
+        ocr_status: str | object = _UNSET,
+        reembed_status: str | object = _UNSET,
+    ) -> Path:
+        """Update OCR and re-embedding fields while preserving chapter content blocks."""
+        payload = self._load_chapter_bundle(novel_id, chapter_id) or {"id": chapter_id}
+
+        if ocr_required is not _UNSET:
+            payload["ocr_required"] = bool(ocr_required)
+        if ocr_text is not _UNSET:
+            payload["ocr_text"] = ocr_text
+        if ocr_status is not _UNSET:
+            payload["ocr_status"] = ocr_status
+        if reembed_status is not _UNSET:
+            payload["reembed_status"] = reembed_status
+
+        return self._persist_chapter_bundle(novel_id, chapter_id, payload)
 
     def save_metadata(self, novel_id: str, data: dict[str, Any]) -> Path:
         """Save novel metadata (chapter list, title, etc.) as JSON."""
@@ -455,6 +627,32 @@ class StorageService:
         merged["schema_version"] = self.SCHEMA_VERSION
         merged["scraped_at"] = existing.get("scraped_at") or merged.get("scraped_at") or _utc_now_iso()
         merged["updated_at"] = _utc_now_iso()
+        merged["origin_type"] = (
+            merged.get("origin_type").strip()
+            if isinstance(merged.get("origin_type"), str) and merged.get("origin_type").strip()
+            else ("url" if isinstance(merged.get("source_url"), str) and merged.get("source_url") else "library")
+        )
+        merged["origin_uri_or_path"] = (
+            merged.get("origin_uri_or_path").strip()
+            if isinstance(merged.get("origin_uri_or_path"), str) and merged.get("origin_uri_or_path").strip()
+            else (merged.get("source_url") if isinstance(merged.get("source_url"), str) else None)
+        )
+        merged["document_type"] = (
+            merged.get("document_type").strip()
+            if isinstance(merged.get("document_type"), str) and merged.get("document_type").strip()
+            else "web_novel"
+        )
+        merged["input_adapter_key"] = (
+            merged.get("input_adapter_key").strip()
+            if isinstance(merged.get("input_adapter_key"), str) and merged.get("input_adapter_key").strip()
+            else None
+        )
+        merged["context_group_id"] = (
+            merged.get("context_group_id").strip()
+            if isinstance(merged.get("context_group_id"), str) and merged.get("context_group_id").strip()
+            else novel_id
+        )
+        merged["translation_profiles"] = normalize_workflow_profiles(merged.get("translation_profiles", existing.get("translation_profiles")))
 
         titles = existing.get("titles", {}) if isinstance(existing.get("titles"), dict) else {}
         if isinstance(merged.get("title"), str) and merged.get("title"):
@@ -486,7 +684,36 @@ class StorageService:
             return None
         content = path.read_text(encoding="utf-8")
         try:
-            return json.loads(content)
+            payload = json.loads(content)
+            if not isinstance(payload, dict):
+                return None
+            payload["translation_profiles"] = normalize_workflow_profiles(payload.get("translation_profiles"))
+            payload["origin_type"] = (
+                payload.get("origin_type").strip()
+                if isinstance(payload.get("origin_type"), str) and payload.get("origin_type").strip()
+                else ("url" if isinstance(payload.get("source_url"), str) and payload.get("source_url") else "library")
+            )
+            payload["origin_uri_or_path"] = (
+                payload.get("origin_uri_or_path").strip()
+                if isinstance(payload.get("origin_uri_or_path"), str) and payload.get("origin_uri_or_path").strip()
+                else None
+            )
+            payload["document_type"] = (
+                payload.get("document_type").strip()
+                if isinstance(payload.get("document_type"), str) and payload.get("document_type").strip()
+                else "web_novel"
+            )
+            payload["input_adapter_key"] = (
+                payload.get("input_adapter_key").strip()
+                if isinstance(payload.get("input_adapter_key"), str) and payload.get("input_adapter_key").strip()
+                else None
+            )
+            payload["context_group_id"] = (
+                payload.get("context_group_id").strip()
+                if isinstance(payload.get("context_group_id"), str) and payload.get("context_group_id").strip()
+                else novel_id
+            )
+            return payload
         except (json.JSONDecodeError, OSError):
             logger.warning("Corrupted metadata for novel %s.", novel_id)
             return None
@@ -596,11 +823,39 @@ class StorageService:
         # Serialize ChapterMetadata to JSON-safe format
         transitions = []
         for transition in state_data.get("transitions", []):
+            if isinstance(transition, ChapterStateTransition):
+                from_state = transition.from_state.value if transition.from_state else None
+                to_state = transition.to_state.value if transition.to_state else None
+                timestamp = (
+                    transition.timestamp.isoformat()
+                    if isinstance(transition.timestamp, datetime)
+                    else transition.timestamp
+                )
+                error = transition.error
+            elif isinstance(transition, dict):
+                from_state_raw = transition.get("from_state")
+                to_state_raw = transition.get("to_state")
+                if isinstance(from_state_raw, ChapterState):
+                    from_state = from_state_raw.value
+                else:
+                    from_state = from_state_raw if isinstance(from_state_raw, str) else None
+
+                if isinstance(to_state_raw, ChapterState):
+                    to_state = to_state_raw.value
+                else:
+                    to_state = to_state_raw if isinstance(to_state_raw, str) else None
+
+                timestamp_raw = transition.get("timestamp")
+                timestamp = timestamp_raw.isoformat() if isinstance(timestamp_raw, datetime) else timestamp_raw
+                error = transition.get("error")
+            else:
+                continue
+
             transitions.append({
-                "from_state": transition.from_state.value if transition.from_state else None,
-                "to_state": transition.to_state.value if transition.to_state else None,
-                "timestamp": transition.timestamp.isoformat() if isinstance(transition.timestamp, datetime) else transition.timestamp,
-                "error": transition.error,
+                "from_state": from_state,
+                "to_state": to_state,
+                "timestamp": timestamp,
+                "error": error,
             })
 
         payload = {
@@ -615,6 +870,69 @@ class StorageService:
         path = state_dir / f"{chapter_id}.json"
         atomic_write(path, json.dumps(payload, ensure_ascii=False, indent=2))
         return path
+
+    @staticmethod
+    def _serialize_checkpoint_state(state_data: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Convert chapter state payload to JSON-safe data for checkpoints."""
+        if not isinstance(state_data, dict):
+            return None
+
+        current_state_raw = state_data.get("current_state")
+        if isinstance(current_state_raw, ChapterState):
+            current_state = current_state_raw.value
+        else:
+            current_state = current_state_raw if isinstance(current_state_raw, str) else ChapterState.SCRAPED.value
+
+        transitions: list[dict[str, Any]] = []
+        for transition in state_data.get("transitions", []):
+            if isinstance(transition, ChapterStateTransition):
+                from_state = transition.from_state.value if transition.from_state else None
+                to_state = transition.to_state.value if transition.to_state else None
+                timestamp = (
+                    transition.timestamp.isoformat()
+                    if isinstance(transition.timestamp, datetime)
+                    else transition.timestamp
+                )
+                error = transition.error
+            elif isinstance(transition, dict):
+                from_state_raw = transition.get("from_state")
+                to_state_raw = transition.get("to_state")
+                if isinstance(from_state_raw, ChapterState):
+                    from_state = from_state_raw.value
+                else:
+                    from_state = from_state_raw if isinstance(from_state_raw, str) else None
+
+                if isinstance(to_state_raw, ChapterState):
+                    to_state = to_state_raw.value
+                else:
+                    to_state = to_state_raw if isinstance(to_state_raw, str) else None
+
+                timestamp_raw = transition.get("timestamp")
+                timestamp = timestamp_raw.isoformat() if isinstance(timestamp_raw, datetime) else timestamp_raw
+                error = transition.get("error")
+            else:
+                continue
+
+            transitions.append(
+                {
+                    "from_state": from_state,
+                    "to_state": to_state,
+                    "timestamp": timestamp,
+                    "error": error,
+                }
+            )
+
+        last_updated_raw = state_data.get("last_updated")
+        last_updated = last_updated_raw.isoformat() if isinstance(last_updated_raw, datetime) else last_updated_raw
+
+        return {
+            "chapter_id": state_data.get("chapter_id"),
+            "current_state": current_state,
+            "transitions": transitions,
+            "last_updated": last_updated,
+            "error_count": int(state_data.get("error_count", 0) or 0),
+            "retry_count": int(state_data.get("retry_count", 0) or 0),
+        }
 
     def load_chapter_state(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
         """Load chapter state tracking information."""
@@ -837,7 +1155,7 @@ class StorageService:
             "checkpoint_name": checkpoint_name,
             "raw_chapter": raw_chapter,
             "translated_chapter": translated_chapter,
-            "chapter_state": chapter_state,
+            "chapter_state": self._serialize_checkpoint_state(chapter_state),
         }
 
         # Use timestamp in filename if no name provided

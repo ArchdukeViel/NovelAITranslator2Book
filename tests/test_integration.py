@@ -120,6 +120,51 @@ async def test_translation_service_builds_multilingual_prompt_request(integratio
 
 
 @pytest.mark.asyncio
+async def test_translate_stage_selects_relevant_glossary_per_chunk(integration_fixture):
+    fixture = integration_fixture
+    fixture.add_source_chapter(
+        "http://example.com/ch2",
+        "英雄は剣を抜いた。\n\n魔導具が光った。",
+    )
+
+    pipeline = TranslationPipeline(
+        stages=[
+            FetchStage(),
+            ParseStage(),
+            SegmentStage(),
+            TranslateStage(
+                provider_factory=lambda key: fixture.mock_provider,
+                cache=fixture.cache,
+                settings_service=fixture.settings_service,
+                usage_service=fixture.usage_service,
+            ),
+            PostProcessStage(glossary=fixture.mock_glossary),
+        ]
+    )
+
+    context = PipelineState(chapter_url="http://example.com/ch2", provider_key="mock")
+    context.metadata["_source_adapter"] = fixture.mock_source
+    context.metadata["source_language"] = "Japanese"
+    context.metadata["target_language"] = "English"
+    context.metadata["glossary_max_entries"] = 1
+    context.metadata["glossary"] = [
+        {"source": "英雄", "target": "hero", "status": "approved"},
+        {"source": "魔導具", "target": "magic device", "status": "approved"},
+    ]
+
+    result = await pipeline.run(context)
+
+    request = fixture.mock_provider.last_request
+    assert request is not None
+    assert len(request.glossary_entries) == 1
+    assert request.glossary_entries[0].source == "魔導具"
+    runtime_state = result.metadata.get("glossary_runtime_state")
+    assert isinstance(runtime_state, list)
+    assert len(runtime_state) == 2
+    assert any(isinstance(item.get("context_summary"), str) and item.get("context_summary") for item in runtime_state)
+
+
+@pytest.mark.asyncio
 async def test_storage_with_pipeline(integration_fixture):
     """Test storage service integration with pipeline."""
     fixture = integration_fixture
