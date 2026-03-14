@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -92,21 +93,51 @@ class ProfilesView(QWidget):
         endpoint_form_widget = QWidget()
         endpoint_form = QFormLayout(endpoint_form_widget)
         endpoint_form.setContentsMargins(8, 4, 4, 4)
+        endpoint_help = QLabel(
+            "Required: Name, Provider, Model. Optional: Temperature, Timeout, Retries, Concurrency, Base URL, API Version, API Key Env, and extra JSON kwargs. For OpenAI or Gemini, you usually only need Name, Provider, Model, and the environment variable that holds the API key."
+        )
+        endpoint_help.setObjectName("HeroBody")
+        endpoint_help.setWordWrap(True)
         self.endpoint_name_input = QLineEdit()
+        self.endpoint_name_input.setPlaceholderText("e.g. openai-main or gemini-fast")
+        self.endpoint_name_input.setToolTip("A friendly profile name used later in Workflow Step Routing.")
         self.endpoint_provider_input = QComboBox()
-        self.endpoint_provider_input.addItem("", None)
+        self.endpoint_provider_input.addItem("Choose provider", None)
         for provider in sorted(available_providers()):
             self.endpoint_provider_input.addItem(provider, provider)
         self.endpoint_model_input = QComboBox()
         self.endpoint_model_input.setEditable(True)
-        self.endpoint_temperature_input = QLineEdit()
-        self.endpoint_timeout_input = QLineEdit()
-        self.endpoint_retries_input = QLineEdit()
-        self.endpoint_concurrency_input = QLineEdit()
+        endpoint_model_line_edit = self.endpoint_model_input.lineEdit()
+        if endpoint_model_line_edit is not None:
+            endpoint_model_line_edit.setPlaceholderText("Pick a provider first")
+        self.endpoint_temperature_input = QDoubleSpinBox()
+        self.endpoint_temperature_input.setRange(-1.0, 2.0)
+        self.endpoint_temperature_input.setDecimals(2)
+        self.endpoint_temperature_input.setSingleStep(0.1)
+        self.endpoint_temperature_input.setSpecialValueText("Default")
+        self.endpoint_temperature_input.setValue(-1.0)
+        self.endpoint_temperature_input.setToolTip("Lower is more consistent, higher is more creative.")
+        self.endpoint_timeout_input = QDoubleSpinBox()
+        self.endpoint_timeout_input.setRange(-1.0, 3600.0)
+        self.endpoint_timeout_input.setDecimals(1)
+        self.endpoint_timeout_input.setSingleStep(5.0)
+        self.endpoint_timeout_input.setSpecialValueText("Default")
+        self.endpoint_timeout_input.setValue(-1.0)
+        self.endpoint_retries_input = QSpinBox()
+        self.endpoint_retries_input.setRange(-1, 20)
+        self.endpoint_retries_input.setSpecialValueText("Default")
+        self.endpoint_retries_input.setValue(-1)
+        self.endpoint_concurrency_input = QSpinBox()
+        self.endpoint_concurrency_input.setRange(-1, 128)
+        self.endpoint_concurrency_input.setSpecialValueText("Default")
+        self.endpoint_concurrency_input.setValue(-1)
         self.endpoint_base_url_input = QLineEdit()
+        self.endpoint_base_url_input.setPlaceholderText("Optional custom endpoint URL")
         self.endpoint_api_version_input = QLineEdit()
+        self.endpoint_api_version_input.setPlaceholderText("Optional provider API version")
         env_key_row = QHBoxLayout()
         self.endpoint_api_key_env_input = QLineEdit()
+        self.endpoint_api_key_env_input.setPlaceholderText("Environment variable name")
         self.endpoint_api_key_env_status = QLabel()
         self.endpoint_api_key_env_status.setMinimumWidth(80)
         env_key_row.addWidget(self.endpoint_api_key_env_input, 1)
@@ -114,6 +145,7 @@ class ProfilesView(QWidget):
         self.endpoint_kwargs_input = QPlainTextEdit()
         self.endpoint_kwargs_input.setPlaceholderText('{"top_p": 0.95}')
         self.endpoint_kwargs_input.setFixedHeight(80)
+        endpoint_form.addRow("", endpoint_help)
         endpoint_form.addRow("Name", self.endpoint_name_input)
         endpoint_form.addRow("Provider", self.endpoint_provider_input)
         endpoint_form.addRow("Model", self.endpoint_model_input)
@@ -210,15 +242,51 @@ class ProfilesView(QWidget):
         self.detail_group = QGroupBox("Step Parameters — select a step above")
         detail_layout = QVBoxLayout(self.detail_group)
         self.detail_stack = QStackedWidget()
-        self.detail_inputs: dict[str, tuple[QLineEdit, QLineEdit, QLineEdit, QLineEdit, QPlainTextEdit, QPlainTextEdit]] = {}
+        self.detail_inputs: dict[str, tuple[QDoubleSpinBox, QDoubleSpinBox, QSpinBox, QSpinBox, QPlainTextEdit, QPlainTextEdit]] = {}
         for step in self._step_order:
             step_config = prefs.get_llm_step_config(step)
+            step_temperature = step_config.get("temperature")
+            step_timeout = step_config.get("timeout")
+            step_max_retries = step_config.get("max_retries")
+            step_concurrency = step_config.get("concurrency")
             page = QWidget()
             page_form = QFormLayout(page)
-            temp_input = QLineEdit(str(step_config.get("temperature") or ""))
-            timeout_input = QLineEdit(str(step_config.get("timeout") or ""))
-            retries_input = QLineEdit(str(step_config.get("max_retries") or ""))
-            conc_input = QLineEdit(str(step_config.get("concurrency") or ""))
+            temp_input = QDoubleSpinBox()
+            temp_input.setRange(-1.0, 2.0)
+            temp_input.setDecimals(2)
+            temp_input.setSingleStep(0.1)
+            temp_input.setSpecialValueText("Default")
+            temp_input.setValue(
+                float(step_temperature)
+                if isinstance(step_temperature, (int, float))
+                else -1.0
+            )
+            timeout_input = QDoubleSpinBox()
+            timeout_input.setRange(-1.0, 3600.0)
+            timeout_input.setDecimals(1)
+            timeout_input.setSingleStep(5.0)
+            timeout_input.setSpecialValueText("Default")
+            timeout_input.setValue(
+                float(step_timeout)
+                if isinstance(step_timeout, (int, float))
+                else -1.0
+            )
+            retries_input = QSpinBox()
+            retries_input.setRange(-1, 20)
+            retries_input.setSpecialValueText("Default")
+            retries_input.setValue(
+                int(step_max_retries)
+                if isinstance(step_max_retries, int)
+                else -1
+            )
+            conc_input = QSpinBox()
+            conc_input.setRange(-1, 128)
+            conc_input.setSpecialValueText("Default")
+            conc_input.setValue(
+                int(step_concurrency)
+                if isinstance(step_concurrency, int)
+                else -1
+            )
             prompt_input = QPlainTextEdit()
             prompt_input.setPlaceholderText("Optional prompt template override for this step.")
             prompt_input.setFixedHeight(80)
@@ -271,10 +339,12 @@ class ProfilesView(QWidget):
         self.endpoint_remove_button.clicked.connect(self._remove_endpoint_profile)
         self.endpoint_validate_button.clicked.connect(self._validate_endpoint_profile)
         self.endpoint_provider_input.currentIndexChanged.connect(self._refresh_endpoint_model_choices)
+        self.endpoint_provider_input.currentIndexChanged.connect(self._update_endpoint_field_hints)
         self.endpoint_api_key_env_input.textChanged.connect(self._update_env_key_status)
         self.step_table.currentCellChanged.connect(self._on_step_table_row_changed)
 
         self._reload_endpoint_profiles()
+        self._update_endpoint_field_hints()
         self.glossary_mode_input.setCurrentText(prefs.get_glossary_extraction_mode())
         self.glossary_max_terms_input.setValue(prefs.get_glossary_extraction_max_terms())
         self.glossary_prompt_input.setPlainText(prefs.get_glossary_extraction_prompt_template() or "")
@@ -312,6 +382,35 @@ class ProfilesView(QWidget):
         if current and self.endpoint_model_input.findText(current) < 0:
             self.endpoint_model_input.addItem(current)
         self.endpoint_model_input.setCurrentText(current)
+
+    def _update_endpoint_field_hints(self) -> None:
+        provider_data = self.endpoint_provider_input.currentData()
+        provider = provider_data if isinstance(provider_data, str) else None
+        model_placeholder = "Select or type a model name"
+        base_url_placeholder = "Optional custom endpoint URL"
+        api_version_placeholder = "Optional provider API version"
+        env_placeholder = "Environment variable name"
+        kwargs_placeholder = '{"top_p": 0.95}'
+        if provider == "openai":
+            model_placeholder = "e.g. gpt-5.4"
+            base_url_placeholder = "Optional. Default: https://api.openai.com/v1"
+            env_placeholder = "Usually: PROVIDER_OPENAI_API_KEY"
+            kwargs_placeholder = '{"top_p": 0.95, "reasoning": {"effort": "medium"}}'
+        elif provider == "gemini":
+            model_placeholder = "e.g. gemini-3-flash-preview"
+            base_url_placeholder = "Optional custom Gemini gateway URL"
+            env_placeholder = "Usually: PROVIDER_GEMINI_API_KEY"
+            kwargs_placeholder = '{"top_p": 0.9}'
+        elif provider:
+            model_placeholder = f"Model for {provider}"
+        endpoint_model_line_edit = self.endpoint_model_input.lineEdit()
+        if endpoint_model_line_edit is not None:
+            endpoint_model_line_edit.setPlaceholderText(model_placeholder)
+        self.endpoint_base_url_input.setPlaceholderText(base_url_placeholder)
+        self.endpoint_api_version_input.setPlaceholderText(api_version_placeholder)
+        self.endpoint_api_key_env_input.setPlaceholderText(env_placeholder)
+        if not self.endpoint_kwargs_input.toPlainText().strip():
+            self.endpoint_kwargs_input.setPlaceholderText(kwargs_placeholder)
 
     def _update_env_key_status(self) -> None:
         env_var_name = self.endpoint_api_key_env_input.text().strip()
@@ -357,7 +456,7 @@ class ProfilesView(QWidget):
                     self.endpoint_list.setCurrentItem(item)
                     break
 
-        for step, (endpoint_combo, _provider_combo, _model_combo) in self.summary_inputs.items():
+        for _step, (endpoint_combo, _provider_combo, _model_combo) in self.summary_inputs.items():
             current_endpoint = endpoint_combo.currentData()
             endpoint_combo.blockSignals(True)
             endpoint_combo.clear()
@@ -375,10 +474,10 @@ class ProfilesView(QWidget):
             self.endpoint_name_input.clear()
             self.endpoint_provider_input.setCurrentIndex(0)
             self.endpoint_model_input.clear()
-            self.endpoint_temperature_input.clear()
-            self.endpoint_timeout_input.clear()
-            self.endpoint_retries_input.clear()
-            self.endpoint_concurrency_input.clear()
+            self.endpoint_temperature_input.setValue(-1.0)
+            self.endpoint_timeout_input.setValue(-1.0)
+            self.endpoint_retries_input.setValue(-1)
+            self.endpoint_concurrency_input.setValue(-1)
             self.endpoint_base_url_input.clear()
             self.endpoint_api_version_input.clear()
             self.endpoint_api_key_env_input.clear()
@@ -394,11 +493,23 @@ class ProfilesView(QWidget):
         self.endpoint_provider_input.setCurrentIndex(max(self.endpoint_provider_input.findData(provider), 0))
         self._refresh_endpoint_model_choices()
         model = payload.get("model")
+        payload_temperature = payload.get("temperature")
+        payload_timeout = payload.get("timeout")
+        payload_max_retries = payload.get("max_retries")
+        payload_concurrency = payload.get("concurrency")
         self.endpoint_model_input.setCurrentText(model if isinstance(model, str) else "")
-        self.endpoint_temperature_input.setText(str(payload.get("temperature") or ""))
-        self.endpoint_timeout_input.setText(str(payload.get("timeout") or ""))
-        self.endpoint_retries_input.setText(str(payload.get("max_retries") or ""))
-        self.endpoint_concurrency_input.setText(str(payload.get("concurrency") or ""))
+        self.endpoint_temperature_input.setValue(
+            float(payload_temperature) if isinstance(payload_temperature, (int, float)) else -1.0
+        )
+        self.endpoint_timeout_input.setValue(
+            float(payload_timeout) if isinstance(payload_timeout, (int, float)) else -1.0
+        )
+        self.endpoint_retries_input.setValue(
+            int(payload_max_retries) if isinstance(payload_max_retries, int) else -1
+        )
+        self.endpoint_concurrency_input.setValue(
+            int(payload_concurrency) if isinstance(payload_concurrency, int) else -1
+        )
         self.endpoint_base_url_input.setText(str(payload.get("base_url") or ""))
         self.endpoint_api_version_input.setText(str(payload.get("api_version") or ""))
         self.endpoint_api_key_env_input.setText(str(payload.get("api_key_env") or ""))
@@ -406,22 +517,12 @@ class ProfilesView(QWidget):
         self.endpoint_kwargs_input.setPlainText(self._format_mapping_text(kwargs_payload))
 
     @staticmethod
-    def _parse_float(value: str) -> float | None:
-        stripped = value.strip()
-        if not stripped:
-            return None
-        with contextlib.suppress(ValueError):
-            return float(stripped)
-        return None
+    def _optional_float(value: float) -> float | None:
+        return None if value < 0 else float(value)
 
     @staticmethod
-    def _parse_int(value: str) -> int | None:
-        stripped = value.strip()
-        if not stripped:
-            return None
-        with contextlib.suppress(ValueError):
-            return int(stripped)
-        return None
+    def _optional_int(value: int) -> int | None:
+        return None if value < 0 else int(value)
 
     @staticmethod
     def _parse_mapping_text(value: str) -> dict[str, object]:
@@ -456,10 +557,10 @@ class ProfilesView(QWidget):
             name,
             provider=provider,
             model=model,
-            temperature=self._parse_float(self.endpoint_temperature_input.text()),
-            timeout=self._parse_float(self.endpoint_timeout_input.text()),
-            max_retries=self._parse_int(self.endpoint_retries_input.text()),
-            concurrency=self._parse_int(self.endpoint_concurrency_input.text()),
+            temperature=self._optional_float(self.endpoint_temperature_input.value()),
+            timeout=self._optional_float(self.endpoint_timeout_input.value()),
+            max_retries=self._optional_int(self.endpoint_retries_input.value()),
+            concurrency=self._optional_int(self.endpoint_concurrency_input.value()),
             base_url=self.endpoint_base_url_input.text().strip() or None,
             api_version=self.endpoint_api_version_input.text().strip() or None,
             api_key_env=self.endpoint_api_key_env_input.text().strip() or None,
@@ -580,10 +681,10 @@ class ProfilesView(QWidget):
                 endpoint_profile=endpoint,
                 provider=provider,
                 model=model,
-                temperature=self._parse_float(temp_input.text()),
-                timeout=self._parse_float(timeout_input.text()),
-                max_retries=self._parse_int(retries_input.text()),
-                concurrency=self._parse_int(conc_input.text()),
+                temperature=self._optional_float(temp_input.value()),
+                timeout=self._optional_float(timeout_input.value()),
+                max_retries=self._optional_int(retries_input.value()),
+                concurrency=self._optional_int(conc_input.value()),
                 prompt_template=prompt_input.toPlainText().strip() or None,
                 kwargs=self._parse_mapping_text(kwargs_input.toPlainText()),
             )

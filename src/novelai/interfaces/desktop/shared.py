@@ -6,8 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QObject, QThread, Signal, Qt
-from PySide6.QtGui import QPalette
-from PySide6.QtWidgets import QApplication, QFrame, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from novelai.config.settings import settings
 from novelai.config.workflow_profiles import WORKFLOW_PROFILE_STEPS
@@ -147,20 +146,7 @@ def profiles_snapshot_text() -> str:
     return "\n".join(lines)
 
 
-def resolve_theme_preference(theme: str, app: QApplication | None = None) -> str:
-    if theme in {"dark", "light"}:
-        return theme
-    effective_app = app or QApplication.instance()
-    if not isinstance(effective_app, QApplication):
-        return "dark"
-    palette = effective_app.palette()
-    window_color = palette.color(QPalette.ColorRole.Window)
-    window_text_color = palette.color(QPalette.ColorRole.WindowText)
-    # Dark UIs commonly have light text over dark window backgrounds.
-    return "dark" if window_text_color.lightnessF() > window_color.lightnessF() else "light"
-
-
-def build_stylesheet(asset_dir: Path | None = None, theme: str = "dark") -> str:
+def build_stylesheet(asset_dir: Path | None = None) -> str:
     _ = asset_dir
     root_background = """
     QSplitter#DesktopRoot {
@@ -173,7 +159,7 @@ def build_stylesheet(asset_dir: Path | None = None, theme: str = "dark") -> str:
     }
     """
 
-    base = """  /* --- NovelAI2Book desktop stylesheet --- */
+    return """  /* --- NovelAI2Book desktop stylesheet --- */
     QMainWindow {
         background: #0b0720;
     }
@@ -407,90 +393,6 @@ def build_stylesheet(asset_dir: Path | None = None, theme: str = "dark") -> str:
         background: #30245a;
     }
     """
-
-    if theme != "light":
-        return base
-
-    light_override = """
-    QMainWindow {
-        background: #f2f6ff;
-    }
-    QWidget {
-        color: #1f2d4f;
-    }
-    QSplitter#DesktopRoot {
-        background: qradialgradient(cx:0.18, cy:0.08, radius:1.1,
-            fx:0.18, fy:0.08,
-            stop:0 #cfe0ff,
-            stop:0.35 #e8f1ff,
-            stop:0.75 #f5f9ff,
-            stop:1 #ffffff);
-    }
-    QWidget#NavPanel {
-        background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-            stop:0 #e6efff,
-            stop:1 #f7fbff);
-        border-right: 1px solid #bbcff4;
-    }
-    QListWidget, QPlainTextEdit, QLineEdit, QComboBox, QTabWidget::pane, QTableWidget {
-        background: #ffffff;
-        border: 1px solid #b8caec;
-        selection-background-color: #3a67c8;
-        selection-color: #ffffff;
-    }
-    QListWidget#NavList::item {
-        color: #304169;
-    }
-    QListWidget#NavList::item:selected {
-        background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-            stop:0 #2e5fc9,
-            stop:1 #5f8cf0);
-        color: #ffffff;
-    }
-    QPushButton {
-        background: #2f63ca;
-        color: #f7fbff;
-    }
-    QPushButton:hover {
-        background: #4274d6;
-    }
-    QPushButton:pressed {
-        background: #2550aa;
-    }
-    QPushButton:disabled {
-        background: #cfd9ee;
-        color: #7486ab;
-    }
-    QGroupBox {
-        background: #f8fbff;
-        border: 1px solid #bfd1f0;
-    }
-    QGroupBox::title {
-        color: #36507f;
-    }
-    QLabel#HeroEyebrow {
-        color: #4f6da5;
-    }
-    QLabel#HeroTitle {
-        color: #1f315b;
-    }
-    QLabel#HeroBody {
-        color: #5a6f9f;
-    }
-    QHeaderView::section {
-        background: #e8f1ff;
-        color: #28427a;
-        border-bottom: 1px solid #bfd1f0;
-    }
-    QStatusBar {
-        background: #eaf2ff;
-        color: #456298;
-    }
-    QSplitter::handle {
-        background: #c2d4f3;
-    }
-    """
-    return base + light_override
 
 
 class StatCard(QFrame):
