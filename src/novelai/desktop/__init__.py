@@ -1,1 +1,1 @@
-"""Desktop GUI support for Novel AI."""
+"""Compatibility wrappers for legacy desktop imports."""

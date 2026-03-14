@@ -1,1 +1,1 @@
-"""Web server implementation for Novel AI."""
+"""Compatibility wrappers for legacy web imports."""

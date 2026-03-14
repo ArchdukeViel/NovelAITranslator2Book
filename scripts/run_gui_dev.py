@@ -15,7 +15,7 @@ def _target() -> None:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(PROJECT_ROOT / "src")
     subprocess.run(
-        [sys.executable, "-m", "novelai.app.cli", "gui"],
+        [sys.executable, "-m", "novelai.interfaces.cli", "gui"],
         cwd=PROJECT_ROOT,
         env=env,
         check=False,

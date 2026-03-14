@@ -1,292 +1,128 @@
-﻿# Getting Started with Novel AI
+# Getting Started with Novel AI
 
-Step-by-step guide to install, configure, and run Novel AI for the first time.
-
----
+This guide covers installation, configuration, and the fastest ways to launch the project.
 
 ## Prerequisites
 
-- **Python 3.13+** (check with `python --version`)
-- **Git** (for cloning the repository)
-- **API Keys** (OpenAI or other provider for translations)
+- Python 3.13 or newer
+- Git
+- An API key if you want real model-backed translation
 
----
+## Install
 
-## Installation Steps
-
-### Step 1: Clone Repository
-
-```bash
+```powershell
 git clone <repo-url>
 cd "Novel AI"
+
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
 ```
 
-### Step 2: Create Virtual Environment
+Choose the install that matches what you want:
 
-```bash
-# Windows
-python -m venv .venv
-.venv\Scripts\activate
+```powershell
+# Base CLI and TUI
+.\.venv\Scripts\python.exe -m pip install -e .
 
-# macOS/Linux
-python3 -m venv .venv
-source .venv/bin/activate
+# GUI support
+.\.venv\Scripts\python.exe -m pip install -e ".[desktop]"
+
+# GUI + document import support such as PDF
+.\.venv\Scripts\python.exe -m pip install -e ".[desktop,documents]"
+
+# Recommended full local setup
+.\.venv\Scripts\python.exe -m pip install -e ".[desktop,documents,openai]"
+
+# Development and packaging tools
+.\.venv\Scripts\python.exe -m pip install -e ".[desktop,documents,openai,build,dev]"
 ```
 
-### Step 3: Install Dependencies
+## Configure
 
-```bash
-# Install package in development mode (includes test deps)
-python -m pip install -e ".[dev]"
+```powershell
+Copy-Item .env.example .env
 ```
 
-### Step 4: Configure Environment
+Set the values you need in `.env`. The most common ones are:
 
-```bash
-# Copy example configuration
-copy .env.example .env
-
-# Edit .env with your API keys
-# Required:
-#   PROVIDER_OPENAI_API_KEY=sk-...
-# Optional:
-#   NOVEL_LIBRARY_DIR=./novel_library (default)
-#   TRANSLATION_TARGET_LANGUAGE=English (default, 20 languages supported)
-#   LOG_LEVEL=INFO (default)
+```env
+PROVIDER_OPENAI_API_KEY=your_key_here
+TRANSLATION_TARGET_LANGUAGE=English
+LOG_LEVEL=INFO
 ```
 
-**Where to find API keys**:
-- **OpenAI**: https://platform.openai.com/api-keys
-  1. Sign in to OpenAI
-  2. Go to API keys
-  3. Click "Create new secret key"
-  4. Copy to `.env` file
+## Verify the Install
 
----
+```powershell
+.\.venv\Scripts\python.exe -c "
+from novelai.runtime.bootstrap import bootstrap
+from novelai.runtime.container import container
 
-## Verify Installation
-
-Run a quick verification:
-
-```bash
-python -c "
-from novelai.app.bootstrap import bootstrap
-from novelai.utils.logging import setup_logging, get_logger
-
-setup_logging(log_level='INFO', use_json=False)
-logger = get_logger('verification')
-
-print('NOVEL AI VERIFICATION')
 bootstrap()
-logger.info('Bootstrap successful')
-print('INSTALLATION COMPLETE')
-print()
-print('Next steps:')
-print('  1. Run TUI: novelaibook tui')
-print('  2. Or use CLI: novelaibook scrape-metadata syosetu_ncode n4423lw')
-print('  3. See docs/reference/PYTHON_COMMANDS.md for all commands')
-print('  4. See docs/guides/TUI_GUIDE.md for terminal UI walkthrough')
+print('bootstrap ok')
+print('provider preference:', container.preferences.get_provider_key())
 "
 ```
 
----
+## Launch the Interfaces
 
-## First Run: Using the TUI
-
-The easiest way to get started:
-
-```bash
+```powershell
 novelaibook tui
+novelaibook gui
+novelaibook web
 ```
 
-You'll see a Rich dashboard with 7 actions. See [TUI_GUIDE.md](TUI_GUIDE.md) for the full walkthrough.
+You can also use the module entrypoint:
 
----
+```powershell
+python -m novelai --interface tui
+python -m novelai --interface gui
+python -m novelai --interface web
+```
 
-## First Run: Using CLI
+## First Workflow
 
-If you prefer command line:
+### Document Import
 
-### 1. Download Novel Metadata
+```powershell
+novelaibook import-document epub my_book .\book.epub
+novelaibook glossary my_book extract --chapters all
+novelaibook export-epub my_book --format epub
+```
 
-```bash
-# For Syosetu (Japanese web novel site)
+### Web Scrape and Translate
+
+```powershell
 novelaibook scrape-metadata syosetu_ncode n4423lw
-
-# For any site via the generic adapter
-novelaibook scrape-metadata generic https://example.com/novel/123
-```
-
-### 2. Fetch Chapters
-
-```bash
-# Fetch first 3 chapters
 novelaibook scrape-chapters syosetu_ncode n4423lw 1-3
-```
-
-Chapter bundles (raw + translated + state) stored in: `novel_library/novels/<novel_id>/chapters/<chapter_id>.json`
-
-### 3. Translate Chapters
-
-```bash
-# Translate using default provider (OpenAI)
 novelaibook translate-chapters syosetu_ncode n4423lw 1-3
-
-# Force retranslate existing translated chapters
-novelaibook translate-chapters syosetu_ncode n4423lw 1-3 --force
-
-# Force retranslate a single chapter
-novelaibook retranslate-chapter syosetu_ncode n4423lw 2
-```
-
-Translations stored in: `novel_library/novels/<novel_id>/chapters/<chapter_id>.json`
-
-### 3.1 Review Glossary Terms Before Translation
-
-```bash
-# List glossary terms and statuses
-novelaibook glossary n4423lw list
-
-# Add term (new terms default to pending)
-novelaibook glossary n4423lw add "魔導具" "magic device"
-
-# Review one term status
-novelaibook glossary n4423lw review "魔導具" approved
-
-# Approve all pending terms
-novelaibook glossary n4423lw approve-all
-```
-
-Translations now run preflight checks and can block if glossary has pending terms.
-
-### 3.2 OCR Workflow for Image-Heavy Chapters
-
-```bash
-# Build OCR candidates from stored image manifests
-novelaibook ocr n4423lw ingest all
-
-# List OCR-required chapters that are still pending review
-novelaibook ocr n4423lw list-pending
-
-# Mark chapter OCR as reviewed (optionally save corrected OCR text)
-novelaibook ocr n4423lw review 2 --text "Corrected OCR text"
-
-# Set explicit status when needed
-novelaibook ocr n4423lw set-status 2 failed
-```
-
-When `ocr_required=true`, translation preflight blocks until chapter OCR status is `reviewed`.
-
-### 4. Export
-
-```bash
-# Export to EPUB (saved to novel_library/novels/<novel_id>/epub/)
 novelaibook export-epub n4423lw --format epub
-
-# Also supports HTML and Markdown
-novelaibook export-epub n4423lw --format html
-novelaibook export-epub n4423lw --format md
 ```
 
----
+## OCR and Glossary Review
 
-## Data Directory Structure
+```powershell
+novelaibook glossary n4423lw list
+novelaibook glossary n4423lw approve-all
 
-After first run, your `novel_library/` folder looks like:
-
-```
-novel_library/
-├── preferences.json
-├── translation_cache.json
-├── usage.json
-└── novels/
-    ├── index.json
-    └── <novel_id>/
-        ├── metadata.json
-        ├── glossary.json
-        ├── chapters/
-        │   ├── 1.json
-        │   └── 2.json
-        ├── assets/
-        ├── checkpoints/
-        └── full_novel.epub
+novelaibook ocr n4423lw ingest all
+novelaibook ocr n4423lw list-pending
+novelaibook ocr n4423lw review 2 --text "Corrected OCR text"
 ```
 
-See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md) for full details.
+Translation preflight will block chapters that still have pending glossary review or required OCR review.
 
----
+## Live GUI Editing
 
-## Troubleshooting
-
-### Issue: "ModuleNotFoundError: No module named 'novelai'"
-
-**Solution**: Make sure you installed in development mode:
-```bash
-python -m pip install -e .
+```powershell
+.\.venv\Scripts\python.exe .\scripts\run_gui_dev.py
 ```
 
-### Issue: "PROVIDER_OPENAI_API_KEY not found"
+That watches `src/` and restarts the desktop app when files change.
 
-**Solution**:
-1. Create `.env` file from `.env.example`
-2. Add your API key to `.env`
-3. Restart the application
+## Next Docs
 
-### Issue: "Connection timeout" when fetching chapters
-
-**Solution**:
-- Check internet connection
-- The source website might be temporarily unavailable
-- Try again in a few moments
-
----
-
-## Next Steps
-
-1. **Learn TUI**: See [TUI_GUIDE.md](TUI_GUIDE.md)
-2. **Learn CLI**: See [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md)
-3. **Understand Architecture**: See [../architecture/architecture.md](../architecture/architecture.md)
-4. **Learn Data Format**: See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md)
-
----
-
-## Tips
-
-### Batch Processing
-Translate multiple chapters at once for efficiency:
-```bash
-novelaibook translate-chapters syosetu_ncode n4423lw 1-10
-```
-
-### Custom Glossary
-Use glossary entries for recurring terminology:
-```python
-from novelai.prompts import build_translation_request
-
-request = build_translation_request(
-    text="魔導具が光を放った。",
-    source_language="Japanese",
-    target_language="English",
-    glossary_entries=[
-        {"source": "魔導具", "target": "magic device"},
-    ],
-    style_preset="fantasy",
-)
-```
-
-### Enable Debug Logging
-Set `LOG_LEVEL=DEBUG` in `.env` for verbose output.
-
----
-
-## Configuration Reference
-
-All settings in `.env`:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `PROVIDER_OPENAI_API_KEY` | (required for OpenAI) | Your OpenAI API key |
-| `NOVEL_LIBRARY_DIR` | ./novel_library | Where to store novels |
-| `LOG_LEVEL` | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
-| `TRANSLATION_TARGET_LANGUAGE` | English | Default target language |
-
+- [TUI_GUIDE.md](TUI_GUIDE.md)
+- [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md)
+- [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md)
+- [../architecture/architecture.md](../architecture/architecture.md)

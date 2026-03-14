@@ -1,259 +1,157 @@
 # Novel AI Architecture
 
-High-level architecture, key subsystems, and extension points for the Novel AI translation platform.
+This document describes the current codebase layout and the runtime flow across the import, translation, review, and export layers.
 
-## Codebase Structure
+## Codebase Layout
 
-```
+```text
 src/novelai/
-├── app/                    # Application entrypoints
-│   ├── bootstrap.py        # Service initialization
-│   ├── cli.py              # Command-line interface
-│   ├── container.py        # Dependency injection container
-│   ├── web.py              # Web server setup
-│   └── __init__.py
-├── config/                 # Configuration management
-│   ├── settings.py         # Environment & settings
-│   └── __init__.py
-├── core/                   # Shared primitives & types
-│   ├── errors.py           # Exception hierarchy
-│   ├── chapter_state.py    # ChapterState enum
-│   └── __init__.py
-├── cost_estimator/         # Translation cost estimation
-│   ├── cli.py              # Standalone CLI for estimates
-│   ├── compare.py          # Multi-model comparison
-│   ├── estimator.py        # Core estimation logic
-│   ├── heuristics.py       # Token estimation heuristics
-│   ├── models.py           # Estimation data types
-│   ├── pricing.py          # Model pricing catalog
-│   └── __init__.py
-├── export/                 # Export formats
-│   ├── base_exporter.py    # Exporter interface
-│   ├── epub_exporter.py    # EPUB export (title page, TOC, images)
-│   ├── html_exporter.py    # HTML export
-│   ├── markdown_exporter.py # Markdown export
-│   ├── pdf_exporter.py     # PDF export (placeholder)
-│   ├── registry.py         # Exporter registry
-│   └── __init__.py
-├── glossary/               # Terminology management
-│   ├── glossary.py         # Glossary service
-│   └── __init__.py
-├── pipeline/               # Translation pipeline
-│   ├── pipeline.py         # Main orchestrator
-│   ├── context.py          # Pipeline context
-│   └── stages/
-│       ├── base.py         # Stage interface
-│       ├── fetch.py        # Fetch stage
-│       ├── parse.py        # Parse stage
-│       ├── segment.py      # Segment stage
-│       ├── translate.py    # Translate stage
-│       ├── post_process.py # Post-process stage
-│       └── __init__.py
-├── prompts/                # Prompt templates
-│   ├── builders.py         # Prompt construction
-│   ├── models.py           # Prompt data types
-│   ├── responses_api.py    # OpenAI Responses API payloads
-│   ├── templates.py        # Template and preset definitions
-│   └── __init__.py
-├── providers/              # Translation provider adapters
-│   ├── base.py             # Provider interface
-│   ├── openai_provider.py  # OpenAI implementation
-│   ├── dummy_provider.py   # Mock provider for testing
-│   ├── registry.py         # Provider registry
-│   └── __init__.py
-├── services/               # High-level services
-│   ├── backup_manager.py            # Backup & restore
-│   ├── checkpoint_manager.py        # State checkpointing
-│   ├── export_service.py            # Export orchestration
-│   ├── novel_orchestration_service.py  # Business workflows
-│   ├── preferences_service.py       # User preferences
-│   ├── query_builder.py             # Query construction
-│   ├── settings_service.py          # Settings alias (delegates to PreferencesService)
-│   ├── storage_service.py           # Persistence layer
-│   ├── translation_cache.py         # Cache management
-│   ├── translation_service.py       # Translation orchestration
-│   ├── usage_service.py             # API usage tracking
-│   └── __init__.py
-├── sources/                # Novel source scrapers
-│   ├── base.py             # Source interface
-│   ├── generic.py          # Generic heuristic scraper
-│   ├── kakuyomu.py         # Kakuyomu scraper
-│   ├── novel18_syosetu.py  # Novel18 (R-18 Syosetu)
-│   ├── syosetu_ncode.py    # Syosetu Ncode scraper
-│   ├── registry.py         # Source registry
-│   ├── _helpers.py         # Shared scraping utilities
-│   └── __init__.py
-├── tui/                    # Terminal user interface
-│   ├── app.py              # TUI application (Rich dashboard)
-│   ├── screens/            # Mixin-based screen modules
-│   │   ├── diagnostics.py  # Diagnostics screen mixin
-│   │   ├── glossary.py     # Glossary management mixin
-│   │   ├── library.py      # Library browser mixin
-│   │   ├── pipeline.py     # Scrape/update pipeline mixin
-│   │   ├── settings.py     # Settings screen mixin
-│   │   └── __init__.py
-│   └── __init__.py
-├── utils/                  # Utility modules
-│   ├── chapter_selection.py # Chapter selection parsing
-│   ├── logging.py          # Structured logging setup
-│   ├── retry_decorator.py  # Retry with exponential backoff
-│   └── __init__.py
-├── web/                    # FastAPI backend
-│   ├── api.py              # Main API app
-│   ├── error_handlers.py   # HTTP error handling
-│   ├── routers/
-│   │   ├── novels.py       # Novel endpoints
-│   │   └── __init__.py
-│   └── __init__.py
-├── __main__.py             # python -m novelai entrypoint
-└── __init__.py
+  runtime/        shared bootstrap and dependency wiring
+  interfaces/     CLI, desktop GUI, TUI, and web interface modules
+  app/            compatibility wrappers for legacy entrypoints
+  desktop/        compatibility wrappers for legacy desktop imports
+  tui/            compatibility wrappers for legacy TUI imports
+  web/            compatibility wrappers for legacy web imports
+  config/         environment settings and workflow profile definitions
+  core/           errors and shared state primitives
+  cost_estimator/ cost and token heuristics
+  export/         exporter implementations and registry
+  glossary/       glossary status and helpers
+  inputs/         document and file import adapters
+  pipeline/       fetch, parse, segment, translate, and post-process stages
+  prompts/        prompt builders and templates
+  providers/      translation provider adapters
+  services/       orchestration, storage, export, usage, cache, preferences
+  sources/        web source scrapers
+  utils/          logging, retries, chapter selection, and helpers
 ```
 
-## High-level Domains
+## Interface Split
 
-| Domain | Purpose |
-|--------|---------|
-| **app/** | Application entrypoints (CLI, web server, DI container) |
-| **config/** | Centralized configuration and environment management |
-| **core/** | Shared primitives (types, errors, state machine enum) |
-| **cost_estimator/** | Translation cost estimation and model comparison |
-| **export/** | EPUB, HTML, Markdown, and PDF export engines |
-| **glossary/** | Terminology/glossary enforcement system |
-| **pipeline/** | Translation processing pipeline with modular stages |
-| **prompts/** | Multilingual prompt templates and payload builders |
-| **providers/** | Language model provider adapters (OpenAI, etc.) |
-| **services/** | High-level business logic services |
-| **sources/** | Novel scraper/source adapters (Syosetu Ncode, Novel18, Kakuyomu, Generic) |
-| **tui/** | Terminal user interface with mixin-based screens |
-| **utils/** | Utilities (logging, retry, chapter selection) |
-| **web/** | FastAPI backend and REST endpoints |
+The project now separates runtime wiring from interface delivery:
 
-## Runtime Data Structure
+- `runtime/` contains startup registration and the singleton dependency container
+- `interfaces/` contains the real CLI, GUI, TUI, and web implementations
+- `app/`, `desktop/`, `tui/`, and `web/` remain as compatibility import layers so older imports and scripts still run
 
-```
-novel_library/
-├── preferences.json                 # User preferences (provider, model)
-├── translation_cache.json           # Cached translation results
-├── usage.json                       # API usage statistics
-└── novels/
-    ├── index.json                   # Novel ID → folder mapping
-    └── <novel_id>/                  # Novel directory
-        ├── metadata.json            # Novel metadata from source
-        ├── full_novel_source.epub   # Original source EPUB (if available)
-        ├── chapters/                # Unified chapter bundles (raw + translated)
-        │   ├── <chapter_id>.json    # Chapter data (source text, translation, state)
-        │   └── ...
-        ├── assets/                  # Chapter images
-        │   └── images/
-        │       └── <chapter_id>/
-        └── checkpoints/             # State snapshots for recovery
-            └── <chapter_id>__<checkpoint_name>.json
-```
+This keeps interface code in one place without breaking existing entrypoints.
 
-### Data Directory Usage
+## Main Runtime Flow
 
-| File/Folder | Purpose | Managed By |
-|-------------|---------|-----------|
-| `preferences.json` | Provider, model, UI preferences | `PreferencesService` |
-| `translation_cache.json` | Cached translations to avoid re-translation | `TranslationCache` |
-| `usage.json` | API usage tracking (tokens, cost) | `UsageService` |
-| `novels/{id}/` | Novel chapters and metadata | `StorageService` |
-| `novels/{id}/chapters/` | Unified chapter bundles (source text + translation + state) | `StorageService` |
-| `novels/{id}/assets/` | Chapter images | `StorageService` |
-| `novels/{id}/checkpoints/` | State snapshots for recovery | `StorageService` / `CheckpointManager` |
-
-## Key Architectural Principles
-
-### Core Design Patterns
-
-| Principle | Implementation | Benefit |
-|-----------|----------------|---------|
-| **Provider/Source Abstraction** | Base class interfaces + registry pattern | Easy to add new providers/sources |
-| **Pipeline Modularization** | Explicit stages (fetch → parse → segment → translate → post-process) | Testable, reusable stages |
-| **Dependency Injection** | `Container` class provides service instances | Loose coupling, testability |
-| **Orchestration Service** | `NovelOrchestrationService` centralizes workflows | No duplication between CLI/web/TUI |
-| **Configuration Centralization** | `settings.py` for all config values | Environment-aware, twelve-factor compliant |
-| **Usage Tracking** | `UsageService` logs to `novel_library/usage.json` | Cost estimation and quota management |
-| **Storage Isolation** | `StorageService` abstracts persistence | Future DB migration possible |
-| **Export Modularity** | Separate exporter classes (EPUB, HTML, Markdown, PDF) with registry | Extensible to new formats |
-| **TUI Mixin Screens** | Screen logic in `tui/screens/` mixins, composed in `app.py` | Isolated screen concerns, testable |
-
-### Resilience Layer
-
-| Component | Purpose | Pattern |
-|-----------|---------|---------|
-| **Retry Decorator** | Auto-retry transient failures | Exponential backoff with jitter |
-| **Checkpoint Manager** | Save state at key points | Atomic snapshots, recovery points |
-| **Backup Manager** | Full/incremental backups | Tar.gz + manifest versioning |
-
-## System Architecture Diagram
-
-```
-User Interfaces
-├── CLI (app/cli.py)
-├── Web (web/api.py)
-└── TUI (tui/app.py + tui/screens/)
-        ↓
-NovelOrchestrationService (services/novel_orchestration_service.py)
-        ↓
-Translation Pipeline (pipeline/pipeline.py)
-├── Fetch Stage → Source Adapters (sources/)
-├── Parse Stage → HTML/text parsing
-├── Segment Stage → Text segmentation
-├── Translate Stage → Provider Adapters (providers/)
-└── Post-Process Stage → Formatting
-        ↓
-Storage/Export Layer
-├── StorageService (services/storage_service.py)
-├── ExportService (services/export_service.py)
-├── CheckpointManager (services/checkpoint_manager.py)
-└── BackupManager (services/backup_manager.py)
-        ↓
-External Dependencies
-├── OpenAI API
-├── Syosetu / Kakuyomu / Novel18 Websites
-└── File System (novel_library/)
+```text
+Interface
+  CLI / Desktop GUI / TUI / FastAPI
+        ->
+Runtime Bootstrap
+  provider registry
+  source registry
+  input adapter registry
+  exporter registry
+        ->
+Container
+  storage
+  translation pipeline
+  export service
+  preferences
+  usage tracking
+  orchestration
+        ->
+NovelOrchestrationService
+  import documents
+  scrape metadata and chapters
+  glossary extraction
+  OCR candidate ingestion
+  translation and retranslation
+  export preparation
+        ->
+Storage + Export Layer
+  novel_library/
 ```
 
-## Data Flow Example
+## Major Subsystems
 
-### Simple Translation Workflow
+### Runtime
 
-```
-1. User requests novel translation (novel_id: "n4423lw")
-   ↓
-2. NovelOrchestrationService.translate_novel()
-   ↓
-3. Pipeline executes:
-   - Fetch: Scrape chapters from source
-   - Parse: Extract text from HTML
-   - Segment: Break into paragraphs
-   - Translate: Send to OpenAI (with @retry_async decorator)
-   - Post-Process: Format output
-   ↓
-4. Chapter stored: novel_library/novels/n4423lw/chapters/<chapter_id>.json
-   Checkpoint saved: novel_library/novels/n4423lw/checkpoints/...
-   ↓
-5. Export: novelaibook export-epub n4423lw --format epub
-   Output: novel_library/novels/n4423lw/epub/full_novel.epub
-   (Also supports HTML and Markdown via --format html / --format md)
+- `runtime/bootstrap.py`: registers providers, sources, input adapters, and exporters
+- `runtime/container.py`: constructs shared service instances
+
+### Interfaces
+
+- `interfaces/cli.py`: command router for import, scrape, translation, glossary, OCR, and export
+- `interfaces/desktop/`: PySide6 desktop application
+- `interfaces/tui/`: Rich terminal dashboard and screens
+- `interfaces/web/`: FastAPI app, server launcher, routers, and error handlers
+
+### Import Layer
+
+- `inputs/`: normalized import adapters for `web`, `text`, `epub`, `pdf`, `image_folder`, and `cbz`
+- `sources/`: scraper adapters for live web novel sites
+
+The important distinction is:
+
+- `inputs/` handles document or archive ingestion into normalized stored units
+- `sources/` handles live site scraping for metadata and chapter fetching
+
+### Service Layer
+
+- `services/storage_service.py`: file-backed persistence for metadata, chapters, glossary, OCR, exports, and assets
+- `services/novel_orchestration_service.py`: end-to-end business workflows
+- `services/translation_service.py`: pipeline execution
+- `services/export_service.py`: exporter dispatch
+- `services/preferences_service.py`: user settings and workflow preferences
+- `services/usage_service.py`: usage and cost recording
+
+### Translation Pipeline
+
+```text
+Fetch -> Parse -> Segment -> Translate -> Post-process
 ```
 
-### Error Recovery Workflow
+The pipeline is assembled in `runtime/container.py` and used by the orchestration service.
 
-```
-1. Translation fails (API timeout)
-   ↓
-2. @retry_async decorator triggers:
-   - Exponential backoff: 1s → 2s → 4s → 8s → 16s
-   - Maximum 5 retry attempts
-   ↓
-3. If all retries exhausted:
-   - CheckpointManager.get_recovery_point() called
-   - Restores to last successful state
-   - Logs error with correlation ID
-   ↓
-4. On critical failure:
-   - BackupManager.create_full_backup()
-   - Can restore with BackupManager.restore_backup()
-```
+### Review and Gating
+
+Before translation completes, the system can enforce:
+
+- glossary review state
+- OCR review state for chapters that require OCR
+
+This lets translation runs stop on unresolved content rather than silently producing inconsistent output.
+
+## Data Model Overview
+
+All runtime state is stored under `novel_library/`.
+
+Important stored artifacts include:
+
+- `metadata.json`: novel-level metadata and chapter/unit index
+- `chapters/<id>.json`: unified chapter bundle with source, translation, state, and media metadata
+- `glossary.json`: glossary terms and statuses
+- `assets/`: source or generated media assets
+- `checkpoints/`: recovery snapshots
+
+See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md) for the full file-level layout.
+
+## Extension Points
+
+To add a new capability, the usual extension points are:
+
+- new provider: `providers/` plus `runtime/bootstrap.py`
+- new document type: `inputs/` plus `runtime/bootstrap.py`
+- new web source: `sources/` plus `runtime/bootstrap.py`
+- new export format: `export/` plus `runtime/bootstrap.py`
+- new interface surface: `interfaces/`
+
+## Packaging Notes
+
+- CLI script: `novelaibook`
+- Desktop script: `novelaibook-gui`
+- Module launcher: `python -m novelai --interface ...`
+- PyInstaller spec: [../../novelaibook-ui.spec](../../novelaibook-ui.spec)
+
+## Related Docs
+
+- [../guides/GETTING_STARTED.md](../guides/GETTING_STARTED.md)
+- [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md)
+- [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md)
+- [RELEASE_D_PLAN.md](RELEASE_D_PLAN.md)

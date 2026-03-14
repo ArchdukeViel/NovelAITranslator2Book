@@ -61,9 +61,9 @@ dev = [
 where = ["src"]
 
 [project.scripts]
-novelaibook = "novelai.app.cli:main"
+novelaibook = "novelai.interfaces.cli:main"
 novelai = "novelai.__main__:main"
-novelaibook-gui = "novelai.desktop.app:main"
+novelaibook-gui = "novelai.interfaces.desktop.app:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

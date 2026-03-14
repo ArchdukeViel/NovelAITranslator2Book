@@ -1,19 +1,17 @@
-from __future__ import annotations
+"""Compatibility wrapper for the web server launcher."""
 
-import uvicorn
+import sys as _sys
+from importlib import import_module
 
-from novelai.config.settings import settings
-from novelai.web.api import app
+_impl = import_module("novelai.interfaces.web.server")
+_sys.modules[__name__] = _impl
 
+for _name in dir(_impl):
+    if not _name.startswith("__"):
+        globals()[_name] = getattr(_impl, _name)
 
-def main() -> None:
-    uvicorn.run(
-        app,
-        host=settings.WEB_HOST,
-        port=settings.WEB_PORT,
-        log_level=settings.LOG_LEVEL.lower(),
-    )
+__all__ = [name for name in dir(_impl) if not name.startswith("__")]
 
 
 if __name__ == "__main__":
-    main()
+    _impl.main()

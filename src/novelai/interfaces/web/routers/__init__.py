@@ -1,4 +1,4 @@
-"""Compatibility exports for web routers."""
+"""Web API routers."""
 
 from novelai.interfaces.web.routers import novels
 

@@ -1,5 +1,7 @@
 # Release D Plan: Advanced Media Workflow (OCR + Re-Embedding)
 
+> Historical note: this plan predates the desktop GUI and document adapter work. Those capabilities are now part of the main codebase. This document remains focused on OCR and re-embedding.
+
 This plan defines Release D as an optional advanced track focused on image-heavy documents.
 
 ## Objective
@@ -23,9 +25,9 @@ In scope:
 
 Out of scope for Release D:
 
-1. New UI framework (keep Rich TUI + existing CLI).
-2. Full browser frontend.
-3. New external document format families beyond current supported sources.
+1. Full browser frontend.
+2. New OCR engines beyond the current ingest-and-review workflow.
+3. Automatic graphic editing pipelines beyond explicit re-embedding support.
 
 ## Architecture Additions
 

@@ -1,1 +1,1 @@
-"""Application entrypoints and CLI modules."""
+"""Compatibility wrappers for legacy application entrypoints."""

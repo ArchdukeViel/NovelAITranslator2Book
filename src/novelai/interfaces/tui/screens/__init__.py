@@ -1,4 +1,4 @@
-"""Compatibility exports for TUI screen modules."""
+"""Screen modules for the TUI dashboard."""
 
 from novelai.interfaces.tui.screens.diagnostics import DiagnosticsScreenMixin
 from novelai.interfaces.tui.screens.glossary import GlossaryScreenMixin

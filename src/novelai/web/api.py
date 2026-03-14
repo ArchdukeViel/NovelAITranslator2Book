@@ -1,35 +1,13 @@
-from __future__ import annotations
+"""Compatibility wrapper for the FastAPI application."""
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import sys as _sys
+from importlib import import_module
 
-from novelai.app.bootstrap import bootstrap
-from novelai.config.settings import settings
-from novelai.web.error_handlers import add_error_handlers
-from novelai.web.routers import novels
+_impl = import_module("novelai.interfaces.web.api")
+_sys.modules[__name__] = _impl
 
+for _name in dir(_impl):
+    if not _name.startswith("__"):
+        globals()[_name] = getattr(_impl, _name)
 
-def create_app() -> FastAPI:
-    """Create and configure the FastAPI application."""
-    bootstrap()
-
-    app = FastAPI(title="Novel AI")
-
-    # CORS — restrict to configured origins (empty list = nothing allowed)
-    if settings.WEB_CORS_ORIGINS:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=settings.WEB_CORS_ORIGINS,
-            allow_credentials=True,
-            allow_methods=["GET", "POST", "DELETE"],
-            allow_headers=["Authorization", "Content-Type"],
-        )
-
-    # Register error handlers
-    add_error_handlers(app)
-
-    app.include_router(novels.router, prefix="/novels", tags=["novels"])
-    return app
-
-
-app = create_app()
+__all__ = [name for name in dir(_impl) if not name.startswith("__")]

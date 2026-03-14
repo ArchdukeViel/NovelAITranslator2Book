@@ -8,7 +8,7 @@ project_root = Path(SPECPATH)
 datas = collect_data_files("novelai")
 
 a = Analysis(
-    [str(project_root / "src" / "novelai" / "desktop" / "app.py")],
+    [str(project_root / "src" / "novelai" / "interfaces" / "desktop" / "app.py")],
     pathex=[str(project_root / "src")],
     binaries=[],
     datas=datas,
