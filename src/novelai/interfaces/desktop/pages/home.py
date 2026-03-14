@@ -82,8 +82,6 @@ class HomeView(QWidget):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         for column in range(2, 5):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
-        self.recent_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.recent_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.recent_table.cellDoubleClicked.connect(self._open_recent_row)
         recent_layout.addWidget(self.recent_table)
         layout.addWidget(recent_group)

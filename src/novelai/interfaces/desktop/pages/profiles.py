@@ -147,7 +147,7 @@ class ProfilesView(QWidget):
             kwargs_input = QPlainTextEdit()
             kwargs_input.setFixedHeight(56)
             kwargs_payload = step_config.get("kwargs") if isinstance(step_config.get("kwargs"), dict) else {}
-            kwargs_input.setPlainText(str(kwargs_payload) if kwargs_payload else "")
+            kwargs_input.setPlainText(self._format_mapping_text(kwargs_payload))
 
             grid.addWidget(QLabel(step.replace("_", " ").title()), row, 0)
             hint_label = QLabel(PROFILE_STEP_HINTS.get(step, ""))
@@ -273,7 +273,7 @@ class ProfilesView(QWidget):
         self.endpoint_api_version_input.setText(str(payload.get("api_version") or ""))
         self.endpoint_api_key_env_input.setText(str(payload.get("api_key_env") or ""))
         kwargs_payload = payload.get("kwargs") if isinstance(payload.get("kwargs"), dict) else {}
-        self.endpoint_kwargs_input.setPlainText(str(kwargs_payload) if kwargs_payload else "")
+        self.endpoint_kwargs_input.setPlainText(self._format_mapping_text(kwargs_payload))
 
     @staticmethod
     def _parse_float(value: str) -> float | None:
@@ -307,6 +307,12 @@ class ProfilesView(QWidget):
             if isinstance(parsed_literal, dict):
                 return {str(key): value for key, value in parsed_literal.items()}
         return {}
+
+    @staticmethod
+    def _format_mapping_text(value: object) -> str:
+        if not isinstance(value, dict) or not value:
+            return ""
+        return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
 
     def _save_endpoint_profile(self) -> None:
         name = self.endpoint_name_input.text().strip()
