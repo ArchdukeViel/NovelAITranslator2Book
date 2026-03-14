@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -23,8 +23,10 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QPlainTextEdit,
+    QSpinBox,
     QSplitter,
     QStackedWidget,
+    QStyle,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -69,19 +71,22 @@ def _selected_numbers(chapter_selection: str) -> set[int] | None:
     return {spec.chapter for spec in parse_chapter_selection(chapter_selection)}
 
 
-def _collect_export_chapters(
+def _build_export_plan(
     novel_id: str,
     chapter_selection: str = "full",
     language: str = "translated",
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     storage = container.storage
     meta = storage.load_metadata(novel_id)
     if not meta:
         raise ValueError("Metadata not found; run scrape/import first.")
 
     selected_numbers = _selected_numbers(chapter_selection)
-    use_source = language == "source"
-    chapters: list[dict[str, Any]] = []
+    use_source = language.strip().lower() == "source"
+    ready: list[dict[str, Any]] = []
+    blocked: list[dict[str, str]] = []
+    selected_count = 0
+
     for chapter in meta.get("chapters", []):
         if not isinstance(chapter, dict):
             continue
@@ -89,24 +94,77 @@ def _collect_export_chapters(
         if selected_numbers is not None:
             if not chapter_id.isdigit() or int(chapter_id) not in selected_numbers:
                 continue
+        selected_count += 1
 
+        chapter_title = chapter.get("translated_title") if not use_source else chapter.get("title")
+        normalized_title = chapter_title if isinstance(chapter_title, str) and chapter_title.strip() else f"Chapter {chapter_id}"
+
+        text: str | None = None
+        reason: str | None = None
         if use_source:
             raw_data = storage.load_chapter(novel_id, chapter_id)
-            text = raw_data.get("text") if isinstance(raw_data, dict) else None
+            raw_text = raw_data.get("text") if isinstance(raw_data, dict) else None
+            if not isinstance(raw_text, str) or not raw_text.strip():
+                reason = "Source text missing."
+            else:
+                text = raw_text
         else:
+            media_state = storage.load_chapter_media_state(novel_id, chapter_id) or {}
+            ocr_required = bool(media_state.get("ocr_required"))
+            ocr_status = str(media_state.get("ocr_status") or "").strip().lower()
+            if ocr_required and ocr_status != "reviewed":
+                reason = "OCR review pending."
             translated = storage.load_translated_chapter(novel_id, chapter_id)
-            text = translated.get("text") if isinstance(translated, dict) else None
+            translated_text = translated.get("text") if isinstance(translated, dict) else None
+            if reason is None and (not isinstance(translated_text, str) or not translated_text.strip()):
+                reason = "Translated text missing."
+            elif reason is None:
+                text = translated_text
 
-        if not isinstance(text, str) or not text.strip():
+        if reason is not None:
+            blocked.append(
+                {
+                    "chapter_id": chapter_id,
+                    "title": normalized_title,
+                    "reason": reason,
+                }
+            )
             continue
 
-        chapters.append(
+        ready.append(
             {
-                "title": chapter.get("translated_title") if language != "source" else chapter.get("title"),
+                "chapter_id": chapter_id,
+                "title": normalized_title,
                 "text": text,
                 "images": storage.load_chapter_export_images(novel_id, chapter_id),
             }
         )
+
+    return {
+        "ready": ready,
+        "blocked": blocked,
+        "selected_count": selected_count,
+    }
+
+
+def _collect_export_chapters(
+    novel_id: str,
+    chapter_selection: str = "full",
+    language: str = "translated",
+) -> list[dict[str, Any]]:
+    plan = _build_export_plan(
+        novel_id,
+        chapter_selection=chapter_selection,
+        language=language,
+    )
+    chapters = [
+        {
+            "title": row["title"],
+            "text": row["text"],
+            "images": row["images"],
+        }
+        for row in plan["ready"]
+    ]
 
     if not chapters:
         raise ValueError(f"No {language} chapters available for export.")
@@ -306,7 +364,7 @@ class ImportTab(QWidget):
     def _on_error(self, message: str) -> None:
         self.output.setPlainText(message)
         if self.activity_model is not None and self._active_job_id is not None:
-            self.activity_model.finish_job(self._active_job_id, f"Import failed for {self.novel_id}: {message}")
+            self.activity_model.fail_job(self._active_job_id, f"Import failed for {self.novel_id}: {message}")
         self._active_job_id = None
         self.activity.emit(f"Import failed: {message}")
 
@@ -559,7 +617,7 @@ class SourceScrapePanel(QWidget):
     def _on_error(self, message: str) -> None:
         self.output.setPlainText(message)
         if self.activity_model is not None and self._active_job_id is not None:
-            self.activity_model.finish_job(self._active_job_id, f"Source scrape failed: {message}")
+            self.activity_model.fail_job(self._active_job_id, f"Source scrape failed: {message}")
         self._active_job_id = None
         self.activity.emit(f"Source scrape failed: {message}")
 
@@ -573,10 +631,18 @@ class OCRReviewTab(QWidget):
         self.storage = container.storage
         self.orchestrator = container.orchestrator
         self._worker: AsyncTaskThread | None = None
+        self._current_chapter_id: str | None = None
+        self._pages: list[dict[str, Any]] = []
+        self._page_index = 0
+        self._ocr_block_reason: str | None = None
         layout = QVBoxLayout(self)
         self.summary_label = QLabel()
         self.summary_label.setWordWrap(True)
         layout.addWidget(self.summary_label)
+        self.preflight_label = QLabel()
+        self.preflight_label.setWordWrap(True)
+        self.preflight_label.setObjectName("HeroBody")
+        layout.addWidget(self.preflight_label)
 
         ingest_group = QGroupBox("OCR Candidate Ingest")
         ingest_layout = QFormLayout(ingest_group)
@@ -603,6 +669,26 @@ class OCRReviewTab(QWidget):
         self.status_input.addItems(["pending", "reviewed", "skipped", "failed"])
         editor_group = QGroupBox("OCR Review")
         editor_layout = QVBoxLayout(editor_group)
+        nav_layout = QHBoxLayout()
+        self.first_button = QPushButton("|<")
+        self.prev_button = QPushButton("<")
+        self.page_label = QLabel("Page 0 of 0")
+        self.page_input = QSpinBox()
+        self.page_input.setMinimum(1)
+        self.page_input.setMaximum(1)
+        self.go_button = QPushButton("Go")
+        self.next_button = QPushButton(">")
+        self.last_button = QPushButton(">|")
+        nav_layout.addWidget(self.first_button)
+        nav_layout.addWidget(self.prev_button)
+        nav_layout.addWidget(self.page_label)
+        nav_layout.addStretch()
+        nav_layout.addWidget(QLabel("Go to"))
+        nav_layout.addWidget(self.page_input)
+        nav_layout.addWidget(self.go_button)
+        nav_layout.addWidget(self.next_button)
+        nav_layout.addWidget(self.last_button)
+        editor_layout.addLayout(nav_layout)
         editor_form = QFormLayout()
         editor_form.addRow("Status", self.status_input)
         editor_layout.addLayout(editor_form)
@@ -626,7 +712,30 @@ class OCRReviewTab(QWidget):
         self.list_pending_button.clicked.connect(self._show_pending_summary)
         self.review_button.clicked.connect(self.mark_reviewed)
         self.save_button.clicked.connect(self.save_status)
+        self.first_button.clicked.connect(lambda: self._go_to_page(0))
+        self.prev_button.clicked.connect(lambda: self._go_to_page(self._page_index - 1))
+        self.next_button.clicked.connect(lambda: self._go_to_page(self._page_index + 1))
+        self.last_button.clicked.connect(lambda: self._go_to_page(len(self._pages) - 1))
+        self.go_button.clicked.connect(self._go_to_entered_page)
         self.refresh()
+
+    def _apply_ocr_preflight(self) -> None:
+        has_items = self.chapter_list.count() > 0
+        self.ingest_button.setEnabled(has_items)
+        self.list_pending_button.setEnabled(has_items)
+        self.review_button.setEnabled(has_items)
+        self.save_button.setEnabled(has_items)
+        if has_items:
+            self._ocr_block_reason = None
+            self.preflight_label.setText("")
+            for button in (self.ingest_button, self.list_pending_button, self.review_button, self.save_button):
+                button.setToolTip("")
+            return
+
+        self._ocr_block_reason = "Import or scrape chapters before running OCR review."
+        self.preflight_label.setText(self._ocr_block_reason)
+        for button in (self.ingest_button, self.list_pending_button, self.review_button, self.save_button):
+            button.setToolTip(self._ocr_block_reason)
 
     def refresh(self) -> None:
         pending = 0
@@ -648,20 +757,125 @@ class OCRReviewTab(QWidget):
         )
         if self.chapter_list.count() == 0:
             self.ocr_text.setPlainText("No OCR review items for this project.")
+            self._current_chapter_id = None
+            self._pages = []
+            self._page_index = 0
+            self._update_navigation()
         elif self.chapter_list.currentItem() is None:
             self.chapter_list.setCurrentRow(0)
+        self._apply_ocr_preflight()
+
+    def _build_pages(self, media: dict[str, Any]) -> list[dict[str, Any]]:
+        pages = media.get("ocr_pages")
+        normalized: list[dict[str, Any]] = []
+        if isinstance(pages, list):
+            for index, page in enumerate(pages, start=1):
+                if not isinstance(page, dict):
+                    continue
+                text = page.get("text") if isinstance(page.get("text"), str) else ""
+                status = str(page.get("status") or "pending").strip().lower()
+                if status not in {"pending", "reviewed", "skipped", "failed"}:
+                    status = "pending"
+                normalized.append({"page": index, "text": text, "status": status})
+        if normalized:
+            return normalized
+
+        fallback_text = media.get("ocr_text") if isinstance(media.get("ocr_text"), str) else ""
+        fallback_status = str(media.get("ocr_status") or "pending").strip().lower()
+        if fallback_status not in {"pending", "reviewed", "skipped", "failed"}:
+            fallback_status = "pending"
+        return [{"page": 1, "text": fallback_text, "status": fallback_status}]
+
+    def _aggregate_status(self, pages: list[dict[str, Any]]) -> str:
+        statuses = {str(page.get("status") or "pending") for page in pages}
+        if statuses == {"reviewed"}:
+            return "reviewed"
+        if "failed" in statuses:
+            return "failed"
+        if "pending" in statuses:
+            return "pending"
+        if "reviewed" in statuses:
+            return "pending"
+        if "skipped" in statuses and len(statuses) == 1:
+            return "skipped"
+        return "pending"
+
+    def _compose_ocr_text(self, pages: list[dict[str, Any]]) -> str:
+        chunks = [str(page.get("text") or "").strip() for page in pages]
+        return "\n\n".join(chunk for chunk in chunks if chunk)
+
+    def _persist_pages(self, *, override_status: str | None = None) -> None:
+        if not self._current_chapter_id:
+            return
+        status = override_status or self._aggregate_status(self._pages)
+        payload: dict[str, Any] = {
+            "ocr_required": self.required_input.isChecked(),
+            "ocr_pages": self._pages,
+            "ocr_text": self._compose_ocr_text(self._pages),
+            "ocr_status": status,
+        }
+        if status == "reviewed":
+            payload["reembed_status"] = "pending"
+        self.storage.save_chapter_media_state(self.novel_id, self._current_chapter_id, **payload)
+
+    def _update_navigation(self) -> None:
+        total = len(self._pages)
+        current = self._page_index + 1 if total else 0
+        self.page_label.setText(f"Page {current} of {total}")
+        self.page_input.blockSignals(True)
+        self.page_input.setMaximum(max(total, 1))
+        self.page_input.setValue(max(current, 1))
+        self.page_input.blockSignals(False)
+        has_pages = total > 0
+        self.first_button.setEnabled(has_pages and self._page_index > 0)
+        self.prev_button.setEnabled(has_pages and self._page_index > 0)
+        self.next_button.setEnabled(has_pages and self._page_index < total - 1)
+        self.last_button.setEnabled(has_pages and self._page_index < total - 1)
+        self.go_button.setEnabled(has_pages)
+
+    def _show_current_page(self) -> None:
+        if not self._pages:
+            self.ocr_text.clear()
+            self.status_input.setCurrentText("pending")
+            self._update_navigation()
+            return
+        page = self._pages[self._page_index]
+        self.ocr_text.setPlainText(str(page.get("text") or ""))
+        status = str(page.get("status") or "pending")
+        self.status_input.setCurrentText(status if status in {"pending", "reviewed", "skipped", "failed"} else "pending")
+        self._update_navigation()
+
+    def _go_to_page(self, index: int) -> None:
+        if not self._pages:
+            return
+        index = max(0, min(index, len(self._pages) - 1))
+        if index == self._page_index:
+            return
+        # Save current edits before switching pages.
+        self._pages[self._page_index]["text"] = self.ocr_text.toPlainText()
+        self._pages[self._page_index]["status"] = self.status_input.currentText().strip()
+        self._page_index = index
+        self._show_current_page()
+
+    def _go_to_entered_page(self) -> None:
+        self._go_to_page(self.page_input.value() - 1)
 
     def _load_current(self, current: QListWidgetItem | None = None, _previous: QListWidgetItem | None = None) -> None:
         item = current or self.chapter_list.currentItem()
         if item is None:
             self.ocr_text.clear()
+            self._current_chapter_id = None
+            self._pages = []
+            self._page_index = 0
+            self._update_navigation()
             return
         chapter_id = item.data(Qt.ItemDataRole.UserRole)
-        media = self.storage.load_chapter_media_state(self.novel_id, str(chapter_id)) or {}
-        self.ocr_text.setPlainText(str(media.get("ocr_text") or ""))
-        status = str(media.get("ocr_status") or "pending").strip().lower()
-        self.status_input.setCurrentText(status if status in {"pending", "reviewed", "skipped", "failed"} else "pending")
+        self._current_chapter_id = str(chapter_id)
+        media = self.storage.load_chapter_media_state(self.novel_id, self._current_chapter_id) or {}
+        self._pages = self._build_pages(media)
+        self._page_index = 0
         self.required_input.setChecked(bool(media.get("ocr_required", False)))
+        self._show_current_page()
 
     def ingest_candidates(self) -> None:
         selection = self.ingest_selection_input.text().strip() or "all"
@@ -704,40 +918,26 @@ class OCRReviewTab(QWidget):
         self.ocr_text.setPlainText("\n".join(pending_lines) if pending_lines else "No chapters pending OCR review.")
 
     def mark_reviewed(self) -> None:
-        item = self.chapter_list.currentItem()
-        if item is None:
+        if not self._current_chapter_id or not self._pages:
             return
-        chapter_id = str(item.data(Qt.ItemDataRole.UserRole))
-        self.storage.save_chapter_media_state(
-            self.novel_id,
-            chapter_id,
-            ocr_required=True,
-            ocr_text=self.ocr_text.toPlainText(),
-            ocr_status="reviewed",
-            reembed_status="pending",
+        self._pages[self._page_index]["text"] = self.ocr_text.toPlainText()
+        self._pages[self._page_index]["status"] = "reviewed"
+        all_reviewed = all(str(page.get("status") or "pending") == "reviewed" for page in self._pages)
+        self._persist_pages(override_status="reviewed" if all_reviewed else None)
+        self.activity.emit(
+            f"OCR reviewed for chapter {self._current_chapter_id}, page {self._page_index + 1}."
         )
-        self.activity.emit(f"OCR reviewed for chapter {chapter_id}.")
         self.refresh()
 
     def save_status(self) -> None:
-        item = self.chapter_list.currentItem()
-        if item is None:
+        if not self._current_chapter_id or not self._pages:
             return
-        chapter_id = str(item.data(Qt.ItemDataRole.UserRole))
-        status = self.status_input.currentText().strip()
-        payload: dict[str, Any] = {
-            "ocr_required": self.required_input.isChecked(),
-            "ocr_text": self.ocr_text.toPlainText(),
-            "ocr_status": status,
-        }
-        if status == "reviewed":
-            payload["reembed_status"] = "pending"
-        self.storage.save_chapter_media_state(
-            self.novel_id,
-            chapter_id,
-            **payload,
+        self._pages[self._page_index]["text"] = self.ocr_text.toPlainText()
+        self._pages[self._page_index]["status"] = self.status_input.currentText().strip()
+        self._persist_pages()
+        self.activity.emit(
+            f"OCR status updated for chapter {self._current_chapter_id}, page {self._page_index + 1}."
         )
-        self.activity.emit(f"OCR status updated for chapter {chapter_id} -> {status}.")
         self.refresh()
 
 
@@ -955,10 +1155,22 @@ class TranslateTab(QWidget):
         self.refresh_callback = refresh_callback
         self.orchestrator = container.orchestrator
         self._active_job_id: str | None = None
+        self._runtime_busy = False
+        self._preflight_block_reason: str | None = None
         layout = QVBoxLayout(self)
         self.summary_label = QLabel()
         self.summary_label.setWordWrap(True)
         layout.addWidget(self.summary_label)
+        self.preflight_label = QLabel()
+        self.preflight_label.setWordWrap(True)
+        self.preflight_label.setObjectName("HeroBody")
+        layout.addWidget(self.preflight_label)
+        self.stack = QStackedWidget()
+        layout.addWidget(self.stack)
+
+        # Progress mode
+        progress_page = QWidget()
+        progress_layout = QVBoxLayout(progress_page)
         form = QFormLayout()
         self.source_key_input = QComboBox()
         self.source_key_input.addItems(sorted(set(available_sources() + available_input_adapters() + ["imported"])))
@@ -988,22 +1200,75 @@ class TranslateTab(QWidget):
         form.addRow("", self.consistency_input)
         form.addRow("", self.json_input)
         form.addRow("", self.force_input)
-        layout.addLayout(form)
+        progress_layout.addLayout(form)
         button_row = QHBoxLayout()
         self.estimate_button = QPushButton("Estimate Budget")
         self.translate_button = QPushButton("Translate")
         self.retranslate_button = QPushButton("Retranslate One")
+        self.review_mode_button = QPushButton("Review Translations")
         button_row.addWidget(self.estimate_button)
         button_row.addWidget(self.translate_button)
         button_row.addWidget(self.retranslate_button)
+        button_row.addWidget(self.review_mode_button)
         button_row.addStretch()
         self.translate_button.clicked.connect(self.start_translation)
         self.estimate_button.clicked.connect(self.estimate_budget)
         self.retranslate_button.clicked.connect(self.retranslate_one)
-        layout.addLayout(button_row)
+        self.review_mode_button.clicked.connect(self._switch_to_review)
+        progress_layout.addLayout(button_row)
         self.output = QPlainTextEdit()
         self.output.setReadOnly(True)
-        layout.addWidget(self.output)
+        progress_layout.addWidget(self.output)
+
+        # Review mode
+        review_page = QWidget()
+        review_layout = QVBoxLayout(review_page)
+        review_toolbar = QHBoxLayout()
+        self.back_to_progress_button = QPushButton("Back to Progress")
+        self.refresh_review_button = QPushButton("Refresh Review")
+        self.retranslate_selected_button = QPushButton("Retranslate Selected")
+        review_toolbar.addWidget(self.back_to_progress_button)
+        review_toolbar.addWidget(self.refresh_review_button)
+        review_toolbar.addWidget(self.retranslate_selected_button)
+        review_toolbar.addStretch()
+        review_layout.addLayout(review_toolbar)
+        self.back_to_progress_button.clicked.connect(self._switch_to_progress)
+        self.refresh_review_button.clicked.connect(self._refresh_review_list)
+        self.retranslate_selected_button.clicked.connect(self._retranslate_selected)
+
+        review_splitter = QSplitter()
+        self.review_chapter_list = QListWidget()
+        self.review_chapter_list.currentItemChanged.connect(self._load_review_selection)
+        review_splitter.addWidget(self.review_chapter_list)
+
+        editor_group = QGroupBox("Translation Review")
+        editor_layout = QVBoxLayout(editor_group)
+        self.review_status_label = QLabel("Select a chapter to inspect translations.")
+        self.review_status_label.setWordWrap(True)
+        editor_layout.addWidget(self.review_status_label)
+        editor_layout.addWidget(QLabel("Source Text"))
+        self.review_source_text = QPlainTextEdit()
+        self.review_source_text.setReadOnly(True)
+        editor_layout.addWidget(self.review_source_text)
+        editor_layout.addWidget(QLabel("Translated Text"))
+        self.review_translated_text = QPlainTextEdit()
+        editor_layout.addWidget(self.review_translated_text)
+        edit_buttons = QHBoxLayout()
+        self.save_review_button = QPushButton("Save Edited Translation")
+        edit_buttons.addWidget(self.save_review_button)
+        edit_buttons.addStretch()
+        editor_layout.addLayout(edit_buttons)
+        self.save_review_button.clicked.connect(self._save_review_translation)
+
+        review_splitter.addWidget(editor_group)
+        review_splitter.setStretchFactor(0, 1)
+        review_splitter.setStretchFactor(1, 2)
+        review_layout.addWidget(review_splitter)
+
+        self.stack.addWidget(progress_page)
+        self.stack.addWidget(review_page)
+        self.stack.setCurrentWidget(progress_page)
+
         self.provider_input.currentIndexChanged.connect(self._refresh_model_choices)
         self.refresh()
 
@@ -1024,6 +1289,9 @@ class TranslateTab(QWidget):
         snapshot = next((item for item in library_snapshots() if item["novel_id"] == self.novel_id), None)
         if snapshot is None:
             self.summary_label.setText("Project metadata not found.")
+            self._preflight_block_reason = "Project metadata not found."
+            self.preflight_label.setText(self._preflight_block_reason)
+            self._sync_translation_controls()
             return
         self.summary_label.setText(
             f"Translated: {snapshot['translated_units']}/{snapshot['total_units']} | "
@@ -1036,6 +1304,155 @@ class TranslateTab(QWidget):
         source_index = self.source_key_input.findText(default_source)
         if source_index >= 0:
             self.source_key_input.setCurrentIndex(source_index)
+        self._preflight_block_reason = self._translation_preflight_reason(snapshot)
+        self.preflight_label.setText(self._preflight_block_reason or "")
+        self._sync_translation_controls()
+        self._refresh_review_list()
+
+    def _translation_preflight_reason(self, snapshot: dict[str, Any]) -> str | None:
+        total_units = int(snapshot.get("total_units", 0))
+        if total_units <= 0:
+            return "Import or scrape chapters before starting translation."
+        ocr_pending = int(snapshot.get("ocr_pending", 0))
+        if ocr_pending > 0:
+            return f"Resolve OCR pending items ({ocr_pending}) before translation."
+        glossary_pending = int(snapshot.get("glossary_pending", 0))
+        if glossary_pending > 0:
+            return f"Review pending glossary terms ({glossary_pending}) before translation."
+        return None
+
+    def _switch_to_review(self) -> None:
+        self._refresh_review_list()
+        self.stack.setCurrentIndex(1)
+
+    def _switch_to_progress(self) -> None:
+        self.stack.setCurrentIndex(0)
+
+    def _selected_review_chapter_id(self) -> str | None:
+        item = self.review_chapter_list.currentItem()
+        if item is None:
+            return None
+        chapter_id = item.data(Qt.ItemDataRole.UserRole)
+        return chapter_id if isinstance(chapter_id, str) and chapter_id.isdigit() else None
+
+    def _refresh_review_list(self) -> None:
+        selected = self._selected_review_chapter_id()
+        meta = container.storage.load_metadata(self.novel_id) or {}
+        chapter_rows = [row for row in meta.get("chapters", []) if isinstance(row, dict)]
+        chapter_title_map = {
+            str(row.get("id")): safe_str(row.get("translated_title") or row.get("title"), "")
+            for row in chapter_rows
+            if row.get("id") is not None
+        }
+        chapter_ids = [str(row.get("id")) for row in chapter_rows if row.get("id") is not None]
+        if not chapter_ids:
+            chapter_ids = container.storage.list_stored_chapters(self.novel_id)
+
+        self.review_chapter_list.clear()
+        for chapter_id in chapter_ids:
+            if not chapter_id.isdigit():
+                continue
+            translated = container.storage.load_translated_chapter(self.novel_id, chapter_id)
+            status = "translated" if translated and isinstance(translated.get("text"), str) and translated.get("text") else "pending"
+            title = chapter_title_map.get(chapter_id, "")
+            label = f"{chapter_id}"
+            if title:
+                label = f"{chapter_id} - {title}"
+            item = QListWidgetItem(f"{label} [{status}]")
+            item.setData(Qt.ItemDataRole.UserRole, chapter_id)
+            self.review_chapter_list.addItem(item)
+            if selected == chapter_id:
+                self.review_chapter_list.setCurrentItem(item)
+
+        if self.review_chapter_list.count() == 0:
+            self.review_status_label.setText("No chapters available for review.")
+            self.review_source_text.clear()
+            self.review_translated_text.clear()
+            return
+        if self.review_chapter_list.currentItem() is None:
+            self.review_chapter_list.setCurrentRow(0)
+
+    def _load_review_selection(
+        self,
+        current: QListWidgetItem | None = None,
+        _previous: QListWidgetItem | None = None,
+    ) -> None:
+        item = current or self.review_chapter_list.currentItem()
+        if item is None:
+            self.review_status_label.setText("Select a chapter to inspect translations.")
+            self.review_source_text.clear()
+            self.review_translated_text.clear()
+            return
+        chapter_id = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(chapter_id, str):
+            return
+
+        raw_data = container.storage.load_chapter(self.novel_id, chapter_id) or {}
+        media_state = container.storage.load_chapter_media_state(self.novel_id, chapter_id) or {}
+        source_text: str = ""
+        reviewed_ocr = media_state.get("ocr_text")
+        if (
+            bool(media_state.get("ocr_required"))
+            and str(media_state.get("ocr_status") or "").strip().lower() == "reviewed"
+            and isinstance(reviewed_ocr, str)
+            and reviewed_ocr.strip()
+        ):
+            source_text = reviewed_ocr
+        else:
+            raw_text = raw_data.get("text")
+            if isinstance(raw_text, str):
+                source_text = raw_text
+
+        translated = container.storage.load_translated_chapter(self.novel_id, chapter_id) or {}
+        translated_value = translated.get("text")
+        translated_text = translated_value if isinstance(translated_value, str) else ""
+        translated_status = "translated" if translated_text.strip() else "pending"
+        self.review_status_label.setText(f"Chapter {chapter_id} | Status: {translated_status}")
+        self.review_source_text.setPlainText(source_text)
+        self.review_translated_text.setPlainText(translated_text)
+
+    def _save_review_translation(self) -> None:
+        chapter_id = self._selected_review_chapter_id()
+        if chapter_id is None:
+            return
+        text = self.review_translated_text.toPlainText().strip()
+        if not text:
+            QMessageBox.warning(self, "Missing Translation", "Translated text cannot be empty.")
+            return
+        existing = container.storage.load_translated_chapter(self.novel_id, chapter_id) or {}
+        provider = existing.get("provider") if isinstance(existing.get("provider"), str) else None
+        model = existing.get("model") if isinstance(existing.get("model"), str) else None
+        container.storage.save_translated_chapter(
+            self.novel_id,
+            chapter_id,
+            text,
+            provider=provider,
+            model=model,
+        )
+        self.activity.emit(f"Saved reviewed translation for chapter {chapter_id}.")
+        if self.refresh_callback is not None:
+            self.refresh_callback()
+        self._refresh_review_list()
+
+    def _set_translation_controls_enabled(self, enabled: bool) -> None:
+        self._runtime_busy = not enabled
+        self._sync_translation_controls()
+
+    def _sync_translation_controls(self) -> None:
+        blocked_reason = self._preflight_block_reason
+        allow_translate = (not self._runtime_busy) and blocked_reason is None
+        self.translate_button.setEnabled(allow_translate)
+        self.retranslate_button.setEnabled(allow_translate)
+        self.retranslate_selected_button.setEnabled(allow_translate)
+        self.save_review_button.setEnabled(not self._runtime_busy)
+        if blocked_reason and not self._runtime_busy:
+            self.translate_button.setToolTip(blocked_reason)
+            self.retranslate_button.setToolTip(blocked_reason)
+            self.retranslate_selected_button.setToolTip(blocked_reason)
+        else:
+            self.translate_button.setToolTip("")
+            self.retranslate_button.setToolTip("")
+            self.retranslate_selected_button.setToolTip("")
 
     def estimate_budget(self) -> None:
         provider_key = self.provider_input.currentData()
@@ -1065,8 +1482,7 @@ class TranslateTab(QWidget):
         force = self.force_input.isChecked()
         if self.activity_model is not None:
             self._active_job_id = self.activity_model.start_job(f"Translate {self.novel_id} ({chapters})")
-        self.translate_button.setEnabled(False)
-        self.retranslate_button.setEnabled(False)
+        self._set_translation_controls_enabled(False)
 
         def _run() -> Any:
             asyncio.run(
@@ -1089,14 +1505,26 @@ class TranslateTab(QWidget):
         worker = AsyncTaskThread(_run, self)
         worker.succeeded.connect(self._on_success)
         worker.failed.connect(self._on_error)
-        worker.finished.connect(lambda: self.translate_button.setEnabled(True))
-        worker.finished.connect(lambda: self.retranslate_button.setEnabled(True))
+        worker.finished.connect(lambda: self._set_translation_controls_enabled(True))
         worker.start()
         self._worker = worker
+
+    def _retranslate_selected(self) -> None:
+        chapter_id = self._selected_review_chapter_id()
+        if chapter_id is None:
+            self.output.setPlainText("Select a chapter in review mode to retranslate.")
+            return
+        self.chapter_selection_input.setText(chapter_id)
+        self.retranslate_one()
 
     def retranslate_one(self) -> None:
         source_key = self.source_key_input.currentText()
         chapter_id = self.chapter_selection_input.text().strip()
+        if not chapter_id.isdigit():
+            selected = self._selected_review_chapter_id()
+            if selected is not None:
+                chapter_id = selected
+                self.chapter_selection_input.setText(chapter_id)
         if not chapter_id.isdigit():
             self.output.setPlainText("Retranslate One requires a single numeric chapter ID in Chapter Selection.")
             return
@@ -1111,8 +1539,7 @@ class TranslateTab(QWidget):
         json_output = self.json_input.isChecked()
         if self.activity_model is not None:
             self._active_job_id = self.activity_model.start_job(f"Retranslate {self.novel_id}/{chapter_id}")
-        self.translate_button.setEnabled(False)
-        self.retranslate_button.setEnabled(False)
+        self._set_translation_controls_enabled(False)
 
         def _run() -> Any:
             asyncio.run(
@@ -1134,8 +1561,7 @@ class TranslateTab(QWidget):
         worker = AsyncTaskThread(_run, self)
         worker.succeeded.connect(self._on_success)
         worker.failed.connect(self._on_error)
-        worker.finished.connect(lambda: self.translate_button.setEnabled(True))
-        worker.finished.connect(lambda: self.retranslate_button.setEnabled(True))
+        worker.finished.connect(lambda: self._set_translation_controls_enabled(True))
         worker.start()
         self._worker = worker
 
@@ -1149,11 +1575,12 @@ class TranslateTab(QWidget):
         if self.refresh_callback is not None:
             self.refresh_callback()
         self.refresh()
+        self._refresh_review_list()
 
     def _on_error(self, message: str) -> None:
         self.output.setPlainText(message)
         if self.activity_model is not None and self._active_job_id is not None:
-            self.activity_model.finish_job(self._active_job_id, f"Translation failed for {self.novel_id}: {message}")
+            self.activity_model.fail_job(self._active_job_id, f"Translation failed for {self.novel_id}: {message}")
         self._active_job_id = None
         self.activity.emit(f"Translation failed: {message}")
 
@@ -1234,15 +1661,47 @@ class ExportTab(QWidget):
         self.novel_id = novel_id
         self.storage = container.storage
         self.exporter = container.export
+        self._preflight_block_reason: str | None = None
+        self._latest_export_plan: dict[str, Any] | None = None
+        self._latest_export_plan_error: str | None = None
         layout = QVBoxLayout(self)
+        eyebrow = QLabel("EXPORT")
+        eyebrow.setObjectName("HeroEyebrow")
+        title = QLabel("Package chapters to EPUB, PDF, HTML, or Markdown")
+        title.setObjectName("HeroTitle")
+        title.setWordWrap(True)
+        description = QLabel(
+            "Use chapter scope diagnostics to see what will export now and what is still blocked."
+        )
+        description.setObjectName("HeroBody")
+        description.setWordWrap(True)
+        layout.addWidget(eyebrow)
+        layout.addWidget(title)
+        layout.addWidget(description)
+
+        readiness_box = QGroupBox("Readiness")
+        readiness_layout = QVBoxLayout(readiness_box)
         self.summary_label = QLabel()
         self.summary_label.setWordWrap(True)
-        layout.addWidget(self.summary_label)
+        self.summary_label.setObjectName("HeroBody")
+        readiness_layout.addWidget(self.summary_label)
+        self.preflight_label = QLabel()
+        self.preflight_label.setWordWrap(True)
+        self.preflight_label.setObjectName("HeroBody")
+        readiness_layout.addWidget(self.preflight_label)
+        self.readiness_label = QLabel()
+        self.readiness_label.setWordWrap(True)
+        self.readiness_label.setObjectName("HeroBody")
+        readiness_layout.addWidget(self.readiness_label)
+        layout.addWidget(readiness_box)
 
+        options_box = QGroupBox("Export Options")
+        options_layout = QVBoxLayout(options_box)
         form = QFormLayout()
         self.format_input = QComboBox()
         self.format_input.addItems(["epub", "pdf", "html", "md"])
         self.chapter_selection_input = QLineEdit("full")
+        self.chapter_selection_input.setPlaceholderText("full, 1, 1-3, 2,5")
         self.language_input = QComboBox()
         self.language_input.addItems(["translated", "source"])
         self.include_toc_input = QCheckBox("Include EPUB table of contents")
@@ -1253,20 +1712,96 @@ class ExportTab(QWidget):
         form.addRow("Language", self.language_input)
         form.addRow("Output Directory", self.output_dir_input)
         form.addRow("", self.include_toc_input)
-        layout.addLayout(form)
+        options_layout.addLayout(form)
 
         button_row = QHBoxLayout()
-        button = QPushButton("Export")
-        button.clicked.connect(self.export_current)
-        button_row.addWidget(button)
+        self.export_button = QPushButton("Export Ready Chapters")
+        self.export_button.clicked.connect(self.export_current)
+        button_row.addWidget(self.export_button)
         button_row.addStretch()
-        layout.addLayout(button_row)
+        options_layout.addLayout(button_row)
+        layout.addWidget(options_box)
+
+        result_box = QGroupBox("Export Result")
+        result_layout = QVBoxLayout(result_box)
         self.output = QPlainTextEdit()
         self.output.setReadOnly(True)
-        layout.addWidget(self.output)
+        self.output.setPlaceholderText("Export status and skipped chapter diagnostics appear here.")
+        result_layout.addWidget(self.output)
+        layout.addWidget(result_box)
+        self.language_input.currentIndexChanged.connect(lambda _index: self._apply_export_preflight())
+        self.chapter_selection_input.textChanged.connect(lambda _text: self._apply_export_preflight())
         self.refresh()
 
+    def _compute_export_plan(self) -> tuple[dict[str, Any] | None, str | None]:
+        language = self.language_input.currentText().strip().lower()
+        chapter_selection = self.chapter_selection_input.text().strip() or "full"
+        try:
+            plan = _build_export_plan(
+                self.novel_id,
+                chapter_selection=chapter_selection,
+                language=language,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return None, str(exc)
+        return plan, None
+
+    def _export_preflight_reason(self) -> str | None:
+        meta = self.storage.load_metadata(self.novel_id) or {}
+        chapters = [row for row in meta.get("chapters", []) if isinstance(row, dict)]
+        if not chapters:
+            return "Project metadata not found."
+        plan, error = self._compute_export_plan()
+        self._latest_export_plan = plan
+        self._latest_export_plan_error = error
+        if error is not None:
+            return error
+        if plan is None:
+            return "Unable to compute export readiness."
+        if int(plan.get("selected_count", 0)) <= 0:
+            return "No chapters matched the selected scope."
+        if len(plan.get("ready", [])) <= 0:
+            language = self.language_input.currentText().strip().lower()
+            return f"No {language} chapters are export-ready for the selected scope."
+        return None
+
+    def _refresh_export_diagnostics(self) -> None:
+        if self._latest_export_plan_error is not None:
+            self.readiness_label.setText(f"Readiness check failed: {self._latest_export_plan_error}")
+            return
+        if self._latest_export_plan is None:
+            self.readiness_label.setText("")
+            return
+        selected_count = int(self._latest_export_plan.get("selected_count", 0))
+        ready = self._latest_export_plan.get("ready", [])
+        blocked = self._latest_export_plan.get("blocked", [])
+        lines = [
+            f"Scope diagnostics: Selected {selected_count} | Ready {len(ready)} | Blocked {len(blocked)}",
+        ]
+        for row in blocked[:4]:
+            chapter_id = str(row.get("chapter_id") or "?")
+            reason = str(row.get("reason") or "Blocked")
+            lines.append(f"Ch {chapter_id}: {reason}")
+        if len(blocked) > 4:
+            lines.append(f"+ {len(blocked) - 4} more blocked chapter(s)")
+        self.readiness_label.setText("\n".join(lines))
+
+    def _apply_export_preflight(self) -> None:
+        self._preflight_block_reason = self._export_preflight_reason()
+        blocked = self._preflight_block_reason is not None
+        self.export_button.setEnabled(not blocked)
+        if blocked:
+            self.preflight_label.setText(f"Blocked: {self._preflight_block_reason}")
+        else:
+            self.preflight_label.setText("Ready: current scope has exportable chapters.")
+        self.export_button.setToolTip(self._preflight_block_reason or "")
+        self._refresh_export_diagnostics()
+
     def export_current(self) -> None:
+        self._apply_export_preflight()
+        if self._preflight_block_reason is not None:
+            self.output.setPlainText(self._preflight_block_reason)
+            return
         meta = self.storage.load_metadata(self.novel_id)
         if not meta:
             self.output.setPlainText("Metadata not found.")
@@ -1276,11 +1811,30 @@ class ExportTab(QWidget):
         language = self.language_input.currentText().strip()
         output_dir = self.output_dir_input.text().strip() or None
         include_toc = self.include_toc_input.isChecked()
-        try:
-            chapters = _collect_export_chapters(self.novel_id, chapter_selection=chapter_selection, language=language)
-        except Exception as exc:  # noqa: BLE001
-            self.output.setPlainText(str(exc))
+        plan, error = self._compute_export_plan()
+        self._latest_export_plan = plan
+        self._latest_export_plan_error = error
+        self._refresh_export_diagnostics()
+        if error is not None:
+            self.output.setPlainText(error)
             return
+        if plan is None:
+            self.output.setPlainText("Unable to compute export readiness.")
+            return
+
+        ready_rows = [row for row in plan.get("ready", []) if isinstance(row, dict)]
+        blocked_rows = [row for row in plan.get("blocked", []) if isinstance(row, dict)]
+        if not ready_rows:
+            self.output.setPlainText(f"No {language} chapters available for export.")
+            return
+        chapters = [
+            {
+                "title": row["title"],
+                "text": row["text"],
+                "images": row["images"],
+            }
+            for row in ready_rows
+        ]
 
         output_path = _build_export_output_path(
             self.novel_id,
@@ -1300,18 +1854,23 @@ class ExportTab(QWidget):
             author=book_author,
             include_toc=include_toc,
         )
-        selected_numbers = _selected_numbers(chapter_selection)
         if language != "source":
-            for chapter in meta.get("chapters", []):
-                if not isinstance(chapter, dict):
+            for row in ready_rows:
+                chapter_id = str(row.get("chapter_id") or "")
+                if not chapter_id:
                     continue
-                chapter_id = str(chapter.get("id"))
-                if selected_numbers is not None:
-                    if not chapter_id.isdigit() or int(chapter_id) not in selected_numbers:
-                        continue
                 with contextlib.suppress(Exception):
                     self.storage.update_chapter_state(self.novel_id, chapter_id, ChapterState.EXPORTED)
-        self.output.setPlainText(f"Exported {len(chapters)} chapter(s) to:\n{output_path}")
+        lines = [f"Exported {len(chapters)} chapter(s) to:\n{output_path}"]
+        if blocked_rows:
+            lines.append(f"Skipped {len(blocked_rows)} blocked chapter(s).")
+            for row in blocked_rows[:4]:
+                chapter_id = str(row.get("chapter_id") or "?")
+                reason = str(row.get("reason") or "Blocked")
+                lines.append(f"- Ch {chapter_id}: {reason}")
+            if len(blocked_rows) > 4:
+                lines.append(f"- +{len(blocked_rows) - 4} more")
+        self.output.setPlainText("\n".join(lines))
         self.activity.emit(f"Exported {fmt.upper()} to {output_path}.")
         self.refresh()
 
@@ -1319,9 +1878,10 @@ class ExportTab(QWidget):
         translated = len(self.storage.list_translated_chapters(self.novel_id))
         stored = self.storage.count_stored_chapters(self.novel_id)
         self.summary_label.setText(
-            f"Stored units: {stored} | Translated units: {translated} | "
-            f"Recent exports: {len(recent_export_paths())}"
+            f"Library totals: {stored} stored | {translated} translated | "
+            f"{len(recent_export_paths())} recent export file(s)"
         )
+        self._apply_export_preflight()
 
 
 class ActivityTab(QWidget):
@@ -1422,11 +1982,17 @@ class BookWorkspace(QWidget):
         self.activity_model = activity_model
         self.refresh_callback = refresh_callback
         layout = QVBoxLayout(self)
+        header_row = QHBoxLayout()
         self.header_label = QLabel()
         self.header_label.setObjectName("HeroBody")
         self.header_label.setWordWrap(True)
-        layout.addWidget(self.header_label)
+        header_row.addWidget(self.header_label, stretch=1)
+        self.activity_toggle_button = QPushButton("Show Activity Panel")
+        self.activity_toggle_button.clicked.connect(self._toggle_activity_panel)
+        header_row.addWidget(self.activity_toggle_button)
+        layout.addLayout(header_row)
         tabs = QTabWidget()
+        self.tabs = tabs
         self.overview_tab = WorkspaceOverviewTab(novel_id)
         self.import_tab = ImportTab(
             novel_id,
@@ -1455,7 +2021,23 @@ class BookWorkspace(QWidget):
         tabs.addTab(self.translate_tab, "Translate")
         tabs.addTab(self.reembed_tab, "Re-embed")
         tabs.addTab(self.export_tab, "Export")
-        layout.addWidget(tabs)
+
+        self.workspace_splitter = QSplitter()
+        self.workspace_splitter.addWidget(tabs)
+        self.activity_panel = QWidget()
+        panel_layout = QVBoxLayout(self.activity_panel)
+        panel_layout.addWidget(QLabel("Workspace Activity"))
+        self.workspace_jobs_list = QListWidget()
+        panel_layout.addWidget(self.workspace_jobs_list)
+        self.workspace_log = QPlainTextEdit()
+        self.workspace_log.setReadOnly(True)
+        panel_layout.addWidget(self.workspace_log)
+        self.workspace_splitter.addWidget(self.activity_panel)
+        self.workspace_splitter.setStretchFactor(0, 4)
+        self.workspace_splitter.setStretchFactor(1, 2)
+        layout.addWidget(self.workspace_splitter)
+        self._activity_panel_visible = False
+        self.workspace_splitter.setSizes([1, 0])
 
         for tab in [self.import_tab, self.scrape_tab, self.ocr_tab, self.glossary_tab, self.translate_tab, self.reembed_tab, self.export_tab]:
             tab.activity.connect(self.activity_model.add_message)
@@ -1464,7 +2046,37 @@ class BookWorkspace(QWidget):
         self.import_tab.completed.connect(self.glossary_tab.refresh)
         self.scrape_tab.completed.connect(self.refresh)
         self.import_tab.completed.connect(self.refresh)
+        self.activity_model.jobs_changed.connect(self._refresh_activity_panel)
+        self.activity_model.messages_changed.connect(self._refresh_activity_panel)
         self.refresh()
+
+    def _toggle_activity_panel(self) -> None:
+        self._activity_panel_visible = not self._activity_panel_visible
+        if self._activity_panel_visible:
+            self.activity_toggle_button.setText("Hide Activity Panel")
+            self.workspace_splitter.setSizes([3, 2])
+        else:
+            self.activity_toggle_button.setText("Show Activity Panel")
+            self.workspace_splitter.setSizes([1, 0])
+
+    def _refresh_activity_panel(self) -> None:
+        self.workspace_jobs_list.clear()
+        running = self.activity_model.running_jobs()
+        for entry in running:
+            if self.novel_id in entry:
+                self.workspace_jobs_list.addItem(entry)
+        if self.workspace_jobs_list.count() == 0:
+            self.workspace_jobs_list.addItem("No active jobs for this workspace.")
+
+        lines = [
+            line
+            for line in self.activity_model.messages()
+            if self.novel_id in line
+        ]
+        if not lines:
+            self.workspace_log.setPlainText("No workspace-specific activity yet.")
+        else:
+            self.workspace_log.setPlainText("\n".join(lines[-120:]))
 
     def refresh(self) -> None:
         snapshot = next((item for item in library_snapshots() if item["novel_id"] == self.novel_id), None)
@@ -1479,13 +2091,24 @@ class BookWorkspace(QWidget):
         for widget in (self.overview_tab, self.ocr_tab, self.glossary_tab, self.translate_tab, self.reembed_tab, self.export_tab):
             if hasattr(widget, "refresh"):
                 widget.refresh()
+        self._refresh_activity_panel()
 
 
 class DesktopMainWindow(QMainWindow):
+    ICON_ASSETS = {
+        "home": "home.svg",
+        "library": "library.svg",
+        "import": "import.svg",
+        "activity": "activity.svg",
+        "profiles": "profiles.svg",
+        "diagnostics": "diagnostics.svg",
+        "settings": "settings.svg",
+    }
+
     TOP_LEVEL_PAGES = (
         ("home", "Home"),
         ("library", "Novel Library"),
-        ("import", "Acquire"),
+        ("import", "Import and Scrape"),
         ("activity", "Activity"),
         ("profiles", "Profiles"),
         ("diagnostics", "Diagnostics"),
@@ -1498,22 +2121,51 @@ class DesktopMainWindow(QMainWindow):
         self.activity_model = DesktopActivityModel()
         self.page_items: dict[str, QListWidgetItem] = {}
         self.page_widgets: dict[str, QWidget] = {}
+        self._nav_labels_visible = False
         self.workspace_key: str | None = None
         self.workspace: BookWorkspace | None = None
 
         self.setWindowTitle("NovelAI2Book")
         self.resize(1380, 920)
+        self.assets_dir = Path(__file__).resolve().parent / "assets"
         root = QSplitter()
         root.setObjectName("DesktopRoot")
         self.setCentralWidget(root)
+        self.root_splitter = root
+
+        self.nav_panel = QWidget()
+        self.nav_panel.setObjectName("NavPanel")
+        nav_layout = QVBoxLayout(self.nav_panel)
+        nav_layout.setContentsMargins(6, 8, 6, 8)
+        nav_layout.setSpacing(10)
+
+        self.nav_brand_button = QPushButton("✺")
+        self.nav_brand_button.setObjectName("NavBrandButton")
+        self.nav_brand_button.setToolTip("Toggle labels")
+        self.nav_brand_button.clicked.connect(self._toggle_nav_labels)
+        nav_layout.addWidget(self.nav_brand_button)
+        nav_layout.addSpacing(13)
+
         self.nav = QListWidget()
         self.nav.setObjectName("NavList")
-        self.nav.setMaximumWidth(260)
-        root.addWidget(self.nav)
+        self.nav.setSpacing(7)
+        self.nav.setMinimumWidth(56)
+        self.nav.setMaximumWidth(64)
+        nav_layout.addWidget(self.nav)
+        nav_layout.addStretch()
+
+        self.nav_avatar = QLabel("AP")
+        self.nav_avatar.setObjectName("NavAvatar")
+        self.nav_avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.nav_avatar.setToolTip("Active Profile")
+        nav_layout.addWidget(self.nav_avatar)
+
+        root.addWidget(self.nav_panel)
         self.stack = QStackedWidget()
         root.addWidget(self.stack)
         root.setStretchFactor(0, 0)
         root.setStretchFactor(1, 1)
+        root.setSizes([60, 1220])
 
         self.home_view = HomeView(self.activity_model)
         self.library_view = LibraryView()
@@ -1535,16 +2187,71 @@ class DesktopMainWindow(QMainWindow):
         self.nav.currentItemChanged.connect(self._switch_view)
         self.activity_model.jobs_changed.connect(self._refresh_status_bar)
         self.activity_model.messages_changed.connect(self._refresh_status_bar)
+        self._apply_nav_mode()
         self._navigate_to_page("home")
         self._refresh_status_bar()
 
+    def _toggle_nav_labels(self) -> None:
+        self._nav_labels_visible = not self._nav_labels_visible
+        self._apply_nav_mode()
+
+    def _apply_nav_mode(self) -> None:
+        if self._nav_labels_visible:
+            self.nav.setMinimumWidth(180)
+            self.nav.setMaximumWidth(220)
+            self.root_splitter.setSizes([200, 1080])
+        else:
+            self.nav.setMinimumWidth(56)
+            self.nav.setMaximumWidth(64)
+            self.root_splitter.setSizes([60, 1220])
+
+        for item in self.page_items.values():
+            label = item.data(Qt.ItemDataRole.UserRole + 1)
+            label_text = str(label) if isinstance(label, str) else ""
+            item.setText(label_text if self._nav_labels_visible else "")
+            if self._nav_labels_visible:
+                item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            else:
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+    def _nav_icon(self, key: str):
+        icon_map = {
+            "home": QStyle.StandardPixmap.SP_DirHomeIcon,
+            "library": QStyle.StandardPixmap.SP_DirOpenIcon,
+            "import": QStyle.StandardPixmap.SP_FileIcon,
+            "activity": QStyle.StandardPixmap.SP_BrowserReload,
+            "profiles": QStyle.StandardPixmap.SP_DialogApplyButton,
+            "diagnostics": QStyle.StandardPixmap.SP_MessageBoxInformation,
+            "settings": QStyle.StandardPixmap.SP_FileDialogDetailedView,
+        }
+        if key.startswith("workspace:"):
+            workspace_icon_path = self.assets_dir / "icons" / "workspace.svg"
+            workspace_icon = QIcon(str(workspace_icon_path))
+            if not workspace_icon.isNull():
+                return workspace_icon
+            return self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+
+        asset_name = self.ICON_ASSETS.get(key)
+        if asset_name:
+            asset_icon_path = self.assets_dir / "icons" / asset_name
+            asset_icon = QIcon(str(asset_icon_path))
+            if not asset_icon.isNull():
+                return asset_icon
+
+        icon_type = icon_map.get(key, QStyle.StandardPixmap.SP_FileDialogListView)
+        return self.style().standardIcon(icon_type)
+
     def _add_page(self, key: str, label: str, widget: QWidget) -> None:
-        item = QListWidgetItem(label)
+        item = QListWidgetItem("")
+        item.setIcon(self._nav_icon(key))
         item.setData(Qt.ItemDataRole.UserRole, key)
+        item.setData(Qt.ItemDataRole.UserRole + 1, label)
+        item.setToolTip(label)
         self.page_items[key] = item
         self.page_widgets[key] = widget
         self.nav.addItem(item)
         self.stack.addWidget(widget)
+        self._apply_nav_mode()
 
     def _navigate_to_page(self, key: str) -> None:
         item = self.page_items.get(key)
@@ -1580,7 +2287,11 @@ class DesktopMainWindow(QMainWindow):
             workspace_item = self.page_items.get(self.workspace_key or "")
             if workspace_item is not None:
                 title = (container.storage.load_metadata(self.workspace.novel_id) or {}).get("title") or self.workspace.novel_id
-                workspace_item.setText(f"Workspace: {title}")
+                workspace_label = f"Workspace: {title}"
+                workspace_item.setData(Qt.ItemDataRole.UserRole + 1, workspace_label)
+                workspace_item.setToolTip(f"Workspace: {title}")
+                if self._nav_labels_visible:
+                    workspace_item.setText(workspace_label)
         self._refresh_status_bar()
 
     def open_workspace(self, novel_id: str) -> None:
@@ -1617,8 +2328,9 @@ def main() -> None:
     app = QApplication.instance() or QApplication([])
     assert isinstance(app, QApplication)
     app.setStyle("Fusion")
-    app.setFont(QFont("Bahnschrift SemiCondensed", 10))
-    app.setStyleSheet(build_stylesheet())
+    app.setFont(QFont("Segoe UI Variable Text", 10))
+    assets_dir = Path(__file__).resolve().parent / "assets"
+    app.setStyleSheet(build_stylesheet(assets_dir))
     window = DesktopMainWindow()
     window.show()
     app.exec()

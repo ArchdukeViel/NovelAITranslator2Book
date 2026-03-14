@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import shutil
+import subprocess
+import sys
+from pathlib import Path
 
 from novelai.interfaces.tui.app import TUIApp
 from novelai.interfaces.web.server import main as web_main
@@ -11,6 +15,68 @@ from novelai.runtime.container import container
 
 def _normalize_action(action: str) -> str:
     return action.strip().lower().replace("_", "-")
+
+
+def _expected_launcher_path() -> Path:
+    launcher_name = "novelaibook.exe" if sys.platform.startswith("win") else "novelaibook"
+    return Path(sys.executable).resolve().parent / launcher_name
+
+
+def _doctor_check() -> tuple[int, list[str]]:
+    warnings = 0
+    lines: list[str] = []
+    expected = _expected_launcher_path()
+    resolved = shutil.which("novelaibook")
+
+    lines.append("NovelAIBook Doctor")
+    lines.append(f"Python: {sys.executable}")
+    lines.append(f"Expected launcher: {expected}")
+    lines.append(f"Resolved launcher: {resolved or 'not found on PATH'}")
+
+    if not expected.exists():
+        warnings += 1
+        lines.append("WARN: Expected launcher does not exist in the current environment.")
+
+    if resolved is None:
+        warnings += 1
+        lines.append("WARN: 'novelaibook' is not available on PATH.")
+    else:
+        expected_text = str(expected.resolve())
+        resolved_text = str(Path(resolved).resolve())
+        same_launcher = resolved_text.casefold() == expected_text.casefold()
+        if not same_launcher:
+            warnings += 1
+            lines.append(
+                "WARN: PATH points to a different launcher than the active Python environment. "
+                "This can run stale entrypoint code."
+            )
+
+        try:
+            probe = subprocess.run(
+                [resolved, "--help"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=8,
+            )
+        except Exception as exc:  # noqa: BLE001
+            warnings += 1
+            lines.append(f"WARN: Failed to execute launcher probe: {exc}")
+        else:
+            if probe.returncode != 0:
+                warnings += 1
+                output = (probe.stderr or probe.stdout or "").strip().replace("\n", " ")
+                short_output = output[:220]
+                lines.append(f"WARN: Launcher probe failed with exit code {probe.returncode}. Output: {short_output}")
+                if "novelai.app" in output or "novelai.desktop" in output:
+                    lines.append("WARN: Legacy wrapper module reference detected in launcher output.")
+
+    if warnings:
+        lines.append("Result: WARN")
+        lines.append("Fix: python -m pip install -e .")
+    else:
+        lines.append("Result: PASS")
+    return warnings, lines
 
 
 
@@ -25,6 +91,7 @@ def main(argv: list[str] | None = None) -> None:
     # TUI mode (default)
     subparsers.add_parser("tui", help="Run the interactive TUI")
     subparsers.add_parser("gui", help="Run the desktop GUI")
+    subparsers.add_parser("doctor", help="Check launcher wiring and environment health")
 
     # Unified document import
     ic = subparsers.add_parser("import-document", help="Import a document or archive into the library")
@@ -157,6 +224,12 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "web":
         web_main()
+        return
+    if args.command == "doctor":
+        warnings, lines = _doctor_check()
+        print("\n".join(lines))
+        if warnings:
+            raise SystemExit(1)
         return
 
     try:

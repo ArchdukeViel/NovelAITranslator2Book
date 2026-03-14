@@ -10,6 +10,16 @@ from novelai.providers.registry import available_models, available_providers
 from novelai.runtime.container import container
 
 
+PROFILE_STEP_HINTS: dict[str, str] = {
+    "term_extraction": "Extract candidate terms from source chapters before translation.",
+    "term_summary": "Summarize extracted terms and normalize glossary candidates.",
+    "term_translation": "Translate accepted terms into the target language glossary.",
+    "body_translation": "Translate full chapter text with glossary and style guidance.",
+    "ocr": "Review OCR text for image-heavy chapters before translation.",
+    "reembedding": "Re-embed reviewed text chunks for retrieval and consistency.",
+}
+
+
 class ProfilesView(QWidget):
     def __init__(self, refresh_callback: Callable[[], None] | None = None) -> None:
         super().__init__()
@@ -32,8 +42,9 @@ class ProfilesView(QWidget):
 
         grid = QGridLayout()
         grid.addWidget(QLabel("Step"), 0, 0)
-        grid.addWidget(QLabel("Provider"), 0, 1)
-        grid.addWidget(QLabel("Model"), 0, 2)
+        grid.addWidget(QLabel("Intent"), 0, 1)
+        grid.addWidget(QLabel("Provider"), 0, 2)
+        grid.addWidget(QLabel("Model"), 0, 3)
         self.inputs: dict[str, tuple[QComboBox, QComboBox]] = {}
         for row, step in enumerate(WORKFLOW_PROFILE_STEPS, start=1):
             profile = self.preferences.get_workflow_profile(step)
@@ -47,8 +58,12 @@ class ProfilesView(QWidget):
             self._populate_models(model_input, profile["provider"], profile["model"])
             provider_input.currentIndexChanged.connect(lambda _index, current_step=step: self._refresh_models(current_step))
             grid.addWidget(QLabel(step.replace("_", " ").title()), row, 0)
-            grid.addWidget(provider_input, row, 1)
-            grid.addWidget(model_input, row, 2)
+            hint_label = QLabel(PROFILE_STEP_HINTS.get(step, ""))
+            hint_label.setWordWrap(True)
+            hint_label.setObjectName("HeroBody")
+            grid.addWidget(hint_label, row, 1)
+            grid.addWidget(provider_input, row, 2)
+            grid.addWidget(model_input, row, 3)
             self.inputs[step] = (provider_input, model_input)
         layout.addLayout(grid)
         save_button = QPushButton("Save Profiles")

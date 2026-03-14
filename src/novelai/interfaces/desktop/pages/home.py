@@ -31,18 +31,9 @@ class HomeView(QWidget):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
-        eyebrow = QLabel("NOVELAI2BOOK")
-        eyebrow.setObjectName("HeroEyebrow")
-        title = QLabel("Your novel translation workspace.")
+        title = QLabel("NOVELAI2BOOK")
         title.setObjectName("HeroTitle")
-        description = QLabel(
-            "Import, OCR, build glossaries, translate, and export \u2014 all from one place."
-        )
-        description.setObjectName("HeroBody")
-        description.setWordWrap(True)
-        layout.addWidget(eyebrow)
         layout.addWidget(title)
-        layout.addWidget(description)
 
         stats_layout = QHBoxLayout()
         self.projects_card = StatCard("Projects")
@@ -156,7 +147,7 @@ class HomeView(QWidget):
             for snapshot in snapshots
         )
         self.projects_card.set_content(str(len(snapshots)), "Projects currently stored in the library")
-        self.translation_card.set_content(str(translated_units), "Translated units ready for export or review")
+        self.translation_card.set_content(str(translated_units), "Translated chapters ready for export or review")
         self.attention_card.set_content(str(total_attention), "Pending OCR, glossary review, or failed chapters")
         self.activity_card.set_content(str(len(self.activity_model.running_jobs())), "Background jobs active right now")
 

@@ -358,6 +358,24 @@ class StorageService:
 
         payload["ocr_required"] = ocr_required
         payload["ocr_text"] = payload.get("ocr_text") if isinstance(payload.get("ocr_text"), str) else None
+        raw_pages = payload.get("ocr_pages")
+        normalized_pages: list[dict[str, Any]] = []
+        if isinstance(raw_pages, list):
+            for index, page in enumerate(raw_pages, start=1):
+                if not isinstance(page, dict):
+                    continue
+                page_text = page.get("text") if isinstance(page.get("text"), str) else ""
+                page_status = page.get("status")
+                if page_status not in self.OCR_STATUSES:
+                    page_status = "pending" if ocr_required else "skipped"
+                normalized_pages.append(
+                    {
+                        "page": int(page.get("page", index)) if str(page.get("page", index)).isdigit() else index,
+                        "text": page_text,
+                        "status": page_status,
+                    }
+                )
+        payload["ocr_pages"] = normalized_pages
         payload["ocr_status"] = ocr_status
         payload["reembed_status"] = reembed_status
         payload["input_adapter_key"] = (
@@ -589,6 +607,7 @@ class StorageService:
             "ocr_artifacts": self._normalize_named_dict_items(payload.get("ocr_artifacts")),
             "ocr_required": payload.get("ocr_required", False),
             "ocr_text": payload.get("ocr_text"),
+            "ocr_pages": payload.get("ocr_pages") if isinstance(payload.get("ocr_pages"), list) else [],
             "ocr_status": payload.get("ocr_status", "skipped"),
             "reembed_status": payload.get("reembed_status", "skipped"),
         }
@@ -600,6 +619,7 @@ class StorageService:
         *,
         ocr_required: bool | object = _UNSET,
         ocr_text: str | None | object = _UNSET,
+        ocr_pages: list[dict[str, Any]] | object = _UNSET,
         ocr_status: str | object = _UNSET,
         reembed_status: str | object = _UNSET,
     ) -> Path:
@@ -610,6 +630,8 @@ class StorageService:
             payload["ocr_required"] = bool(ocr_required)
         if ocr_text is not _UNSET:
             payload["ocr_text"] = ocr_text
+        if ocr_pages is not _UNSET:
+            payload["ocr_pages"] = ocr_pages
         if ocr_status is not _UNSET:
             payload["ocr_status"] = ocr_status
         if reembed_status is not _UNSET:

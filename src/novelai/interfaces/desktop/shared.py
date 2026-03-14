@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, QThread, QUrl, Signal, Qt
 from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from novelai.config.settings import settings
@@ -146,46 +146,126 @@ def profiles_snapshot_text() -> str:
     return "\n".join(lines)
 
 
-def build_stylesheet() -> str:
+def _qss_file_url(path: Path) -> str:
+    return bytes(QUrl.fromLocalFile(str(path.resolve())).toEncoded()).decode("ascii")
+
+
+def build_stylesheet(asset_dir: Path | None = None) -> str:
+    milky_way_url = ""
+    if asset_dir is not None:
+        milky_way_path = asset_dir / "milky-way-eso.jpg"
+        if milky_way_path.exists():
+            milky_way_url = _qss_file_url(milky_way_path)
+
+    root_background = """
+    QSplitter#DesktopRoot {
+        background: qradialgradient(cx:0.18, cy:0.08, radius:1.1,
+            fx:0.18, fy:0.08,
+            stop:0 #31206f,
+            stop:0.35 #1b1244,
+            stop:0.75 #0c0824,
+            stop:1 #050312);
+    }
+    """
+    if milky_way_url:
+        root_background = """
+    QSplitter#DesktopRoot {
+        background: qradialgradient(cx:0.18, cy:0.08, radius:1.1,
+            fx:0.18, fy:0.08,
+            stop:0 #31206f,
+            stop:0.35 #1b1244,
+            stop:0.75 #0c0824,
+            stop:1 #050312);
+        background-image: url('""" + milky_way_url + """');
+        background-position: center;
+        background-repeat: no-repeat;
+    }
+    """
+
     return """  /* --- NovelAI2Book desktop stylesheet --- */
-    QMainWindow, QWidget {
-        background: #f3ede2;
-        color: #182322;
-        font-family: "Bahnschrift SemiCondensed", "Segoe UI Variable Text", "Segoe UI";
+    QMainWindow {
+        background: #0b0720;
+    }
+    QWidget {
+        background: transparent;
+        color: #efeaff;
+        font-family: "Segoe UI Variable Text", "Segoe UI", "Trebuchet MS";
         font-size: 13px;
     }
     QMainWindow::separator {
-        background: #d8c3a4;
+        background: #2e215d;
         width: 1px;
         height: 1px;
     }
+    """ + root_background + """
+    QWidget#NavPanel {
+        background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+            stop:0 #090613,
+            stop:1 #140a2f);
+        border-right: 1px solid #3c2b74;
+        border-top-right-radius: 16px;
+        border-bottom-right-radius: 16px;
+    }
+    QPushButton#NavBrandButton {
+        color: #f0e9ff;
+        background: #2b1b5f;
+        border: 1px solid #6441c2;
+        border-radius: 17px;
+        min-height: 34px;
+        max-height: 34px;
+        font-size: 15px;
+        font-weight: 700;
+        padding: 0;
+    }
+    QPushButton#NavBrandButton:hover {
+        background: #3b2390;
+    }
+    QLabel#NavAvatar {
+        color: #f2ecff;
+        background: #4c2bb2;
+        border: 1px solid #8f6dff;
+        border-radius: 17px;
+        min-height: 34px;
+        max-height: 34px;
+        min-width: 34px;
+        max-width: 34px;
+        font-size: 11px;
+        font-weight: 700;
+    }
     QListWidget#NavList {
-        background: #162126;
-        color: #ecf1ea;
-        border: none;
-        border-radius: 20px;
-        padding: 12px 8px;
+        background: transparent;
+        color: #e9e0ff;
+        border: 1px solid #372a62;
+        border-radius: 14px;
+        padding: 6px 4px;
         outline: none;
     }
     QListWidget#NavList::item {
         border-radius: 12px;
-        padding: 12px 14px;
-        margin: 4px 6px;
+        min-height: 40px;
+        padding: 10px 6px;
+        margin: 4px 4px;
     }
     QListWidget#NavList::item:selected {
-        background: #d2a868;
-        color: #1a2221;
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+            stop:0 #5f36d8,
+            stop:1 #8b5cf6);
+        color: #f8f4ff;
         font-weight: 700;
     }
     QListWidget, QPlainTextEdit, QLineEdit, QComboBox, QTabWidget::pane {
-        background: #fffaf3;
-        border: 1px solid #dccab0;
+        background: #130e2e;
+        border: 1px solid #3e2f75;
         border-radius: 14px;
-        selection-background-color: #184e5e;
-        selection-color: #fffaf3;
+        selection-background-color: #7e57ff;
+        selection-color: #ffffff;
+    }
+    QStackedWidget {
+        background: rgba(7, 4, 24, 0.28);
+        border: none;
     }
     QListWidget {
-        padding: 6px;
+        padding: 6px 6px;
         outline: none;
     }
     QListWidget::item {
@@ -194,107 +274,114 @@ def build_stylesheet() -> str:
         margin: 2px 0;
     }
     QListWidget::item:selected {
-        background: #184e5e;
-        color: #fffaf3;
+        background: #5f36d8;
+        color: #ffffff;
     }
     QPlainTextEdit, QLineEdit, QComboBox {
         padding: 8px 10px;
+        color: #ece7ff;
+    }
+    QLabel {
+        background: transparent;
     }
     QComboBox::drop-down {
         border: none;
         width: 22px;
     }
     QPushButton {
-        background: #184e5e;
-        color: #fffaf3;
+        background: #512ab2;
+        color: #f7f1ff;
         border: none;
         border-radius: 12px;
-        padding: 10px 14px;
+        padding: 9px 14px;
         font-weight: 700;
     }
     QPushButton:hover {
-        background: #21657a;
+        background: #6736dc;
     }
     QPushButton:pressed {
-        background: #103640;
+        background: #3f218d;
     }
     QPushButton:disabled {
-        background: #c0cac7;
-        color: #6d7775;
+        background: #2a2250;
+        color: #877db1;
     }
     QCheckBox {
         spacing: 8px;
     }
     QGroupBox {
-        background: #fff8ee;
-        border: 1px solid #dccab0;
+        background: #110c28;
+        border: 1px solid #3c2c71;
         border-radius: 18px;
         margin-top: 16px;
-        padding-top: 12px;
+        padding: 12px;
         font-weight: 700;
     }
     QGroupBox::title {
         subcontrol-origin: margin;
         left: 14px;
-        top: 4px;
-        padding: 0 6px;
-        color: #6e5534;
+        top: 2px;
+        padding: 0 8px;
+        color: #b69bff;
+        background: #110c28;
     }
     QLabel#HeroEyebrow {
-        color: #8a6a3a;
+        color: #bba0ff;
         font-size: 11px;
         font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
     }
     QLabel#HeroTitle {
-        color: #122224;
+        color: #f3ecff;
         font-size: 26px;
         font-weight: 800;
     }
     QLabel#HeroBody {
-        color: #5d6460;
+        color: #b8abde;
         font-size: 13px;
     }
     QFrame#StatCard {
         background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-            stop:0 #fff6e8, stop:1 #f4e2c7);
-        border: 1px solid #d7bd8e;
+            stop:0 #1f1545, stop:1 #2c1d63);
+        border: 1px solid #5a3cb0;
         border-radius: 18px;
     }
     QLabel#StatTitle {
-        color: #7c6340;
+        color: #c2b3ea;
         font-size: 11px;
         font-weight: 700;
     }
     QLabel#StatValue {
-        color: #122224;
+        color: #f6f1ff;
         font-size: 28px;
         font-weight: 800;
     }
     QLabel#StatMeta {
-        color: #5f6661;
+        color: #afa5d4;
         font-size: 12px;
     }
     QTabBar::tab {
-        background: #ead9bf;
-        color: #55422b;
+        background: #1f1546;
+        color: #c7b8f0;
         border-top-left-radius: 12px;
         border-top-right-radius: 12px;
-        padding: 10px 14px;
+        padding: 9px 14px;
         margin-right: 4px;
         font-weight: 700;
+        border: 1px solid #3f2f76;
+        border-bottom: none;
     }
     QTabBar::tab:selected {
-        background: #fff8ee;
-        color: #183138;
+        background: #3f2a8d;
+        color: #ffffff;
     }
     QStatusBar {
-        background: #e9decb;
-        color: #4f5a57;
+        background: #100a24;
+        color: #ab9dd8;
     }
     QSplitter::handle {
-        background: #dccab0;
+        background: #30245a;
     }
     """
 
@@ -307,13 +394,17 @@ class StatCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.title_label = QLabel(title)
         self.title_label.setObjectName("StatTitle")
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.value_label = QLabel(value)
         self.value_label.setObjectName("StatValue")
+        self.value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.meta_label = QLabel(meta)
         self.meta_label.setObjectName("StatMeta")
         self.meta_label.setWordWrap(True)
+        self.meta_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.title_label)
         layout.addWidget(self.value_label)
         layout.addWidget(self.meta_label)
@@ -343,7 +434,18 @@ class DesktopActivityModel(QObject):
         self.add_message(f"Started: {label}")
         return job_id
 
+    def update_job(self, job_id: str, detail: str) -> None:
+        if job_id not in self._running_jobs:
+            return
+        self._running_jobs[job_id] = f"{timestamp_label(datetime.now().astimezone())} {detail}"
+        self.jobs_changed.emit()
+
     def finish_job(self, job_id: str, message: str) -> None:
+        self._running_jobs.pop(job_id, None)
+        self.jobs_changed.emit()
+        self.add_message(message)
+
+    def fail_job(self, job_id: str, message: str) -> None:
         self._running_jobs.pop(job_id, None)
         self.jobs_changed.emit()
         self.add_message(message)

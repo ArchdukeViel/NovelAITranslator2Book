@@ -52,7 +52,7 @@ class LibraryView(QWidget):
         list_layout.addWidget(self.list_widget)
         layout.addWidget(list_group)
 
-        details_group = QGroupBox("Novel Details")
+        details_group = QGroupBox("Project Details")
         details_layout = QVBoxLayout(details_group)
         self.details_output = QPlainTextEdit()
         self.details_output.setReadOnly(True)
@@ -89,8 +89,8 @@ class LibraryView(QWidget):
             for item in snapshots
         )
         self.projects_card.set_content(str(len(snapshots)), "Projects indexed in the current library")
-        self.translated_card.set_content(str(translated_total), "Units with translated output on disk")
-        self.attention_card.set_content(str(attention_total), "Pending manual review or failed states")
+        self.translated_card.set_content(str(translated_total), "Translated chapters currently available")
+        self.attention_card.set_content(str(attention_total), "Items needing review or recovery")
 
         self.list_widget.clear()
         for snapshot in snapshots:
@@ -134,7 +134,7 @@ class LibraryView(QWidget):
             f"Updated: {timestamp_label(snapshot.get('updated_at'))}",
             "",
             f"Units: {snapshot['total_units']}",
-            f"Translated: {snapshot['translated_units']}",
+            f"Translated Chapters: {snapshot['translated_units']}",
             f"OCR Pending: {snapshot['ocr_pending']}",
             f"Glossary Pending: {snapshot['glossary_pending']}",
             f"Failed Chapters: {snapshot['errors']}",
