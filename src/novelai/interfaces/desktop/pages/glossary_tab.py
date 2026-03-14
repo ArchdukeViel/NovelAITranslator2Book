@@ -206,7 +206,8 @@ class GlossaryTab(QWidget):
         self.extract_button.setEnabled(False)
 
         def _run() -> Any:
-            return asyncio.run(self.orchestrator.extract_glossary_terms(self.novel_id, max_terms=50))
+            max_terms = desktop_shared.container.preferences.get_glossary_extraction_max_terms()
+            return asyncio.run(self.orchestrator.extract_glossary_terms(self.novel_id, max_terms=max_terms))
 
         self._worker = AsyncTaskThread(_run, self)
         self._worker.succeeded.connect(self._on_extract_success)

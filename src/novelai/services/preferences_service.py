@@ -126,8 +126,14 @@ class PreferencesService:
             self._data[self.GLOSSARY_EXTRACTION_KEY] = {
                 "mode": "heuristic",
                 "prompt_template": None,
+                "max_terms": 50,
             }
             changed = True
+        else:
+            glossary_data = self._data[self.GLOSSARY_EXTRACTION_KEY]
+            if "max_terms" not in glossary_data:
+                glossary_data["max_terms"] = 50
+                changed = True
 
         if changed:
             self._persist()
@@ -460,3 +466,21 @@ class PreferencesService:
             return
         os.environ.pop("PROVIDER_OPENAI_API_KEY", None)
         settings.PROVIDER_OPENAI_API_KEY = None
+
+    def get_glossary_extraction_max_terms(self) -> int:
+        payload = self.get(self.GLOSSARY_EXTRACTION_KEY, {})
+        if not isinstance(payload, dict):
+            return 50
+        value = payload.get("max_terms")
+        if isinstance(value, int) and value > 0:
+            return value
+        return 50
+
+    def set_glossary_extraction_max_terms(self, max_terms: int) -> None:
+        if max_terms < 1:
+            raise ValueError("max_terms must be a positive integer.")
+        payload = self.get(self.GLOSSARY_EXTRACTION_KEY, {})
+        if not isinstance(payload, dict):
+            payload = {}
+        payload["max_terms"] = max_terms
+        self.set(self.GLOSSARY_EXTRACTION_KEY, payload)

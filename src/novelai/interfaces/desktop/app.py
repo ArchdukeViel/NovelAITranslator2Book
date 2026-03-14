@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QEvent, QSize, Qt
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -37,6 +37,7 @@ from novelai.interfaces.desktop.pages.workspace_panels import ExportTab
 from novelai.interfaces.desktop.shared import (
     DesktopActivityModel,
     build_stylesheet,
+    resolve_theme_preference,
 )
 
 __all__ = [
@@ -155,6 +156,13 @@ class DesktopMainWindow(QMainWindow):
         self.diagnostics_view = DiagnosticsView()
         self.settings_view = SettingsView(self.refresh_all_views)
 
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            app.paletteChanged.connect(self._on_palette_changed)
+            style_hints = app.styleHints()
+            if hasattr(style_hints, "colorSchemeChanged"):
+                style_hints.colorSchemeChanged.connect(self._on_palette_changed)
+
         for key, label in self.TOP_LEVEL_PAGES:
             widget = getattr(self, f"{key}_view")
             self._add_page(key, label, widget, scrollable=True)
@@ -165,6 +173,27 @@ class DesktopMainWindow(QMainWindow):
         self._apply_nav_mode()
         self._navigate_to_page("home")
         self._refresh_status_bar()
+
+    def _apply_theme_from_preferences(self) -> None:
+        app = QApplication.instance()
+        if not isinstance(app, QApplication):
+            return
+        selected_theme = container.preferences.get_theme()
+        resolved_theme = resolve_theme_preference(selected_theme, app)
+        app.setStyleSheet(build_stylesheet(self.assets_dir, theme=resolved_theme))
+
+    def _on_palette_changed(self, *_args: object) -> None:
+        if container.preferences.get_theme().strip().lower() == "auto":
+            self._apply_theme_from_preferences()
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        super().changeEvent(event)
+        if event.type() in {
+            QEvent.Type.PaletteChange,
+            QEvent.Type.ApplicationPaletteChange,
+            QEvent.Type.ThemeChange,
+        }:
+            self._on_palette_changed()
 
     def _toggle_nav_labels(self) -> None:
         self._apply_nav_mode()
@@ -310,7 +339,9 @@ def main() -> None:
     app.setStyle("Fusion")
     app.setFont(QFont("Segoe UI Variable Text", 10))
     assets_dir = Path(__file__).resolve().parent / "assets"
-    app.setStyleSheet(build_stylesheet(assets_dir))
+    selected_theme = container.preferences.get_theme()
+    resolved_theme = resolve_theme_preference(selected_theme, app)
+    app.setStyleSheet(build_stylesheet(assets_dir, theme=resolved_theme))
     window = DesktopMainWindow()
     window.show()
     app.exec()

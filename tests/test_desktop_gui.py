@@ -493,7 +493,7 @@ def test_profiles_validate_endpoint_calls_provider_and_sets_status(
     monkeypatch: pytest.MonkeyPatch,
     qapp: QApplication,
 ) -> None:
-    monkeypatch.setattr("novelai.interfaces.desktop.pages.profiles.container", desktop_env.container)
+    monkeypatch.setattr("novelai.interfaces.desktop.shared.container", desktop_env.container)
     monkeypatch.setattr("novelai.interfaces.desktop.pages.profiles.available_providers", lambda: ["mock"])
     monkeypatch.setattr("novelai.interfaces.desktop.pages.profiles.available_models", lambda _key: ["mock-model"])
 
@@ -508,7 +508,7 @@ def test_profiles_validate_endpoint_calls_provider_and_sets_status(
 
     view = profiles_page.ProfilesView()
     view.endpoint_provider_input.setCurrentIndex(max(view.endpoint_provider_input.findData("mock"), 0))
-    view.endpoint_model_input.setText("mock-model")
+    view.endpoint_model_input.setCurrentText("mock-model")
     view._validate_endpoint_profile()
 
     assert hasattr(view, "_endpoint_validate_worker")
