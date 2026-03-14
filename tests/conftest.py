@@ -13,7 +13,8 @@ from uuid import uuid4
 
 import pytest
 
-from novelai.app.container import Container
+from novelai.runtime.container import Container
+from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState
 from novelai.glossary.glossary import Glossary
 from novelai.providers.base import TranslationProvider
@@ -27,6 +28,7 @@ from novelai.sources.base import SourceAdapter
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TESTS_ROOT = Path(__file__).resolve().parent
 TESTS_TMP_ROOT = TESTS_ROOT / ".tmp" / "fixtures"
+TESTS_RUNTIME_ROOT = TESTS_ROOT / ".tmp" / "runtime"
 
 
 def _force_remove_tree(path: Path) -> None:
@@ -54,6 +56,7 @@ def cleanup_test_artifacts(
         project_root / ".pipeline_verify",
         project_root / ".pytest_tmp",
         tests_root / ".cache",
+        tests_root / ".tmp" / "runtime",
     )
 
     paths_to_remove = [
@@ -99,12 +102,76 @@ def cleanup_test_artifacts(
     return removed, warnings
 
 
+def _reset_global_container() -> None:
+    """Clear cached singletons on the shared runtime container."""
+    from novelai.runtime.container import container as runtime_container
+
+    runtime_container._storage = None
+    runtime_container._translation_cache = None
+    runtime_container._settings = None
+    runtime_container._preferences = None
+    runtime_container._usage = None
+    runtime_container._translation = None
+    runtime_container._export = None
+    runtime_container._orchestrator = None
+
+
 @pytest.fixture(scope="session", autouse=True)
 def auto_cleanup_test_outputs() -> Iterator[None]:
     """Clean test-generated filesystem output before and after the test session."""
     cleanup_test_artifacts(include_pytest_managed=True)
     yield
     cleanup_test_artifacts(include_pytest_managed=True)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolate_tests_from_runtime_library() -> Iterator[None]:
+    """Route any implicit runtime writes into a disposable test library."""
+    TESTS_RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
+    runtime_dir = TESTS_RUNTIME_ROOT / f"session_{uuid4().hex}"
+    runtime_dir.mkdir(parents=True, exist_ok=False)
+
+    previous_data_dir = settings.NOVEL_LIBRARY_DIR
+    previous_provider_default = settings.PROVIDER_DEFAULT
+    previous_api_key = settings.PROVIDER_OPENAI_API_KEY
+    previous_env_novel_library = os.environ.get("NOVEL_LIBRARY_DIR")
+    previous_env_data_dir = os.environ.get("DATA_DIR")
+    previous_env_api_key = os.environ.get("PROVIDER_OPENAI_API_KEY")
+
+    os.environ["NOVEL_LIBRARY_DIR"] = str(runtime_dir)
+    os.environ["DATA_DIR"] = str(runtime_dir)
+    os.environ.pop("PROVIDER_OPENAI_API_KEY", None)
+
+    settings.NOVEL_LIBRARY_DIR = runtime_dir
+    settings.PROVIDER_DEFAULT = "dummy"
+    settings.PROVIDER_OPENAI_API_KEY = None
+    _reset_global_container()
+
+    try:
+        yield
+    finally:
+        _reset_global_container()
+        settings.NOVEL_LIBRARY_DIR = previous_data_dir
+        settings.PROVIDER_DEFAULT = previous_provider_default
+        settings.PROVIDER_OPENAI_API_KEY = previous_api_key
+
+        if previous_env_novel_library is None:
+            os.environ.pop("NOVEL_LIBRARY_DIR", None)
+        else:
+            os.environ["NOVEL_LIBRARY_DIR"] = previous_env_novel_library
+
+        if previous_env_data_dir is None:
+            os.environ.pop("DATA_DIR", None)
+        else:
+            os.environ["DATA_DIR"] = previous_env_data_dir
+
+        if previous_env_api_key is None:
+            os.environ.pop("PROVIDER_OPENAI_API_KEY", None)
+        else:
+            os.environ["PROVIDER_OPENAI_API_KEY"] = previous_env_api_key
+
+        if runtime_dir.exists():
+            _force_remove_tree(runtime_dir)
 
 
 class MockTranslationProvider(TranslationProvider):

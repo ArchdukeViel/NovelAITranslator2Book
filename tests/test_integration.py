@@ -5,7 +5,7 @@ from zipfile import ZipFile
 
 import pytest
 
-from novelai.app.bootstrap import bootstrap
+from novelai.runtime.bootstrap import bootstrap
 from novelai.core.chapter_state import ChapterState
 from novelai.pipeline.context import PipelineState
 from novelai.pipeline.pipeline import TranslationPipeline

@@ -10,13 +10,13 @@ from uuid import uuid4
 import pytest
 from rich.console import Console
 
-from novelai.app.bootstrap import bootstrap
+from novelai.runtime.bootstrap import bootstrap
 from novelai.config.settings import settings
 from novelai.providers.registry import available_providers
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.usage_service import UsageService
 from novelai.sources.registry import available_sources
-from novelai.tui.app import LibrarySnapshot, TUIApp
+from novelai.interfaces.tui.app import LibrarySnapshot, TUIApp
 from tests.conftest import TestFixture as FixtureEnv
 
 
@@ -26,11 +26,11 @@ def tui(monkeypatch: pytest.MonkeyPatch) -> Iterator[TUIApp]:
     bootstrap()
     fixture = FixtureEnv()
 
-    monkeypatch.setattr("novelai.tui.app.container", fixture.container)
-    monkeypatch.setattr("novelai.tui.app.PreferencesService", lambda: fixture.settings_service)
-    monkeypatch.setattr("novelai.tui.app.UsageService", lambda: fixture.usage_service)
+    monkeypatch.setattr("novelai.interfaces.tui.app.container", fixture.container)
+    monkeypatch.setattr("novelai.interfaces.tui.app.PreferencesService", lambda: fixture.settings_service)
+    monkeypatch.setattr("novelai.interfaces.tui.app.UsageService", lambda: fixture.usage_service)
     monkeypatch.setattr(
-        "novelai.tui.app.NovelOrchestrationService",
+        "novelai.interfaces.tui.app.NovelOrchestrationService",
         lambda storage, translation: NovelOrchestrationService(
             storage=storage,
             translation=translation,
@@ -102,7 +102,7 @@ def test_glossary_ocr_review_updates_chapter_media_state(
     answers = iter(["1", "reviewed", "Corrected OCR text"])
 
     monkeypatch.setattr(
-        "novelai.tui.screens.glossary.Prompt.ask",
+        "novelai.interfaces.tui.screens.glossary.Prompt.ask",
         lambda *args, **kwargs: next(answers),
     )
 
@@ -667,7 +667,7 @@ def test_validate_provider_connection_updates_api_validation_status(
 
     tui.settings.set_provider_key("openai")
     tui.settings.set_provider_model("gpt-5.4")
-    monkeypatch.setattr("novelai.tui.screens.settings.get_provider", lambda key: FakeProvider())
+    monkeypatch.setattr("novelai.interfaces.tui.screens.settings.get_provider", lambda key: FakeProvider())
 
     is_valid, message = tui._validate_provider_connection()
 

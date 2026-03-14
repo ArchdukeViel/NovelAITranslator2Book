@@ -1,21 +1,18 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 import contextlib
 from collections.abc import Callable
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, QThread, Signal, Qt
+from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
-    QFrame,
     QFormLayout,
-    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -36,301 +33,34 @@ from PySide6.QtWidgets import (
 from novelai.runtime.bootstrap import bootstrap
 from novelai.runtime.container import container
 from novelai.config.settings import settings
-from novelai.config.workflow_profiles import WORKFLOW_PROFILE_STEPS
 from novelai.core.chapter_state import ChapterState
 from novelai.cost_estimator.compare import compare_models
 from novelai.cost_estimator.models import EstimationOptions
 from novelai.cost_estimator.pricing import list_supported_models
 from novelai.glossary import glossary_status_counts
 from novelai.inputs.registry import available_input_adapters, detect_input_adapter
+from novelai.interfaces.desktop.pages import (
+    ActivityView,
+    DiagnosticsView,
+    HomeView,
+    LibraryView,
+    ProfilesView,
+    SettingsView,
+)
+from novelai.interfaces.desktop.shared import (
+    AsyncTaskThread,
+    DesktopActivityModel,
+    StatCard,
+    build_stylesheet,
+    library_snapshots,
+    profiles_snapshot_text,
+    recent_export_paths,
+    safe_str,
+    timestamp_label,
+)
 from novelai.providers.registry import available_models, available_providers
 from novelai.sources.registry import available_sources, detect_source
 from novelai.utils.chapter_selection import is_full_chapter_selection, parse_chapter_selection
-
-
-def _timestamp_label(value: Any) -> str:
-    if isinstance(value, datetime):
-        return value.astimezone().strftime("%Y-%m-%d %H:%M")
-    if isinstance(value, str) and value.strip():
-        try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return value
-        return parsed.astimezone().strftime("%Y-%m-%d %H:%M")
-    return "-"
-
-
-def _safe_str(value: Any, fallback: str = "-") -> str:
-    if isinstance(value, str):
-        cleaned = value.strip()
-        if cleaned:
-            return cleaned
-    if value is None:
-        return fallback
-    return str(value)
-
-
-def _snapshot_media_counts(novel_id: str) -> dict[str, int]:
-    storage = container.storage
-    counts = {
-        "ocr_required": 0,
-        "ocr_pending": 0,
-        "ocr_reviewed": 0,
-        "reembed_pending": 0,
-        "reembed_completed": 0,
-    }
-    for chapter_id in storage.list_stored_chapters(novel_id):
-        media = storage.load_chapter_media_state(novel_id, chapter_id) or {}
-        ocr_required = bool(media.get("ocr_required"))
-        if ocr_required:
-            counts["ocr_required"] += 1
-        ocr_status = str(media.get("ocr_status") or "skipped").strip().lower()
-        if ocr_required and ocr_status in {"pending", "failed"}:
-            counts["ocr_pending"] += 1
-        if ocr_required and ocr_status == "reviewed":
-            counts["ocr_reviewed"] += 1
-        reembed_status = str(media.get("reembed_status") or "skipped").strip().lower()
-        if reembed_status == "pending":
-            counts["reembed_pending"] += 1
-        elif reembed_status == "completed":
-            counts["reembed_completed"] += 1
-    return counts
-
-
-def _library_snapshots() -> list[dict[str, Any]]:
-    storage = container.storage
-    snapshots: list[dict[str, Any]] = []
-    for novel_id in sorted(storage.list_novels()):
-        meta = storage.load_metadata(novel_id) or {}
-        chapter_rows = [row for row in meta.get("chapters", []) if isinstance(row, dict)]
-        chapter_ids = [str(row.get("id")) for row in chapter_rows if row.get("id") is not None]
-        if not chapter_ids:
-            chapter_ids = storage.list_stored_chapters(novel_id)
-        total_units = len(chapter_ids)
-        translated_units = sum(
-            1 for chapter_id in chapter_ids
-            if storage.load_translated_chapter(novel_id, chapter_id) is not None
-        )
-        glossary_counts = glossary_status_counts(storage.load_glossary(novel_id))
-        media_counts = _snapshot_media_counts(novel_id)
-        snapshots.append(
-            {
-                "novel_id": novel_id,
-                "title": meta.get("title") or novel_id,
-                "author": meta.get("author"),
-                "document_type": meta.get("document_type"),
-                "origin_type": meta.get("origin_type"),
-                "origin_uri_or_path": meta.get("origin_uri_or_path"),
-                "input_adapter_key": meta.get("input_adapter_key"),
-                "source_language": meta.get("source_language"),
-                "updated_at": meta.get("updated_at") or meta.get("scraped_at"),
-                "total_units": total_units,
-                "translated_units": translated_units,
-                "untranslated_units": max(total_units - translated_units, 0),
-                "ocr_pending": media_counts["ocr_pending"],
-                "ocr_reviewed": media_counts["ocr_reviewed"],
-                "reembed_pending": media_counts["reembed_pending"],
-                "glossary_pending": glossary_counts.get("pending", 0),
-                "glossary_approved": glossary_counts.get("approved", 0),
-                "errors": len(storage.get_chapters_with_errors(novel_id, limit=max(total_units, 100))),
-            }
-        )
-    snapshots.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
-    return snapshots
-
-
-def _recent_export_paths(limit: int = 8) -> list[Path]:
-    storage = container.storage
-    root = getattr(storage, "novels_dir", settings.DATA_DIR / "novels")
-    if not isinstance(root, Path) or not root.exists():
-        return []
-    paths = [path for path in root.rglob("full_novel.*") if path.is_file()]
-    paths.sort(key=lambda path: path.stat().st_mtime, reverse=True)
-    return paths[:limit]
-
-
-def _usage_snapshot_text() -> str:
-    summary = container.usage.summary(all_days=True)
-    lines = [
-        f"Requests: {summary.get('total_requests', 0)}",
-        f"Tokens: {summary.get('total_tokens', 0)}",
-        f"Estimated Cost: ${summary.get('estimated_cost_usd', 0.0):.4f}",
-        f"Projection Estimates: {summary.get('total_estimates', 0)}",
-        f"Projected Tokens: {summary.get('estimated_total_tokens', 0)}",
-    ]
-    for entry in container.usage.daily_history(limit=5):
-        lines.append(
-            f"{entry.get('date')}: {entry.get('total_requests', 0)} req, "
-            f"{entry.get('total_tokens', 0)} tok"
-        )
-    return "\n".join(lines)
-
-
-def _profiles_snapshot_text() -> str:
-    profiles = container.preferences.get_workflow_profiles()
-    lines: list[str] = []
-    for step in WORKFLOW_PROFILE_STEPS:
-        profile = profiles.get(step, {})
-        provider = profile.get("provider") if isinstance(profile, dict) else None
-        model = profile.get("model") if isinstance(profile, dict) else None
-        lines.append(
-            f"{step.replace('_', ' ').title()}: "
-            f"{_safe_str(provider, 'inherit')} / {_safe_str(model, 'inherit')}"
-        )
-    return "\n".join(lines)
-
-
-def _build_stylesheet() -> str:
-    return """
-    QMainWindow, QWidget {
-        background: #f3ede2;
-        color: #182322;
-        font-family: "Bahnschrift SemiCondensed", "Segoe UI Variable Text", "Segoe UI";
-        font-size: 13px;
-    }
-    QMainWindow::separator {
-        background: #d8c3a4;
-        width: 1px;
-        height: 1px;
-    }
-    QListWidget#NavList {
-        background: #162126;
-        color: #ecf1ea;
-        border: none;
-        border-radius: 20px;
-        padding: 12px 8px;
-        outline: none;
-    }
-    QListWidget#NavList::item {
-        border-radius: 12px;
-        padding: 12px 14px;
-        margin: 4px 6px;
-    }
-    QListWidget#NavList::item:selected {
-        background: #d2a868;
-        color: #1a2221;
-        font-weight: 700;
-    }
-    QListWidget, QPlainTextEdit, QLineEdit, QComboBox, QTabWidget::pane {
-        background: #fffaf3;
-        border: 1px solid #dccab0;
-        border-radius: 14px;
-        selection-background-color: #184e5e;
-        selection-color: #fffaf3;
-    }
-    QListWidget {
-        padding: 6px;
-        outline: none;
-    }
-    QListWidget::item {
-        border-radius: 10px;
-        padding: 8px 10px;
-        margin: 2px 0;
-    }
-    QListWidget::item:selected {
-        background: #184e5e;
-        color: #fffaf3;
-    }
-    QPlainTextEdit, QLineEdit, QComboBox {
-        padding: 8px 10px;
-    }
-    QComboBox::drop-down {
-        border: none;
-        width: 22px;
-    }
-    QPushButton {
-        background: #184e5e;
-        color: #fffaf3;
-        border: none;
-        border-radius: 12px;
-        padding: 10px 14px;
-        font-weight: 700;
-    }
-    QPushButton:hover {
-        background: #21657a;
-    }
-    QPushButton:pressed {
-        background: #103640;
-    }
-    QPushButton:disabled {
-        background: #c0cac7;
-        color: #6d7775;
-    }
-    QCheckBox {
-        spacing: 8px;
-    }
-    QGroupBox {
-        background: #fff8ee;
-        border: 1px solid #dccab0;
-        border-radius: 18px;
-        margin-top: 16px;
-        padding-top: 12px;
-        font-weight: 700;
-    }
-    QGroupBox::title {
-        subcontrol-origin: margin;
-        left: 14px;
-        top: 4px;
-        padding: 0 6px;
-        color: #6e5534;
-    }
-    QLabel#HeroEyebrow {
-        color: #8a6a3a;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-    }
-    QLabel#HeroTitle {
-        color: #122224;
-        font-size: 26px;
-        font-weight: 800;
-    }
-    QLabel#HeroBody {
-        color: #5d6460;
-        font-size: 13px;
-    }
-    QFrame#StatCard {
-        background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-            stop:0 #fff6e8, stop:1 #f4e2c7);
-        border: 1px solid #d7bd8e;
-        border-radius: 18px;
-    }
-    QLabel#StatTitle {
-        color: #7c6340;
-        font-size: 11px;
-        font-weight: 700;
-    }
-    QLabel#StatValue {
-        color: #122224;
-        font-size: 28px;
-        font-weight: 800;
-    }
-    QLabel#StatMeta {
-        color: #5f6661;
-        font-size: 12px;
-    }
-    QTabBar::tab {
-        background: #ead9bf;
-        color: #55422b;
-        border-top-left-radius: 12px;
-        border-top-right-radius: 12px;
-        padding: 10px 14px;
-        margin-right: 4px;
-        font-weight: 700;
-    }
-    QTabBar::tab:selected {
-        background: #fff8ee;
-        color: #183138;
-    }
-    QStatusBar {
-        background: #e9decb;
-        color: #4f5a57;
-    }
-    QSplitter::handle {
-        background: #dccab0;
-    }
-    """
 
 
 def _selected_numbers(chapter_selection: str) -> set[int] | None:
@@ -474,687 +204,6 @@ def _estimate_translation_budget(novel_id: str, chapter_selection: str, provider
         lines.append(note)
     return "\n".join(lines)
 
-
-class StatCard(QFrame):
-    def __init__(self, title: str, value: str = "-", meta: str = "") -> None:
-        super().__init__()
-        self.setObjectName("StatCard")
-        layout = QVBoxLayout(self)
-        self.title_label = QLabel(title)
-        self.title_label.setObjectName("StatTitle")
-        self.value_label = QLabel(value)
-        self.value_label.setObjectName("StatValue")
-        self.meta_label = QLabel(meta)
-        self.meta_label.setObjectName("StatMeta")
-        self.meta_label.setWordWrap(True)
-        layout.addWidget(self.title_label)
-        layout.addWidget(self.value_label)
-        layout.addWidget(self.meta_label)
-        layout.addStretch()
-
-    def set_content(self, value: str, meta: str = "") -> None:
-        self.value_label.setText(value)
-        self.meta_label.setText(meta)
-
-
-class DesktopActivityModel(QObject):
-    messages_changed = Signal()
-    jobs_changed = Signal()
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._messages: list[str] = []
-        self._running_jobs: dict[str, str] = {}
-
-    def add_message(self, message: str) -> None:
-        self._messages.append(f"[{_timestamp_label(datetime.now().astimezone())}] {message}")
-        self.messages_changed.emit()
-
-    def start_job(self, label: str) -> str:
-        job_id = f"job-{int(datetime.now().timestamp() * 1000)}-{len(self._running_jobs) + 1}"
-        self._running_jobs[job_id] = f"{_timestamp_label(datetime.now().astimezone())} {label}"
-        self.jobs_changed.emit()
-        self.add_message(f"Started: {label}")
-        return job_id
-
-    def finish_job(self, job_id: str, message: str) -> None:
-        self._running_jobs.pop(job_id, None)
-        self.jobs_changed.emit()
-        self.add_message(message)
-
-    def clear_messages(self) -> None:
-        self._messages.clear()
-        self.messages_changed.emit()
-
-    def messages(self) -> list[str]:
-        return list(self._messages)
-
-    def running_jobs(self) -> list[str]:
-        return list(self._running_jobs.values())
-
-
-class AsyncTaskThread(QThread):
-    succeeded = Signal(object)
-    failed = Signal(str)
-
-    def __init__(self, fn: Callable[[], Any], parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._fn = fn
-
-    def run(self) -> None:
-        try:
-            result = self._fn()
-            self.succeeded.emit(result)
-        except Exception as exc:  # noqa: BLE001
-            self.failed.emit(str(exc))
-
-
-class HomeView(QWidget):
-    navigate_requested = Signal(str)
-    open_workspace_requested = Signal(str)
-
-    def __init__(self, activity_model: DesktopActivityModel) -> None:
-        super().__init__()
-        self.activity_model = activity_model
-        layout = QGridLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setHorizontalSpacing(12)
-        layout.setVerticalSpacing(12)
-
-        hero_group = QGroupBox("Control Deck")
-        hero_layout = QVBoxLayout(hero_group)
-        eyebrow = QLabel("DESKTOP STUDIO")
-        eyebrow.setObjectName("HeroEyebrow")
-        title = QLabel("Run imports, review terminology, and ship clean exports from one place.")
-        title.setWordWrap(True)
-        title.setObjectName("HeroTitle")
-        body = QLabel(
-            "The home screen is meant to answer four questions quickly: what exists, what needs attention, "
-            "what is running, and what should happen next."
-        )
-        body.setWordWrap(True)
-        body.setObjectName("HeroBody")
-        hero_layout.addWidget(eyebrow)
-        hero_layout.addWidget(title)
-        hero_layout.addWidget(body)
-
-        stats_layout = QHBoxLayout()
-        self.projects_card = StatCard("Projects")
-        self.translation_card = StatCard("Translated Units")
-        self.attention_card = StatCard("Needs Attention")
-        self.activity_card = StatCard("Running Jobs")
-        stats_layout.addWidget(self.projects_card)
-        stats_layout.addWidget(self.translation_card)
-        stats_layout.addWidget(self.attention_card)
-        stats_layout.addWidget(self.activity_card)
-        hero_layout.addLayout(stats_layout)
-
-        quick_group = QGroupBox("Quick Actions")
-        quick_layout = QGridLayout(quick_group)
-        actions = [
-            ("Import Document", lambda: self.navigate_requested.emit("import")),
-            ("Open Library", lambda: self.navigate_requested.emit("library")),
-            ("Resume OCR", self._open_first_ocr_workspace),
-            ("Start Translation", self._open_first_translation_workspace),
-            ("Export Latest", self._open_first_export_workspace),
-            ("View Activity", lambda: self.navigate_requested.emit("activity")),
-            ("Profiles", lambda: self.navigate_requested.emit("profiles")),
-        ]
-        for index, (label, handler) in enumerate(actions):
-            button = QPushButton(label)
-            button.clicked.connect(handler)
-            quick_layout.addWidget(button, index // 2, index % 2)
-
-        recent_group = QGroupBox("Recent Projects")
-        recent_layout = QVBoxLayout(recent_group)
-        self.recent_list = QListWidget()
-        self.recent_list.itemDoubleClicked.connect(self._open_item_novel)
-        recent_layout.addWidget(self.recent_list)
-
-        attention_group = QGroupBox("Needs Attention")
-        attention_layout = QVBoxLayout(attention_group)
-        self.attention_list = QListWidget()
-        self.attention_list.itemDoubleClicked.connect(self._open_item_novel)
-        attention_layout.addWidget(self.attention_list)
-
-        jobs_group = QGroupBox("Active Jobs")
-        jobs_layout = QVBoxLayout(jobs_group)
-        self.jobs_list = QListWidget()
-        jobs_layout.addWidget(self.jobs_list)
-
-        usage_group = QGroupBox("Usage Snapshot")
-        usage_layout = QVBoxLayout(usage_group)
-        self.usage_output = QPlainTextEdit()
-        self.usage_output.setReadOnly(True)
-        usage_layout.addWidget(self.usage_output)
-
-        profiles_group = QGroupBox("Profile Summary")
-        profiles_layout = QVBoxLayout(profiles_group)
-        self.profiles_output = QPlainTextEdit()
-        self.profiles_output.setReadOnly(True)
-        profiles_layout.addWidget(self.profiles_output)
-
-        exports_group = QGroupBox("Recent Outputs")
-        exports_layout = QVBoxLayout(exports_group)
-        self.exports_list = QListWidget()
-        exports_layout.addWidget(self.exports_list)
-
-        layout.addWidget(hero_group, 0, 0, 1, 2)
-        layout.addWidget(quick_group, 1, 0, 1, 2)
-        layout.addWidget(recent_group, 2, 0)
-        layout.addWidget(attention_group, 2, 1)
-        layout.addWidget(jobs_group, 3, 0)
-        layout.addWidget(usage_group, 3, 1)
-        layout.addWidget(profiles_group, 4, 0)
-        layout.addWidget(exports_group, 4, 1)
-        layout.setRowStretch(2, 1)
-        layout.setRowStretch(3, 1)
-        layout.setRowStretch(4, 1)
-
-        self.activity_model.jobs_changed.connect(self.refresh)
-        self.activity_model.messages_changed.connect(self.refresh)
-        self.refresh()
-
-    def _first_snapshot(self, predicate: Callable[[dict[str, Any]], bool]) -> dict[str, Any] | None:
-        for snapshot in _library_snapshots():
-            if predicate(snapshot):
-                return snapshot
-        return None
-
-    def _open_first_ocr_workspace(self) -> None:
-        snapshot = self._first_snapshot(lambda item: int(item.get("ocr_pending", 0)) > 0)
-        if snapshot is None:
-            self.navigate_requested.emit("library")
-            return
-        self.open_workspace_requested.emit(snapshot["novel_id"])
-
-    def _open_first_translation_workspace(self) -> None:
-        snapshot = self._first_snapshot(
-            lambda item: int(item.get("untranslated_units", 0)) > 0 and int(item.get("ocr_pending", 0)) == 0
-        )
-        if snapshot is None:
-            self.navigate_requested.emit("library")
-            return
-        self.open_workspace_requested.emit(snapshot["novel_id"])
-
-    def _open_first_export_workspace(self) -> None:
-        snapshot = self._first_snapshot(lambda item: int(item.get("translated_units", 0)) > 0)
-        if snapshot is None:
-            self.navigate_requested.emit("library")
-            return
-        self.open_workspace_requested.emit(snapshot["novel_id"])
-
-    def _open_item_novel(self, item: QListWidgetItem) -> None:
-        novel_id = item.data(Qt.ItemDataRole.UserRole)
-        if isinstance(novel_id, str):
-            self.open_workspace_requested.emit(novel_id)
-
-    def refresh(self) -> None:
-        self.recent_list.clear()
-        self.attention_list.clear()
-        self.jobs_list.clear()
-        self.exports_list.clear()
-
-        snapshots = _library_snapshots()
-        translated_units = sum(int(snapshot.get("translated_units", 0)) for snapshot in snapshots)
-        total_attention = sum(
-            int(snapshot.get("ocr_pending", 0)) + int(snapshot.get("glossary_pending", 0)) + int(snapshot.get("errors", 0))
-            for snapshot in snapshots
-        )
-        self.projects_card.set_content(str(len(snapshots)), "Projects currently stored in the library")
-        self.translation_card.set_content(str(translated_units), "Translated units ready for export or review")
-        self.attention_card.set_content(str(total_attention), "Pending OCR, glossary review, or failed chapters")
-        self.activity_card.set_content(str(len(self.activity_model.running_jobs())), "Background jobs active right now")
-
-        for snapshot in snapshots[:10]:
-            item = QListWidgetItem(
-                f"{snapshot['title']} ({snapshot['novel_id']}) | "
-                f"{snapshot['translated_units']}/{snapshot['total_units']} translated | "
-                f"{_safe_str(snapshot.get('input_adapter_key'), 'unknown adapter')}"
-            )
-            item.setData(Qt.ItemDataRole.UserRole, snapshot["novel_id"])
-            self.recent_list.addItem(item)
-
-        for snapshot in snapshots:
-            reasons: list[str] = []
-            if int(snapshot.get("ocr_pending", 0)) > 0:
-                reasons.append(f"{snapshot['ocr_pending']} OCR review")
-            if int(snapshot.get("glossary_pending", 0)) > 0:
-                reasons.append(f"{snapshot['glossary_pending']} glossary pending")
-            if int(snapshot.get("errors", 0)) > 0:
-                reasons.append(f"{snapshot['errors']} failed chapters")
-            if int(snapshot.get("untranslated_units", 0)) > 0 and int(snapshot.get("ocr_pending", 0)) == 0:
-                reasons.append(f"{snapshot['untranslated_units']} untranslated")
-            if not reasons:
-                continue
-            item = QListWidgetItem(f"{snapshot['title']} ({snapshot['novel_id']}): {', '.join(reasons)}")
-            item.setData(Qt.ItemDataRole.UserRole, snapshot["novel_id"])
-            self.attention_list.addItem(item)
-
-        if self.attention_list.count() == 0:
-            self.attention_list.addItem("No projects currently need manual attention.")
-
-        for job in self.activity_model.running_jobs():
-            self.jobs_list.addItem(job)
-        if self.jobs_list.count() == 0:
-            self.jobs_list.addItem("No active jobs.")
-
-        self.usage_output.setPlainText(_usage_snapshot_text())
-        self.profiles_output.setPlainText(_profiles_snapshot_text())
-
-        for path in _recent_export_paths():
-            self.exports_list.addItem(str(path))
-        if self.exports_list.count() == 0:
-            self.exports_list.addItem("No exports found yet.")
-
-
-class LibraryView(QWidget):
-    open_requested = Signal(str)
-    navigate_requested = Signal(str)
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.storage = container.storage
-        layout = QVBoxLayout(self)
-        eyebrow = QLabel("LIBRARY")
-        eyebrow.setObjectName("HeroEyebrow")
-        title = QLabel("Inspect every stored project, see what is blocked, and jump into the right workspace.")
-        title.setObjectName("HeroTitle")
-        title.setWordWrap(True)
-        layout.addWidget(eyebrow)
-        layout.addWidget(title)
-
-        stats_layout = QHBoxLayout()
-        self.projects_card = StatCard("Projects")
-        self.translated_card = StatCard("Translated")
-        self.attention_card = StatCard("Attention")
-        stats_layout.addWidget(self.projects_card)
-        stats_layout.addWidget(self.translated_card)
-        stats_layout.addWidget(self.attention_card)
-        layout.addLayout(stats_layout)
-
-        toolbar = QHBoxLayout()
-        self.refresh_button = QPushButton("Refresh")
-        self.refresh_button.clicked.connect(self.refresh)
-        self.open_button = QPushButton("Open Workspace")
-        self.open_button.clicked.connect(self._open_current)
-        self.import_button = QPushButton("Import Document")
-        self.import_button.clicked.connect(lambda: self.navigate_requested.emit("import"))
-        toolbar.addWidget(self.refresh_button)
-        toolbar.addWidget(self.open_button)
-        toolbar.addWidget(self.import_button)
-        toolbar.addStretch()
-        layout.addLayout(toolbar)
-
-        splitter = QSplitter()
-        self.list_widget = QListWidget()
-        self.list_widget.itemDoubleClicked.connect(self._open_current)
-        self.list_widget.currentItemChanged.connect(self._load_current)
-        self.details_output = QPlainTextEdit()
-        self.details_output.setReadOnly(True)
-        splitter.addWidget(self.list_widget)
-        splitter.addWidget(self.details_output)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
-        layout.addWidget(splitter)
-        self.refresh()
-
-    def refresh(self) -> None:
-        current_novel_id = None
-        current_item = self.list_widget.currentItem()
-        if current_item is not None:
-            current_novel_id = current_item.data(Qt.ItemDataRole.UserRole)
-        snapshots = _library_snapshots()
-        translated_total = sum(int(item.get("translated_units", 0)) for item in snapshots)
-        attention_total = sum(
-            int(item.get("ocr_pending", 0)) + int(item.get("glossary_pending", 0)) + int(item.get("errors", 0))
-            for item in snapshots
-        )
-        self.projects_card.set_content(str(len(snapshots)), "Projects indexed in the current library")
-        self.translated_card.set_content(str(translated_total), "Units with translated output on disk")
-        self.attention_card.set_content(str(attention_total), "Pending manual review or failed states")
-        self.list_widget.clear()
-        for snapshot in snapshots:
-            item = QListWidgetItem(f"{snapshot['title']} ({snapshot['novel_id']})")
-            item.setData(Qt.ItemDataRole.UserRole, snapshot["novel_id"])
-            self.list_widget.addItem(item)
-            if current_novel_id == snapshot["novel_id"]:
-                self.list_widget.setCurrentItem(item)
-        if self.list_widget.count() == 0:
-            self.details_output.setPlainText("No projects in the library yet.")
-        elif self.list_widget.currentItem() is None:
-            self.list_widget.setCurrentRow(0)
-
-    def _load_current(
-        self,
-        current: QListWidgetItem | None = None,
-        _previous: QListWidgetItem | None = None,
-    ) -> None:
-        item = current or self.list_widget.currentItem()
-        if item is None:
-            self.details_output.clear()
-            return
-        novel_id = item.data(Qt.ItemDataRole.UserRole)
-        if not isinstance(novel_id, str):
-            self.details_output.clear()
-            return
-        snapshot = next((entry for entry in _library_snapshots() if entry["novel_id"] == novel_id), None)
-        if snapshot is None:
-            self.details_output.setPlainText(f"No metadata found for {novel_id}.")
-            return
-        meta = self.storage.load_metadata(novel_id) or {}
-        lines = [
-            f"Title: {snapshot['title']}",
-            f"Novel ID: {novel_id}",
-            f"Author: {_safe_str(snapshot.get('author'))}",
-            f"Document Type: {_safe_str(snapshot.get('document_type'))}",
-            f"Origin Type: {_safe_str(snapshot.get('origin_type'))}",
-            f"Origin: {_safe_str(snapshot.get('origin_uri_or_path'))}",
-            f"Input Adapter: {_safe_str(snapshot.get('input_adapter_key'))}",
-            f"Source Language: {_safe_str(snapshot.get('source_language'))}",
-            f"Updated: {_timestamp_label(snapshot.get('updated_at'))}",
-            "",
-            f"Units: {snapshot['total_units']}",
-            f"Translated: {snapshot['translated_units']}",
-            f"OCR Pending: {snapshot['ocr_pending']}",
-            f"Glossary Pending: {snapshot['glossary_pending']}",
-            f"Failed Chapters: {snapshot['errors']}",
-        ]
-        translated_title = meta.get("translated_title")
-        if isinstance(translated_title, str) and translated_title.strip():
-            lines.extend(["", f"Translated Title: {translated_title}"])
-        self.details_output.setPlainText("\n".join(lines))
-
-    def _open_current(self, *_args: object) -> None:
-        item = self.list_widget.currentItem()
-        if item is None:
-            return
-        novel_id = item.data(Qt.ItemDataRole.UserRole)
-        if isinstance(novel_id, str):
-            self.open_requested.emit(novel_id)
-
-
-class ActivityView(QWidget):
-    def __init__(self, activity_model: DesktopActivityModel) -> None:
-        super().__init__()
-        self.activity_model = activity_model
-        layout = QVBoxLayout(self)
-        eyebrow = QLabel("ACTIVITY")
-        eyebrow.setObjectName("HeroEyebrow")
-        title = QLabel("Watch queued work, running jobs, and recent operation output.")
-        title.setObjectName("HeroTitle")
-        title.setWordWrap(True)
-        layout.addWidget(eyebrow)
-        layout.addWidget(title)
-        controls = QHBoxLayout()
-        self.refresh_button = QPushButton("Refresh")
-        self.clear_button = QPushButton("Clear Log")
-        self.refresh_button.clicked.connect(self.refresh)
-        self.clear_button.clicked.connect(self.activity_model.clear_messages)
-        controls.addWidget(self.refresh_button)
-        controls.addWidget(self.clear_button)
-        controls.addStretch()
-        layout.addLayout(controls)
-
-        splitter = QSplitter()
-        self.jobs_list = QListWidget()
-        self.log_output = QPlainTextEdit()
-        self.log_output.setReadOnly(True)
-        splitter.addWidget(self.jobs_list)
-        splitter.addWidget(self.log_output)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
-        layout.addWidget(splitter)
-
-        self.activity_model.jobs_changed.connect(self.refresh)
-        self.activity_model.messages_changed.connect(self.refresh)
-        self.refresh()
-
-    def refresh(self) -> None:
-        self.jobs_list.clear()
-        for job in self.activity_model.running_jobs():
-            self.jobs_list.addItem(job)
-        if self.jobs_list.count() == 0:
-            self.jobs_list.addItem("No active jobs.")
-        self.log_output.setPlainText("\n".join(self.activity_model.messages()))
-
-
-class ProfilesView(QWidget):
-    def __init__(self, refresh_callback: Callable[[], None] | None = None) -> None:
-        super().__init__()
-        self.preferences = container.preferences
-        self.refresh_callback = refresh_callback
-        layout = QVBoxLayout(self)
-        eyebrow = QLabel("PROFILES")
-        eyebrow.setObjectName("HeroEyebrow")
-        title = QLabel("Assign provider and model preferences to each workflow stage.")
-        title.setObjectName("HeroTitle")
-        title.setWordWrap(True)
-        description = QLabel(
-            "These settings let OCR, term extraction, glossary work, and body translation use different models when needed."
-        )
-        description.setObjectName("HeroBody")
-        description.setWordWrap(True)
-        layout.addWidget(eyebrow)
-        layout.addWidget(title)
-        layout.addWidget(description)
-
-        grid = QGridLayout()
-        grid.addWidget(QLabel("Step"), 0, 0)
-        grid.addWidget(QLabel("Provider"), 0, 1)
-        grid.addWidget(QLabel("Model"), 0, 2)
-        self.inputs: dict[str, tuple[QComboBox, QComboBox]] = {}
-        for row, step in enumerate(WORKFLOW_PROFILE_STEPS, start=1):
-            profile = self.preferences.get_workflow_profile(step)
-            provider_input = QComboBox()
-            provider_input.addItem("Inherit", None)
-            for provider in sorted(available_providers()):
-                provider_input.addItem(provider, provider)
-            provider_input.setCurrentIndex(max(provider_input.findData(profile["provider"]), 0))
-            model_input = QComboBox()
-            model_input.setEditable(True)
-            self._populate_models(model_input, profile["provider"], profile["model"])
-            provider_input.currentIndexChanged.connect(
-                lambda _index, current_step=step: self._refresh_models(current_step)
-            )
-            grid.addWidget(QLabel(step.replace("_", " ").title()), row, 0)
-            grid.addWidget(provider_input, row, 1)
-            grid.addWidget(model_input, row, 2)
-            self.inputs[step] = (provider_input, model_input)
-        layout.addLayout(grid)
-        save_button = QPushButton("Save Profiles")
-        save_button.clicked.connect(self.save)
-        layout.addWidget(save_button)
-        layout.addStretch()
-
-    def _populate_models(self, combo: QComboBox, provider: str | None, model: str | None) -> None:
-        combo.clear()
-        combo.addItem("")
-        if isinstance(provider, str) and provider.strip():
-            with contextlib.suppress(Exception):
-                for current_model in available_models(provider):
-                    combo.addItem(current_model)
-        if isinstance(model, str) and model.strip() and combo.findText(model) < 0:
-            combo.addItem(model)
-        combo.setCurrentText(model or "")
-
-    def _refresh_models(self, step: str) -> None:
-        provider_input, model_input = self.inputs[step]
-        provider = provider_input.currentData()
-        if not isinstance(provider, str):
-            provider = None
-        self._populate_models(model_input, provider, model_input.currentText().strip() or None)
-
-    def save(self) -> None:
-        for step, (provider_input, model_input) in self.inputs.items():
-            provider = provider_input.currentData()
-            if not isinstance(provider, str):
-                provider = None
-            self.preferences.set_workflow_profile(
-                step,
-                provider=provider,
-                model=model_input.currentText().strip() or None,
-            )
-        if self.refresh_callback is not None:
-            self.refresh_callback()
-        QMessageBox.information(self, "Profiles Saved", "Workflow profiles were updated.")
-
-
-class DiagnosticsView(QWidget):
-    def __init__(self) -> None:
-        super().__init__()
-        layout = QVBoxLayout(self)
-        eyebrow = QLabel("DIAGNOSTICS")
-        eyebrow.setObjectName("HeroEyebrow")
-        title = QLabel("Check library health, adapter coverage, provider availability, and usage totals.")
-        title.setObjectName("HeroTitle")
-        title.setWordWrap(True)
-        layout.addWidget(eyebrow)
-        layout.addWidget(title)
-        controls = QHBoxLayout()
-        self.refresh_button = QPushButton("Refresh")
-        self.refresh_button.clicked.connect(self.refresh)
-        controls.addWidget(self.refresh_button)
-        controls.addStretch()
-        layout.addLayout(controls)
-        self.output = QPlainTextEdit()
-        self.output.setReadOnly(True)
-        layout.addWidget(self.output)
-        self.refresh()
-
-    def refresh(self) -> None:
-        snapshots = _library_snapshots()
-        usage = container.usage.summary(all_days=True)
-        lines = [
-            f"Library Path: {settings.NOVEL_LIBRARY_DIR}",
-            f"Projects: {len(snapshots)}",
-            f"Sources: {', '.join(sorted(available_sources())) or '-'}",
-            f"Input Adapters: {', '.join(sorted(available_input_adapters())) or '-'}",
-            f"Providers: {', '.join(sorted(available_providers())) or '-'}",
-            "",
-            f"Usage Requests: {usage.get('total_requests', 0)}",
-            f"Usage Tokens: {usage.get('total_tokens', 0)}",
-            f"Usage Cost: ${usage.get('estimated_cost_usd', 0.0):.4f}",
-            "",
-            "Projects:",
-        ]
-        for snapshot in snapshots:
-            lines.append(
-                f"- {snapshot['novel_id']}: {snapshot['translated_units']}/{snapshot['total_units']} translated, "
-                f"OCR pending {snapshot['ocr_pending']}, glossary pending {snapshot['glossary_pending']}, "
-                f"errors {snapshot['errors']}"
-            )
-        if not snapshots:
-            lines.append("- No projects found.")
-        self.output.setPlainText("\n".join(lines))
-
-
-class SettingsView(QWidget):
-    def __init__(self, refresh_callback: Callable[[], None] | None = None) -> None:
-        super().__init__()
-        self.preferences = container.preferences
-        self.refresh_callback = refresh_callback
-        layout = QVBoxLayout(self)
-        eyebrow = QLabel("SETTINGS")
-        eyebrow.setObjectName("HeroEyebrow")
-        title = QLabel("Control runtime defaults, provider access, and desktop preferences.")
-        title.setObjectName("HeroTitle")
-        title.setWordWrap(True)
-        body = QLabel(
-            "Secrets remain environment-backed. The desktop page updates the runtime key without persisting it to disk."
-        )
-        body.setObjectName("HeroBody")
-        body.setWordWrap(True)
-        layout.addWidget(eyebrow)
-        layout.addWidget(title)
-        layout.addWidget(body)
-        form = QFormLayout()
-
-        self.provider_input = QComboBox()
-        for provider in sorted(available_providers()):
-            self.provider_input.addItem(provider)
-
-        self.model_input = QComboBox()
-        self.model_input.setEditable(True)
-
-        self.source_input = QComboBox()
-        self.source_input.addItem("Auto", None)
-        for source in sorted(available_sources()):
-            self.source_input.addItem(source, source)
-
-        self.theme_input = QComboBox()
-        self.theme_input.addItems(["auto", "light", "dark"])
-        self.language_input = QLineEdit()
-        self.api_key_input = QLineEdit()
-        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.target_language_label = QLabel(settings.TRANSLATION_TARGET_LANGUAGE)
-        self.library_path_label = QLabel(str(settings.NOVEL_LIBRARY_DIR))
-
-        form.addRow("Default Provider", self.provider_input)
-        form.addRow("Default Model", self.model_input)
-        form.addRow("Preferred Source", self.source_input)
-        form.addRow("Theme", self.theme_input)
-        form.addRow("UI Language", self.language_input)
-        form.addRow("Runtime API Key", self.api_key_input)
-        form.addRow("Library Path", self.library_path_label)
-        form.addRow("Target Language", self.target_language_label)
-        layout.addLayout(form)
-
-        buttons = QHBoxLayout()
-        self.save_button = QPushButton("Save Settings")
-        self.reload_button = QPushButton("Reload")
-        self.save_button.clicked.connect(self.save)
-        self.reload_button.clicked.connect(self.reload)
-        buttons.addWidget(self.save_button)
-        buttons.addWidget(self.reload_button)
-        buttons.addStretch()
-        layout.addLayout(buttons)
-        layout.addStretch()
-
-        self.provider_input.currentIndexChanged.connect(self._refresh_model_choices)
-        self.reload()
-
-    def _refresh_model_choices(self) -> None:
-        provider = self.provider_input.currentText().strip()
-        current_model = self.model_input.currentText().strip()
-        self.model_input.clear()
-        models: list[str] = []
-        if provider:
-            with contextlib.suppress(Exception):
-                models = available_models(provider)
-        for model in models:
-            self.model_input.addItem(model)
-        if current_model and self.model_input.findText(current_model) < 0:
-            self.model_input.addItem(current_model)
-        self.model_input.setCurrentText(current_model)
-
-    def reload(self) -> None:
-        provider = self.preferences.get_preferred_provider()
-        provider_index = self.provider_input.findText(provider)
-        self.provider_input.setCurrentIndex(provider_index if provider_index >= 0 else 0)
-        self._refresh_model_choices()
-        self.model_input.setCurrentText(self.preferences.get_preferred_model())
-        source = self.preferences.get_preferred_source()
-        self.source_input.setCurrentIndex(max(self.source_input.findData(source), 0))
-        self.theme_input.setCurrentText(self.preferences.get_theme())
-        self.language_input.setText(self.preferences.get_language())
-        self.api_key_input.setText(self.preferences.get_api_key() or "")
-
-    def save(self) -> None:
-        self.preferences.set_preferred_provider(self.provider_input.currentText().strip())
-        self.preferences.set_preferred_model(self.model_input.currentText().strip())
-        source = self.source_input.currentData()
-        self.preferences.set("preferred_source", source if isinstance(source, str) else None)
-        self.preferences.set_theme(self.theme_input.currentText().strip())
-        self.preferences.set_language(self.language_input.text().strip() or "en")
-        api_key = self.api_key_input.text().strip()
-        if api_key:
-            self.preferences.set_api_key(api_key)
-        else:
-            self.preferences.clear_api_key()
-        if self.refresh_callback is not None:
-            self.refresh_callback()
-        QMessageBox.information(self, "Settings Saved", "Desktop settings were updated.")
 
 
 class ImportTab(QWidget):
@@ -1778,7 +827,7 @@ class GlossaryTab(QWidget):
         self.term_list.clear()
         for entry in entries:
             item = QListWidgetItem(
-                f"[{entry.get('status', 'pending')}] {_safe_str(entry.get('source'))} -> {_safe_str(entry.get('target'))}"
+                f"[{entry.get('status', 'pending')}] {safe_str(entry.get('source'))} -> {safe_str(entry.get('target'))}"
             )
             item.setData(Qt.ItemDataRole.UserRole, dict(entry))
             self.term_list.addItem(item)
@@ -1800,11 +849,11 @@ class GlossaryTab(QWidget):
         if not isinstance(entry, dict):
             self.new_term()
             return
-        self.source_input.setText(_safe_str(entry.get("source"), ""))
-        self.target_input.setText(_safe_str(entry.get("target"), ""))
-        self.status_input.setCurrentText(_safe_str(entry.get("status"), "pending"))
-        self.notes_input.setText(_safe_str(entry.get("notes"), ""))
-        self.context_output.setPlainText(_safe_str(entry.get("context_summary"), ""))
+        self.source_input.setText(safe_str(entry.get("source"), ""))
+        self.target_input.setText(safe_str(entry.get("target"), ""))
+        self.status_input.setCurrentText(safe_str(entry.get("status"), "pending"))
+        self.notes_input.setText(safe_str(entry.get("notes"), ""))
+        self.context_output.setPlainText(safe_str(entry.get("context_summary"), ""))
 
     def new_term(self) -> None:
         self.source_input.clear()
@@ -1972,7 +1021,7 @@ class TranslateTab(QWidget):
         self.model_input.setCurrentText(current_model)
 
     def refresh(self) -> None:
-        snapshot = next((item for item in _library_snapshots() if item["novel_id"] == self.novel_id), None)
+        snapshot = next((item for item in library_snapshots() if item["novel_id"] == self.novel_id), None)
         if snapshot is None:
             self.summary_label.setText("Project metadata not found.")
             return
@@ -1980,7 +1029,7 @@ class TranslateTab(QWidget):
             f"Translated: {snapshot['translated_units']}/{snapshot['total_units']} | "
             f"OCR Pending: {snapshot['ocr_pending']} | Glossary Pending: {snapshot['glossary_pending']}"
         )
-        default_source = _safe_str(
+        default_source = safe_str(
             (container.storage.load_metadata(self.novel_id) or {}).get("input_adapter_key"),
             "imported",
         )
@@ -2271,7 +1320,7 @@ class ExportTab(QWidget):
         stored = self.storage.count_stored_chapters(self.novel_id)
         self.summary_label.setText(
             f"Stored units: {stored} | Translated units: {translated} | "
-            f"Recent exports: {len(_recent_export_paths())}"
+            f"Recent exports: {len(recent_export_paths())}"
         )
 
 
@@ -2323,12 +1372,12 @@ class WorkspaceOverviewTab(QWidget):
 
     def refresh(self) -> None:
         meta = container.storage.load_metadata(self.novel_id) or {}
-        snapshot = next((item for item in _library_snapshots() if item["novel_id"] == self.novel_id), None)
+        snapshot = next((item for item in library_snapshots() if item["novel_id"] == self.novel_id), None)
         title = meta.get("translated_title") or meta.get("title") or self.novel_id
         author = meta.get("translated_author") or meta.get("author") or "Unknown author"
         self.title_label.setText(title)
         self.subtitle_label.setText(
-            f"{author} | {_safe_str(meta.get('document_type'))} | {_safe_str(meta.get('origin_uri_or_path'))}"
+            f"{author} | {safe_str(meta.get('document_type'))} | {safe_str(meta.get('origin_uri_or_path'))}"
         )
         if snapshot is not None:
             self.units_card.set_content(
@@ -2349,13 +1398,13 @@ class WorkspaceOverviewTab(QWidget):
             )
         lines = [
             f"Novel ID: {self.novel_id}",
-            f"Input Adapter: {_safe_str(meta.get('input_adapter_key'))}",
-            f"Origin Type: {_safe_str(meta.get('origin_type'))}",
-            f"Source Language: {_safe_str(meta.get('source_language'))}",
-            f"Updated: {_timestamp_label(meta.get('updated_at') or meta.get('scraped_at'))}",
+            f"Input Adapter: {safe_str(meta.get('input_adapter_key'))}",
+            f"Origin Type: {safe_str(meta.get('origin_type'))}",
+            f"Source Language: {safe_str(meta.get('source_language'))}",
+            f"Updated: {timestamp_label(meta.get('updated_at') or meta.get('scraped_at'))}",
             "",
             "Workflow Profiles:",
-            _profiles_snapshot_text(),
+            profiles_snapshot_text(),
         ]
         self.meta_output.setPlainText("\n".join(lines))
 
@@ -2418,7 +1467,7 @@ class BookWorkspace(QWidget):
         self.refresh()
 
     def refresh(self) -> None:
-        snapshot = next((item for item in _library_snapshots() if item["novel_id"] == self.novel_id), None)
+        snapshot = next((item for item in library_snapshots() if item["novel_id"] == self.novel_id), None)
         if snapshot is None:
             self.header_label.setText(f"Workspace: {self.novel_id}")
         else:
@@ -2435,7 +1484,7 @@ class BookWorkspace(QWidget):
 class DesktopMainWindow(QMainWindow):
     TOP_LEVEL_PAGES = (
         ("home", "Home"),
-        ("library", "Library"),
+        ("library", "Novel Library"),
         ("import", "Acquire"),
         ("activity", "Activity"),
         ("profiles", "Profiles"),
@@ -2452,7 +1501,7 @@ class DesktopMainWindow(QMainWindow):
         self.workspace_key: str | None = None
         self.workspace: BookWorkspace | None = None
 
-        self.setWindowTitle("Novel AI Desktop")
+        self.setWindowTitle("NovelAI2Book")
         self.resize(1380, 920)
         root = QSplitter()
         root.setObjectName("DesktopRoot")
@@ -2525,7 +1574,7 @@ class DesktopMainWindow(QMainWindow):
         for key in ("home", "library", "activity", "diagnostics"):
             widget = self.page_widgets.get(key)
             if widget is not None and hasattr(widget, "refresh"):
-                widget.refresh()
+                getattr(widget, "refresh")()
         if self.workspace is not None:
             self.workspace.refresh()
             workspace_item = self.page_items.get(self.workspace_key or "")
@@ -2566,9 +1615,10 @@ class DesktopMainWindow(QMainWindow):
 def main() -> None:
     bootstrap()
     app = QApplication.instance() or QApplication([])
+    assert isinstance(app, QApplication)
     app.setStyle("Fusion")
     app.setFont(QFont("Bahnschrift SemiCondensed", 10))
-    app.setStyleSheet(_build_stylesheet())
+    app.setStyleSheet(build_stylesheet())
     window = DesktopMainWindow()
     window.show()
     app.exec()

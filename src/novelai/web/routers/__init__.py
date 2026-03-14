@@ -1,5 +1,0 @@
-"""Compatibility exports for web routers."""
-
-from novelai.interfaces.web.routers import novels
-
-__all__ = ["novels"]

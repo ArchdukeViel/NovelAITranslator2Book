@@ -10,11 +10,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from novelai.app.bootstrap import bootstrap
+from novelai.runtime.bootstrap import bootstrap
 from novelai.config.settings import settings
 from novelai.services.storage_service import StorageService
-from novelai.web.api import create_app
-from novelai.web.routers.novels import get_orchestrator, get_storage
+from novelai.interfaces.web.api import create_app
+from novelai.interfaces.web.routers.novels import get_orchestrator, get_storage
 
 _TMP = Path(__file__).resolve().parent / ".tmp" / "web_api"
 
@@ -245,7 +245,7 @@ class TestRateLimit:
         mock_orch.scrape_chapters = AsyncMock()
         app.dependency_overrides[get_orchestrator] = lambda: mock_orch
 
-        with patch("novelai.web.routers.novels._hits", defaultdict(list)):
+        with patch("novelai.interfaces.web.routers.novels._hits", defaultdict(list)):
             c = TestClient(app)
             body = {"url": "https://example.com/n1", "source_key": "dummy"}
             for _ in range(5):
