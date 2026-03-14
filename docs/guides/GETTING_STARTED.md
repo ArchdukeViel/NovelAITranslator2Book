@@ -31,10 +31,10 @@ Choose the install that matches what you want:
 .\.venv\Scripts\python.exe -m pip install -e ".[desktop,documents]"
 
 # Recommended full local setup
-.\.venv\Scripts\python.exe -m pip install -e ".[desktop,documents,openai]"
+.\.venv\Scripts\python.exe -m pip install -e ".[desktop,documents,openai,gemini]"
 
 # Development and packaging tools
-.\.venv\Scripts\python.exe -m pip install -e ".[desktop,documents,openai,build,dev]"
+.\.venv\Scripts\python.exe -m pip install -e ".[desktop,documents,openai,gemini,build,dev]"
 ```
 
 ## Configure
@@ -47,9 +47,25 @@ Set the values you need in `.env`. The most common ones are:
 
 ```env
 PROVIDER_OPENAI_API_KEY=your_key_here
+PROVIDER_GEMINI_API_KEY=your_key_here
 TRANSLATION_TARGET_LANGUAGE=English
 LOG_LEVEL=INFO
 ```
+
+## LLM Ops Configuration
+
+In the desktop GUI, open the LLM Ops page to configure:
+
+- Endpoint profiles (provider, model, timeout, retries, concurrency, kwargs)
+- Per-step overrides for glossary extraction/translation/review, body translation, polish, and OCR
+- Glossary extraction mode: `heuristic`, `llm`, or `hybrid`
+- Optional custom glossary extraction prompt template
+
+Prompt placeholders:
+
+- `{text}`
+- `{max_terms}`
+- `{source_language}`
 
 ## Verify the Install
 
@@ -86,7 +102,7 @@ python -m novelai --interface web
 
 ```powershell
 novelaibook import-document epub my_book .\book.epub
-novelaibook glossary my_book extract --chapters all
+novelaibook glossary my_book extract --chapters all --mode hybrid
 novelaibook export-epub my_book --format epub
 ```
 

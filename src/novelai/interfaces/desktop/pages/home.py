@@ -5,6 +5,8 @@ from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QHeaderView,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -12,6 +14,8 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -49,29 +53,39 @@ class HomeView(QWidget):
         quick_group = QGroupBox("Quick Actions")
         quick_layout = QGridLayout(quick_group)
         actions = [
-            ("Import Document", lambda: self.navigate_requested.emit("import")),
-            ("Open Library", lambda: self.navigate_requested.emit("library")),
-            ("Resume OCR", self._open_first_ocr_workspace),
+            ("New Novel", lambda: self.navigate_requested.emit("import")),
             ("Start Translation", self._open_first_translation_workspace),
-            ("Export Latest", self._open_first_export_workspace),
-            ("View Activity", lambda: self.navigate_requested.emit("activity")),
-            ("Profiles", lambda: self.navigate_requested.emit("profiles")),
+            ("Export Novel", self._open_first_export_workspace),
         ]
         for index, (label, handler) in enumerate(actions):
             button = QPushButton(label)
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             button.clicked.connect(handler)
-            quick_layout.addWidget(button, index // 4, index % 4)
-        for column in range(4):
+            quick_layout.addWidget(button, 0, index)
+        for column in range(3):
             quick_layout.setColumnStretch(column, 1)
         layout.addWidget(quick_group)
 
-        recent_group = QGroupBox("Recent Projects")
+        recent_group = QGroupBox("Novel List")
         recent_layout = QVBoxLayout(recent_group)
-        self.recent_list = QListWidget()
-        self._configure_home_list(self.recent_list, min_height=190)
-        self.recent_list.itemDoubleClicked.connect(self._open_item_novel)
-        recent_layout.addWidget(self.recent_list)
+        self.recent_table = QTableWidget(0, 5)
+        self.recent_table.setHorizontalHeaderLabels(["No.", "Title", "Novel ID", "Chapters", "Translated"])
+        self.recent_table.setMinimumHeight(190)
+        self.recent_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.recent_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.recent_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.recent_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.recent_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.recent_table.verticalHeader().setVisible(False)
+        header = self.recent_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        for column in range(2, 5):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        self.recent_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.recent_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.recent_table.cellDoubleClicked.connect(self._open_recent_row)
+        recent_layout.addWidget(self.recent_table)
         layout.addWidget(recent_group)
 
         attention_group = QGroupBox("Needs Attention")
@@ -135,8 +149,16 @@ class HomeView(QWidget):
         if isinstance(novel_id, str):
             self.open_workspace_requested.emit(novel_id)
 
+    def _open_recent_row(self, row: int, _column: int) -> None:
+        id_item = self.recent_table.item(row, 2)
+        if id_item is None:
+            return
+        novel_id = id_item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(novel_id, str):
+            self.open_workspace_requested.emit(novel_id)
+
     def refresh(self) -> None:
-        self.recent_list.clear()
+        self.recent_table.setRowCount(0)
         self.attention_list.clear()
         self.jobs_list.clear()
 
@@ -151,18 +173,31 @@ class HomeView(QWidget):
         self.attention_card.set_content(str(total_attention), "Pending OCR, glossary review, or failed chapters")
         self.activity_card.set_content(str(len(self.activity_model.running_jobs())), "Background jobs active right now")
 
-        for snapshot in snapshots[:10]:
-            adapter = safe_str(snapshot.get("input_adapter_key"), "")
-            meta = f"{snapshot['translated_units']}/{snapshot['total_units']} translated"
-            if adapter:
-                meta = f"{meta}  \u00b7  {adapter}"
-            item = QListWidgetItem(
-                f"{snapshot['title']}  [{short_id(snapshot['novel_id'])}]\n{meta}"
-            )
-            item.setData(Qt.ItemDataRole.UserRole, snapshot["novel_id"])
-            self.recent_list.addItem(item)
-        if self.recent_list.count() == 0:
-            self.recent_list.addItem("No projects in the library yet.")
+        for row_index, snapshot in enumerate(snapshots[:10]):
+            self.recent_table.insertRow(row_index)
+            chapters = int(snapshot.get("total_units", 0))
+            row_values = [
+                str(row_index + 1),
+                safe_str(snapshot.get("title")),
+                snapshot["novel_id"],
+                str(chapters),
+                str(int(snapshot.get("translated_units", 0))),
+            ]
+            for column, value in enumerate(row_values):
+                table_item = QTableWidgetItem(value)
+                if column != 1:
+                    table_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                if column == 2:
+                    table_item.setData(Qt.ItemDataRole.UserRole, snapshot["novel_id"])
+                    table_item.setToolTip(snapshot["novel_id"])
+                self.recent_table.setItem(row_index, column, table_item)
+
+        if self.recent_table.rowCount() == 0:
+            self.recent_table.setRowCount(1)
+            empty_item = QTableWidgetItem("No projects in the library yet.")
+            empty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.recent_table.setSpan(0, 0, 1, 5)
+            self.recent_table.setItem(0, 0, empty_item)
 
         for snapshot in snapshots:
             reasons: list[str] = []

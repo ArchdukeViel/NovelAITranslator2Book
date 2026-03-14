@@ -18,11 +18,13 @@ _BOOTSTRAPPED = False
 def bootstrap_providers() -> None:
     """Register all known translation providers."""
     from novelai.providers.dummy_provider import DummyProvider
+    from novelai.providers.gemini_provider import GeminiProvider
     from novelai.providers.openai_provider import OpenAIProvider
     from novelai.providers.registry import register_provider
 
     register_provider("dummy", lambda: DummyProvider())
     register_provider("openai", lambda: OpenAIProvider())
+    register_provider("gemini", lambda: GeminiProvider())
 
 
 def bootstrap_sources() -> None:

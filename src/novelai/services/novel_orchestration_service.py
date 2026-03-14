@@ -9,10 +9,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from novelai.config.workflow_profiles import normalize_workflow_profiles
+from novelai.config.workflow_profiles import normalize_workflow_profile_step
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState, ChapterStateTransition
-from novelai.glossary import extract_candidate_glossary_terms, normalize_glossary_entries
+from novelai.glossary import extract_candidate_glossary_terms, glossary_status_counts, normalize_glossary_entries
 from novelai.inputs.base import DocumentAdapter
 from novelai.providers.base import TranslationProvider
 from novelai.services.preferences_service import PreferencesService
@@ -24,6 +24,33 @@ from novelai.sources.base import SourceAdapter
 from novelai.utils.chapter_selection import is_full_chapter_selection, parse_chapter_selection
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_GLOSSARY_EXTRACTION_PROMPT = (
+    "Extract up to {max_terms} important source-language glossary terms from the following novel excerpt. "
+    "Return only a JSON array of unique terms (strings). Do not translate terms. "
+    "Ignore common words, chapter headings, numbers-only tokens, and punctuation-only tokens.\n\n"
+    "Source Language: {source_language}\n"
+    "Excerpt:\n{text}"
+)
+
+GLOSSARY_EXTRACTION_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "terms": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "source": {"type": "string"},
+                },
+                "required": ["source"],
+            },
+        }
+    },
+    "required": ["terms"],
+}
 
 
 def _utc_now_iso() -> str:
@@ -149,11 +176,99 @@ class NovelOrchestrationService:
         step: str,
         metadata: dict[str, Any] | None = None,
     ) -> tuple[str | None, str | None]:
-        novel_profiles = normalize_workflow_profiles(metadata.get("translation_profiles")) if isinstance(metadata, dict) else normalize_workflow_profiles(None)
-        global_profile = self._settings.get_workflow_profile(step)
-        provider = novel_profiles[step]["provider"] or global_profile["provider"]
-        model = novel_profiles[step]["model"] or global_profile["model"]
-        return provider, model
+        step_config = self._resolve_workflow_step_config(step, metadata)
+        provider = step_config.get("provider")
+        model = step_config.get("model")
+        return (
+            provider if isinstance(provider, str) and provider.strip() else None,
+            model if isinstance(model, str) and model.strip() else None,
+        )
+
+    def _resolve_workflow_step_config(
+        self,
+        step: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        normalized_step = normalize_workflow_profile_step(step)
+        step_config = self._settings.resolve_step_llm_config(normalized_step, metadata)
+
+        if isinstance(metadata, dict):
+            raw_overrides = metadata.get("translation_step_configs")
+            if isinstance(raw_overrides, dict):
+                override_payload = raw_overrides.get(normalized_step)
+                if isinstance(override_payload, dict):
+                    merged = dict(step_config)
+                    merged.update(override_payload)
+                    if not isinstance(merged.get("kwargs"), dict):
+                        merged["kwargs"] = {}
+                    return merged
+
+        if not isinstance(step_config.get("kwargs"), dict):
+            step_config["kwargs"] = {}
+        return step_config
+
+    @staticmethod
+    def _provider_requires_api_key(provider_key: str) -> bool:
+        return provider_key in {"openai", "gemini"}
+
+    @staticmethod
+    def _phase_payload(
+        *,
+        phase: str,
+        status: str,
+        message: str,
+        **data: Any,
+    ) -> dict[str, Any]:
+        payload = {
+            "phase": phase,
+            "status": status,
+            "message": message,
+            "timestamp": _utc_now_iso(),
+        }
+        payload.update(data)
+        return payload
+
+    @staticmethod
+    def _score_translation_confidence(source_text: str, translated_text: str) -> float:
+        source = source_text.strip()
+        translated = translated_text.strip()
+        if not source or not translated:
+            return 0.0
+
+        source_compact = "".join(source.split())
+        translated_compact = "".join(translated.split())
+        if not source_compact or not translated_compact:
+            return 0.0
+        if source_compact == translated_compact:
+            return 0.0
+
+        score = 1.0
+        length_ratio = len(translated_compact) / max(1, len(source_compact))
+        if length_ratio < 0.25:
+            score -= 0.45
+        elif length_ratio < 0.4:
+            score -= 0.2
+
+        cjk_chars = [ch for ch in source_compact if "\u3040" <= ch <= "\u9fff"]
+        if cjk_chars:
+            unchanged = sum(1 for ch in cjk_chars if ch in translated_compact)
+            unchanged_ratio = unchanged / len(cjk_chars)
+            if unchanged_ratio > 0.8:
+                score -= 0.55
+            elif unchanged_ratio > 0.6:
+                score -= 0.25
+
+        return max(0.0, min(1.0, score))
+
+    @classmethod
+    def _is_low_confidence_translation(
+        cls,
+        source_text: str,
+        translated_text: str,
+        threshold: float = 0.55,
+    ) -> bool:
+        normalized_threshold = max(0.0, min(1.0, threshold))
+        return cls._score_translation_confidence(source_text, translated_text) < normalized_threshold
 
     def _selected_chapter_numbers(self, metadata: dict[str, Any], selection: str) -> list[int]:
         """Resolve a chapter selection string into concrete chapter numbers.
@@ -199,9 +314,12 @@ class NovelOrchestrationService:
     ) -> tuple[str, str]:
         key = provider_key or self._settings.get_provider_key()
         model = provider_model or self._settings.get_provider_model()
-        if key == "openai" and not self._settings.get_api_key():
+        if self._provider_requires_api_key(key) and not self._settings.get_api_key(key):
             if not self._missing_api_key_warning_emitted:
-                logger.warning("OpenAI API key missing; falling back to dummy provider for metadata translation.")
+                if key == "openai":
+                    logger.warning("OpenAI API key missing; falling back to dummy provider for metadata translation.")
+                else:
+                    logger.warning("%s API key missing; falling back to dummy provider.", key.capitalize())
                 self._missing_api_key_warning_emitted = True
             return "dummy", "dummy"
         self._missing_api_key_warning_emitted = False
@@ -617,12 +735,42 @@ class NovelOrchestrationService:
         chapters: str = "all",
         *,
         max_terms: int = 50,
+        config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         meta = self.storage.load_metadata(novel_id)
         if not meta:
             raise RuntimeError("Metadata not found; import or scrape a novel first.")
 
-        selected_numbers = self._selected_chapter_numbers(meta, chapters)
+        extraction_config = config if isinstance(config, dict) else {}
+        effective_chapters = str(extraction_config.get("chapters") or chapters)
+        max_terms_value = extraction_config.get("max_terms", max_terms)
+        effective_max_terms = int(max_terms_value) if isinstance(max_terms_value, int) or (isinstance(max_terms_value, str) and max_terms_value.isdigit()) else max_terms
+        effective_max_terms = max(1, effective_max_terms)
+        include_existing = bool(extraction_config.get("include_existing", True))
+        extraction_mode = str(extraction_config.get("mode") or self._settings.get_glossary_extraction_mode()).strip().lower()
+        if extraction_mode not in {"heuristic", "llm", "hybrid"}:
+            extraction_mode = "heuristic"
+
+        extraction_step_config = self._resolve_workflow_step_config("glossary_extraction", meta)
+        profile_provider, profile_model = self._resolve_workflow_profile("glossary_extraction", meta)
+        config_provider = extraction_config.get("provider")
+        config_model = extraction_config.get("model")
+        if isinstance(config_provider, str) and config_provider.strip():
+            profile_provider = config_provider.strip()
+        if isinstance(config_model, str) and config_model.strip():
+            profile_model = config_model.strip()
+        prompt_template_override = extraction_config.get("prompt_template")
+        effective_prompt_template = (
+            prompt_template_override
+            if isinstance(prompt_template_override, str) and prompt_template_override.strip()
+            else (
+                extraction_step_config.get("prompt_template")
+                if isinstance(extraction_step_config.get("prompt_template"), str) and str(extraction_step_config.get("prompt_template")).strip()
+                else self._settings.get_glossary_extraction_prompt_template()
+            )
+        )
+
+        selected_numbers = self._selected_chapter_numbers(meta, effective_chapters)
         texts: list[str] = []
         for number in selected_numbers:
             chapter_id = str(number)
@@ -636,38 +784,624 @@ class NovelOrchestrationService:
             if chapter and isinstance(chapter.get("text"), str) and chapter["text"].strip():
                 texts.append(chapter["text"])
 
-        candidates = extract_candidate_glossary_terms(texts, max_terms=max_terms)
-        existing = {
-            entry["source"]: dict(entry)
-            for entry in self.storage.load_glossary(novel_id)
-            if isinstance(entry, dict) and isinstance(entry.get("source"), str)
-        }
+        heuristic_candidates = extract_candidate_glossary_terms(texts, max_terms=effective_max_terms)
+        llm_candidates: list[str] = []
+        source_language = self._infer_source_language(str(meta.get("input_adapter_key") or ""), meta) or "Unknown"
+
+        if extraction_mode in {"llm", "hybrid"} and texts:
+            llm_candidates = await self._extract_glossary_terms_with_llm(
+                texts,
+                provider_key=profile_provider,
+                provider_model=profile_model,
+                max_terms=effective_max_terms,
+                source_language=source_language,
+                prompt_template=effective_prompt_template,
+                step_config=extraction_step_config,
+            )
+
+        merged_candidates: list[dict[str, Any]] = []
+        if extraction_mode in {"heuristic", "hybrid"}:
+            for candidate in heuristic_candidates:
+                merged_candidates.append(
+                    {
+                        "source": candidate.source,
+                        "target": candidate.target,
+                        "locked": candidate.locked,
+                        "notes": candidate.notes,
+                        "status": candidate.status,
+                        "context_history": list(candidate.context_history),
+                        "context_summary": candidate.context_summary,
+                        "occurrence_count": candidate.occurrence_count,
+                        "last_seen_index": candidate.last_seen_index,
+                    }
+                )
+
+        if extraction_mode in {"llm", "hybrid"}:
+            for term in llm_candidates:
+                stripped = term.strip()
+                if not stripped:
+                    continue
+                occurrence_count = sum(text.count(stripped) for text in texts)
+                merged_candidates.append(
+                    {
+                        "source": stripped,
+                        "target": stripped,
+                        "locked": True,
+                        "notes": None,
+                        "status": "pending",
+                        "context_history": [stripped],
+                        "context_summary": stripped,
+                        "occurrence_count": max(occurrence_count, 1),
+                        "last_seen_index": -1,
+                    }
+                )
+
+        candidates = merged_candidates
+        existing = {}
+        if include_existing:
+            existing = {
+                entry["source"]: dict(entry)
+                for entry in self.storage.load_glossary(novel_id)
+                if isinstance(entry, dict) and isinstance(entry.get("source"), str)
+            }
         added = 0
         for candidate in candidates:
-            if candidate.source in existing:
+            source = str(candidate.get("source") or "")
+            if not source or source in existing:
                 continue
-            existing[candidate.source] = {
-                "source": candidate.source,
-                "target": candidate.target,
-                "locked": candidate.locked,
-                "notes": candidate.notes,
-                "status": candidate.status,
-                "context_history": list(candidate.context_history),
-                "context_summary": candidate.context_summary,
-                "occurrence_count": candidate.occurrence_count,
-                "last_seen_index": candidate.last_seen_index,
-            }
+            existing[source] = dict(candidate)
             added += 1
 
         ordered_entries = sorted(existing.values(), key=lambda item: (str(item.get("source")).casefold(), str(item.get("source"))))
         self.storage.save_glossary(novel_id, ordered_entries)
-        return {
-            "novel_id": novel_id,
-            "selected_chapters": len(selected_numbers),
-            "candidates_found": len(candidates),
-            "added": added,
-            "total_terms": len(ordered_entries),
+        return self._phase_payload(
+            phase="phase1_glossary_extraction",
+            status="completed",
+            message="Glossary candidates extracted.",
+            novel_id=novel_id,
+            selected_chapters=len(selected_numbers),
+            candidates_found=len(candidates),
+            added=added,
+            total_terms=len(ordered_entries),
+            provider=profile_provider,
+            model=profile_model,
+            config={
+                "chapters": effective_chapters,
+                "max_terms": effective_max_terms,
+                "include_existing": include_existing,
+                "mode": extraction_mode,
+                "llm_candidates": len(llm_candidates),
+            },
+        )
+
+    async def _extract_glossary_terms_with_llm(
+        self,
+        texts: list[str],
+        *,
+        provider_key: str | None,
+        provider_model: str | None,
+        max_terms: int,
+        source_language: str,
+        prompt_template: str | None,
+        step_config: dict[str, Any] | None = None,
+    ) -> list[str]:
+        if not texts:
+            return []
+
+        resolved_provider, resolved_model = self._resolve_provider_and_model(provider_key, provider_model)
+        if resolved_provider == "dummy":
+            return []
+
+        provider = self._provider_factory(resolved_provider)
+        llm_kwargs: dict[str, Any] = {}
+        raw_kwargs = step_config.get("kwargs") if isinstance(step_config, dict) else None
+        if isinstance(raw_kwargs, dict):
+            for key, value in raw_kwargs.items():
+                if isinstance(key, str):
+                    llm_kwargs[key] = value
+        temperature = step_config.get("temperature") if isinstance(step_config, dict) else None
+        if isinstance(temperature, (int, float)):
+            llm_kwargs["temperature"] = float(temperature)
+
+        extracted_terms: list[str] = []
+        seen: set[str] = set()
+        template = prompt_template or DEFAULT_GLOSSARY_EXTRACTION_PROMPT
+
+        for text in texts:
+            if len(extracted_terms) >= max_terms:
+                break
+            excerpt = text.strip()[:6000]
+            if not excerpt:
+                continue
+            prompt = template.format(
+                text=excerpt,
+                max_terms=max_terms,
+                source_language=source_language,
+            )
+            result = await provider.translate(
+                prompt=prompt,
+                model=resolved_model,
+                json_schema=GLOSSARY_EXTRACTION_JSON_SCHEMA,
+                **llm_kwargs,
+            )
+            self._record_usage(provider.key, resolved_model, result.get("metadata"))
+            parsed_terms = self._parse_llm_glossary_terms(str(result.get("text") or ""), max_terms=max_terms)
+            for term in parsed_terms:
+                normalized = term.strip()
+                if not normalized:
+                    continue
+                lower_key = normalized.casefold()
+                if lower_key in seen:
+                    continue
+                seen.add(lower_key)
+                extracted_terms.append(normalized)
+                if len(extracted_terms) >= max_terms:
+                    break
+
+        return extracted_terms[:max_terms]
+
+    @staticmethod
+    def _parse_llm_glossary_terms(raw_text: str, *, max_terms: int) -> list[str]:
+        text = raw_text.strip()
+        if not text:
+            return []
+
+        parsed_terms: list[str] = []
+        with contextlib.suppress(Exception):
+            payload = json.loads(text)
+            if isinstance(payload, list):
+                for item in payload:
+                    if isinstance(item, str):
+                        parsed_terms.append(item)
+                    elif isinstance(item, dict):
+                        source = item.get("source")
+                        if isinstance(source, str):
+                            parsed_terms.append(source)
+            elif isinstance(payload, dict):
+                terms = payload.get("terms")
+                if isinstance(terms, list):
+                    for item in terms:
+                        if isinstance(item, str):
+                            parsed_terms.append(item)
+                        elif isinstance(item, dict):
+                            source = item.get("source")
+                            if isinstance(source, str):
+                                parsed_terms.append(source)
+
+        if not parsed_terms:
+            for line in text.splitlines():
+                token = line.strip().lstrip("-*0123456789. ").strip()
+                if token:
+                    parsed_terms.append(token)
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for term in parsed_terms:
+            normalized = term.strip().strip('"')
+            if not normalized:
+                continue
+            key = normalized.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(normalized)
+            if len(deduped) >= max_terms:
+                break
+        return deduped
+
+    async def translate_glossary_terms(
+        self,
+        novel_id: str,
+        *,
+        provider_key: str | None = None,
+        provider_model: str | None = None,
+        only_pending: bool = True,
+    ) -> dict[str, Any]:
+        """Translate glossary term targets using a dedicated low-cost phase.
+
+        This keeps human approval in the loop by leaving term status unchanged.
+        """
+        entries = [entry for entry in self.storage.load_glossary(novel_id) if isinstance(entry, dict)]
+        if not entries:
+            return {
+                "novel_id": novel_id,
+                "translated": 0,
+                "skipped": 0,
+                "total_terms": 0,
+            }
+
+        meta = self.storage.load_metadata(novel_id) or {}
+        profile_provider, profile_model = self._resolve_workflow_profile("glossary_translation", meta)
+        effective_provider = provider_key or profile_provider
+        effective_model = provider_model or profile_model
+
+        translated_count = 0
+        skipped_count = 0
+        updated_entries: list[dict[str, Any]] = []
+
+        for entry in entries:
+            status = str(entry.get("status") or "pending").strip().lower()
+            if status == "ignored":
+                skipped_count += 1
+                updated_entries.append(dict(entry))
+                continue
+            if only_pending and status != "pending":
+                skipped_count += 1
+                updated_entries.append(dict(entry))
+                continue
+
+            source = str(entry.get("source") or "").strip()
+            if not source:
+                skipped_count += 1
+                updated_entries.append(dict(entry))
+                continue
+
+            try:
+                target = await self._translate_text(
+                    source,
+                    provider_key=effective_provider,
+                    provider_model=effective_model,
+                )
+            except Exception:
+                # Keep the term as-is so one failure does not block the whole phase.
+                skipped_count += 1
+                updated_entries.append(dict(entry))
+                continue
+
+            updated = dict(entry)
+            updated["target"] = target
+            updated_entries.append(updated)
+            translated_count += 1
+
+        ordered_entries = sorted(
+            updated_entries,
+            key=lambda item: (
+                str(item.get("folder") or "").casefold(),
+                str(item.get("source") or "").casefold(),
+                str(item.get("source") or ""),
+            ),
+        )
+        self.storage.save_glossary(novel_id, ordered_entries)
+        return self._phase_payload(
+            phase="phase1b_glossary_translation",
+            status="completed",
+            message="Glossary translation completed.",
+            novel_id=novel_id,
+            translated=translated_count,
+            skipped=skipped_count,
+            total_terms=len(ordered_entries),
+            provider=effective_provider,
+            model=effective_model,
+        )
+
+    async def review_glossary_terms(
+        self,
+        novel_id: str,
+        *,
+        auto_approve_translated: bool = True,
+        min_target_length: int = 2,
+    ) -> dict[str, Any]:
+        """Apply basic rule-based glossary review for pending terms.
+
+        Designed to be extensible for future LLM-assisted review.
+        """
+        entries = [entry for entry in self.storage.load_glossary(novel_id) if isinstance(entry, dict)]
+        if not entries:
+            return self._phase_payload(
+                phase="phase1c_glossary_review",
+                status="completed",
+                message="No glossary terms to review.",
+                novel_id=novel_id,
+                reviewed=0,
+                approved=0,
+                pending=0,
+                ignored=0,
+            )
+
+        meta = self.storage.load_metadata(novel_id) or {}
+        profile_provider, profile_model = self._resolve_workflow_profile("glossary_review", meta)
+
+        reviewed = 0
+        approved = 0
+        pending = 0
+        ignored = 0
+        updated_entries: list[dict[str, Any]] = []
+        for entry in entries:
+            updated = dict(entry)
+            source = str(updated.get("source") or "").strip()
+            target = str(updated.get("target") or "").strip()
+            status = str(updated.get("status") or "pending").strip().lower()
+
+            if status == "ignored":
+                ignored += 1
+                updated_entries.append(updated)
+                continue
+
+            reviewed += 1
+            if auto_approve_translated and target and target.casefold() != source.casefold() and len(target) >= max(1, min_target_length):
+                updated["status"] = "approved"
+                updated["review_reason"] = "auto_approved_rule"
+                approved += 1
+            else:
+                updated["status"] = "pending"
+                updated["review_reason"] = "needs_manual_review"
+                pending += 1
+            updated_entries.append(updated)
+
+        self.storage.save_glossary(
+            novel_id,
+            sorted(
+                updated_entries,
+                key=lambda item: (
+                    str(item.get("folder") or "").casefold(),
+                    str(item.get("source") or "").casefold(),
+                    str(item.get("source") or ""),
+                ),
+            ),
+        )
+        return self._phase_payload(
+            phase="phase1c_glossary_review",
+            status="completed",
+            message="Glossary review completed.",
+            novel_id=novel_id,
+            reviewed=reviewed,
+            approved=approved,
+            pending=pending,
+            ignored=ignored,
+            provider=profile_provider,
+            model=profile_model,
+        )
+
+    async def polish_low_confidence_chapters(
+        self,
+        *,
+        source_key: str,
+        novel_id: str,
+        chapters: str = "all",
+        provider_key: str | None = None,
+        provider_model: str | None = None,
+        source_language: str | None = None,
+        target_language: str | None = None,
+        confidence_threshold: float = 0.55,
+        low_confidence_only: bool = True,
+        consistency_mode: bool = True,
+        json_output: bool = False,
+    ) -> dict[str, Any]:
+        """Retranslate only chapters that look low-confidence via heuristics."""
+        meta = self.storage.load_metadata(novel_id)
+        if not meta:
+            raise RuntimeError("Metadata not found; import or scrape a novel first.")
+        profile_provider, profile_model = self._resolve_workflow_profile("polish", meta)
+        effective_provider = provider_key or profile_provider
+        effective_model = provider_model or profile_model
+
+        chapter_map = {
+            int(chapter["id"]): chapter
+            for chapter in meta.get("chapters", [])
+            if isinstance(chapter, dict) and str(chapter.get("id", "")).isdigit()
         }
+        selected_numbers = self._selected_chapter_numbers(meta, chapters)
+        low_confidence_ids: list[str] = []
+        normalized_threshold = max(0.0, min(1.0, confidence_threshold))
+
+        for number in selected_numbers:
+            chapter_id = str(number)
+            if number not in chapter_map:
+                continue
+            raw = self.storage.load_chapter(novel_id, chapter_id) or {}
+            translated = self.storage.load_translated_chapter(novel_id, chapter_id) or {}
+
+            raw_text = raw.get("text")
+            translated_raw_text = translated.get("text")
+            source_text = raw_text if isinstance(raw_text, str) else ""
+            translated_text = translated_raw_text if isinstance(translated_raw_text, str) else ""
+            stored_score = translated.get("confidence_score") if isinstance(translated.get("confidence_score"), float) else None
+            polish_needed_flag = translated.get("polish_needed") if isinstance(translated.get("polish_needed"), bool) else None
+
+            if low_confidence_only and isinstance(polish_needed_flag, bool):
+                if polish_needed_flag:
+                    low_confidence_ids.append(chapter_id)
+                continue
+
+            confidence_score = stored_score if isinstance(stored_score, float) else self._score_translation_confidence(source_text, translated_text)
+
+            if confidence_score < normalized_threshold:
+                low_confidence_ids.append(chapter_id)
+
+        if not low_confidence_ids:
+            return self._phase_payload(
+                phase="phase3_polish",
+                status="completed",
+                message="No low-confidence chapters required polishing.",
+                novel_id=novel_id,
+                selected_chapters=len(selected_numbers),
+                polished=0,
+                candidates=0,
+                threshold=normalized_threshold,
+            )
+
+        approved_glossary = [
+            dict(entry)
+            for entry in self.storage.load_glossary(novel_id)
+            if isinstance(entry, dict) and str(entry.get("status") or "pending").strip().lower() in {"approved", "translated"}
+        ]
+        retranslate_selection = ",".join(low_confidence_ids)
+        await self.translate_chapters(
+            source_key=source_key,
+            novel_id=novel_id,
+            chapters=retranslate_selection,
+            provider_key=effective_provider,
+            provider_model=effective_model,
+            force=True,
+            source_language=source_language,
+            target_language=target_language,
+            glossary=approved_glossary,
+            style_preset="polish",
+            confidence_threshold=normalized_threshold,
+            mark_polish_needed=True,
+            consistency_mode=consistency_mode,
+            json_output=json_output,
+        )
+        return self._phase_payload(
+            phase="phase3_polish",
+            status="completed",
+            message="Low-confidence chapters polished.",
+            novel_id=novel_id,
+            selected_chapters=len(selected_numbers),
+            polished=len(low_confidence_ids),
+            candidates=len(low_confidence_ids),
+            chapter_ids=low_confidence_ids,
+            threshold=normalized_threshold,
+        )
+
+    async def run_phased_translation_pipeline(
+        self,
+        *,
+        source_key: str,
+        novel_id: str,
+        chapters: str = "all",
+        phase: str = "full",
+        glossary_provider_key: str | None = None,
+        glossary_provider_model: str | None = None,
+        review_auto_approve: bool = True,
+        review_min_target_length: int = 2,
+        body_provider_key: str | None = None,
+        body_provider_model: str | None = None,
+        source_language: str | None = None,
+        target_language: str | None = None,
+        confidence_threshold: float = 0.55,
+        polish_low_confidence_only: bool = True,
+        consistency_mode: bool = False,
+        json_output: bool = False,
+        run_polish_phase: bool = False,
+    ) -> dict[str, Any]:
+        """Run one phase or the full phase chain with a shared payload schema."""
+        normalized_phase = phase.strip().lower()
+        if normalized_phase not in {"1", "1b", "2", "3", "full"}:
+            raise ValueError("phase must be one of: 1, 1b, 2, 3, full")
+
+        results: dict[str, Any] = {}
+
+        if normalized_phase in {"1", "full"}:
+            results["phase1"] = await self.extract_glossary_terms(
+                novel_id=novel_id,
+                chapters=chapters,
+                max_terms=50,
+            )
+            if normalized_phase == "1":
+                return self._phase_payload(
+                    phase="phase1_glossary_extraction",
+                    status="completed",
+                    message="Phase 1 completed.",
+                    novel_id=novel_id,
+                    blocked=False,
+                    results=results,
+                )
+
+        if normalized_phase in {"1b", "full"}:
+            results["phase1b"] = await self.translate_glossary_terms(
+                novel_id=novel_id,
+                provider_key=glossary_provider_key,
+                provider_model=glossary_provider_model,
+                only_pending=True,
+            )
+            if normalized_phase == "1b":
+                return self._phase_payload(
+                    phase="phase1b_glossary_translation",
+                    status="completed",
+                    message="Phase 1b completed.",
+                    novel_id=novel_id,
+                    blocked=False,
+                    results=results,
+                )
+
+        if normalized_phase == "full":
+            results["phase1c"] = await self.review_glossary_terms(
+                novel_id=novel_id,
+                auto_approve_translated=review_auto_approve,
+                min_target_length=review_min_target_length,
+            )
+
+        if normalized_phase in {"2", "full"}:
+            counts = glossary_status_counts(self.storage.load_glossary(novel_id))
+            pending = int(counts.get("pending", 0))
+            if pending > 0:
+                return self._phase_payload(
+                    phase="phase2_body_translation",
+                    status="blocked",
+                    message="Glossary review required before phase 2.",
+                    novel_id=novel_id,
+                    blocked=True,
+                    blocked_reason=f"Pending glossary terms: {pending}.",
+                    results=results,
+                )
+
+            await self.translate_chapters(
+                source_key=source_key,
+                novel_id=novel_id,
+                chapters=chapters,
+                provider_key=body_provider_key,
+                provider_model=body_provider_model,
+                force=False,
+                source_language=source_language,
+                target_language=target_language,
+                confidence_threshold=confidence_threshold,
+                mark_polish_needed=True,
+                consistency_mode=consistency_mode,
+                json_output=json_output,
+            )
+            results["phase2"] = self._phase_payload(
+                phase="phase2_body_translation",
+                status="completed",
+                message="Phase 2 completed.",
+                novel_id=novel_id,
+                chapters=chapters,
+                threshold=max(0.0, min(1.0, confidence_threshold)),
+            )
+
+            if normalized_phase == "2":
+                return self._phase_payload(
+                    phase="phase2_body_translation",
+                    status="completed",
+                    message="Phase 2 completed.",
+                    novel_id=novel_id,
+                    blocked=False,
+                    results=results,
+                )
+
+        if normalized_phase in {"3", "full"} and (normalized_phase == "3" or run_polish_phase):
+            results["phase3"] = await self.polish_low_confidence_chapters(
+                source_key=source_key,
+                novel_id=novel_id,
+                chapters=chapters,
+                provider_key=body_provider_key,
+                provider_model=body_provider_model,
+                source_language=source_language,
+                target_language=target_language,
+                confidence_threshold=confidence_threshold,
+                low_confidence_only=polish_low_confidence_only,
+                consistency_mode=True,
+                json_output=json_output,
+            )
+
+            if normalized_phase == "3":
+                return self._phase_payload(
+                    phase="phase3_polish",
+                    status="completed",
+                    message="Phase 3 completed.",
+                    novel_id=novel_id,
+                    blocked=False,
+                    results=results,
+                )
+
+        return self._phase_payload(
+            phase="pipeline_full",
+            status="completed",
+            message="Phased pipeline completed.",
+            novel_id=novel_id,
+            blocked=False,
+            results=results,
+        )
 
     async def _translate_text(
         self,
@@ -759,6 +1493,7 @@ class NovelOrchestrationService:
         novel_id: str,
         mode: str = "update",
         max_chapter: int | None = None,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
         logger.info(f"Scraping metadata for {novel_id} from {source_key} (mode={mode})")
         existing_metadata = self.storage.load_metadata(novel_id) if mode != "full" else None
@@ -766,8 +1501,13 @@ class NovelOrchestrationService:
             logger.debug(f"Full scrape mode - deleting existing data for {novel_id}")
             self.storage.delete_novel(novel_id)
 
+        if progress_callback:
+            progress_callback(f"Connecting to {source_key}\u2026")
         source = self._source_factory(source_key)
         meta = await source.fetch_metadata(novel_id, max_chapter=max_chapter)
+        if progress_callback:
+            chapter_count = len(meta.get("chapters") or [])
+            progress_callback(f"Fetched: {str(meta.get('title') or novel_id)!r}  ({chapter_count} chapters listed)")
 
         # Persist detected source language so prompts and exports can use it.
         if not meta.get("source_language"):
@@ -786,6 +1526,8 @@ class NovelOrchestrationService:
             logger.warning("Failed to translate metadata for %s: %s", novel_id, exc)
         self.storage.save_metadata(novel_id, meta)
         logger.info(f"Metadata scraped: {len(meta)} fields saved")
+        if progress_callback:
+            progress_callback(f"Metadata saved ({len(meta)} fields).")
         return meta
 
     async def scrape_chapters(
@@ -794,6 +1536,7 @@ class NovelOrchestrationService:
         novel_id: str,
         chapters: str,
         mode: str = "update",
+        progress_callback: Callable[[str], None] | None = None,
     ) -> None:
         """Fetch chapter content from the source site and persist it.
 
@@ -828,13 +1571,19 @@ class NovelOrchestrationService:
 
         chapter_map = {int(c["id"]): c for c in meta.get("chapters", [])}
         selected_numbers = self._selected_chapter_numbers(meta, chapters)
+        _total_chapters = len(selected_numbers)
+        if progress_callback:
+            progress_callback(f"Preparing to scrape {_total_chapters} chapter(s)\u2026")
 
-        for chapter_num in selected_numbers:
+        for _chapter_index, chapter_num in enumerate(selected_numbers):
             chapter = chapter_map.get(chapter_num)
             if not chapter:
                 continue
 
             chapter_id = str(chapter_num)
+            if progress_callback:
+                _ch_title = str(chapter.get("title") or f"Chapter {chapter_id}")
+                progress_callback(f"[{_chapter_index + 1}/{_total_chapters}] {_ch_title}")
             payload = await source.fetch_chapter_payload(chapter["url"])
             text = payload.get("text")
             if not isinstance(text, str):
@@ -853,6 +1602,8 @@ class NovelOrchestrationService:
             new_signature = self._chapter_content_signature(text, image_manifest)
 
             if mode == "update" and existing_signature == new_signature:
+                if progress_callback:
+                    progress_callback(f"  Chapter {chapter_id}: unchanged, skipping.")
                 continue
 
             downloaded_images: list[dict[str, Any]] = []
@@ -909,6 +1660,8 @@ class NovelOrchestrationService:
                 import_order=chapter_num,
                 context_group_id=novel_id,
             )
+            if progress_callback:
+                progress_callback(f"  Saved chapter {chapter_id}.")
 
     async def translate_chapters(
         self,
@@ -922,6 +1675,8 @@ class NovelOrchestrationService:
         target_language: str | None = None,
         glossary: Any | None = None,
         style_preset: str | None = None,
+        confidence_threshold: float = 0.55,
+        mark_polish_needed: bool = True,
         consistency_mode: bool = False,
         json_output: bool = False,
     ) -> None:
@@ -953,6 +1708,7 @@ class NovelOrchestrationService:
 
         chapter_map = {int(c["id"]): c for c in meta.get("chapters", [])}
         selected_numbers = self._selected_chapter_numbers(meta, chapters)
+        normalized_threshold = max(0.0, min(1.0, confidence_threshold))
 
         preflight_issues = self._preflight_translation(
             novel_id=novel_id,
@@ -1026,12 +1782,22 @@ class NovelOrchestrationService:
                     raw_images=raw_images,
                 )
                 translated = result.final_text or ""
+                confidence_score = self._score_translation_confidence(raw_text or "", translated)
+                polish_needed = mark_polish_needed and confidence_score < normalized_threshold
                 self.storage.save_translated_chapter(
                     novel_id,
                     chapter_id,
                     translated,
                     provider=result.provider_key,
                     model=result.provider_model,
+                    confidence_score=confidence_score,
+                    polish_needed=polish_needed,
+                    confidence_details={
+                        "threshold": normalized_threshold,
+                        "source_length": len((raw_text or "").strip()),
+                        "translated_length": len(translated.strip()),
+                        "style_preset": style_preset,
+                    },
                 )
                 self.storage.save_chapter_state(
                     novel_id, chapter_id,

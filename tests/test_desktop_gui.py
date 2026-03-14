@@ -7,8 +7,9 @@ from uuid import uuid4
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from novelai.interfaces.desktop.app import BookWorkspace, DesktopMainWindow, ExportTab, OCRReviewTab, TranslateTab
-from novelai.interfaces.desktop.shared import DesktopActivityModel
+from novelai.interfaces.desktop.app import BookWorkspace, DesktopMainWindow, ExportTab, GlossaryTab, OCRReviewTab, TranslateTab
+from novelai.interfaces.desktop.pages import profiles as profiles_page
+from novelai.interfaces.desktop.shared import DesktopActivityModel, build_stylesheet
 from tests.conftest import TestFixture as FixtureEnv
 
 
@@ -178,6 +179,108 @@ def test_translate_retranslate_uses_selected_review_chapter_when_selection_not_n
     assert captured.get("chapter_id") == "2"
 
 
+def test_translate_glossary_terms_uses_orchestrator(desktop_env: FixtureEnv, qapp: QApplication) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    _seed_translate_chapters(desktop_env, novel_id)
+
+    captured: dict[str, object] = {}
+
+    class DummyOrchestrator:
+        async def translate_glossary_terms(self, novel_id: str, **kwargs):  # type: ignore[no-untyped-def]
+            captured["novel_id"] = novel_id
+            captured["only_pending"] = kwargs.get("only_pending")
+
+    tab = TranslateTab(novel_id)
+    tab.orchestrator = DummyOrchestrator()  # type: ignore[assignment]
+    tab.translate_glossary_terms()
+
+    assert hasattr(tab, "_worker")
+    tab._worker.wait(3000)  # type: ignore[attr-defined]
+    qapp.processEvents()
+    assert captured.get("novel_id") == novel_id
+    assert captured.get("only_pending") is True
+
+
+def test_run_phased_pipeline_uses_orchestrator(desktop_env: FixtureEnv, qapp: QApplication) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    _seed_translate_chapters(desktop_env, novel_id)
+
+    captured: dict[str, object] = {}
+
+    class DummyOrchestrator:
+        async def run_phased_translation_pipeline(self, **kwargs):  # type: ignore[no-untyped-def]
+            captured["novel_id"] = kwargs.get("novel_id")
+            captured["source_key"] = kwargs.get("source_key")
+
+    tab = TranslateTab(novel_id)
+    tab.orchestrator = DummyOrchestrator()  # type: ignore[assignment]
+    tab.source_key_input.setCurrentText("imported")
+    tab.run_phased_pipeline()
+
+    assert hasattr(tab, "_worker")
+    tab._worker.wait(3000)  # type: ignore[attr-defined]
+    qapp.processEvents()
+    assert captured.get("novel_id") == novel_id
+    assert captured.get("source_key") == "imported"
+
+
+def test_translate_run_phase2_passes_threshold_and_phase(desktop_env: FixtureEnv, qapp: QApplication) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    _seed_translate_chapters(desktop_env, novel_id)
+
+    captured: dict[str, object] = {}
+
+    class DummyOrchestrator:
+        async def run_phased_translation_pipeline(self, **kwargs):  # type: ignore[no-untyped-def]
+            captured.update(kwargs)
+
+    tab = TranslateTab(novel_id)
+    tab.orchestrator = DummyOrchestrator()  # type: ignore[assignment]
+    tab.confidence_threshold_input.setCurrentText("0.65")
+    tab.polish_low_confidence_only_input.setChecked(True)
+    tab.run_phase2()
+
+    assert hasattr(tab, "_worker")
+    tab._worker.wait(3000)  # type: ignore[attr-defined]
+    qapp.processEvents()
+    assert captured.get("phase") == "2"
+    threshold = captured.get("confidence_threshold")
+    assert isinstance(threshold, float)
+    assert threshold == pytest.approx(0.65)
+    assert captured.get("polish_low_confidence_only") is True
+
+
+def test_glossary_split_actions_call_orchestrator(desktop_env: FixtureEnv, qapp: QApplication) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    _seed_translate_chapters(desktop_env, novel_id)
+
+    calls: list[str] = []
+
+    class DummyOrchestrator:
+        async def translate_glossary_terms(self, novel_id: str, **kwargs):  # type: ignore[no-untyped-def]
+            calls.append(f"translate:{novel_id}:{kwargs.get('only_pending')}")
+            return {"translated": 1, "skipped": 0}
+
+        async def review_glossary_terms(self, novel_id: str, **kwargs):  # type: ignore[no-untyped-def]
+            calls.append(f"review:{novel_id}")
+            return {"approved": 1, "pending": 0}
+
+    tab = GlossaryTab(novel_id)
+    tab.orchestrator = DummyOrchestrator()  # type: ignore[assignment]
+    tab.translate_glossary_terms()
+    assert hasattr(tab, "_worker")
+    tab._worker.wait(3000)  # type: ignore[attr-defined]
+    qapp.processEvents()
+
+    tab.review_pending_terms()
+    assert hasattr(tab, "_worker")
+    tab._worker.wait(3000)  # type: ignore[attr-defined]
+    qapp.processEvents()
+
+    assert any(call.startswith(f"translate:{novel_id}:True") for call in calls)
+    assert any(call.startswith(f"review:{novel_id}") for call in calls)
+
+
 def test_activity_model_fail_job_removes_running_job_and_keeps_log() -> None:
     activity = DesktopActivityModel()
     job_id = activity.start_job("Translate sample")
@@ -187,6 +290,64 @@ def test_activity_model_fail_job_removes_running_job_and_keeps_log() -> None:
 
     assert len(activity.running_jobs()) == 0
     assert any("Translation failed for sample" in line for line in activity.messages())
+
+
+def test_activity_model_tracks_phase_counters_and_clear() -> None:
+    activity = DesktopActivityModel()
+    activity.add_phase_event(
+        "novel-1",
+        {
+            "phase": "phase2_body_translation",
+            "status": "completed",
+            "message": "Phase 2 completed.",
+        },
+    )
+    activity.add_phase_event(
+        "novel-1",
+        {
+            "phase": "phase2_body_translation",
+            "status": "blocked",
+            "message": "Glossary review required before phase 2.",
+        },
+    )
+
+    counters = activity.phase_counters("novel-1")
+    assert counters["phase2_body_translation"]["completed"] == 1
+    assert counters["phase2_body_translation"]["blocked"] == 1
+    assert len(activity.phase_events("novel-1")) == 2
+
+    activity.clear_messages()
+    assert activity.phase_events("novel-1") == []
+
+
+def test_phase_timeline_items_have_status_color_chips(desktop_env: FixtureEnv) -> None:
+    novel_id = f"novel-{uuid4().hex}"
+    _seed_translate_chapters(desktop_env, novel_id)
+    activity = DesktopActivityModel()
+    workspace = BookWorkspace(
+        novel_id,
+        activity_model=activity,
+        refresh_callback=lambda: None,
+    )
+    # Add one event per status type
+    for status in ["completed", "blocked", "failed"]:
+        activity.add_phase_event(
+            novel_id,
+            {"phase": "phase2_body_translation", "status": status, "message": f"test {status}"},
+        )
+
+    workspace._activity_panel_visible = True
+    workspace._refresh_activity_panel()
+
+    expected_colors = {"completed": "#4caf50", "blocked": "#ff9800", "failed": "#f44336"}
+    for i in range(workspace.workspace_phase_timeline.count()):
+        item = workspace.workspace_phase_timeline.item(i)
+        assert item is not None
+        text = item.text()
+        color = item.foreground().color()
+        for status, hex_val in expected_colors.items():
+            if f"[{status}]" in text:
+                assert color.name() == hex_val, f"Expected {hex_val} for {status}, got {color.name()}"
 
 
 def test_translate_preflight_blocks_when_ocr_or_glossary_pending(desktop_env: FixtureEnv) -> None:
@@ -252,6 +413,12 @@ def test_export_preflight_blocks_scope_when_only_blocked_chapter_selected(deskto
     assert "No translated chapters are export-ready" in tab.preflight_label.text()
 
 
+def test_stylesheet_uses_color_theme_without_image_overlay() -> None:
+    stylesheet = build_stylesheet()
+    assert "background-image" not in stylesheet
+    assert "qradialgradient" in stylesheet
+
+
 def test_workspace_activity_panel_toggle_and_filter(desktop_env: FixtureEnv) -> None:
     novel_id = f"novel-{uuid4().hex}"
     _seed_translate_chapters(desktop_env, novel_id)
@@ -267,11 +434,21 @@ def test_workspace_activity_panel_toggle_and_filter(desktop_env: FixtureEnv) -> 
     assert workspace._activity_panel_visible is True
 
     activity.add_message(f"Changed chapter for {novel_id}")
+    activity.add_phase_event(
+        novel_id,
+        {
+            "phase": "phase1_glossary_extraction",
+            "status": "completed",
+            "message": "Glossary candidates extracted.",
+        },
+    )
     job_id = activity.start_job(f"Translate {novel_id} (all)")
     workspace._refresh_activity_panel()
 
     assert workspace.workspace_jobs_list.count() >= 1
     assert novel_id in workspace.workspace_jobs_list.item(0).text() or "No active jobs" in workspace.workspace_jobs_list.item(0).text()
+    assert "phase1_glossary_extraction" in workspace.workspace_phase_summary.text()
+    assert workspace.workspace_phase_timeline.count() >= 1
     assert novel_id in workspace.workspace_log.toPlainText()
 
     activity.finish_job(job_id, f"Finished {novel_id}")
@@ -279,25 +456,67 @@ def test_workspace_activity_panel_toggle_and_filter(desktop_env: FixtureEnv) -> 
     assert workspace._activity_panel_visible is False
 
 
-def test_main_window_uses_fixed_compact_side_rail(desktop_env: FixtureEnv) -> None:
+def test_main_window_uses_fixed_expanded_side_rail(desktop_env: FixtureEnv) -> None:
     window = DesktopMainWindow()
 
     assert window.nav.isHidden() is False
-    assert window.nav.maximumWidth() <= 64
+    assert window.nav.minimumWidth() == 180
+    assert window.nav.maximumWidth() == 180
+    assert window.nav_panel.minimumWidth() == 200
+    assert window.nav_panel.maximumWidth() == 200
     assert window.nav.minimumWidth() <= window.nav.maximumWidth()
+    assert window.nav.gridSize().width() == 44
+    assert window.nav.gridSize().height() == 44
     assert not hasattr(window, "nav_toggle_button")
 
 
-def test_main_window_brand_button_toggles_sidebar_labels(desktop_env: FixtureEnv) -> None:
+def test_main_window_brand_button_no_longer_toggles_sidebar_labels(desktop_env: FixtureEnv) -> None:
     window = DesktopMainWindow()
 
-    assert window._nav_labels_visible is False
-    assert window.nav.maximumWidth() <= 64
+    assert window._nav_labels_visible is True
+    assert window.nav.maximumWidth() == 180
+    first_item = window.nav.item(0)
+    assert first_item is not None
+    before_text = first_item.text()
 
     window.nav_brand_button.click()
 
     assert window._nav_labels_visible is True
-    assert window.nav.maximumWidth() >= 180
-    first_item = window.nav.item(0)
-    assert first_item is not None
-    assert first_item.text() != ""
+    assert window.nav.maximumWidth() == 180
+    after_text = first_item.text()
+    assert after_text == before_text
+    assert after_text != ""
+
+
+def test_profiles_validate_endpoint_calls_provider_and_sets_status(
+    desktop_env: FixtureEnv,
+    monkeypatch: pytest.MonkeyPatch,
+    qapp: QApplication,
+) -> None:
+    monkeypatch.setattr("novelai.interfaces.desktop.pages.profiles.container", desktop_env.container)
+    monkeypatch.setattr("novelai.interfaces.desktop.pages.profiles.available_providers", lambda: ["mock"])
+    monkeypatch.setattr("novelai.interfaces.desktop.pages.profiles.available_models", lambda _key: ["mock-model"])
+
+    captured: dict[str, object] = {}
+
+    class DummyProvider:
+        async def validate_connection(self, model: str | None = None, **kwargs):  # type: ignore[no-untyped-def]
+            captured["model"] = model
+            return True, "mock endpoint reachable"
+
+    monkeypatch.setattr("novelai.interfaces.desktop.pages.profiles.get_provider", lambda _key: DummyProvider())
+
+    view = profiles_page.ProfilesView()
+    view.endpoint_provider_input.setCurrentIndex(max(view.endpoint_provider_input.findData("mock"), 0))
+    view.endpoint_model_input.setText("mock-model")
+    view._validate_endpoint_profile()
+
+    assert hasattr(view, "_endpoint_validate_worker")
+    assert view._endpoint_validate_worker is not None
+    view._endpoint_validate_worker.wait(3000)
+    qapp.processEvents()
+
+    assert captured.get("model") == "mock-model"
+    status_text = view.endpoint_validation_status.text()
+    assert "Validation passed" in status_text
+    assert "Last validated:" in status_text

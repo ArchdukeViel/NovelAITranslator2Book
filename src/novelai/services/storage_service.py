@@ -541,16 +541,26 @@ class StorageService:
         text: str,
         provider: str | None = None,
         model: str | None = None,
+        confidence_score: float | None = None,
+        polish_needed: bool | None = None,
+        confidence_details: dict[str, Any] | None = None,
     ) -> Path:
         """Save a translated chapter as structured JSON."""
         payload = self._load_chapter_bundle(novel_id, chapter_id) or {"id": chapter_id}
-        payload["translated"] = {
+        translated_payload: dict[str, Any] = {
             "provider": provider,
             "model": model,
             "translated_at": _utc_now_iso(),
             "text": text,
             "paragraphs": self._text_paragraphs(text),
         }
+        if isinstance(confidence_score, float):
+            translated_payload["confidence_score"] = max(0.0, min(1.0, confidence_score))
+        if isinstance(polish_needed, bool):
+            translated_payload["polish_needed"] = polish_needed
+        if isinstance(confidence_details, dict):
+            translated_payload["confidence_details"] = dict(confidence_details)
+        payload["translated"] = translated_payload
         return self._persist_chapter_bundle(novel_id, chapter_id, payload)
 
     def load_translated_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
@@ -573,6 +583,9 @@ class StorageService:
             "model": translated.get("model"),
             "translated_at": translated.get("translated_at"),
             "text": translated.get("text"),
+            "confidence_score": translated.get("confidence_score"),
+            "polish_needed": translated.get("polish_needed"),
+            "confidence_details": translated.get("confidence_details") if isinstance(translated.get("confidence_details"), dict) else {},
             "input_adapter_key": payload.get("input_adapter_key"),
             "origin_type": payload.get("origin_type"),
             "origin_uri_or_path": payload.get("origin_uri_or_path"),
@@ -1286,6 +1299,9 @@ class StorageService:
                     translated_chapter.get("text", ""),
                     provider=translated_chapter.get("provider"),
                     model=translated_chapter.get("model"),
+                    confidence_score=translated_chapter.get("confidence_score") if isinstance(translated_chapter.get("confidence_score"), float) else None,
+                    polish_needed=translated_chapter.get("polish_needed") if isinstance(translated_chapter.get("polish_needed"), bool) else None,
+                    confidence_details=translated_chapter.get("confidence_details") if isinstance(translated_chapter.get("confidence_details"), dict) else None,
                 )
 
             # Restore state (if available)

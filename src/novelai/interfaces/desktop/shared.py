@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, QThread, QUrl, Signal, Qt
+from PySide6.QtCore import QObject, QThread, Signal, Qt
 from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from novelai.config.settings import settings
@@ -146,17 +146,8 @@ def profiles_snapshot_text() -> str:
     return "\n".join(lines)
 
 
-def _qss_file_url(path: Path) -> str:
-    return bytes(QUrl.fromLocalFile(str(path.resolve())).toEncoded()).decode("ascii")
-
-
 def build_stylesheet(asset_dir: Path | None = None) -> str:
-    milky_way_url = ""
-    if asset_dir is not None:
-        milky_way_path = asset_dir / "milky-way-eso.jpg"
-        if milky_way_path.exists():
-            milky_way_url = _qss_file_url(milky_way_path)
-
+    _ = asset_dir
     root_background = """
     QSplitter#DesktopRoot {
         background: qradialgradient(cx:0.18, cy:0.08, radius:1.1,
@@ -167,20 +158,6 @@ def build_stylesheet(asset_dir: Path | None = None) -> str:
             stop:1 #050312);
     }
     """
-    if milky_way_url:
-        root_background = """
-    QSplitter#DesktopRoot {
-        background: qradialgradient(cx:0.18, cy:0.08, radius:1.1,
-            fx:0.18, fy:0.08,
-            stop:0 #31206f,
-            stop:0.35 #1b1244,
-            stop:0.75 #0c0824,
-            stop:1 #050312);
-        background-image: url('""" + milky_way_url + """');
-        background-position: center;
-        background-repeat: no-repeat;
-    }
-    """
 
     return """  /* --- NovelAI2Book desktop stylesheet --- */
     QMainWindow {
@@ -189,8 +166,9 @@ def build_stylesheet(asset_dir: Path | None = None) -> str:
     QWidget {
         background: transparent;
         color: #efeaff;
-        font-family: "Segoe UI Variable Text", "Segoe UI", "Trebuchet MS";
+        font-family: "Segoe UI", "Trebuchet MS", "Verdana";
         font-size: 13px;
+        font-weight: 500;
     }
     QMainWindow::separator {
         background: #2e215d;
@@ -203,48 +181,51 @@ def build_stylesheet(asset_dir: Path | None = None) -> str:
             stop:0 #090613,
             stop:1 #140a2f);
         border-right: 1px solid #3c2b74;
-        border-top-right-radius: 16px;
-        border-bottom-right-radius: 16px;
+        border-top-right-radius: 14px;
+        border-bottom-right-radius: 14px;
     }
     QPushButton#NavBrandButton {
         color: #f0e9ff;
-        background: #2b1b5f;
-        border: 1px solid #6441c2;
-        border-radius: 17px;
-        min-height: 34px;
-        max-height: 34px;
+        background: transparent;
+        border: 1px solid #4d3a86;
+        border-radius: 22px;
+        min-height: 44px;
+        max-height: 44px;
+        min-width: 44px;
+        max-width: 44px;
         font-size: 15px;
         font-weight: 700;
         padding: 0;
     }
     QPushButton#NavBrandButton:hover {
-        background: #3b2390;
+        background: #2a1b59;
     }
     QLabel#NavAvatar {
         color: #f2ecff;
         background: #4c2bb2;
         border: 1px solid #8f6dff;
-        border-radius: 17px;
-        min-height: 34px;
-        max-height: 34px;
-        min-width: 34px;
-        max-width: 34px;
+        border-radius: 22px;
+        min-height: 44px;
+        max-height: 44px;
+        min-width: 44px;
+        max-width: 44px;
         font-size: 11px;
         font-weight: 700;
     }
     QListWidget#NavList {
         background: transparent;
         color: #e9e0ff;
-        border: 1px solid #372a62;
-        border-radius: 14px;
-        padding: 6px 4px;
+        border: none;
+        border-radius: 0;
+        padding: 0;
         outline: none;
     }
     QListWidget#NavList::item {
         border-radius: 12px;
         min-height: 40px;
-        padding: 10px 6px;
-        margin: 4px 4px;
+        padding: 8px 4px;
+        margin: 3px 2px;
+        color: #e9e0ff;
     }
     QListWidget#NavList::item:selected {
         background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
@@ -253,7 +234,7 @@ def build_stylesheet(asset_dir: Path | None = None) -> str:
         color: #f8f4ff;
         font-weight: 700;
     }
-    QListWidget, QPlainTextEdit, QLineEdit, QComboBox, QTabWidget::pane {
+    QListWidget, QPlainTextEdit, QLineEdit, QComboBox, QTabWidget::pane, QTableWidget {
         background: #130e2e;
         border: 1px solid #3e2f75;
         border-radius: 14px;
@@ -276,6 +257,34 @@ def build_stylesheet(asset_dir: Path | None = None) -> str:
     QListWidget::item:selected {
         background: #5f36d8;
         color: #ffffff;
+    }
+    QTableWidget {
+        gridline-color: #2f245f;
+        alternate-background-color: #120d2a;
+        padding: 4px;
+    }
+    QListWidget#GlossaryTermList {
+        background: #1e1548;
+    }
+    QTableWidget#GlossaryTermsTable {
+        background: #1e1548;
+        alternate-background-color: #18113e;
+    }
+    QTableWidget#GlossaryTermsTable QHeaderView::section {
+        background: #2b1f62;
+    }
+    QHeaderView::section {
+        background: #1d1441;
+        color: #f3ecff;
+        border: none;
+        border-bottom: 1px solid #4d3c89;
+        padding: 6px 8px;
+        font-weight: 700;
+    }
+    QTableCornerButton::section {
+        background: #1d1441;
+        border: none;
+        border-bottom: 1px solid #4d3c89;
     }
     QPlainTextEdit, QLineEdit, QComboBox {
         padding: 8px 10px;
@@ -323,7 +332,7 @@ def build_stylesheet(asset_dir: Path | None = None) -> str:
         top: 2px;
         padding: 0 8px;
         color: #b69bff;
-        background: #110c28;
+        background: transparent;
     }
     QLabel#HeroEyebrow {
         color: #bba0ff;
@@ -422,10 +431,40 @@ class DesktopActivityModel(QObject):
         super().__init__()
         self._messages: list[str] = []
         self._running_jobs: dict[str, str] = {}
+        self._phase_events: list[dict[str, str]] = []
 
     def add_message(self, message: str) -> None:
         self._messages.append(f"[{timestamp_label(datetime.now().astimezone())}] {message}")
         self.messages_changed.emit()
+
+    def add_phase_event(self, novel_id: str, payload: dict[str, Any]) -> None:
+        phase = safe_str(payload.get("phase"), "unknown_phase")
+        status = safe_str(payload.get("status"), "completed")
+        message = safe_str(payload.get("message"), "")
+        timestamp = timestamp_label(datetime.now().astimezone())
+        event = {
+            "timestamp": timestamp,
+            "novel_id": novel_id,
+            "phase": phase,
+            "status": status,
+            "message": message,
+        }
+        self._phase_events.append(event)
+        self.add_message(f"Phase {phase} [{status}] {novel_id}: {message}")
+
+    def phase_events(self, novel_id: str | None = None) -> list[dict[str, str]]:
+        if novel_id is None:
+            return [dict(event) for event in self._phase_events]
+        return [dict(event) for event in self._phase_events if event.get("novel_id") == novel_id]
+
+    def phase_counters(self, novel_id: str | None = None) -> dict[str, dict[str, int]]:
+        counters: dict[str, dict[str, int]] = {}
+        for event in self.phase_events(novel_id):
+            phase = safe_str(event.get("phase"), "unknown_phase")
+            status = safe_str(event.get("status"), "completed")
+            bucket = counters.setdefault(phase, {})
+            bucket[status] = bucket.get(status, 0) + 1
+        return counters
 
     def start_job(self, label: str) -> str:
         job_id = f"job-{int(datetime.now().timestamp() * 1000)}-{len(self._running_jobs) + 1}"
@@ -452,6 +491,7 @@ class DesktopActivityModel(QObject):
 
     def clear_messages(self) -> None:
         self._messages.clear()
+        self._phase_events.clear()
         self.messages_changed.emit()
 
     def messages(self) -> list[str]:
@@ -460,10 +500,10 @@ class DesktopActivityModel(QObject):
     def running_jobs(self) -> list[str]:
         return list(self._running_jobs.values())
 
-
 class AsyncTaskThread(QThread):
     succeeded = Signal(object)
     failed = Signal(str)
+    progress = Signal(str)
 
     def __init__(self, fn: Callable[[], Any], parent: QWidget | None = None) -> None:
         super().__init__(parent)

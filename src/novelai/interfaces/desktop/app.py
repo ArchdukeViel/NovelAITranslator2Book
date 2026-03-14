@@ -2,17 +2,21 @@
 
 import asyncio
 import contextlib
+import hashlib
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtCore import QSize, Signal, Qt
+from PySide6.QtGui import QColor, QFont, QIcon
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QInputDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -21,12 +25,16 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QMessageBox,
+    QFileDialog,
     QPushButton,
     QPlainTextEdit,
     QSpinBox,
     QSplitter,
     QStackedWidget,
+    QListView,
     QStyle,
+    QTableWidget,
+    QTableWidgetItem,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -45,10 +53,10 @@ from novelai.interfaces.desktop.pages import (
     ActivityView,
     DiagnosticsView,
     HomeView,
+    LLMOpsView,
     LibraryView,
-    ProfilesView,
-    SettingsView,
 )
+from novelai.interfaces.desktop.export_helpers import build_export_output_path, build_export_plan
 from novelai.interfaces.desktop.shared import (
     AsyncTaskThread,
     DesktopActivityModel,
@@ -69,123 +77,6 @@ def _selected_numbers(chapter_selection: str) -> set[int] | None:
     if is_full_chapter_selection(chapter_selection):
         return None
     return {spec.chapter for spec in parse_chapter_selection(chapter_selection)}
-
-
-def _build_export_plan(
-    novel_id: str,
-    chapter_selection: str = "full",
-    language: str = "translated",
-) -> dict[str, Any]:
-    storage = container.storage
-    meta = storage.load_metadata(novel_id)
-    if not meta:
-        raise ValueError("Metadata not found; run scrape/import first.")
-
-    selected_numbers = _selected_numbers(chapter_selection)
-    use_source = language.strip().lower() == "source"
-    ready: list[dict[str, Any]] = []
-    blocked: list[dict[str, str]] = []
-    selected_count = 0
-
-    for chapter in meta.get("chapters", []):
-        if not isinstance(chapter, dict):
-            continue
-        chapter_id = str(chapter.get("id"))
-        if selected_numbers is not None:
-            if not chapter_id.isdigit() or int(chapter_id) not in selected_numbers:
-                continue
-        selected_count += 1
-
-        chapter_title = chapter.get("translated_title") if not use_source else chapter.get("title")
-        normalized_title = chapter_title if isinstance(chapter_title, str) and chapter_title.strip() else f"Chapter {chapter_id}"
-
-        text: str | None = None
-        reason: str | None = None
-        if use_source:
-            raw_data = storage.load_chapter(novel_id, chapter_id)
-            raw_text = raw_data.get("text") if isinstance(raw_data, dict) else None
-            if not isinstance(raw_text, str) or not raw_text.strip():
-                reason = "Source text missing."
-            else:
-                text = raw_text
-        else:
-            media_state = storage.load_chapter_media_state(novel_id, chapter_id) or {}
-            ocr_required = bool(media_state.get("ocr_required"))
-            ocr_status = str(media_state.get("ocr_status") or "").strip().lower()
-            if ocr_required and ocr_status != "reviewed":
-                reason = "OCR review pending."
-            translated = storage.load_translated_chapter(novel_id, chapter_id)
-            translated_text = translated.get("text") if isinstance(translated, dict) else None
-            if reason is None and (not isinstance(translated_text, str) or not translated_text.strip()):
-                reason = "Translated text missing."
-            elif reason is None:
-                text = translated_text
-
-        if reason is not None:
-            blocked.append(
-                {
-                    "chapter_id": chapter_id,
-                    "title": normalized_title,
-                    "reason": reason,
-                }
-            )
-            continue
-
-        ready.append(
-            {
-                "chapter_id": chapter_id,
-                "title": normalized_title,
-                "text": text,
-                "images": storage.load_chapter_export_images(novel_id, chapter_id),
-            }
-        )
-
-    return {
-        "ready": ready,
-        "blocked": blocked,
-        "selected_count": selected_count,
-    }
-
-
-def _collect_export_chapters(
-    novel_id: str,
-    chapter_selection: str = "full",
-    language: str = "translated",
-) -> list[dict[str, Any]]:
-    plan = _build_export_plan(
-        novel_id,
-        chapter_selection=chapter_selection,
-        language=language,
-    )
-    chapters = [
-        {
-            "title": row["title"],
-            "text": row["text"],
-            "images": row["images"],
-        }
-        for row in plan["ready"]
-    ]
-
-    if not chapters:
-        raise ValueError(f"No {language} chapters available for export.")
-    return chapters
-
-
-def _build_export_output_path(
-    novel_id: str,
-    export_format: str,
-    output_dir: str | None,
-    chapter_selection: str,
-    language: str,
-) -> str:
-    base_path = Path(container.storage.build_export_path(novel_id, export_format, output_dir or None))
-    name = base_path.stem
-    if language == "source":
-        name = f"{name}_source"
-    if not is_full_chapter_selection(chapter_selection):
-        suffix = chapter_selection.replace(" ", "").replace(",", "_").replace("-", "to")
-        name = f"{name}_ch{suffix}"
-    return str(base_path.with_name(f"{name}.{export_format}"))
 
 
 def _estimate_translation_budget(novel_id: str, chapter_selection: str, provider_key: str | None, model: str | None) -> str:
@@ -284,51 +175,72 @@ class ImportTab(QWidget):
         self._active_job_id: str | None = None
         layout = QVBoxLayout(self)
         form = QFormLayout()
-        self.novel_input = QLineEdit(self.fixed_novel_id or "")
-        self.novel_input.setReadOnly(self.fixed_novel_id is not None)
-        self.adapter_input = QComboBox()
-        self.adapter_input.addItems(available_input_adapters())
+        self.title_input = QLineEdit(self.fixed_novel_id or "")
+        self.title_input.setReadOnly(self.fixed_novel_id is not None)
         self.source_input = QLineEdit()
-        self.max_units_input = QLineEdit()
-        detect_button = QPushButton("Detect Adapter")
-        detect_button.clicked.connect(self.detect_adapter)
+        self.source_input.setReadOnly(True)
+        browse_button = QPushButton("Select Item")
+        browse_button.clicked.connect(self.browse_source)
         source_row = QHBoxLayout()
         source_row.addWidget(self.source_input)
-        source_row.addWidget(detect_button)
-        form.addRow("Novel ID", self.novel_input)
-        form.addRow("Adapter", self.adapter_input)
-        form.addRow("Source Path/URL", source_row)
-        form.addRow("Max Units", self.max_units_input)
+        source_row.addWidget(browse_button)
+        format_note = QLabel(
+            "Allowed formats: URL, .txt/.md/.html, .epub, .pdf, .cbz, or an image folder."
+        )
+        format_note.setObjectName("HeroBody")
+        format_note.setWordWrap(True)
+        form.addRow("Novel Title", self.title_input)
+        form.addRow("Select Item", source_row)
+        form.addRow("", format_note)
         layout.addLayout(form)
         self.import_button = QPushButton("Import")
         self.import_button.clicked.connect(self.start_import)
         layout.addWidget(self.import_button)
         self.output = QPlainTextEdit()
         self.output.setReadOnly(True)
+        self.output.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.output.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         layout.addWidget(self.output)
 
-    def detect_adapter(self) -> None:
-        source = self.source_input.text().strip()
-        if not source:
+    def _build_novel_id_from_title(self, title: str) -> str:
+        normalized = re.sub(r"[^a-z0-9]+", "-", title.casefold()).strip("-")
+        if not normalized:
+            normalized = "novel"
+        token = hashlib.sha1(title.encode("utf-8", errors="ignore")).hexdigest()[:6]
+        return f"{normalized[:24]}-{token}"
+
+    def browse_source(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Source File",
+            "",
+            "Supported Files (*.txt *.md *.html *.htm *.epub *.pdf *.cbz);;All Files (*)",
+        )
+        if not path:
             return
-        detected = detect_input_adapter(source)
-        if detected is None:
-            self.output.setPlainText("Could not auto-detect an input adapter for the current source.")
-            return
-        self.adapter_input.setCurrentText(detected)
-        self.output.setPlainText(f"Detected input adapter: {detected}")
+        self.source_input.setText(path)
+
+    def _detect_adapter(self, source: str) -> str | None:
+        return detect_input_adapter(source)
 
     def start_import(self) -> None:
-        novel_id = (self.fixed_novel_id or self.novel_input.text()).strip()
-        adapter_key = self.adapter_input.currentText()
+        title = (self.fixed_novel_id or self.title_input.text()).strip()
         source = self.source_input.text().strip()
-        max_units = self.max_units_input.text().strip()
-        if not novel_id:
-            QMessageBox.warning(self, "Missing Novel ID", "Provide a novel ID before importing.")
+        if not title:
+            QMessageBox.warning(self, "Missing Novel Title", "Provide a novel title before importing.")
             return
         if not source:
-            QMessageBox.warning(self, "Missing Source", "Provide a source path or URL.")
+            QMessageBox.warning(self, "Missing Item", "Choose a file or folder to import.")
             return
+        adapter_key = self._detect_adapter(source)
+        if adapter_key is None:
+            QMessageBox.warning(
+                self,
+                "Unsupported Format",
+                "Could not detect an adapter for this item. Allowed: URL, text/html, epub, pdf, cbz, or image folder.",
+            )
+            return
+        novel_id = self._build_novel_id_from_title(title)
         self.novel_id = novel_id
         if self.activity_model is not None:
             self._active_job_id = self.activity_model.start_job(f"Import {novel_id} via {adapter_key}")
@@ -340,7 +252,6 @@ class ImportTab(QWidget):
                     adapter_key,
                     novel_id,
                     source,
-                    max_units=int(max_units) if max_units.isdigit() else None,
                 )
             )
 
@@ -381,19 +292,12 @@ class ImportPage(QWidget):
         self.activity_model = activity_model
         self.refresh_callback = refresh_callback
         layout = QVBoxLayout(self)
-        eyebrow = QLabel("ACQUIRE")
-        eyebrow.setObjectName("HeroEyebrow")
-        title = QLabel("Bring in books from files or scrape supported web novel sources.")
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
+
+        title = QLabel("IMPORT AND SCRAPE")
         title.setObjectName("HeroTitle")
-        title.setWordWrap(True)
-        description = QLabel(
-            "Use document import for local files and archives. Use source scraping for Syosetu, Kakuyomu, "
-            "Novel18, or generic supported web sources."
-        )
-        description.setWordWrap(True)
-        layout.addWidget(eyebrow)
         layout.addWidget(title)
-        layout.addWidget(description)
 
         self.tabs = QTabWidget()
         self.import_panel = ImportTab(
@@ -406,15 +310,15 @@ class ImportPage(QWidget):
             activity_model=self.activity_model,
             refresh_callback=self.refresh_callback,
         )
-        self.tabs.addTab(self.import_panel, "Document Import")
-        self.tabs.addTab(self.source_panel, "Source Scrape")
+        self.tabs.addTab(self.import_panel, "Import")
+        self.tabs.addTab(self.source_panel, "Scrape")
         layout.addWidget(self.tabs)
 
         self.import_panel.completed.connect(self._open_imported_workspace)
         self.source_panel.completed.connect(self._open_scraped_workspace)
 
     def _open_imported_workspace(self) -> None:
-        novel_id = self.import_panel.novel_input.text().strip() if hasattr(self.import_panel, "novel_input") else ""
+        novel_id = self.import_panel.novel_id.strip() if hasattr(self.import_panel, "novel_id") else ""
         if not novel_id:
             return
         self.open_workspace_requested.emit(novel_id)
@@ -447,92 +351,148 @@ class SourceScrapePanel(QWidget):
         self.orchestrator = container.orchestrator
         self._worker: AsyncTaskThread | None = None
         self._active_job_id: str | None = None
+        self._progress_emit: Callable[[str], None] | None = None
+        self._source_detected = False
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
         self.novel_input = QLineEdit(fixed_novel_id or "")
         self.novel_input.setReadOnly(fixed_novel_id is not None)
-        self.source_input = QComboBox()
-        self.source_input.addItems(sorted(available_sources()))
-        self.max_chapter_input = QLineEdit()
-        self.max_chapter_input.setPlaceholderText("optional")
-        self.metadata_mode_input = QComboBox()
-        self.metadata_mode_input.addItems(["update", "full"])
-        self.chapter_selection_input = QLineEdit("all")
-        self.chapter_mode_input = QComboBox()
-        self.chapter_mode_input.addItems(["update", "full"])
-        form.addRow("Novel ID / Source Identifier", self.novel_input)
+        self.source_input = QLineEdit()
+        self.source_input.setReadOnly(True)
+        self.source_input.setPlaceholderText("Auto-detected from novel URL")
+        self.chapter_selection_input = QLineEdit()
+        self.chapter_selection_input.setPlaceholderText("all or range like 1-10, 12")
+        form.addRow("Novel URL", self.novel_input)
         form.addRow("Source Adapter", self.source_input)
-        form.addRow("Metadata Mode", self.metadata_mode_input)
-        form.addRow("Max Chapter", self.max_chapter_input)
-        form.addRow("Chapter Selection", self.chapter_selection_input)
-        form.addRow("Chapter Mode", self.chapter_mode_input)
+        form.addRow("Chapter", self.chapter_selection_input)
         layout.addLayout(form)
 
         controls = QHBoxLayout()
-        self.detect_button = QPushButton("Detect Source")
-        self.metadata_button = QPushButton("Scrape Metadata")
-        self.chapters_button = QPushButton("Scrape Chapters")
-        self.sync_button = QPushButton("Sync Metadata + Chapters")
-        controls.addWidget(self.detect_button)
-        controls.addWidget(self.metadata_button)
-        controls.addWidget(self.chapters_button)
-        controls.addWidget(self.sync_button)
+        self.scrape_button = QPushButton("Scrape")
+        controls.addWidget(self.scrape_button)
         controls.addStretch()
         layout.addLayout(controls)
 
         self.output = QPlainTextEdit()
         self.output.setReadOnly(True)
+        self.output.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.output.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         layout.addWidget(self.output)
 
-        self.detect_button.clicked.connect(self.detect_source_adapter)
-        self.metadata_button.clicked.connect(self.start_metadata_scrape)
-        self.chapters_button.clicked.connect(self.start_chapter_scrape)
-        self.sync_button.clicked.connect(self.start_full_sync)
+        self.novel_input.textChanged.connect(self._auto_detect_source_adapter)
+        self.scrape_button.clicked.connect(self.start_scrape)
+        self._auto_detect_source_adapter(self._resolved_novel_id())
 
     def _resolved_novel_id(self) -> str:
         return (self.fixed_novel_id or self.novel_input.text()).strip()
+
+    def _auto_detect_source_adapter(self, candidate: str) -> None:
+        normalized = candidate.strip()
+        if not normalized:
+            self._source_detected = False
+            self.source_input.clear()
+            return
+        detected = detect_source(normalized)
+        if detected is None:
+            self._source_detected = False
+            self.source_input.clear()
+            return
+        self._source_detected = True
+        self.source_input.setText(detected)
+
+    def _resolved_source_key(self) -> str | None:
+        self._auto_detect_source_adapter(self._resolved_novel_id())
+        if not self._source_detected:
+            return None
+        source_key = self.source_input.text().strip()
+        return source_key if source_key else None
+
+    def _select_scrape_mode(self) -> str | None:
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle("Scrape Mode")
+        dialog.setLabelText("Select scrape mode:")
+        dialog.setComboBoxItems(["Scrape Metadata", "Scrape Chapters", "Full"])
+        dialog.setComboBoxEditable(False)
+        dialog.setTextValue("Full")
+        if not dialog.exec():
+            return None
+        mode = dialog.textValue().strip().lower()
+        if mode == "scrape metadata":
+            return "metadata"
+        if mode == "scrape chapters":
+            return "chapters"
+        return "full"
+
+    def _set_busy(self, busy: bool) -> None:
+        self.scrape_button.setEnabled(not busy)
+
+    def start_scrape(self) -> None:
+        mode = self._select_scrape_mode()
+        if mode is None:
+            return
+
+        novel_id = self._resolved_novel_id()
+        if not novel_id:
+            QMessageBox.warning(self, "Missing URL", "Provide a novel URL or source identifier.")
+            return
+        source_key = self._resolved_source_key()
+        if source_key is None:
+            QMessageBox.warning(
+                self,
+                "Source Not Detected",
+                "Could not auto-detect source adapter from the provided URL/identifier.",
+            )
+            return
+        selection = self.chapter_selection_input.text().strip() or "all"
+
+        if mode == "metadata":
+            self.start_metadata_scrape(novel_id, source_key)
+            return
+        if mode == "chapters":
+            self.start_chapter_scrape(novel_id, source_key, selection)
+            return
+        self.start_full_sync(novel_id, source_key, selection)
 
     def detect_source_adapter(self) -> None:
         candidate = self._resolved_novel_id()
         detected = detect_source(candidate)
         if detected is None:
+            self._source_detected = False
             self.output.setPlainText("Could not auto-detect a source adapter from the current identifier/URL.")
             return
-        self.source_input.setCurrentText(detected)
+        self._source_detected = True
+        self.source_input.setText(detected)
         self.output.setPlainText(f"Detected source adapter: {detected}")
-
-    def _set_busy(self, busy: bool) -> None:
-        self.metadata_button.setEnabled(not busy)
-        self.chapters_button.setEnabled(not busy)
-        self.sync_button.setEnabled(not busy)
 
     def _start_task(self, label: str, fn: Callable[[], Any], success_message: str) -> None:
         if self.activity_model is not None:
             self._active_job_id = self.activity_model.start_job(label)
         self._set_busy(True)
+        self.output.clear()
+        self.output.appendPlainText(f"Starting: {label}")
         self._worker = AsyncTaskThread(fn, self)
+        self._progress_emit = self._worker.progress.emit
+        self._worker.progress.connect(self.output.appendPlainText)
         self._worker.succeeded.connect(lambda payload: self._on_success(payload, success_message))
         self._worker.failed.connect(self._on_error)
         self._worker.finished.connect(lambda: self._set_busy(False))
         self._worker.start()
 
-    def start_metadata_scrape(self) -> None:
-        novel_id = self._resolved_novel_id()
-        if not novel_id:
-            QMessageBox.warning(self, "Missing Identifier", "Provide a novel ID or source identifier.")
-            return
-        source_key = self.source_input.currentText().strip()
-        mode = self.metadata_mode_input.currentText().strip() or "update"
-        max_chapter = self.max_chapter_input.text().strip()
+    def start_metadata_scrape(self, novel_id: str, source_key: str) -> None:
 
         def _run() -> Any:
+            def _prog(msg: str) -> None:
+                if self._progress_emit:
+                    self._progress_emit(msg)
+
             return asyncio.run(
                 self.orchestrator.scrape_metadata(
                     source_key,
                     novel_id,
-                    mode=mode,
-                    max_chapter=int(max_chapter) if max_chapter.isdigit() else None,
+                    mode="update",
+                    max_chapter=None,
+                    progress_callback=_prog,
                 )
             )
 
@@ -542,22 +502,20 @@ class SourceScrapePanel(QWidget):
             f"Metadata scraped for {novel_id}.",
         )
 
-    def start_chapter_scrape(self) -> None:
-        novel_id = self._resolved_novel_id()
-        if not novel_id:
-            QMessageBox.warning(self, "Missing Identifier", "Provide a novel ID or source identifier.")
-            return
-        source_key = self.source_input.currentText().strip()
-        selection = self.chapter_selection_input.text().strip() or "all"
-        mode = self.chapter_mode_input.currentText().strip() or "update"
+    def start_chapter_scrape(self, novel_id: str, source_key: str, selection: str) -> None:
 
         def _run() -> Any:
+            def _prog(msg: str) -> None:
+                if self._progress_emit:
+                    self._progress_emit(msg)
+
             asyncio.run(
                 self.orchestrator.scrape_chapters(
                     source_key,
                     novel_id,
                     selection,
-                    mode=mode,
+                    mode="update",
+                    progress_callback=_prog,
                 )
             )
             return {"novel_id": novel_id, "selection": selection}
@@ -568,24 +526,20 @@ class SourceScrapePanel(QWidget):
             f"Chapters scraped for {novel_id} ({selection}).",
         )
 
-    def start_full_sync(self) -> None:
-        novel_id = self._resolved_novel_id()
-        if not novel_id:
-            QMessageBox.warning(self, "Missing Identifier", "Provide a novel ID or source identifier.")
-            return
-        source_key = self.source_input.currentText().strip()
-        metadata_mode = self.metadata_mode_input.currentText().strip() or "update"
-        chapter_mode = self.chapter_mode_input.currentText().strip() or "update"
-        selection = self.chapter_selection_input.text().strip() or "all"
-        max_chapter = self.max_chapter_input.text().strip()
+    def start_full_sync(self, novel_id: str, source_key: str, selection: str) -> None:
 
         def _run() -> Any:
+            def _prog(msg: str) -> None:
+                if self._progress_emit:
+                    self._progress_emit(msg)
+
             metadata = asyncio.run(
                 self.orchestrator.scrape_metadata(
                     source_key,
                     novel_id,
-                    mode=metadata_mode,
-                    max_chapter=int(max_chapter) if max_chapter.isdigit() else None,
+                    mode="update",
+                    max_chapter=None,
+                    progress_callback=_prog,
                 )
             )
             asyncio.run(
@@ -593,7 +547,8 @@ class SourceScrapePanel(QWidget):
                     source_key,
                     novel_id,
                     selection,
-                    mode=chapter_mode,
+                    mode="update",
+                    progress_callback=_prog,
                 )
             )
             return metadata
@@ -605,7 +560,7 @@ class SourceScrapePanel(QWidget):
         )
 
     def _on_success(self, payload: object, message: str) -> None:
-        self.output.setPlainText(str(payload))
+        self.output.appendPlainText(f"\n[Done] {message}")
         if self.activity_model is not None and self._active_job_id is not None:
             self.activity_model.finish_job(self._active_job_id, message)
         self._active_job_id = None
@@ -615,7 +570,7 @@ class SourceScrapePanel(QWidget):
         self.completed.emit()
 
     def _on_error(self, message: str) -> None:
-        self.output.setPlainText(message)
+        self.output.appendPlainText(f"\n[Error] {message}")
         if self.activity_model is not None and self._active_job_id is not None:
             self.activity_model.fail_job(self._active_job_id, f"Source scrape failed: {message}")
         self._active_job_id = None
@@ -944,9 +899,15 @@ class OCRReviewTab(QWidget):
 class GlossaryTab(QWidget):
     activity = Signal(str)
 
-    def __init__(self, novel_id: str) -> None:
+    def __init__(
+        self,
+        novel_id: str,
+        *,
+        activity_model: DesktopActivityModel | None = None,
+    ) -> None:
         super().__init__()
         self.novel_id = novel_id
+        self.activity_model = activity_model
         self.storage = container.storage
         self.orchestrator = container.orchestrator
         self._worker: AsyncTaskThread | None = None
@@ -957,75 +918,90 @@ class GlossaryTab(QWidget):
 
         toolbar = QHBoxLayout()
         self.extract_button = QPushButton("Extract Candidates")
-        self.approve_button = QPushButton("Approve Pending")
+        self.translate_glossary_button = QPushButton("Translate Glossary")
+        self.review_pending_button = QPushButton("Review Pending")
+        self.new_button = QPushButton("New Term")
         self.clear_button = QPushButton("Clear Glossary")
-        self.max_terms_input = QLineEdit("50")
-        self.max_terms_input.setMaximumWidth(120)
-        toolbar.addWidget(QLabel("Max Terms"))
-        toolbar.addWidget(self.max_terms_input)
         toolbar.addWidget(self.extract_button)
-        toolbar.addWidget(self.approve_button)
+        toolbar.addWidget(self.translate_glossary_button)
+        toolbar.addWidget(self.review_pending_button)
+        toolbar.addWidget(self.new_button)
         toolbar.addWidget(self.clear_button)
         toolbar.addStretch()
         layout.addLayout(toolbar)
 
-        splitter = QSplitter()
+        mid_layout = QHBoxLayout()
+        term_list_group = QGroupBox("Terms")
+        term_list_inner = QVBoxLayout(term_list_group)
         self.term_list = QListWidget()
+        self.term_list.setObjectName("GlossaryTermList")
         self.term_list.currentItemChanged.connect(self._load_current)
+        self.term_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        term_list_inner.addWidget(self.term_list)
+        mid_layout.addWidget(term_list_group, stretch=1)
+
         editor_group = QGroupBox("Term Editor")
         editor_layout = QVBoxLayout(editor_group)
         form = QFormLayout()
         self.source_input = QLineEdit()
         self.target_input = QLineEdit()
-        self.status_input = QComboBox()
-        self.status_input.addItems(["pending", "approved", "ignored", "translated"])
+        self.folder_input = QLineEdit()
+        self.folder_input.setPlaceholderText("e.g. names, places, titles")
         self.notes_input = QLineEdit()
-        self.context_output = QPlainTextEdit()
-        self.context_output.setReadOnly(True)
+        self.status_input = QComboBox()
+        self.status_input.addItems(["pending", "approved", "ignored"])
         form.addRow("Source", self.source_input)
         form.addRow("Target", self.target_input)
-        form.addRow("Status", self.status_input)
+        form.addRow("Folder", self.folder_input)
         form.addRow("Notes", self.notes_input)
+        form.addRow("Status", self.status_input)
         editor_layout.addLayout(form)
-        editor_layout.addWidget(QLabel("Context Summary"))
-        editor_layout.addWidget(self.context_output)
         buttons = QHBoxLayout()
         self.save_button = QPushButton("Save Term")
         self.remove_button = QPushButton("Remove Term")
-        self.new_button = QPushButton("New Term")
         buttons.addWidget(self.save_button)
         buttons.addWidget(self.remove_button)
-        buttons.addWidget(self.new_button)
         buttons.addStretch()
         editor_layout.addLayout(buttons)
-        splitter.addWidget(self.term_list)
-        splitter.addWidget(editor_group)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
-        layout.addWidget(splitter)
+        mid_layout.addWidget(editor_group, stretch=1)
+        layout.addLayout(mid_layout)
 
-        self.output = QPlainTextEdit()
-        self.output.setReadOnly(True)
-        layout.addWidget(self.output)
+        table_group = QGroupBox("Term List")
+        table_group_layout = QVBoxLayout(table_group)
+        self.terms_table = QTableWidget(0, 5)
+        self.terms_table.setObjectName("GlossaryTermsTable")
+        self.terms_table.setHorizontalHeaderLabels(["Folder", "Source", "Target", "Status", "Notes"])
+        self.terms_table.horizontalHeader().setStretchLastSection(True)
+        self.terms_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.terms_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.terms_table.verticalHeader().setVisible(False)
+        self.terms_table.itemSelectionChanged.connect(self._on_table_selection)
+        table_group_layout.addWidget(self.terms_table)
+        layout.addWidget(table_group, stretch=1)
 
         self.extract_button.clicked.connect(self.extract_terms)
-        self.approve_button.clicked.connect(self.approve_pending)
+        self.translate_glossary_button.clicked.connect(self.translate_glossary_terms)
+        self.review_pending_button.clicked.connect(self.review_pending_terms)
+        self.new_button.clicked.connect(self.new_term)
         self.clear_button.clicked.connect(self.clear_glossary)
         self.save_button.clicked.connect(self.save_term)
         self.remove_button.clicked.connect(self.remove_term)
-        self.new_button.clicked.connect(self.new_term)
         self.refresh()
 
     def refresh(self) -> None:
         entries = self.storage.load_glossary(self.novel_id)
         counts = glossary_status_counts(entries)
         self.summary_label.setText(
-            f"Terms: {len(entries)} | Pending: {counts.get('pending', 0)} | "
-            f"Approved: {counts.get('approved', 0)} | Ignored: {counts.get('ignored', 0)}"
+            f"Terms: {len(entries)} | Approved: {counts.get('approved', 0)} | "
+            f"Pending: {counts.get('pending', 0)} | Ignored: {counts.get('ignored', 0)}"
         )
         current_source = self.source_input.text().strip()
         self.term_list.clear()
-        for entry in entries:
+        sorted_list_entries = sorted(
+            entries,
+            key=lambda e: (safe_str(e.get("folder"), "").casefold(), safe_str(e.get("source"), "").casefold()),
+        )
+        for entry in sorted_list_entries:
             item = QListWidgetItem(
                 f"[{entry.get('status', 'pending')}] {safe_str(entry.get('source'))} -> {safe_str(entry.get('target'))}"
             )
@@ -1033,12 +1009,27 @@ class GlossaryTab(QWidget):
             self.term_list.addItem(item)
             if current_source and entry.get("source") == current_source:
                 self.term_list.setCurrentItem(item)
-        if self.term_list.count() == 0:
-            self.output.setPlainText("No glossary entries yet.")
-        else:
-            self.output.setPlainText(f"Loaded {self.term_list.count()} glossary term(s).")
-            if self.term_list.currentItem() is None:
-                self.term_list.setCurrentRow(0)
+        if self.term_list.count() > 0 and self.term_list.currentItem() is None:
+            self.term_list.setCurrentRow(0)
+
+        sorted_entries = sorted(
+            entries,
+            key=lambda e: (safe_str(e.get("folder"), "").casefold(), safe_str(e.get("source"), "").casefold()),
+        )
+        self.terms_table.setRowCount(len(sorted_entries))
+        for row, entry in enumerate(sorted_entries):
+            for col, val in enumerate([
+                safe_str(entry.get("folder"), ""),
+                safe_str(entry.get("source"), ""),
+                safe_str(entry.get("target"), ""),
+                safe_str(entry.get("status"), "pending"),
+                safe_str(entry.get("notes"), ""),
+            ]):
+                cell = QTableWidgetItem(val)
+                cell.setData(Qt.ItemDataRole.UserRole, entry.get("source"))
+                self.terms_table.setItem(row, col, cell)
+        for col in range(4):
+            self.terms_table.resizeColumnToContents(col)
 
     def _load_current(self, current: QListWidgetItem | None = None, _previous: QListWidgetItem | None = None) -> None:
         item = current or self.term_list.currentItem()
@@ -1051,24 +1042,40 @@ class GlossaryTab(QWidget):
             return
         self.source_input.setText(safe_str(entry.get("source"), ""))
         self.target_input.setText(safe_str(entry.get("target"), ""))
-        self.status_input.setCurrentText(safe_str(entry.get("status"), "pending"))
+        self.folder_input.setText(safe_str(entry.get("folder"), ""))
         self.notes_input.setText(safe_str(entry.get("notes"), ""))
-        self.context_output.setPlainText(safe_str(entry.get("context_summary"), ""))
+        self.status_input.setCurrentText(safe_str(entry.get("status"), "pending"))
+
+    def _on_table_selection(self) -> None:
+        row = self.terms_table.currentRow()
+        if row < 0:
+            return
+        source_item = self.terms_table.item(row, 1)
+        if source_item is None:
+            return
+        source_val = source_item.text()
+        for i in range(self.term_list.count()):
+            list_item = self.term_list.item(i)
+            entry = list_item.data(Qt.ItemDataRole.UserRole) if list_item else None
+            if isinstance(entry, dict) and entry.get("source") == source_val:
+                self.term_list.blockSignals(True)
+                self.term_list.setCurrentItem(list_item)
+                self.term_list.blockSignals(False)
+                self._load_current(list_item)
+                break
 
     def new_term(self) -> None:
         self.source_input.clear()
         self.target_input.clear()
-        self.status_input.setCurrentText("pending")
+        self.folder_input.clear()
         self.notes_input.clear()
-        self.context_output.clear()
+        self.status_input.setCurrentText("pending")
 
     def extract_terms(self) -> None:
-        max_terms_value = self.max_terms_input.text().strip()
-        max_terms = int(max_terms_value) if max_terms_value.isdigit() else 50
         self.extract_button.setEnabled(False)
 
         def _run() -> Any:
-            return asyncio.run(self.orchestrator.extract_glossary_terms(self.novel_id, max_terms=max_terms))
+            return asyncio.run(self.orchestrator.extract_glossary_terms(self.novel_id, max_terms=50))
 
         self._worker = AsyncTaskThread(_run, self)
         self._worker.succeeded.connect(self._on_extract_success)
@@ -1078,24 +1085,65 @@ class GlossaryTab(QWidget):
 
     def _on_extract_success(self, payload: object) -> None:
         summary = payload if isinstance(payload, dict) else {}
+        if self.activity_model is not None and isinstance(payload, dict) and isinstance(payload.get("phase"), str):
+            self.activity_model.add_phase_event(self.novel_id, payload)
         self.activity.emit(
             f"Glossary extraction added {summary.get('added', 0)} term(s) for {self.novel_id}."
         )
-        self.output.setPlainText(str(payload))
         self.refresh()
 
     def _on_extract_error(self, message: str) -> None:
         self.activity.emit(f"Glossary extraction failed: {message}")
-        self.output.setPlainText(message)
 
-    def approve_pending(self) -> None:
-        entries = self.storage.load_glossary(self.novel_id)
-        for entry in entries:
-            if str(entry.get("status") or "").lower() == "pending":
-                entry["status"] = "approved"
-        self.storage.save_glossary(self.novel_id, entries)
-        self.activity.emit("Approved pending glossary terms.")
+    def translate_glossary_terms(self) -> None:
+        self.translate_glossary_button.setEnabled(False)
+
+        def _run() -> Any:
+            return asyncio.run(self.orchestrator.translate_glossary_terms(self.novel_id, only_pending=True))
+
+        self._worker = AsyncTaskThread(_run, self)
+        self._worker.succeeded.connect(self._on_translate_glossary_success)
+        self._worker.failed.connect(self._on_translate_glossary_error)
+        self._worker.finished.connect(lambda: self.translate_glossary_button.setEnabled(True))
+        self._worker.start()
+
+    def _on_translate_glossary_success(self, payload: object) -> None:
+        summary = payload if isinstance(payload, dict) else {}
+        if self.activity_model is not None and isinstance(payload, dict) and isinstance(payload.get("phase"), str):
+            self.activity_model.add_phase_event(self.novel_id, payload)
+        self.activity.emit(
+            "Glossary translation completed: "
+            f"translated={summary.get('translated', 0)}, skipped={summary.get('skipped', 0)}."
+        )
         self.refresh()
+
+    def _on_translate_glossary_error(self, message: str) -> None:
+        self.activity.emit(f"Glossary translation failed: {message}")
+
+    def review_pending_terms(self) -> None:
+        self.review_pending_button.setEnabled(False)
+
+        def _run() -> Any:
+            return asyncio.run(self.orchestrator.review_glossary_terms(self.novel_id))
+
+        self._worker = AsyncTaskThread(_run, self)
+        self._worker.succeeded.connect(self._on_review_glossary_success)
+        self._worker.failed.connect(self._on_review_glossary_error)
+        self._worker.finished.connect(lambda: self.review_pending_button.setEnabled(True))
+        self._worker.start()
+
+    def _on_review_glossary_success(self, payload: object) -> None:
+        summary = payload if isinstance(payload, dict) else {}
+        if self.activity_model is not None and isinstance(payload, dict) and isinstance(payload.get("phase"), str):
+            self.activity_model.add_phase_event(self.novel_id, payload)
+        self.activity.emit(
+            "Glossary review completed: "
+            f"approved={summary.get('approved', 0)}, pending={summary.get('pending', 0)}."
+        )
+        self.refresh()
+
+    def _on_review_glossary_error(self, message: str) -> None:
+        self.activity.emit(f"Glossary review failed: {message}")
 
     def save_term(self) -> None:
         source = self.source_input.text().strip()
@@ -1109,15 +1157,26 @@ class GlossaryTab(QWidget):
             {
                 "source": source,
                 "target": target,
+                "folder": self.folder_input.text().strip() or None,
                 "locked": True,
                 "notes": self.notes_input.text().strip() or None,
-                "status": self.status_input.currentText().strip(),
-                "context_summary": self.context_output.toPlainText().strip() or None,
+                "status": "approved",
             }
         )
         self.storage.save_glossary(self.novel_id, entries)
         self.activity.emit(f"Saved glossary term '{source}'.")
         self.refresh()
+        for i in range(self.term_list.count()):
+            item = self.term_list.item(i)
+            entry = item.data(Qt.ItemDataRole.UserRole) if item else None
+            if isinstance(entry, dict) and entry.get("source") == source:
+                if i != 0:
+                    self.term_list.blockSignals(True)
+                    taken = self.term_list.takeItem(i)
+                    self.term_list.insertItem(0, taken)
+                    self.term_list.blockSignals(False)
+                self.term_list.setCurrentRow(0)
+                break
 
     def remove_term(self) -> None:
         source = self.source_input.text().strip()
@@ -1187,6 +1246,13 @@ class TranslateTab(QWidget):
         self.style_input = QComboBox()
         self.style_input.addItem("")
         self.style_input.addItems(["fantasy", "romance", "action", "comedy"])
+        self.confidence_threshold_input = QComboBox()
+        self.confidence_threshold_input.setEditable(True)
+        for option in ["0.35", "0.45", "0.55", "0.65", "0.75"]:
+            self.confidence_threshold_input.addItem(option)
+        self.confidence_threshold_input.setCurrentText("0.55")
+        self.polish_low_confidence_only_input = QCheckBox("Polish low-confidence only")
+        self.polish_low_confidence_only_input.setChecked(True)
         self.consistency_input = QCheckBox("Consistency mode")
         self.json_input = QCheckBox("JSON output mode")
         self.force_input = QCheckBox("Force retranslate")
@@ -1197,10 +1263,13 @@ class TranslateTab(QWidget):
         form.addRow("Source Language Override", self.source_language_input)
         form.addRow("Target Language", self.target_language_input)
         form.addRow("Style Preset", self.style_input)
+        form.addRow("Confidence Threshold", self.confidence_threshold_input)
+        form.addRow("", self.polish_low_confidence_only_input)
         form.addRow("", self.consistency_input)
         form.addRow("", self.json_input)
         form.addRow("", self.force_input)
         progress_layout.addLayout(form)
+
         button_row = QHBoxLayout()
         self.estimate_button = QPushButton("Estimate Budget")
         self.translate_button = QPushButton("Translate")
@@ -1216,6 +1285,26 @@ class TranslateTab(QWidget):
         self.retranslate_button.clicked.connect(self.retranslate_one)
         self.review_mode_button.clicked.connect(self._switch_to_review)
         progress_layout.addLayout(button_row)
+
+        phase_box = QGroupBox("Phased Workflow")
+        phase_layout = QHBoxLayout(phase_box)
+        self.phase1_button = QPushButton("Run Phase 1")
+        self.phase1b_button = QPushButton("Run Phase 1b")
+        self.phase2_button = QPushButton("Run Phase 2")
+        self.phase_full_button = QPushButton("Run Full Pipeline")
+        self.phase3_button = QPushButton("Optional Run Phase 3")
+        phase_layout.addWidget(self.phase1_button)
+        phase_layout.addWidget(self.phase1b_button)
+        phase_layout.addWidget(self.phase2_button)
+        phase_layout.addWidget(self.phase_full_button)
+        phase_layout.addWidget(self.phase3_button)
+        self.phase1_button.clicked.connect(self.run_phase1)
+        self.phase1b_button.clicked.connect(self.run_phase1b)
+        self.phase2_button.clicked.connect(self.run_phase2)
+        self.phase_full_button.clicked.connect(self.run_full_pipeline)
+        self.phase3_button.clicked.connect(self.run_phase3)
+        progress_layout.addWidget(phase_box)
+
         self.output = QPlainTextEdit()
         self.output.setReadOnly(True)
         progress_layout.addWidget(self.output)
@@ -1441,18 +1530,61 @@ class TranslateTab(QWidget):
     def _sync_translation_controls(self) -> None:
         blocked_reason = self._preflight_block_reason
         allow_translate = (not self._runtime_busy) and blocked_reason is None
+        allow_unblocked_busy = not self._runtime_busy
         self.translate_button.setEnabled(allow_translate)
         self.retranslate_button.setEnabled(allow_translate)
         self.retranslate_selected_button.setEnabled(allow_translate)
+        self.phase1_button.setEnabled(allow_unblocked_busy)
+        self.phase1b_button.setEnabled(allow_unblocked_busy)
+        self.phase2_button.setEnabled(allow_unblocked_busy)
+        self.phase_full_button.setEnabled(allow_unblocked_busy)
+        self.phase3_button.setEnabled(allow_unblocked_busy)
         self.save_review_button.setEnabled(not self._runtime_busy)
         if blocked_reason and not self._runtime_busy:
             self.translate_button.setToolTip(blocked_reason)
             self.retranslate_button.setToolTip(blocked_reason)
             self.retranslate_selected_button.setToolTip(blocked_reason)
+            self.phase2_button.setToolTip(blocked_reason)
         else:
             self.translate_button.setToolTip("")
             self.retranslate_button.setToolTip("")
             self.retranslate_selected_button.setToolTip("")
+            self.phase2_button.setToolTip("")
+
+    def _translation_runtime_options(self) -> dict[str, Any]:
+        provider_key = self.provider_input.currentData()
+        if not isinstance(provider_key, str):
+            provider_key = None
+        threshold_raw = self.confidence_threshold_input.currentText().strip()
+        try:
+            threshold = float(threshold_raw)
+        except ValueError:
+            threshold = 0.55
+        threshold = max(0.0, min(1.0, threshold))
+        return {
+            "source_key": self.source_key_input.currentText(),
+            "chapters": self.chapter_selection_input.text().strip() or "all",
+            "provider_key": provider_key,
+            "provider_model": self.model_input.currentText().strip() or None,
+            "source_language": self.source_language_input.text().strip() or None,
+            "target_language": self.target_language_input.text().strip() or None,
+            "confidence_threshold": threshold,
+            "polish_low_confidence_only": self.polish_low_confidence_only_input.isChecked(),
+            "consistency_mode": self.consistency_input.isChecked(),
+            "json_output": self.json_input.isChecked(),
+        }
+
+    def _start_translate_worker(self, *, job_label: str, runner: Callable[[], Any]) -> None:
+        if self.activity_model is not None:
+            self._active_job_id = self.activity_model.start_job(job_label)
+        self._set_translation_controls_enabled(False)
+
+        worker = AsyncTaskThread(runner, self)
+        worker.succeeded.connect(self._on_success)
+        worker.failed.connect(self._on_error)
+        worker.finished.connect(lambda: self._set_translation_controls_enabled(True))
+        worker.start()
+        self._worker = worker
 
     def estimate_budget(self) -> None:
         provider_key = self.provider_input.currentData()
@@ -1468,21 +1600,13 @@ class TranslateTab(QWidget):
         self.output.setPlainText(summary)
 
     def start_translation(self) -> None:
-        source_key = self.source_key_input.currentText()
-        chapters = self.chapter_selection_input.text().strip() or "all"
-        provider_key = self.provider_input.currentData()
-        if not isinstance(provider_key, str):
-            provider_key = None
-        provider_model = self.model_input.currentText().strip() or None
-        source_language = self.source_language_input.text().strip() or None
-        target_language = self.target_language_input.text().strip() or None
+        options = self._translation_runtime_options()
+        source_key = str(options["source_key"])
+        chapters = str(options["chapters"])
         style_preset = self.style_input.currentText().strip() or None
-        consistency_mode = self.consistency_input.isChecked()
-        json_output = self.json_input.isChecked()
+        consistency_mode = bool(options["consistency_mode"])
+        json_output = bool(options["json_output"])
         force = self.force_input.isChecked()
-        if self.activity_model is not None:
-            self._active_job_id = self.activity_model.start_job(f"Translate {self.novel_id} ({chapters})")
-        self._set_translation_controls_enabled(False)
 
         def _run() -> Any:
             asyncio.run(
@@ -1490,24 +1614,83 @@ class TranslateTab(QWidget):
                     source_key,
                     self.novel_id,
                     chapters,
-                    provider_key=provider_key,
-                    provider_model=provider_model,
+                    provider_key=options["provider_key"],
+                    provider_model=options["provider_model"],
                     force=force,
-                    source_language=source_language,
-                    target_language=target_language,
+                    source_language=options["source_language"],
+                    target_language=options["target_language"],
                     style_preset=style_preset,
+                    confidence_threshold=float(options["confidence_threshold"]),
+                    mark_polish_needed=True,
                     consistency_mode=consistency_mode,
                     json_output=json_output,
                 )
             )
             return "Translation completed."
 
-        worker = AsyncTaskThread(_run, self)
-        worker.succeeded.connect(self._on_success)
-        worker.failed.connect(self._on_error)
-        worker.finished.connect(lambda: self._set_translation_controls_enabled(True))
-        worker.start()
-        self._worker = worker
+        self._start_translate_worker(job_label=f"Translate {self.novel_id} ({chapters})", runner=_run)
+
+    def translate_glossary_terms(self) -> None:
+        options = self._translation_runtime_options()
+
+        def _run() -> Any:
+            return asyncio.run(
+                self.orchestrator.translate_glossary_terms(
+                    self.novel_id,
+                    provider_key=options["provider_key"],
+                    provider_model=options["provider_model"],
+                    only_pending=True,
+                )
+            )
+
+        self._start_translate_worker(job_label=f"Translate glossary {self.novel_id}", runner=_run)
+
+    def run_phased_pipeline(self) -> None:
+        self.run_full_pipeline()
+
+    def polish_low_confidence(self) -> None:
+        self.run_phase3()
+
+    def _run_pipeline_phase(self, phase: str, *, run_polish_phase: bool) -> None:
+        options = self._translation_runtime_options()
+
+        def _run() -> Any:
+            return asyncio.run(
+                self.orchestrator.run_phased_translation_pipeline(
+                    source_key=str(options["source_key"]),
+                    novel_id=self.novel_id,
+                    chapters=str(options["chapters"]),
+                    phase=phase,
+                    glossary_provider_key=options["provider_key"],
+                    glossary_provider_model=options["provider_model"],
+                    body_provider_key=options["provider_key"],
+                    body_provider_model=options["provider_model"],
+                    source_language=options["source_language"],
+                    target_language=options["target_language"],
+                    confidence_threshold=float(options["confidence_threshold"]),
+                    polish_low_confidence_only=bool(options["polish_low_confidence_only"]),
+                    consistency_mode=bool(options["consistency_mode"]),
+                    json_output=bool(options["json_output"]),
+                    run_polish_phase=run_polish_phase,
+                )
+            )
+
+        self._start_translate_worker(job_label=f"Pipeline {phase} {self.novel_id}", runner=_run)
+
+    def run_phase1(self) -> None:
+        self._run_pipeline_phase("1", run_polish_phase=False)
+
+    def run_phase1b(self) -> None:
+        self._run_pipeline_phase("1b", run_polish_phase=False)
+
+    def run_phase2(self) -> None:
+        self._run_pipeline_phase("2", run_polish_phase=False)
+
+    def run_full_pipeline(self) -> None:
+        self._run_pipeline_phase("full", run_polish_phase=False)
+
+    def run_phase3(self) -> None:
+        self._run_pipeline_phase("3", run_polish_phase=True)
 
     def _retranslate_selected(self) -> None:
         chapter_id = self._selected_review_chapter_id()
@@ -1518,7 +1701,8 @@ class TranslateTab(QWidget):
         self.retranslate_one()
 
     def retranslate_one(self) -> None:
-        source_key = self.source_key_input.currentText()
+        options = self._translation_runtime_options()
+        source_key = str(options["source_key"])
         chapter_id = self.chapter_selection_input.text().strip()
         if not chapter_id.isdigit():
             selected = self._selected_review_chapter_id()
@@ -1528,18 +1712,9 @@ class TranslateTab(QWidget):
         if not chapter_id.isdigit():
             self.output.setPlainText("Retranslate One requires a single numeric chapter ID in Chapter Selection.")
             return
-        provider_key = self.provider_input.currentData()
-        if not isinstance(provider_key, str):
-            provider_key = None
-        provider_model = self.model_input.currentText().strip() or None
-        source_language = self.source_language_input.text().strip() or None
-        target_language = self.target_language_input.text().strip() or None
         style_preset = self.style_input.currentText().strip() or None
-        consistency_mode = self.consistency_input.isChecked()
-        json_output = self.json_input.isChecked()
-        if self.activity_model is not None:
-            self._active_job_id = self.activity_model.start_job(f"Retranslate {self.novel_id}/{chapter_id}")
-        self._set_translation_controls_enabled(False)
+        consistency_mode = bool(options["consistency_mode"])
+        json_output = bool(options["json_output"])
 
         def _run() -> Any:
             asyncio.run(
@@ -1547,10 +1722,10 @@ class TranslateTab(QWidget):
                     source_key=source_key,
                     novel_id=self.novel_id,
                     chapter_id=chapter_id,
-                    provider_key=provider_key,
-                    provider_model=provider_model,
-                    source_language=source_language,
-                    target_language=target_language,
+                    provider_key=options["provider_key"],
+                    provider_model=options["provider_model"],
+                    source_language=options["source_language"],
+                    target_language=options["target_language"],
                     style_preset=style_preset,
                     consistency_mode=consistency_mode,
                     json_output=json_output,
@@ -1558,24 +1733,23 @@ class TranslateTab(QWidget):
             )
             return f"Retranslated chapter {chapter_id}."
 
-        worker = AsyncTaskThread(_run, self)
-        worker.succeeded.connect(self._on_success)
-        worker.failed.connect(self._on_error)
-        worker.finished.connect(lambda: self._set_translation_controls_enabled(True))
-        worker.start()
-        self._worker = worker
+        self._start_translate_worker(job_label=f"Retranslate {self.novel_id}/{chapter_id}", runner=_run)
 
     def _on_success(self, payload: object) -> None:
-        self.output.setPlainText(str(payload))
-        finished_message = str(payload) if isinstance(payload, str) else f"Translation completed for {self.novel_id}."
+        formatted = self._format_runtime_payload(payload)
+        self.output.setPlainText(formatted)
+        finished_message = formatted if isinstance(payload, (dict, str)) else f"Translation completed for {self.novel_id}."
+        if self.activity_model is not None and isinstance(payload, dict) and isinstance(payload.get("phase"), str):
+            self.activity_model.add_phase_event(self.novel_id, payload)
         if self.activity_model is not None and self._active_job_id is not None:
             self.activity_model.finish_job(self._active_job_id, finished_message)
         self._active_job_id = None
-        self.activity.emit(str(payload))
+        self.activity.emit(formatted)
         if self.refresh_callback is not None:
             self.refresh_callback()
         self.refresh()
         self._refresh_review_list()
+        self._extract_new_terms_background()
 
     def _on_error(self, message: str) -> None:
         self.output.setPlainText(message)
@@ -1584,6 +1758,54 @@ class TranslateTab(QWidget):
         self._active_job_id = None
         self.activity.emit(f"Translation failed: {message}")
 
+    def _extract_new_terms_background(self) -> None:
+        def _run() -> Any:
+            return asyncio.run(self.orchestrator.extract_glossary_terms(self.novel_id, max_terms=50))
+
+        self._bg_extract_worker = AsyncTaskThread(_run, self)
+        self._bg_extract_worker.succeeded.connect(self._on_background_extract_success)
+        self._bg_extract_worker.failed.connect(lambda _msg: None)
+        self._bg_extract_worker.start()
+
+    def _on_background_extract_success(self, payload: object) -> None:
+        summary = payload if isinstance(payload, dict) else {}
+        added = int(summary.get("added", 0))
+        if added > 0:
+            self.activity.emit(f"Auto-extracted {added} new glossary term(s) for {self.novel_id}.")
+            if self.refresh_callback is not None:
+                self.refresh_callback()
+
+    @staticmethod
+    def _format_runtime_payload(payload: object) -> str:
+        if isinstance(payload, str):
+            return payload
+        if not isinstance(payload, dict):
+            return str(payload)
+
+        phase = str(payload.get("phase") or "")
+        status = str(payload.get("status") or "")
+        message = str(payload.get("message") or "")
+        lines = []
+        if phase:
+            lines.append(f"{phase} [{status}]")
+        if message:
+            lines.append(message)
+        blocked_reason = payload.get("blocked_reason")
+        if isinstance(blocked_reason, str) and blocked_reason.strip():
+            lines.append(f"Blocked: {blocked_reason}")
+
+        results = payload.get("results")
+        if isinstance(results, dict):
+            for key, value in results.items():
+                if isinstance(value, dict):
+                    summary = value.get("message") or value.get("status") or "completed"
+                    lines.append(f"- {key}: {summary}")
+                else:
+                    lines.append(f"- {key}: {value}")
+
+        if not lines:
+            lines.append(str(payload))
+        return "\n".join(lines)
 
 class ReembedTab(QWidget):
     activity = Signal(str)
@@ -1737,7 +1959,8 @@ class ExportTab(QWidget):
         language = self.language_input.currentText().strip().lower()
         chapter_selection = self.chapter_selection_input.text().strip() or "full"
         try:
-            plan = _build_export_plan(
+            plan = build_export_plan(
+                self.storage,
                 self.novel_id,
                 chapter_selection=chapter_selection,
                 language=language,
@@ -1836,7 +2059,8 @@ class ExportTab(QWidget):
             for row in ready_rows
         ]
 
-        output_path = _build_export_output_path(
+        output_path = build_export_output_path(
+            self.storage,
             self.novel_id,
             fmt,
             output_dir,
@@ -1994,18 +2218,11 @@ class BookWorkspace(QWidget):
         tabs = QTabWidget()
         self.tabs = tabs
         self.overview_tab = WorkspaceOverviewTab(novel_id)
-        self.import_tab = ImportTab(
+        self.ocr_tab = OCRReviewTab(novel_id)
+        self.glossary_tab = GlossaryTab(
             novel_id,
             activity_model=activity_model,
-            refresh_callback=refresh_callback,
         )
-        self.scrape_tab = SourceScrapePanel(
-            fixed_novel_id=novel_id,
-            activity_model=activity_model,
-            refresh_callback=refresh_callback,
-        )
-        self.ocr_tab = OCRReviewTab(novel_id)
-        self.glossary_tab = GlossaryTab(novel_id)
         self.translate_tab = TranslateTab(
             novel_id,
             activity_model=activity_model,
@@ -2014,9 +2231,8 @@ class BookWorkspace(QWidget):
         self.reembed_tab = ReembedTab(novel_id)
         self.export_tab = ExportTab(novel_id)
         tabs.addTab(self.overview_tab, "Overview")
-        tabs.addTab(self.import_tab, "Import")
-        tabs.addTab(self.scrape_tab, "Scrape")
         tabs.addTab(self.ocr_tab, "OCR Review")
+        self._ocr_tab_index = tabs.indexOf(self.ocr_tab)
         tabs.addTab(self.glossary_tab, "Glossary")
         tabs.addTab(self.translate_tab, "Translate")
         tabs.addTab(self.reembed_tab, "Re-embed")
@@ -2029,6 +2245,11 @@ class BookWorkspace(QWidget):
         panel_layout.addWidget(QLabel("Workspace Activity"))
         self.workspace_jobs_list = QListWidget()
         panel_layout.addWidget(self.workspace_jobs_list)
+        self.workspace_phase_summary = QLabel("No phase activity yet.")
+        self.workspace_phase_summary.setWordWrap(True)
+        panel_layout.addWidget(self.workspace_phase_summary)
+        self.workspace_phase_timeline = QListWidget()
+        panel_layout.addWidget(self.workspace_phase_timeline)
         self.workspace_log = QPlainTextEdit()
         self.workspace_log.setReadOnly(True)
         panel_layout.addWidget(self.workspace_log)
@@ -2039,13 +2260,9 @@ class BookWorkspace(QWidget):
         self._activity_panel_visible = False
         self.workspace_splitter.setSizes([1, 0])
 
-        for tab in [self.import_tab, self.scrape_tab, self.ocr_tab, self.glossary_tab, self.translate_tab, self.reembed_tab, self.export_tab]:
+        for tab in [self.ocr_tab, self.glossary_tab, self.translate_tab, self.reembed_tab, self.export_tab]:
             tab.activity.connect(self.activity_model.add_message)
             tab.activity.connect(lambda _message: self.refresh_callback())
-        self.import_tab.completed.connect(self.ocr_tab.refresh)
-        self.import_tab.completed.connect(self.glossary_tab.refresh)
-        self.scrape_tab.completed.connect(self.refresh)
-        self.import_tab.completed.connect(self.refresh)
         self.activity_model.jobs_changed.connect(self._refresh_activity_panel)
         self.activity_model.messages_changed.connect(self._refresh_activity_panel)
         self.refresh()
@@ -2067,6 +2284,34 @@ class BookWorkspace(QWidget):
                 self.workspace_jobs_list.addItem(entry)
         if self.workspace_jobs_list.count() == 0:
             self.workspace_jobs_list.addItem("No active jobs for this workspace.")
+
+        phase_counters = self.activity_model.phase_counters(self.novel_id)
+        if not phase_counters:
+            self.workspace_phase_summary.setText("No phase activity yet.")
+        else:
+            parts = []
+            for phase, counts in sorted(phase_counters.items()):
+                compact = ", ".join(f"{status}:{count}" for status, count in sorted(counts.items()))
+                parts.append(f"{phase} ({compact})")
+            self.workspace_phase_summary.setText("Phase counters: " + " | ".join(parts))
+
+        self.workspace_phase_timeline.clear()
+        _phase_colors: dict[str, str] = {
+            "completed": "#4CAF50",
+            "blocked": "#FF9800",
+            "failed": "#F44336",
+        }
+        for event in self.activity_model.phase_events(self.novel_id)[-20:]:
+            phase = safe_str(event.get("phase"), "phase")
+            status = safe_str(event.get("status"), "completed")
+            timestamp = safe_str(event.get("timestamp"), "-")
+            message = safe_str(event.get("message"), "")
+            item = QListWidgetItem(f"{timestamp} {phase} [{status}] {message}".strip())
+            if status in _phase_colors:
+                item.setForeground(QColor(_phase_colors[status]))
+            self.workspace_phase_timeline.addItem(item)
+        if self.workspace_phase_timeline.count() == 0:
+            self.workspace_phase_timeline.addItem("No phase timeline events for this workspace.")
 
         lines = [
             line
@@ -2091,16 +2336,27 @@ class BookWorkspace(QWidget):
         for widget in (self.overview_tab, self.ocr_tab, self.glossary_tab, self.translate_tab, self.reembed_tab, self.export_tab):
             if hasattr(widget, "refresh"):
                 widget.refresh()
+        self._update_ocr_tab_visibility()
         self._refresh_activity_panel()
+
+    def _update_ocr_tab_visibility(self) -> None:
+        needs_ocr = any(
+            bool((container.storage.load_chapter_media_state(self.novel_id, cid) or {}).get("ocr_required"))
+            for cid in container.storage.list_stored_chapters(self.novel_id)
+        )
+        self.tabs.setTabVisible(self._ocr_tab_index, needs_ocr)
 
 
 class DesktopMainWindow(QMainWindow):
+    SIDEBAR_PANEL_WIDTH = 200
+    SIDEBAR_NAV_WIDTH = 180
+
     ICON_ASSETS = {
         "home": "home.svg",
         "library": "library.svg",
         "import": "import.svg",
         "activity": "activity.svg",
-        "profiles": "profiles.svg",
+        "llmops": "profiles.svg",
         "diagnostics": "diagnostics.svg",
         "settings": "settings.svg",
     }
@@ -2110,9 +2366,8 @@ class DesktopMainWindow(QMainWindow):
         ("library", "Novel Library"),
         ("import", "Import and Scrape"),
         ("activity", "Activity"),
-        ("profiles", "Profiles"),
+        ("llmops", "LLM Ops"),
         ("diagnostics", "Diagnostics"),
-        ("settings", "Settings"),
     )
 
     def __init__(self) -> None:
@@ -2121,7 +2376,7 @@ class DesktopMainWindow(QMainWindow):
         self.activity_model = DesktopActivityModel()
         self.page_items: dict[str, QListWidgetItem] = {}
         self.page_widgets: dict[str, QWidget] = {}
-        self._nav_labels_visible = False
+        self._nav_labels_visible = True
         self.workspace_key: str | None = None
         self.workspace: BookWorkspace | None = None
 
@@ -2135,22 +2390,39 @@ class DesktopMainWindow(QMainWindow):
 
         self.nav_panel = QWidget()
         self.nav_panel.setObjectName("NavPanel")
+        self.nav_panel.setMinimumWidth(self.SIDEBAR_PANEL_WIDTH)
+        self.nav_panel.setMaximumWidth(self.SIDEBAR_PANEL_WIDTH)
         nav_layout = QVBoxLayout(self.nav_panel)
         nav_layout.setContentsMargins(6, 8, 6, 8)
         nav_layout.setSpacing(10)
 
-        self.nav_brand_button = QPushButton("✺")
+        self.nav_brand_button = QPushButton()
         self.nav_brand_button.setObjectName("NavBrandButton")
-        self.nav_brand_button.setToolTip("Toggle labels")
-        self.nav_brand_button.clicked.connect(self._toggle_nav_labels)
-        nav_layout.addWidget(self.nav_brand_button)
+        brand_icon = QIcon(str(self.assets_dir / "icons" / "workspace.svg"))
+        if not brand_icon.isNull():
+            self.nav_brand_button.setIcon(brand_icon)
+            self.nav_brand_button.setIconSize(QSize(18, 18))
+        else:
+            self.nav_brand_button.setText("*")
+        self.nav_brand_button.setToolTip("NovelAI2Book")
+        nav_layout.addWidget(self.nav_brand_button, 0, Qt.AlignmentFlag.AlignHCenter)
         nav_layout.addSpacing(13)
 
         self.nav = QListWidget()
         self.nav.setObjectName("NavList")
         self.nav.setSpacing(7)
-        self.nav.setMinimumWidth(56)
-        self.nav.setMaximumWidth(64)
+        self.nav.setUniformItemSizes(True)
+        self.nav.setFlow(QListView.Flow.TopToBottom)
+        self.nav.setMovement(QListView.Movement.Static)
+        self.nav.setWrapping(False)
+        self.nav.setWordWrap(False)
+        self.nav.setGridSize(QSize(44, 44))
+        self.nav.setResizeMode(QListView.ResizeMode.Adjust)
+        self.nav.setIconSize(QSize(20, 20))
+        self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.nav.setMinimumWidth(self.SIDEBAR_NAV_WIDTH)
+        self.nav.setMaximumWidth(self.SIDEBAR_NAV_WIDTH)
         nav_layout.addWidget(self.nav)
         nav_layout.addStretch()
 
@@ -2158,7 +2430,7 @@ class DesktopMainWindow(QMainWindow):
         self.nav_avatar.setObjectName("NavAvatar")
         self.nav_avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.nav_avatar.setToolTip("Active Profile")
-        nav_layout.addWidget(self.nav_avatar)
+        nav_layout.addWidget(self.nav_avatar, 0, Qt.AlignmentFlag.AlignHCenter)
 
         root.addWidget(self.nav_panel)
         self.stack = QStackedWidget()
@@ -2176,9 +2448,8 @@ class DesktopMainWindow(QMainWindow):
         self.home_view.navigate_requested.connect(self._navigate_to_page)
         self.home_view.open_workspace_requested.connect(self.open_workspace)
         self.import_view.open_workspace_requested.connect(self.open_workspace)
-        self.profiles_view = ProfilesView(self.refresh_all_views)
+        self.llmops_view = LLMOpsView(self.refresh_all_views)
         self.diagnostics_view = DiagnosticsView()
-        self.settings_view = SettingsView(self.refresh_all_views)
 
         for key, label in self.TOP_LEVEL_PAGES:
             widget = getattr(self, f"{key}_view")
@@ -2192,27 +2463,20 @@ class DesktopMainWindow(QMainWindow):
         self._refresh_status_bar()
 
     def _toggle_nav_labels(self) -> None:
-        self._nav_labels_visible = not self._nav_labels_visible
         self._apply_nav_mode()
 
     def _apply_nav_mode(self) -> None:
-        if self._nav_labels_visible:
-            self.nav.setMinimumWidth(180)
-            self.nav.setMaximumWidth(220)
-            self.root_splitter.setSizes([200, 1080])
-        else:
-            self.nav.setMinimumWidth(56)
-            self.nav.setMaximumWidth(64)
-            self.root_splitter.setSizes([60, 1220])
+        self.nav.setViewMode(QListView.ViewMode.ListMode)
+        self.nav.setMinimumWidth(self.SIDEBAR_NAV_WIDTH)
+        self.nav.setMaximumWidth(self.SIDEBAR_NAV_WIDTH)
+        self.root_splitter.setSizes([200, 1080])
 
         for item in self.page_items.values():
             label = item.data(Qt.ItemDataRole.UserRole + 1)
             label_text = str(label) if isinstance(label, str) else ""
-            item.setText(label_text if self._nav_labels_visible else "")
-            if self._nav_labels_visible:
-                item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-            else:
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            item.setText(label_text)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            item.setSizeHint(QSize(168, 42))
 
     def _nav_icon(self, key: str):
         icon_map = {
@@ -2220,7 +2484,7 @@ class DesktopMainWindow(QMainWindow):
             "library": QStyle.StandardPixmap.SP_DirOpenIcon,
             "import": QStyle.StandardPixmap.SP_FileIcon,
             "activity": QStyle.StandardPixmap.SP_BrowserReload,
-            "profiles": QStyle.StandardPixmap.SP_DialogApplyButton,
+            "llmops": QStyle.StandardPixmap.SP_DialogApplyButton,
             "diagnostics": QStyle.StandardPixmap.SP_MessageBoxInformation,
             "settings": QStyle.StandardPixmap.SP_FileDialogDetailedView,
         }
@@ -2247,6 +2511,7 @@ class DesktopMainWindow(QMainWindow):
         item.setData(Qt.ItemDataRole.UserRole, key)
         item.setData(Qt.ItemDataRole.UserRole + 1, label)
         item.setToolTip(label)
+        item.setSizeHint(QSize(44, 44))
         self.page_items[key] = item
         self.page_widgets[key] = widget
         self.nav.addItem(item)

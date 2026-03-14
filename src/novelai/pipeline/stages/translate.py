@@ -62,8 +62,8 @@ class TranslateStage(PipelineStage):
         self._usage = usage_service or UsageService()
 
     def _resolve_provider_and_model(self, provider_key: str, model: str) -> tuple[str, str]:
-        if provider_key == "openai" and not self._settings.get_api_key():
-            logger.warning("OpenAI API key missing; falling back to dummy provider for translation.")
+        if provider_key in {"openai", "gemini"} and not self._settings.get_api_key(provider_key):
+            logger.warning("%s API key missing; falling back to dummy provider for translation.", provider_key.capitalize())
             return "dummy", "dummy"
         return provider_key, model
 

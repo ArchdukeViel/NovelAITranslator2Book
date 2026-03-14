@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -57,8 +58,17 @@ class SettingsView(QWidget):
         self.theme_input = QComboBox()
         self.theme_input.addItems(["auto", "light", "dark"])
         self.language_input = QLineEdit()
-        self.api_key_input = QLineEdit()
-        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.openai_api_key_input = QLineEdit()
+        self.openai_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.gemini_api_key_input = QLineEdit()
+        self.gemini_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.glossary_mode_input = QComboBox()
+        self.glossary_mode_input.addItems(["heuristic", "llm", "hybrid"])
+        self.glossary_prompt_input = QPlainTextEdit()
+        self.glossary_prompt_input.setPlaceholderText(
+            "Optional prompt template. Available placeholders: {text}, {max_terms}, {source_language}"
+        )
+        self.glossary_prompt_input.setFixedHeight(120)
         self.target_language_label = QLabel(settings.TRANSLATION_TARGET_LANGUAGE)
         self.library_path_label = QLabel(str(settings.NOVEL_LIBRARY_DIR))
 
@@ -67,7 +77,10 @@ class SettingsView(QWidget):
         form.addRow("Preferred Source", self.source_input)
         form.addRow("Theme", self.theme_input)
         form.addRow("UI Language", self.language_input)
-        form.addRow("Runtime API Key", self.api_key_input)
+        form.addRow("OpenAI API Key (runtime)", self.openai_api_key_input)
+        form.addRow("Gemini API Key (runtime)", self.gemini_api_key_input)
+        form.addRow("Glossary Extraction Mode", self.glossary_mode_input)
+        form.addRow("Glossary Extraction Prompt", self.glossary_prompt_input)
         form.addRow("Library Path", self.library_path_label)
         form.addRow("Target Language", self.target_language_label)
         layout.addLayout(form)
@@ -110,7 +123,10 @@ class SettingsView(QWidget):
         self.source_input.setCurrentIndex(max(self.source_input.findData(source), 0))
         self.theme_input.setCurrentText(self.preferences.get_theme())
         self.language_input.setText(self.preferences.get_language())
-        self.api_key_input.setText(self.preferences.get_api_key() or "")
+        self.openai_api_key_input.setText(self.preferences.get_api_key("openai") or "")
+        self.gemini_api_key_input.setText(self.preferences.get_api_key("gemini") or "")
+        self.glossary_mode_input.setCurrentText(self.preferences.get_glossary_extraction_mode())
+        self.glossary_prompt_input.setPlainText(self.preferences.get_glossary_extraction_prompt_template() or "")
 
     def save(self) -> None:
         self.preferences.set_preferred_provider(self.provider_input.currentText().strip())
@@ -119,11 +135,18 @@ class SettingsView(QWidget):
         self.preferences.set("preferred_source", source if isinstance(source, str) else None)
         self.preferences.set_theme(self.theme_input.currentText().strip())
         self.preferences.set_language(self.language_input.text().strip() or "en")
-        api_key = self.api_key_input.text().strip()
-        if api_key:
-            self.preferences.set_api_key(api_key)
+        openai_api_key = self.openai_api_key_input.text().strip()
+        gemini_api_key = self.gemini_api_key_input.text().strip()
+        if openai_api_key:
+            self.preferences.set_api_key(openai_api_key, provider_key="openai")
         else:
-            self.preferences.clear_api_key()
+            self.preferences.clear_api_key(provider_key="openai")
+        if gemini_api_key:
+            self.preferences.set_api_key(gemini_api_key, provider_key="gemini")
+        else:
+            self.preferences.clear_api_key(provider_key="gemini")
+        self.preferences.set_glossary_extraction_mode(self.glossary_mode_input.currentText().strip())
+        self.preferences.set_glossary_extraction_prompt_template(self.glossary_prompt_input.toPlainText().strip() or None)
         if self.refresh_callback is not None:
             self.refresh_callback()
         QMessageBox.information(self, "Settings Saved", "Desktop settings were updated.")

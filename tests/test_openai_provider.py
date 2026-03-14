@@ -107,6 +107,36 @@ def test_openai_provider_adds_json_schema_for_json_mode(monkeypatch):
     assert payload["text"]["format"]["name"] == "translation_output"
 
 
+def test_openai_provider_accepts_custom_json_schema(monkeypatch):
+    state: dict[str, Any] = {}
+    previous_api_key = settings.PROVIDER_OPENAI_API_KEY
+    settings.PROVIDER_OPENAI_API_KEY = SecretStr("test-key")
+    monkeypatch.setattr(
+        OpenAIProvider,
+        "_modern_async_client",
+        staticmethod(lambda: (lambda *, api_key: _FakeAsyncOpenAI(api_key=api_key, state=state))),
+    )
+
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {"terms": {"type": "array"}},
+        "required": ["terms"],
+    }
+
+    try:
+        provider = OpenAIProvider()
+        import asyncio
+
+        asyncio.run(provider.translate(prompt="Extract terms", model="gpt-5.4", json_schema=schema))
+    finally:
+        settings.PROVIDER_OPENAI_API_KEY = previous_api_key
+
+    payload = state["payload"]
+    assert payload["text"]["format"]["type"] == "json_schema"
+    assert payload["text"]["format"]["schema"] == schema
+
+
 # ---------------------------------------------------------------------------
 # Error handling tests
 # ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ from uuid import uuid4
 
 import pytest
 
+from novelai.config.workflow_profiles import WORKFLOW_PROFILE_STEPS
 from novelai.services.preferences_service import PreferencesService
 
 _TMP = Path(__file__).resolve().parent / ".tmp" / "prefs"
@@ -60,3 +61,31 @@ class TestPreferencesService:
     def test_language_default(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
         assert svc.get_language() == "en"
+
+    def test_workflow_profiles_include_new_phase_keys(self, prefs_dir: Path) -> None:
+        svc = PreferencesService(storage_dir=prefs_dir)
+        profiles = svc.get_workflow_profiles()
+        assert set(WORKFLOW_PROFILE_STEPS).issubset(set(profiles.keys()))
+
+    def test_workflow_profile_accepts_legacy_step_alias(self, prefs_dir: Path) -> None:
+        svc = PreferencesService(storage_dir=prefs_dir)
+        svc.set_workflow_profile("term_translation", provider="openai", model="gpt-5.4")
+        profile = svc.get_workflow_profile("glossary_translation")
+        assert profile["provider"] == "openai"
+        assert profile["model"] == "gpt-5.4"
+
+    def test_llm_step_config_migrates_from_workflow_profile(self, prefs_dir: Path) -> None:
+        svc = PreferencesService(storage_dir=prefs_dir)
+        svc.set_workflow_profile("glossary_translation", provider="openai", model="gpt-5.4")
+
+        reloaded = PreferencesService(storage_dir=prefs_dir)
+        step_config = reloaded.get_llm_step_config("glossary_translation")
+        assert step_config["provider"] == "openai"
+        assert step_config["model"] == "gpt-5.4"
+
+    def test_provider_specific_runtime_api_key_methods(self, prefs_dir: Path) -> None:
+        svc = PreferencesService(storage_dir=prefs_dir)
+        svc.set_api_key("gemini-key", provider_key="gemini")
+        assert svc.get_api_key("gemini") == "gemini-key"
+        svc.clear_api_key(provider_key="gemini")
+        assert svc.get_api_key("gemini") is None

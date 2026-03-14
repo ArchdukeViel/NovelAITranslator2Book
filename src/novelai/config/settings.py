@@ -42,6 +42,7 @@ class AppSettings(BaseSettings):
     # --- Provider / Model
     PROVIDER_DEFAULT: str = "dummy"
     PROVIDER_OPENAI_API_KEY: SecretStr | None = None
+    PROVIDER_GEMINI_API_KEY: SecretStr | None = None
 
     # --- Scraping
     SCRAPE_DELAY_SECONDS: float = Field(

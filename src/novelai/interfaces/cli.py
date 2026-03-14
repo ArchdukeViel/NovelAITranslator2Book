@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import shutil
 import subprocess
 import sys
@@ -19,7 +20,16 @@ def _normalize_action(action: str) -> str:
 
 def _expected_launcher_path() -> Path:
     launcher_name = "novelaibook.exe" if sys.platform.startswith("win") else "novelaibook"
-    return Path(sys.executable).resolve().parent / launcher_name
+    python_dir = Path(sys.executable).resolve().parent
+    if sys.platform.startswith("win"):
+        scripts_dir = python_dir / "Scripts"
+        if scripts_dir.exists():
+            return scripts_dir / launcher_name
+        return python_dir / launcher_name
+    bin_dir = python_dir.parent / "bin"
+    if bin_dir.exists():
+        return bin_dir / launcher_name
+    return python_dir / launcher_name
 
 
 def _doctor_check() -> tuple[int, list[str]]:
@@ -135,6 +145,30 @@ def main(argv: list[str] | None = None) -> None:
     tc.add_argument("--force", action="store_true", help="Retranslate chapters even if translated output exists.")
     tc.add_argument("--dry-run", action="store_true", help="Show what would happen without executing.")
 
+    gt = subparsers.add_parser("glossary-translate", help="Translate glossary terms (phase 1b)")
+    gt.add_argument("novel", help="Novel ID")
+    gt.add_argument("--provider", help="Provider key override")
+    gt.add_argument("--model", help="Provider model override")
+    gt.add_argument("--all-status", action="store_true", help="Translate non-pending terms as well")
+
+    gr = subparsers.add_parser("glossary-review", help="Review glossary terms (phase 1c)")
+    gr.add_argument("novel", help="Novel ID")
+    gr.add_argument("--min-target-length", type=int, default=2, help="Minimum target length for auto approval")
+    gr.add_argument("--no-auto-approve", action="store_true", help="Keep all reviewed terms pending for manual validation")
+
+    pr = subparsers.add_parser("pipeline-run", help="Run phased translation pipeline")
+    pr.add_argument("source", help="Source key (e.g., syosetu_ncode)")
+    pr.add_argument("novel", help="Novel ID or URL")
+    pr.add_argument("chapters", nargs="?", default="all", help="Chapter selection (default: all)")
+    pr.add_argument("--phase", choices=["1", "1b", "2", "3", "full"], default="full", help="Pipeline phase to run")
+    pr.add_argument("--provider", help="Provider key override")
+    pr.add_argument("--model", help="Provider model override")
+    pr.add_argument("--source-language", help="Source language override")
+    pr.add_argument("--target-language", help="Target language override")
+    pr.add_argument("--confidence-threshold", type=float, default=0.55, help="Threshold for low-confidence polish decisions")
+    pr.add_argument("--all-confidence", action="store_true", help="Phase 3 can include chapters not marked low confidence")
+    pr.add_argument("--run-polish-phase", action="store_true", help="When phase=full, run phase 3 at the end")
+
     # Retranslate one chapter
     rtc = subparsers.add_parser("retranslate-chapter", help="Force retranslate one chapter")
     rtc.add_argument("source", help="Source key (e.g., syosetu_ncode)")
@@ -177,6 +211,10 @@ def main(argv: list[str] | None = None) -> None:
     gc_extract = gc_sub.add_parser("extract", help="Extract glossary candidates from stored chapters")
     gc_extract.add_argument("--chapters", default="all", help="Chapter selection (default: all)")
     gc_extract.add_argument("--max-terms", type=int, default=50, help="Maximum extracted terms")
+    gc_extract.add_argument("--mode", choices=["heuristic", "llm", "hybrid"], help="Glossary extraction mode")
+    gc_extract.add_argument("--provider", help="Optional provider override for LLM extraction mode")
+    gc_extract.add_argument("--model", help="Optional model override for LLM extraction mode")
+    gc_extract.add_argument("--prompt", help="Optional custom extraction prompt template")
     gc_sub.add_parser("approve-all", help="Mark all pending glossary terms as approved")
     gc_sub.add_parser("clear", help="Remove all glossary terms")
 
@@ -322,6 +360,63 @@ def main(argv: list[str] | None = None) -> None:
                     force=bool(args.force),
                 )
             )
+        elif args.command == "glossary-translate":
+            from novelai.services.novel_orchestration_service import NovelOrchestrationService
+
+            orchestrator = NovelOrchestrationService(container.storage, container.translation)
+            summary = asyncio.run(
+                orchestrator.translate_glossary_terms(
+                    args.novel,
+                    provider_key=args.provider,
+                    provider_model=args.model,
+                    only_pending=not bool(args.all_status),
+                )
+            )
+            print(
+                "Glossary translation summary: "
+                f"translated={summary.get('translated', 0)}, "
+                f"skipped={summary.get('skipped', 0)}, "
+                f"total={summary.get('total_terms', 0)}"
+            )
+        elif args.command == "glossary-review":
+            from novelai.services.novel_orchestration_service import NovelOrchestrationService
+
+            orchestrator = NovelOrchestrationService(container.storage, container.translation)
+            summary = asyncio.run(
+                orchestrator.review_glossary_terms(
+                    args.novel,
+                    auto_approve_translated=not bool(args.no_auto_approve),
+                    min_target_length=max(1, int(args.min_target_length)),
+                )
+            )
+            print(
+                "Glossary review summary: "
+                f"approved={summary.get('approved', 0)}, "
+                f"pending={summary.get('pending', 0)}, "
+                f"ignored={summary.get('ignored', 0)}"
+            )
+        elif args.command == "pipeline-run":
+            from novelai.services.novel_orchestration_service import NovelOrchestrationService
+
+            orchestrator = NovelOrchestrationService(container.storage, container.translation)
+            summary = asyncio.run(
+                orchestrator.run_phased_translation_pipeline(
+                    source_key=args.source,
+                    novel_id=args.novel,
+                    chapters=args.chapters,
+                    phase=args.phase,
+                    glossary_provider_key=args.provider,
+                    glossary_provider_model=args.model,
+                    body_provider_key=args.provider,
+                    body_provider_model=args.model,
+                    source_language=args.source_language,
+                    target_language=args.target_language,
+                    confidence_threshold=max(0.0, min(1.0, float(args.confidence_threshold))),
+                    polish_low_confidence_only=not bool(args.all_confidence),
+                    run_polish_phase=bool(args.run_polish_phase),
+                )
+            )
+            print(json.dumps(summary, ensure_ascii=False, indent=2))
         elif args.command == "retranslate-chapter":
             if args.dry_run:
                 print(
@@ -427,11 +522,24 @@ def main(argv: list[str] | None = None) -> None:
                 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 
                 orchestrator = NovelOrchestrationService(container.storage, container.translation)
+                extraction_config: dict[str, object] = {
+                    "chapters": args.chapters,
+                    "max_terms": args.max_terms,
+                }
+                if getattr(args, "mode", None):
+                    extraction_config["mode"] = args.mode
+                if getattr(args, "provider", None):
+                    extraction_config["provider"] = args.provider
+                if getattr(args, "model", None):
+                    extraction_config["model"] = args.model
+                if getattr(args, "prompt", None):
+                    extraction_config["prompt_template"] = args.prompt
                 summary = asyncio.run(
                     orchestrator.extract_glossary_terms(
                         args.novel,
                         chapters=args.chapters,
                         max_terms=args.max_terms,
+                        config=extraction_config,
                     )
                 )
                 print(
@@ -439,7 +547,8 @@ def main(argv: list[str] | None = None) -> None:
                     f"chapters={summary['selected_chapters']}, "
                     f"found={summary['candidates_found']}, "
                     f"added={summary['added']}, "
-                    f"total={summary['total_terms']}"
+                    f"total={summary['total_terms']}, "
+                    f"mode={summary.get('config', {}).get('mode', 'heuristic')}"
                 )
             elif args.glossary_action == "approve-all":
                 entries = storage.load_glossary(args.novel)

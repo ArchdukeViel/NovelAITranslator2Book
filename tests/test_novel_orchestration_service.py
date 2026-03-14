@@ -85,6 +85,37 @@ class StubTranslationService(TranslationService):
         )
 
 
+class GlossarySchemaCaptureProvider(MockTranslationProvider):
+    def __init__(self) -> None:
+        super().__init__(key="mock", model="mock-1.0")
+        self.last_kwargs: dict[str, Any] = {}
+
+    async def translate(
+        self,
+        prompt: str,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        self.last_kwargs = kwargs
+        return {
+            "text": json.dumps(
+                {
+                    "terms": [
+                        {"source": "魔導具"},
+                        {"source": "王都"},
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            "metadata": {
+                "usage": {
+                    "total_tokens": 42,
+                },
+            },
+        }
+
+
 @pytest.fixture
 def orchestration_env():
     TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
@@ -352,6 +383,58 @@ async def test_translate_chapters_preflight_blocks_when_nothing_to_translate(orc
 
     with pytest.raises(RuntimeError, match="nothing_to_translate"):
         await orchestrator.translate_chapters("stub", "novel-1", "1")
+
+
+@pytest.mark.asyncio
+async def test_extract_glossary_llm_mode_enforces_json_schema(orchestration_env) -> None:
+    provider = GlossarySchemaCaptureProvider()
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-llm",
+        {
+            "title": "Glossary LLM Novel",
+            "source_language": "Japanese",
+            "input_adapter_key": "web",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "Chapter One", "url": "https://example.com/novel-llm/1"},
+            ],
+        },
+    )
+    storage.save_chapter("novel-llm", "1", "魔導具は王都で使われる。")
+
+    settings = orchestration_env["settings"]
+    settings.set_workflow_profile("glossary_extraction", provider="mock", model="mock-1.0")
+
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: provider,
+        settings_service=settings,
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    summary = await orchestrator.extract_glossary_terms(
+        "novel-llm",
+        config={
+            "mode": "llm",
+            "provider": "mock",
+            "model": "mock-1.0",
+        },
+    )
+
+    assert summary["config"]["mode"] == "llm"
+    assert summary["config"]["llm_candidates"] == 2
+    json_schema = provider.last_kwargs.get("json_schema")
+    assert isinstance(json_schema, dict)
+    assert json_schema.get("required") == ["terms"]
+    assert "terms" in (json_schema.get("properties") or {})
+
+    glossary = storage.load_glossary("novel-llm")
+    sources = {str(entry.get("source")) for entry in glossary if isinstance(entry, dict)}
+    assert "魔導具" in sources
+    assert "王都" in sources
 
 
 @pytest.mark.asyncio
@@ -701,3 +784,108 @@ async def test_ingest_ocr_candidates_skips_chapter_without_images(orchestration_
     assert media is not None
     assert media["ocr_required"] is False
     assert media["ocr_status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_review_glossary_terms_auto_approves_translated_targets(orchestration_env) -> None:
+    storage = orchestration_env["storage"]
+    storage.save_metadata("novel-1", {"title": "Original", "chapters": []})
+    storage.save_glossary(
+        "novel-1",
+        [
+            {"source": "勇者", "target": "hero", "status": "pending", "locked": True},
+            {"source": "魔王", "target": "", "status": "pending", "locked": True},
+        ],
+    )
+
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=StubTranslationService(),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    summary = await orchestrator.review_glossary_terms("novel-1")
+
+    assert summary["approved"] == 1
+    assert summary["pending"] == 1
+    entries = storage.load_glossary("novel-1")
+    by_source = {str(item.get("source")): item for item in entries if isinstance(item, dict)}
+    assert by_source["勇者"]["status"] == "approved"
+    assert by_source["魔王"]["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_translate_chapters_persists_confidence_metadata(orchestration_env) -> None:
+    source = StubSource()
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-1",
+        {
+            "title": "Original Novel",
+            "source_language": "Japanese",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "Chapter One", "url": "https://example.com/novel-1/1"},
+            ],
+        },
+    )
+    storage.save_chapter("novel-1", "1", "raw text", source_key="stub", source_url="https://example.com/novel-1/1")
+
+    translation = StubTranslationService(final_text="raw text")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=translation,
+        source_factory=lambda key: source,
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.translate_chapters("stub", "novel-1", "1", confidence_threshold=0.55)
+
+    translated = storage.load_translated_chapter("novel-1", "1")
+    assert translated is not None
+    assert isinstance(translated.get("confidence_score"), float)
+    assert translated.get("polish_needed") is True
+    assert isinstance(translated.get("confidence_details"), dict)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_phase_two_blocks_when_pending_glossary(orchestration_env) -> None:
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-1",
+        {
+            "title": "Original Novel",
+            "source_language": "Japanese",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "Chapter One", "url": "https://example.com/novel-1/1"},
+            ],
+        },
+    )
+    storage.save_chapter("novel-1", "1", "raw text", source_key="stub", source_url="https://example.com/novel-1/1")
+    storage.save_glossary("novel-1", [{"source": "勇者", "target": "hero", "status": "pending", "locked": True}])
+
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=StubTranslationService(final_text="translated"),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    summary = await orchestrator.run_phased_translation_pipeline(
+        source_key="stub",
+        novel_id="novel-1",
+        chapters="1",
+        phase="2",
+    )
+
+    assert summary["status"] == "blocked"
+    assert summary["blocked"] is True

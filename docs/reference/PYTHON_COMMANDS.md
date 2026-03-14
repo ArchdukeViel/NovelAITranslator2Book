@@ -45,6 +45,8 @@ novelaibook glossary n4423lw list
 novelaibook glossary n4423lw add "madougu" "magic device"
 novelaibook glossary n4423lw review "madougu" approved
 novelaibook glossary n4423lw extract --chapters all --max-terms 50
+novelaibook glossary n4423lw extract --chapters all --mode llm --provider gemini --model gemini-3-flash-preview
+novelaibook glossary n4423lw extract --chapters all --mode hybrid --prompt "Extract up to {max_terms} terms from: {text}"
 novelaibook glossary n4423lw approve-all
 
 novelaibook ocr n4423lw ingest all
@@ -64,6 +66,32 @@ novelaibook export-epub n4423lw --format md
 Exports default to `novel_library/novels/<novel_id>/<format>/` unless `--output` is provided.
 
 ## Python API
+
+### LLM Ops Preferences
+
+```python
+from novelai.runtime.container import container
+
+prefs = container.preferences
+
+# Endpoint profile
+prefs.set_llm_endpoint_profile(
+    "gemini-fast",
+    provider="gemini",
+    model="gemini-3-flash-preview",
+    timeout=60,
+    max_retries=2,
+    concurrency=5,
+)
+
+# Per-step override
+prefs.set_llm_step_config(
+    "glossary_extraction",
+    endpoint_profile="gemini-fast",
+    temperature=0.2,
+    kwargs={"top_p": 0.95},
+)
+```
 
 ### Bootstrap and Services
 

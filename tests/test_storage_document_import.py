@@ -38,12 +38,12 @@ def test_metadata_defaults_include_translation_profiles(storage: StorageService)
     assert loaded["document_type"] == "epub"
     assert loaded["input_adapter_key"] == "epub"
     assert set(loaded["translation_profiles"]) == {
-        "term_extraction",
-        "term_summary",
-        "term_translation",
+        "glossary_extraction",
+        "glossary_translation",
+        "glossary_review",
         "body_translation",
         "ocr",
-        "reembedding",
+        "polish",
     }
 
 

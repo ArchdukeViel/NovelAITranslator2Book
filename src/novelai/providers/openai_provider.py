@@ -118,6 +118,7 @@ class OpenAIProvider(TranslationProvider):
         *,
         request: TranslationRequest | None = None,
         max_output_tokens: int | None = None,
+        json_schema: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if request is not None:
             return build_translation_responses_payload(
@@ -125,12 +126,22 @@ class OpenAIProvider(TranslationProvider):
                 request,
                 max_output_tokens=max_output_tokens,
             )
-        return build_basic_responses_payload(
+        payload = build_basic_responses_payload(
             model,
             prompt,
             system_prompt="You are a translation assistant.",
             max_output_tokens=max_output_tokens,
         )
+        if isinstance(json_schema, dict):
+            payload["text"] = {
+                "format": {
+                    "type": "json_schema",
+                    "name": "structured_output",
+                    "schema": json_schema,
+                    "strict": True,
+                }
+            }
+        return payload
 
     async def translate(
         self,
@@ -146,6 +157,7 @@ class OpenAIProvider(TranslationProvider):
         api_key_str = self._api_key_string()
         model = model or "gpt-5.4"
         request = kwargs.pop("request", None)
+        json_schema = kwargs.pop("json_schema", None)
         if request is not None and not isinstance(request, TranslationRequest):
             raise TypeError("request must be a TranslationRequest instance.")
         payload = self._build_payload(
@@ -153,6 +165,7 @@ class OpenAIProvider(TranslationProvider):
             model,
             request=request,
             max_output_tokens=max_tokens,
+            json_schema=json_schema if isinstance(json_schema, dict) else None,
         )
 
         AsyncOpenAI = self._modern_async_client()
