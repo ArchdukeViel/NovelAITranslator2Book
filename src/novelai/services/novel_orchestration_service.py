@@ -105,7 +105,7 @@ class PreflightIssue:
 
 
 class NovelOrchestrationService:
-    """Shared orchestration logic used by CLI, TUI, and potentially web UI.
+    """Shared orchestration logic used by the web API and background worker.
 
     Requires injection of:
     - storage: StorageService

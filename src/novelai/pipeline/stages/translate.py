@@ -6,7 +6,6 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from novelai.config.settings import settings
-from novelai.core.errors import ProviderError
 from novelai.glossary import (
     GlossaryTerm,
     extract_term_context,

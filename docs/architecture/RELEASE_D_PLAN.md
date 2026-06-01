@@ -1,6 +1,6 @@
 # Release D Plan: Advanced Media Workflow (OCR + Re-Embedding)
 
-> Historical note: this plan predates the desktop GUI and document adapter work. Those capabilities are now part of the main codebase. This document remains focused on OCR and re-embedding.
+> Historical note: this plan predates the web-only direction. OCR capabilities are now part of the backend service layer; future UX work should surface them in the web admin.
 
 This plan defines Release D as an optional advanced track focused on image-heavy documents.
 
@@ -25,9 +25,8 @@ In scope:
 
 Out of scope for Release D:
 
-1. Full browser frontend.
-2. New OCR engines beyond the current ingest-and-review workflow.
-3. Automatic graphic editing pipelines beyond explicit re-embedding support.
+1. New OCR engines beyond the current ingest-and-review workflow.
+2. Automatic graphic editing pipelines beyond explicit re-embedding support.
 
 ## Architecture Additions
 
@@ -61,7 +60,7 @@ Primary file targets:
 
 ### 3. OCR Review Workflow
 
-Add review commands in CLI/TUI:
+Add review controls in the web admin and backend API:
 
 1. List OCR-pending chapters.
 2. Mark reviewed/approved after correction.
@@ -69,8 +68,8 @@ Add review commands in CLI/TUI:
 
 Primary file targets:
 
-1. `src/novelai/app/cli.py`
-2. `src/novelai/tui/screens/pipeline.py`
+1. `src/novelai/interfaces/web/routers/novels.py`
+2. `frontend/app/(admin)/admin/editor/page.tsx`
 3. `src/novelai/services/novel_orchestration_service.py`
 
 ### 4. Re-Embedding Step
@@ -109,7 +108,7 @@ Deliverables:
 
 1. OCR ingestion endpoint in orchestration.
 2. Preflight check blocks translation if OCR review required and incomplete.
-3. CLI commands to inspect and approve OCR review state.
+3. Web admin controls to inspect and approve OCR review state.
 
 Acceptance criteria:
 
@@ -133,13 +132,13 @@ Acceptance criteria:
 
 Deliverables:
 
-1. TUI diagnostics counters for OCR pending/reviewed/failed and re-embedding states.
-2. Library inspection panel includes OCR/re-embedding readiness.
+1. Web admin diagnostics counters for OCR pending/reviewed/failed and re-embedding states.
+2. Library/admin inspection panel includes OCR/re-embedding readiness.
 3. Updated user docs and runbooks.
 
 Acceptance criteria:
 
-1. Operators can detect blocked chapters and why from TUI diagnostics alone.
+1. Operators can detect blocked chapters and why from web admin diagnostics alone.
 2. Guide docs reflect exact commands and state transitions.
 
 ## Test Plan
@@ -149,7 +148,7 @@ Required test updates:
 1. `tests/test_storage_service.py`: schema/default compatibility and OCR field persistence.
 2. `tests/test_novel_orchestration_service.py`: OCR preflight enforcement and re-embedding flow.
 3. `tests/test_pipeline_stages.py`: OCR-aware parse/translate path behavior.
-4. `tests/test_tui.py`: diagnostics/library rendering for OCR and re-embedding state.
+4. `tests/test_web_api.py`: diagnostics/library API rendering for OCR and re-embedding state.
 5. `tests/test_integration.py`: end-to-end OCR reviewed -> translate -> re-embed -> export.
 
 ## Risks and Mitigations

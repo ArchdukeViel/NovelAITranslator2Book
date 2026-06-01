@@ -219,7 +219,8 @@ class JobQueueService:
                 updated["retry_count"] = int(updated.get("retry_count", 0) or 0) + 1
             updated["error"] = error if error is not None else None
             if isinstance(metadata, dict):
-                merged_metadata = dict(updated.get("metadata") if isinstance(updated.get("metadata"), dict) else {})
+                existing_metadata = updated.get("metadata")
+                merged_metadata: dict[str, Any] = dict(existing_metadata) if isinstance(existing_metadata, dict) else {}
                 merged_metadata.update(metadata)
                 updated["metadata"] = merged_metadata
 

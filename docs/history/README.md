@@ -11,8 +11,7 @@ This folder contains archived phase completion documents that record what was do
 ## Current Documentation
 
 - Installation and onboarding: [../guides/GETTING_STARTED.md](../guides/GETTING_STARTED.md)
-- TUI usage: [../guides/TUI_GUIDE.md](../guides/TUI_GUIDE.md)
-- CLI and code reference: [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md)
+- Backend launcher and code reference: [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md)
 - Data layout: [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md)
 - Architecture overview: [../architecture/architecture.md](../architecture/architecture.md)
 - Docs index: [../README.md](../README.md)

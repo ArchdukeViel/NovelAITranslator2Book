@@ -1,1 +1,0 @@
-"""Desktop GUI interface."""

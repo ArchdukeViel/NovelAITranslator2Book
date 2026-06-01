@@ -1,19 +1,15 @@
 # Novel AI Architecture
 
-This document describes the current codebase layout and the runtime flow across the import, translation, review, and export layers.
+This document describes the current web-focused codebase layout and runtime flow.
 
 ## Codebase Layout
 
 ```text
 src/novelai/
-  runtime/        shared bootstrap and dependency wiring
-  interfaces/     CLI, desktop GUI, TUI, and web interface modules
-  app/            compatibility wrappers for legacy entrypoints
-  desktop/        compatibility wrappers for legacy desktop imports
-  tui/            compatibility wrappers for legacy TUI imports
-  web/            compatibility wrappers for legacy web imports
+  runtime/        bootstrap and dependency wiring
+  interfaces/     FastAPI web app and small backend launcher
   config/         environment settings and workflow profile definitions
-  core/           errors and shared state primitives
+  core/           errors, platform records, and shared state primitives
   cost_estimator/ cost and token heuristics
   export/         exporter implementations and registry
   glossary/       glossary status and helpers
@@ -21,26 +17,25 @@ src/novelai/
   pipeline/       fetch, parse, segment, translate, and post-process stages
   prompts/        prompt builders and templates
   providers/      translation provider adapters
-  services/       orchestration, storage, export, usage, cache, preferences
+  services/       orchestration, storage, jobs, export, usage, cache, preferences
   sources/        web source scrapers
-  utils/          logging, retries, chapter selection, and helpers
+  utils/          HTTP, logging, retries, rate limiting, chapter selection, and text helpers
+
+frontend/
+  app/            Next.js public reader and admin routes
+  components/     admin shell and reusable UI components
+  lib/            API client, query client, Zustand store, utilities
+  server/         frontend runtime environment helpers
 ```
 
-## Interface Split
-
-The project now separates runtime wiring from interface delivery:
-
-- `runtime/` contains startup registration and the singleton dependency container
-- `interfaces/` contains the real CLI, GUI, TUI, and web implementations
-- `app/`, `desktop/`, `tui/`, and `web/` remain as compatibility import layers so older imports and scripts still run
-
-This keeps interface code in one place without breaking existing entrypoints.
-
-## Main Runtime Flow
+## Runtime Flow
 
 ```text
-Interface
-  CLI / Desktop GUI / TUI / FastAPI
+Next.js frontend
+  public reader + admin workspace
+        ->
+FastAPI backend
+  /api health, novels, jobs, requests, reader, translations, export
         ->
 Runtime Bootstrap
   provider registry
@@ -54,6 +49,7 @@ Container
   export service
   preferences
   usage tracking
+  job queue
   orchestration
         ->
 NovelOrchestrationService
@@ -68,37 +64,45 @@ Storage + Export Layer
   novel_library/
 ```
 
+## Backend Entry Points
+
+- `novelaibook web`: run the FastAPI backend
+- `novelaibook web --reload`: run backend with live reload
+- `novelaibook worker`: run queued jobs continuously
+- `novelaibook worker --once`: process one queued job
+- `novelaibook doctor`: check launcher wiring
+
 ## Major Subsystems
+
+### Web API
+
+- `interfaces/web/api.py`: FastAPI app factory and lifespan
+- `interfaces/web/server.py`: uvicorn launcher
+- `interfaces/web/routers/novels.py`: current combined API router
+- `interfaces/web/error_handlers.py`: exception-to-HTTP mapping
+
+The combined router is scheduled to be split into focused routers during the next refactor phase.
 
 ### Runtime
 
 - `runtime/bootstrap.py`: registers providers, sources, input adapters, and exporters
 - `runtime/container.py`: constructs shared service instances
 
-### Interfaces
-
-- `interfaces/cli.py`: command router for import, scrape, translation, glossary, OCR, and export
-- `interfaces/desktop/`: PySide6 desktop application
-- `interfaces/tui/`: Rich terminal dashboard and screens
-- `interfaces/web/`: FastAPI app, server launcher, routers, and error handlers
-
-### Import Layer
+### Import And Scraping
 
 - `inputs/`: normalized import adapters for `web`, `text`, `epub`, `pdf`, `image_folder`, and `cbz`
 - `sources/`: scraper adapters for live web novel sites
-
-The important distinction is:
-
-- `inputs/` handles document or archive ingestion into normalized stored units
-- `sources/` handles live site scraping for metadata and chapter fetching
 
 ### Service Layer
 
 - `services/storage_service.py`: file-backed persistence for metadata, chapters, glossary, OCR, exports, and assets
 - `services/novel_orchestration_service.py`: end-to-end business workflows
+- `services/job_queue_service.py`: durable JSON job queue and source health
+- `services/job_worker_service.py`: executes queued crawl and translation jobs
+- `services/job_runner_service.py`: background polling loop
 - `services/translation_service.py`: pipeline execution
 - `services/export_service.py`: exporter dispatch
-- `services/preferences_service.py`: user settings and workflow preferences
+- `services/preferences_service.py`: workflow and provider preferences
 - `services/usage_service.py`: usage and cost recording
 
 ### Translation Pipeline
@@ -109,7 +113,7 @@ Fetch -> Parse -> Segment -> Translate -> Post-process
 
 The pipeline is assembled in `runtime/container.py` and used by the orchestration service.
 
-### Review and Gating
+### Review And Gating
 
 Before translation completes, the system can enforce:
 
@@ -120,7 +124,7 @@ This lets translation runs stop on unresolved content rather than silently produ
 
 ## Data Model Overview
 
-All runtime state is stored under `novel_library/`.
+Runtime state is stored under `novel_library/` for now.
 
 Important stored artifacts include:
 
@@ -128,30 +132,29 @@ Important stored artifacts include:
 - `chapters/<id>.json`: unified chapter bundle with source, translation, state, and media metadata
 - `glossary.json`: glossary terms and statuses
 - `assets/`: source or generated media assets
-- `checkpoints/`: recovery snapshots
+- `jobs/`: queued background work
+- `requests/`: reader/admin request intake
 
 See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md) for the full file-level layout.
 
-## Extension Points
+## Next Structural Phase
 
-To add a new capability, the usual extension points are:
+The next recommended cleanup is:
 
-- new provider: `providers/` plus `runtime/bootstrap.py`
-- new document type: `inputs/` plus `runtime/bootstrap.py`
-- new web source: `sources/` plus `runtime/bootstrap.py`
-- new export format: `export/` plus `runtime/bootstrap.py`
-- new interface surface: `interfaces/`
+```text
+backend/
+  src/novelai/
+frontend/
+storage/
+deploy/
+docs/
+```
 
-## Packaging Notes
-
-- CLI script: `novelaibook`
-- Desktop script: `novelaibook-gui`
-- Module launcher: `python -m novelai --interface ...`
-- PyInstaller spec: [../../novelaibook-ui.spec](../../novelaibook-ui.spec)
+That move should happen after the web-only entrypoint cleanup is stable.
 
 ## Related Docs
 
 - [../guides/GETTING_STARTED.md](../guides/GETTING_STARTED.md)
 - [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md)
 - [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md)
-- [RELEASE_D_PLAN.md](RELEASE_D_PLAN.md)
+- [PRODUCTION_WEB_DEPLOYMENT.md](PRODUCTION_WEB_DEPLOYMENT.md)

@@ -1,97 +1,50 @@
 # Python Commands Reference
 
-Command and Python API reference for Novel AI.
+Command and Python API reference for the web-focused Novel AI backend.
 
-## Main Interface Commands
+## Backend Launcher
+
+Run the FastAPI backend:
 
 ```powershell
-novelaibook tui
-novelaibook gui
 novelaibook web
 ```
 
-Alternative module entrypoints:
+Run with live reload for local backend editing:
 
 ```powershell
-python -m novelai --interface tui
-python -m novelai --interface gui
-python -m novelai --interface web
-python -m novelai --interface cli <command>
+novelaibook web --reload
 ```
 
-## Import and Scrape
+Alternative module entrypoint:
 
 ```powershell
-novelaibook import-document text my_book .\book\
-novelaibook import-document epub my_book .\book.epub
-novelaibook import-document pdf my_book .\book.pdf
-
-novelaibook scrape-metadata syosetu_ncode n4423lw
-novelaibook scrape-chapters syosetu_ncode n4423lw 1-3
+python -m novelai --interface web --reload
 ```
 
-## Translation
+## Worker
+
+Process one queued job and exit:
 
 ```powershell
-novelaibook translate-chapters syosetu_ncode n4423lw 1-3
-novelaibook translate-chapters syosetu_ncode n4423lw 1-3 --force
-novelaibook retranslate-chapter syosetu_ncode n4423lw 2
+novelaibook worker --once
 ```
 
-## Glossary and OCR
+Run continuously:
 
 ```powershell
-novelaibook glossary n4423lw list
-novelaibook glossary n4423lw add "madougu" "magic device"
-novelaibook glossary n4423lw review "madougu" approved
-novelaibook glossary n4423lw extract --chapters all --max-terms 50
-novelaibook glossary n4423lw extract --chapters all --mode llm --provider gemini --model gemini-3-flash-preview
-novelaibook glossary n4423lw extract --chapters all --mode hybrid --prompt "Extract up to {max_terms} terms from: {text}"
-novelaibook glossary n4423lw approve-all
-
-novelaibook ocr n4423lw ingest all
-novelaibook ocr n4423lw list-pending
-novelaibook ocr n4423lw review 2 --text "Corrected OCR text"
-novelaibook ocr n4423lw set-status 2 failed
+novelaibook worker --poll-seconds 2
 ```
 
-## Export
+## Doctor
+
+Check launcher wiring:
 
 ```powershell
-novelaibook export-epub n4423lw --format epub
-novelaibook export-epub n4423lw --format html
-novelaibook export-epub n4423lw --format md
+novelaibook doctor
 ```
-
-Exports default to `novel_library/novels/<novel_id>/<format>/` unless `--output` is provided.
 
 ## Python API
-
-### LLM Ops Preferences
-
-```python
-from novelai.runtime.container import container
-
-prefs = container.preferences
-
-# Endpoint profile
-prefs.set_llm_endpoint_profile(
-    "gemini-fast",
-    provider="gemini",
-    model="gemini-3-flash-preview",
-    timeout=60,
-    max_retries=2,
-    concurrency=5,
-)
-
-# Per-step override
-prefs.set_llm_step_config(
-    "glossary_extraction",
-    endpoint_profile="gemini-fast",
-    temperature=0.2,
-    kwargs={"top_p": 0.95},
-)
-```
 
 ### Bootstrap and Services
 
@@ -104,6 +57,38 @@ bootstrap()
 storage = container.storage
 orchestrator = container.orchestrator
 translation = container.translation
+jobs = container.jobs
+```
+
+### Enqueue Jobs
+
+```python
+from novelai.core.platform import CrawlJobKind, TranslationJobKind
+
+crawl_job = jobs.enqueue_crawl_job(
+    novel_id="n4423lw",
+    source_key="syosetu_ncode",
+    kind=CrawlJobKind.METADATA,
+)
+
+translation_job = jobs.enqueue_translation_job(
+    novel_id="n4423lw",
+    kind=TranslationJobKind.BATCH,
+    chapters="1-3",
+    provider="gemini",
+)
+```
+
+### Run One Job
+
+```python
+import asyncio
+
+async def main() -> None:
+    result = await container.job_runner.run_once()
+    print(result)
+
+asyncio.run(main())
 ```
 
 ### Inspect a Novel
@@ -120,6 +105,8 @@ print(bool(translated))
 
 ### Import a Document
 
+Document import remains available as backend service logic and can be exposed through the web API:
+
 ```python
 import asyncio
 
@@ -130,7 +117,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-### Translate Chapters
+### Translate Chapters Directly
 
 ```python
 import asyncio
@@ -140,6 +127,7 @@ async def main() -> None:
         source_key="syosetu_ncode",
         novel_id="n4423lw",
         chapters="1-3",
+        provider_key="gemini",
     )
 
 asyncio.run(main())
@@ -162,6 +150,5 @@ for estimate in comparison.estimates:
 ## Related Docs
 
 - [../guides/GETTING_STARTED.md](../guides/GETTING_STARTED.md)
-- [../guides/TUI_GUIDE.md](../guides/TUI_GUIDE.md)
 - [DATA_OUTPUT_STRUCTURE.md](DATA_OUTPUT_STRUCTURE.md)
 - [../architecture/architecture.md](../architecture/architecture.md)

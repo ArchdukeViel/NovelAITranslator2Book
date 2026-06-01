@@ -22,7 +22,7 @@ class Container:
     """Application dependency container.
 
     This is a simple, explicit DI container used to create and reuse shared
-    services throughout the application (CLI, desktop, TUI, web).
+    services throughout the web backend and background worker.
 
     All services are singletons: instantiated once and reused.
     """

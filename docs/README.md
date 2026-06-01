@@ -10,16 +10,16 @@ Documentation for the Novel AI project, organized by purpose.
 ## Guides
 
 - [guides/GETTING_STARTED.md](guides/GETTING_STARTED.md): installation, configuration, and launch
-- [guides/TUI_GUIDE.md](guides/TUI_GUIDE.md): TUI workflow
 
 ## Reference
 
-- [reference/PYTHON_COMMANDS.md](reference/PYTHON_COMMANDS.md): CLI commands and Python usage
+- [reference/PYTHON_COMMANDS.md](reference/PYTHON_COMMANDS.md): backend launcher and Python usage
 - [reference/DATA_OUTPUT_STRUCTURE.md](reference/DATA_OUTPUT_STRUCTURE.md): storage layout and output files
 
 ## Architecture
 
-- [architecture/architecture.md](architecture/architecture.md): codebase layout, interface split, and runtime flow
+- [architecture/architecture.md](architecture/architecture.md): web-focused codebase layout and runtime flow
+- [architecture/PRODUCTION_WEB_DEPLOYMENT.md](architecture/PRODUCTION_WEB_DEPLOYMENT.md): production web deployment direction
 - [architecture/RELEASE_D_PLAN.md](architecture/RELEASE_D_PLAN.md): OCR and re-embedding roadmap
 
 ## History

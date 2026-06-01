@@ -10,20 +10,18 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="novelai")
     parser.add_argument(
         "--interface",
-        choices=["cli", "web", "tui", "gui"],
-        default="tui",
+        choices=["web", "cli"],
+        default="web",
         help="Which interface to run.",
     )
+    parser.add_argument("--reload", action="store_true", help="Reload the backend when Python files change.")
     args, remaining = parser.parse_known_args(argv)
 
     if args.interface == "cli":
         cli_main(remaining)
-    elif args.interface == "tui":
-        cli_main(["tui", *remaining])
-    elif args.interface == "gui":
-        cli_main(["gui", *remaining])
-    else:
-        web_main()
+        return
+
+    web_main(reload=bool(args.reload))
 
 
 if __name__ == "__main__":

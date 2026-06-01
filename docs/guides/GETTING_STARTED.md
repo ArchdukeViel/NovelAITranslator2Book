@@ -1,14 +1,15 @@
 # Getting Started with Novel AI
 
-This guide covers installation, configuration, and the fastest ways to launch the project.
+This guide covers the web-first local setup: FastAPI backend, Next.js frontend, and optional background worker.
 
 ## Prerequisites
 
 - Python 3.13 or newer
+- Node.js LTS with npm
 - Git
-- An API key if you want real model-backed translation
+- A Gemini or OpenAI API key for real translation
 
-## Install
+## Install Backend
 
 ```powershell
 git clone <repo-url>
@@ -16,25 +17,26 @@ cd "Novel AI"
 
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e ".[documents,openai,gemini]"
 ```
 
-Choose the install that matches what you want:
+For development tools:
 
 ```powershell
-# Base CLI and TUI
-.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -m pip install -e ".[documents,openai,gemini,dev]"
+```
 
-# GUI support
-.\.venv\Scripts\python.exe -m pip install -e ".[desktop]"
+## Install Frontend
 
-# GUI + document import support such as PDF
-.\.venv\Scripts\python.exe -m pip install -e ".[desktop,documents]"
+```powershell
+cd frontend
+npm install
+```
 
-# Recommended full local setup
-.\.venv\Scripts\python.exe -m pip install -e ".[desktop,documents,openai,gemini]"
+If PowerShell does not see `npm` after installing Node.js, reopen the terminal or temporarily add it:
 
-# Development and packaging tools
-.\.venv\Scripts\python.exe -m pip install -e ".[desktop,documents,openai,gemini,build,dev]"
+```powershell
+$env:Path = "C:\Program Files\nodejs;" + $env:Path
 ```
 
 ## Configure
@@ -43,110 +45,72 @@ Choose the install that matches what you want:
 Copy-Item .env.example .env
 ```
 
-Set the values you need in `.env`. The most common ones are:
+Common `.env` values:
 
 ```env
-PROVIDER_OPENAI_API_KEY=your_key_here
 PROVIDER_GEMINI_API_KEY=your_key_here
+PROVIDER_OPENAI_API_KEY=your_key_here
+PROVIDER_DEFAULT=gemini
 TRANSLATION_TARGET_LANGUAGE=English
 LOG_LEVEL=INFO
 WEB_RATE_LIMITER_BACKEND=memory
 ```
 
-Rate limiter backends:
+## Run Locally
 
-- `memory`: in-process sliding window limiter, best for local development and single-worker deployments
-- `disabled`: allows all requests, useful for tests or temporary troubleshooting
-
-The default is `memory`. Add additional backends in code if you need a shared store such as Redis.
-
-## LLM Ops Configuration
-
-In the desktop GUI, open the LLM Ops page to configure:
-
-- Endpoint profiles (provider, model, timeout, retries, concurrency, kwargs)
-- Per-step overrides for glossary extraction/translation/review, body translation, polish, and OCR
-- Glossary extraction mode: `heuristic`, `llm`, or `hybrid`
-- Optional custom glossary extraction prompt template
-
-Prompt placeholders:
-
-- `{text}`
-- `{max_terms}`
-- `{source_language}`
-
-## Verify the Install
+Backend:
 
 ```powershell
-.\.venv\Scripts\python.exe -c "
-from novelai.runtime.bootstrap import bootstrap
-from novelai.runtime.container import container
-
-bootstrap()
-print('bootstrap ok')
-print('provider preference:', container.preferences.get_provider_key())
-"
+cd "C:\Akmal\Novel AI"
+novelaibook web --reload
 ```
 
-## Launch the Interfaces
+Frontend:
 
 ```powershell
-novelaibook tui
-novelaibook gui
-novelaibook web
+cd "C:\Akmal\Novel AI\frontend"
+npm run dev
 ```
 
-You can also use the module entrypoint:
+Open:
+
+```text
+http://127.0.0.1:3000/admin
+```
+
+Backend health:
+
+```text
+http://127.0.0.1:8000/api/health
+```
+
+## Worker
+
+Run one pending job:
 
 ```powershell
-python -m novelai --interface tui
-python -m novelai --interface gui
-python -m novelai --interface web
+novelaibook worker --once
 ```
 
-## First Workflow
-
-### Document Import
+Run continuous worker mode:
 
 ```powershell
-novelaibook import-document epub my_book .\book.epub
-novelaibook glossary my_book extract --chapters all --mode hybrid
-novelaibook export-epub my_book --format epub
+novelaibook worker
 ```
 
-### Web Scrape and Translate
+For the MVP, the API process can also run the worker when `JOB_WORKER_ENABLED=true`.
 
-```powershell
-novelaibook scrape-metadata syosetu_ncode n4423lw
-novelaibook scrape-chapters syosetu_ncode n4423lw 1-3
-novelaibook translate-chapters syosetu_ncode n4423lw 1-3
-novelaibook export-epub n4423lw --format epub
-```
+## Web Workflow
 
-## OCR and Glossary Review
-
-```powershell
-novelaibook glossary n4423lw list
-novelaibook glossary n4423lw approve-all
-
-novelaibook ocr n4423lw ingest all
-novelaibook ocr n4423lw list-pending
-novelaibook ocr n4423lw review 2 --text "Corrected OCR text"
-```
-
-Translation preflight will block chapters that still have pending glossary review or required OCR review.
-
-## Live GUI Editing
-
-```powershell
-.\.venv\Scripts\python.exe .\scripts\run_gui_dev.py
-```
-
-That watches `src/` and restarts the desktop app when files change.
+1. Open `/admin/settings` and configure API token state for the frontend.
+2. Use `/admin/crawler` to enqueue metadata or chapter crawl jobs.
+3. Use `/admin/translation` to enqueue translation jobs.
+4. Use `/admin/editor` to inspect and revise translated chapter versions.
+5. Use public `/novel/[slug]` routes for reader pages.
 
 ## Next Docs
 
-- [TUI_GUIDE.md](TUI_GUIDE.md)
 - [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md)
 - [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md)
 - [../architecture/architecture.md](../architecture/architecture.md)
+- [../architecture/PRODUCTION_WEB_DEPLOYMENT.md](../architecture/PRODUCTION_WEB_DEPLOYMENT.md)

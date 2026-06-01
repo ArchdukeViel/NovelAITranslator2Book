@@ -1,27 +1,22 @@
 # Novel AI
 
-Novel AI is a local-first toolkit for importing novels and books, translating them with AI, reviewing glossary and OCR state, and exporting finished outputs in reader-friendly formats.
+Novel AI is a web-based Japanese novel platform for crawling source sites, queueing translation jobs, editing translated chapters, and serving a reader/admin UI.
 
 ## What It Does
 
-- Import content from web URLs, `.txt`, `.md`, `.epub`, `.pdf`, image folders, and `.cbz`
-- Scrape supported web novel sources such as Syosetu, Novel18, Kakuyomu, and a generic fallback
-- Translate chapters with workflow profiles for glossary extraction, term handling, OCR, and body translation
-- Review glossary terms and OCR-gated chapters before translation
-- Use the project from a Rich TUI, desktop GUI, CLI, or FastAPI backend
+- Scrape supported web novel sources such as Syosetu, Novel18, Kakuyomu, and generic HTML pages
+- Queue crawl and translation jobs through the FastAPI backend
+- Translate chapters with provider adapters for Gemini, OpenAI, or dummy local testing
+- Review and edit translated chapter versions from the web admin surface
 - Export translated or source text as EPUB, HTML, or Markdown
+- Serve a Next.js frontend for public reader pages and production-style admin workflows
 
 ## Install
 
 ```powershell
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
-
-# Minimal install
-.\.venv\Scripts\python.exe -m pip install -e .
-
-# Recommended for GUI + documents + OpenAI translation
-.\.venv\Scripts\python.exe -m pip install -e ".[desktop,documents,openai]"
+.\.venv\Scripts\python.exe -m pip install -e ".[documents,openai,gemini]"
 ```
 
 Create your config file:
@@ -30,43 +25,59 @@ Create your config file:
 Copy-Item .env.example .env
 ```
 
-Add your provider key in `.env` when you want real translation, for example:
+Add provider keys in `.env` when you want real translation:
 
 ```env
+PROVIDER_GEMINI_API_KEY=your_key_here
 PROVIDER_OPENAI_API_KEY=your_key_here
 ```
 
-## Launch
+## Run Locally
+
+Backend:
 
 ```powershell
-novelaibook tui
-novelaibook gui
-novelaibook web
+novelaibook web --reload
 ```
 
-For live GUI iteration during development:
+Frontend:
 
 ```powershell
-.\.venv\Scripts\python.exe .\scripts\run_gui_dev.py
+cd frontend
+npm install
+npm run dev
 ```
 
-## Common Commands
+Open:
+
+```text
+http://127.0.0.1:3000/admin
+```
+
+The backend API runs at:
+
+```text
+http://127.0.0.1:8000/api/health
+```
+
+## Worker
+
+Process one queued job:
 
 ```powershell
-novelaibook import-document epub my_book .\book.epub
-novelaibook scrape-metadata syosetu_ncode n4423lw
-novelaibook scrape-chapters syosetu_ncode n4423lw 1-5
-novelaibook translate-chapters syosetu_ncode n4423lw 1-5
-novelaibook glossary n4423lw extract --chapters all
-novelaibook ocr n4423lw ingest all
-novelaibook export-epub n4423lw --format epub
+novelaibook worker --once
+```
+
+Run a continuous local worker:
+
+```powershell
+novelaibook worker
 ```
 
 ## Documentation
 
-- [docs/guides/GETTING_STARTED.md](docs/guides/GETTING_STARTED.md): install, configure, and first run
-- [docs/guides/TUI_GUIDE.md](docs/guides/TUI_GUIDE.md): terminal workflow
-- [docs/reference/PYTHON_COMMANDS.md](docs/reference/PYTHON_COMMANDS.md): CLI and Python usage
+- [docs/guides/GETTING_STARTED.md](docs/guides/GETTING_STARTED.md): web-first setup and local development
+- [docs/reference/PYTHON_COMMANDS.md](docs/reference/PYTHON_COMMANDS.md): backend launcher and Python API reference
 - [docs/reference/DATA_OUTPUT_STRUCTURE.md](docs/reference/DATA_OUTPUT_STRUCTURE.md): storage and output layout
-- [docs/architecture/architecture.md](docs/architecture/architecture.md): codebase layout and runtime flow
-- [docs/architecture/RELEASE_D_PLAN.md](docs/architecture/RELEASE_D_PLAN.md): OCR and re-embedding roadmap
+- [docs/architecture/architecture.md](docs/architecture/architecture.md): current web-focused backend/frontend layout
+- [docs/architecture/PRODUCTION_WEB_DEPLOYMENT.md](docs/architecture/PRODUCTION_WEB_DEPLOYMENT.md): production deployment direction

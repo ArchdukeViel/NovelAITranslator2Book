@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "novel-ai"
 version = "0.1.0"
-description = "Web novel scraping, multilingual AI translation, and multi-format export platform with a Rich TUI dashboard."
+description = "Web-based Japanese novel crawling, translation, editing, and reader platform."
 authors = [
   {name = "ArchdukeViel"}
 ]
@@ -18,7 +18,6 @@ dependencies = [
   "uvicorn[standard]>=0.41.0",
   "pydantic>=2.12.5",
   "pydantic-settings>=2.13.1",
-  "rich>=14.3.3",
   "python-dotenv>=1.2.2",
   "httpx>=0.28.1",
   "beautifulsoup4>=4.14.3",
@@ -36,15 +35,8 @@ test = [
   "pytest>=9.0.2",
   "pytest-asyncio>=1.3.0",
 ]
-desktop = [
-  "PySide6>=6.8.0",
-  "watchfiles>=1.1.1",
-]
 documents = [
   "pypdf>=5.4.0",
-]
-build = [
-  "pyinstaller>=6.16.0",
 ]
 dev = [
   "google-genai>=1.36.0",
@@ -54,7 +46,6 @@ dev = [
   "pytest>=9.0.2",
   "pytest-asyncio>=1.3.0",
   "ruff>=0.15.0",
-  "watchfiles>=1.1.1",
 ]
 
 [project.urls]
@@ -67,7 +58,6 @@ where = ["src"]
 [project.scripts]
 novelaibook = "novelai.interfaces.cli:main"
 novelai = "novelai.__main__:main"
-novelaibook-gui = "novelai.interfaces.desktop.app:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -96,8 +86,8 @@ select = [
 ]
 ignore = [
   "E501",   # line too long (handled by formatter)
-  "B008",   # mutable default arg (used intentionally in CLI/Rich)
-  "B023",   # loop variable binding (intentional in TUI callbacks)
+  "B008",   # mutable default arg (used intentionally in CLI helpers)
+  "B023",   # loop variable binding
   "RUF001", # ambiguous unicode (intentional Japanese text in tests)
   "RUF012", # mutable class attribute (used in dataclass-style patterns)
   "SIM102", # nested if (readability preference)

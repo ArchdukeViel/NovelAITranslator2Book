@@ -18,6 +18,14 @@ _OPF_NS = {
 }
 
 
+def _attribute_text(value: object) -> str | None:
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            return stripped
+    return None
+
+
 class EPUBDocumentAdapter(DocumentAdapter):
     @property
     def key(self) -> str:
@@ -70,14 +78,16 @@ class EPUBDocumentAdapter(DocumentAdapter):
                     if not isinstance(img_src, str) or not img_src.strip():
                         continue
                     img_full_path = urljoin(f"{Path(full_path).parent.as_posix()}/", img_src).lstrip("/")
+                    alt_text = _attribute_text(img.get("alt"))
+                    title_text = _attribute_text(img.get("title"))
                     image_assets.append(
                         ImportedAsset(
                             source_ref=f"{path.resolve()}!/{img_full_path}",
                             content=archive.read(img_full_path),
                             content_type=guess_content_type(img_full_path),
-                            placeholder=img.get("alt") or img.get("title") or f"[Image {len(image_assets) + 1}]",
-                            alt=img.get("alt"),
-                            title=img.get("title"),
+                            placeholder=alt_text or title_text or f"[Image {len(image_assets) + 1}]",
+                            alt=alt_text,
+                            title=title_text,
                         )
                     )
 

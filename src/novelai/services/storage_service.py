@@ -76,6 +76,14 @@ class StorageService:
             return []
         return [paragraph for paragraph in re.split(r"\n{2,}", normalized) if paragraph]
 
+    @staticmethod
+    def _clean_string(value: Any, default: str | None = None) -> str | None:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped:
+                return stripped
+        return default
+
     def __init__(self, base_dir: Path | None = None) -> None:
         self.base_dir = (base_dir or settings.DATA_DIR).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
@@ -279,20 +287,17 @@ class StorageService:
         return default.value
 
     def _translated_payload_to_version(self, translated: dict[str, Any], fallback_id: str) -> dict[str, Any]:
-        text = translated.get("text") if isinstance(translated.get("text"), str) else ""
-        created_at = (
-            translated.get("created_at")
-            if isinstance(translated.get("created_at"), str) and translated.get("created_at").strip()
-            else translated.get("translated_at")
-        )
-        if not isinstance(created_at, str) or not created_at.strip():
-            created_at = _utc_now_iso()
+        raw_text = translated.get("text")
+        text = raw_text if isinstance(raw_text, str) else ""
+        created_at = self._clean_string(translated.get("created_at")) or self._clean_string(translated.get("translated_at")) or _utc_now_iso()
+        raw_version_id = translated.get("version_id")
+        raw_id = translated.get("id")
 
         version: dict[str, Any] = {
             "id": (
-                translated.get("version_id")
-                if isinstance(translated.get("version_id"), str)
-                else translated.get("id") if isinstance(translated.get("id"), str) else fallback_id
+                raw_version_id
+                if isinstance(raw_version_id, str)
+                else raw_id if isinstance(raw_id, str) else fallback_id
             ),
             "kind": self._normalize_version_kind(translated.get("version_kind") or translated.get("kind")),
             "provider": translated.get("provider"),
@@ -376,6 +381,8 @@ class StorageService:
         return versions[-1]
 
     def _set_active_translation_version(self, payload: dict[str, Any], version: dict[str, Any]) -> None:
+        raw_text = version.get("text")
+        text = raw_text if isinstance(raw_text, str) else ""
         payload["active_translation_version_id"] = version.get("id")
         payload["translated"] = {
             "version_id": version.get("id"),
@@ -384,8 +391,8 @@ class StorageService:
             "model": version.get("model"),
             "translated_at": version.get("created_at") or version.get("translated_at") or _utc_now_iso(),
             "created_at": version.get("created_at") or version.get("translated_at") or _utc_now_iso(),
-            "text": version.get("text") if isinstance(version.get("text"), str) else "",
-            "paragraphs": self._text_paragraphs(version.get("text") if isinstance(version.get("text"), str) else ""),
+            "text": text,
+            "paragraphs": self._text_paragraphs(text),
         }
         for optional_key in (
             "editor",
@@ -533,37 +540,13 @@ class StorageService:
         payload["ocr_pages"] = normalized_pages
         payload["ocr_status"] = ocr_status
         payload["reembed_status"] = reembed_status
-        payload["input_adapter_key"] = (
-            payload.get("input_adapter_key").strip()
-            if isinstance(payload.get("input_adapter_key"), str) and payload.get("input_adapter_key").strip()
-            else None
-        )
-        payload["origin_type"] = (
-            payload.get("origin_type").strip()
-            if isinstance(payload.get("origin_type"), str) and payload.get("origin_type").strip()
-            else "web"
-        )
-        payload["origin_uri_or_path"] = (
-            payload.get("origin_uri_or_path").strip()
-            if isinstance(payload.get("origin_uri_or_path"), str) and payload.get("origin_uri_or_path").strip()
-            else None
-        )
-        payload["document_type"] = (
-            payload.get("document_type").strip()
-            if isinstance(payload.get("document_type"), str) and payload.get("document_type").strip()
-            else "web_novel"
-        )
-        payload["unit_type"] = (
-            payload.get("unit_type").strip()
-            if isinstance(payload.get("unit_type"), str) and payload.get("unit_type").strip()
-            else "chapter"
-        )
+        payload["input_adapter_key"] = self._clean_string(payload.get("input_adapter_key"))
+        payload["origin_type"] = self._clean_string(payload.get("origin_type"), "web")
+        payload["origin_uri_or_path"] = self._clean_string(payload.get("origin_uri_or_path"))
+        payload["document_type"] = self._clean_string(payload.get("document_type"), "web_novel")
+        payload["unit_type"] = self._clean_string(payload.get("unit_type"), "chapter")
         payload["import_order"] = self._normalize_optional_int(payload.get("import_order"))
-        payload["context_group_id"] = (
-            payload.get("context_group_id").strip()
-            if isinstance(payload.get("context_group_id"), str) and payload.get("context_group_id").strip()
-            else None
-        )
+        payload["context_group_id"] = self._clean_string(payload.get("context_group_id"))
         payload["region_metadata"] = self._normalize_named_dict_items(payload.get("region_metadata"))
         payload["ocr_artifacts"] = self._normalize_named_dict_items(payload.get("ocr_artifacts"))
         return payload
@@ -941,31 +924,13 @@ class StorageService:
         merged["schema_version"] = self.SCHEMA_VERSION
         merged["scraped_at"] = existing.get("scraped_at") or merged.get("scraped_at") or _utc_now_iso()
         merged["updated_at"] = _utc_now_iso()
-        merged["origin_type"] = (
-            merged.get("origin_type").strip()
-            if isinstance(merged.get("origin_type"), str) and merged.get("origin_type").strip()
-            else ("url" if isinstance(merged.get("source_url"), str) and merged.get("source_url") else "library")
-        )
-        merged["origin_uri_or_path"] = (
-            merged.get("origin_uri_or_path").strip()
-            if isinstance(merged.get("origin_uri_or_path"), str) and merged.get("origin_uri_or_path").strip()
-            else (merged.get("source_url") if isinstance(merged.get("source_url"), str) else None)
-        )
-        merged["document_type"] = (
-            merged.get("document_type").strip()
-            if isinstance(merged.get("document_type"), str) and merged.get("document_type").strip()
-            else "web_novel"
-        )
-        merged["input_adapter_key"] = (
-            merged.get("input_adapter_key").strip()
-            if isinstance(merged.get("input_adapter_key"), str) and merged.get("input_adapter_key").strip()
-            else None
-        )
-        merged["context_group_id"] = (
-            merged.get("context_group_id").strip()
-            if isinstance(merged.get("context_group_id"), str) and merged.get("context_group_id").strip()
-            else novel_id
-        )
+        source_url = merged.get("source_url")
+        source_url_text = self._clean_string(source_url)
+        merged["origin_type"] = self._clean_string(merged.get("origin_type"), "url" if source_url_text else "library")
+        merged["origin_uri_or_path"] = self._clean_string(merged.get("origin_uri_or_path"), source_url_text)
+        merged["document_type"] = self._clean_string(merged.get("document_type"), "web_novel")
+        merged["input_adapter_key"] = self._clean_string(merged.get("input_adapter_key"))
+        merged["context_group_id"] = self._clean_string(merged.get("context_group_id"), novel_id)
         merged["translation_profiles"] = normalize_workflow_profiles(merged.get("translation_profiles", existing.get("translation_profiles")))
 
         titles = existing.get("titles", {}) if isinstance(existing.get("titles"), dict) else {}
@@ -1002,31 +967,12 @@ class StorageService:
             if not isinstance(payload, dict):
                 return None
             payload["translation_profiles"] = normalize_workflow_profiles(payload.get("translation_profiles"))
-            payload["origin_type"] = (
-                payload.get("origin_type").strip()
-                if isinstance(payload.get("origin_type"), str) and payload.get("origin_type").strip()
-                else ("url" if isinstance(payload.get("source_url"), str) and payload.get("source_url") else "library")
-            )
-            payload["origin_uri_or_path"] = (
-                payload.get("origin_uri_or_path").strip()
-                if isinstance(payload.get("origin_uri_or_path"), str) and payload.get("origin_uri_or_path").strip()
-                else None
-            )
-            payload["document_type"] = (
-                payload.get("document_type").strip()
-                if isinstance(payload.get("document_type"), str) and payload.get("document_type").strip()
-                else "web_novel"
-            )
-            payload["input_adapter_key"] = (
-                payload.get("input_adapter_key").strip()
-                if isinstance(payload.get("input_adapter_key"), str) and payload.get("input_adapter_key").strip()
-                else None
-            )
-            payload["context_group_id"] = (
-                payload.get("context_group_id").strip()
-                if isinstance(payload.get("context_group_id"), str) and payload.get("context_group_id").strip()
-                else novel_id
-            )
+            source_url_text = self._clean_string(payload.get("source_url"))
+            payload["origin_type"] = self._clean_string(payload.get("origin_type"), "url" if source_url_text else "library")
+            payload["origin_uri_or_path"] = self._clean_string(payload.get("origin_uri_or_path"))
+            payload["document_type"] = self._clean_string(payload.get("document_type"), "web_novel")
+            payload["input_adapter_key"] = self._clean_string(payload.get("input_adapter_key"))
+            payload["context_group_id"] = self._clean_string(payload.get("context_group_id"), novel_id)
             return payload
         except (json.JSONDecodeError, OSError):
             logger.warning("Corrupted metadata for novel %s.", novel_id)
