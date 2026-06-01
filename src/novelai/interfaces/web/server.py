@@ -6,12 +6,13 @@ from novelai.config.settings import settings
 from novelai.interfaces.web.api import app
 
 
-def main() -> None:
+def main(*, reload: bool = False) -> None:
     uvicorn.run(
-        app,
+        "novelai.interfaces.web.api:app" if reload else app,
         host=settings.WEB_HOST,
         port=settings.WEB_PORT,
         log_level=settings.LOG_LEVEL.lower(),
+        reload=reload,
     )
 
 

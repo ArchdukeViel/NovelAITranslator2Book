@@ -64,43 +64,44 @@ class SourceAdapter(ABC):
         """Execute an async no-arg callable with retry on transient HTTP errors.
 
         Retries on connection errors, timeouts, and 429/5xx status codes.
-        Uses exponential backoff with jitter via :class:`BackoffCalculator`.
+        Uses the project's :class:`Retrier` with a conservative config.
         """
-        from novelai.utils.retry_decorator import BackoffCalculator, RetryConfig, RetryStrategy
+        from novelai.utils.retry_decorator import RetryConfig, Retrier
 
         config = RetryConfig(
             max_attempts=3,
             initial_delay=1.0,
             max_delay=30.0,
-            strategy=RetryStrategy.EXPONENTIAL,
             jitter=True,
+            # Only retry on network/calendar errors and HTTPStatusError
+            retry_on=(httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError),
         )
-        backoff = BackoffCalculator(config)
-        last_exc: Exception | None = None
 
-        for attempt in range(config.max_attempts):
+        retrier = Retrier(config)
+
+        class _NonRetryableError(Exception):
+            pass
+
+        async def _wrapped() -> _T:
             try:
                 return await fn()
-            except (httpx.TimeoutException, httpx.ConnectError) as exc:
-                last_exc = exc
             except httpx.HTTPStatusError as exc:
+                # If status code isn't considered retryable, surface as non-retryable
                 if exc.response.status_code not in self._RETRYABLE_STATUS_CODES:
-                    raise
-                last_exc = exc
+                    raise _NonRetryableError(exc)
+                raise
 
-            if attempt < config.max_attempts - 1:
-                delay = backoff.calculate(attempt)
-                logger.warning(
-                    "Attempt %d/%d failed: %s — retrying in %.2fs",
-                    attempt + 1,
-                    config.max_attempts,
-                    last_exc,
-                    delay,
-                )
-                await asyncio.sleep(delay)
-
-        assert last_exc is not None  # guaranteed after at least one iteration
-        raise last_exc
+        try:
+            return await retrier.execute_async(_wrapped)
+        except _NonRetryableError as exc:
+            # Unwrap original HTTPStatusError passed as the first arg when
+            # the sentinel _NonRetryableError was raised above. Guard against
+            # missing/None values so we never attempt to raise a non-BaseException.
+            original = exc.args[0] if exc.args else None
+            if isinstance(original, BaseException):
+                raise original from exc
+            # Fall back to re-raising the wrapper if no valid inner exception.
+            raise
 
     @property
     @abstractmethod
@@ -139,8 +140,10 @@ class SourceAdapter(ABC):
         if isinstance(referer, str) and referer.strip():
             headers["Referer"] = referer.strip()
 
+        from novelai.utils.http_client import create_async_client
+
         async def _do_request() -> httpx.Response:
-            async with httpx.AsyncClient(timeout=30, headers=headers, follow_redirects=True) as client:
+            async with create_async_client(headers=headers) as client:
                 resp = await client.get(url)
                 resp.raise_for_status()
                 return resp

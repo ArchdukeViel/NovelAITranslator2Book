@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +62,13 @@ class PreferencesService:
         )
 
     @staticmethod
+    def _clean_text(value: Any) -> str | None:
+        if not isinstance(value, str):
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+    @staticmethod
     def _default_step_configs() -> dict[str, dict[str, Any]]:
         return {
             step: {
@@ -96,15 +102,15 @@ class PreferencesService:
                     continue
                 merged_step_configs[normalized_step].update(
                     {
-                        "endpoint_profile": payload.get("endpoint_profile"),
-                        "provider": payload.get("provider"),
-                        "model": payload.get("model"),
+                        "endpoint_profile": self._clean_text(payload.get("endpoint_profile")),
+                        "provider": self._clean_text(payload.get("provider")),
+                        "model": self._clean_text(payload.get("model")),
                         "temperature": payload.get("temperature"),
                         "timeout": payload.get("timeout"),
                         "max_retries": payload.get("max_retries"),
                         "concurrency": payload.get("concurrency"),
                         "kwargs": payload.get("kwargs") if isinstance(payload.get("kwargs"), dict) else {},
-                        "prompt_template": payload.get("prompt_template"),
+                        "prompt_template": self._clean_text(payload.get("prompt_template")),
                     }
                 )
 
@@ -264,16 +270,16 @@ class PreferencesService:
             raise ValueError("Endpoint profile name must not be empty.")
         profiles = self.get_llm_endpoint_profiles()
         profiles[profile_name] = {
-            "provider": payload.get("provider") if isinstance(payload.get("provider"), str) and payload.get("provider").strip() else None,
-            "model": payload.get("model") if isinstance(payload.get("model"), str) and payload.get("model").strip() else None,
+            "provider": self._clean_text(payload.get("provider")),
+            "model": self._clean_text(payload.get("model")),
             "temperature": payload.get("temperature") if isinstance(payload.get("temperature"), (int, float)) else None,
             "timeout": payload.get("timeout") if isinstance(payload.get("timeout"), (int, float)) else None,
             "max_retries": payload.get("max_retries") if isinstance(payload.get("max_retries"), int) else None,
             "concurrency": payload.get("concurrency") if isinstance(payload.get("concurrency"), int) else None,
             "kwargs": payload.get("kwargs") if isinstance(payload.get("kwargs"), dict) else {},
-            "api_key_env": payload.get("api_key_env") if isinstance(payload.get("api_key_env"), str) and payload.get("api_key_env").strip() else None,
-            "base_url": payload.get("base_url") if isinstance(payload.get("base_url"), str) and payload.get("base_url").strip() else None,
-            "api_version": payload.get("api_version") if isinstance(payload.get("api_version"), str) and payload.get("api_version").strip() else None,
+            "api_key_env": self._clean_text(payload.get("api_key_env")),
+            "base_url": self._clean_text(payload.get("base_url")),
+            "api_version": self._clean_text(payload.get("api_version")),
         }
         self.set(self.LLM_ENDPOINT_PROFILES_KEY, profiles)
 
@@ -292,15 +298,15 @@ class PreferencesService:
                     continue
                 merged[normalized_step].update(
                     {
-                        "endpoint_profile": payload.get("endpoint_profile") if isinstance(payload.get("endpoint_profile"), str) else None,
-                        "provider": payload.get("provider") if isinstance(payload.get("provider"), str) else None,
-                        "model": payload.get("model") if isinstance(payload.get("model"), str) else None,
+                        "endpoint_profile": self._clean_text(payload.get("endpoint_profile")),
+                        "provider": self._clean_text(payload.get("provider")),
+                        "model": self._clean_text(payload.get("model")),
                         "temperature": payload.get("temperature") if isinstance(payload.get("temperature"), (int, float)) else None,
                         "timeout": payload.get("timeout") if isinstance(payload.get("timeout"), (int, float)) else None,
                         "max_retries": payload.get("max_retries") if isinstance(payload.get("max_retries"), int) else None,
                         "concurrency": payload.get("concurrency") if isinstance(payload.get("concurrency"), int) else None,
                         "kwargs": payload.get("kwargs") if isinstance(payload.get("kwargs"), dict) else {},
-                        "prompt_template": payload.get("prompt_template") if isinstance(payload.get("prompt_template"), str) else None,
+                        "prompt_template": self._clean_text(payload.get("prompt_template")),
                     }
                 )
         return merged
@@ -319,15 +325,15 @@ class PreferencesService:
         current = dict(step_configs[normalized_step])
         current.update(overrides)
         sanitized = {
-            "endpoint_profile": current.get("endpoint_profile") if isinstance(current.get("endpoint_profile"), str) and current.get("endpoint_profile").strip() else None,
-            "provider": current.get("provider") if isinstance(current.get("provider"), str) and current.get("provider").strip() else None,
-            "model": current.get("model") if isinstance(current.get("model"), str) and current.get("model").strip() else None,
+            "endpoint_profile": self._clean_text(current.get("endpoint_profile")),
+            "provider": self._clean_text(current.get("provider")),
+            "model": self._clean_text(current.get("model")),
             "temperature": current.get("temperature") if isinstance(current.get("temperature"), (int, float)) else None,
             "timeout": current.get("timeout") if isinstance(current.get("timeout"), (int, float)) else None,
             "max_retries": current.get("max_retries") if isinstance(current.get("max_retries"), int) else None,
             "concurrency": current.get("concurrency") if isinstance(current.get("concurrency"), int) else None,
             "kwargs": current.get("kwargs") if isinstance(current.get("kwargs"), dict) else {},
-            "prompt_template": current.get("prompt_template") if isinstance(current.get("prompt_template"), str) and current.get("prompt_template").strip() else None,
+            "prompt_template": self._clean_text(current.get("prompt_template")),
         }
         step_configs[normalized_step] = sanitized
         self.set(self.LLM_STEP_CONFIGS_KEY, step_configs)
@@ -363,8 +369,9 @@ class PreferencesService:
             for key in ("provider", "model", "temperature", "timeout", "max_retries", "concurrency"):
                 if resolved.get(key) is None and profile.get(key) is not None:
                     resolved[key] = profile.get(key)
-            profile_kwargs = profile.get("kwargs") if isinstance(profile.get("kwargs"), dict) else {}
-            resolved["kwargs"] = {**profile_kwargs, **resolved["kwargs"]}
+            profile_kwargs: dict[str, Any] = profile["kwargs"] if isinstance(profile.get("kwargs"), dict) else {}
+            resolved_kwargs: dict[str, Any] = resolved["kwargs"] if isinstance(resolved["kwargs"], dict) else {}
+            resolved["kwargs"] = {**profile_kwargs, **resolved_kwargs}
 
         return resolved
 
@@ -373,8 +380,9 @@ class PreferencesService:
         if not isinstance(payload, dict):
             return "heuristic"
         mode = payload.get("mode")
-        if isinstance(mode, str) and mode.strip().lower() in {"heuristic", "llm", "hybrid"}:
-            return mode.strip().lower()
+        cleaned_mode = self._clean_text(mode)
+        if cleaned_mode in {"heuristic", "llm", "hybrid"}:
+            return cleaned_mode
         return "heuristic"
 
     def set_glossary_extraction_mode(self, mode: str) -> None:
@@ -400,7 +408,7 @@ class PreferencesService:
         payload = self.get(self.GLOSSARY_EXTRACTION_KEY, {})
         if not isinstance(payload, dict):
             payload = {}
-        payload["prompt_template"] = prompt_template.strip() if isinstance(prompt_template, str) and prompt_template.strip() else None
+        payload["prompt_template"] = self._clean_text(prompt_template)
         self.set(self.GLOSSARY_EXTRACTION_KEY, payload)
 
     # ============================================================================
@@ -451,20 +459,19 @@ class PreferencesService:
 
     def set_api_key(self, api_key: str, provider_key: str = "openai") -> None:
         """Update the runtime API key without persisting it to disk."""
+        # NOTE: Do not persist API keys to process environment; store in
+        # runtime settings only (SecretStr). This avoids accidental leakage
+        # to subprocesses and keeps keys in-memory.
         if provider_key == "gemini":
-            os.environ["PROVIDER_GEMINI_API_KEY"] = api_key
             settings.PROVIDER_GEMINI_API_KEY = SecretStr(api_key)
             return
-        os.environ["PROVIDER_OPENAI_API_KEY"] = api_key
         settings.PROVIDER_OPENAI_API_KEY = SecretStr(api_key)
 
     def clear_api_key(self, provider_key: str = "openai") -> None:
         """Remove the runtime API key from environment-backed settings."""
         if provider_key == "gemini":
-            os.environ.pop("PROVIDER_GEMINI_API_KEY", None)
             settings.PROVIDER_GEMINI_API_KEY = None
             return
-        os.environ.pop("PROVIDER_OPENAI_API_KEY", None)
         settings.PROVIDER_OPENAI_API_KEY = None
 
     def get_glossary_extraction_max_terms(self) -> int:

@@ -96,7 +96,8 @@ def main(argv: list[str] | None = None) -> None:
     subparsers = parser.add_subparsers(dest="command")
 
     # Web mode
-    subparsers.add_parser("web", help="Run the web server")
+    web_parser = subparsers.add_parser("web", help="Run the web server")
+    web_parser.add_argument("--reload", action="store_true", help="Reload the web server when Python files change.")
 
     # TUI mode (default)
     subparsers.add_parser("tui", help="Run the interactive TUI")
@@ -261,7 +262,7 @@ def main(argv: list[str] | None = None) -> None:
         desktop_main()
         return
     if args.command == "web":
-        web_main()
+        web_main(reload=bool(args.reload))
         return
     if args.command == "doctor":
         warnings, lines = _doctor_check()

@@ -20,6 +20,8 @@ from novelai.sources._helpers import (
     iter_story_blocks,
 )
 from novelai.sources.base import SourceAdapter, validate_url
+from novelai.sources.html_parsers import HTMLParserMixin
+from novelai.utils.text_normalization import normalize_text as _shared_normalize_text
 
 # Selectors tried in order to find the main story text.
 _BODY_SELECTORS: tuple[str, ...] = (
@@ -97,12 +99,10 @@ class GenericSource(SourceAdapter):
         validate_url(url)
         await self._rate_limit()
         try:
+            from novelai.utils.http_client import create_async_client
+
             async def _do_request() -> httpx.Response:
-                async with httpx.AsyncClient(
-                    timeout=30,
-                    headers=self._request_headers(),
-                    follow_redirects=True,
-                ) as client:
+                async with create_async_client(headers=self._request_headers()) as client:
                     resp = await client.get(url)
                     resp.raise_for_status()
                     return resp
@@ -139,35 +139,11 @@ class GenericSource(SourceAdapter):
 
     @staticmethod
     def _extract_title(soup: BeautifulSoup) -> str | None:
-        for selector in _TITLE_SELECTORS:
-            node = soup.select_one(selector)
-            if node is None:
-                continue
-            if isinstance(node, Tag) and node.name == "meta":
-                content = node.get("content")
-                if isinstance(content, str) and content.strip():
-                    return content.strip()
-            elif isinstance(node, Tag):
-                text = node.get_text(strip=True)
-                if text:
-                    return text
-        return None
+        return HTMLParserMixin.extract_title(soup, _TITLE_SELECTORS)
 
     @staticmethod
     def _extract_author(soup: BeautifulSoup) -> str | None:
-        for selector in _AUTHOR_SELECTORS:
-            node = soup.select_one(selector)
-            if node is None:
-                continue
-            if isinstance(node, Tag) and node.name == "meta":
-                content = node.get("content")
-                if isinstance(content, str) and content.strip():
-                    return content.strip()
-            elif isinstance(node, Tag):
-                text = node.get_text(strip=True)
-                if text:
-                    return text
-        return None
+        return HTMLParserMixin.extract_author(soup, _AUTHOR_SELECTORS)
 
     def _extract_chapters_from_toc(
         self, soup: BeautifulSoup, base_url: str
@@ -209,15 +185,7 @@ class GenericSource(SourceAdapter):
 
     @staticmethod
     def _normalize_text(text: str) -> str:
-        text = text.replace("\r\n", "\n").replace("\r", "\n")
-        lines = [line.strip(" \t") for line in text.split("\n")]
-        normalised: list[str] = []
-        for line in lines:
-            if line:
-                normalised.append(line)
-            elif normalised and normalised[-1] != "":
-                normalised.append("")
-        return "\n".join(normalised).strip()
+        return _shared_normalize_text(text)
 
     def _render_body(self, section: Tag) -> str:
         for img in section.find_all("img"):

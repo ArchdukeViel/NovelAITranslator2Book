@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from novelai.config.settings import settings
+from novelai.core.errors import ProviderError
 from novelai.glossary import (
     GlossaryTerm,
     extract_term_context,
@@ -176,6 +177,20 @@ class TranslateStage(PipelineStage):
     ) -> str:
         provider_key, model = self._resolve_provider_and_model(provider_key, model)
         provider = self._provider_factory(provider_key)
+        # Validate model against provider's supported models when available.
+        try:
+            supported = provider.available_models() or []
+        except Exception:
+            supported = []
+        if supported and model not in supported:
+            # Fall back to first supported model and log a warning.
+            logger.warning(
+                "Requested model '%s' not supported by provider '%s'; falling back to '%s'.",
+                model,
+                provider_key,
+                supported[0],
+            )
+            model = supported[0]
         cache_key = request.cache_key() if request is not None else chunk
         cached = self._cache.get(cache_key, provider.key, model)
         if cached is not None:

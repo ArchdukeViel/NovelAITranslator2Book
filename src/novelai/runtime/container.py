@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from novelai.config.settings import settings
 from novelai.providers.registry import get_provider
 from novelai.services.export_service import ExportService
+from novelai.services.job_queue_service import JobQueueService
+from novelai.services.job_runner_service import BackgroundJobRunner
+from novelai.services.job_worker_service import JobWorkerService
+from novelai.services.novel_request_service import NovelRequestService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.storage_service import StorageService
@@ -27,9 +32,13 @@ class Container:
     _settings: PreferencesService | None = None
     _preferences: PreferencesService | None = None
     _usage: UsageService | None = None
+    _jobs: JobQueueService | None = None
+    _requests: NovelRequestService | None = None
     _translation: TranslationService | None = None
     _export: ExportService | None = None
     _orchestrator: NovelOrchestrationService | None = None
+    _job_worker: JobWorkerService | None = None
+    _job_runner: BackgroundJobRunner | None = None
 
     @property
     def storage(self) -> StorageService:
@@ -60,6 +69,33 @@ class Container:
         if self._usage is None:
             self._usage = UsageService()
         return self._usage
+
+    @property
+    def jobs(self) -> JobQueueService:
+        if self._jobs is None:
+            self._jobs = JobQueueService()
+        return self._jobs
+
+    @property
+    def requests(self) -> NovelRequestService:
+        if self._requests is None:
+            self._requests = NovelRequestService()
+        return self._requests
+
+    @property
+    def job_worker(self) -> JobWorkerService:
+        if self._job_worker is None:
+            self._job_worker = JobWorkerService(self.jobs, self.orchestrator)
+        return self._job_worker
+
+    @property
+    def job_runner(self) -> BackgroundJobRunner:
+        if self._job_runner is None:
+            self._job_runner = BackgroundJobRunner(
+                self.job_worker,
+                poll_seconds=settings.JOB_WORKER_POLL_SECONDS,
+            )
+        return self._job_runner
 
     @property
     def translation(self) -> TranslationService:

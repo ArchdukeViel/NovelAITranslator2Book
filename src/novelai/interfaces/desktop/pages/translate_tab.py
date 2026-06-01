@@ -426,15 +426,11 @@ class TranslateTab(QWidget):
         if not text:
             QMessageBox.warning(self, "Missing Translation", "Translated text cannot be empty.")
             return
-        existing = desktop_shared.container.storage.load_translated_chapter(self.novel_id, chapter_id) or {}
-        provider = existing.get("provider") if isinstance(existing.get("provider"), str) else None
-        model = existing.get("model") if isinstance(existing.get("model"), str) else None
-        desktop_shared.container.storage.save_translated_chapter(
+        desktop_shared.container.storage.save_edited_translation(
             self.novel_id,
             chapter_id,
             text,
-            provider=provider,
-            model=model,
+            editor="desktop",
         )
         self.activity.emit(f"Saved reviewed translation for chapter {chapter_id}.")
         if self.refresh_callback is not None:

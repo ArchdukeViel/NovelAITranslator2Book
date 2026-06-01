@@ -112,6 +112,83 @@ def test_save_and_load_translated_chapter(storage):
     assert loaded["provider"] == "openai"
 
 
+def test_translated_chapter_versions_keep_machine_history(storage):
+    storage.save_translated_chapter("novel1", "ch1", "machine one", provider="openai", model="gpt-5.4")
+    storage.save_translated_chapter("novel1", "ch1", "machine two", provider="gemini", model="gemini-3")
+
+    versions = storage.list_translated_chapter_versions("novel1", "ch1")
+    loaded = storage.load_translated_chapter("novel1", "ch1")
+
+    assert len(versions) == 2
+    assert versions[0]["text"] == "machine one"
+    assert versions[0]["version_kind"] == "machine_translation"
+    assert versions[1]["text"] == "machine two"
+    assert versions[1]["active"] is True
+    assert loaded is not None
+    assert loaded["text"] == "machine two"
+    assert loaded["version_id"] == versions[1]["version_id"]
+
+
+def test_save_edited_translation_creates_manual_version_and_history(storage):
+    storage.save_translated_chapter("novel1", "ch1", "machine translation", provider="openai", model="gpt-5.4")
+
+    storage.save_edited_translation(
+        "novel1",
+        "ch1",
+        "edited translation",
+        editor="admin",
+        note="fixed honorifics",
+    )
+
+    loaded = storage.load_translated_chapter("novel1", "ch1")
+    versions = storage.list_translated_chapter_versions("novel1", "ch1")
+    history = storage.load_translation_edit_history("novel1", "ch1")
+
+    assert loaded is not None
+    assert loaded["text"] == "edited translation"
+    assert loaded["version_kind"] == "manual_edit"
+    assert loaded["editor"] == "admin"
+    assert len(versions) == 2
+    assert versions[1]["base_version_id"] == versions[0]["version_id"]
+    assert history == [
+        {
+            "id": "e1",
+            "action": "manual_edit",
+            "version_id": versions[1]["version_id"],
+            "previous_version_id": versions[0]["version_id"],
+            "created_at": history[0]["created_at"],
+            "editor": "admin",
+            "note": "fixed honorifics",
+        }
+    ]
+
+
+def test_activate_translated_chapter_version_rolls_back_active_output(storage):
+    storage.save_translated_chapter("novel1", "ch1", "machine translation", provider="openai", model="gpt-5.4")
+    storage.save_edited_translation("novel1", "ch1", "edited translation", editor="admin")
+
+    assert storage.activate_translated_chapter_version(
+        "novel1",
+        "ch1",
+        "v1",
+        editor="admin",
+        note="restore machine output",
+    ) is True
+
+    loaded = storage.load_translated_chapter("novel1", "ch1")
+    versions = storage.list_translated_chapter_versions("novel1", "ch1")
+    history = storage.load_translation_edit_history("novel1", "ch1")
+
+    assert loaded is not None
+    assert loaded["text"] == "machine translation"
+    assert loaded["version_id"] == "v1"
+    assert versions[0]["active"] is True
+    assert versions[1]["active"] is False
+    assert history[-1]["action"] == "rollback"
+    assert history[-1]["version_id"] == "v1"
+    assert history[-1]["previous_version_id"] == "v2"
+
+
 def test_list_stored_chapters_includes_raw_and_translated_entries(storage):
     storage.save_chapter("novel1", "1", "raw only", title="Chapter 1")
     storage.save_translated_chapter("novel1", "2", "translated only", provider="openai", model="gpt-5.4")

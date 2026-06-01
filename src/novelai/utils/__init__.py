@@ -20,7 +20,19 @@ def atomic_write(path: Path, content: str) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)
-        os.replace(tmp, path)
+        try:
+            os.replace(tmp, path)
+        except PermissionError:
+            # On Windows the target may be briefly locked; try to remove then replace.
+            try:
+                with contextlib.suppress(OSError):
+                    os.remove(path)
+                os.replace(tmp, path)
+            except Exception:
+                # final fallback: ensure temp is removed and raise
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp)
+                raise
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)

@@ -14,6 +14,8 @@ from novelai.sources._helpers import (
     iter_story_blocks,
 )
 from novelai.sources.base import SourceAdapter
+from novelai.sources.html_parsers import HTMLParserMixin
+from novelai.utils.text_normalization import normalize_text
 
 
 class SyosetuNcodeSource(SourceAdapter):
@@ -105,12 +107,11 @@ class SyosetuNcodeSource(SourceAdapter):
     async def _fetch_page(self, url: str) -> str:
         await self._rate_limit()
         try:
+            from novelai.utils.http_client import create_async_client
+
             async def _do_request() -> httpx.Response:
-                async with httpx.AsyncClient(
-                    timeout=30,
-                    headers=self._request_headers(),
-                    cookies=self._build_request_cookies(),
-                    follow_redirects=True,
+                async with create_async_client(
+                    headers=self._request_headers(), cookies=self._build_request_cookies()
                 ) as client:
                     resp = await client.get(url)
                     resp.raise_for_status()
@@ -130,12 +131,11 @@ class SyosetuNcodeSource(SourceAdapter):
     async def fetch_asset(self, url: str, *, referer: str | None = None) -> dict[str, Any]:
         await self._rate_limit()
         try:
+            from novelai.utils.http_client import create_async_client
+
             async def _do_request() -> httpx.Response:
-                async with httpx.AsyncClient(
-                    timeout=30,
-                    headers=self._request_headers(referer=referer),
-                    cookies=self._build_request_cookies(),
-                    follow_redirects=True,
+                async with create_async_client(
+                    headers=self._request_headers(referer=referer), cookies=self._build_request_cookies()
                 ) as client:
                     response = await client.get(url)
                     response.raise_for_status()
@@ -156,21 +156,17 @@ class SyosetuNcodeSource(SourceAdapter):
         }
 
     def _extract_title(self, soup: BeautifulSoup) -> str | None:
-        title_tag = (
-            soup.select_one(".p-novel__title")
-            or soup.select_one("h1.p-novel__title")
-            or soup.find("p", class_="novel_title")
-            or soup.find("h1", class_="novel_title")
+        selectors = (
+            ".p-novel__title",
+            "h1.p-novel__title",
+            "p.novel_title",
+            "h1.novel_title",
         )
-        if not title_tag:
-            return None
-        return title_tag.get_text(strip=True) or None
+        return HTMLParserMixin.extract_title(soup, selectors)
 
     def _extract_author(self, soup: BeautifulSoup) -> str | None:
-        author_tag = soup.select_one(".p-novel__author") or soup.find(id="novel_writername")
-        if not author_tag:
-            return None
-        return author_tag.get_text(strip=True) or None
+        selectors = (".p-novel__author", "#novel_writername")
+        return HTMLParserMixin.extract_author(soup, selectors)
 
     def _extract_page_numbers(self, soup: BeautifulSoup, url: str) -> list[int]:
         base_url = httpx.URL(url)
@@ -270,18 +266,7 @@ class SyosetuNcodeSource(SourceAdapter):
         return prepared
 
     def _normalize_story_text(self, text: str) -> str:
-        text = text.replace("\r\n", "\n").replace("\r", "\n")
-        lines = [line.strip(" \t") for line in text.split("\n")]
-        normalized: list[str] = []
-
-        for line in lines:
-            if line:
-                normalized.append(line)
-                continue
-            if normalized and normalized[-1] != "":
-                normalized.append("")
-
-        return "\n".join(normalized).strip()
+        return normalize_text(text)
 
     def _extract_text_from_tag(self, tag: Tag) -> str:
         if tag.name.lower() == "img":

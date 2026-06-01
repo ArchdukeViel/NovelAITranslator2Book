@@ -50,7 +50,15 @@ PROVIDER_OPENAI_API_KEY=your_key_here
 PROVIDER_GEMINI_API_KEY=your_key_here
 TRANSLATION_TARGET_LANGUAGE=English
 LOG_LEVEL=INFO
+WEB_RATE_LIMITER_BACKEND=memory
 ```
+
+Rate limiter backends:
+
+- `memory`: in-process sliding window limiter, best for local development and single-worker deployments
+- `disabled`: allows all requests, useful for tests or temporary troubleshooting
+
+The default is `memory`. Add additional backends in code if you need a shared store such as Redis.
 
 ## LLM Ops Configuration
 

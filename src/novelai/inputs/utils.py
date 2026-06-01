@@ -4,12 +4,8 @@ import mimetypes
 import re
 from pathlib import Path
 
-
-def normalize_text(text: str) -> str:
-    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-    normalized = re.sub(r"[ \t]+\n", "\n", normalized)
-    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
-    return normalized.strip()
+# Use shared normalization utility
+from novelai.utils.text_normalization import normalize_text
 
 
 def guess_content_type(name: str) -> str | None:

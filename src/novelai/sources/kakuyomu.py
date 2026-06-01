@@ -14,6 +14,8 @@ from novelai.sources._helpers import (
     iter_story_blocks,
 )
 from novelai.sources.base import SourceAdapter
+from novelai.sources.html_parsers import HTMLParserMixin
+from novelai.utils.text_normalization import normalize_text
 
 
 class KakuyomuSource(SourceAdapter):
@@ -122,12 +124,10 @@ class KakuyomuSource(SourceAdapter):
     async def _fetch_page(self, url: str) -> str:
         await self._rate_limit()
         try:
+            from novelai.utils.http_client import create_async_client
+
             async def _do_request() -> httpx.Response:
-                async with httpx.AsyncClient(
-                    timeout=30,
-                    headers=self._request_headers(),
-                    follow_redirects=True,
-                ) as client:
+                async with create_async_client(headers=self._request_headers()) as client:
                     resp = await client.get(url)
                     resp.raise_for_status()
                     return resp
@@ -145,12 +145,10 @@ class KakuyomuSource(SourceAdapter):
     async def fetch_asset(self, url: str, *, referer: str | None = None) -> dict[str, Any]:
         await self._rate_limit()
         try:
+            from novelai.utils.http_client import create_async_client
+
             async def _do_request() -> httpx.Response:
-                async with httpx.AsyncClient(
-                    timeout=30,
-                    headers=self._request_headers(referer=referer),
-                    follow_redirects=True,
-                ) as client:
+                async with create_async_client(headers=self._request_headers(referer=referer)) as client:
                     response = await client.get(url)
                     response.raise_for_status()
                     return response
@@ -180,10 +178,10 @@ class KakuyomuSource(SourceAdapter):
         return None
 
     def _extract_work_title(self, soup: BeautifulSoup) -> str | None:
-        return self._first_text(soup, self.TITLE_SELECTORS)
+        return HTMLParserMixin.extract_title(soup, self.TITLE_SELECTORS)
 
     def _extract_author(self, soup: BeautifulSoup) -> str | None:
-        author = self._first_text(soup, self.AUTHOR_SELECTORS)
+        author = HTMLParserMixin.extract_author(soup, self.AUTHOR_SELECTORS)
         if author:
             return author
         meta = soup.find("meta", attrs={"name": "author"})
@@ -311,18 +309,7 @@ class KakuyomuSource(SourceAdapter):
         return prepared
 
     def _normalize_story_text(self, text: str) -> str:
-        text = text.replace("\r\n", "\n").replace("\r", "\n")
-        lines = [line.strip(" \t") for line in text.split("\n")]
-        normalized: list[str] = []
-
-        for line in lines:
-            if line:
-                normalized.append(line)
-                continue
-            if normalized and normalized[-1] != "":
-                normalized.append("")
-
-        return "\n".join(normalized).strip()
+        return normalize_text(text)
 
     def _extract_text_from_tag(self, tag: Tag) -> str:
         if tag.name.lower() == "img":
