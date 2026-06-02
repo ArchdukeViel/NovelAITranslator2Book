@@ -56,7 +56,7 @@ dev = [
 where = ["backend/src"]
 
 [project.scripts]
-novelaibook = "novelai.interfaces.cli:main"
+novelaibook = "novelai.runtime.cli:main"
 novelai = "novelai.__main__:main"
 
 [tool.pytest.ini_options]

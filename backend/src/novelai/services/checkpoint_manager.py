@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from novelai.core.chapter_state import ChapterState
-from novelai.services.storage_service import StorageService
+from novelai.storage.service import StorageService
 
 logger = logging.getLogger(__name__)
 

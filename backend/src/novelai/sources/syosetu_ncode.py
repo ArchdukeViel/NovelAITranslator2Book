@@ -23,6 +23,20 @@ class SyosetuNcodeSource(SourceAdapter):
 
     NOVEL_ID_PATTERN = re.compile(r"^n\d{4}[a-z]{2}$", re.IGNORECASE)
     NOVEL_ID_PATH_PATTERN = re.compile(r"/(n\d{4}[a-z]{2})(?:/|$)", re.IGNORECASE)
+    SOURCE_DATE_PATTERN = re.compile(r"\d{4}/\d{1,2}/\d{1,2}(?:\s+\d{1,2}:\d{2})?")
+    PART_HEADING_CLASSES = {
+        "chapter_title",
+        "p-eplist__chapter-title",
+        "p-eplist__volume-title",
+        "p-eplist__part-title",
+        "p-eplist__group-title",
+    }
+    CHAPTER_ROW_CLASSES = {
+        "novel_sublist2",
+        "p-eplist__sublist",
+        "p-eplist__episode",
+        "p-eplist__item",
+    }
     BODY_SELECTORS = (
         "#novel_honbun",
         ".p-novel__text--body",
@@ -168,6 +182,26 @@ class SyosetuNcodeSource(SourceAdapter):
         selectors = (".p-novel__author", "#novel_writername")
         return HTMLParserMixin.extract_author(soup, selectors)
 
+    def _extract_synopsis(self, soup: BeautifulSoup) -> str | None:
+        selectors = (
+            ".p-novel__summary",
+            "#novel_ex",
+            ".novel_ex",
+            "meta[name='description']",
+            "meta[property='og:description']",
+        )
+        for selector in selectors:
+            node = soup.select_one(selector)
+            if not isinstance(node, Tag):
+                continue
+            content = node.get("content")
+            if isinstance(content, str) and content.strip():
+                return normalize_text(content)
+            text = node.get_text("\n", strip=True)
+            if text:
+                return normalize_text(text)
+        return None
+
     def _extract_page_numbers(self, soup: BeautifulSoup, url: str) -> list[int]:
         base_url = httpx.URL(url)
         novel_id = self.normalize_novel_id(url)
@@ -193,16 +227,110 @@ class SyosetuNcodeSource(SourceAdapter):
 
         return sorted(page_numbers)
 
-    def _extract_chapters(self, soup: BeautifulSoup, url: str, title: str | None) -> list[dict[str, str | int]]:
+    @staticmethod
+    def _classes(tag: Tag) -> set[str]:
+        raw_classes = tag.get("class") or []
+        values = raw_classes if isinstance(raw_classes, list) else [raw_classes]
+        return {str(value).strip() for value in values if str(value).strip()}
+
+    def _is_part_heading(self, tag: Tag) -> bool:
+        classes = self._classes(tag)
+        if classes.intersection(self.PART_HEADING_CLASSES):
+            return True
+        if tag.name.lower() not in {"h2", "h3"}:
+            return False
+        text = tag.get_text(" ", strip=True)
+        return bool(text) and not tag.find("a", href=True)
+
+    def _extract_source_date_from_text(self, text: str) -> str | None:
+        match = self.SOURCE_DATE_PATTERN.search(text)
+        return match.group(0) if match else None
+
+    def _extract_source_date_from_node(self, node: Tag) -> str | None:
+        for time_node in node.find_all("time"):
+            if not isinstance(time_node, Tag):
+                continue
+            datetime_value = time_node.get("datetime")
+            if isinstance(datetime_value, str) and datetime_value.strip():
+                source_date = self._extract_source_date_from_text(datetime_value)
+                if source_date:
+                    return source_date
+                return datetime_value.strip()
+            source_date = self._extract_source_date_from_text(time_node.get_text(" ", strip=True))
+            if source_date:
+                return source_date
+
+        source_date = self._extract_source_date_from_text(node.get_text(" ", strip=True))
+        if source_date:
+            return source_date
+
+        title_value = node.get("title")
+        if isinstance(title_value, str):
+            return self._extract_source_date_from_text(title_value)
+        return None
+
+    def _chapter_row_container(self, anchor: Tag) -> Tag | None:
+        current: Tag | None = anchor
+        for _ in range(5):
+            if current is None:
+                break
+            if self._classes(current).intersection(self.CHAPTER_ROW_CLASSES):
+                return current
+            parent = current.parent
+            current = parent if isinstance(parent, Tag) else None
+        return anchor.parent if isinstance(anchor.parent, Tag) else None
+
+    def _extract_chapter_date(self, anchor: Tag) -> str | None:
+        candidates: list[Tag] = []
+        row = self._chapter_row_container(anchor)
+        if row is not None:
+            candidates.append(row)
+        if isinstance(anchor.parent, Tag):
+            candidates.append(anchor.parent)
+            for sibling in list(anchor.parent.next_siblings)[:4] + list(anchor.parent.previous_siblings)[-4:]:
+                if isinstance(sibling, Tag):
+                    candidates.append(sibling)
+        if row is not None:
+            for sibling in list(row.next_siblings)[:3] + list(row.previous_siblings)[-3:]:
+                if isinstance(sibling, Tag):
+                    candidates.append(sibling)
+
+        for candidate in candidates:
+            source_date = self._extract_source_date_from_node(candidate)
+            if source_date:
+                return source_date
+        return None
+
+    def _extract_chapter_part(self, anchor: Tag, current_part: str | None) -> str | None:
+        if isinstance(anchor.parent, Tag):
+            for sibling in reversed(list(anchor.parent.previous_siblings)[-8:]):
+                if isinstance(sibling, Tag) and self._is_part_heading(sibling):
+                    text = sibling.get_text(" ", strip=True)
+                    if text:
+                        return text
+        return current_part
+
+    def _extract_chapters(self, soup: BeautifulSoup, url: str, title: str | None) -> list[dict[str, Any]]:
         base_url = httpx.URL(url)
         novel_id = self.normalize_novel_id(url)
         chapter_pattern = re.compile(rf"^/{re.escape(novel_id)}/(\d+)/?$", re.IGNORECASE)
-        chapter_urls: dict[int, dict[str, str | int]] = {}
+        chapter_urls: dict[int, dict[str, Any]] = {}
+        current_part: str | None = None
 
-        for anchor in soup.find_all("a", href=True):
-            if not isinstance(anchor, Tag):
+        for node in soup.find_all(["div", "section", "h2", "h3", "a"], recursive=True):
+            if not isinstance(node, Tag):
                 continue
-            href = attribute_to_str(anchor.get("href"))
+
+            if self._is_part_heading(node):
+                text = node.get_text(" ", strip=True)
+                if text:
+                    current_part = text
+                continue
+
+            if node.name.lower() != "a":
+                continue
+
+            href = attribute_to_str(node.get("href"))
             if href is None:
                 continue
 
@@ -212,12 +340,19 @@ class SyosetuNcodeSource(SourceAdapter):
                 continue
 
             chapter_number = int(match.group(1))
-            chapter_urls[chapter_number] = {
+            chapter: dict[str, Any] = {
                 "id": str(chapter_number),
                 "num": chapter_number,
-                "title": anchor.get_text(strip=True) or f"Chapter {chapter_number}",
+                "title": node.get_text(strip=True) or f"Chapter {chapter_number}",
                 "url": absolute_url,
             }
+            part = self._extract_chapter_part(node, current_part)
+            if part:
+                chapter["part"] = part
+            date_added = self._extract_chapter_date(node)
+            if date_added:
+                chapter["date_added"] = date_added
+            chapter_urls[chapter_number] = chapter
 
         if chapter_urls:
             return [chapter_urls[index] for index in sorted(chapter_urls)]
@@ -333,6 +468,7 @@ class SyosetuNcodeSource(SourceAdapter):
         soup = BeautifulSoup(html, "lxml")
         title = self._extract_title(soup)
         author = self._extract_author(soup)
+        synopsis = self._extract_synopsis(soup)
         chapters = self._extract_chapters(soup, url, title)
         published_at, updated_at = self._extract_dates(soup)
 
@@ -341,6 +477,7 @@ class SyosetuNcodeSource(SourceAdapter):
             "source_url": url,
             "title": title,
             "author": author,
+            "synopsis": synopsis,
             "published_at": published_at,
             "updated_at": updated_at,
             "chapters": chapters,
@@ -422,5 +559,3 @@ class SyosetuNcodeSource(SourceAdapter):
     async def fetch_chapter_payload(self, url: str) -> dict[str, Any]:
         html = await self._fetch_page(url)
         return self._parse_chapter_payload(html, url)
-
-

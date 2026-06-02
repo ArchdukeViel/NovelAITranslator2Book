@@ -145,6 +145,20 @@ class GenericSource(SourceAdapter):
     def _extract_author(soup: BeautifulSoup) -> str | None:
         return HTMLParserMixin.extract_author(soup, _AUTHOR_SELECTORS)
 
+    @staticmethod
+    def _extract_synopsis(soup: BeautifulSoup) -> str | None:
+        for selector in ("meta[name='description']", "meta[property='og:description']", ".synopsis", ".summary", ".description"):
+            node = soup.select_one(selector)
+            if not isinstance(node, Tag):
+                continue
+            content = node.get("content")
+            if isinstance(content, str) and content.strip():
+                return _shared_normalize_text(content)
+            text = node.get_text("\n", strip=True)
+            if text:
+                return _shared_normalize_text(text)
+        return None
+
     def _extract_chapters_from_toc(
         self, soup: BeautifulSoup, base_url: str
     ) -> list[dict[str, str | int]]:
@@ -221,6 +235,7 @@ class GenericSource(SourceAdapter):
 
         title = self._extract_title(soup)
         author = self._extract_author(soup)
+        synopsis = self._extract_synopsis(soup)
         chapters = self._extract_chapters_from_toc(soup, url)
 
         if max_chapter is not None:
@@ -235,6 +250,7 @@ class GenericSource(SourceAdapter):
             "source_url": url,
             "title": title,
             "author": author,
+            "synopsis": synopsis,
             "chapters": chapters,
         }
 

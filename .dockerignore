@@ -1,0 +1,17 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+frontend/node_modules
+frontend/.next
+frontend/.next-dev
+frontend/novel_library
+frontend/tsconfig.tsbuildinfo
+
+storage/novel_library
+storage/**/*.tmp
+backend/tests/.tmp

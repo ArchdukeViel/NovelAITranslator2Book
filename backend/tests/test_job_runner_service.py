@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from novelai.services.job_runner_service import BackgroundJobRunner
+from novelai.jobs.runner import BackgroundJobRunner
 
 
 class StubWorker:

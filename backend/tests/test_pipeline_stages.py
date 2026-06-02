@@ -2,10 +2,10 @@
 
 import pytest
 
-from novelai.pipeline.context import PipelineState
-from novelai.pipeline.stages.fetch import FetchStage
-from novelai.pipeline.stages.parse import ParseStage
-from novelai.pipeline.stages.segment import SegmentStage
+from novelai.translation.pipeline.context import PipelineState
+from novelai.translation.pipeline.stages.fetch import FetchStage
+from novelai.translation.pipeline.stages.parse import ParseStage
+from novelai.translation.pipeline.stages.segment import SegmentStage
 from tests.conftest import MockSourceAdapter
 
 

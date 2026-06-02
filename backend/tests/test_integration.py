@@ -7,13 +7,13 @@ import pytest
 
 from novelai.runtime.bootstrap import bootstrap
 from novelai.core.chapter_state import ChapterState
-from novelai.pipeline.context import PipelineState
-from novelai.pipeline.pipeline import TranslationPipeline
-from novelai.pipeline.stages.fetch import FetchStage
-from novelai.pipeline.stages.parse import ParseStage
-from novelai.pipeline.stages.post_process import PostProcessStage
-from novelai.pipeline.stages.segment import SegmentStage
-from novelai.pipeline.stages.translate import TranslateStage
+from novelai.translation.pipeline.context import PipelineState
+from novelai.translation.pipeline.pipeline import TranslationPipeline
+from novelai.translation.pipeline.stages.fetch import FetchStage
+from novelai.translation.pipeline.stages.parse import ParseStage
+from novelai.translation.pipeline.stages.post_process import PostProcessStage
+from novelai.translation.pipeline.stages.segment import SegmentStage
+from novelai.translation.pipeline.stages.translate import TranslateStage
 from novelai.utils.logging import setup_logging
 from tests.conftest import (
     create_test_fixture,

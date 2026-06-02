@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from novelai import __main__ as package_main
-from novelai.interfaces import cli
+from novelai.runtime import cli
 
 
 def test_cli_default_runs_web(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -90,6 +90,6 @@ def test_pyproject_console_scripts_use_web_only_modules() -> None:
     data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     scripts = data["project"]["scripts"]
 
-    assert scripts["novelaibook"] == "novelai.interfaces.cli:main"
+    assert scripts["novelaibook"] == "novelai.runtime.cli:main"
     assert scripts["novelai"] == "novelai.__main__:main"
     assert "novelaibook-gui" not in scripts

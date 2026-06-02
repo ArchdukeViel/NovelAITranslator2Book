@@ -8,12 +8,12 @@ import pytest
 
 from novelai.inputs.base import DocumentAdapter
 from novelai.inputs.models import ImportedDocument, ImportedUnit
-from novelai.pipeline.context import PipelineResult
+from novelai.translation.pipeline.context import PipelineResult
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
-from novelai.services.storage_service import StorageService
+from novelai.storage.service import StorageService
 from novelai.services.translation_cache import TranslationCache
-from novelai.services.translation_service import TranslationService
+from novelai.translation.service import TranslationService
 from novelai.services.usage_service import UsageService
 from tests.conftest import TESTS_TMP_ROOT, MockTranslationProvider
 

@@ -16,12 +16,19 @@ type UiState = {
   apiTokenLabel: string;
   apiTokens: ApiTokenRecord[];
   darkMode: boolean;
+  readerTheme: "light" | "dark" | "sepia";
+  readerFontSize: number;
+  readerWidth: "compact" | "comfortable" | "wide";
   sidebarCollapsed: boolean;
   addApiToken: (token: string) => void;
   applyDummyApiToken: () => void;
+  setActiveApiToken: (id: string) => void;
   removeApiToken: (id: string) => void;
   setApiToken: (token: string) => void;
   toggleDarkMode: () => void;
+  setReaderTheme: (theme: UiState["readerTheme"]) => void;
+  setReaderFontSize: (size: number) => void;
+  setReaderWidth: (width: UiState["readerWidth"]) => void;
   toggleSidebar: () => void;
 };
 
@@ -39,6 +46,9 @@ export const useUiStore = create<UiState>()(
       apiTokenLabel: "None",
       apiTokens: [],
       darkMode: false,
+      readerTheme: "light",
+      readerFontSize: 18,
+      readerWidth: "comfortable",
       sidebarCollapsed: false,
       addApiToken: (apiToken) =>
         set((state) => {
@@ -63,6 +73,21 @@ export const useUiStore = create<UiState>()(
           };
         }),
       applyDummyApiToken: () => set({ apiToken: "", apiTokenLabel: "dummy" }),
+      setActiveApiToken: (id) =>
+        set((state) => {
+          const active = state.apiTokens.find((entry) => entry.id === id);
+          if (!active) {
+            return state;
+          }
+          return {
+            apiToken: active.token,
+            apiTokenLabel: "Gemini AI",
+            apiTokens: state.apiTokens.map((entry) => ({
+              ...entry,
+              status: entry.id === id ? "Active" : "Inactive"
+            }))
+          };
+        }),
       removeApiToken: (id) =>
         set((state) => {
           const removed = state.apiTokens.find((entry) => entry.id === id);
@@ -83,6 +108,10 @@ export const useUiStore = create<UiState>()(
         }),
       setApiToken: (apiToken) => set({ apiToken, apiTokenLabel: apiToken.trim() ? "Gemini AI" : "None" }),
       toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
+      setReaderTheme: (readerTheme) => set({ readerTheme }),
+      setReaderFontSize: (readerFontSize) =>
+        set({ readerFontSize: Math.min(24, Math.max(15, Math.round(readerFontSize))) }),
+      setReaderWidth: (readerWidth) => set({ readerWidth }),
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed }))
     }),
     {

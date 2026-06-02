@@ -9,7 +9,7 @@ import pytest
 
 from novelai.core.chapter_state import ChapterState
 from novelai.services.checkpoint_manager import CheckpointManager, CheckpointMetadata
-from novelai.services.storage_service import StorageService
+from novelai.storage.service import StorageService
 
 _TMP = Path(__file__).resolve().parent / ".tmp" / "checkpoints"
 

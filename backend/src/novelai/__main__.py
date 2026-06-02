@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 
-from novelai.interfaces.cli import main as cli_main
-from novelai.interfaces.web.server import main as web_main
+from novelai.api.server import main as web_main
+from novelai.runtime.cli import main as cli_main
 
 
 def main(argv: list[str] | None = None) -> None:

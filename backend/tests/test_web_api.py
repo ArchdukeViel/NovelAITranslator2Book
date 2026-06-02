@@ -12,13 +12,13 @@ from fastapi.testclient import TestClient
 
 from novelai.runtime.bootstrap import bootstrap
 from novelai.config.settings import settings
-from novelai.services.job_queue_service import JobQueueService
-from novelai.services.job_runner_service import BackgroundJobRunner
-from novelai.services.job_worker_service import JobWorkerService
+from novelai.jobs.queue import JobQueueService
+from novelai.jobs.runner import BackgroundJobRunner
+from novelai.jobs.worker import JobWorkerService
 from novelai.services.novel_request_service import NovelRequestService
-from novelai.services.storage_service import StorageService
-from novelai.interfaces.web.api import create_app
-from novelai.interfaces.web.routers.novels import (
+from novelai.storage.service import StorageService
+from novelai.api.app import create_app
+from novelai.api.routers.novels import (
     get_job_runner,
     get_job_worker,
     get_jobs,
@@ -26,7 +26,7 @@ from novelai.interfaces.web.routers.novels import (
     get_requests,
     get_storage,
 )
-from novelai.interfaces.web.routers import _legacy_novels, novels
+from novelai.api.routers import novels
 
 _TMP = Path(__file__).resolve().parent / ".tmp" / "web_api"
 
@@ -59,6 +59,7 @@ def _make_app(
     worker: JobWorkerService | None = None,
     runner: BackgroundJobRunner | None = None,
     requests: NovelRequestService | None = None,
+    orchestrator: object | None = None,
 ) -> TestClient:
     """Create a TestClient with storage dependency overridden."""
     app = create_app()
@@ -71,14 +72,53 @@ def _make_app(
         app.dependency_overrides[get_job_runner] = lambda: runner
     if requests is not None:
         app.dependency_overrides[get_requests] = lambda: requests
+    if orchestrator is not None:
+        app.dependency_overrides[get_orchestrator] = lambda: orchestrator
     return TestClient(app)
 
 
-def test_split_router_preserves_legacy_path_methods() -> None:
-    legacy_routes = {
-        (tuple(sorted(route.methods)), route.path)
-        for route in _legacy_novels.router.routes
-        if hasattr(route, "methods")
+def test_router_path_method_snapshot() -> None:
+    expected_routes = {
+        (("DELETE",), "/{novel_id}"),
+        (("GET",), "/"),
+        (("GET",), "/admin"),
+        (("GET",), "/admin/worker"),
+        (("GET",), "/input-adapters"),
+        (("GET",), "/jobs"),
+        (("GET",), "/jobs/source-health"),
+        (("GET",), "/jobs/source-health/{source_key}"),
+        (("GET",), "/jobs/{job_id}"),
+        (("GET",), "/requests"),
+        (("GET",), "/requests/{request_id}"),
+        (("GET",), "/sources"),
+        (("GET",), "/{novel_id}"),
+        (("GET",), "/{novel_id}/chapters"),
+        (("GET",), "/{novel_id}/chapters/{chapter_id}"),
+        (("GET",), "/{novel_id}/chapters/{chapter_id}/translated"),
+        (("GET",), "/{novel_id}/chapters/{chapter_id}/translated/edit-history"),
+        (("GET",), "/{novel_id}/chapters/{chapter_id}/translated/versions"),
+        (("GET",), "/{novel_id}/progress"),
+        (("GET",), "/{novel_id}/reader"),
+        (("GET",), "/{novel_id}/reader/chapters/{chapter_id}"),
+        (("PATCH",), "/jobs/{job_id}"),
+        (("PATCH",), "/requests/{request_id}"),
+        (("POST",), "/admin/worker/run-once"),
+        (("POST",), "/admin/worker/start"),
+        (("POST",), "/admin/worker/stop"),
+        (("POST",), "/jobs/crawl"),
+        (("POST",), "/jobs/run-next"),
+        (("POST",), "/jobs/translation"),
+        (("POST",), "/jobs/{job_id}/run"),
+        (("POST",), "/requests"),
+        (("POST",), "/requests/{request_id}/source-candidates"),
+        (("POST",), "/requests/{request_id}/vote"),
+        (("POST",), "/{novel_id}/chapters/{chapter_id}/translated/rollback"),
+        (("POST",), "/{novel_id}/export"),
+        (("POST",), "/{novel_id}/import"),
+        (("POST",), "/{novel_id}/preliminary-crawl"),
+        (("POST",), "/{novel_id}/scrape"),
+        (("POST",), "/{novel_id}/translate"),
+        (("PUT",), "/{novel_id}/chapters/{chapter_id}/translated"),
     }
     current_routes = {
         (tuple(sorted(route.methods)), route.path)
@@ -86,7 +126,7 @@ def test_split_router_preserves_legacy_path_methods() -> None:
         if hasattr(route, "methods")
     }
 
-    assert current_routes == legacy_routes
+    assert current_routes == expected_routes
 
 
 class StubJobOrchestrator:
@@ -96,13 +136,38 @@ class StubJobOrchestrator:
 
     async def scrape_metadata(self, *args: object, **kwargs: object) -> dict[str, object]:
         self.calls.append(("scrape_metadata", args, kwargs))
-        return {"chapters": [{"id": "1"}]}
+        return {
+            "title": "Original Title",
+            "translated_title": "Translated Title",
+            "author": "Original Author",
+            "translated_author": "Translated Author",
+            "synopsis": "Original Synopsis",
+            "translated_synopsis": "Translated Synopsis",
+            "chapters": [
+                {
+                    "id": "1",
+                    "title": "Chapter One",
+                    "translated_title": "Translated Chapter One",
+                    "part": "Part One",
+                    "date_added": "2025/01/13 20:00",
+                }
+            ],
+        }
 
     async def scrape_chapters(self, *args: object, **kwargs: object) -> None:
         self.calls.append(("scrape_chapters", args, kwargs))
 
     async def translate_chapters(self, *args: object, **kwargs: object) -> None:
         self.calls.append(("translate_chapters", args, kwargs))
+
+
+class FallbackPreliminaryOrchestrator(StubJobOrchestrator):
+    async def scrape_metadata(self, *args: object, **kwargs: object) -> dict[str, object]:
+        self.calls.append(("scrape_metadata", args, kwargs))
+        source_key = str(args[0])
+        if source_key == "syosetu_ncode":
+            return {"chapters": []}
+        return {"title": "Novel18 Test", "chapters": [{"id": "1"}, {"id": "2"}]}
 
 
 class StubRunner:
@@ -145,10 +210,12 @@ class StubRunner:
 
 @pytest.fixture(autouse=True)
 def _clean_tmp():
+    novels._hits.clear()
     if _TMP.exists():
         shutil.rmtree(_TMP, ignore_errors=True)
     _TMP.mkdir(parents=True, exist_ok=True)
     yield
+    novels._hits.clear()
     shutil.rmtree(_TMP, ignore_errors=True)
 
 
@@ -633,6 +700,77 @@ class TestNovelRequests:
 
 
 class TestRateLimit:
+    def test_preliminary_crawl_scrapes_metadata_only(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        orchestrator = StubJobOrchestrator(storage)
+        c = _make_app(storage, orchestrator=orchestrator)
+
+        resp = c.post(
+            "/novels/n1234ab/preliminary-crawl",
+            json={"identifier": "https://ncode.syosetu.com/n1234ab/", "source_key": "syosetu_ncode"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["chapters"] == 1
+        assert resp.json()["source_key"] == "syosetu_ncode"
+        assert resp.json()["translated_title"] == "Translated Title"
+        assert resp.json()["translated_author"] == "Translated Author"
+        assert resp.json()["translated_synopsis"] == "Translated Synopsis"
+        assert resp.json()["chapter_list"][0]["translated_title"] == "Translated Chapter One"
+        assert resp.json()["chapter_list"][0]["part"] == "Part One"
+        assert resp.json()["chapter_list"][0]["date_added"] == "2025/01/13 20:00"
+        assert orchestrator.calls == [
+            (
+                "scrape_metadata",
+                ("syosetu_ncode", "n1234ab"),
+                {
+                    "mode": "update",
+                    "max_chapter": None,
+                    "source_identifier": "https://ncode.syosetu.com/n1234ab/",
+                },
+            )
+        ]
+
+    def test_preliminary_crawl_detects_novel18_url(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        orchestrator = StubJobOrchestrator(storage)
+        c = _make_app(storage, orchestrator=orchestrator)
+
+        resp = c.post(
+            "/novels/n1962jz/preliminary-crawl",
+            json={"identifier": "https://novel18.syosetu.com/n1962jz/", "source_key": "syosetu_ncode"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["source_key"] == "novel18_syosetu"
+        assert orchestrator.calls[0] == (
+            "scrape_metadata",
+            ("novel18_syosetu", "n1962jz"),
+            {
+                "mode": "update",
+                "max_chapter": None,
+                "source_identifier": "https://novel18.syosetu.com/n1962jz/",
+            },
+        )
+
+    def test_preliminary_crawl_falls_back_to_novel18_for_ncode_id(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        orchestrator = FallbackPreliminaryOrchestrator(storage)
+        c = _make_app(storage, orchestrator=orchestrator)
+
+        resp = c.post(
+            "/novels/n1962jz/preliminary-crawl",
+            json={"identifier": "n1962jz", "source_key": "syosetu_ncode"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["source_key"] == "novel18_syosetu"
+        assert resp.json()["chapters"] == 2
+        assert [call[1][0] for call in orchestrator.calls] == ["syosetu_ncode", "novel18_syosetu"]
+
     def test_scrape_rate_limit(self, _no_api_key: None) -> None:
         """Scrape endpoint should reject after exceeding rate limit."""
         bootstrap()
@@ -646,7 +784,7 @@ class TestRateLimit:
         mock_orch.scrape_chapters = AsyncMock()
         app.dependency_overrides[get_orchestrator] = lambda: mock_orch
 
-        with patch("novelai.interfaces.web.routers.novels._hits", defaultdict(list)):
+        with patch("novelai.api.routers.novels._hits", defaultdict(list)):
             c = TestClient(app)
             body = {"url": "https://example.com/n1", "source_key": "dummy"}
             for _ in range(5):

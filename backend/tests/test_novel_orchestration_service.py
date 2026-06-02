@@ -9,12 +9,12 @@ from uuid import uuid4
 import pytest
 
 from novelai.core.chapter_state import ChapterState
-from novelai.pipeline.context import PipelineResult
+from novelai.translation.pipeline.context import PipelineResult
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
-from novelai.services.storage_service import StorageService
+from novelai.storage.service import StorageService
 from novelai.services.translation_cache import TranslationCache
-from novelai.services.translation_service import TranslationService
+from novelai.translation.service import TranslationService
 from novelai.services.usage_service import UsageService
 from novelai.sources.base import SourceAdapter
 from tests.conftest import TESTS_TMP_ROOT, MockTranslationProvider

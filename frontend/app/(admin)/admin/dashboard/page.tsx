@@ -33,7 +33,7 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeading
-        title="Dashboard"
+        title="Home"
         description="Operational overview for crawler, translation jobs, source health, and reader request intake."
       />
 

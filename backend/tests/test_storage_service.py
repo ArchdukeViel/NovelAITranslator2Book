@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 
 from novelai.core.chapter_state import ChapterState
-from novelai.services.storage_service import StorageService
+from novelai.storage.service import StorageService
 from tests.conftest import TESTS_TMP_ROOT
 
 

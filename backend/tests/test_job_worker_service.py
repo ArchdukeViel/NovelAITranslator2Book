@@ -5,9 +5,9 @@ from uuid import uuid4
 
 import pytest
 
-from novelai.services.job_queue_service import JobQueueService
-from novelai.services.job_worker_service import JobWorkerService
-from novelai.services.storage_service import StorageService
+from novelai.jobs.queue import JobQueueService
+from novelai.jobs.worker import JobWorkerService
+from novelai.storage.service import StorageService
 from tests.conftest import TESTS_TMP_ROOT
 
 

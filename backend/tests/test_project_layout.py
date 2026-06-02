@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from uuid import uuid4
 
-from novelai.services.storage_service import StorageService
+from novelai.storage.service import StorageService
 from tests.conftest import TESTS_TMP_ROOT, cleanup_test_artifacts
 
 

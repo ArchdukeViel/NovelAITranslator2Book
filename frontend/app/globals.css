@@ -66,3 +66,32 @@ select,
 textarea {
   font: inherit;
 }
+
+.seamless-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) hsl(var(--card));
+}
+
+.seamless-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: hsl(var(--card));
+}
+
+.seamless-scrollbar::-webkit-scrollbar-track {
+  background: hsl(var(--card));
+}
+
+.seamless-scrollbar::-webkit-scrollbar-thumb {
+  min-height: 32px;
+  border: 2px solid hsl(var(--card));
+  border-radius: 9999px;
+  background: hsl(var(--muted));
+}
+
+.seamless-scrollbar::-webkit-scrollbar-button,
+.seamless-scrollbar::-webkit-scrollbar-corner {
+  width: 0;
+  height: 0;
+  background: hsl(var(--card));
+}

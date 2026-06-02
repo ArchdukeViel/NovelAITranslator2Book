@@ -49,6 +49,48 @@ def test_parse_metadata_html_detects_multi_chapter_series() -> None:
     ]
 
 
+def test_parse_metadata_html_detects_chapter_parts_and_source_dates() -> None:
+    source = SyosetuNcodeSource()
+    html = """
+    <html>
+      <body>
+        <h1 class="p-novel__title">Long Story</h1>
+        <div class="p-novel__author">Author Name</div>
+        <div class="chapter_title">Part One: The Eventful First Year</div>
+        <dl class="novel_sublist2">
+          <dd class="subtitle"><a href="/n8733gf/1/">Prologue</a></dd>
+          <dt class="long_update">2025/01/13 20:00</dt>
+        </dl>
+        <dl class="novel_sublist2">
+          <dd class="subtitle"><a href="/n8733gf/2/">Episode 1</a></dd>
+          <dt class="long_update">2025/01/14 19:00</dt>
+        </dl>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://ncode.syosetu.com/n8733gf/")
+
+    assert metadata["chapters"] == [
+        {
+            "id": "1",
+            "num": 1,
+            "title": "Prologue",
+            "url": "https://ncode.syosetu.com/n8733gf/1/",
+            "part": "Part One: The Eventful First Year",
+            "date_added": "2025/01/13 20:00",
+        },
+        {
+            "id": "2",
+            "num": 2,
+            "title": "Episode 1",
+            "url": "https://ncode.syosetu.com/n8733gf/2/",
+            "part": "Part One: The Eventful First Year",
+            "date_added": "2025/01/14 19:00",
+        },
+    ]
+
+
 def test_parse_metadata_html_synthesizes_single_chapter_for_one_shot() -> None:
     source = SyosetuNcodeSource()
     html = """

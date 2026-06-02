@@ -10,7 +10,9 @@ import {
   Gauge,
   Languages,
   ListPlus,
+  ListChecks,
   Moon,
+  Radar,
   Search,
   Settings,
   Sun,
@@ -26,11 +28,21 @@ import { useUiStore } from "@/lib/store";
 const items = [
   { href: "/admin/dashboard", label: "Home", icon: Gauge },
   { href: "/admin/crawler", label: "Crawler", icon: Search },
+  { href: "/admin/source-health", label: "Sources", icon: Radar },
   { href: "/admin/translation", label: "Translation", icon: Languages },
+  { href: "/admin/jobs", label: "Jobs", icon: ListChecks },
   { href: "/admin/requests", label: "Requests", icon: ListPlus },
   { href: "/admin/editor", label: "Editor", icon: FileEdit },
   { href: "/admin/settings", label: "Settings", icon: Settings }
 ];
+
+function currentSection(pathname: string) {
+  const match = items
+    .slice()
+    .reverse()
+    .find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+  return match?.label ?? "Dashboard";
+}
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -92,7 +104,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-10 flex min-h-14 items-center justify-between gap-3 border-b bg-background/95 px-5 backdrop-blur">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Activity className="h-4 w-4 text-primary" />
-            <span>Dashboard</span>
+            <span>{currentSection(pathname)}</span>
           </div>
           <div className="flex items-center gap-2">
             <Button

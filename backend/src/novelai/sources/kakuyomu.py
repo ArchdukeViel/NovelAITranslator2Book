@@ -188,6 +188,25 @@ class KakuyomuSource(SourceAdapter):
         content = meta.get("content") if isinstance(meta, Tag) else None
         return content.strip() if isinstance(content, str) and content.strip() else None
 
+    def _extract_synopsis(self, soup: BeautifulSoup) -> str | None:
+        for selector in (
+            ".widget-workSynopsis",
+            ".widget-work-introduction",
+            "[itemprop='description']",
+            "meta[name='description']",
+            "meta[property='og:description']",
+        ):
+            node = soup.select_one(selector)
+            if not isinstance(node, Tag):
+                continue
+            content = node.get("content")
+            if isinstance(content, str) and content.strip():
+                return normalize_text(content)
+            text = node.get_text("\n", strip=True)
+            if text:
+                return normalize_text(text)
+        return None
+
     def _extract_episode_title(self, anchor: Tag, fallback_index: int) -> str:
         title = self._first_text(anchor, self.EPISODE_TITLE_SELECTORS)
         if title:
@@ -343,6 +362,7 @@ class KakuyomuSource(SourceAdapter):
         soup = BeautifulSoup(html, "lxml")
         title = self._extract_work_title(soup)
         author = self._extract_author(soup)
+        synopsis = self._extract_synopsis(soup)
         chapters = self._extract_chapters(soup, url, title)
         published_at, updated_at = self._extract_dates(soup)
 
@@ -351,6 +371,7 @@ class KakuyomuSource(SourceAdapter):
             "source_url": url,
             "title": title,
             "author": author,
+            "synopsis": synopsis,
             "published_at": published_at,
             "updated_at": updated_at,
             "chapters": chapters,

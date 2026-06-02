@@ -9,3 +9,7 @@ yourdomain.com {
     reverse_proxy 127.0.0.1:3000
   }
 }
+
+# For Docker Compose, use deploy/Caddyfile instead. It proxies to:
+# - backend:8000 for /api/*
+# - frontend:3000 for everything else

@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 
 import { PageHeading } from "@/components/admin/page-heading";
@@ -7,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
+import { api } from "@/lib/api";
 import { useUiStore } from "@/lib/store";
 
 function maskToken(token: string) {
@@ -27,7 +29,8 @@ function formatDate(value: string) {
 
 export default function SettingsPage() {
   const [draftToken, setDraftToken] = useState("");
-  const { addApiToken, apiTokens, applyDummyApiToken, removeApiToken } = useUiStore();
+  const health = useQuery({ queryKey: ["health"], queryFn: () => api.health() });
+  const { addApiToken, apiTokens, applyDummyApiToken, removeApiToken, setActiveApiToken } = useUiStore();
 
   function handleAddToken(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,6 +43,21 @@ export default function SettingsPage() {
       <PageHeading title="Settings" description="Manage API token access for the admin workspace." />
 
       <div className="space-y-5">
+        <Panel>
+          <PanelHeader>
+            <PanelTitle>Backend Connection</PanelTitle>
+          </PanelHeader>
+          <PanelBody className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium">FastAPI</div>
+              <div className="text-xs text-muted-foreground">NEXT_PUBLIC_API_BASE_URL</div>
+            </div>
+            <Badge tone={health.data?.status === "ok" ? "green" : health.isError ? "red" : "amber"}>
+              {health.data?.status === "ok" ? "online" : health.isError ? "offline" : "checking"}
+            </Badge>
+          </PanelBody>
+        </Panel>
+
         <Panel>
           <PanelHeader>
             <PanelTitle>API Token</PanelTitle>
@@ -101,14 +119,25 @@ export default function SettingsPage() {
                           <Badge tone={entry.status === "Active" ? "green" : "neutral"}>{entry.status}</Badge>
                         </td>
                         <td className="px-4 py-3">
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => removeApiToken(entry.id)}
-                          >
-                            Remove
-                          </Button>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setActiveApiToken(entry.id)}
+                              disabled={entry.status === "Active"}
+                            >
+                              Use
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => removeApiToken(entry.id)}
+                            >
+                              Remove
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))

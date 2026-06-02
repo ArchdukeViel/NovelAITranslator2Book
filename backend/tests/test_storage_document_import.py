@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from novelai.services.storage_service import StorageService
+from novelai.storage.service import StorageService
 from tests.conftest import TESTS_TMP_ROOT
 
 

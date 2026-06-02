@@ -1,4 +1,4 @@
-"""Shared runtime wiring for Novel AI interfaces."""
+"""Shared backend runtime wiring for Novel AI."""
 
 from novelai.runtime.bootstrap import bootstrap
 from novelai.runtime.container import Container, container

@@ -1,320 +1,533 @@
-﻿# Data Output Structure
+# Data Output Structure
 
-Complete reference for what data is stored in `storage/novel_library/` during runtime, with concrete examples.
+This reference describes the runtime data written under `storage/novel_library/`.
+
+The storage backend is local and JSON-backed today. It is designed to be simple for development and easy to mount as a volume in production-style Docker Compose.
 
 ## Quick Overview
 
-```
+```text
 storage/novel_library/
-â”œâ”€â”€ preferences.json                 # Provider, model, API key
-â”œâ”€â”€ translation_cache.json           # Cached translation results
-â”œâ”€â”€ usage.json                       # API usage tracking
-â””â”€â”€ novels/
-    â”œâ”€â”€ index.json                   # Novel ID â†’ folder mapping
-    â””â”€â”€ <novel_id>/                  # Single novel directory
-        â”œâ”€â”€ metadata.json            # Novel metadata from source
-        â”œâ”€â”€ raw/                     # Raw chapters from source
-        â”‚   â”œâ”€â”€ chapter_1.json
-        â”‚   â””â”€â”€ chapter_2.json
-        â”œâ”€â”€ translated/              # Translated chapters (JSON)
-        â”‚   â”œâ”€â”€ chapter_1.json
-        â”‚   â””â”€â”€ chapter_2.json
-        â”œâ”€â”€ epub/                    # EPUB exports
-        â”‚   â””â”€â”€ full_novel.epub
-        â”œâ”€â”€ assets/                  # Chapter images
-        â”‚   â””â”€â”€ images/
-        â”‚       â””â”€â”€ <chapter_id>/
-        â””â”€â”€ checkpoints/             # State snapshots
-            â””â”€â”€ chapter_1_post-translation.json
+|-- preferences.json
+|-- translation_cache.json
+|-- usage.json
+|-- jobs/
+|   |-- queue.json
+|   `-- source_health.json
+|-- requests/
+|   `-- novel_requests.json
+`-- novels/
+    |-- index.json
+    `-- <novel_id>/
+        |-- metadata.json
+        |-- glossary.json
+        |-- chapters/
+        |   `-- <chapter_id>.json
+        |-- assets/
+        |   `-- images/
+        |       `-- <chapter_id>/
+        |-- state/
+        |   `-- <chapter_id>.json
+        |-- checkpoints/
+        |   `-- <chapter_id>__translated.json
+        |-- full_novel.epub
+        |-- full_novel.html
+        `-- full_novel.md
 ```
 
----
+Legacy `raw/` and `translated/` directories may still be read for backward compatibility, but new writes use unified chapter bundles in `chapters/`.
 
-## 1. Preferences (`storage/novel_library/preferences.json`)
+## Global Files
 
-Stores the active provider, model, and API key.
+### `preferences.json`
 
-### Example Content
+Stores non-secret user preferences.
+
+Example:
 
 ```json
 {
-  "provider": "openai",
-  "model": "gpt-5.2",
-  "api_key": "sk-..."
+  "preferred_provider": "gemini",
+  "preferred_model": "gemini-2.5-flash",
+  "theme": "auto",
+  "language": "en",
+  "glossary_extraction": {
+    "mode": "heuristic",
+    "prompt_template": null,
+    "max_terms": 50
+  }
 }
 ```
 
----
+Provider API keys should not be stored here. They should come from `.env` or process environment values.
 
-## 2. Translation Cache (`storage/novel_library/translation_cache.json`)
+### `translation_cache.json`
 
-Stores previously translated text to avoid re-translating identical content.
+Stores reusable translation results by provider, model, and source text hash.
 
-### Cache Key Format
-```
-key = SHA256(provider:model:source_text)
-```
-
-### Example Content
+Example shape:
 
 ```json
 {
-  "abc123def456...": "The girl gazed at the sky.",
-  "fed789ghi012...": "A new world appeared before them."
+  "abc123def456": {
+    "provider": "gemini",
+    "model": "gemini-2.5-flash",
+    "text": "The translated text.",
+    "created_at": "2026-06-02T10:00:00Z"
+  }
 }
 ```
 
----
+### `usage.json`
 
-## 3. API Usage Tracking (`storage/novel_library/usage.json`)
+Tracks translation usage and cost metadata.
 
-Logs every translation request for cost estimation and quota management.
-
-### Example Content
+Example:
 
 ```json
 [
   {
-    "timestamp": "2026-03-07T12:30:45Z",
-    "novel_id": "n4423lw",
-    "chapter_id": "chapter_1",
-    "provider": "openai",
-    "model": "gpt-5.2",
+    "timestamp": "2026-06-02T10:05:00Z",
+    "provider": "gemini",
+    "model": "gemini-2.5-flash",
     "tokens": 2847,
-    "estimated_cost_usd": 0.0854,
-    "status": "success"
-  },
-  {
-    "timestamp": "2026-03-07T12:40:05Z",
-    "novel_id": "n4423lw",
-    "chapter_id": "chapter_3",
-    "provider": "openai",
-    "model": "gpt-5.2",
-    "tokens": 0,
-    "estimated_cost_usd": 0,
-    "status": "cache_hit"
+    "estimated_cost_usd": 0.0,
+    "metadata": {
+      "novel_id": "n4423lw",
+      "chapter_id": "1"
+    }
   }
 ]
 ```
 
-### Fields
-- `timestamp`: ISO 8601 UTC timestamp
-- `novel_id`: Novel identifier
-- `chapter_id`: Chapter identifier
-- `provider`: Translation provider (e.g., "openai")
-- `model`: Model used (e.g., "gpt-5.2", "gpt-5.4")
-- `tokens`: Tokens used (0 for cache hits)
-- `estimated_cost_usd`: Calculated cost
-- `status`: "success", "cache_hit", "error", "retry"
+### `jobs/queue.json`
 
----
+Stores crawl and translation jobs.
 
-## 4. Novel Index (`storage/novel_library/novels/index.json`)
+Example:
 
-Maps novel IDs to their storage folder names.
+```json
+[
+  {
+    "id": "translation_abc123",
+    "type": "translation",
+    "kind": "translate",
+    "novel_id": "n4423lw",
+    "source_key": "syosetu_ncode",
+    "chapters": "1-3",
+    "provider": "gemini",
+    "model": null,
+    "status": "pending",
+    "created_at": "2026-06-02T10:00:00Z",
+    "started_at": null,
+    "finished_at": null,
+    "retry_count": 0,
+    "error": null,
+    "metadata": {}
+  }
+]
+```
 
-### Example Content
+Valid job types:
+
+- `crawl`
+- `translation`
+
+Common statuses:
+
+- `pending`
+- `running`
+- `completed`
+- `failed`
+- `cancelled`
+
+### `jobs/source_health.json`
+
+Tracks source adapter reliability.
+
+Example:
+
+```json
+{
+  "syosetu_ncode": {
+    "source_key": "syosetu_ncode",
+    "success_count": 4,
+    "failure_count": 1,
+    "last_success_at": "2026-06-02T10:20:00Z",
+    "last_failure_at": "2026-06-02T09:00:00Z",
+    "last_error": null,
+    "updated_at": "2026-06-02T10:20:00Z"
+  }
+}
+```
+
+### `requests/novel_requests.json`
+
+Stores reader/admin novel request intake.
+
+Example:
+
+```json
+[
+  {
+    "id": "request_abc123",
+    "title": "Requested Novel",
+    "source_url": "https://example.com/novel",
+    "status": "open",
+    "vote_count": 3,
+    "created_at": "2026-06-02T10:00:00Z",
+    "updated_at": "2026-06-02T10:00:00Z"
+  }
+]
+```
+
+## Novel Index
+
+### `novels/index.json`
+
+Maps novel IDs to stable folder names.
+
+Example:
 
 ```json
 {
   "n4423lw": {
-    "folder_name": "sword_art_online_progressive",
-    "updated_at": "2026-03-07T12:00:00Z"
+    "folder_name": "n4423lw",
+    "updated_at": "2026-06-02T10:00:00Z"
   }
 }
 ```
 
----
+## Novel Metadata
 
-## 5. Novel Metadata (`storage/novel_library/novels/<novel_id>/metadata.json`)
+### `novels/<novel_id>/metadata.json`
 
-Stores novel information scraped from the source.
+Stores source/import metadata and chapter index.
 
-### Example Content
+Example:
 
 ```json
 {
   "novel_id": "n4423lw",
-  "title": "ã‚½ãƒ¼ãƒ‰ã‚¢ãƒ¼ãƒˆãƒ»ã‚ªãƒ³ãƒ©ã‚¤ãƒ³ ãƒ—ãƒ­ã‚°ãƒ¬ãƒƒã‚·ãƒ–",
-  "translated_title": "Sword Art Online Progressive",
-  "author": "Reki Kawahara",
-  "source_key": "syosetu",
+  "schema_version": 2,
+  "title": "Original Japanese Title",
+  "translated_title": "Translated Title",
+  "author": "Author Name",
+  "translated_author": "Translated Author Name",
+  "source": "syosetu_ncode",
   "source_url": "https://ncode.syosetu.com/n4423lw/",
+  "origin_type": "url",
+  "origin_uri_or_path": "https://ncode.syosetu.com/n4423lw/",
+  "document_type": "web_novel",
+  "context_group_id": "n4423lw",
   "chapters": [
     {
-      "id": "chapter_1",
-      "title": "First Chapter",
+      "id": 1,
+      "title": "Chapter Title",
       "url": "https://ncode.syosetu.com/n4423lw/1/"
     }
   ],
-  "total_chapters": 120,
-  "status": "ongoing",
-  "scraped_at": "2026-03-07T11:55:00Z"
+  "folder_name": "n4423lw",
+  "scraped_at": "2026-06-02T10:00:00Z",
+  "updated_at": "2026-06-02T10:00:00Z"
 }
 ```
 
----
+## Chapter Bundles
 
-## 6. Raw Chapter (`storage/novel_library/novels/<novel_id>/raw/chapter_1.json`)
+### `novels/<novel_id>/chapters/<chapter_id>.json`
 
-Stores the original scraped text from the source.
+The chapter bundle is the main file for source text, translation output, versions, edit history, OCR/media state, and import metadata.
 
-### Example Content
+Example:
 
 ```json
 {
-  "id": "chapter_1",
-  "title": "Beginning",
-  "source_key": "syosetu",
+  "id": "1",
+  "schema_version": 2,
+  "title": "Chapter Title",
+  "source_key": "syosetu_ncode",
   "source_url": "https://ncode.syosetu.com/n4423lw/1/",
-  "scraped_at": "2026-03-07T12:00:00Z",
-  "text": "å°‘å¥³ã¯ã—ã°ã‚‰ãç©ºã‚’è¦‹ã¤ã‚ãŸã€‚\næ–°ã—ã„ä¸–ç•Œã€‚ãã‚ŒãŒã‚¢ã‚¤ãƒ³ã‚¯ãƒ©ãƒƒãƒ‰ã¨ã„ã†åã®æµ®éŠåŸŽå¡žã ã€‚"
+  "origin_type": "web",
+  "document_type": "web_novel",
+  "unit_type": "chapter",
+  "context_group_id": "n4423lw",
+  "raw": {
+    "id": "1",
+    "scraped_at": "2026-06-02T10:10:00Z",
+    "text": "[Japanese source text]",
+    "paragraphs": [
+      "[Japanese source paragraph]"
+    ],
+    "images": []
+  },
+  "translated": {
+    "version_id": "v1",
+    "version_kind": "machine_translation",
+    "provider": "gemini",
+    "model": "gemini-2.5-flash",
+    "translated_at": "2026-06-02T10:20:00Z",
+    "created_at": "2026-06-02T10:20:00Z",
+    "text": "Translated chapter text.",
+    "paragraphs": [
+      "Translated chapter text."
+    ],
+    "confidence_score": 0.91,
+    "polish_needed": false
+  },
+  "translation_versions": [
+    {
+      "id": "v1",
+      "kind": "machine_translation",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "created_at": "2026-06-02T10:20:00Z",
+      "translated_at": "2026-06-02T10:20:00Z",
+      "text": "Translated chapter text.",
+      "paragraphs": [
+        "Translated chapter text."
+      ],
+      "confidence_score": 0.91,
+      "polish_needed": false
+    }
+  ],
+  "active_translation_version_id": "v1",
+  "edit_history": [],
+  "ocr_required": false,
+  "ocr_text": null,
+  "ocr_pages": [],
+  "ocr_status": "skipped",
+  "reembed_status": "skipped",
+  "region_metadata": [],
+  "ocr_artifacts": []
 }
 ```
 
----
+## Translation Versions And Edits
 
-## 7. Translated Chapter (`storage/novel_library/novels/<novel_id>/translated/chapter_1.json`)
+Manual editor saves add a new version and make it active.
 
-Stores the translated output with provider metadata.
-
-### Example Content
+Example edit version:
 
 ```json
 {
-  "id": "chapter_1",
-  "provider": "openai",
-  "model": "gpt-5.2",
-  "translated_at": "2026-03-07T12:05:30Z",
-  "text": "The girl stared at the sky for a while.\nA new world. A floating castle stronghold named Aincrad."
+  "id": "v2",
+  "kind": "manual_edit",
+  "provider": "gemini",
+  "model": "gemini-2.5-flash",
+  "created_at": "2026-06-02T10:30:00Z",
+  "translated_at": "2026-06-02T10:30:00Z",
+  "text": "Edited translated text.",
+  "paragraphs": [
+    "Edited translated text."
+  ],
+  "editor": "admin",
+  "note": "Cleaned up honorifics.",
+  "base_version_id": "v1"
 }
 ```
 
----
+Example edit history:
 
-## 8. Checkpoint Snapshots (`storage/novel_library/novels/<novel_id>/checkpoints/`)
+```json
+[
+  {
+    "id": "e1",
+    "action": "manual_edit",
+    "version_id": "v2",
+    "previous_version_id": "v1",
+    "created_at": "2026-06-02T10:30:00Z",
+    "editor": "admin",
+    "note": "Cleaned up honorifics."
+  }
+]
+```
 
-State snapshots for recovery from translation failures.
+## Glossary
 
-### Example Content
+### `novels/<novel_id>/glossary.json`
+
+Stores extracted, translated, reviewed, and approved terms.
+
+Example:
+
+```json
+[
+  {
+    "source": "Akira",
+    "target": "Akira",
+    "status": "approved",
+    "notes": "Character name."
+  }
+]
+```
+
+## Media And OCR
+
+Images are stored under:
+
+```text
+novels/<novel_id>/assets/images/<chapter_id>/
+```
+
+Example:
+
+```text
+assets/
+`-- images/
+    `-- 1/
+        |-- 0001.jpg
+        `-- 0002.png
+```
+
+Chapter `raw.images` stores the local asset path and original metadata.
+
+OCR and re-embedding fields live in the chapter bundle:
+
+- `ocr_required`
+- `ocr_text`
+- `ocr_pages`
+- `ocr_status`
+- `reembed_status`
+- `ocr_artifacts`
+- `region_metadata`
+
+Valid OCR statuses:
+
+- `pending`
+- `reviewed`
+- `skipped`
+- `failed`
+
+Valid re-embedding statuses:
+
+- `pending`
+- `completed`
+- `failed`
+- `skipped`
+
+## Chapter State
+
+### `novels/<novel_id>/state/<chapter_id>.json`
+
+Tracks state transitions and retry/error counters.
+
+Example:
 
 ```json
 {
-  "chapter_id": "chapter_1",
-  "checkpoint_name": "pre-translation",
-  "timestamp": "2026-03-07T12:00:00Z",
-  "state": "SEGMENTS_CREATED",
-  "data": {
-    "segments": [
-      { "segment_id": 1, "text": "å°‘å¥³ã¯ã—ã°ã‚‰ã..." },
-      { "segment_id": 2, "text": "æ–°ã—ã„ä¸–ç•Œã€‚..." }
-    ]
+  "chapter_id": "1",
+  "current_state": "translated",
+  "transitions": [
+    {
+      "from_state": null,
+      "to_state": "scraped",
+      "timestamp": "2026-06-02T10:10:00Z",
+      "error": null
+    },
+    {
+      "from_state": "scraped",
+      "to_state": "translated",
+      "timestamp": "2026-06-02T10:20:00Z",
+      "error": null
+    }
+  ],
+  "last_updated": "2026-06-02T10:20:00Z",
+  "error_count": 0,
+  "retry_count": 0
+}
+```
+
+## Checkpoints
+
+### `novels/<novel_id>/checkpoints/<chapter_id>__<name>.json`
+
+Stores recovery snapshots.
+
+Example:
+
+```json
+{
+  "chapter_id": "1",
+  "timestamp": "2026-06-02T10:20:00Z",
+  "checkpoint_name": "translated",
+  "raw_chapter": {
+    "id": "1",
+    "text": "[Japanese source text]"
+  },
+  "translated_chapter": {
+    "id": "1",
+    "version_id": "v1",
+    "text": "Translated chapter text."
+  },
+  "chapter_state": {
+    "chapter_id": "1",
+    "current_state": "translated",
+    "transitions": [],
+    "last_updated": "2026-06-02T10:20:00Z",
+    "error_count": 0,
+    "retry_count": 0
   }
 }
 ```
 
----
+## Exports
 
-## 9. EPUB Exports (`storage/novel_library/novels/<novel_id>/epub/`)
+Default exports are written to the novel directory:
 
-EPUB files generated from translated chapters.
-
-```
-epub/
-â””â”€â”€ full_novel.epub
-```
-
-Inline chapter images are embedded from `assets/images/` so the EPUB does not depend on the source site still serving images.
-
----
-
-## 10. Chapter Images (`storage/novel_library/novels/<novel_id>/assets/images/`)
-
-Images downloaded during scraping, organized per chapter:
-
-```
-assets/
-â””â”€â”€ images/
-    â””â”€â”€ chapter_1/
-        â”œâ”€â”€ img_001.jpg
-        â””â”€â”€ img_002.png
+```text
+novels/<novel_id>/full_novel.epub
+novels/<novel_id>/full_novel.html
+novels/<novel_id>/full_novel.md
 ```
 
-Chapter JSON stores an image manifest with the original URL, placeholder tag, and local asset path.
+A custom output directory can be used by backend export commands when supplied.
 
----
+## Workflow Artifacts
 
-## Real-World Example: Full Translation Workflow
+Typical web workflow:
 
-### Step 1: Scrape metadata
-
-**Created**:
-- `storage/novel_library/novels/index.json`
-- `storage/novel_library/novels/n4423lw/metadata.json`
-
-### Step 2: Fetch 3 chapters
-
-**Created**:
-```
-storage/novel_library/novels/n4423lw/raw/
-â”œâ”€â”€ chapter_1.json
-â”œâ”€â”€ chapter_2.json
-â””â”€â”€ chapter_3.json
-```
-
-### Step 3: Translate chapter 1
-
-**Created**:
-- `storage/novel_library/novels/n4423lw/translated/chapter_1.json`
-- `storage/novel_library/novels/n4423lw/checkpoints/chapter_1_post-translation.json`
-
-**Updated**:
-- `storage/novel_library/usage.json`
-- `storage/novel_library/translation_cache.json`
-
-### Step 4: Export
-
-**Created**:
-- `storage/novel_library/novels/n4423lw/epub/full_novel.epub`
-
----
-
-## Storage Estimates
-
-### Per Novel (4 chapters, 5000 words each)
-
-| Component | Size |
-|-----------|------|
-| Metadata | ~5 KB |
-| Raw chapters (JSON) | ~200 KB |
-| Translated chapters (JSON) | ~220 KB |
-| Checkpoints (per chapter) | ~50 KB Ã— 4 = 200 KB |
-| **Subtotal** | **~625 KB** |
-
-### Global
-
-| Component | Size |
-|-----------|------|
-| Translation cache (1000 entries) | ~100 KB |
-| Usage tracking (100 records) | ~50 KB |
-
-### Scaling (100 novels)
-
-```
-100 novels Ã— 625 KB = ~62.5 MB
-Global cache         = ~150 KB
-Total                = ~63 MB
-```
-
----
+1. Crawl metadata.
+   - Creates or updates `novels/index.json`.
+   - Creates or updates `novels/<novel_id>/metadata.json`.
+2. Crawl chapters.
+   - Creates `chapters/<chapter_id>.json`.
+   - Creates image assets when source images exist.
+   - Updates source health and chapter state.
+3. Translate chapters.
+   - Adds `translated`.
+   - Adds or appends `translation_versions`.
+   - Updates `active_translation_version_id`.
+   - Updates `usage.json` and `translation_cache.json`.
+   - Creates checkpoints.
+4. Edit chapters.
+   - Appends manual versions.
+   - Updates edit history and active version.
+5. Export.
+   - Creates `full_novel.epub`, `full_novel.html`, or `full_novel.md`.
 
 ## API Integration
 
-The web server (`novelaibook web`) serves data from `storage/novel_library/`:
+The web backend reads and writes this storage through service classes. Common API shapes include:
 
-```
-GET /api/novels/n4423lw/metadata
-GET /api/novels/n4423lw/chapters/1
-GET /api/novels/n4423lw/exports/epub
+```text
+GET  /api/health
+GET  /api/novels
+GET  /api/novels/{novel_id}/metadata
+GET  /api/novels/{novel_id}/chapters/{chapter_id}
+GET  /api/jobs
+GET  /api/jobs/{job_id}
+POST /api/jobs/crawl
+POST /api/jobs/translation
 ```
 
+## Scaling Notes
+
+The JSON-backed store is good for local-first development, small deployments, and early production testing.
+
+Recommended future upgrades:
+
+- PostgreSQL for novel metadata, chapter versions, jobs, requests, and usage.
+- Object storage for images and exports.
+- Redis/RQ, Celery, Dramatiq, or another queue backend for jobs.
+- CDN in front of reader assets.

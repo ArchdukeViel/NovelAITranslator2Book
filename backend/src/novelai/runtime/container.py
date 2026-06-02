@@ -5,15 +5,15 @@ from dataclasses import dataclass
 from novelai.config.settings import settings
 from novelai.providers.registry import get_provider
 from novelai.services.export_service import ExportService
-from novelai.services.job_queue_service import JobQueueService
-from novelai.services.job_runner_service import BackgroundJobRunner
-from novelai.services.job_worker_service import JobWorkerService
+from novelai.jobs.queue import JobQueueService
+from novelai.jobs.runner import BackgroundJobRunner
+from novelai.jobs.worker import JobWorkerService
 from novelai.services.novel_request_service import NovelRequestService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
-from novelai.services.storage_service import StorageService
+from novelai.storage.service import StorageService
 from novelai.services.translation_cache import TranslationCache
-from novelai.services.translation_service import TranslationService
+from novelai.translation.service import TranslationService
 from novelai.services.usage_service import UsageService
 
 
@@ -101,12 +101,12 @@ class Container:
     def translation(self) -> TranslationService:
         if self._translation is None:
             # Build translation service with all dependencies
-            from novelai.pipeline.pipeline import TranslationPipeline
-            from novelai.pipeline.stages.fetch import FetchStage
-            from novelai.pipeline.stages.parse import ParseStage
-            from novelai.pipeline.stages.post_process import PostProcessStage
-            from novelai.pipeline.stages.segment import SegmentStage
-            from novelai.pipeline.stages.translate import TranslateStage
+            from novelai.translation.pipeline.pipeline import TranslationPipeline
+            from novelai.translation.pipeline.stages.fetch import FetchStage
+            from novelai.translation.pipeline.stages.parse import ParseStage
+            from novelai.translation.pipeline.stages.post_process import PostProcessStage
+            from novelai.translation.pipeline.stages.segment import SegmentStage
+            from novelai.translation.pipeline.stages.translate import TranslateStage
 
             stages = [
                 FetchStage(),

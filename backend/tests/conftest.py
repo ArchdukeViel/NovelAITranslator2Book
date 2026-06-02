@@ -19,9 +19,9 @@ from novelai.core.chapter_state import ChapterState
 from novelai.glossary.glossary import Glossary
 from novelai.providers.base import TranslationProvider
 from novelai.services.preferences_service import PreferencesService
-from novelai.services.storage_service import StorageService
+from novelai.storage.service import StorageService
 from novelai.services.translation_cache import TranslationCache
-from novelai.services.translation_service import TranslationService
+from novelai.translation.service import TranslationService
 from novelai.services.usage_service import UsageService
 from novelai.sources.base import SourceAdapter
 
@@ -316,12 +316,12 @@ class TestFixture:
 
     def _create_translation_service(self) -> TranslationService:
         """Create a translation service wired to fixture mocks."""
-        from novelai.pipeline.pipeline import TranslationPipeline
-        from novelai.pipeline.stages.fetch import FetchStage
-        from novelai.pipeline.stages.parse import ParseStage
-        from novelai.pipeline.stages.post_process import PostProcessStage
-        from novelai.pipeline.stages.segment import SegmentStage
-        from novelai.pipeline.stages.translate import TranslateStage
+        from novelai.translation.pipeline.pipeline import TranslationPipeline
+        from novelai.translation.pipeline.stages.fetch import FetchStage
+        from novelai.translation.pipeline.stages.parse import ParseStage
+        from novelai.translation.pipeline.stages.post_process import PostProcessStage
+        from novelai.translation.pipeline.stages.segment import SegmentStage
+        from novelai.translation.pipeline.stages.translate import TranslateStage
 
         pipeline = TranslationPipeline(
             stages=[
