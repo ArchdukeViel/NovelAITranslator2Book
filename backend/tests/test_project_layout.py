@@ -5,11 +5,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from novelai.services.storage_service import StorageService
-from tests.conftest import cleanup_test_artifacts
+from tests.conftest import TESTS_TMP_ROOT, cleanup_test_artifacts
 
 
 def _workspace_test_root() -> Path:
-    root = Path("tests/.tmp/project_layout") / uuid4().hex
+    root = TESTS_TMP_ROOT.parent / "project_layout" / uuid4().hex
     root.mkdir(parents=True, exist_ok=False)
     return root
 

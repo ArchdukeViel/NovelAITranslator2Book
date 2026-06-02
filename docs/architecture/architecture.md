@@ -5,21 +5,23 @@ This document describes the current web-focused codebase layout and runtime flow
 ## Codebase Layout
 
 ```text
-src/novelai/
-  runtime/        bootstrap and dependency wiring
-  interfaces/     FastAPI web app and small backend launcher
-  config/         environment settings and workflow profile definitions
-  core/           errors, platform records, and shared state primitives
-  cost_estimator/ cost and token heuristics
-  export/         exporter implementations and registry
-  glossary/       glossary status and helpers
-  inputs/         document and file import adapters
-  pipeline/       fetch, parse, segment, translate, and post-process stages
-  prompts/        prompt builders and templates
-  providers/      translation provider adapters
-  services/       orchestration, storage, jobs, export, usage, cache, preferences
-  sources/        web source scrapers
-  utils/          HTTP, logging, retries, rate limiting, chapter selection, and text helpers
+backend/
+  src/novelai/
+    runtime/        bootstrap and dependency wiring
+    interfaces/     FastAPI web app and small backend launcher
+    config/         environment settings and workflow profile definitions
+    core/           errors, platform records, and shared state primitives
+    cost_estimator/ cost and token heuristics
+    export/         exporter implementations and registry
+    glossary/       glossary status and helpers
+    inputs/         document and file import adapters
+    pipeline/       fetch, parse, segment, translate, and post-process stages
+    prompts/        prompt builders and templates
+    providers/      translation provider adapters
+    services/       orchestration, storage, jobs, export, usage, cache, preferences
+    sources/        web source scrapers
+    utils/          HTTP, logging, retries, rate limiting, chapter selection, and text helpers
+  tests/          backend unit and integration tests
 
 frontend/
   app/            Next.js public reader and admin routes
@@ -61,7 +63,7 @@ NovelOrchestrationService
   export preparation
         ->
 Storage + Export Layer
-  novel_library/
+  storage/novel_library/
 ```
 
 ## Backend Entry Points
@@ -78,10 +80,19 @@ Storage + Export Layer
 
 - `interfaces/web/api.py`: FastAPI app factory and lifespan
 - `interfaces/web/server.py`: uvicorn launcher
-- `interfaces/web/routers/novels.py`: current combined API router
+- `interfaces/web/routers/novels.py`: aggregate router registered by the FastAPI app
+- `interfaces/web/routers/sources.py`: source and input-adapter discovery endpoints
+- `interfaces/web/routers/jobs.py`: crawl/translation job queue endpoints
+- `interfaces/web/routers/requests.py`: reader/admin novel request intake endpoints
+- `interfaces/web/routers/admin.py`: admin dashboard and worker-control endpoints
+- `interfaces/web/routers/library.py`: novel, chapter, reader, and progress endpoints
+- `interfaces/web/routers/editor.py`: translation version, edit, and rollback endpoints
+- `interfaces/web/routers/operations.py`: scrape, import, translate, and export commands
+- `interfaces/web/routers/dependencies.py`: shared FastAPI dependencies, auth, rate limiting, and reader metadata helpers
+- `interfaces/web/routers/_legacy_novels.py`: transitional compatibility layer for handler bodies not yet moved to focused modules
 - `interfaces/web/error_handlers.py`: exception-to-HTTP mapping
 
-The combined router is scheduled to be split into focused routers during the next refactor phase.
+`sources.py`, `admin.py`, `jobs.py`, `requests.py`, and `library.py` now own their handler bodies. The next backend refactor can move `editor.py` and `operations.py` out of `_legacy_novels.py` one group at a time.
 
 ### Runtime
 
@@ -124,7 +135,7 @@ This lets translation runs stop on unresolved content rather than silently produ
 
 ## Data Model Overview
 
-Runtime state is stored under `novel_library/` for now.
+Runtime state is stored under `storage/novel_library/` by default.
 
 Important stored artifacts include:
 
@@ -137,20 +148,19 @@ Important stored artifacts include:
 
 See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md) for the full file-level layout.
 
-## Next Structural Phase
-
-The next recommended cleanup is:
+## Root Layout
 
 ```text
 backend/
   src/novelai/
+  tests/
 frontend/
 storage/
 deploy/
 docs/
 ```
 
-That move should happen after the web-only entrypoint cleanup is stable.
+Python project metadata remains at the repository root so `pip install -e .`, `pytest`, and `pyright` still run from the root workspace.
 
 ## Related Docs
 

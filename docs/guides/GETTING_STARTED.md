@@ -48,6 +48,7 @@ Copy-Item .env.example .env
 Common `.env` values:
 
 ```env
+NOVEL_LIBRARY_DIR=storage/novel_library
 PROVIDER_GEMINI_API_KEY=your_key_here
 PROVIDER_OPENAI_API_KEY=your_key_here
 PROVIDER_DEFAULT=gemini
@@ -55,6 +56,8 @@ TRANSLATION_TARGET_LANGUAGE=English
 LOG_LEVEL=INFO
 WEB_RATE_LIMITER_BACKEND=memory
 ```
+
+The backend source lives in `backend/src`, backend tests live in `backend/tests`, and local runtime data defaults to `storage/novel_library`.
 
 ## Run Locally
 

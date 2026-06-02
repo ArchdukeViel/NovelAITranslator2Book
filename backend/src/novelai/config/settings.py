@@ -22,7 +22,7 @@ class AppSettings(BaseSettings):
     # --- Storage
     # Main runtime library: metadata, chapters, exports, preferences, logs.
     NOVEL_LIBRARY_DIR: Path = Field(
-        default=Path("novel_library"),
+        default=Path("storage/novel_library"),
         validation_alias=AliasChoices("NOVEL_LIBRARY_DIR", "DATA_DIR"),
     )
 

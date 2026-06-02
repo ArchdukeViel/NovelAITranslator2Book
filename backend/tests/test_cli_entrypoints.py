@@ -86,7 +86,7 @@ def test_package_main_routes_web_and_cli(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_pyproject_console_scripts_use_web_only_modules() -> None:
-    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
     data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     scripts = data["project"]["scripts"]
 

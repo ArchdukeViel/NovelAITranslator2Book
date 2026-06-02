@@ -1,36 +1,36 @@
-# Data Output Structure
+﻿# Data Output Structure
 
-Complete reference for what data is stored in `novel_library/` during runtime, with concrete examples.
+Complete reference for what data is stored in `storage/novel_library/` during runtime, with concrete examples.
 
 ## Quick Overview
 
 ```
-novel_library/
-├── preferences.json                 # Provider, model, API key
-├── translation_cache.json           # Cached translation results
-├── usage.json                       # API usage tracking
-└── novels/
-    ├── index.json                   # Novel ID → folder mapping
-    └── <novel_id>/                  # Single novel directory
-        ├── metadata.json            # Novel metadata from source
-        ├── raw/                     # Raw chapters from source
-        │   ├── chapter_1.json
-        │   └── chapter_2.json
-        ├── translated/              # Translated chapters (JSON)
-        │   ├── chapter_1.json
-        │   └── chapter_2.json
-        ├── epub/                    # EPUB exports
-        │   └── full_novel.epub
-        ├── assets/                  # Chapter images
-        │   └── images/
-        │       └── <chapter_id>/
-        └── checkpoints/             # State snapshots
-            └── chapter_1_post-translation.json
+storage/novel_library/
+â”œâ”€â”€ preferences.json                 # Provider, model, API key
+â”œâ”€â”€ translation_cache.json           # Cached translation results
+â”œâ”€â”€ usage.json                       # API usage tracking
+â””â”€â”€ novels/
+    â”œâ”€â”€ index.json                   # Novel ID â†’ folder mapping
+    â””â”€â”€ <novel_id>/                  # Single novel directory
+        â”œâ”€â”€ metadata.json            # Novel metadata from source
+        â”œâ”€â”€ raw/                     # Raw chapters from source
+        â”‚   â”œâ”€â”€ chapter_1.json
+        â”‚   â””â”€â”€ chapter_2.json
+        â”œâ”€â”€ translated/              # Translated chapters (JSON)
+        â”‚   â”œâ”€â”€ chapter_1.json
+        â”‚   â””â”€â”€ chapter_2.json
+        â”œâ”€â”€ epub/                    # EPUB exports
+        â”‚   â””â”€â”€ full_novel.epub
+        â”œâ”€â”€ assets/                  # Chapter images
+        â”‚   â””â”€â”€ images/
+        â”‚       â””â”€â”€ <chapter_id>/
+        â””â”€â”€ checkpoints/             # State snapshots
+            â””â”€â”€ chapter_1_post-translation.json
 ```
 
 ---
 
-## 1. Preferences (`novel_library/preferences.json`)
+## 1. Preferences (`storage/novel_library/preferences.json`)
 
 Stores the active provider, model, and API key.
 
@@ -46,7 +46,7 @@ Stores the active provider, model, and API key.
 
 ---
 
-## 2. Translation Cache (`novel_library/translation_cache.json`)
+## 2. Translation Cache (`storage/novel_library/translation_cache.json`)
 
 Stores previously translated text to avoid re-translating identical content.
 
@@ -66,7 +66,7 @@ key = SHA256(provider:model:source_text)
 
 ---
 
-## 3. API Usage Tracking (`novel_library/usage.json`)
+## 3. API Usage Tracking (`storage/novel_library/usage.json`)
 
 Logs every translation request for cost estimation and quota management.
 
@@ -109,7 +109,7 @@ Logs every translation request for cost estimation and quota management.
 
 ---
 
-## 4. Novel Index (`novel_library/novels/index.json`)
+## 4. Novel Index (`storage/novel_library/novels/index.json`)
 
 Maps novel IDs to their storage folder names.
 
@@ -126,7 +126,7 @@ Maps novel IDs to their storage folder names.
 
 ---
 
-## 5. Novel Metadata (`novel_library/novels/<novel_id>/metadata.json`)
+## 5. Novel Metadata (`storage/novel_library/novels/<novel_id>/metadata.json`)
 
 Stores novel information scraped from the source.
 
@@ -135,7 +135,7 @@ Stores novel information scraped from the source.
 ```json
 {
   "novel_id": "n4423lw",
-  "title": "ソードアート・オンライン プログレッシブ",
+  "title": "ã‚½ãƒ¼ãƒ‰ã‚¢ãƒ¼ãƒˆãƒ»ã‚ªãƒ³ãƒ©ã‚¤ãƒ³ ãƒ—ãƒ­ã‚°ãƒ¬ãƒƒã‚·ãƒ–",
   "translated_title": "Sword Art Online Progressive",
   "author": "Reki Kawahara",
   "source_key": "syosetu",
@@ -155,7 +155,7 @@ Stores novel information scraped from the source.
 
 ---
 
-## 6. Raw Chapter (`novel_library/novels/<novel_id>/raw/chapter_1.json`)
+## 6. Raw Chapter (`storage/novel_library/novels/<novel_id>/raw/chapter_1.json`)
 
 Stores the original scraped text from the source.
 
@@ -168,13 +168,13 @@ Stores the original scraped text from the source.
   "source_key": "syosetu",
   "source_url": "https://ncode.syosetu.com/n4423lw/1/",
   "scraped_at": "2026-03-07T12:00:00Z",
-  "text": "少女はしばらく空を見つめた。\n新しい世界。それがアインクラッドという名の浮遊城塞だ。"
+  "text": "å°‘å¥³ã¯ã—ã°ã‚‰ãç©ºã‚’è¦‹ã¤ã‚ãŸã€‚\næ–°ã—ã„ä¸–ç•Œã€‚ãã‚ŒãŒã‚¢ã‚¤ãƒ³ã‚¯ãƒ©ãƒƒãƒ‰ã¨ã„ã†åã®æµ®éŠåŸŽå¡žã ã€‚"
 }
 ```
 
 ---
 
-## 7. Translated Chapter (`novel_library/novels/<novel_id>/translated/chapter_1.json`)
+## 7. Translated Chapter (`storage/novel_library/novels/<novel_id>/translated/chapter_1.json`)
 
 Stores the translated output with provider metadata.
 
@@ -192,7 +192,7 @@ Stores the translated output with provider metadata.
 
 ---
 
-## 8. Checkpoint Snapshots (`novel_library/novels/<novel_id>/checkpoints/`)
+## 8. Checkpoint Snapshots (`storage/novel_library/novels/<novel_id>/checkpoints/`)
 
 State snapshots for recovery from translation failures.
 
@@ -206,8 +206,8 @@ State snapshots for recovery from translation failures.
   "state": "SEGMENTS_CREATED",
   "data": {
     "segments": [
-      { "segment_id": 1, "text": "少女はしばらく..." },
-      { "segment_id": 2, "text": "新しい世界。..." }
+      { "segment_id": 1, "text": "å°‘å¥³ã¯ã—ã°ã‚‰ã..." },
+      { "segment_id": 2, "text": "æ–°ã—ã„ä¸–ç•Œã€‚..." }
     ]
   }
 }
@@ -215,29 +215,29 @@ State snapshots for recovery from translation failures.
 
 ---
 
-## 9. EPUB Exports (`novel_library/novels/<novel_id>/epub/`)
+## 9. EPUB Exports (`storage/novel_library/novels/<novel_id>/epub/`)
 
 EPUB files generated from translated chapters.
 
 ```
 epub/
-└── full_novel.epub
+â””â”€â”€ full_novel.epub
 ```
 
 Inline chapter images are embedded from `assets/images/` so the EPUB does not depend on the source site still serving images.
 
 ---
 
-## 10. Chapter Images (`novel_library/novels/<novel_id>/assets/images/`)
+## 10. Chapter Images (`storage/novel_library/novels/<novel_id>/assets/images/`)
 
 Images downloaded during scraping, organized per chapter:
 
 ```
 assets/
-└── images/
-    └── chapter_1/
-        ├── img_001.jpg
-        └── img_002.png
+â””â”€â”€ images/
+    â””â”€â”€ chapter_1/
+        â”œâ”€â”€ img_001.jpg
+        â””â”€â”€ img_002.png
 ```
 
 Chapter JSON stores an image manifest with the original URL, placeholder tag, and local asset path.
@@ -249,33 +249,33 @@ Chapter JSON stores an image manifest with the original URL, placeholder tag, an
 ### Step 1: Scrape metadata
 
 **Created**:
-- `novel_library/novels/index.json`
-- `novel_library/novels/n4423lw/metadata.json`
+- `storage/novel_library/novels/index.json`
+- `storage/novel_library/novels/n4423lw/metadata.json`
 
 ### Step 2: Fetch 3 chapters
 
 **Created**:
 ```
-novel_library/novels/n4423lw/raw/
-├── chapter_1.json
-├── chapter_2.json
-└── chapter_3.json
+storage/novel_library/novels/n4423lw/raw/
+â”œâ”€â”€ chapter_1.json
+â”œâ”€â”€ chapter_2.json
+â””â”€â”€ chapter_3.json
 ```
 
 ### Step 3: Translate chapter 1
 
 **Created**:
-- `novel_library/novels/n4423lw/translated/chapter_1.json`
-- `novel_library/novels/n4423lw/checkpoints/chapter_1_post-translation.json`
+- `storage/novel_library/novels/n4423lw/translated/chapter_1.json`
+- `storage/novel_library/novels/n4423lw/checkpoints/chapter_1_post-translation.json`
 
 **Updated**:
-- `novel_library/usage.json`
-- `novel_library/translation_cache.json`
+- `storage/novel_library/usage.json`
+- `storage/novel_library/translation_cache.json`
 
 ### Step 4: Export
 
 **Created**:
-- `novel_library/novels/n4423lw/epub/full_novel.epub`
+- `storage/novel_library/novels/n4423lw/epub/full_novel.epub`
 
 ---
 
@@ -288,7 +288,7 @@ novel_library/novels/n4423lw/raw/
 | Metadata | ~5 KB |
 | Raw chapters (JSON) | ~200 KB |
 | Translated chapters (JSON) | ~220 KB |
-| Checkpoints (per chapter) | ~50 KB × 4 = 200 KB |
+| Checkpoints (per chapter) | ~50 KB Ã— 4 = 200 KB |
 | **Subtotal** | **~625 KB** |
 
 ### Global
@@ -301,7 +301,7 @@ novel_library/novels/n4423lw/raw/
 ### Scaling (100 novels)
 
 ```
-100 novels × 625 KB = ~62.5 MB
+100 novels Ã— 625 KB = ~62.5 MB
 Global cache         = ~150 KB
 Total                = ~63 MB
 ```
@@ -310,10 +310,11 @@ Total                = ~63 MB
 
 ## API Integration
 
-The web server (`novelaibook web`) serves data from `novel_library/`:
+The web server (`novelaibook web`) serves data from `storage/novel_library/`:
 
 ```
 GET /api/novels/n4423lw/metadata
 GET /api/novels/n4423lw/chapters/1
 GET /api/novels/n4423lw/exports/epub
 ```
+

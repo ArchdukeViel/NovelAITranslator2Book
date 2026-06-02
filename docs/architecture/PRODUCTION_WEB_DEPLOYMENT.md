@@ -72,6 +72,7 @@ For a public WTR-style deployment, run:
 
 - Next.js frontend on `127.0.0.1:3000`
 - FastAPI backend on `127.0.0.1:8000`
+- Durable runtime storage mounted at `storage/novel_library` or configured with `NOVEL_LIBRARY_DIR`
 - Caddy/Nginx/Cloudflare routing `/api/*` to FastAPI and everything else to Next.js
 
 ## Later Hardening

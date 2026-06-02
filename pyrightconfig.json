@@ -1,12 +1,12 @@
 {
   "include": [
-    "src"
+    "backend/src"
   ],
   "exclude": [
     "tests"
   ],
   "extraPaths": [
-    "src"
+    "backend/src"
   ],
   "venvPath": ".",
   "venv": ".venv",

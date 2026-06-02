@@ -1,4 +1,4 @@
-# Release D Plan: Advanced Media Workflow (OCR + Re-Embedding)
+﻿# Release D Plan: Advanced Media Workflow (OCR + Re-Embedding)
 
 > Historical note: this plan predates the web-only direction. OCR capabilities are now part of the backend service layer; future UX work should surface them in the web admin.
 
@@ -41,8 +41,8 @@ Introduce chapter flags in chapter bundles:
 
 Primary file targets:
 
-1. `src/novelai/services/storage_service.py`
-2. `src/novelai/core/chapter_state.py`
+1. `backend/src/novelai/services/storage_service.py`
+2. `backend/src/novelai/core/chapter_state.py`
 
 ### 2. OCR Service Integration
 
@@ -54,9 +54,9 @@ Add service-level OCR operation that can be called from orchestration:
 
 Primary file targets:
 
-1. `src/novelai/services/novel_orchestration_service.py`
-2. `src/novelai/pipeline/stages/fetch.py`
-3. `src/novelai/pipeline/stages/parse.py`
+1. `backend/src/novelai/services/novel_orchestration_service.py`
+2. `backend/src/novelai/pipeline/stages/fetch.py`
+3. `backend/src/novelai/pipeline/stages/parse.py`
 
 ### 3. OCR Review Workflow
 
@@ -68,9 +68,9 @@ Add review controls in the web admin and backend API:
 
 Primary file targets:
 
-1. `src/novelai/interfaces/web/routers/novels.py`
+1. `backend/src/novelai/interfaces/web/routers/novels.py`
 2. `frontend/app/(admin)/admin/editor/page.tsx`
-3. `src/novelai/services/novel_orchestration_service.py`
+3. `backend/src/novelai/services/novel_orchestration_service.py`
 
 ### 4. Re-Embedding Step
 
@@ -82,10 +82,10 @@ Add explicit post-translation optional re-embedding operation:
 
 Primary file targets:
 
-1. `src/novelai/services/novel_orchestration_service.py`
-2. `src/novelai/services/storage_service.py`
-3. `src/novelai/export/epub_exporter.py`
-4. `src/novelai/export/html_exporter.py`
+1. `backend/src/novelai/services/novel_orchestration_service.py`
+2. `backend/src/novelai/services/storage_service.py`
+3. `backend/src/novelai/export/epub_exporter.py`
+4. `backend/src/novelai/export/html_exporter.py`
 
 ## Execution Phases
 
@@ -145,11 +145,11 @@ Acceptance criteria:
 
 Required test updates:
 
-1. `tests/test_storage_service.py`: schema/default compatibility and OCR field persistence.
-2. `tests/test_novel_orchestration_service.py`: OCR preflight enforcement and re-embedding flow.
-3. `tests/test_pipeline_stages.py`: OCR-aware parse/translate path behavior.
-4. `tests/test_web_api.py`: diagnostics/library API rendering for OCR and re-embedding state.
-5. `tests/test_integration.py`: end-to-end OCR reviewed -> translate -> re-embed -> export.
+1. `backend/tests/test_storage_service.py`: schema/default compatibility and OCR field persistence.
+2. `backend/tests/test_novel_orchestration_service.py`: OCR preflight enforcement and re-embedding flow.
+3. `backend/tests/test_pipeline_stages.py`: OCR-aware parse/translate path behavior.
+4. `backend/tests/test_web_api.py`: diagnostics/library API rendering for OCR and re-embedding state.
+5. `backend/tests/test_integration.py`: end-to-end OCR reviewed -> translate -> re-embed -> export.
 
 ## Risks and Mitigations
 
@@ -174,3 +174,4 @@ Mitigation: non-blocking optional step; preserve normal export path.
 2. Re-embedding success rate.
 3. Reduction in manual post-export image text fixes.
 4. Zero regression in non-media novel workflows.
+

@@ -11,6 +11,16 @@ Novel AI is a web-based Japanese novel platform for crawling source sites, queue
 - Export translated or source text as EPUB, HTML, or Markdown
 - Serve a Next.js frontend for public reader pages and production-style admin workflows
 
+## Project Layout
+
+```text
+backend/   FastAPI backend package and backend tests
+frontend/  Next.js public reader and admin UI
+storage/   Local runtime data, ignored by git
+deploy/    Reverse-proxy and deployment examples
+docs/      Guides, architecture notes, and references
+```
+
 ## Install
 
 ```powershell
@@ -28,6 +38,7 @@ Copy-Item .env.example .env
 Add provider keys in `.env` when you want real translation:
 
 ```env
+NOVEL_LIBRARY_DIR=storage/novel_library
 PROVIDER_GEMINI_API_KEY=your_key_here
 PROVIDER_OPENAI_API_KEY=your_key_here
 ```

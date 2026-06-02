@@ -42,7 +42,7 @@ def _utc_now_iso() -> str:
 class StorageService:
     """Filesystem-backed storage service.
 
-    Each novel is stored in a folder under `novel_library/novels/<novel_id>`.
+    Each novel is stored in a folder under `storage/novel_library/novels/<novel_id>` by default.
     The folder name is a stable filesystem-safe variant of the novel ID.
 
     The folder contains:

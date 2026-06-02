@@ -26,6 +26,7 @@ from novelai.interfaces.web.routers.novels import (
     get_requests,
     get_storage,
 )
+from novelai.interfaces.web.routers import _legacy_novels, novels
 
 _TMP = Path(__file__).resolve().parent / ".tmp" / "web_api"
 
@@ -71,6 +72,21 @@ def _make_app(
     if requests is not None:
         app.dependency_overrides[get_requests] = lambda: requests
     return TestClient(app)
+
+
+def test_split_router_preserves_legacy_path_methods() -> None:
+    legacy_routes = {
+        (tuple(sorted(route.methods)), route.path)
+        for route in _legacy_novels.router.routes
+        if hasattr(route, "methods")
+    }
+    current_routes = {
+        (tuple(sorted(route.methods)), route.path)
+        for route in novels.router.routes
+        if hasattr(route, "methods")
+    }
+
+    assert current_routes == legacy_routes
 
 
 class StubJobOrchestrator:

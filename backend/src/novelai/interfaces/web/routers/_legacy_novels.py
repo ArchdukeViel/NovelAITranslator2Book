@@ -21,6 +21,7 @@ from novelai.services.storage_service import StorageService
 from novelai.inputs.registry import available_input_adapters
 from novelai.sources.registry import available_sources, detect_source
 from novelai.utils.rate_limiter import get_default_rate_limiter
+import novelai.interfaces.web.routers.dependencies as shared_deps
 
 router = APIRouter()
 
@@ -338,6 +339,20 @@ class SourceCandidateCreateRequest(BaseModel):
     source_url: str | None = None
     submitted_by: str | None = None
     notes: str | None = None
+
+
+verify_api_key = shared_deps.verify_api_key
+_rate_limit = shared_deps._rate_limit
+_hits = shared_deps._hits
+get_storage = shared_deps.get_storage
+get_orchestrator = shared_deps.get_orchestrator
+get_jobs = shared_deps.get_jobs
+get_job_worker = shared_deps.get_job_worker
+get_job_runner = shared_deps.get_job_runner
+get_requests = shared_deps.get_requests
+_metadata_chapters = shared_deps.metadata_chapters
+_reader_title = shared_deps.reader_title
+_reader_author = shared_deps.reader_author
 
 
 # ---------------------------------------------------------------------------

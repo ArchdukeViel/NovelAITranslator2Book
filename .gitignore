@@ -47,9 +47,9 @@ pytest-cache-files-*/
 tmp/
 .temp/
 .tmp/
-tests/.tmp/
-tests/.cache/
-tests/.pytest_cache/
+backend/tests/.tmp/
+backend/tests/.cache/
+backend/tests/.pytest_cache/
 
 # IDE / editor
 .vscode/
@@ -74,6 +74,10 @@ __MACOSX/
 
 # Runtime data
 novel_library/
+storage/novel_library/
+storage/output/
+storage/input/
+storage/logs/
 output/
 input/
 logs/

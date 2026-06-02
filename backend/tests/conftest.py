@@ -25,7 +25,7 @@ from novelai.services.translation_service import TranslationService
 from novelai.services.usage_service import UsageService
 from novelai.sources.base import SourceAdapter
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TESTS_ROOT = Path(__file__).resolve().parent
 TESTS_TMP_ROOT = TESTS_ROOT / ".tmp" / "fixtures"
 TESTS_RUNTIME_ROOT = TESTS_ROOT / ".tmp" / "runtime"
@@ -497,7 +497,7 @@ def cleanup_pytest_cache():
     # Cleanup after all tests finish
     cache_dirs = [
         Path(".pytest_cache"),
-        Path("tests/.pytest_cache"),
+        TESTS_ROOT / ".pytest_cache",
     ]
 
     for cache_dir in cache_dirs:
