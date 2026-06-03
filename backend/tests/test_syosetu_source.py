@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from novelai.sources.syosetu_ncode import SyosetuNcodeSource
@@ -14,6 +15,16 @@ def test_normalize_novel_id_accepts_chapter_and_infotop_urls() -> None:
         source.normalize_novel_id("https://ncode.syosetu.com/novelview/infotop/ncode/n8733gf/")
         == "n8733gf"
     )
+
+
+def test_decode_page_response_uses_utf8_when_charset_is_missing() -> None:
+    response = httpx.Response(
+        200,
+        content="TS刑事　如月真琴の憂鬱".encode("utf-8"),
+        headers={"content-type": "text/html"},
+    )
+
+    assert SyosetuNcodeSource._decode_page_response(response) == "TS刑事　如月真琴の憂鬱"
 
 
 def test_parse_metadata_html_detects_multi_chapter_series() -> None:
@@ -259,6 +270,59 @@ async def test_fetch_metadata_collects_all_paginated_chapter_pages() -> None:
     metadata = await source.fetch_metadata(root_url)
 
     assert [chapter["id"] for chapter in metadata["chapters"]] == ["1", "2", "3", "4"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_metadata_carries_part_heading_between_paginated_pages() -> None:
+    source = SyosetuNcodeSource()
+    root_url = "https://ncode.syosetu.com/n8733gf/"
+    pages = {
+        root_url: """
+        <html>
+          <body>
+            <h1 class="p-novel__title">Paged Story</h1>
+            <div id="novel_writername">Author Name</div>
+            <div class="chapter_title">Part One: The Eventful First Year</div>
+            <dl class="novel_sublist2">
+              <dd class="subtitle"><a href="/n8733gf/1/">Prologue</a></dd>
+              <dt class="long_update">2025/01/13 20:00</dt>
+            </dl>
+            <dl class="novel_sublist2">
+              <dd class="subtitle"><a href="/n8733gf/2/">Episode 1</a></dd>
+              <dt class="long_update">2025/01/14 19:00</dt>
+            </dl>
+            <a href="/n8733gf/?p=2">2</a>
+          </body>
+        </html>
+        """,
+        f"{root_url}?p=2": """
+        <html>
+          <body>
+            <dl class="novel_sublist2">
+              <dd class="subtitle"><a href="/n8733gf/3/">Episode 2</a></dd>
+              <dt class="long_update">2025/01/15 19:00</dt>
+            </dl>
+            <dl class="novel_sublist2">
+              <dd class="subtitle"><a href="/n8733gf/4/">Episode 3</a></dd>
+              <dt class="long_update">2025/01/16 19:00</dt>
+            </dl>
+          </body>
+        </html>
+        """,
+    }
+
+    async def fake_fetch_page(url: str) -> str:
+        return pages[url]
+
+    source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
+    metadata = await source.fetch_metadata(root_url)
+
+    assert [chapter["part"] for chapter in metadata["chapters"]] == [
+        "Part One: The Eventful First Year",
+        "Part One: The Eventful First Year",
+        "Part One: The Eventful First Year",
+        "Part One: The Eventful First Year",
+    ]
 
 
 @pytest.mark.asyncio

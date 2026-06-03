@@ -16,12 +16,12 @@ from novelai.runtime.container import container
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if settings.JOB_WORKER_ENABLED:
-        await container.job_runner.start()
+        await container.activity_runner.start()
     try:
         yield
     finally:
-        if container.job_runner.is_running():
-            await container.job_runner.stop()
+        if container.activity_runner.is_running():
+            await container.activity_runner.stop()
 
 
 def create_app() -> FastAPI:

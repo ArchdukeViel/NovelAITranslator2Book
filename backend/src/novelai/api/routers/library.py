@@ -22,7 +22,11 @@ class NovelSummary(BaseModel):
     novel_id: str
     title: str | None = None
     author: str | None = None
+    source: str | None = None
+    source_url: str | None = None
     chapter_count: int = 0
+    scraped_count: int = 0
+    translated_count: int = 0
 
 
 class ChapterSummary(BaseModel):
@@ -42,9 +46,13 @@ async def list_novels(
         summaries.append(
             NovelSummary(
                 novel_id=novel_id,
-                title=meta.get("title"),
-                author=meta.get("author"),
+                title=meta.get("translated_title") or meta.get("title"),
+                author=meta.get("translated_author") or meta.get("author"),
+                source=meta.get("source"),
+                source_url=meta.get("source_url"),
                 chapter_count=len(meta.get("chapters", [])),
+                scraped_count=storage.count_stored_chapters(novel_id),
+                translated_count=storage.count_translated_chapters(novel_id),
             )
         )
     return summaries

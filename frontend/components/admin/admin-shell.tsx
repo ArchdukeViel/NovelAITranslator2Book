@@ -8,11 +8,10 @@ import {
   ChevronRight,
   FileEdit,
   Gauge,
-  Languages,
+  Library,
   ListPlus,
   ListChecks,
   Moon,
-  Radar,
   Search,
   Settings,
   Sun,
@@ -27,10 +26,9 @@ import { useUiStore } from "@/lib/store";
 
 const items = [
   { href: "/admin/dashboard", label: "Home", icon: Gauge },
-  { href: "/admin/crawler", label: "Crawler", icon: Search },
-  { href: "/admin/source-health", label: "Sources", icon: Radar },
-  { href: "/admin/translation", label: "Translation", icon: Languages },
-  { href: "/admin/jobs", label: "Jobs", icon: ListChecks },
+  { href: "/admin/crawler", label: "Add Novel", icon: Search },
+  { href: "/admin/library", label: "Library", icon: Library },
+  { href: "/admin/activity", label: "Activity Log", icon: ListChecks },
   { href: "/admin/requests", label: "Requests", icon: ListPlus },
   { href: "/admin/editor", label: "Editor", icon: FileEdit },
   { href: "/admin/settings", label: "Settings", icon: Settings }

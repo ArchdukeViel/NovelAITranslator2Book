@@ -2,15 +2,132 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import re
 from typing import Any
 
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState
 from novelai.glossary import glossary_status_counts, normalize_glossary_entries
+from novelai.providers.model_fallbacks import model_candidates
 from novelai.services.orchestration.common import PreflightIssue, _make_state_data
 from novelai.sources.base import SourceAdapter
 
 logger = logging.getLogger(__name__)
+
+_METADATA_TRANSLATION_PROMPT_SOURCES = {"gemini", "openai"}
+_METADATA_TRANSLATION_PROMPT_VERSION = "metadata-literal-v2"
+_CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
+_GENERIC_TITLE_RE = re.compile(
+    r"^\s*(?:episode|chapter|part|volume|section|arc)(?:\s+[\w.-]+)?\s*$",
+    flags=re.IGNORECASE,
+)
+
+
+def _metadata_translation_prompt(source_text: str, field: str) -> str:
+    target_language = settings.TRANSLATION_TARGET_LANGUAGE or "English"
+    normalized_field = field.strip().lower()
+    field_label = {
+        "title": "novel title",
+        "author": "author name",
+        "synopsis": "novel synopsis",
+        "chapter_title": "chapter title",
+        "glossary_term": "glossary term",
+    }.get(normalized_field, "text")
+    extra_rules = ""
+    if normalized_field == "author":
+        extra_rules = "\n- For author names, return only the name; omit labels such as Author or Writer."
+    elif normalized_field in {"title", "chapter_title", "glossary_term"}:
+        extra_rules = "\n- Keep the result short and title-like; do not expand it into a summary."
+    return (
+        f"Translate this Japanese web novel {field_label} into {target_language}.\n"
+        "Rules:\n"
+        "- Return only the translated text.\n"
+        "- Do not explain, summarize, continue, rewrite, add alternatives, or add markdown.\n"
+        "- Preserve names, numbers, episode markers, and honorifics unless a standard English rendering exists.\n"
+        "- If the input is already in the target language, return it unchanged."
+        f"{extra_rules}\n"
+        "<source_text>\n"
+        f"{source_text}\n"
+        "</source_text>"
+    )
+
+
+def _metadata_translation_max_tokens(source_text: str, field: str) -> int:
+    normalized_field = field.strip().lower()
+    if normalized_field == "author":
+        return 48
+    if normalized_field in {"title", "chapter_title", "glossary_term"}:
+        return 96
+    if normalized_field == "synopsis":
+        return min(2048, max(384, len(source_text) // 2 + 192))
+    return 256
+
+
+def _clean_metadata_translation(translated: str, source_text: str, field: str) -> str:
+    cleaned = translated.strip()
+    if not cleaned:
+        return source_text
+
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+
+    cleaned = re.sub(
+        r"^(translation|translated text|english|title|author|chapter title)\s*:\s*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    normalized_field = field.strip().lower()
+    if normalized_field in {"title", "author", "chapter_title", "glossary_term"}:
+        lines = [line.strip().strip("\"'") for line in cleaned.splitlines() if line.strip()]
+        if lines:
+            cleaned = lines[0]
+        cleaned = re.sub(r"^[-*]\s+", "", cleaned).strip()
+
+    return cleaned or source_text
+
+
+def _source_title_core(source_text: str) -> str:
+    text = source_text.strip()
+    text = re.sub(
+        r"^\s*(?:第\s*[0-9０-９一二三四五六七八九十百千万]+\s*[話章部幕節]|[0-9０-９]+\s*[話章部幕節])\s*",
+        "",
+        text,
+    )
+    text = re.sub(r"^\s*(?:episode|chapter|part|volume|section|arc)\s*[\w.-]*\s*", "", text, flags=re.IGNORECASE)
+    return text.strip(" \t\r\n:：-–—_、。.,")
+
+
+def _metadata_translation_is_usable(source_text: str, translated: str, field: str) -> bool:
+    normalized_field = field.strip().lower()
+    candidate = translated.strip()
+    if not candidate:
+        return False
+
+    source = source_text.strip()
+    if candidate == source:
+        return not _CJK_RE.search(source)
+
+    if normalized_field in {"title", "chapter_title", "glossary_term"}:
+        source_core = _source_title_core(source)
+        candidate_core = _source_title_core(candidate)
+        source_has_meaning_after_marker = bool(source_core) and source_core != source
+        if source_has_meaning_after_marker and _GENERIC_TITLE_RE.fullmatch(candidate):
+            return False
+        if source_has_meaning_after_marker and not candidate_core:
+            return False
+
+    if normalized_field in {"title", "chapter_title", "synopsis", "glossary_term"}:
+        source_has_cjk = bool(_CJK_RE.search(source))
+        candidate_has_cjk = bool(_CJK_RE.search(candidate))
+        candidate_has_latin = bool(re.search(r"[A-Za-z]", candidate))
+        if source_has_cjk and candidate_has_cjk and not candidate_has_latin:
+            return False
+
+    return True
+
 
 def _preflight_translation(
     self: Any,
@@ -432,22 +549,108 @@ async def _translate_text(
     *,
     provider_key: str | None = None,
     provider_model: str | None = None,
+    field: str | None = None,
 ) -> str:
     normalized = text.strip()
     if not normalized:
         return normalized
 
-    provider_key, provider_model = self._resolve_provider_and_model(provider_key, provider_model)
-    cached = self._cache.get(normalized, provider_key, provider_model)
-    if cached is not None:
-        return cached
+    resolved_provider_key, resolved_provider_model = self._resolve_provider_and_model(provider_key, provider_model)
+    provider_key = str(resolved_provider_key)
+    provider_model = str(resolved_provider_model)
+    if provider_key == "dummy":
+        if field is not None:
+            raise RuntimeError(
+                "Metadata translation skipped because no active Gemini/OpenAI provider is configured. "
+                "Add and use a provider API token in Settings."
+            )
+        return normalized
 
     provider = self._provider_factory(provider_key)
-    result = await provider.translate(prompt=normalized, model=provider_model)
-    translated = str(result.get("text", "")).strip() or normalized
-    self._record_usage(provider.key, provider_model, result.get("metadata"))
-    self._cache.set(normalized, provider.key, provider_model, translated)
-    return translated
+    try:
+        supported_models = provider.available_models() or []
+    except Exception:
+        supported_models = []
+
+    field_key = field.strip().lower() if isinstance(field, str) and field.strip() else None
+    prompt = normalized
+    max_tokens: int | None = None
+    provider_kwargs: dict[str, Any] = {}
+    if field_key and provider_key in _METADATA_TRANSLATION_PROMPT_SOURCES:
+        prompt = _metadata_translation_prompt(normalized, field_key)
+        max_tokens = _metadata_translation_max_tokens(normalized, field_key)
+        if provider_key == "gemini":
+            provider_kwargs["temperature"] = 0.0
+
+    cache_text = normalized if field_key is None else f"metadata:{field_key}:{settings.TRANSLATION_TARGET_LANGUAGE}:{normalized}"
+    candidates = model_candidates(provider_key, provider_model, supported_models)
+    last_error: Exception | None = None
+    for candidate_model in candidates:
+        cached = self._cache.get(cache_text, provider.key, candidate_model)
+        if cached is not None:
+            if field_key and not _metadata_translation_is_usable(normalized, cached, field_key):
+                logger.warning(
+                    "Ignoring cached incomplete metadata translation for %s with %s/%s.",
+                    field_key,
+                    provider_key,
+                    candidate_model,
+                )
+            else:
+                return cached
+
+        try:
+            result = await provider.translate(
+                prompt=prompt,
+                model=candidate_model,
+                max_tokens=max_tokens,
+                **provider_kwargs,
+            )
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "Metadata translation failed with %s/%s; trying fallback model if available: %s",
+                provider_key,
+                candidate_model,
+                exc,
+            )
+            continue
+
+        translated = str(result.get("text", "")).strip() or normalized
+        if field_key:
+            translated = _clean_metadata_translation(translated, normalized, field_key)
+            if not _metadata_translation_is_usable(normalized, translated, field_key):
+                last_error = RuntimeError(
+                    f"Incomplete metadata translation for {field_key} with {provider_key}/{candidate_model}: {translated!r}"
+                )
+                logger.warning(
+                    "Metadata translation from %s/%s looked incomplete for %s; trying fallback model if available.",
+                    provider_key,
+                    candidate_model,
+                    field_key,
+                )
+                continue
+        self._record_usage(provider.key, candidate_model, result.get("metadata"))
+        self._cache.set(cache_text, provider.key, candidate_model, translated)
+        return translated
+
+    if last_error is not None:
+        if field_key:
+            logger.warning(
+                "Metadata translation fell back to original text for %s after all models failed quality checks: %s",
+                field_key,
+                last_error,
+            )
+            return normalized
+        raise last_error
+    raise RuntimeError(f"No translation models available for provider {provider_key}.")
+
+
+def _can_reuse_metadata_translation(source_text: str, previous_source: Any, previous_translation: Any, field: str) -> bool:
+    if previous_source != source_text:
+        return False
+    if not isinstance(previous_translation, str) or not previous_translation.strip():
+        return False
+    return _metadata_translation_is_usable(source_text, previous_translation, field)
 
 
 async def _translate_metadata_fields(
@@ -462,27 +665,43 @@ async def _translate_metadata_fields(
     """
     translated_metadata = dict(metadata)
     previous = existing_metadata or {}
+    can_reuse_previous = previous.get("metadata_translation_prompt_version") == _METADATA_TRANSLATION_PROMPT_VERSION
 
     title = translated_metadata.get("title")
     if isinstance(title, str) and title:
-        if previous.get("title") == title and isinstance(previous.get("translated_title"), str):
+        if can_reuse_previous and _can_reuse_metadata_translation(
+            title,
+            previous.get("title"),
+            previous.get("translated_title"),
+            "title",
+        ):
             translated_metadata["translated_title"] = previous["translated_title"]
         else:
-            translated_metadata["translated_title"] = await self._translate_text(title)
+            translated_metadata["translated_title"] = await self._translate_text(title, field="title")
 
     author = translated_metadata.get("author")
     if isinstance(author, str) and author:
-        if previous.get("author") == author and isinstance(previous.get("translated_author"), str):
+        if can_reuse_previous and _can_reuse_metadata_translation(
+            author,
+            previous.get("author"),
+            previous.get("translated_author"),
+            "author",
+        ):
             translated_metadata["translated_author"] = previous["translated_author"]
         else:
-            translated_metadata["translated_author"] = await self._translate_text(author)
+            translated_metadata["translated_author"] = await self._translate_text(author, field="author")
 
     synopsis = translated_metadata.get("synopsis") or translated_metadata.get("description") or translated_metadata.get("summary")
     if isinstance(synopsis, str) and synopsis:
-        if previous.get("synopsis") == synopsis and isinstance(previous.get("translated_synopsis"), str):
+        if can_reuse_previous and _can_reuse_metadata_translation(
+            synopsis,
+            previous.get("synopsis"),
+            previous.get("translated_synopsis"),
+            "synopsis",
+        ):
             translated_metadata["translated_synopsis"] = previous["translated_synopsis"]
         else:
-            translated_metadata["translated_synopsis"] = await self._translate_text(synopsis)
+            translated_metadata["translated_synopsis"] = await self._translate_text(synopsis, field="synopsis")
 
     previous_chapters = previous.get("chapters", [])
     previous_by_id = {
@@ -505,17 +724,20 @@ async def _translate_metadata_fields(
         previous_chapter = previous_by_id.get(chapter_id, {})
         chapter_title = translated_chapter.get("title")
         if isinstance(chapter_title, str) and chapter_title:
-            if (
-                previous_chapter.get("title") == chapter_title
-                and isinstance(previous_chapter.get("translated_title"), str)
+            if can_reuse_previous and _can_reuse_metadata_translation(
+                chapter_title,
+                previous_chapter.get("title"),
+                previous_chapter.get("translated_title"),
+                "chapter_title",
             ):
                 translated_chapter["translated_title"] = previous_chapter["translated_title"]
             else:
-                translated_chapter["translated_title"] = await self._translate_text(chapter_title)
+                translated_chapter["translated_title"] = await self._translate_text(chapter_title, field="chapter_title")
 
         translated_chapters.append(translated_chapter)
 
     translated_metadata["chapters"] = translated_chapters
+    translated_metadata["metadata_translation_prompt_version"] = _METADATA_TRANSLATION_PROMPT_VERSION
     return translated_metadata
 
 

@@ -20,6 +20,22 @@ from tests.conftest import (
 )
 
 
+class FallbackPipelineProvider:
+    key = "gemini"
+
+    def __init__(self) -> None:
+        self.models_seen: list[str | None] = []
+
+    def available_models(self) -> list[str]:
+        return ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+
+    async def translate(self, prompt: str, model: str | None = None, **kwargs: object) -> dict[str, object]:
+        self.models_seen.append(model)
+        if model == "gemini-2.5-flash":
+            raise RuntimeError("quota exceeded")
+        return {"text": f"[{model}] {prompt}", "metadata": {"usage": {"total_tokens": 7}}}
+
+
 @pytest.fixture
 def integration_fixture():
     """Create integration test fixture."""
@@ -117,6 +133,40 @@ async def test_translation_service_builds_multilingual_prompt_request(integratio
     assert "Project glossary:" in request.user_prompt
     assert "perangkat sihir" in request.user_prompt
     assert "Treat fantasy and worldbuilding terminology carefully." in request.user_prompt
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_falls_back_between_gemini_models(integration_fixture):
+    fixture = integration_fixture
+    provider = FallbackPipelineProvider()
+    fixture.add_source_chapter("http://example.com/fallback", "ãƒ†ã‚¹ãƒˆã§ã™ã€‚")
+    fixture.settings_service.set_provider_key("gemini")
+    fixture.settings_service.set_provider_model("gemini-2.5-flash")
+    fixture.settings_service.set_api_key("gemini-key", provider_key="gemini")
+
+    pipeline = TranslationPipeline(
+        stages=[
+            FetchStage(),
+            ParseStage(),
+            SegmentStage(),
+            TranslateStage(
+                provider_factory=lambda key: provider,
+                cache=fixture.cache,
+                settings_service=fixture.settings_service,
+                usage_service=fixture.usage_service,
+            ),
+            PostProcessStage(),
+        ]
+    )
+    context = PipelineState(chapter_url="http://example.com/fallback", provider_key="gemini")
+    context.metadata["_source_adapter"] = fixture.mock_source
+    context.metadata["source_language"] = "Japanese"
+    context.metadata["target_language"] = "English"
+
+    result = await pipeline.run(context)
+
+    assert provider.models_seen[:2] == ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    assert "[gemini-2.5-flash-lite]" in result.final_text
 
 
 @pytest.mark.asyncio

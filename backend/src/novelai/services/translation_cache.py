@@ -36,6 +36,15 @@ class TranslationCache:
     def _persist(self) -> None:
         atomic_write(self.cache_file, json.dumps(self._data, ensure_ascii=False, indent=2))
 
+    def reload(self) -> None:
+        """Reload cached translations from disk."""
+        self._data = self._load_cache()
+
+    def clear(self) -> None:
+        """Remove all cached translations."""
+        self._data = {}
+        self._persist()
+
     @staticmethod
     def _hash_key(text: str, provider: str, model: str | None) -> str:
         payload = f"{provider}:{model}:{text}"

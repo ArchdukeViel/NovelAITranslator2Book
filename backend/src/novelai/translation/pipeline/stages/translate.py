@@ -18,6 +18,7 @@ from novelai.translation.pipeline.stages.base import PipelineStage
 from novelai.prompts import build_translation_request
 from novelai.prompts.models import TranslationRequest
 from novelai.providers.base import TranslationProvider
+from novelai.providers.model_fallbacks import model_candidates
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
@@ -176,55 +177,67 @@ class TranslateStage(PipelineStage):
     ) -> str:
         provider_key, model = self._resolve_provider_and_model(provider_key, model)
         provider = self._provider_factory(provider_key)
-        # Validate model against provider's supported models when available.
         try:
             supported = provider.available_models() or []
         except Exception:
             supported = []
-        if supported and model not in supported:
-            # Fall back to first supported model and log a warning.
-            logger.warning(
-                "Requested model '%s' not supported by provider '%s'; falling back to '%s'.",
-                model,
-                provider_key,
-                supported[0],
-            )
-            model = supported[0]
         cache_key = request.cache_key() if request is not None else chunk
-        cached = self._cache.get(cache_key, provider.key, model)
-        if cached is not None:
-            logger.debug(f"Cache hit for chunk (len={len(chunk)})")
-            return cached
+        candidates = model_candidates(provider_key, model, supported)
+        last_error: Exception | None = None
 
-        logger.debug(f"Translating chunk (len={len(chunk)}) with {provider_key}/{model}")
-        result = await provider.translate(prompt=chunk, model=model, request=request)
-        text = result.get("text", "")
+        for candidate_model in candidates:
+            cached = self._cache.get(cache_key, provider.key, candidate_model)
+            if cached is not None:
+                logger.debug("Cache hit for chunk (len=%s) using %s/%s", len(chunk), provider.key, candidate_model)
+                return cached
 
-        # Record usage for diagnostics / cost tracking.
-        metadata = result.get("metadata") or {}
-        usage_entry = {
-            "timestamp": _utc_now_iso(),
-            "provider": provider.key,
-            "model": model,
-            "tokens": None,
-            "metadata": metadata,
-        }
-        # Some providers (OpenAI) return usage info
-        usage = metadata.get("usage") if isinstance(metadata, dict) else None
-        if isinstance(usage, dict):
-            usage_entry["tokens"] = usage.get("total_tokens")
-            logger.debug(f"Translation tokens: {usage_entry['tokens']}")
+            try:
+                logger.debug("Translating chunk (len=%s) with %s/%s", len(chunk), provider_key, candidate_model)
+                result = await provider.translate(prompt=chunk, model=candidate_model, request=request)
+            except Exception as exc:
+                last_error = exc
+                if len(candidates) > 1:
+                    logger.warning(
+                        "Translation failed with %s/%s; trying fallback model if available: %s",
+                        provider_key,
+                        candidate_model,
+                        exc,
+                    )
+                    continue
+                raise
 
-        self._usage.record(usage_entry)
+            text = result.get("text", "")
 
-        self._cache.set(cache_key, provider.key, model, text)
-        return text
+            metadata = result.get("metadata") or {}
+            usage_entry = {
+                "timestamp": _utc_now_iso(),
+                "provider": provider.key,
+                "model": candidate_model,
+                "tokens": None,
+                "metadata": metadata,
+            }
+            usage = metadata.get("usage") if isinstance(metadata, dict) else None
+            if isinstance(usage, dict):
+                usage_entry["tokens"] = usage.get("total_tokens")
+                logger.debug("Translation tokens: %s", usage_entry["tokens"])
+
+            self._usage.record(usage_entry)
+            self._cache.set(cache_key, provider.key, candidate_model, text)
+            return text
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError(f"No translation models available for provider {provider_key}.")
 
     async def run(self, context: PipelineContext) -> PipelineContext:
         chunks = context.chunks
         provider_key = context.provider_key or self._settings.get_provider_key()
         model = context.provider_model or self._settings.get_provider_model()
         provider_key, model = self._resolve_provider_and_model(provider_key, model)
+        context.provider_key = provider_key
+        context.provider_model = model
+        if provider_key == "gemini":
+            context.metadata["model_fallbacks"] = model_candidates(provider_key, model)
 
         glossary_state = self._normalize_runtime_glossary(context)
         max_glossary_entries = int(context.metadata.get("glossary_max_entries", 12) or 12)

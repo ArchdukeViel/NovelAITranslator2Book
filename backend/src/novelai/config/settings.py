@@ -5,6 +5,18 @@ from pathlib import Path
 from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+
+
+def _default_novel_library_dir() -> Path:
+    return PROJECT_ROOT / "storage" / "novel_library"
+
+
+def _resolve_project_path(path: Path) -> Path:
+    if path.is_absolute() or path.anchor:
+        return path
+    return PROJECT_ROOT / path
+
 
 class AppSettings(BaseSettings):
     """Global configuration for Novel AI."""
@@ -22,7 +34,7 @@ class AppSettings(BaseSettings):
     # --- Storage
     # Main runtime library: metadata, chapters, exports, preferences, logs.
     NOVEL_LIBRARY_DIR: Path = Field(
-        default=Path("storage/novel_library"),
+        default_factory=_default_novel_library_dir,
         validation_alias=AliasChoices("NOVEL_LIBRARY_DIR", "DATA_DIR"),
     )
 
@@ -30,7 +42,7 @@ class AppSettings(BaseSettings):
     @property
     def DATA_DIR(self) -> Path:
         """Backward compatibility: DATA_DIR now points to NOVEL_LIBRARY_DIR."""
-        return self.NOVEL_LIBRARY_DIR
+        return _resolve_project_path(self.NOVEL_LIBRARY_DIR)
 
     # --- Web
     WEB_HOST: str = "127.0.0.1"
@@ -46,6 +58,24 @@ class AppSettings(BaseSettings):
     PROVIDER_DEFAULT: str = "dummy"
     PROVIDER_OPENAI_API_KEY: SecretStr | None = None
     PROVIDER_GEMINI_API_KEY: SecretStr | None = None
+    PROVIDER_GEMINI_MODEL_FALLBACKS: list[str] = Field(
+        default_factory=lambda: [
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-pro",
+            "gemini-3-flash-preview",
+            "gemini-3-pro-preview",
+            "gemini-3.1-flash-preview",
+            "gemini-3.1-pro-preview",
+            "gemini-3.1-flash-lite-preview",
+            "gemini-flash-latest",
+            "gemini-pro-latest",
+        ],
+        description=(
+            "Gemini text model fallback order. Override with a JSON list if Google AI Studio "
+            "enables newer series such as Gemini 3.1 for your account."
+        ),
+    )
 
     # --- Scraping
     SCRAPE_DELAY_SECONDS: float = Field(

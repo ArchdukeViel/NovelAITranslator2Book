@@ -20,6 +20,7 @@ def test_default_settings() -> None:
     assert s.COST_PER_TOKEN_USD > 0
     assert s.SCRAPE_DELAY_SECONDS == 1.0
     assert s.TRANSLATION_TARGET_LANGUAGE == "English"
+    assert s.DATA_DIR.is_absolute() or bool(s.DATA_DIR.anchor)
 
 
 def test_data_dir_alias() -> None:
@@ -28,6 +29,15 @@ def test_data_dir_alias() -> None:
         NOVEL_LIBRARY_DIR=Path("/tmp/test_lib"),
     )
     assert Path("/tmp/test_lib") == s.DATA_DIR
+
+
+def test_relative_data_dir_resolves_from_project_root() -> None:
+    s = AppSettings(
+        _env_file=None,  # type: ignore[call-arg]
+        NOVEL_LIBRARY_DIR=Path("storage/novel_library"),
+    )
+    assert s.DATA_DIR.is_absolute()
+    assert s.DATA_DIR.parts[-2:] == ("storage", "novel_library")
 
 
 def test_web_defaults() -> None:

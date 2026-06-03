@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from novelai.activity.queue import ActivityQueueService
+from novelai.activity.runner import BackgroundActivityRunner
+from novelai.activity.worker import ActivityWorkerService
 from novelai.config.settings import settings
 from novelai.providers.registry import get_provider
 from novelai.services.export_service import ExportService
-from novelai.jobs.queue import JobQueueService
-from novelai.jobs.runner import BackgroundJobRunner
-from novelai.jobs.worker import JobWorkerService
 from novelai.services.novel_request_service import NovelRequestService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
@@ -32,13 +32,13 @@ class Container:
     _settings: PreferencesService | None = None
     _preferences: PreferencesService | None = None
     _usage: UsageService | None = None
-    _jobs: JobQueueService | None = None
+    _activity_log: ActivityQueueService | None = None
     _requests: NovelRequestService | None = None
     _translation: TranslationService | None = None
     _export: ExportService | None = None
     _orchestrator: NovelOrchestrationService | None = None
-    _job_worker: JobWorkerService | None = None
-    _job_runner: BackgroundJobRunner | None = None
+    _activity_worker: ActivityWorkerService | None = None
+    _activity_runner: BackgroundActivityRunner | None = None
 
     @property
     def storage(self) -> StorageService:
@@ -60,9 +60,10 @@ class Container:
 
     @property
     def preferences(self) -> PreferencesService:
-        if self._preferences is None:
-            self._preferences = PreferencesService()
-        return self._preferences
+        # Compatibility alias: older code asks for "preferences" while the
+        # translation pipeline asks for "settings". They must share one live
+        # service so admin changes affect translation immediately.
+        return self.settings
 
     @property
     def usage(self) -> UsageService:
@@ -71,10 +72,14 @@ class Container:
         return self._usage
 
     @property
-    def jobs(self) -> JobQueueService:
-        if self._jobs is None:
-            self._jobs = JobQueueService()
-        return self._jobs
+    def activity_log(self) -> ActivityQueueService:
+        if self._activity_log is None:
+            self._activity_log = ActivityQueueService()
+        return self._activity_log
+
+    @property
+    def jobs(self) -> ActivityQueueService:
+        return self.activity_log
 
     @property
     def requests(self) -> NovelRequestService:
@@ -83,19 +88,27 @@ class Container:
         return self._requests
 
     @property
-    def job_worker(self) -> JobWorkerService:
-        if self._job_worker is None:
-            self._job_worker = JobWorkerService(self.jobs, self.orchestrator)
-        return self._job_worker
+    def activity_worker(self) -> ActivityWorkerService:
+        if self._activity_worker is None:
+            self._activity_worker = ActivityWorkerService(self.activity_log, self.orchestrator)
+        return self._activity_worker
 
     @property
-    def job_runner(self) -> BackgroundJobRunner:
-        if self._job_runner is None:
-            self._job_runner = BackgroundJobRunner(
-                self.job_worker,
+    def job_worker(self) -> ActivityWorkerService:
+        return self.activity_worker
+
+    @property
+    def activity_runner(self) -> BackgroundActivityRunner:
+        if self._activity_runner is None:
+            self._activity_runner = BackgroundActivityRunner(
+                self.activity_worker,
                 poll_seconds=settings.JOB_WORKER_POLL_SECONDS,
             )
-        return self._job_runner
+        return self._activity_runner
+
+    @property
+    def job_runner(self) -> BackgroundActivityRunner:
+        return self.activity_runner
 
     @property
     def translation(self) -> TranslationService:

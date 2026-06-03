@@ -30,6 +30,31 @@ def test_cli_web_reload_runs_web_main(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls == [("bootstrap", None), ("web", True)]
 
 
+def test_cli_adminweb_opens_admin_frontend(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    calls: list[tuple[str, object]] = []
+    monkeypatch.setattr(cli, "bootstrap", lambda: calls.append(("bootstrap", None)))
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: calls.append(("open", url)) or True)
+
+    cli.main(["adminweb"])
+
+    assert calls == [("open", "http://127.0.0.1:3000/admin")]
+    assert "Opened http://127.0.0.1:3000/admin" in capsys.readouterr().out
+
+
+def test_cli_publicweb_prints_public_frontend_when_no_open(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[tuple[str, object]] = []
+    monkeypatch.setattr(cli, "bootstrap", lambda: calls.append(("bootstrap", None)))
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: calls.append(("open", url)) or True)
+
+    cli.main(["publicweb", "--base-url", "https://novels.example.com", "--no-open"])
+
+    assert calls == []
+    assert "https://novels.example.com/" in capsys.readouterr().out
+
+
 def test_cli_worker_once_runs_one_job(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     calls: list[str] = []
 
@@ -93,3 +118,32 @@ def test_pyproject_console_scripts_use_web_only_modules() -> None:
     assert scripts["novelaibook"] == "novelai.runtime.cli:main"
     assert scripts["novelai"] == "novelai.__main__:main"
     assert "novelaibook-gui" not in scripts
+
+
+def test_legacy_cli_import_is_resolved_by_compat_layer() -> None:
+    import importlib
+
+    legacy_cli = importlib.import_module("novelai.interfaces.cli")
+
+    assert legacy_cli is cli
+
+
+def test_legacy_web_import_is_resolved_by_compat_layer() -> None:
+    import importlib
+
+    legacy_app = importlib.import_module("novelai.interfaces.web.app")
+    canonical_app = importlib.import_module("novelai.api.app")
+
+    assert legacy_app is canonical_app
+
+
+def test_legacy_pipeline_and_service_imports_are_resolved_by_compat_layer() -> None:
+    import importlib
+
+    legacy_pipeline = importlib.import_module("novelai.pipeline.pipeline")
+    canonical_pipeline = importlib.import_module("novelai.translation.pipeline.pipeline")
+    legacy_storage = importlib.import_module("novelai.services.storage_service")
+    canonical_storage = importlib.import_module("novelai.storage.service")
+
+    assert legacy_pipeline is canonical_pipeline
+    assert legacy_storage is canonical_storage

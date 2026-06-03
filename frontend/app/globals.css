@@ -67,6 +67,45 @@ textarea {
   font: inherit;
 }
 
+.table-checkbox {
+  display: inline-grid;
+  width: 0.95rem;
+  height: 0.95rem;
+  margin: 0;
+  place-content: center;
+  appearance: none;
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  background: hsl(var(--card));
+  color: hsl(var(--primary-foreground));
+  vertical-align: middle;
+}
+
+.table-checkbox::before {
+  width: 0.55rem;
+  height: 0.55rem;
+  content: "";
+  transform: scale(0);
+  transform-origin: center;
+  transition: transform 120ms ease-in-out;
+  clip-path: polygon(14% 52%, 0 66%, 38% 100%, 100% 18%, 84% 6%, 34% 72%);
+  background: currentColor;
+}
+
+.table-checkbox:checked {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary));
+}
+
+.table-checkbox:checked::before {
+  transform: scale(1);
+}
+
+.table-checkbox:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
 .seamless-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--muted)) hsl(var(--card));

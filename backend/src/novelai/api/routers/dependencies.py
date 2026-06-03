@@ -7,13 +7,16 @@ from typing import Any
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from novelai.activity.queue import ActivityQueueService
+from novelai.activity.runner import BackgroundActivityRunner
+from novelai.activity.worker import ActivityWorkerService
 from novelai.config.settings import settings
 from novelai.runtime.container import container
-from novelai.jobs.queue import JobQueueService
-from novelai.jobs.runner import BackgroundJobRunner
-from novelai.jobs.worker import JobWorkerService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.novel_request_service import NovelRequestService
+from novelai.services.preferences_service import PreferencesService
+from novelai.services.translation_cache import TranslationCache
+from novelai.services.usage_service import UsageService
 from novelai.storage.service import StorageService
 from novelai.utils.rate_limiter import get_default_rate_limiter
 
@@ -77,20 +80,44 @@ def get_orchestrator() -> NovelOrchestrationService:
     return container.orchestrator
 
 
-def get_jobs() -> JobQueueService:
-    return container.jobs
+def get_activity_log() -> ActivityQueueService:
+    return container.activity_log
 
 
-def get_job_worker() -> JobWorkerService:
-    return container.job_worker
+def get_jobs() -> ActivityQueueService:
+    return container.activity_log
 
 
-def get_job_runner() -> BackgroundJobRunner:
-    return container.job_runner
+def get_activity_worker() -> ActivityWorkerService:
+    return container.activity_worker
+
+
+def get_job_worker() -> ActivityWorkerService:
+    return container.activity_worker
+
+
+def get_activity_runner() -> BackgroundActivityRunner:
+    return container.activity_runner
+
+
+def get_job_runner() -> BackgroundActivityRunner:
+    return container.activity_runner
 
 
 def get_requests() -> NovelRequestService:
     return container.requests
+
+
+def get_preferences() -> PreferencesService:
+    return container.preferences
+
+
+def get_translation_cache() -> TranslationCache:
+    return container.translation_cache
+
+
+def get_usage() -> UsageService:
+    return container.usage
 
 
 def metadata_chapters(meta: dict[str, Any]) -> list[dict[str, Any]]:

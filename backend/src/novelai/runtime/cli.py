@@ -5,7 +5,9 @@ import asyncio
 import shutil
 import subprocess
 import sys
+import webbrowser
 from pathlib import Path
+from urllib.parse import urljoin
 
 from novelai.config.settings import settings
 from novelai.api.server import main as web_main
@@ -81,24 +83,65 @@ def _doctor_check() -> tuple[int, list[str]]:
 
 
 async def _run_worker_once() -> None:
-    job = await container.job_runner.run_once()
-    if job is None:
-        print("No pending jobs.")
+    activity = await container.activity_runner.run_once()
+    if activity is None:
+        print("No pending activity.")
         return
-    print(f"Processed job {job.get('id')} -> {job.get('status')}")
+    print(f"Processed activity {activity.get('id')} -> {activity.get('status')}")
 
 
 async def _run_worker_forever(poll_seconds: float | None) -> None:
     if poll_seconds is not None:
-        container.job_runner.poll_seconds = max(0.05, float(poll_seconds))
+        container.activity_runner.poll_seconds = max(0.05, float(poll_seconds))
 
-    print(f"Worker started. Polling every {container.job_runner.poll_seconds:.2f}s. Press CTRL+C to stop.")
+    print(f"Worker started. Polling every {container.activity_runner.poll_seconds:.2f}s. Press CTRL+C to stop.")
     while True:
-        job = await container.job_runner.run_once()
-        if job is None:
-            await asyncio.sleep(container.job_runner.poll_seconds)
+        activity = await container.activity_runner.run_once()
+        if activity is None:
+            await asyncio.sleep(container.activity_runner.poll_seconds)
         else:
-            print(f"Processed job {job.get('id')} -> {job.get('status')}")
+            print(f"Processed activity {activity.get('id')} -> {activity.get('status')}")
+
+
+def _frontend_url(
+    path: str,
+    *,
+    base_url: str | None = None,
+    host: str = "127.0.0.1",
+    port: int = 3000,
+) -> str:
+    normalized_path = f"/{path.lstrip('/')}"
+    if base_url:
+        return urljoin(f"{base_url.rstrip('/')}/", normalized_path.lstrip("/"))
+    return f"http://{host}:{port}{normalized_path}"
+
+
+def _open_frontend_page(
+    path: str,
+    *,
+    base_url: str | None = None,
+    host: str = "127.0.0.1",
+    port: int = 3000,
+    open_browser: bool = True,
+) -> str:
+    url = _frontend_url(path, base_url=base_url, host=host, port=port)
+    if open_browser:
+        opened = webbrowser.open(url)
+        print(f"Opened {url}" if opened else url)
+    else:
+        print(url)
+    return url
+
+
+def _add_frontend_page_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="Frontend base URL to open, e.g. https://novels.example.com.",
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="Frontend host when --base-url is not provided.")
+    parser.add_argument("--port", type=int, default=3000, help="Frontend port when --base-url is not provided.")
+    parser.add_argument("--no-open", action="store_true", help="Print the URL without opening a browser.")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -107,6 +150,12 @@ def main(argv: list[str] | None = None) -> None:
 
     web_parser = subparsers.add_parser("web", help="Run the backend web API")
     web_parser.add_argument("--reload", action="store_true", help="Reload the backend when Python files change.")
+
+    adminweb_parser = subparsers.add_parser("adminweb", help="Open the admin web UI at /admin")
+    _add_frontend_page_arguments(adminweb_parser)
+
+    publicweb_parser = subparsers.add_parser("publicweb", help="Open the public reader web UI at /")
+    _add_frontend_page_arguments(publicweb_parser)
 
     worker_parser = subparsers.add_parser("worker", help="Run queued crawl and translation jobs")
     worker_parser.add_argument("--once", action="store_true", help="Process at most one pending job and exit.")
@@ -121,6 +170,26 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
     command = args.command or "web"
+
+    if command == "adminweb":
+        _open_frontend_page(
+            "/admin",
+            base_url=args.base_url,
+            host=args.host,
+            port=args.port,
+            open_browser=not bool(args.no_open),
+        )
+        return
+
+    if command == "publicweb":
+        _open_frontend_page(
+            "/",
+            base_url=args.base_url,
+            host=args.host,
+            port=args.port,
+            open_browser=not bool(args.no_open),
+        )
+        return
 
     bootstrap()
 

@@ -116,6 +116,82 @@ class GlossarySchemaCaptureProvider(MockTranslationProvider):
         }
 
 
+class GeminiFallbackProvider(MockTranslationProvider):
+    def __init__(self) -> None:
+        super().__init__(key="gemini", model="gemini-2.5-flash")
+        self.models_seen: list[str | None] = []
+
+    def available_models(self) -> list[str]:
+        return ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+
+    async def translate(
+        self,
+        prompt: str,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        self.models_seen.append(model)
+        if model == "gemini-2.5-flash":
+            raise RuntimeError("quota exceeded")
+        source_text = prompt
+        if "<source_text>" in prompt and "</source_text>" in prompt:
+            source_text = prompt.split("<source_text>", 1)[1].split("</source_text>", 1)[0].strip()
+        return {
+            "text": f"[{model}] {source_text}",
+            "metadata": {
+                "usage": {
+                    "total_tokens": 11,
+                },
+            },
+        }
+
+
+class PartialGeminiTitleProvider(MockTranslationProvider):
+    def __init__(self) -> None:
+        super().__init__(key="gemini", model="gemini-2.5-flash")
+        self.models_seen: list[str | None] = []
+
+    def available_models(self) -> list[str]:
+        return ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+
+    async def translate(
+        self,
+        prompt: str,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        self.models_seen.append(model)
+        source_text = prompt
+        if "<source_text>" in prompt and "</source_text>" in prompt:
+            source_text = prompt.split("<source_text>", 1)[1].split("</source_text>", 1)[0].strip()
+        if model == "gemini-2.5-flash" and source_text == "第10話　初スカート、お披露目":
+            return {"text": "Episode", "metadata": {"usage": {"total_tokens": 3}}}
+        if source_text == "第10話　初スカート、お披露目":
+            return {"text": "Episode 10: First Skirt Reveal", "metadata": {"usage": {"total_tokens": 8}}}
+        return {"text": f"[{model}] {source_text}", "metadata": {"usage": {"total_tokens": 11}}}
+
+
+class PartialTitleSource(StubSource):
+    async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, object]:
+        self.requested_max_chapters.append(max_chapter)
+        return {
+            "source": "novel18_syosetu",
+            "source_url": f"https://novel18.syosetu.com/{url}/",
+            "title": "TS刑事　如月真琴の憂鬱",
+            "author": "Ayas_hi",
+            "chapters": [
+                {
+                    "id": "10",
+                    "num": 10,
+                    "title": "第10話　初スカート、お披露目",
+                    "url": f"https://example.com/{url}/10",
+                },
+            ],
+        }
+
+
 @pytest.fixture
 def orchestration_env():
     TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
@@ -161,14 +237,120 @@ async def test_scrape_metadata_translates_title_author_and_chapter_titles(orches
 
     assert metadata["translated_title"] == "[TRANSLATED] Original Novel"
     assert metadata["translated_author"] == "[TRANSLATED] Original Author"
+    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v2"
     assert metadata["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
     assert metadata["chapters"][1]["translated_title"] == "[TRANSLATED] Chapter Two"
     assert metadata_path.exists()
     stored = json.loads(metadata_path.read_text(encoding="utf-8"))
     assert stored["translated_title"] == "[TRANSLATED] Original Novel"
     assert stored["translated_author"] == "[TRANSLATED] Original Author"
+    assert stored["metadata_translation_prompt_version"] == "metadata-literal-v2"
     assert stored["authors"]["translated"] == "[TRANSLATED] Original Author"
     assert orchestration_env["usage"].summary(all_days=True)["total_requests"] == 4
+
+
+@pytest.mark.asyncio
+async def test_scrape_metadata_retranslates_source_identical_previous_metadata(orchestration_env) -> None:
+    provider = MockTranslationProvider(key="mock", model="mock-1.0")
+    source = StubSource()
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-1",
+        {
+            "title": "Original Novel",
+            "translated_title": "Original Novel",
+            "author": "Original Author",
+            "translated_author": "Original Author",
+            "chapters": [
+                {
+                    "id": "1",
+                    "title": "Chapter One",
+                    "translated_title": "Chapter One",
+                },
+                {
+                    "id": "2",
+                    "title": "Chapter Two",
+                    "translated_title": "Chapter Two",
+                },
+            ],
+        },
+    )
+
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
+
+    assert provider.call_count == 4
+    assert metadata["translated_title"] == "[TRANSLATED] Original Novel"
+    assert metadata["translated_author"] == "[TRANSLATED] Original Author"
+    assert metadata["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
+    assert metadata["chapters"][1]["translated_title"] == "[TRANSLATED] Chapter Two"
+
+
+@pytest.mark.asyncio
+async def test_scrape_metadata_falls_back_between_gemini_models(orchestration_env) -> None:
+    provider = GeminiFallbackProvider()
+    source = StubSource()
+    settings = orchestration_env["settings"]
+    settings.set_provider_key("gemini")
+    settings.set_provider_model("gemini-2.5-flash")
+    settings.set_api_key("gemini-key", provider_key="gemini")
+    orchestration_env["cache"].set(
+        "metadata:chapter_title:English:第10話　初スカート、お披露目",
+        "gemini",
+        "gemini-2.5-flash",
+        "Episode",
+    )
+
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: provider,
+        settings_service=settings,
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
+
+    assert provider.models_seen[:2] == ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    assert metadata["translated_title"] == "[gemini-2.5-flash-lite] Original Novel"
+    assert metadata["metadata_translation_status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_scrape_metadata_retries_incomplete_chapter_title_translation(orchestration_env) -> None:
+    provider = PartialGeminiTitleProvider()
+    source = PartialTitleSource()
+    settings = orchestration_env["settings"]
+    settings.set_provider_key("gemini")
+    settings.set_provider_model("gemini-2.5-flash")
+    settings.set_api_key("gemini-key", provider_key="gemini")
+
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: provider,
+        settings_service=settings,
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    metadata = await orchestrator.scrape_metadata("novel18_syosetu", "n0813kx", mode="update")
+
+    assert metadata["metadata_translation_status"] == "completed"
+    assert metadata["chapters"][0]["translated_title"] == "Episode 10: First Skirt Reveal"
+    assert "gemini-2.5-flash-lite" in provider.models_seen
 
 
 @pytest.mark.asyncio
@@ -211,7 +393,7 @@ async def test_scrape_metadata_logs_missing_openai_key_only_once(orchestration_e
     )
 
     with caplog.at_level(logging.WARNING, logger="novelai.services.novel_orchestration_service"):
-        await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
+        metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
         await orchestrator.scrape_metadata("syosetu_ncode", "novel-2", mode="update")
 
     warnings = [
@@ -221,6 +403,9 @@ async def test_scrape_metadata_logs_missing_openai_key_only_once(orchestration_e
     ]
 
     assert warnings == ["OpenAI API key missing; falling back to dummy provider for metadata translation."]
+    assert metadata["metadata_translation_status"] == "failed"
+    assert "Add and use a provider API token" in metadata["metadata_translation_error"]
+    assert "translated_title" not in metadata
 
 
 @pytest.mark.asyncio

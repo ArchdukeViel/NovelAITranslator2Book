@@ -14,15 +14,25 @@ from novelai.providers.base import TranslationProvider
 class GeminiProvider(TranslationProvider):
     """Google Gemini translation provider using a per-request client instance."""
 
+    DEFAULT_TEXT_MODEL = "gemini-2.5-flash"
+
     @property
     def key(self) -> str:
         return "gemini"
 
     def available_models(self) -> list[str]:
         return [
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-2.5-flash-lite",
             "gemini-3-flash-preview",
+            "gemini-3-pro-preview",
+            "gemini-3.1-flash-preview",
             "gemini-3.1-pro-preview",
             "gemini-3.1-flash-lite-preview",
+            "gemini-flash-latest",
+            "gemini-pro-latest",
+            "gemini-2.0-flash",
         ]
 
     def _api_key_string(self) -> str:
@@ -89,7 +99,7 @@ class GeminiProvider(TranslationProvider):
         **kwargs: Any,
     ) -> Mapping[str, Any]:
         api_key_str = self._api_key_string()
-        model_name = model or "gemini-3-flash-preview"
+        model_name = model or self.DEFAULT_TEXT_MODEL
         request = kwargs.pop("request", None)
         json_schema = kwargs.pop("json_schema", None)
         if request is not None and not isinstance(request, TranslationRequest):
@@ -146,7 +156,7 @@ class GeminiProvider(TranslationProvider):
         if Client is None:
             return False, "google-genai package required; install it to enable Gemini provider support."
 
-        model_name = model or "gemini-3-flash-preview"
+        model_name = model or self.DEFAULT_TEXT_MODEL
 
         def _invoke() -> None:
             client = Client(api_key=api_key_str)

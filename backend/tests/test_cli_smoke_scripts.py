@@ -34,7 +34,7 @@ def test_venv_launcher_help_succeeds() -> None:
     assert "usage: novelaibook" in result.stdout.lower()
 
 
-@pytest.mark.parametrize("subcommand", ["web", "worker", "doctor"])
+@pytest.mark.parametrize("subcommand", ["web", "adminweb", "publicweb", "worker", "doctor"])
 def test_venv_launcher_subcommand_help_succeeds(subcommand: str) -> None:
     result = _run_launcher([subcommand, "--help"])
 

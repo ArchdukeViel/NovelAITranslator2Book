@@ -61,6 +61,16 @@ class PreferencesService:
             json.dumps(self._data, ensure_ascii=False, indent=2),
         )
 
+    def reload(self) -> None:
+        """Reload preferences from disk and reapply migrations."""
+        self._data = self._load()
+        self._migrate_legacy_data()
+
+    def clear(self) -> None:
+        """Reset persisted preferences to defaults."""
+        self._data = {}
+        self._migrate_legacy_data()
+
     @staticmethod
     def _clean_text(value: Any) -> str | None:
         if not isinstance(value, str):

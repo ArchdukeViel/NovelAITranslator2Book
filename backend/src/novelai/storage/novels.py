@@ -167,4 +167,55 @@ def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
 
 def list_novels(self: Any) -> list[str]:
     index = self._load_index()
-    return list(index.keys())
+    discovered: list[str] = []
+    seen: set[str] = set()
+    updated_index = dict(index)
+    index_changed = False
+
+    def add_novel(novel_id: str, folder_name: str | None = None) -> None:
+        nonlocal index_changed
+        normalized_id = self._clean_string(novel_id)
+        if normalized_id is None or normalized_id in seen:
+            return
+        seen.add(normalized_id)
+        discovered.append(normalized_id)
+        if folder_name and updated_index.get(normalized_id, {}).get("folder_name") != folder_name:
+            updated_index[normalized_id] = {
+                "folder_name": folder_name,
+                "updated_at": _utc_now_iso(),
+            }
+            index_changed = True
+
+    for novel_id, entry in index.items():
+        folder_name = entry.get("folder_name") if isinstance(entry, dict) else None
+        folder_name = self._clean_string(folder_name, novel_id) or novel_id
+        metadata_path = self.novels_dir / folder_name / "metadata.json"
+        resolved_id = novel_id
+        if metadata_path.exists():
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                if isinstance(metadata, dict):
+                    resolved_id = self._clean_string(metadata.get("novel_id"), novel_id) or novel_id
+            except (json.JSONDecodeError, OSError):
+                logger.warning("Corrupted metadata for novel folder %s.", folder_name)
+        add_novel(resolved_id, folder_name)
+
+    for novel_dir in sorted(self.novels_dir.iterdir(), key=lambda path: path.name.lower()):
+        if not novel_dir.is_dir():
+            continue
+        metadata_path = novel_dir / "metadata.json"
+        if not metadata_path.exists():
+            continue
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            logger.warning("Corrupted metadata for novel folder %s.", novel_dir.name)
+            continue
+        if not isinstance(metadata, dict):
+            continue
+        resolved_id = self._clean_string(metadata.get("novel_id"), novel_dir.name) or novel_dir.name
+        add_novel(resolved_id, novel_dir.name)
+
+    if index_changed:
+        self._persist_index(updated_index)
+    return discovered

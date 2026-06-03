@@ -472,5 +472,20 @@ def test_list_novels(storage):
     assert "novel2" in novels
 
 
+def test_list_novels_discovers_unindexed_metadata_folder(storage):
+    """Library listing should recover when storage folders exist but index.json is stale."""
+    novel_dir = storage.novels_dir / "n0813kx"
+    novel_dir.mkdir(parents=True)
+    (novel_dir / "metadata.json").write_text(
+        json.dumps({"novel_id": "n0813kx", "title": "Recovered Novel"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    novels = storage.list_novels()
+
+    assert "n0813kx" in novels
+    assert storage.load_metadata("n0813kx")["title"] == "Recovered Novel"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

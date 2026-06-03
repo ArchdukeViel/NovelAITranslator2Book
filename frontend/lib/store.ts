@@ -9,6 +9,10 @@ export type ApiTokenRecord = {
   token: string;
   addedOn: string;
   status: "Active" | "Inactive";
+  validationStatus?: "Unchecked" | "Checking" | "Working" | "Failed";
+  validationMessage?: string | null;
+  validatedOn?: string | null;
+  model?: string | null;
 };
 
 type UiState = {
@@ -20,11 +24,12 @@ type UiState = {
   readerFontSize: number;
   readerWidth: "compact" | "comfortable" | "wide";
   sidebarCollapsed: boolean;
-  addApiToken: (token: string) => void;
+  addApiToken: (token: string, validation?: Partial<ApiTokenRecord>) => string | null;
   applyDummyApiToken: () => void;
   setActiveApiToken: (id: string) => void;
   removeApiToken: (id: string) => void;
   setApiToken: (token: string) => void;
+  updateApiTokenValidation: (id: string, validation: Partial<ApiTokenRecord>) => void;
   toggleDarkMode: () => void;
   setReaderTheme: (theme: UiState["readerTheme"]) => void;
   setReaderFontSize: (size: number) => void;
@@ -50,28 +55,35 @@ export const useUiStore = create<UiState>()(
       readerFontSize: 18,
       readerWidth: "comfortable",
       sidebarCollapsed: false,
-      addApiToken: (apiToken) =>
-        set((state) => {
-          const token = apiToken.trim();
-          if (!token) {
-            return state;
-          }
+      addApiToken: (apiToken, validation = {}) => {
+        const token = apiToken.trim();
+        if (!token) {
+          return null;
+        }
+        const id = createId();
 
+        set((state) => {
           return {
             apiToken: token,
             apiTokenLabel: "Gemini AI",
             apiTokens: [
               ...state.apiTokens.map((entry) => ({ ...entry, status: "Inactive" as const })),
               {
-                id: createId(),
+                id,
                 type: "gemini",
                 token,
                 addedOn: new Date().toISOString(),
-                status: "Active"
+                status: "Active",
+                validationStatus: validation.validationStatus ?? "Unchecked",
+                validationMessage: validation.validationMessage ?? null,
+                validatedOn: validation.validatedOn ?? null,
+                model: validation.model ?? null
               }
             ]
           };
-        }),
+        });
+        return id;
+      },
       applyDummyApiToken: () => set({ apiToken: "", apiTokenLabel: "dummy" }),
       setActiveApiToken: (id) =>
         set((state) => {
@@ -107,6 +119,17 @@ export const useUiStore = create<UiState>()(
           };
         }),
       setApiToken: (apiToken) => set({ apiToken, apiTokenLabel: apiToken.trim() ? "Gemini AI" : "None" }),
+      updateApiTokenValidation: (id, validation) =>
+        set((state) => ({
+          apiTokens: state.apiTokens.map((entry) =>
+            entry.id === id
+              ? {
+                  ...entry,
+                  ...validation
+                }
+              : entry
+          )
+        })),
       toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
       setReaderTheme: (readerTheme) => set({ readerTheme }),
       setReaderFontSize: (readerFontSize) =>

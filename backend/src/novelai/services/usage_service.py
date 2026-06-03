@@ -34,6 +34,10 @@ class UsageService:
     def _persist(self) -> None:
         atomic_write(self.usage_path, json.dumps(self._data, ensure_ascii=False, indent=2))
 
+    def reload(self) -> None:
+        """Reload usage history from disk."""
+        self._data = self._load()
+
     def record(self, entry: dict[str, Any]) -> None:
         """Add a usage entry. The entry should already include timestamp."""
         self._data.append(entry)

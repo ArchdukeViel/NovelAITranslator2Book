@@ -2,11 +2,42 @@ import { useUiStore } from "@/lib/store";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
+export type ApiErrorPayload = {
+  status: number;
+  code: string;
+  message: string;
+  explanation?: string | null;
+  details?: unknown;
+  raw?: unknown;
+};
+
+export class ApiError extends Error {
+  status: number;
+  code: string;
+  explanation?: string | null;
+  details?: unknown;
+  raw?: unknown;
+
+  constructor(payload: ApiErrorPayload) {
+    super(payload.message);
+    this.name = "ApiError";
+    this.status = payload.status;
+    this.code = payload.code;
+    this.explanation = payload.explanation;
+    this.details = payload.details;
+    this.raw = payload.raw;
+  }
+}
+
 export type NovelSummary = {
   novel_id: string;
   title?: string | null;
   author?: string | null;
+  source?: string | null;
+  source_url?: string | null;
   chapter_count: number;
+  scraped_count?: number;
+  translated_count?: number;
 };
 
 export type ChapterSummary = {
@@ -77,12 +108,13 @@ export type NovelProgress = {
   translated: number;
 };
 
-export type JobRecord = {
+export type ActivityRecord = {
   id: string;
   type: "crawl" | "translation";
   kind: string;
   novel_id: string;
   source_key?: string | null;
+  source_url?: string | null;
   chapters?: string | null;
   provider?: string | null;
   model?: string | null;
@@ -98,9 +130,10 @@ export type JobRecord = {
 export type WorkerStatus = {
   running: boolean;
   poll_seconds: number;
-  last_job_id?: string | null;
+  last_tick_at?: string | null;
+  last_activity_id?: string | null;
   last_error?: string | null;
-  jobs_processed: number;
+  activity_processed: number;
   idle_ticks: number;
   error_count: number;
 };
@@ -165,6 +198,9 @@ export type PreliminaryCrawlResult = {
   translated_author?: string | null;
   synopsis?: string | null;
   translated_synopsis?: string | null;
+  metadata_translation_status?: string | null;
+  metadata_translation_error?: string | null;
+  activity_log_job_id?: string | null;
   detected_at?: string | null;
   chapters: number;
   chapter_list: Array<{
@@ -184,6 +220,140 @@ export type PreliminaryCrawlResult = {
   } & Record<string, unknown>>;
 };
 
+export type ProviderApiKeyStatus = {
+  provider: string;
+  configured: boolean;
+  preferred_provider: string;
+  model: string;
+  fallback_models?: string[];
+  validation_status: "unchecked" | "working" | "failed";
+  validation_message?: string | null;
+};
+
+export type ProviderApiKeyValidationPayload = {
+  provider: string;
+  api_key?: string | null;
+  model?: string | null;
+};
+
+export type RuntimeStateItem = {
+  key: string;
+  label: string;
+  filename: string;
+  path: string;
+  exists: boolean;
+  size_bytes: number;
+  updated_at?: string | null;
+  description: string;
+  affects_process: boolean;
+};
+
+function payloadText(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return null;
+}
+
+async function responseError(response: Response): Promise<ApiError> {
+  const body = await response.text();
+  if (!body) {
+    return new ApiError({
+      status: response.status,
+      code: `HTTP_${response.status}`,
+      message: response.statusText || `HTTP ${response.status}`
+    });
+  }
+
+  try {
+    const payload = JSON.parse(body) as Record<string, unknown>;
+    const detail = payload.detail;
+    const nestedDetail = detail && typeof detail === "object" && !Array.isArray(detail) ? (detail as Record<string, unknown>) : null;
+    const code =
+      payloadText(payload.code) ||
+      payloadText(payload.error) ||
+      (nestedDetail ? payloadText(nestedDetail.code) || payloadText(nestedDetail.error) : null) ||
+      `HTTP_${response.status}`;
+    const message =
+      payloadText(payload.message) ||
+      payloadText(payload.detail) ||
+      (nestedDetail ? payloadText(nestedDetail.message) || payloadText(nestedDetail.detail) : null) ||
+      response.statusText ||
+      `HTTP ${response.status}`;
+    const explanation =
+      payloadText(payload.explanation) ||
+      (nestedDetail ? payloadText(nestedDetail.explanation) : null);
+    const details = payload.details ?? (nestedDetail ? nestedDetail.details : undefined);
+    return new ApiError({
+      status: response.status,
+      code,
+      message,
+      explanation,
+      details,
+      raw: payload
+    });
+  } catch {
+    return new ApiError({
+      status: response.status,
+      code: `HTTP_${response.status}`,
+      message: body || response.statusText || `HTTP ${response.status}`,
+      raw: body
+    });
+  }
+}
+
+export function describeApiError(error: unknown) {
+  if (error instanceof ApiError) {
+    const prefix = `${error.status} ${error.code}`;
+    return {
+      title: `${prefix}: ${error.message}`,
+      explanation:
+        error.explanation ||
+        "The backend returned an error without a detailed explanation. Check Activity Log for the operation payload.",
+      details: error.details
+    };
+  }
+  if (error instanceof Error) {
+    return {
+      title: error.message,
+      explanation: "The browser received an application error while running this action.",
+      details: undefined
+    };
+  }
+  return {
+    title: "Unknown error",
+    explanation: "The browser received an unknown error while running this action.",
+    details: error
+  };
+}
+
+export function apiErrorKey(error: unknown) {
+  if (error instanceof ApiError) {
+    return `${error.status}:${error.code}:${error.message}`;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "unknown-error";
+  }
+}
+
+export function apiErrorInlineMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    return `${error.status} ${error.message}`;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Unknown error";
+}
+
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = useUiStore.getState().apiToken;
   const headers = new Headers(init.headers);
@@ -198,7 +368,10 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
     cache: "no-store"
   });
   if (!response.ok) {
-    throw new Error(`${response.status} ${await response.text()}`);
+    throw await responseError(response);
+  }
+  if (response.status === 204) {
+    return undefined as T;
   }
   return response.json() as Promise<T>;
 }
@@ -218,7 +391,7 @@ async function apiDownload(path: string, body: unknown): Promise<Blob> {
     cache: "no-store"
   });
   if (!response.ok) {
-    throw new Error(`${response.status} ${await response.text()}`);
+    throw await responseError(response);
   }
   return response.blob();
 }
@@ -229,6 +402,10 @@ export const api = {
   inputAdapters: () => apiFetch<string[]>("/novels/input-adapters"),
   novels: () => apiFetch<NovelSummary[]>("/novels/"),
   novel: (novelId: string) => apiFetch<NovelMetadata>(`/novels/${encodeURIComponent(novelId)}`),
+  deleteNovel: (novelId: string) =>
+    apiFetch<void>(`/novels/${encodeURIComponent(novelId)}`, {
+      method: "DELETE"
+    }),
   chapters: (novelId: string) => apiFetch<ChapterSummary[]>(`/novels/${encodeURIComponent(novelId)}/chapters`),
   chapter: (novelId: string, chapterId: string) =>
     apiFetch<ChapterDetail>(`/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}`),
@@ -267,46 +444,80 @@ export const api = {
   readerNovel: (novelId: string) => apiFetch<ReaderNovel>(`/novels/${encodeURIComponent(novelId)}/reader`),
   readerChapter: (novelId: string, chapterId: string) =>
     apiFetch<ReaderChapter>(`/novels/${encodeURIComponent(novelId)}/reader/chapters/${encodeURIComponent(chapterId)}`),
-  jobs: (params: { status?: string; job_type?: string; novel_id?: string; limit?: number } = {}) => {
+  activity: (params: { status?: string; activity_type?: string; novel_id?: string; limit?: number } = {}) => {
     const search = new URLSearchParams();
     if (params.status) search.set("status", params.status);
-    if (params.job_type) search.set("job_type", params.job_type);
+    if (params.activity_type) search.set("activity_type", params.activity_type);
     if (params.novel_id) search.set("novel_id", params.novel_id);
     search.set("limit", String(params.limit ?? 50));
-    return apiFetch<{ jobs: JobRecord[] }>(`/novels/jobs?${search.toString()}`);
+    return apiFetch<{ activity: ActivityRecord[] }>(`/novels/activity?${search.toString()}`);
   },
-  job: (jobId: string) => apiFetch<JobRecord>(`/novels/jobs/${encodeURIComponent(jobId)}`),
-  runJob: (jobId: string) =>
-    apiFetch<JobRecord>(`/novels/jobs/${encodeURIComponent(jobId)}/run`, {
+  activityItem: (activityId: string) => apiFetch<ActivityRecord>(`/novels/activity/${encodeURIComponent(activityId)}`),
+  deleteActivity: (activityId: string) =>
+    apiFetch<void>(`/novels/activity/${encodeURIComponent(activityId)}`, {
+      method: "DELETE"
+    }),
+  runActivity: (activityId: string) =>
+    apiFetch<ActivityRecord>(`/novels/activity/${encodeURIComponent(activityId)}/run`, {
       method: "POST"
     }),
-  runNextJob: (jobType?: string) => {
-    const suffix = jobType ? `?job_type=${encodeURIComponent(jobType)}` : "";
-    return apiFetch<JobRecord>(`/novels/jobs/run-next${suffix}`, { method: "POST" });
+  runNextActivity: (activityType?: string) => {
+    const suffix = activityType ? `?activity_type=${encodeURIComponent(activityType)}` : "";
+    return apiFetch<ActivityRecord>(`/novels/activity/run-next${suffix}`, { method: "POST" });
   },
-  updateJobStatus: (jobId: string, payload: { status: string; error?: string; metadata?: Record<string, unknown> }) =>
-    apiFetch<JobRecord>(`/novels/jobs/${encodeURIComponent(jobId)}`, {
+  updateActivityStatus: (activityId: string, payload: { status: string; error?: string; metadata?: Record<string, unknown> }) =>
+    apiFetch<ActivityRecord>(`/novels/activity/${encodeURIComponent(activityId)}`, {
       method: "PATCH",
       body: JSON.stringify(payload)
     }),
-  sourceHealth: () => apiFetch<{ sources: SourceHealth[] }>("/novels/jobs/source-health"),
-  sourceHealthDetail: (sourceKey: string) => apiFetch<SourceHealth>(`/novels/jobs/source-health/${encodeURIComponent(sourceKey)}`),
+  sourceHealth: () => apiFetch<{ sources: SourceHealth[] }>("/novels/activity/source-health"),
+  sourceHealthDetail: (sourceKey: string) => apiFetch<SourceHealth>(`/novels/activity/source-health/${encodeURIComponent(sourceKey)}`),
+  providerApiKeyStatus: (provider = "gemini") =>
+    apiFetch<ProviderApiKeyStatus>(`/novels/admin/provider-api-key/${encodeURIComponent(provider)}`),
+  setProviderApiKey: (payload: { provider: string; api_key: string; model?: string; apply_globally?: boolean; validate_connection?: boolean }) =>
+    apiFetch<ProviderApiKeyStatus>("/novels/admin/provider-api-key", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  validateProviderApiKey: (payload: ProviderApiKeyValidationPayload) =>
+    apiFetch<ProviderApiKeyStatus>("/novels/admin/provider-api-key/validate", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  clearProviderApiKey: (provider = "gemini") =>
+    apiFetch<ProviderApiKeyStatus>(`/novels/admin/provider-api-key/${encodeURIComponent(provider)}`, {
+      method: "DELETE"
+    }),
+  runtimeState: () => apiFetch<{ items: RuntimeStateItem[] }>("/novels/admin/runtime-state"),
+  refreshRuntimeState: (key: string) =>
+    apiFetch<RuntimeStateItem>(`/novels/admin/runtime-state/${encodeURIComponent(key)}/refresh`, {
+      method: "POST"
+    }),
+  clearRuntimeState: (key: string) =>
+    apiFetch<RuntimeStateItem>(`/novels/admin/runtime-state/${encodeURIComponent(key)}`, {
+      method: "DELETE"
+    }),
   workerStatus: () => apiFetch<WorkerStatus>("/novels/admin/worker"),
   workerStart: () => apiFetch<WorkerStatus>("/novels/admin/worker/start", { method: "POST" }),
   workerStop: () => apiFetch<WorkerStatus>("/novels/admin/worker/stop", { method: "POST" }),
-  workerRunOnce: () => apiFetch<{ job: JobRecord | null; worker: WorkerStatus }>("/novels/admin/worker/run-once", { method: "POST" }),
+  workerRunOnce: () => apiFetch<{ activity: ActivityRecord | null; worker: WorkerStatus }>("/novels/admin/worker/run-once", { method: "POST" }),
   requests: () => apiFetch<{ requests: NovelRequestRecord[] }>("/novels/requests?limit=50"),
   createRequest: (payload: { title: string; source_key?: string; source_url?: string; requested_by?: string; notes?: string }) =>
     apiFetch<NovelRequestRecord>("/novels/requests", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  createCrawlJob: (payload: { novel_id: string; source_key: string; kind: string; chapters?: string; source_url?: string; metadata?: Record<string, unknown> }) =>
-    apiFetch<JobRecord>("/novels/jobs/crawl", {
+  updateRequestStatus: (requestId: string, payload: { status: string; reviewed_by?: string; notes?: string }) =>
+    apiFetch<NovelRequestRecord>(`/novels/requests/${encodeURIComponent(requestId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+  createCrawlActivity: (payload: { novel_id: string; source_key: string; kind: string; chapters?: string; source_url?: string; metadata?: Record<string, unknown> }) =>
+    apiFetch<ActivityRecord>("/novels/activity/crawl", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  createTranslationJob: (payload: {
+  createTranslationActivity: (payload: {
     novel_id: string;
     source_key?: string;
     kind: string;
@@ -315,7 +526,7 @@ export const api = {
     model?: string;
     metadata?: Record<string, unknown>;
   }) =>
-    apiFetch<JobRecord>("/novels/jobs/translation", {
+    apiFetch<ActivityRecord>("/novels/activity/translation", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
@@ -345,7 +556,15 @@ export const api = {
     ),
   translateNow: (
     novelId: string,
-    payload: { source_key: string; chapters?: string; provider_key?: string; provider_model?: string; force?: boolean }
+    payload: {
+      source_key: string;
+      chapters?: string;
+      provider_key?: string;
+      provider_model?: string;
+      force?: boolean;
+      source_language?: string;
+      target_language?: string;
+    }
   ) =>
     apiFetch<{ novel_id: string; status: string }>(`/novels/${encodeURIComponent(novelId)}/translate`, {
       method: "POST",

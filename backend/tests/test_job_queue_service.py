@@ -1,27 +1,28 @@
 from __future__ import annotations
 
+import json
 import shutil
 from uuid import uuid4
 
 import pytest
 
 from novelai.core.platform import JobStatus
-from novelai.jobs.queue import JobQueueService
+from novelai.activity.queue import ActivityQueueService
 from tests.conftest import TESTS_TMP_ROOT
 
 
 @pytest.fixture
-def jobs() -> JobQueueService:
+def activity_log() -> ActivityQueueService:
     TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     data_dir = TESTS_TMP_ROOT / f"jobs_{uuid4().hex}"
     data_dir.mkdir(parents=True, exist_ok=False)
-    service = JobQueueService(data_dir)
+    service = ActivityQueueService(data_dir)
     yield service
     shutil.rmtree(data_dir, ignore_errors=True)
 
 
-def test_create_and_load_crawl_job(jobs: JobQueueService) -> None:
-    job = jobs.create_crawl_job(
+def test_create_and_load_crawl_activity(activity_log: ActivityQueueService) -> None:
+    activity = activity_log.create_crawl_activity(
         novel_id="novel-1",
         source_key="syosetu_ncode",
         kind="metadata",
@@ -29,7 +30,7 @@ def test_create_and_load_crawl_job(jobs: JobQueueService) -> None:
         source_url="https://ncode.syosetu.com/n1234ab/",
     )
 
-    loaded = jobs.get_job(job["id"])
+    loaded = activity_log.get_activity(activity["id"])
 
     assert loaded is not None
     assert loaded["type"] == "crawl"
@@ -38,9 +39,48 @@ def test_create_and_load_crawl_job(jobs: JobQueueService) -> None:
     assert loaded["source_key"] == "syosetu_ncode"
 
 
-def test_create_translation_job_and_filter(jobs: JobQueueService) -> None:
-    jobs.create_crawl_job(novel_id="novel-1", source_key="kakuyomu", kind="chapters")
-    translation = jobs.create_translation_job(
+def test_uses_activity_log_folder_and_migrates_legacy_jobs() -> None:
+    TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    data_dir = TESTS_TMP_ROOT / f"activity_log_{uuid4().hex}"
+    legacy_dir = data_dir / "jobs"
+    legacy_dir.mkdir(parents=True, exist_ok=False)
+    legacy_job = {
+        "id": "crawl_legacy",
+        "type": "crawl",
+        "kind": "metadata",
+        "novel_id": "n0813kx",
+        "source_key": "novel18_syosetu",
+        "chapters": None,
+        "status": "completed",
+        "created_at": "2026-06-03T00:00:00Z",
+        "started_at": None,
+        "finished_at": "2026-06-03T00:01:00Z",
+        "retry_count": 0,
+        "error": None,
+        "metadata": {},
+    }
+    (legacy_dir / "queue.json").write_text(json.dumps([legacy_job]), encoding="utf-8")
+    (legacy_dir / "source_health.json").write_text(
+        json.dumps({"novel18_syosetu": {"source_key": "novel18_syosetu", "success_count": 1}}),
+        encoding="utf-8",
+    )
+
+    try:
+        service = ActivityQueueService(data_dir)
+
+        assert service.jobs_dir.name == "activity_log"
+        assert (data_dir / "activity_log" / "queue.json").exists()
+        assert (data_dir / "activity_log" / "source_health.json").exists()
+        assert not (legacy_dir / "queue.json").exists()
+        assert service.get_activity("crawl_legacy") == legacy_job
+        assert service.get_source_health("novel18_syosetu") is not None
+    finally:
+        shutil.rmtree(data_dir, ignore_errors=True)
+
+
+def test_create_translation_activity_and_filter(activity_log: ActivityQueueService) -> None:
+    activity_log.create_crawl_activity(novel_id="novel-1", source_key="kakuyomu", kind="chapters")
+    translation = activity_log.create_translation_activity(
         novel_id="novel-1",
         kind="translate",
         chapters="1-3",
@@ -48,16 +88,16 @@ def test_create_translation_job_and_filter(jobs: JobQueueService) -> None:
         model="gpt-5.4",
     )
 
-    filtered = jobs.list_jobs(job_type="translation", status=JobStatus.PENDING)
+    filtered = activity_log.list_activity(activity_type="translation", status=JobStatus.PENDING)
 
     assert filtered == [translation]
 
 
-def test_update_job_status_records_lifecycle_fields(jobs: JobQueueService) -> None:
-    job = jobs.create_translation_job(novel_id="novel-1")
+def test_update_activity_status_records_lifecycle_fields(activity_log: ActivityQueueService) -> None:
+    activity = activity_log.create_translation_activity(novel_id="novel-1")
 
-    running = jobs.update_job_status(job["id"], "running")
-    failed = jobs.update_job_status(job["id"], "failed", error="source timeout", metadata={"attempt": 1})
+    running = activity_log.update_activity_status(activity["id"], "running")
+    failed = activity_log.update_activity_status(activity["id"], "failed", error="source timeout", metadata={"attempt": 1})
 
     assert running is not None
     assert running["started_at"] is not None
@@ -69,22 +109,22 @@ def test_update_job_status_records_lifecycle_fields(jobs: JobQueueService) -> No
     assert failed["metadata"]["attempt"] == 1
 
 
-def test_next_pending_job_returns_oldest_pending_by_type(jobs: JobQueueService) -> None:
-    first = jobs.create_crawl_job(novel_id="novel-1", source_key="syosetu_ncode")
-    jobs.create_translation_job(novel_id="novel-1")
+def test_next_pending_activity_returns_oldest_pending_by_type(activity_log: ActivityQueueService) -> None:
+    first = activity_log.create_crawl_activity(novel_id="novel-1", source_key="syosetu_ncode")
+    activity_log.create_translation_activity(novel_id="novel-1")
 
-    pending = jobs.next_pending_job(job_type="crawl")
+    pending = activity_log.next_pending_activity(activity_type="crawl")
 
     assert pending is not None
     assert pending["id"] == first["id"]
 
 
-def test_record_source_health_tracks_success_and_failure(jobs: JobQueueService) -> None:
-    jobs.record_source_health("syosetu_ncode", success=True)
-    failed = jobs.record_source_health("syosetu_ncode", success=False, error="timeout")
+def test_record_source_health_tracks_success_and_failure(activity_log: ActivityQueueService) -> None:
+    activity_log.record_source_health("syosetu_ncode", success=True)
+    failed = activity_log.record_source_health("syosetu_ncode", success=False, error="timeout")
 
-    loaded = jobs.get_source_health("syosetu_ncode")
-    all_sources = jobs.list_source_health()
+    loaded = activity_log.get_source_health("syosetu_ncode")
+    all_sources = activity_log.list_source_health()
 
     assert loaded is not None
     assert loaded["success_count"] == 1

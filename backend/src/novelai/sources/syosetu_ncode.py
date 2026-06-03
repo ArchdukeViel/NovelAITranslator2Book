@@ -118,6 +118,12 @@ class SyosetuNcodeSource(SourceAdapter):
             headers["Referer"] = referer.strip()
         return headers
 
+    @staticmethod
+    def _decode_page_response(response: httpx.Response) -> str:
+        # Syosetu/Novel18 pages are UTF-8. Some responses omit a charset, which
+        # can make httpx decode them as latin-1/cp1252 and produce mojibake.
+        return response.content.decode("utf-8", errors="replace")
+
     async def _fetch_page(self, url: str) -> str:
         await self._rate_limit()
         try:
@@ -139,8 +145,9 @@ class SyosetuNcodeSource(SourceAdapter):
             ) from exc
         except httpx.HTTPError as exc:
             raise SourceError(f"Failed to fetch Syosetu page from {url}: {exc}") from exc
-        self._validate_fetched_page(url, resp.url, resp.text)
-        return resp.text
+        html = self._decode_page_response(resp)
+        self._validate_fetched_page(url, resp.url, html)
+        return html
 
     async def fetch_asset(self, url: str, *, referer: str | None = None) -> dict[str, Any]:
         await self._rate_limit()
@@ -310,12 +317,19 @@ class SyosetuNcodeSource(SourceAdapter):
                         return text
         return current_part
 
-    def _extract_chapters(self, soup: BeautifulSoup, url: str, title: str | None) -> list[dict[str, Any]]:
+    def _extract_chapters(
+        self,
+        soup: BeautifulSoup,
+        url: str,
+        title: str | None,
+        *,
+        initial_part: str | None = None,
+    ) -> list[dict[str, Any]]:
         base_url = httpx.URL(url)
         novel_id = self.normalize_novel_id(url)
         chapter_pattern = re.compile(rf"^/{re.escape(novel_id)}/(\d+)/?$", re.IGNORECASE)
         chapter_urls: dict[int, dict[str, Any]] = {}
-        current_part: str | None = None
+        current_part = initial_part.strip() if isinstance(initial_part, str) and initial_part.strip() else None
 
         for node in soup.find_all(["div", "section", "h2", "h3", "a"], recursive=True):
             if not isinstance(node, Tag):
@@ -368,6 +382,18 @@ class SyosetuNcodeSource(SourceAdapter):
                 "url": str(base_url),
             }
         ]
+
+    @staticmethod
+    def _last_chapter_part(chapters: Any) -> str | None:
+        if not isinstance(chapters, list):
+            return None
+        for chapter in reversed(chapters):
+            if not isinstance(chapter, dict):
+                continue
+            part = chapter.get("part") or chapter.get("volume") or chapter.get("arc") or chapter.get("section")
+            if isinstance(part, str) and part.strip():
+                return part.strip()
+        return None
 
     def _is_story_body(self, candidate: Tag) -> bool:
         raw_classes = candidate.get("class") or []
@@ -525,6 +551,7 @@ class SyosetuNcodeSource(SourceAdapter):
             for chapter in metadata.get("chapters", [])
             if isinstance(chapter, dict) and isinstance(chapter.get("num"), int)
         }
+        current_part = self._last_chapter_part(metadata.get("chapters"))
         if max_chapter is not None and chapters_by_number:
             highest_known_chapter = max(chapters_by_number)
             if highest_known_chapter >= max_chapter:
@@ -539,7 +566,10 @@ class SyosetuNcodeSource(SourceAdapter):
             page_url = f"{url}?p={page_number}"
             page_html = await self._fetch_page(page_url)
             page_soup = BeautifulSoup(page_html, "lxml")
-            for chapter in self._extract_chapters(page_soup, url, metadata.get("title")):
+            for chapter in self._extract_chapters(page_soup, url, metadata.get("title"), initial_part=current_part):
+                chapter_part = chapter.get("part") or chapter.get("volume") or chapter.get("arc") or chapter.get("section")
+                if isinstance(chapter_part, str) and chapter_part.strip():
+                    current_part = chapter_part.strip()
                 if isinstance(chapter.get("num"), int):
                     chapters_by_number[int(chapter["num"])] = chapter
             if max_chapter is not None and chapters_by_number and max(chapters_by_number) >= max_chapter:

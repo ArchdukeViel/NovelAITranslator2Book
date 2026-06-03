@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -8,16 +9,19 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from novelai.activity.queue import ActivityQueueService
 from novelai.config.settings import settings
-from novelai.api.routers.dependencies import _rate_limit, get_orchestrator, get_storage, verify_api_key
+from novelai.api.routers.dependencies import _rate_limit, get_activity_log, get_orchestrator, get_storage, verify_api_key
 from novelai.runtime.container import container
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.storage.service import StorageService
 from novelai.sources.registry import detect_source
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 _NCODE_ID_PATTERN = r"^n\d{4}[a-z]{2}$"
+_SYOSETU_SOURCE_PAIR = ("novel18_syosetu", "syosetu_ncode")
 
 
 class ScrapeRequest(BaseModel):
@@ -54,9 +58,176 @@ def _resolved_preliminary_source(identifier: str, requested_source_key: str | No
     return "generic"
 
 
+def _preliminary_source_attempts(identifier: str, requested_source_key: str | None) -> list[str]:
+    detected_source = detect_source(identifier)
+    requested = requested_source_key.strip() if isinstance(requested_source_key, str) else None
+    if requested == "":
+        requested = None
+
+    if detected_source in _SYOSETU_SOURCE_PAIR:
+        fallback = "syosetu_ncode" if detected_source == "novel18_syosetu" else "novel18_syosetu"
+        return [detected_source, fallback]
+
+    if _looks_like_ncode_id(identifier) and requested in {None, "syosetu_ncode", "novel18_syosetu"}:
+        return list(_SYOSETU_SOURCE_PAIR)
+
+    if requested in _SYOSETU_SOURCE_PAIR:
+        fallback = "syosetu_ncode" if requested == "novel18_syosetu" else "novel18_syosetu"
+        return [requested, fallback]
+
+    if detected_source:
+        return [detected_source]
+
+    if _looks_like_ncode_id(identifier):
+        if requested is None:
+            return list(_SYOSETU_SOURCE_PAIR)
+        assert requested is not None
+        return [requested]
+
+    return [_resolved_preliminary_source(identifier, requested_source_key)]
+
+
+def _preliminary_failure_code(errors: list[str]) -> str:
+    if not errors:
+        return "PRELIMINARY_CRAWL_FAILED"
+    normalized = [error.lower() for error in errors]
+    timeout_count = sum("timed out" in error for error in normalized)
+    no_metadata_count = sum("no metadata or chapters detected" in error for error in normalized)
+    if timeout_count == len(normalized):
+        return "PRELIMINARY_CRAWL_TIMEOUT"
+    if timeout_count > 0:
+        return "PRELIMINARY_CRAWL_PARTIAL_TIMEOUT"
+    if no_metadata_count == len(normalized):
+        return "PRELIMINARY_CRAWL_NO_METADATA"
+    return "PRELIMINARY_CRAWL_FAILED"
+
+
+def _preliminary_failure_explanation(code: str) -> str:
+    explanations = {
+        "PRELIMINARY_CRAWL_TIMEOUT": (
+            "Every attempted source timed out before metadata could be detected. Try again later, "
+            "check the source website, or increase the backend request timeout."
+        ),
+        "PRELIMINARY_CRAWL_PARTIAL_TIMEOUT": (
+            "At least one source timed out, and the fallback source did not return usable metadata. "
+            "Open Activity Log details to see which source timed out and which fallback returned nothing."
+        ),
+        "PRELIMINARY_CRAWL_NO_METADATA": (
+            "The crawler reached the attempted source pages, but none returned usable metadata or chapters. "
+            "Check whether the ID belongs to a different source or requires an exact URL."
+        ),
+    }
+    return explanations.get(
+        code,
+        "The crawler tried every configured source fallback for this input, but none returned usable novel metadata or chapters.",
+    )
+
+
+def _record_preliminary_crawl_failure(
+    activity_log: ActivityQueueService,
+    *,
+    novel_id: str,
+    identifier: str,
+    requested_source_key: str | None,
+    attempts: list[str],
+    errors: list[str],
+) -> dict[str, Any]:
+    source_key = attempts[0] if attempts else requested_source_key or "auto"
+    failure_code = _preliminary_failure_code(errors)
+    failure_explanation = _preliminary_failure_explanation(failure_code)
+    activity = activity_log.create_crawl_activity(
+        novel_id=novel_id,
+        source_key=source_key,
+        kind="metadata",
+        chapters=None,
+        source_url=identifier if identifier.startswith(("http://", "https://")) else None,
+        metadata={
+            "activity_subtype": "crawling",
+            "activity_phase": "preliminary_crawl",
+            "preliminary_crawl": True,
+            "identifier": identifier,
+            "requested_source_key": requested_source_key,
+            "attempted_sources": attempts,
+            "attempt_errors": errors,
+            "failure_code": failure_code,
+            "failure_category": "crawler",
+            "failure_explanation": failure_explanation,
+        },
+    )
+    error_text = "; ".join(errors) if errors else "Preliminary crawl failed before any source adapter returned metadata."
+    failed = activity_log.update_activity_status(activity["id"], "failed", error=error_text)
+    return failed or activity
+
+
+def _record_preliminary_crawl_success(
+    activity_log: ActivityQueueService,
+    *,
+    novel_id: str,
+    identifier: str,
+    requested_source_key: str | None,
+    attempts: list[str],
+    source_key: str,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    chapter_count = _chapter_count(metadata)
+    source_url = metadata.get("source_url")
+    activity_source_url: str | None = None
+    if isinstance(source_url, str):
+        activity_source_url = source_url
+    elif identifier.startswith(("http://", "https://")):
+        activity_source_url = identifier
+
+    activity = activity_log.create_crawl_activity(
+        novel_id=novel_id,
+        source_key=source_key,
+        kind="metadata",
+        chapters=None,
+        source_url=activity_source_url,
+        metadata={
+            "activity_subtype": "crawling",
+            "activity_phase": "preliminary_crawl",
+            "preliminary_crawl": True,
+            "identifier": identifier,
+            "requested_source_key": requested_source_key,
+            "attempted_sources": attempts,
+            "selected_source_key": source_key,
+            "chapter_count": chapter_count,
+            "source_url": activity_source_url,
+            "title": metadata.get("title"),
+            "translated_title": metadata.get("translated_title"),
+            "author": metadata.get("author"),
+            "translated_author": metadata.get("translated_author"),
+            "metadata_translation_status": metadata.get("metadata_translation_status"),
+            "metadata_translation_error": metadata.get("metadata_translation_error"),
+        },
+    )
+    completed = activity_log.update_activity_status(
+        activity["id"],
+        "completed",
+        metadata={
+            "result": {
+                "chapter_count": chapter_count,
+                "source_key": source_key,
+                "source_url": activity_source_url,
+            }
+        },
+    )
+    return completed or activity
+
+
 def _chapter_count(metadata: dict[str, Any]) -> int:
     chapters = metadata.get("chapters")
     return len(chapters) if isinstance(chapters, list) else 0
+
+
+def _preliminary_metadata_is_usable(metadata: dict[str, Any]) -> bool:
+    if _chapter_count(metadata) > 0:
+        return True
+    for key in ("title", "author", "synopsis", "description", "summary"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return True
+    return False
 
 
 def _chapter_rows(metadata: dict[str, Any]) -> list[dict[str, Any]]:
@@ -100,6 +271,8 @@ class TranslateRequest(BaseModel):
     provider_key: str | None = None
     provider_model: str | None = None
     force: bool = False
+    source_language: str | None = None
+    target_language: str | None = "English"
 
 
 class ExportRequest(BaseModel):
@@ -155,52 +328,32 @@ async def preliminary_crawl_novel(
     body: PreliminaryCrawlRequest,
     request: Request,
     orchestrator: NovelOrchestrationService = Depends(get_orchestrator),
+    activity_log: ActivityQueueService = Depends(get_activity_log),
     _auth: None = Depends(verify_api_key),
 ) -> dict[str, Any]:
     _rate_limit(request, "scrape")
     identifier = body.identifier.strip()
     if not identifier:
-        raise HTTPException(status_code=400, detail="Novel link or ID is required")
-
-    source_key = _resolved_preliminary_source(identifier, body.source_key)
-    timeout = settings.WEB_REQUEST_TIMEOUT_SECONDS
-    try:
-        meta = await asyncio.wait_for(
-            _scrape_preliminary_metadata(
-                orchestrator,
-                source_key=source_key,
-                novel_id=novel_id,
-                mode=body.mode,
-                max_chapter=body.max_chapter,
-                identifier=identifier,
-            ),
-            timeout=timeout,
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "NOVEL_IDENTIFIER_REQUIRED",
+                "message": "Novel link or ID is required.",
+                "explanation": "Enter either the source URL or the source novel ID before starting preliminary crawl.",
+            },
         )
-        if source_key == "syosetu_ncode" and _looks_like_ncode_id(identifier) and _chapter_count(meta) == 0:
-            fallback_meta = await asyncio.wait_for(
-                _scrape_preliminary_metadata(
-                    orchestrator,
-                    source_key="novel18_syosetu",
-                    novel_id=novel_id,
-                    mode=body.mode,
-                    max_chapter=body.max_chapter,
-                    identifier=identifier,
-                ),
-                timeout=timeout,
-            )
-            if _chapter_count(fallback_meta) > 0:
-                source_key = "novel18_syosetu"
-                meta = fallback_meta
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="Operation timed out") from None
-    except Exception as exc:
-        if source_key != "syosetu_ncode" or not _looks_like_ncode_id(identifier):
-            raise
+
+    attempts = _preliminary_source_attempts(identifier, body.source_key)
+    timeout = settings.WEB_REQUEST_TIMEOUT_SECONDS
+    errors: list[str] = []
+    meta: dict[str, Any] | None = None
+    source_key: str | None = None
+    for attempt_source_key in attempts:
         try:
             meta = await asyncio.wait_for(
                 _scrape_preliminary_metadata(
                     orchestrator,
-                    source_key="novel18_syosetu",
+                    source_key=attempt_source_key,
                     novel_id=novel_id,
                     mode=body.mode,
                     max_chapter=body.max_chapter,
@@ -208,14 +361,66 @@ async def preliminary_crawl_novel(
                 ),
                 timeout=timeout,
             )
-            source_key = "novel18_syosetu"
         except TimeoutError:
-            raise HTTPException(status_code=504, detail="Operation timed out") from None
-        except Exception:
-            raise exc
+            errors.append(f"{attempt_source_key}: operation timed out")
+            activity_log.record_source_health(attempt_source_key, success=False, error="preliminary crawl timed out")
+            continue
+        except Exception as exc:
+            errors.append(f"{attempt_source_key}: {exc}")
+            activity_log.record_source_health(attempt_source_key, success=False, error=str(exc))
+            continue
+
+        if _preliminary_metadata_is_usable(meta):
+            source_key = attempt_source_key
+            activity_log.record_source_health(attempt_source_key, success=True)
+            break
+        errors.append(f"{attempt_source_key}: no metadata or chapters detected")
+        activity_log.record_source_health(attempt_source_key, success=False, error="no metadata or chapters detected")
+        meta = None
+
+    if meta is None or source_key is None:
+        joined_errors = "; ".join(errors) if errors else "no source adapters were attempted"
+        failed_job = _record_preliminary_crawl_failure(
+            activity_log,
+            novel_id=novel_id,
+            identifier=identifier,
+            requested_source_key=body.source_key,
+            attempts=attempts,
+            errors=errors,
+        )
+        failure_code = _preliminary_failure_code(errors)
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": failure_code,
+                "message": f"Preliminary crawl failed: {joined_errors}. Activity log: {failed_job.get('id')}",
+                "explanation": _preliminary_failure_explanation(failure_code),
+                "details": {
+                    "activity_log_job_id": failed_job.get("id"),
+                    "identifier": identifier,
+                    "requested_source_key": body.source_key,
+                    "attempted_sources": attempts,
+                    "attempt_errors": errors,
+                    "failure_category": "crawler",
+                },
+            },
+        )
 
     detected_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     synopsis = meta.get("synopsis") or meta.get("description") or meta.get("summary")
+    activity_job: dict[str, Any] | None = None
+    try:
+        activity_job = _record_preliminary_crawl_success(
+            activity_log,
+            novel_id=novel_id,
+            identifier=identifier,
+            requested_source_key=body.source_key,
+            attempts=attempts,
+            source_key=source_key,
+            metadata=meta,
+        )
+    except Exception:
+        logger.warning("Failed to record preliminary crawl success activity.", exc_info=True)
     return {
         "novel_id": novel_id,
         "source_key": source_key,
@@ -226,6 +431,9 @@ async def preliminary_crawl_novel(
         "translated_author": meta.get("translated_author"),
         "synopsis": synopsis,
         "translated_synopsis": meta.get("translated_synopsis"),
+        "metadata_translation_status": meta.get("metadata_translation_status"),
+        "metadata_translation_error": meta.get("metadata_translation_error"),
+        "activity_log_job_id": activity_job.get("id") if activity_job else None,
         "detected_at": detected_at,
         "chapters": _chapter_count(meta),
         "chapter_list": _chapter_rows(meta),
@@ -279,6 +487,8 @@ async def translate_novel(
                 provider_key=body.provider_key,
                 provider_model=body.provider_model,
                 force=body.force,
+                source_language=body.source_language,
+                target_language=body.target_language or settings.TRANSLATION_TARGET_LANGUAGE,
             ),
             timeout=settings.WEB_REQUEST_TIMEOUT_SECONDS,
         )

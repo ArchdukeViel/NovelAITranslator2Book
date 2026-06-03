@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RotateCw, Square } from "lucide-react";
 
-import { JobTable } from "@/components/admin/job-table";
+import { ActivityTable } from "@/components/admin/activity-table";
 import { Metric } from "@/components/admin/metric";
 import { PageHeading } from "@/components/admin/page-heading";
 import { StatusBadge } from "@/components/admin/status-badge";
@@ -13,7 +13,7 @@ import { api } from "@/lib/api";
 
 export default function DashboardPage() {
   const queryClient = useQueryClient();
-  const jobs = useQuery({ queryKey: ["jobs"], queryFn: () => api.jobs() });
+  const activity = useQuery({ queryKey: ["activity"], queryFn: () => api.activity() });
   const requests = useQuery({ queryKey: ["requests"], queryFn: () => api.requests() });
   const worker = useQuery({ queryKey: ["worker"], queryFn: () => api.workerStatus(), refetchInterval: 5000 });
   const sources = useQuery({ queryKey: ["source-health"], queryFn: () => api.sourceHealth() });
@@ -25,7 +25,7 @@ export default function DashboardPage() {
   const stop = useMutation({ mutationFn: api.workerStop, onSuccess: invalidate });
   const runOnce = useMutation({ mutationFn: api.workerRunOnce, onSuccess: invalidate });
 
-  const jobRows = jobs.data?.jobs ?? [];
+  const activityRows = activity.data?.activity ?? [];
   const requestRows = requests.data?.requests ?? [];
   const workerStatus = worker.data;
   const failedSources = (sources.data?.sources ?? []).filter((item) => item.failure_count > 0).length;
@@ -34,11 +34,11 @@ export default function DashboardPage() {
     <>
       <PageHeading
         title="Home"
-        description="Operational overview for crawler, translation jobs, source health, and reader request intake."
+        description="Operational overview for crawler activity, translation activity, source health, and reader request intake."
       />
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Metric label="Queued jobs" value={jobRows.filter((job) => job.status === "pending").length} />
+        <Metric label="Queued activity" value={activityRows.filter((activityItem) => activityItem.status === "pending").length} />
         <Metric label="Running worker" value={workerStatus?.running ? "Yes" : "No"} accent="violet" />
         <Metric label="Open requests" value={requestRows.filter((item) => item.status === "pending").length} accent="amber" />
         <Metric label="Sources with failures" value={failedSources} accent={failedSources ? "red" : "primary"} />
@@ -71,7 +71,7 @@ export default function DashboardPage() {
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <dt className="text-muted-foreground">Processed</dt>
-                <dd className="font-medium">{workerStatus?.jobs_processed ?? 0}</dd>
+                <dd className="font-medium">{workerStatus?.activity_processed ?? 0}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Idle ticks</dt>
@@ -85,7 +85,7 @@ export default function DashboardPage() {
           </PanelBody>
         </Panel>
 
-        <JobTable jobs={jobRows.slice(0, 8)} />
+        <ActivityTable activity={activityRows.slice(0, 8)} />
       </div>
     </>
   );

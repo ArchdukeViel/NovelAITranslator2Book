@@ -43,8 +43,11 @@ async def scrape_metadata(
 
     try:
         meta = await self._translate_metadata_fields(meta, existing_metadata)
+        meta["metadata_translation_status"] = "completed"
     except Exception as exc:
         logger.warning("Failed to translate metadata for %s: %s", novel_id, exc)
+        meta["metadata_translation_status"] = "failed"
+        meta["metadata_translation_error"] = str(exc)
     self.storage.save_metadata(novel_id, meta)
     logger.info(f"Metadata scraped: {len(meta)} fields saved")
     if progress_callback:
@@ -83,8 +86,11 @@ async def scrape_chapters(
         meta.setdefault("context_group_id", novel_id)
         try:
             meta = await self._translate_metadata_fields(meta)
+            meta["metadata_translation_status"] = "completed"
         except Exception as exc:
             logger.warning("Failed to translate metadata for %s: %s", novel_id, exc)
+            meta["metadata_translation_status"] = "failed"
+            meta["metadata_translation_error"] = str(exc)
         self.storage.save_metadata(novel_id, meta)
     else:
         meta = self.storage.load_metadata(novel_id)
