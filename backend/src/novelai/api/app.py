@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from novelai.config.settings import settings
 from novelai.api.error_handlers import add_error_handlers
+from novelai.api.routers.library import NovelSummary, list_novels
 from novelai.api.routers import novels
 from novelai.runtime.bootstrap import bootstrap
 from novelai.runtime.container import container
@@ -45,6 +46,20 @@ def create_app() -> FastAPI:
 
     app.include_router(novels.router, prefix="/novels", tags=["novels"])
     app.include_router(novels.router, prefix="/api/novels", tags=["novels-api"])
+    app.add_api_route(
+        "/novels",
+        list_novels,
+        methods=["GET"],
+        response_model=list[NovelSummary],
+        include_in_schema=False,
+    )
+    app.add_api_route(
+        "/api/novels",
+        list_novels,
+        methods=["GET"],
+        response_model=list[NovelSummary],
+        include_in_schema=False,
+    )
 
     @app.get("/api/health", tags=["health"])
     async def api_health() -> dict[str, str]:

@@ -717,6 +717,11 @@ class TestListDetail:
         assert resp.status_code == 200
         assert resp.json()[0]["novel_id"] == "test-n1"
 
+    def test_api_prefixed_novels_route_without_trailing_slash_does_not_redirect(self, seeded_client: TestClient) -> None:
+        resp = seeded_client.get("/api/novels", follow_redirects=False)
+        assert resp.status_code == 200
+        assert resp.json()[0]["novel_id"] == "test-n1"
+
     def test_list_novels_empty(self, client: TestClient) -> None:
         resp = client.get("/novels/")
         assert resp.status_code == 200
@@ -731,6 +736,35 @@ class TestListDetail:
         assert data[0]["chapter_count"] == 2
         assert data[0]["scraped_count"] == 1
         assert data[0]["translated_count"] == 1
+
+    def test_list_novels_includes_legacy_syosetu_folder_without_metadata(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        novel_dir = storage.novels_dir / "0813kx"
+        chapter_dir = novel_dir / "chapters"
+        chapter_dir.mkdir(parents=True)
+        (chapter_dir / "1.json").write_text(
+            json.dumps({"id": "1", "raw": {"text": "raw chapter"}}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        c = _make_app(storage)
+
+        resp = c.get("/novels/")
+        assert resp.status_code == 200
+        data = resp.json()
+
+        assert data == [
+            {
+                "novel_id": "n0813kx",
+                "title": "n0813kx",
+                "author": None,
+                "source": None,
+                "source_url": None,
+                "chapter_count": 1,
+                "scraped_count": 1,
+                "translated_count": 0,
+            }
+        ]
 
     def test_get_novel(self, seeded_client: TestClient) -> None:
         resp = seeded_client.get("/novels/test-n1")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -16,6 +17,7 @@ from novelai.api.routers.dependencies import (
 from novelai.storage.service import StorageService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class NovelSummary(BaseModel):
@@ -35,6 +37,15 @@ class ChapterSummary(BaseModel):
     translated: bool = False
 
 
+def _optional_string(value: Any) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _metadata_chapter_count(meta: dict[str, Any]) -> int:
+    chapters = meta.get("chapters")
+    return len(chapters) if isinstance(chapters, list) else 0
+
+
 @router.get("/", response_model=list[NovelSummary])
 async def list_novels(
     storage: StorageService = Depends(get_storage),
@@ -43,16 +54,21 @@ async def list_novels(
     summaries: list[NovelSummary] = []
     for novel_id in storage.list_novels():
         meta = storage.load_metadata(novel_id) or {}
+        scraped_count = storage.count_stored_chapters(novel_id)
+        translated_count = storage.count_translated_chapters(novel_id)
+        chapter_count = _metadata_chapter_count(meta) or max(scraped_count, translated_count)
+        if not meta:
+            logger.info("Listing novel %s from files because metadata is missing or unreadable.", novel_id)
         summaries.append(
             NovelSummary(
                 novel_id=novel_id,
-                title=meta.get("translated_title") or meta.get("title"),
-                author=meta.get("translated_author") or meta.get("author"),
-                source=meta.get("source"),
-                source_url=meta.get("source_url"),
-                chapter_count=len(meta.get("chapters", [])),
-                scraped_count=storage.count_stored_chapters(novel_id),
-                translated_count=storage.count_translated_chapters(novel_id),
+                title=_optional_string(meta.get("translated_title")) or _optional_string(meta.get("title")) or novel_id,
+                author=_optional_string(meta.get("translated_author")) or _optional_string(meta.get("author")),
+                source=_optional_string(meta.get("source")),
+                source_url=_optional_string(meta.get("source_url")),
+                chapter_count=chapter_count,
+                scraped_count=scraped_count,
+                translated_count=translated_count,
             )
         )
     return summaries

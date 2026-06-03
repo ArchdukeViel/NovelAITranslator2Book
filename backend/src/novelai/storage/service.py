@@ -57,7 +57,9 @@ from novelai.storage.novels import (
     _ensure_novel_dir,
     _get_folder_name,
     _index_path,
+    _legacy_folder_candidates,
     _load_index,
+    _normalize_library_novel_id,
     _novel_dir,
     _persist_index,
     delete_novel,
@@ -265,6 +267,8 @@ class StorageService:
     _index_path = _index_path
     _load_index = _load_index
     _persist_index = _persist_index
+    _normalize_library_novel_id = _normalize_library_novel_id
+    _legacy_folder_candidates = _legacy_folder_candidates
     _compute_folder_name = _compute_folder_name
     _get_folder_name = _get_folder_name
     _novel_dir = _novel_dir

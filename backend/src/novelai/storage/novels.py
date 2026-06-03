@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,9 @@ from novelai.storage.common import _utc_now_iso
 from novelai.utils import atomic_write
 
 logger = logging.getLogger(__name__)
+
+_SYOSETU_NCODE_PATTERN = re.compile(r"^n\d{4}[a-z]{2}$", re.IGNORECASE)
+_LEGACY_SYOSETU_NCODE_FOLDER_PATTERN = re.compile(r"^\d{4}[a-z]{2}$", re.IGNORECASE)
 
 def _index_path(self: Any) -> Path:
     return self.novels_dir / self.INDEX_FILENAME
@@ -37,10 +41,41 @@ def _compute_folder_name(self: Any, novel_id: str, metadata: dict[str, Any]) -> 
     return self._sanitize_folder_name(novel_id)
 
 
+def _normalize_library_novel_id(self: Any, value: Any) -> str | None:
+    novel_id = self._clean_string(value)
+    if novel_id is None:
+        return None
+
+    normalized = novel_id.strip("/")
+    if _SYOSETU_NCODE_PATTERN.fullmatch(normalized):
+        return normalized.lower()
+    if _LEGACY_SYOSETU_NCODE_FOLDER_PATTERN.fullmatch(normalized):
+        return f"n{normalized.lower()}"
+    return normalized
+
+
+def _legacy_folder_candidates(self: Any, novel_id: str) -> list[str]:
+    canonical_id = self._normalize_library_novel_id(novel_id) or novel_id
+    candidates = [self._sanitize_folder_name(canonical_id)]
+    if _SYOSETU_NCODE_PATTERN.fullmatch(canonical_id):
+        candidates.append(canonical_id[1:])
+    return candidates
+
+
 def _get_folder_name(self: Any, novel_id: str) -> str:
     index = self._load_index()
-    entry = index.get(novel_id, {})
-    return entry.get("folder_name", novel_id)
+    normalized_id = self._normalize_library_novel_id(novel_id) or novel_id
+    entry = index.get(normalized_id, {})
+    folder_name = entry.get("folder_name") if isinstance(entry, dict) else None
+    if folder_name and (self.novels_dir / folder_name).exists():
+        return folder_name
+
+    for candidate in self._legacy_folder_candidates(normalized_id):
+        if (self.novels_dir / candidate).exists():
+            return candidate
+    if folder_name:
+        return folder_name
+    return normalized_id
 
 
 def _novel_dir(self: Any, novel_id: str) -> Path:
@@ -99,6 +134,7 @@ def delete_novel(self: Any, novel_id: str) -> None:
 
 def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
     """Save novel metadata (chapter list, title, etc.) as JSON."""
+    novel_id = self._normalize_library_novel_id(novel_id) or novel_id
     existing = self.load_metadata(novel_id) or {}
     merged = dict(existing)
     merged.update(data)
@@ -142,6 +178,7 @@ def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
 
 
 def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
+    novel_id = self._normalize_library_novel_id(novel_id) or novel_id
     path = self._novel_dir(novel_id) / "metadata.json"
     if not path.exists():
         return None
@@ -158,14 +195,31 @@ def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
         payload["input_adapter_key"] = self._clean_string(payload.get("input_adapter_key"))
         payload["context_group_id"] = self._clean_string(payload.get("context_group_id"), novel_id)
         return payload
-    except (json.JSONDecodeError, OSError):
-        logger.warning("Corrupted metadata for novel %s.", novel_id)
+    except json.JSONDecodeError as exc:
+        logger.warning("Corrupted metadata for novel %s at %s: %s", novel_id, path, exc)
+        return None
+    except OSError as exc:
+        logger.warning("Failed to read metadata for novel %s at %s: %s", novel_id, path, exc)
         return None
 
 # ---- Glossary persistence -------------------------------------------------
 
 
+def _folder_has_novel_data(novel_dir: Path) -> bool:
+    if (novel_dir / "metadata.json").exists():
+        return True
+    for dirname in ("chapters", "raw", "translated"):
+        data_dir = novel_dir / dirname
+        if data_dir.exists() and any(path.is_file() for path in data_dir.iterdir()):
+            return True
+    return False
+
+
 def list_novels(self: Any) -> list[str]:
+    if not self.novels_dir.exists():
+        logger.warning("Novel storage path does not exist: %s", self.novels_dir)
+        return []
+
     index = self._load_index()
     discovered: list[str] = []
     seen: set[str] = set()
@@ -174,7 +228,7 @@ def list_novels(self: Any) -> list[str]:
 
     def add_novel(novel_id: str, folder_name: str | None = None) -> None:
         nonlocal index_changed
-        normalized_id = self._clean_string(novel_id)
+        normalized_id = self._normalize_library_novel_id(novel_id)
         if normalized_id is None or normalized_id in seen:
             return
         seen.add(normalized_id)
@@ -196,22 +250,34 @@ def list_novels(self: Any) -> list[str]:
                 metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
                 if isinstance(metadata, dict):
                     resolved_id = self._clean_string(metadata.get("novel_id"), novel_id) or novel_id
-            except (json.JSONDecodeError, OSError):
-                logger.warning("Corrupted metadata for novel folder %s.", folder_name)
+            except json.JSONDecodeError as exc:
+                logger.warning("Corrupted metadata for novel folder %s at %s: %s", folder_name, metadata_path, exc)
+            except OSError as exc:
+                logger.warning("Failed to read metadata for novel folder %s at %s: %s", folder_name, metadata_path, exc)
         add_novel(resolved_id, folder_name)
 
     for novel_dir in sorted(self.novels_dir.iterdir(), key=lambda path: path.name.lower()):
         if not novel_dir.is_dir():
             continue
+        if not _folder_has_novel_data(novel_dir):
+            continue
         metadata_path = novel_dir / "metadata.json"
         if not metadata_path.exists():
+            add_novel(novel_dir.name, novel_dir.name)
             continue
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            logger.warning("Corrupted metadata for novel folder %s.", novel_dir.name)
+        except json.JSONDecodeError as exc:
+            logger.warning("Corrupted metadata for novel folder %s at %s: %s", novel_dir.name, metadata_path, exc)
+            add_novel(novel_dir.name, novel_dir.name)
+            continue
+        except OSError as exc:
+            logger.warning("Failed to read metadata for novel folder %s at %s: %s", novel_dir.name, metadata_path, exc)
+            add_novel(novel_dir.name, novel_dir.name)
             continue
         if not isinstance(metadata, dict):
+            logger.warning("Metadata for novel folder %s is not a JSON object.", novel_dir.name)
+            add_novel(novel_dir.name, novel_dir.name)
             continue
         resolved_id = self._clean_string(metadata.get("novel_id"), novel_dir.name) or novel_dir.name
         add_novel(resolved_id, novel_dir.name)

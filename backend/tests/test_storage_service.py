@@ -487,5 +487,45 @@ def test_list_novels_discovers_unindexed_metadata_folder(storage):
     assert storage.load_metadata("n0813kx")["title"] == "Recovered Novel"
 
 
+def test_list_novels_discovers_legacy_syosetu_folder_without_metadata(storage):
+    """Legacy Syosetu folders like 0813kx should appear as canonical n0813kx."""
+    novel_dir = storage.novels_dir / "0813kx"
+    chapter_dir = novel_dir / "chapters"
+    chapter_dir.mkdir(parents=True)
+    (chapter_dir / "1.json").write_text(
+        json.dumps({"id": "1", "raw": {"text": "raw chapter"}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    novels = storage.list_novels()
+
+    assert "n0813kx" in novels
+    assert "0813kx" not in novels
+    assert storage._get_folder_name("n0813kx") == "0813kx"
+    assert storage.count_stored_chapters("n0813kx") == 1
+    assert storage.load_metadata("n0813kx") is None
+
+
+def test_legacy_syosetu_folder_wins_when_index_points_to_missing_canonical_folder(storage):
+    """A stale n0813kx index should not hide an existing 0813kx folder."""
+    storage._persist_index({"n0813kx": {"folder_name": "n0813kx", "updated_at": "2026-06-03T00:00:00Z"}})
+    novel_dir = storage.novels_dir / "0813kx"
+    chapter_dir = novel_dir / "chapters"
+    chapter_dir.mkdir(parents=True)
+    (novel_dir / "metadata.json").write_text(
+        json.dumps({"novel_id": "n0813kx", "title": "Legacy Folder Novel"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (chapter_dir / "1.json").write_text(
+        json.dumps({"id": "1", "raw": {"text": "raw chapter"}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    assert storage.list_novels() == ["n0813kx"]
+    assert storage._get_folder_name("n0813kx") == "0813kx"
+    assert storage.load_metadata("n0813kx")["title"] == "Legacy Folder Novel"
+    assert storage.count_stored_chapters("n0813kx") == 1
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

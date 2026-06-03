@@ -400,7 +400,7 @@ export const api = {
   health: () => apiFetch<{ status: string }>("/health"),
   sources: () => apiFetch<string[]>("/novels/sources"),
   inputAdapters: () => apiFetch<string[]>("/novels/input-adapters"),
-  novels: () => apiFetch<NovelSummary[]>("/novels/"),
+  novels: () => apiFetch<NovelSummary[]>("/novels"),
   novel: (novelId: string) => apiFetch<NovelMetadata>(`/novels/${encodeURIComponent(novelId)}`),
   deleteNovel: (novelId: string) =>
     apiFetch<void>(`/novels/${encodeURIComponent(novelId)}`, {
