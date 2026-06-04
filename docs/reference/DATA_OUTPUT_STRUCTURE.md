@@ -16,6 +16,18 @@ storage/novel_library/
 |   `-- source_health.json
 |-- requests/
 |   `-- novel_requests.json
+|-- runtime/
+|   |-- provider_requests.json
+|   |-- fetch_cache/
+|   |   `-- index.json
+|   |-- traceability/
+|   |   |-- pipeline_events.json
+|   |   |-- chunk_states.json
+|   |   `-- scheduler_states.json
+|   `-- translation/
+|       |-- chunks.json
+|       |-- bundles.json
+|       `-- outputs.json
 `-- novels/
     |-- index.json
     `-- <novel_id>/
@@ -63,20 +75,25 @@ Provider API keys should not be stored here. They should come from `.env` or pro
 
 ### `translation_cache.json`
 
-Stores reusable translation results by provider, model, and source text hash.
+Owner module: `backend/src/novelai/services/translation_cache.py`
+
+Stores reusable translation results by exact cache key. New keys must include prompt-affecting and model-affecting metadata: source text hash, source language, target language, `provider_key`, `provider_model`, prompt version, glossary hash, style preset, JSON output mode, and consistency mode. Optional key inputs include chapter/novel memory hashes, selected glossary hash, system prompt hash, temperature, top-p, and structured output schema version.
+
+The current on-disk value is a backward-compatible mapping of cache key to translated text:
 
 Example shape:
 
 ```json
 {
-  "abc123def456": {
-    "provider": "gemini",
-    "model": "gemini-2.5-flash",
-    "text": "The translated text.",
-    "created_at": "2026-06-02T10:00:00Z"
-  }
+  "abc123def456": "The translated text."
 }
 ```
+
+Schema version: implicit legacy shape.
+
+Migration/backward compatibility: legacy entries keyed by provider/model/source text may remain readable through the cache service. Exact keys should be used for new prompt-aware cache writes.
+
+Retention policy: cache entries may be cleared by admin/runtime-state operations. Clearing the cache must not delete chapter bundles, translation outputs, provider request records, or traceability records.
 
 ### `usage.json`
 
@@ -470,6 +487,318 @@ Example:
   }
 }
 ```
+
+## Runtime Traceability
+
+Runtime files are owned by `backend/src/novelai/storage/*`. Pipeline, service, provider, and API modules should call `StorageService` methods instead of constructing these paths directly.
+
+### `runtime/traceability/pipeline_events.json`
+
+Owner module: `backend/src/novelai/storage/traceability.py`
+
+Append-only list of stage/job events.
+
+Required fields:
+
+- `timestamp`
+- `stage_name`
+- `message` when useful
+
+Optional fields:
+
+- `job_id` / `activity_id`
+- `novel_id`
+- `chapter_id`
+- `source_key`
+- `provider_key`
+- `provider_model`
+- `chunk_id`
+- `status_before`
+- `status_after`
+- `warning_code`
+- `error_code`
+
+Schema version: implicit legacy list.
+
+Migration/backward compatibility: missing optional fields should be treated as unknown.
+
+Retention policy: runtime/debug record; may be pruned by future maintenance without touching canonical chapter bundles.
+
+### `runtime/traceability/chunk_states.json`
+
+Owner module: `backend/src/novelai/storage/traceability.py`
+
+Mapping keyed by `<novel_id>:<chunk_id>` for lightweight chunk state and attempts.
+
+Required fields:
+
+- `chunk_id`
+- `novel_id`
+- `status`
+- `created_at`
+- `updated_at`
+
+Optional fields:
+
+- `chapter_ids`
+- `paragraph_ids`
+- `provider_key`
+- `provider_model`
+- `attempt_number`
+- `error_code`
+- `qa_score`
+
+Schema version: implicit legacy mapping.
+
+Migration/backward compatibility: legacy final chapter translations without chunk state remain readable but are not eligible for chunk-level retry unless reprocessed.
+
+Retention policy: may be kept for retry/debug; deleting it must not delete canonical chapter output.
+
+### `runtime/traceability/scheduler_states.json`
+
+Owner module: `backend/src/novelai/storage/traceability.py`
+
+Mapping keyed by `job_id` for future scheduler state.
+
+Required fields:
+
+- `job_id`
+- `updated_at`
+- `model_states`
+
+Each `model_states` entry should include:
+
+- `provider_key`
+- `provider_model`
+- `priority_order`
+- `status`
+
+Optional fields:
+
+- `credential_id`
+- `credential_owner_user_id`
+- `requesting_user_id`
+- `rpm_limit`
+- `rpd_limit`
+- `requests_this_minute`
+- `requests_today`
+- `window_started_at`
+- `cooldown_until`
+- `exhausted_until`
+- `last_error_code`
+- `last_error_message`
+- `routing_mode`
+
+Allowed statuses: `available`, `cooling_down`, `daily_exhausted`, `disabled`, `failed`.
+
+Schema version: implicit legacy mapping.
+
+Migration/backward compatibility: per-minute counters should be recovered conservatively after restart.
+
+Retention policy: runtime/job state; deleting it may remove pause/resume hints but must not delete chunks or final chapters.
+
+## Translation Runtime Records
+
+Canonical chapter storage remains `novels/<novel_id>/chapters/<chapter_id>.json`. The following runtime files are pipeline/cache/retry artifacts and must not be treated as final chapter output.
+
+### `runtime/translation/chunks.json`
+
+Owner module: `backend/src/novelai/storage/runtime_contracts.py`
+
+Mapping keyed by `<novel_id>:<chunk_id>` for traceable translation chunks.
+
+Required fields:
+
+- `schema_version`
+- `chunk_id`
+- `novel_id`
+- `chapter_ids`
+- `paragraph_ids`
+- `source_text_hash`
+- `char_count`
+- `status`
+- `attempt_count`
+- `created_at`
+- `updated_at`
+
+Optional fields:
+
+- `source_text`
+- `paragraph_refs`
+- `provider_key`
+- `provider_model`
+- `last_error_code`
+- `qa_score`
+- `qa_warnings`
+- `qa_errors`
+
+Schema version: `1`.
+
+Migration/backward compatibility: existing runtime data may lack these records. Existing final chapter output remains readable as legacy chapter-based output.
+
+Retention policy: may be retained for retry/debug. Deleting it must not delete raw chapters, parsed chapters, or final translations.
+
+### `runtime/translation/bundles.json`
+
+Owner module: `backend/src/novelai/storage/runtime_contracts.py`
+
+Mapping keyed by `<novel_id>:<bundle_id>` for temporary translation bundles. Bundles may contain paragraphs from one chapter or nearby short chapters, but must preserve explicit `chapter_ids`, `paragraph_ids`, and chunk membership.
+
+Required fields:
+
+- `schema_version`
+- `bundle_id`
+- `novel_id`
+- `chunk_ids`
+- `chapter_ids`
+- `paragraph_ids`
+- `status`
+- `created_at`
+- `updated_at`
+
+Optional fields:
+
+- `source_text_hash`
+- `target_chars`
+- `hard_max_chars`
+- `prompt_version`
+- `provider_key`
+- `provider_model`
+- `attempt_count`
+- `last_error_code`
+- `qa_score`
+- `warnings`
+- `errors`
+
+Schema version: `1`.
+
+Migration/backward compatibility: bundles are optional. A missing bundle must not make saved chapter output unreadable.
+
+Retention policy: temporary retry/debug artifact. It may be deleted after successful per-chapter save.
+
+### `runtime/translation/outputs.json`
+
+Owner module: `backend/src/novelai/storage/runtime_contracts.py`
+
+Mapping keyed by `<novel_id>:<output_id>` for chunk-level translation output before or alongside canonical chapter saves.
+
+Required fields:
+
+- `schema_version`
+- `output_id`
+- `chunk_id`
+- `novel_id`
+- `chapter_ids`
+- `paragraph_ids`
+- `translated_text`
+- `structured_paragraph_map`
+- `created_at`
+
+Optional fields:
+
+- `raw_provider_response_path`
+- `qa_score`
+- `qa_warnings`
+- `qa_errors`
+- `prompt_version`
+- `glossary_hash`
+- `provider_key`
+- `provider_model`
+
+Schema version: `1`.
+
+Migration/backward compatibility: final chapter translations still live in chapter bundles. Chunk output records are supplemental and can be absent for legacy translations.
+
+Retention policy: retained for QA/debug/retry when useful. Deleting it must not delete canonical final chapter output.
+
+## Provider Requests
+
+### `runtime/provider_requests.json`
+
+Owner module: `backend/src/novelai/storage/runtime_contracts.py`
+
+Append-only list of successful and failed provider calls.
+
+Required fields:
+
+- `schema_version`
+- `request_id`
+- `timestamp`
+- `provider_key`
+- `provider_model`
+- `success`
+
+Optional fields:
+
+- `job_id` / `activity_id`
+- `novel_id`
+- `chapter_id` / `chapter_ids`
+- `chunk_id`
+- `bundle_id`
+- `prompt_version`
+- `source_text_hash` / `prompt_hash`
+- `glossary_hash`
+- `style_preset`
+- `json_output`
+- `consistency_mode`
+- `input_tokens`
+- `output_tokens`
+- `total_tokens`
+- `latency_ms`
+- `normalized_provider_error_code`
+- `retry_after_seconds`
+- `cooldown_until`
+- `exhausted_until`
+- `requesting_user_id`
+- `credential_id`
+- `credential_owner_user_id`
+- `credential_scope`
+
+Schema version: `1`.
+
+Security: records must not store API keys, raw secrets, authorization headers, cookies, or raw tracebacks. Public APIs should return sanitized summaries.
+
+Migration/backward compatibility: old translations may have usage records but no provider request records.
+
+Retention policy: audit/debug runtime record; may be pruned according to future admin policy.
+
+## Fetch Cache
+
+### `runtime/fetch_cache/index.json`
+
+Owner module: `backend/src/novelai/storage/runtime_contracts.py`
+
+Mapping keyed by `<source_key>:<url>` for source HTTP response cache entries.
+
+Required fields:
+
+- `schema_version`
+- `url`
+- `canonical_url`
+- `source_key`
+- `status_code`
+- `headers`
+- `fetched_at`
+- `body_hash`
+
+Optional fields:
+
+- `etag`
+- `last_modified`
+- `body_text`
+- `body_path`
+- `parser_version`
+- `from_cache`
+
+Schema version: `1`.
+
+Migration/backward compatibility: FetchService can continue using the in-memory cache. File-backed entries are a storage foundation for conditional revalidation with `If-None-Match` and `If-Modified-Since`.
+
+Retention policy: cache/debug artifact. Deleting fetch cache entries must not delete raw chapter snapshots already stored in chapter bundles.
+
+## Credential Storage
+
+Public user-contributed credential storage is not implemented in the current file-backed storage. Adding it requires an explicit product-boundary change: authenticated public users, admin role separation, encrypted credential storage, revocation/deletion flows, audit logging, contribution consent, and usage limits. Raw provider keys must never be stored in plaintext, returned to the frontend after save, or logged.
 
 ## Exports
 

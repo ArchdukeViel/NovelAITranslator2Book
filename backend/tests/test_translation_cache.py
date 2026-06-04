@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from novelai.services.translation_cache import TranslationCache
+from novelai.services.translation_cache import TranslationCache, build_translation_cache_key
 
 _TMP = Path(__file__).resolve().parent / ".tmp" / "cache"
 
@@ -47,3 +47,55 @@ class TestTranslationCache:
         cache_file.write_text("NOT JSON", encoding="utf-8")
         cache = TranslationCache(base_dir=cache_dir)
         assert cache.get("any", "p", "m") is None
+
+    def test_reads_legacy_provider_model_text_key(self, cache_dir: Path) -> None:
+        legacy_key = TranslationCache._legacy_hash_key("hello", "openai", "gpt-4")
+        cache_file = cache_dir / "translation_cache.json"
+        cache_file.write_text(f'{{"{legacy_key}": "legacy translation"}}', encoding="utf-8")
+
+        cache = TranslationCache(base_dir=cache_dir)
+
+        assert cache.get("hello", "openai", "gpt-4") == "legacy translation"
+
+    def test_exact_key_changes_when_prompt_affecting_metadata_changes(self) -> None:
+        base = {
+            "source_text": "本文",
+            "source_language": "Japanese",
+            "target_language": "English",
+            "provider_key": "gemini",
+            "provider_model": "gemini-2.5-flash-lite",
+            "prompt_version": "translation-v1",
+            "glossary_hash": "glossary-a",
+            "style_preset": "balanced",
+            "json_output": False,
+            "consistency_mode": False,
+        }
+        baseline = build_translation_cache_key(**base)
+
+        for field, value in (
+            ("provider_model", "gemini-3.1-flash-lite"),
+            ("prompt_version", "translation-v2"),
+            ("glossary_hash", "glossary-b"),
+            ("style_preset", "literary"),
+            ("json_output", True),
+            ("consistency_mode", True),
+        ):
+            changed = {**base, field: value}
+            assert build_translation_cache_key(**changed) != baseline
+
+    def test_set_and_get_by_exact_key(self, cache_dir: Path) -> None:
+        cache = TranslationCache(base_dir=cache_dir)
+        key = cache.build_key(
+            source_text="本文",
+            source_language="Japanese",
+            target_language="English",
+            provider_key="openai",
+            provider_model="gpt-5.4",
+            prompt_version="translation-v1",
+            glossary_hash="glossary-a",
+            style_preset="balanced",
+            json_output=True,
+            consistency_mode=True,
+        )
+        cache.set_by_key(key, "Translated text.")
+        assert cache.get_by_key(key) == "Translated text."

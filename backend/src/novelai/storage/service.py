@@ -92,6 +92,24 @@ from novelai.storage.traceability import (
     save_scheduler_state,
     upsert_chunk_state,
 )
+from novelai.storage.runtime_contracts import (
+    _fetch_cache_dir,
+    _runtime_dir,
+    _translation_runtime_dir,
+    delete_translation_bundle,
+    fetch_cache_conditional_headers,
+    list_provider_request_records,
+    read_fetch_cache_entry,
+    read_translation_bundle,
+    read_translation_chunks,
+    read_translation_output,
+    save_fetch_cache_entry,
+    save_provider_request_record,
+    save_translation_bundle,
+    save_translation_chunks,
+    save_translation_output,
+    update_translation_chunk_status,
+)
 
 
 class StorageService:
@@ -347,3 +365,19 @@ class StorageService:
     load_chunk_states = load_chunk_states
     save_scheduler_state = save_scheduler_state
     load_scheduler_state = load_scheduler_state
+    _runtime_dir = _runtime_dir
+    _translation_runtime_dir = _translation_runtime_dir
+    _fetch_cache_dir = _fetch_cache_dir
+    save_translation_chunks = save_translation_chunks
+    read_translation_chunks = read_translation_chunks
+    update_translation_chunk_status = update_translation_chunk_status
+    save_translation_bundle = save_translation_bundle
+    read_translation_bundle = read_translation_bundle
+    delete_translation_bundle = delete_translation_bundle
+    save_translation_output = save_translation_output
+    read_translation_output = read_translation_output
+    save_provider_request_record = save_provider_request_record
+    list_provider_request_records = list_provider_request_records
+    save_fetch_cache_entry = save_fetch_cache_entry
+    read_fetch_cache_entry = read_fetch_cache_entry
+    fetch_cache_conditional_headers = fetch_cache_conditional_headers

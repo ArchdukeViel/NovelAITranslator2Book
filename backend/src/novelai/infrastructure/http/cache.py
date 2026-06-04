@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,17 @@ class FetchCacheEntry:
     @property
     def last_modified(self) -> str | None:
         return self.headers.get("last-modified")
+
+
+class FetchCache(Protocol):
+    def get(self, source_key: str, url: str) -> FetchCacheEntry | None:
+        ...
+
+    def set(self, entry: FetchCacheEntry) -> None:
+        ...
+
+    def conditional_headers(self, source_key: str, url: str) -> dict[str, str]:
+        ...
 
 
 class InMemoryFetchCache:

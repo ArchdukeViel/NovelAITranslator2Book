@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 
 from novelai.core.errors import SourceError
-from novelai.infrastructure.http.cache import FetchCacheEntry, InMemoryFetchCache
+from novelai.infrastructure.http.cache import FetchCache, FetchCacheEntry, InMemoryFetchCache
 from novelai.infrastructure.http.client import create_async_client, validate_safe_url
 from novelai.infrastructure.http.throttle import DomainThrottle
 from novelai.utils.retry_decorator import RetryConfig, Retrier
@@ -50,7 +50,7 @@ class FetchService:
         *,
         client_factory: ClientFactory = create_async_client,
         throttle: DomainThrottle | None = None,
-        cache: InMemoryFetchCache | None = None,
+        cache: FetchCache | None = None,
     ) -> None:
         self._client_factory = client_factory
         self._throttle = throttle or _GLOBAL_THROTTLE
