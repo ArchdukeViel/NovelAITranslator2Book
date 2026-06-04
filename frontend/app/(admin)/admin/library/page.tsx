@@ -1,20 +1,26 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, FileEdit, Languages, RefreshCw, RotateCw, Trash2 } from "lucide-react";
-import Link from "next/link";
+import { Languages, RefreshCw, RotateCw, Trash2 } from "lucide-react";
 import * as React from "react";
 
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+import { EmptyState } from "@/components/admin/empty-state";
+import { ErrorBanner } from "@/components/admin/error-banner";
+import { LibraryRowActions } from "@/components/admin/library/library-row-actions";
+import { TranslationModal } from "@/components/admin/library/translation-modal";
+import { LoadingRows } from "@/components/admin/loading-rows";
 import { PageHeading } from "@/components/admin/page-heading";
+import { SortableHeader } from "@/components/admin/sortable-header";
+import { TableCheckbox } from "@/components/admin/table-checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
+import { compareSortableValues, useSortableTable } from "@/hooks/use-sortable-table";
 import { api, type ActivityRecord, type ChapterSummary, type NovelMetadata, type NovelSummary } from "@/lib/api";
 import { useUiStore } from "@/lib/store";
-import { cn } from "@/lib/utils";
 
 type LibrarySortKey = "novel" | "source" | "listed" | "raw" | "translated" | "status";
-type SortDirection = "asc" | "desc";
 type LibraryAction = "translate" | "recrawl" | "delete";
 
 const TRANSLATION_LANGUAGES = ["English", "Indonesian"] as const;
@@ -61,13 +67,6 @@ function sortValue(novel: NovelSummary, key: LibrarySortKey) {
   return translationState(novel);
 }
 
-function sortPointer(key: LibrarySortKey, activeKey: LibrarySortKey, direction: SortDirection) {
-  if (key !== activeKey) {
-    return "";
-  }
-  return direction === "asc" ? " \u25B2" : " \u25BC";
-}
-
 async function syncGeminiToken(apiToken: string | undefined) {
   if (!apiToken?.trim()) {
     return;
@@ -93,8 +92,8 @@ function chapterSortValue(chapter: ChapterSummary) {
 export default function LibraryPage() {
   const queryClient = useQueryClient();
   const [selectedNovelIds, setSelectedNovelIds] = React.useState<Set<string>>(new Set());
-  const [sortKey, setSortKey] = React.useState<LibrarySortKey>("novel");
-  const [sortDirection, setSortDirection] = React.useState<SortDirection>("asc");
+  const { sortKey, sortDirection, handleSort } = useSortableTable<LibrarySortKey>("novel", "asc");
+  const [pendingDeleteRows, setPendingDeleteRows] = React.useState<NovelSummary[] | null>(null);
   const [translationNovel, setTranslationNovel] = React.useState<NovelSummary | null>(null);
   const [translationLanguage, setTranslationLanguage] = React.useState<(typeof TRANSLATION_LANGUAGES)[number]>("English");
   const [selectedTranslationChapterIds, setSelectedTranslationChapterIds] = React.useState<Set<string>>(new Set());
@@ -103,11 +102,7 @@ export default function LibraryPage() {
 
   const novels = useQuery({
     queryKey: ["novels"],
-    queryFn: async () => {
-      const result = await api.novels();
-      console.debug("[LibraryPage] api.novels() result:", result);
-      return result;
-    }
+    queryFn: () => api.novels()
   });
   const rows = Array.isArray(novels.data) ? novels.data : [];
   const unexpectedPayload = novels.data && !Array.isArray(novels.data);
@@ -167,11 +162,7 @@ export default function LibraryPage() {
     return [...rows].sort((left, right) => {
       const leftValue = sortValue(left, sortKey);
       const rightValue = sortValue(right, sortKey);
-      const direction = sortDirection === "asc" ? 1 : -1;
-      if (typeof leftValue === "number" && typeof rightValue === "number") {
-        return (leftValue - rightValue) * direction;
-      }
-      return String(leftValue).localeCompare(String(rightValue)) * direction;
+      return compareSortableValues(leftValue, rightValue, sortDirection);
     });
   }, [rows, sortDirection, sortKey]);
 
@@ -185,13 +176,6 @@ export default function LibraryPage() {
   const runLibraryAction = useMutation({
     mutationFn: async ({ action, novels: actionRows }: { action: LibraryAction; novels: NovelSummary[] }) => {
       const completed: Array<ActivityRecord | void> = [];
-      if (action === "delete") {
-        const confirmed = window.confirm(`Delete ${actionRows.length} selected novel(s)?`);
-        if (!confirmed) {
-          return completed;
-        }
-      }
-
       for (const novel of actionRows) {
         if (action === "delete") {
           completed.push(await api.deleteNovel(novel.novel_id));
@@ -221,7 +205,7 @@ export default function LibraryPage() {
           source_key: novel.source,
           kind: "translate",
           chapters: "all",
-          provider: "gemini",
+          provider_key: "gemini",
           metadata: {
             library_action: "translate",
             target_language: "English"
@@ -234,6 +218,7 @@ export default function LibraryPage() {
     onSuccess: () => {
       invalidateLibrary();
       setSelectedNovelIds(new Set());
+      setPendingDeleteRows(null);
     }
   });
 
@@ -255,7 +240,7 @@ export default function LibraryPage() {
         source_key: translationNovel.source,
         kind: "translate",
         chapters: translationChapterSelection,
-        provider: "gemini",
+        provider_key: "gemini",
         metadata: {
           library_action: "translate",
           target_language: translationLanguage,
@@ -287,24 +272,6 @@ export default function LibraryPage() {
       return next;
     });
   };
-
-  const handleSort = (key: LibrarySortKey) => {
-    if (sortKey === key) {
-      setSortDirection((direction) => (direction === "asc" ? "desc" : "asc"));
-      return;
-    }
-    setSortKey(key);
-    setSortDirection("asc");
-  };
-
-  const sortHeader = (label: string, key: LibrarySortKey, className = "") => (
-    <th className={cn("px-4 py-3", className)}>
-      <button type="button" className="font-semibold uppercase hover:text-foreground" onClick={() => handleSort(key)}>
-        {label}
-        {sortPointer(key, sortKey, sortDirection)}
-      </button>
-    </th>
-  );
 
   const openTranslationDialog = (novel: NovelSummary) => {
     setTranslationNovel(novel);
@@ -345,6 +312,10 @@ export default function LibraryPage() {
     }
     if (action === "translate") {
       openTranslationDialog(actionRows[0]);
+      return;
+    }
+    if (action === "delete") {
+      setPendingDeleteRows(actionRows);
       return;
     }
     runLibraryAction.mutate({ action, novels: actionRows });
@@ -418,19 +389,8 @@ export default function LibraryPage() {
             </Button>
           </div>
         </PanelHeader>
-        {runLibraryAction.error ? (
-          <div className="border-t px-4 py-3 text-sm text-destructive">{runLibraryAction.error.message}</div>
-        ) : null}
-        {novels.isLoading ? (
-          <div className="border-t px-4 py-3 text-sm text-muted-foreground">
-            Loading novels from library...
-          </div>
-        ) : null}
-        {novels.error ? (
-          <div className="border-t px-4 py-3 text-sm text-destructive">
-            Failed to load novels: {novels.error instanceof Error ? novels.error.message : String(novels.error)}
-          </div>
-        ) : null}
+        <ErrorBanner error={runLibraryAction.error} fallback="Failed to run library action." />
+        <ErrorBanner error={novels.error} fallback="Failed to load novels." />
         {unexpectedPayload ? (
           <div className="border-t px-4 py-3 text-sm text-destructive">
             Unexpected novels payload. Expected an array.
@@ -442,50 +402,35 @@ export default function LibraryPage() {
               <thead className="sticky top-0 z-[1] border-b bg-muted/55 text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="w-12 px-4 py-3">
-                    <input className="table-checkbox" type="checkbox" checked={allRowsSelected} onChange={toggleAllRows} aria-label="Select all novels" />
+                    <TableCheckbox checked={allRowsSelected} onChange={toggleAllRows} aria-label="Select all novels" />
                   </th>
-                  {sortHeader("Novel", "novel", "min-w-[280px]")}
-                  {sortHeader("Source", "source")}
-                  {sortHeader("Listed chapters", "listed", "w-36")}
-                  {sortHeader("Raw chapters", "raw", "w-32")}
-                  {sortHeader("Translated chapters", "translated", "w-44")}
-                  {sortHeader("Status", "status", "w-36")}
+                  <SortableHeader label="Novel" sortKey="novel" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="min-w-[280px]" />
+                  <SortableHeader label="Source" sortKey="source" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
+                  <SortableHeader label="Listed chapters" sortKey="listed" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-36" />
+                  <SortableHeader label="Raw chapters" sortKey="raw" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-32" />
+                  <SortableHeader label="Translated chapters" sortKey="translated" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-44" />
+                  <SortableHeader label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-36" />
                   <th className="w-[360px] px-4 py-3">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {novels.isLoading ? (
-                  <tr>
-                    <td className="px-4 py-8 text-muted-foreground" colSpan={8}>
-                      Loading library...
-                    </td>
-                  </tr>
+                  <LoadingRows colSpan={8} label="Loading library..." />
                 ) : novels.error ? (
-                  <tr>
-                    <td className="px-4 py-8 text-destructive" colSpan={8}>
-                      Failed to load novels.
-                    </td>
-                  </tr>
+                  <EmptyState title="Failed to load novels." colSpan={8} />
                 ) : unexpectedPayload ? (
-                  <tr>
-                    <td className="px-4 py-8 text-destructive" colSpan={8}>
-                      Unexpected novels payload.
-                    </td>
-                  </tr>
+                  <EmptyState title="Unexpected novels payload." colSpan={8} />
                 ) : sortedRows.length ? (
                   sortedRows.map((novel) => {
                     const sourceUrl = novel.source_url?.trim();
                     const rawChapters = novel.scraped_count ?? 0;
                     const translatedChapters = novel.translated_count ?? 0;
                     const listedChapters = novel.chapter_count;
-                    const actionRows = [novel];
                     const missingSource = !novel.source;
                     return (
                       <tr className="border-b last:border-0" key={novel.novel_id}>
                         <td className="px-4 py-3">
-                          <input
-                            className="table-checkbox"
-                            type="checkbox"
+                          <TableCheckbox
                             checked={selectedNovelIds.has(novel.novel_id)}
                             onChange={() => toggleNovel(novel.novel_id)}
                             aria-label={`Select ${novel.novel_id}`}
@@ -525,59 +470,21 @@ export default function LibraryPage() {
                         </td>
                         <td className="px-4 py-3">{translationBadge(novel)}</td>
                         <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => runAction("translate", actionRows)}
-                              disabled={missingSource || runLibraryAction.isPending || runTranslationDialog.isPending}
-                              title={missingSource ? "Source key missing" : "Choose chapters to translate"}
-                            >
-                              <Languages className="h-4 w-4" />
-                              Translate
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => runAction("recrawl", actionRows)}
-                              disabled={missingSource || runLibraryAction.isPending}
-                              title={missingSource ? "Source key missing" : "Check and scrape latest chapters"}
-                            >
-                              <RefreshCw className="h-4 w-4" />
-                              Recrawl
-                            </Button>
-                            <Button size="sm" variant="destructive" onClick={() => runAction("delete", actionRows)} disabled={runLibraryAction.isPending}>
-                              <Trash2 className="h-4 w-4" />
-                              Delete
-                            </Button>
-                            <Link
-                              className={cn(
-                                "inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
-                              )}
-                              href={`/novel/${encodeURIComponent(novel.novel_id)}`}
-                            >
-                              <BookOpen className="h-4 w-4" />
-                              Reader
-                            </Link>
-                            <Link
-                              className={cn(
-                                "inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
-                              )}
-                              href={`/admin/editor?novel=${encodeURIComponent(novel.novel_id)}`}
-                            >
-                              <FileEdit className="h-4 w-4" />
-                              Editor
-                            </Link>
-                          </div>
+                          <LibraryRowActions
+                            novel={novel}
+                            missingSource={missingSource}
+                            pending={runLibraryAction.isPending}
+                            translationPending={runTranslationDialog.isPending}
+                            onTranslate={(row) => runAction("translate", [row])}
+                            onRecrawl={(row) => runAction("recrawl", [row])}
+                            onDelete={(row) => runAction("delete", [row])}
+                          />
                         </td>
                       </tr>
                     );
                   })
                 ) : (
-                  <tr>
-                    <td className="px-4 py-8 text-muted-foreground" colSpan={8}>
-                      No novels in the library yet.
-                    </td>
-                  </tr>
+                  <EmptyState title="No novels in the library yet." colSpan={8} />
                 )}
               </tbody>
             </table>
@@ -585,152 +492,43 @@ export default function LibraryPage() {
         </PanelBody>
       </Panel>
 
-      {translationNovel ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div
-            className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Translation form"
-          >
-            <div className="border-b px-5 py-4">
-              <h2 className="text-lg font-semibold">Translate Novel</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{translationNovel.novel_id}</p>
-            </div>
+      <TranslationModal
+        open={Boolean(translationNovel)}
+        novelId={translationNovel?.novel_id ?? ""}
+        title={dialogTitle}
+        author={dialogAuthor}
+        synopsis={dialogSynopsis}
+        language={translationLanguage}
+        languages={TRANSLATION_LANGUAGES}
+        chapters={translationChapterRows}
+        selectedChapterIds={selectedTranslationChapterIds}
+        selectedCount={selectedTranslationCount}
+        allSelected={allTranslationChaptersSelected}
+        loading={translationDialogLoading}
+        loadError={translationDialogError}
+        runError={runTranslationDialog.error}
+        pending={runTranslationDialog.isPending}
+        onLanguageChange={(language) => setTranslationLanguage(language as (typeof TRANSLATION_LANGUAGES)[number])}
+        onToggleAll={toggleAllTranslationChapters}
+        onToggleChapter={toggleTranslationChapter}
+        onCancel={closeTranslationDialog}
+        onConfirm={() => runTranslationDialog.mutate()}
+      />
 
-            <div className="seamless-scrollbar flex-1 overflow-auto">
-              <div className="grid gap-4 border-b p-5 lg:grid-cols-[1fr_220px]">
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-xs uppercase text-muted-foreground">Translated Title</div>
-                    <div className="mt-1 text-base font-semibold">{dialogTitle}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase text-muted-foreground">Translated Author</div>
-                    <div className="mt-1 text-sm">{dialogAuthor}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase text-muted-foreground">Translated Synopsis</div>
-                    <p className="seamless-scrollbar mt-1 max-h-28 overflow-auto text-sm leading-6 text-muted-foreground">
-                      {dialogSynopsis}
-                    </p>
-                  </div>
-                </div>
-                <label className="block">
-                  <span className="text-xs uppercase text-muted-foreground">Language</span>
-                  <select
-                    className="mt-2 h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
-                    value={translationLanguage}
-                    onChange={(event) => setTranslationLanguage(event.target.value as (typeof TRANSLATION_LANGUAGES)[number])}
-                  >
-                    {TRANSLATION_LANGUAGES.map((language) => (
-                      <option key={language} value={language}>
-                        {language}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              {translationDialogError ? (
-                <div className="border-b px-5 py-3 text-sm text-destructive">
-                  Failed to load translation form:{" "}
-                  {translationDialogError instanceof Error ? translationDialogError.message : String(translationDialogError)}
-                </div>
-              ) : null}
-              {runTranslationDialog.error ? (
-                <div className="border-b px-5 py-3 text-sm text-destructive">
-                  Translation failed: {runTranslationDialog.error instanceof Error ? runTranslationDialog.error.message : String(runTranslationDialog.error)}
-                </div>
-              ) : null}
-
-              <div className="p-5">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold">Chapters</div>
-                    <div className="text-xs text-muted-foreground">
-                      {selectedTranslationCount} selected from {translationChapterRows.length} chapter(s)
-                    </div>
-                  </div>
-                </div>
-
-                <div className="seamless-scrollbar max-h-[360px] overflow-auto rounded-md border border-border">
-                  <table className="w-full text-left text-sm">
-                    <thead className="sticky top-0 z-[1] border-b bg-muted/55 text-xs uppercase text-muted-foreground">
-                      <tr>
-                        <th className="w-12 px-4 py-3">
-                          <input
-                            className="table-checkbox"
-                            type="checkbox"
-                            checked={allTranslationChaptersSelected}
-                            onChange={toggleAllTranslationChapters}
-                            aria-label="Select all translation chapters"
-                          />
-                        </th>
-                        <th className="w-24 px-4 py-3">Chapter</th>
-                        <th className="px-4 py-3">Title</th>
-                        <th className="w-40 px-4 py-3">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {translationDialogLoading ? (
-                        <tr>
-                          <td className="px-4 py-8 text-muted-foreground" colSpan={4}>
-                            Loading chapters...
-                          </td>
-                        </tr>
-                      ) : translationChapterRows.length ? (
-                        translationChapterRows.map((chapter) => (
-                          <tr className="border-b last:border-0" key={chapter.id}>
-                            <td className="px-4 py-3">
-                              <input
-                                className="table-checkbox"
-                                type="checkbox"
-                                checked={selectedTranslationChapterIds.has(chapter.id)}
-                                onChange={() => toggleTranslationChapter(chapter.id)}
-                                aria-label={`Select chapter ${chapter.id}`}
-                              />
-                            </td>
-                            <td className="px-4 py-3 font-mono text-xs">{chapter.id}</td>
-                            <td className="px-4 py-3 font-medium">{chapter.title || `Chapter ${chapter.id}`}</td>
-                            <td className="px-4 py-3">
-                              {chapter.translated ? <Badge tone="green">Translated</Badge> : <Badge tone="amber">Untranslated</Badge>}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td className="px-4 py-8 text-muted-foreground" colSpan={4}>
-                            No chapters found.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 border-t px-5 py-4">
-              <Button variant="destructive" onClick={closeTranslationDialog} disabled={runTranslationDialog.isPending}>
-                Cancel
-              </Button>
-              <Button
-                onClick={() => runTranslationDialog.mutate()}
-                disabled={
-                  runTranslationDialog.isPending ||
-                  translationDialogLoading ||
-                  Boolean(translationDialogError) ||
-                  selectedTranslationCount === 0
-                }
-              >
-                <Languages className="h-4 w-4" />
-                {runTranslationDialog.isPending ? "Translating..." : "Translate"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ConfirmDialog
+        open={Boolean(pendingDeleteRows)}
+        title="Delete selected novels"
+        description={`Delete ${pendingDeleteRows?.length ?? 0} selected novel(s)?`}
+        confirmLabel="Delete"
+        destructive
+        pending={runLibraryAction.isPending}
+        onConfirm={() => {
+          if (pendingDeleteRows) {
+            runLibraryAction.mutate({ action: "delete", novels: pendingDeleteRows });
+          }
+        }}
+        onCancel={() => setPendingDeleteRows(null)}
+      />
     </>
   );
 }

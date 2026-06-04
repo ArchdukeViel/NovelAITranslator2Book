@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
+import { ErrorBanner } from "@/components/admin/error-banner";
 import { PageHeading } from "@/components/admin/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { api } from "@/lib/api";
 import type { ProviderApiKeyStatus, RuntimeStateItem } from "@/lib/api";
+import { formatAdminError } from "@/lib/admin-errors";
+import { formatBytes, formatDate, formatDateTime } from "@/lib/format";
 import { useUiStore, type ApiTokenRecord } from "@/lib/store";
 
 function maskToken(token: string) {
@@ -19,38 +22,6 @@ function maskToken(token: string) {
     return `${trimmed.slice(0, 2)}****`;
   }
   return `${trimmed.slice(0, 4)}****${trimmed.slice(-4)}`;
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-  return date.toLocaleDateString();
-}
-
-function formatDateTime(value?: string | null) {
-  if (!value) {
-    return "-";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-  return date.toLocaleString();
-}
-
-function formatBytes(value: number) {
-  if (!Number.isFinite(value) || value <= 0) {
-    return "0 B";
-  }
-  if (value < 1024) {
-    return `${value} B`;
-  }
-  if (value < 1024 * 1024) {
-    return `${(value / 1024).toFixed(1)} KB`;
-  }
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function tokenValidation(status: ProviderApiKeyStatus): Partial<ApiTokenRecord> {
@@ -130,7 +101,7 @@ export default function SettingsPage() {
     onError: (error, entry) => {
       updateApiTokenValidation(entry.id, {
         validationStatus: "Failed",
-        validationMessage: error instanceof Error ? error.message : "Validation failed.",
+        validationMessage: formatAdminError(error, "Validation failed."),
         validatedOn: new Date().toISOString()
       });
     }
@@ -157,7 +128,7 @@ export default function SettingsPage() {
     onError: (error, entry) => {
       updateApiTokenValidation(entry.id, {
         validationStatus: "Failed",
-        validationMessage: error instanceof Error ? error.message : "Failed to sync token.",
+        validationMessage: formatAdminError(error, "Failed to sync token."),
         validatedOn: new Date().toISOString()
       });
     }
@@ -224,11 +195,7 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              {addToken.error ? (
-                <p className="text-sm text-destructive">
-                  {addToken.error instanceof Error ? addToken.error.message : "Failed to sync API key."}
-                </p>
-              ) : null}
+              <ErrorBanner error={addToken.error} fallback="Failed to sync API key." />
 
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button className="flex-1" type="submit" disabled={!draftToken.trim() || addToken.isPending}>
@@ -404,13 +371,7 @@ export default function SettingsPage() {
                 </tbody>
               </table>
             </div>
-            {runtimeStorageError ? (
-              <div className="border-t px-4 py-3 text-sm text-destructive">
-                {runtimeStorageError instanceof Error
-                  ? runtimeStorageError.message
-                  : "Failed to update runtime storage."}
-              </div>
-            ) : null}
+            <ErrorBanner error={runtimeStorageError} fallback="Failed to update runtime storage." />
           </PanelBody>
         </Panel>
       </div>

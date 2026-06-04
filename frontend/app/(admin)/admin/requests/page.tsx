@@ -4,86 +4,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, RotateCw, X } from "lucide-react";
 import * as React from "react";
 
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+import { EmptyState } from "@/components/admin/empty-state";
+import { ErrorBanner } from "@/components/admin/error-banner";
+import { LoadingRows } from "@/components/admin/loading-rows";
 import { PageHeading } from "@/components/admin/page-heading";
+import { SortableHeader } from "@/components/admin/sortable-header";
 import { StatusBadge } from "@/components/admin/status-badge";
+import { TableCheckbox } from "@/components/admin/table-checkbox";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { api, type NovelRequestRecord } from "@/lib/api";
-import { formatDate } from "@/lib/utils";
+import { formatDateTime } from "@/lib/format";
+import { deriveNovelId, detectSourceOrigin } from "@/lib/novel-input";
+import { compareSortableValues, useSortableTable } from "@/hooks/use-sortable-table";
 
 type RequestSortKey = "title" | "status" | "created";
-type SortDirection = "asc" | "desc";
-
-function isHttpUrl(value: string) {
-  return /^https?:\/\//i.test(value.trim());
-}
-
-function parseUrl(value: string) {
-  if (!isHttpUrl(value)) {
-    return null;
-  }
-  try {
-    return new URL(value.trim());
-  } catch {
-    return null;
-  }
-}
-
-function detectSourceOrigin(value: string) {
-  const url = parseUrl(value);
-  if (url) {
-    const host = url.hostname.toLowerCase();
-    if (["novel18.syosetu.com", "noc.syosetu.com", "mnlt.syosetu.com", "mid.syosetu.com"].includes(host)) {
-      return "novel18_syosetu";
-    }
-    if (host === "ncode.syosetu.com") {
-      return "syosetu_ncode";
-    }
-    if (host === "kakuyomu.jp" && url.pathname.includes("/works/")) {
-      return "kakuyomu";
-    }
-  }
-  if (/^n\d{4}[a-z]{2}$/i.test(value.trim())) {
-    return "novel18_syosetu";
-  }
-  if (/^\d{12,}$/.test(value.trim())) {
-    return "kakuyomu";
-  }
-  return "generic";
-}
-
-function sanitizeNovelId(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/[^a-z0-9._-]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 120) || "novel";
-}
-
-function deriveNovelId(value: string, sourceKey: string) {
-  const input = value.trim();
-  const url = parseUrl(input);
-  if (url) {
-    if (sourceKey.includes("syosetu")) {
-      const match = url.pathname.match(/\/(n\d{4}[a-z]{2})(?:\/|$)/i);
-      if (match) {
-        return match[1].toLowerCase();
-      }
-    }
-    if (sourceKey === "kakuyomu") {
-      const match = url.pathname.match(/\/works\/([^/?#]+)/i);
-      if (match) {
-        return match[1];
-      }
-    }
-    return sanitizeNovelId(`${url.hostname}${url.pathname}`);
-  }
-  if (/^n\d{4}[a-z]{2}$/i.test(input)) {
-    return input.toLowerCase();
-  }
-  return sanitizeNovelId(input);
-}
+type PendingRequestAction = { request: NovelRequestRecord; status: "approved" | "rejected" } | null;
 
 function firstSourceCandidate(request: NovelRequestRecord) {
   return request.source_candidates.find((candidate) => {
@@ -108,18 +45,11 @@ function requestSortValue(request: NovelRequestRecord, key: RequestSortKey) {
   return Date.parse(request.created_at || "") || 0;
 }
 
-function sortPointer(key: RequestSortKey, activeKey: RequestSortKey, direction: SortDirection) {
-  if (key !== activeKey) {
-    return "";
-  }
-  return direction === "asc" ? " \u25B2" : " \u25BC";
-}
-
 export default function RequestsPage() {
   const queryClient = useQueryClient();
   const [selectedRequestIds, setSelectedRequestIds] = React.useState<Set<string>>(new Set());
-  const [sortKey, setSortKey] = React.useState<RequestSortKey>("created");
-  const [sortDirection, setSortDirection] = React.useState<SortDirection>("desc");
+  const [pendingAction, setPendingAction] = React.useState<PendingRequestAction>(null);
+  const { sortKey, sortDirection, handleSort } = useSortableTable<RequestSortKey>("created", "desc");
   const requests = useQuery({ queryKey: ["requests"], queryFn: () => api.requests() });
   const rows = requests.data?.requests ?? [];
   const processRequest = useMutation({
@@ -168,24 +98,11 @@ export default function RequestsPage() {
     return [...rows].sort((left, right) => {
       const leftValue = requestSortValue(left, sortKey);
       const rightValue = requestSortValue(right, sortKey);
-      const direction = sortDirection === "asc" ? 1 : -1;
-      if (typeof leftValue === "number" && typeof rightValue === "number") {
-        return (leftValue - rightValue) * direction;
-      }
-      return String(leftValue).localeCompare(String(rightValue)) * direction;
+      return compareSortableValues(leftValue, rightValue, sortDirection);
     });
   }, [rows, sortDirection, sortKey]);
 
   const allRowsSelected = rows.length > 0 && rows.every((request) => selectedRequestIds.has(request.id));
-
-  const handleSort = (key: RequestSortKey) => {
-    if (sortKey === key) {
-      setSortDirection((direction) => (direction === "asc" ? "desc" : "asc"));
-      return;
-    }
-    setSortKey(key);
-    setSortDirection(key === "created" ? "desc" : "asc");
-  };
 
   const toggleAllRows = () => {
     setSelectedRequestIds(allRowsSelected ? new Set() : new Set(rows.map((request) => request.id)));
@@ -203,14 +120,13 @@ export default function RequestsPage() {
     });
   };
 
-  const header = (label: string, key: RequestSortKey, className = "") => (
-    <th className={`px-4 py-3 ${className}`}>
-      <button type="button" className="font-semibold uppercase hover:text-foreground" onClick={() => handleSort(key)}>
-        {label}
-        {sortPointer(key, sortKey, sortDirection)}
-      </button>
-    </th>
-  );
+  const confirmPendingAction = () => {
+    if (!pendingAction) {
+      return;
+    }
+    processRequest.mutate(pendingAction);
+    setPendingAction(null);
+  };
 
   return (
     <>
@@ -229,33 +145,32 @@ export default function RequestsPage() {
             Refresh
           </Button>
         </PanelHeader>
-        {processRequest.error ? (
-          <div className="border-t px-4 py-3 text-sm text-destructive">
-            {processRequest.error instanceof Error ? processRequest.error.message : "Failed to process request."}
-          </div>
-        ) : null}
+        <ErrorBanner error={processRequest.error} fallback="Failed to process request." />
+        <ErrorBanner error={requests.error} fallback="Failed to load requests." />
         <PanelBody className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b bg-muted/55 text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="w-12 px-4 py-3">
-                    <input className="table-checkbox" type="checkbox" checked={allRowsSelected} onChange={toggleAllRows} aria-label="Select all requests" />
+                    <TableCheckbox checked={allRowsSelected} onChange={toggleAllRows} aria-label="Select all requests" />
                   </th>
-                  {header("Title", "title", "min-w-[320px]")}
-                  {header("Status", "status", "w-40")}
-                  {header("Time added", "created", "w-48")}
+                  <SortableHeader label="Title" sortKey="title" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="min-w-[320px]" />
+                  <SortableHeader label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-40" />
+                  <SortableHeader label="Time added" sortKey="created" activeKey={sortKey} direction={sortDirection} onSort={(key) => handleSort(key, "desc")} className="w-48" />
                   <th className="w-48 px-4 py-3">Process</th>
                 </tr>
               </thead>
               <tbody>
-                {sortedRows.length ? (
+                {requests.isLoading ? (
+                  <LoadingRows colSpan={5} label="Loading requests..." />
+                ) : requests.error ? (
+                  <EmptyState title="Failed to load requests." colSpan={5} />
+                ) : sortedRows.length ? (
                   sortedRows.map((request) => (
                     <tr key={request.id} className="border-b last:border-0">
                       <td className="px-4 py-3">
-                        <input
-                          className="table-checkbox"
-                          type="checkbox"
+                        <TableCheckbox
                           checked={selectedRequestIds.has(request.id)}
                           onChange={() => toggleRequest(request.id)}
                           aria-label={`Select ${request.title}`}
@@ -267,12 +182,12 @@ export default function RequestsPage() {
                       <td className="px-4 py-3">
                         <StatusBadge status={request.status} />
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">{formatDate(request.created_at)}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{formatDateTime(request.created_at)}</td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-2">
                           <Button
                             size="sm"
-                            onClick={() => processRequest.mutate({ request, status: "approved" })}
+                            onClick={() => setPendingAction({ request, status: "approved" })}
                             disabled={processRequest.isPending || request.status === "approved"}
                           >
                             <Check className="h-4 w-4" />
@@ -281,7 +196,7 @@ export default function RequestsPage() {
                           <Button
                             size="sm"
                             variant="destructive"
-                            onClick={() => processRequest.mutate({ request, status: "rejected" })}
+                            onClick={() => setPendingAction({ request, status: "rejected" })}
                             disabled={processRequest.isPending || request.status === "rejected"}
                           >
                             <X className="h-4 w-4" />
@@ -292,17 +207,28 @@ export default function RequestsPage() {
                     </tr>
                   ))
                 ) : (
-                  <tr>
-                    <td className="px-4 py-8 text-muted-foreground" colSpan={5}>
-                      No reader requests yet.
-                    </td>
-                  </tr>
+                  <EmptyState title="No reader requests yet." colSpan={5} />
                 )}
               </tbody>
             </table>
           </div>
         </PanelBody>
       </Panel>
+
+      <ConfirmDialog
+        open={Boolean(pendingAction)}
+        title={pendingAction?.status === "approved" ? "Approve request" : "Reject request"}
+        description={
+          pendingAction
+            ? `${pendingAction.status === "approved" ? "Approve" : "Reject"} "${pendingAction.request.title}"?`
+            : undefined
+        }
+        confirmLabel={pendingAction?.status === "approved" ? "Approve" : "Reject"}
+        destructive={pendingAction?.status === "rejected"}
+        pending={processRequest.isPending}
+        onConfirm={confirmPendingAction}
+        onCancel={() => setPendingAction(null)}
+      />
     </>
   );
 }
