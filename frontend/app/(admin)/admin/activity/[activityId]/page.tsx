@@ -19,7 +19,7 @@ import {
   splitActivityByPhase,
   type ActivityPhaseKey
 } from "@/lib/activity";
-import { api } from "@/lib/api";
+import { activityProgress, activityProgressLabel, api } from "@/lib/api";
 import type { ActivityRecord } from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -158,17 +158,31 @@ export default function ActivityDetailPage() {
                 </thead>
                 <tbody>
                   {activeActivity.map((activityItem) => (
-                    <tr key={activityItem.id} className="border-b last:border-0">
-                      <td className="px-3 py-3">
-                        <div className="font-medium">{displayToken(activityPhase(activityItem))}</div>
-                        <div className="mt-1 font-mono text-xs text-muted-foreground">{activityItem.id}</div>
-                      </td>
-                      <td className="px-3 py-3">{activityItem.chapters || "-"}</td>
-                      <td className="px-3 py-3">
-                        <StatusBadge status={activityItem.status} />
-                      </td>
-                      <td className="px-3 py-3 text-muted-foreground">{formatDate(activityUpdatedAtValue(activityItem))}</td>
-                    </tr>
+                    (() => {
+                      const progress = activityProgress(activityItem);
+                      const progressLabel = activityProgressLabel(activityItem);
+                      return (
+                        <tr key={activityItem.id} className="border-b last:border-0">
+                          <td className="px-3 py-3">
+                            <div className="font-medium">{displayToken(activityPhase(activityItem))}</div>
+                            {progressLabel ? <div className="mt-1 text-xs text-muted-foreground">{progressLabel}</div> : null}
+                            <div className="mt-1 font-mono text-xs text-muted-foreground">{activityItem.id}</div>
+                          </td>
+                          <td className="px-3 py-3">{activityItem.chapters || "-"}</td>
+                          <td className="px-3 py-3">
+                            <StatusBadge status={activityItem.status} />
+                            {progress.warnings?.length || progress.errors?.length ? (
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {progress.errors?.length ? `${progress.errors.length} error(s)` : null}
+                                {progress.errors?.length && progress.warnings?.length ? " · " : null}
+                                {progress.warnings?.length ? `${progress.warnings.length} warning(s)` : null}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-3 text-muted-foreground">{formatDate(activityUpdatedAtValue(activityItem))}</td>
+                        </tr>
+                      );
+                    })()
                   ))}
                 </tbody>
               </table>

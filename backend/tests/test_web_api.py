@@ -179,6 +179,7 @@ def test_json_error_encodes_non_json_native_details() -> None:
             "exception": RuntimeError("not directly serializable"),
         },
         category="storage",
+        trace_id="trace-123",
     )
 
     payload = json.loads(response.body.decode("utf-8"))
@@ -188,6 +189,7 @@ def test_json_error_encodes_non_json_native_details() -> None:
     assert payload["details"]["path"] == str(Path("novels") / "n1")
     assert payload["details"]["tags"] == ["storage"]
     assert isinstance(payload["details"]["exception"], dict)
+    assert payload["trace_id"] == "trace-123"
 
 
 def test_extract_novel_code_from_novel_paths() -> None:
@@ -259,7 +261,7 @@ def test_provider_error_handler_returns_structured_public_envelope(_no_api_key: 
         )
 
     c = TestClient(app, raise_server_exceptions=False)
-    resp = c.get("/debug/provider/quota")
+    resp = c.get("/debug/provider/quota", headers={"x-request-id": "trace-provider-1"})
     payload = resp.json()
 
     assert resp.status_code == 503
@@ -274,6 +276,7 @@ def test_provider_error_handler_returns_structured_public_envelope(_no_api_key: 
         "cooldown_until": None,
         "exhausted_until": "2026-06-05T00:00:00Z",
     }
+    assert payload["trace_id"] == "trace-provider-1"
     assert "raw provider traceback" not in json.dumps(payload)
     assert "secret provider internals" not in json.dumps(payload)
 
@@ -1236,6 +1239,55 @@ class TestActivity:
         get_resp = c.get(f"/novels/activity/{job_id}")
         assert get_resp.status_code == 200
         assert get_resp.json()["metadata"]["worker"] == "local"
+
+    def test_activity_progress_fields_are_exposed_for_frontend(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        jobs = ActivityQueueService(_TMP / "jobs")
+        created = jobs.create_translation_activity(
+            novel_id="test-n1",
+            chapters="all",
+            provider="gemini",
+            model="gemini-2.5-flash-lite",
+            metadata={
+                "progress": {
+                    "current_stage": "TranslateStage",
+                    "current_label": "Chapter 2 / Chunk 3",
+                    "completed": 27,
+                    "total": 100,
+                    "warnings": [{"code": "model_switch_warning"}],
+                    "errors": [{"code": "provider_rate_limited"}],
+                    "model_states": [
+                        {
+                            "provider_key": "gemini",
+                            "provider_model": "gemini-2.5-flash-lite",
+                            "status": "cooling_down",
+                            "cooldown_until": "2026-06-04T12:01:00Z",
+                        }
+                    ],
+                }
+            },
+        )
+        c = _make_app(storage, jobs)
+
+        get_resp = c.get(f"/novels/activity/{created['id']}")
+        list_resp = c.get("/novels/activity", params={"activity_type": "translation"})
+
+        payload = get_resp.json()
+        assert get_resp.status_code == 200
+        assert payload["activity_id"] == created["id"]
+        assert payload["job_id"] == created["id"]
+        assert payload["provider_key"] == "gemini"
+        assert payload["provider_model"] == "gemini-2.5-flash-lite"
+        assert payload["current_stage"] == "TranslateStage"
+        assert payload["current_label"] == "Chapter 2 / Chunk 3"
+        assert payload["completed"] == 27
+        assert payload["total"] == 100
+        assert payload["warnings"][0]["code"] == "model_switch_warning"
+        assert payload["errors"][0]["code"] == "provider_rate_limited"
+        assert payload["model_states"][0]["status"] == "cooling_down"
+        assert list_resp.json()["activity"][0]["current_stage"] == "TranslateStage"
+        assert list_resp.json()["jobs"][0]["job_id"] == created["id"]
 
     def test_delete_activity(self, _no_api_key: None) -> None:
         bootstrap()

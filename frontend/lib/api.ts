@@ -8,6 +8,7 @@ export type ApiErrorPayload = {
   message: string;
   explanation?: string | null;
   details?: unknown;
+  trace_id?: string | null;
   raw?: unknown;
 };
 
@@ -16,6 +17,7 @@ export class ApiError extends Error {
   code: string;
   explanation?: string | null;
   details?: unknown;
+  trace_id?: string | null;
   raw?: unknown;
 
   constructor(payload: ApiErrorPayload) {
@@ -25,6 +27,7 @@ export class ApiError extends Error {
     this.code = payload.code;
     this.explanation = payload.explanation;
     this.details = payload.details;
+    this.trace_id = payload.trace_id;
     this.raw = payload.raw;
   }
 }
@@ -108,8 +111,31 @@ export type NovelProgress = {
   translated: number;
 };
 
+export type ModelState = {
+  provider_key: string;
+  provider_model: string;
+  status: string;
+  cooldown_until?: string | null;
+  exhausted_until?: string | null;
+};
+
+export type JobProgress = {
+  status: string;
+  current_stage?: string | null;
+  current_label?: string | null;
+  completed?: number | null;
+  total?: number | null;
+  paused_reason?: string | null;
+  resume_after?: string | null;
+  errors?: unknown[];
+  warnings?: unknown[];
+  model_states?: ModelState[];
+};
+
 export type ActivityRecord = {
   id: string;
+  activity_id?: string;
+  job_id?: string;
   type: "crawl" | "translation";
   kind: string;
   novel_id: string;
@@ -118,6 +144,8 @@ export type ActivityRecord = {
   chapters?: string | null;
   provider?: string | null;
   model?: string | null;
+  provider_key?: string | null;
+  provider_model?: string | null;
   status: string;
   created_at?: string | null;
   started_at?: string | null;
@@ -125,7 +153,7 @@ export type ActivityRecord = {
   retry_count: number;
   error?: string | null;
   metadata?: Record<string, unknown>;
-};
+} & Partial<JobProgress>;
 
 export type WorkerStatus = {
   running: boolean;
@@ -287,12 +315,14 @@ async function responseError(response: Response): Promise<ApiError> {
       payloadText(payload.explanation) ||
       (nestedDetail ? payloadText(nestedDetail.explanation) : null);
     const details = payload.details ?? (nestedDetail ? nestedDetail.details : undefined);
+    const trace_id = payloadText(payload.trace_id) || (nestedDetail ? payloadText(nestedDetail.trace_id) : null);
     return new ApiError({
       status: response.status,
       code,
       message,
       explanation,
       details,
+      trace_id,
       raw: payload
     });
   } catch {
@@ -313,7 +343,7 @@ export function describeApiError(error: unknown) {
       explanation:
         error.explanation ||
         "The backend returned an error without a detailed explanation. Check Activity Log for the operation payload.",
-      details: error.details
+      details: error.trace_id ? { trace_id: error.trace_id, details: error.details } : error.details
     };
   }
   if (error instanceof Error) {
@@ -352,6 +382,40 @@ export function apiErrorInlineMessage(error: unknown) {
     return error.message;
   }
   return "Unknown error";
+}
+
+function progressNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function metadataProgress(activity: ActivityRecord): Record<string, unknown> {
+  const progress = activity.metadata?.progress;
+  return progress && typeof progress === "object" && !Array.isArray(progress) ? (progress as Record<string, unknown>) : {};
+}
+
+export function activityProgress(activity: ActivityRecord): JobProgress {
+  const progress = metadataProgress(activity);
+  return {
+    status: activity.status,
+    current_stage: activity.current_stage ?? payloadText(progress.current_stage),
+    current_label: activity.current_label ?? payloadText(progress.current_label),
+    completed: activity.completed ?? progressNumber(progress.completed),
+    total: activity.total ?? progressNumber(progress.total),
+    paused_reason: activity.paused_reason ?? payloadText(progress.paused_reason),
+    resume_after: activity.resume_after ?? payloadText(progress.resume_after),
+    errors: activity.errors ?? (Array.isArray(progress.errors) ? progress.errors : []),
+    warnings: activity.warnings ?? (Array.isArray(progress.warnings) ? progress.warnings : []),
+    model_states: activity.model_states ?? (Array.isArray(progress.model_states) ? (progress.model_states as ModelState[]) : [])
+  };
+}
+
+export function activityProgressLabel(activity: ActivityRecord) {
+  const progress = activityProgress(activity);
+  const parts = [progress.current_label, progress.current_stage].filter(Boolean);
+  if (typeof progress.completed === "number" && typeof progress.total === "number") {
+    parts.push(`${progress.completed}/${progress.total}`);
+  }
+  return parts.join(" · ");
 }
 
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {

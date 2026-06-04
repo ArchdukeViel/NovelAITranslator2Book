@@ -203,6 +203,7 @@ def _error_payload(
     explanation: str | None = None,
     details: Any | None = None,
     category: str | None = None,
+    trace_id: str | None = None,
 ) -> dict[str, Any]:
     normalized_code = code.strip().upper() or DEFAULT_INTERNAL_CODE
     normalized_message = message.strip() or normalized_code.replace("_", " ").title()
@@ -217,6 +218,8 @@ def _error_payload(
         payload["category"] = category
     if details is not None:
         payload["details"] = details
+    if trace_id:
+        payload["trace_id"] = trace_id
     return payload
 
 
@@ -228,6 +231,7 @@ def _json_error(
     explanation: str | None = None,
     details: Any | None = None,
     category: str | None = None,
+    trace_id: str | None = None,
 ) -> JSONResponse:
     payload = _error_payload(
         code=code,
@@ -235,11 +239,20 @@ def _json_error(
         explanation=explanation,
         details=details,
         category=category,
+        trace_id=trace_id,
     )
     return JSONResponse(
         status_code=status_code,
         content=jsonable_encoder(payload),
     )
+
+
+def _request_trace_id(request: Request) -> str | None:
+    for header_name in ("x-request-id", "x-correlation-id", "traceparent"):
+        value = request.headers.get(header_name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 def _http_error_detail(exc: StarletteHTTPException) -> tuple[str, str, str | None, Any | None]:
@@ -567,6 +580,7 @@ def add_error_handlers(app: FastAPI) -> None:
             message=message,
             explanation=explanation,
             details=details,
+            trace_id=_request_trace_id(request),
         )
 
     @app.exception_handler(StarletteHTTPException)
@@ -579,6 +593,7 @@ def add_error_handlers(app: FastAPI) -> None:
             message=message,
             explanation=explanation,
             details=details,
+            trace_id=_request_trace_id(request),
         )
 
     @app.exception_handler(RequestValidationError)
@@ -597,6 +612,7 @@ def add_error_handlers(app: FastAPI) -> None:
                 }
                 for e in exc.errors()
             ],
+            trace_id=_request_trace_id(request),
         )
 
     @app.exception_handler(ProviderConfigError)
@@ -608,6 +624,7 @@ def add_error_handlers(app: FastAPI) -> None:
             code="PROVIDER_CONFIG_ERROR",
             message=str(exc),
             category="provider",
+            trace_id=_request_trace_id(request),
         )
 
     @app.exception_handler(ProviderAPIError)
@@ -621,6 +638,7 @@ def add_error_handlers(app: FastAPI) -> None:
             explanation=_provider_error_explanation(exc),
             details=exc.public_details(),
             category="provider",
+            trace_id=_request_trace_id(request),
         )
 
     @app.exception_handler(ProviderError)
@@ -634,6 +652,7 @@ def add_error_handlers(app: FastAPI) -> None:
             explanation=_provider_error_explanation(exc),
             details=exc.public_details(),
             category="provider",
+            trace_id=_request_trace_id(request),
         )
 
     @app.exception_handler(SourceFetchError)
@@ -653,6 +672,7 @@ def add_error_handlers(app: FastAPI) -> None:
             message="Failed to fetch from source. Please check the source is available.",
             details=details,
             category="crawler",
+            trace_id=_request_trace_id(request),
         )
 
     @app.exception_handler(SourceError)
@@ -664,6 +684,7 @@ def add_error_handlers(app: FastAPI) -> None:
             code="SOURCE_ERROR",
             message=str(exc),
             category="crawler",
+            trace_id=_request_trace_id(request),
         )
 
     @app.exception_handler(PipelineError)
@@ -683,6 +704,7 @@ def add_error_handlers(app: FastAPI) -> None:
             message="Translation pipeline failed. Please try again.",
             details=details,
             category="translation",
+            trace_id=_request_trace_id(request),
         )
 
     @app.exception_handler(StorageError)
@@ -720,6 +742,7 @@ def add_error_handlers(app: FastAPI) -> None:
             message=message,
             details=details,
             category="storage",
+            trace_id=_request_trace_id(request),
         )
 
     @app.exception_handler(ExportError)
@@ -732,6 +755,7 @@ def add_error_handlers(app: FastAPI) -> None:
             message="Failed to generate export. Please try again.",
             details={"export_error": str(exc)},
             category="export",
+            trace_id=_request_trace_id(request),
         )
 
     @app.exception_handler(ConfigError)
@@ -744,6 +768,7 @@ def add_error_handlers(app: FastAPI) -> None:
             message="Server configuration error. Contact administrator.",
             details={"config_error": str(exc)},
             category="config",
+            trace_id=_request_trace_id(request),
         )
 
     @app.exception_handler(NovelAIError)
@@ -761,6 +786,7 @@ def add_error_handlers(app: FastAPI) -> None:
             explanation=_as_non_empty_string(getattr(exc, "explanation", None)),
             details=details,
             category=_as_non_empty_string(getattr(exc, "category", None)) or "application",
+            trace_id=_request_trace_id(request),
         )
 
     @app.exception_handler(Exception)
@@ -788,4 +814,5 @@ def add_error_handlers(app: FastAPI) -> None:
             explanation=classified.explanation,
             details=public_details,
             category=classified.category,
+            trace_id=_request_trace_id(request),
         )

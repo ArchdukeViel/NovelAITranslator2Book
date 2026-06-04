@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from novelai.api.models import ActivityListResponse, ActivityRecordResponse
 from novelai.activity.queue import ActivityQueueService
 from novelai.activity.worker import ActivityWorkerService
 from novelai.api.routers.dependencies import get_activity_log, get_activity_worker, verify_api_key
@@ -42,8 +43,55 @@ TranslationJobRequest = TranslationActivityRequest
 JobStatusUpdateRequest = ActivityStatusUpdateRequest
 
 
-def _activity_response(items: list[dict[str, Any]]) -> dict[str, Any]:
-    return {"activity": items, "jobs": items}
+_PROGRESS_KEYS = (
+    "current_stage",
+    "current_label",
+    "completed",
+    "total",
+    "paused_reason",
+    "resume_after",
+    "errors",
+    "warnings",
+    "model_states",
+)
+
+
+def _metadata_dict(item: dict[str, Any]) -> dict[str, Any]:
+    metadata = item.get("metadata")
+    return dict(metadata) if isinstance(metadata, dict) else {}
+
+
+def _progress_dict(metadata: dict[str, Any]) -> dict[str, Any]:
+    progress = metadata.get("progress")
+    return dict(progress) if isinstance(progress, dict) else {}
+
+
+def _normalize_activity_record(item: dict[str, Any]) -> ActivityRecordResponse:
+    normalized = dict(item)
+    metadata = _metadata_dict(normalized)
+    progress = _progress_dict(metadata)
+    activity_id = str(normalized.get("id") or normalized.get("activity_id") or normalized.get("job_id") or "")
+    normalized["activity_id"] = str(normalized.get("activity_id") or activity_id)
+    normalized["job_id"] = str(normalized.get("job_id") or activity_id)
+    normalized["provider_key"] = normalized.get("provider_key") or metadata.get("provider_key") or normalized.get("provider")
+    normalized["provider_model"] = normalized.get("provider_model") or metadata.get("provider_model") or normalized.get("model")
+    normalized["metadata"] = metadata
+    for key in _PROGRESS_KEYS:
+        if key in normalized and normalized.get(key) is not None:
+            continue
+        if key in progress:
+            normalized[key] = progress.get(key)
+        elif key in metadata:
+            normalized[key] = metadata.get(key)
+    normalized.setdefault("errors", [])
+    normalized.setdefault("warnings", [])
+    normalized.setdefault("model_states", [])
+    return ActivityRecordResponse.model_validate(normalized)
+
+
+def _activity_response(items: list[dict[str, Any]]) -> ActivityListResponse:
+    normalized = [_normalize_activity_record(item) for item in items]
+    return ActivityListResponse(activity=normalized, jobs=normalized)
 
 
 @router.get("/activity")
@@ -56,7 +104,7 @@ async def list_activity(
     limit: int | None = None,
     activity_log: ActivityQueueService = Depends(get_activity_log),
     _auth: None = Depends(verify_api_key),
-) -> dict[str, Any]:
+) -> ActivityListResponse:
     try:
         items = activity_log.list_activity(
             status=status,
@@ -97,11 +145,11 @@ async def get_activity(
     activity_id: str,
     activity_log: ActivityQueueService = Depends(get_activity_log),
     _auth: None = Depends(verify_api_key),
-) -> dict[str, Any]:
+) -> ActivityRecordResponse:
     activity = activity_log.get_activity(activity_id)
     if activity is None:
         raise HTTPException(status_code=404, detail="Activity not found")
-    return activity
+    return _normalize_activity_record(activity)
 
 
 @router.delete("/activity/{activity_id}", status_code=204)
@@ -121,16 +169,16 @@ async def create_crawl_activity(
     body: CrawlActivityRequest,
     activity_log: ActivityQueueService = Depends(get_activity_log),
     _auth: None = Depends(verify_api_key),
-) -> dict[str, Any]:
+) -> ActivityRecordResponse:
     try:
-        return activity_log.create_crawl_activity(
+        return _normalize_activity_record(activity_log.create_crawl_activity(
             novel_id=body.novel_id,
             source_key=body.source_key,
             kind=body.kind,
             chapters=body.chapters,
             source_url=body.source_url,
             metadata=body.metadata,
-        )
+        ))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -141,9 +189,9 @@ async def create_translation_activity(
     body: TranslationActivityRequest,
     activity_log: ActivityQueueService = Depends(get_activity_log),
     _auth: None = Depends(verify_api_key),
-) -> dict[str, Any]:
+) -> ActivityRecordResponse:
     try:
-        return activity_log.create_translation_activity(
+        return _normalize_activity_record(activity_log.create_translation_activity(
             novel_id=body.novel_id,
             source_key=body.source_key,
             kind=body.kind,
@@ -151,7 +199,7 @@ async def create_translation_activity(
             provider=body.provider,
             model=body.model,
             metadata=body.metadata,
-        )
+        ))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -163,14 +211,14 @@ async def run_next_activity(
     job_type: str | None = None,
     worker: ActivityWorkerService = Depends(get_activity_worker),
     _auth: None = Depends(verify_api_key),
-) -> dict[str, Any]:
+) -> ActivityRecordResponse:
     try:
         activity = await worker.run_next(activity_type=activity_type or job_type)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if activity is None:
         raise HTTPException(status_code=404, detail="No pending activity found")
-    return activity
+    return _normalize_activity_record(activity)
 
 
 @router.post("/activity/{activity_id}/run")
@@ -179,7 +227,7 @@ async def run_activity(
     activity_id: str,
     worker: ActivityWorkerService = Depends(get_activity_worker),
     _auth: None = Depends(verify_api_key),
-) -> dict[str, Any]:
+) -> ActivityRecordResponse:
     try:
         activity = await worker.run_activity(activity_id)
     except ValueError as exc:
@@ -187,7 +235,7 @@ async def run_activity(
     if activity is None:
         raise HTTPException(status_code=404, detail="Activity not found")
     stored_activity = worker.activity_log.get_activity(activity_id)
-    return stored_activity or activity
+    return _normalize_activity_record(stored_activity or activity)
 
 
 @router.patch("/activity/{activity_id}")
@@ -197,7 +245,7 @@ async def update_activity_status(
     body: ActivityStatusUpdateRequest,
     activity_log: ActivityQueueService = Depends(get_activity_log),
     _auth: None = Depends(verify_api_key),
-) -> dict[str, Any]:
+) -> ActivityRecordResponse:
     try:
         activity = activity_log.update_activity_status(
             activity_id,
@@ -209,4 +257,4 @@ async def update_activity_status(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if activity is None:
         raise HTTPException(status_code=404, detail="Activity not found")
-    return activity
+    return _normalize_activity_record(activity)
