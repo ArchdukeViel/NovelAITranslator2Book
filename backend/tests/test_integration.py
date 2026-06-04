@@ -12,7 +12,7 @@ from novelai.translation.pipeline.pipeline import TranslationPipeline
 from novelai.translation.pipeline.stages.fetch import FetchStage
 from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.post_process import PostProcessStage
-from novelai.translation.pipeline.stages.segment import SegmentStage
+from novelai.translation.pipeline.stages.segment import SegmentStage, SmartSegmentStage
 from novelai.translation.pipeline.stages.translate import TranslateStage
 from novelai.utils.logging import setup_logging
 from tests.conftest import (
@@ -181,7 +181,7 @@ async def test_translate_stage_selects_relevant_glossary_per_chunk(integration_f
         stages=[
             FetchStage(),
             ParseStage(),
-            SegmentStage(),
+            SmartSegmentStage(target_chars=1, hard_max_chars=100),
             TranslateStage(
                 provider_factory=lambda key: fixture.mock_provider,
                 cache=fixture.cache,

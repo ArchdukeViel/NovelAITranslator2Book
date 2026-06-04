@@ -848,6 +848,8 @@ async def translate_chapters(
             result = await self.translation.translate_chapter(
                 source_adapter=source,
                 chapter_url=chapter_url,
+                novel_id=novel_id,
+                chapter_id=chapter_id,
                 provider_key=effective_provider_key,
                 provider_model=effective_provider_model,
                 source_language=effective_source_language,

@@ -13,7 +13,7 @@ from novelai.glossary import (
     rank_glossary_terms_for_text,
     summarize_term_context,
 )
-from novelai.translation.pipeline.context import PipelineContext
+from novelai.translation.pipeline.context import PipelineContext, TranslationChunk
 from novelai.translation.pipeline.stages.base import PipelineStage
 from novelai.prompts import build_translation_request
 from novelai.prompts.models import TranslationRequest
@@ -110,6 +110,18 @@ class TranslateStage(PipelineStage):
             max_entries=max_entries,
             max_context_chars=max_context_chars,
         )
+
+    @staticmethod
+    def _chunk_text(chunk: str | TranslationChunk) -> str:
+        if isinstance(chunk, TranslationChunk):
+            return chunk.source_text
+        return chunk
+
+    @staticmethod
+    def _chunk_id(chunk: str | TranslationChunk, chunk_index: int) -> str:
+        if isinstance(chunk, TranslationChunk):
+            return chunk.chunk_id
+        return f"legacy_{chunk_index + 1:04d}"
 
     @staticmethod
     def _observe_chunk_context(
@@ -230,7 +242,7 @@ class TranslateStage(PipelineStage):
         raise RuntimeError(f"No translation models available for provider {provider_key}.")
 
     async def run(self, context: PipelineContext) -> PipelineContext:
-        chunks = context.chunks
+        chunks: list[str | TranslationChunk] = list(context.translation_chunks or context.chunks)
         provider_key = context.provider_key or self._settings.get_provider_key()
         model = context.provider_model or self._settings.get_provider_model()
         provider_key, model = self._resolve_provider_and_model(provider_key, model)
@@ -247,23 +259,28 @@ class TranslateStage(PipelineStage):
         semaphore = asyncio.Semaphore(self._concurrency)
         glossary_lock = asyncio.Lock()
 
-        async def worker(chunk_index: int, chunk: str) -> str:
+        async def worker(chunk_index: int, chunk: str | TranslationChunk) -> str:
+            chunk_text = self._chunk_text(chunk)
             async with semaphore:
                 async with glossary_lock:
                     selected_glossary = self._select_chunk_glossary(
-                        chunk,
+                        chunk_text,
                         glossary_state,
                         chunk_index=chunk_index,
                         max_entries=max_glossary_entries,
                         max_context_chars=max_glossary_context_chars,
                     )
-                request = self._build_prompt_request(context, chunk, chunk_glossary=selected_glossary)
-                translated = await self._translate_chunk(provider_key, model, chunk, request=request)
+                request = self._build_prompt_request(context, chunk_text, chunk_glossary=selected_glossary)
+                translated = await self._translate_chunk(provider_key, model, chunk_text, request=request)
                 async with glossary_lock:
-                    self._observe_chunk_context(chunk, glossary_state, chunk_index=chunk_index)
+                    self._observe_chunk_context(chunk_text, glossary_state, chunk_index=chunk_index)
                 return translated
 
         context.translations = await asyncio.gather(*[worker(i, c) for i, c in enumerate(chunks)])
+        context.metadata["translated_chunk_ids"] = [
+            self._chunk_id(chunk, index)
+            for index, chunk in enumerate(chunks)
+        ]
         context.metadata["glossary_runtime_state"] = [
             {
                 "source": term.source,

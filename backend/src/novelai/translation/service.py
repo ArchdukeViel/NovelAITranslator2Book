@@ -8,7 +8,7 @@ from novelai.translation.pipeline.pipeline import TranslationPipeline
 from novelai.translation.pipeline.stages.fetch import FetchStage
 from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.post_process import PostProcessStage
-from novelai.translation.pipeline.stages.segment import SegmentStage
+from novelai.translation.pipeline.stages.segment import SmartSegmentStage
 from novelai.translation.pipeline.stages.translate import TranslateStage
 from novelai.sources.base import SourceAdapter
 
@@ -31,7 +31,7 @@ class TranslationService:
             stages=[
                 FetchStage(),
                 ParseStage(),
-                SegmentStage(),
+                SmartSegmentStage(),
                 TranslateStage(),
                 PostProcessStage(),
             ]
@@ -42,6 +42,8 @@ class TranslationService:
         *,
         source_adapter: SourceAdapter | None,
         chapter_url: str,
+        novel_id: str | None = None,
+        chapter_id: str | None = None,
         provider_key: str | None = None,
         provider_model: str | None = None,
         source_language: str | None = None,
@@ -69,6 +71,8 @@ class TranslationService:
         # Create pipeline state (internal working context)
         state = PipelineState(
             chapter_url=chapter_url,
+            novel_id=novel_id,
+            chapter_id=chapter_id,
             provider_key=provider_key,
             provider_model=provider_model,
         )
@@ -77,6 +81,10 @@ class TranslationService:
         # (source_adapter is not part of the main state to keep it serializable)
         if source_adapter is not None:
             state.metadata["_source_adapter"] = source_adapter
+        if novel_id is not None:
+            state.metadata["novel_id"] = novel_id
+        if chapter_id is not None:
+            state.metadata["chapter_id"] = chapter_id
         if source_language is not None:
             state.metadata["source_language"] = source_language
         if target_language is not None:
