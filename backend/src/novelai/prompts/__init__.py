@@ -9,6 +9,7 @@ from novelai.prompts.builders import (
     normalize_style_preset,
 )
 from novelai.prompts.models import TranslationRequest
+from novelai.prompts.metadata import METADATA_TRANSLATION_PROMPT_VERSION, build_metadata_translation_prompt
 from novelai.prompts.responses_api import (
     JSON_TRANSLATION_SCHEMA,
     build_basic_responses_payload,
@@ -17,11 +18,13 @@ from novelai.prompts.responses_api import (
 
 __all__ = [
     "JSON_TRANSLATION_SCHEMA",
+    "METADATA_TRANSLATION_PROMPT_VERSION",
     "TranslationRequest",
     "build_basic_responses_payload",
     "build_json_system_prompt",
     "build_json_translation_request",
     "build_json_user_prompt",
+    "build_metadata_translation_prompt",
     "build_system_prompt",
     "build_translation_request",
     "build_translation_responses_payload",
