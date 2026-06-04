@@ -5,6 +5,7 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
 *$py.class
 *.so
 .python-version
@@ -28,6 +29,7 @@ ENV/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.pyright/
 
 # Frontend
 frontend/node_modules/
@@ -75,6 +77,10 @@ __MACOSX/
 # Runtime data
 novel_library/
 storage/novel_library/
+storage/novel_library/preferences.json
+storage/novel_library/translation_cache.json
+storage/novel_library/usage.json
+storage/novel_library/activity_log/*.json
 storage/output/
 storage/input/
 storage/logs/
