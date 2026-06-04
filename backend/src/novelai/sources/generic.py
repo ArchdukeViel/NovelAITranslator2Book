@@ -14,6 +14,7 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
+from novelai.sources.quality import QualityGateResult
 from novelai.sources._helpers import (
     extract_image_references,
     image_placeholder,
@@ -63,6 +64,14 @@ _REMOVE_SELECTORS: tuple[str, ...] = (
     "style",
     "iframe",
 )
+
+_GENERIC_POSITIVE_LINK_RE = re.compile(r"(chapter|episode|ep\.?|read|part|story|\d+)", re.IGNORECASE)
+_GENERIC_NEGATIVE_LINK_RE = re.compile(
+    r"(login|register|search|tag|author|profile|comment|privacy|terms|rss|feed|"
+    r"home|about|contact|category|archive)",
+    re.IGNORECASE,
+)
+_GENERIC_ASSET_PATH_RE = re.compile(r"\.(?:jpg|jpeg|png|gif|webp|svg|css|js|ico|xml|json)$", re.IGNORECASE)
 
 
 class GenericSource(SourceAdapter):
@@ -197,6 +206,67 @@ class GenericSource(SourceAdapter):
 
         return chapters
 
+    def _score_toc_confidence(
+        self,
+        soup: BeautifulSoup,
+        base_url: str,
+        chapters: list[dict[str, str | int]],
+    ) -> QualityGateResult:
+        warnings: list[str] = []
+        errors: list[str] = []
+        if not chapters:
+            warnings.append("generic_single_page_or_no_toc")
+            return QualityGateResult(passed=True, score=0.45, warnings=warnings, errors=errors)
+
+        chapter_urls = [str(chapter.get("url") or "") for chapter in chapters if isinstance(chapter, dict)]
+        positive = 0
+        negative = 0
+        duplicate_paths = 0
+        paths: list[str] = []
+        container_bonus = 0
+        if soup.select("article a[href], main a[href], [role='main'] a[href], .toc a[href], .chapter-list a[href], .episode-list a[href]"):
+            container_bonus = 1
+
+        for chapter in chapters:
+            url = str(chapter.get("url") or "")
+            title = str(chapter.get("title") or "")
+            parsed = urlparse(url)
+            path = parsed.path.rstrip("/").lower()
+            paths.append(path)
+            combined = f"{path} {title}"
+            if _GENERIC_POSITIVE_LINK_RE.search(combined):
+                positive += 1
+            if _GENERIC_NEGATIVE_LINK_RE.search(combined) or _GENERIC_ASSET_PATH_RE.search(path):
+                negative += 1
+            if len(title.strip()) <= 2:
+                negative += 1
+
+        duplicate_paths = len(paths) - len(set(paths))
+        if duplicate_paths:
+            warnings.append("generic_duplicate_paths")
+        if negative:
+            warnings.append("generic_negative_links")
+        if positive == 0:
+            warnings.append("generic_no_chapter_like_links")
+
+        sibling_bonus = 0
+        path_prefixes = [path.rsplit("/", 1)[0] for path in paths if "/" in path]
+        if path_prefixes and len(set(path_prefixes)) <= max(1, len(path_prefixes) // 2):
+            sibling_bonus = 1
+
+        raw_score = 0.35
+        raw_score += min(0.30, positive / max(1, len(chapter_urls)) * 0.30)
+        raw_score += 0.15 * container_bonus
+        raw_score += 0.15 * sibling_bonus
+        raw_score -= min(0.25, negative / max(1, len(chapter_urls)) * 0.25)
+        raw_score -= min(0.15, duplicate_paths / max(1, len(chapter_urls)) * 0.15)
+        score = max(0.0, min(1.0, round(raw_score, 3)))
+        if score < 0.60:
+            warnings.append("generic_low_confidence")
+        elif score < 0.75:
+            warnings.append("generic_needs_review")
+        return QualityGateResult(passed=True, score=score, warnings=list(dict.fromkeys(warnings)), errors=errors)
+
     @staticmethod
     def _normalize_text(text: str) -> str:
         return _shared_normalize_text(text)
@@ -237,6 +307,7 @@ class GenericSource(SourceAdapter):
         author = self._extract_author(soup)
         synopsis = self._extract_synopsis(soup)
         chapters = self._extract_chapters_from_toc(soup, url)
+        confidence = self._score_toc_confidence(soup, url, chapters)
 
         if max_chapter is not None:
             chapters = [c for c in chapters if isinstance(c.get("num"), int) and int(c["num"]) <= max_chapter]
@@ -252,6 +323,8 @@ class GenericSource(SourceAdapter):
             "author": author,
             "synopsis": synopsis,
             "chapters": chapters,
+            "generic_confidence": confidence.to_dict(),
+            "source_quality_status": "needs_review" if confidence.score < 0.75 else "passed",
         }
 
     async def fetch_chapter(self, url: str) -> str:

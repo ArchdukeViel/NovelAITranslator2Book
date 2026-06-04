@@ -4,7 +4,47 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from novelai.core.errors import SourceError
+from novelai.sources.quality import (
+    chapter_content_hash,
+    evaluate_chapter_quality,
+    evaluate_metadata_quality,
+)
+
 logger = logging.getLogger(__name__)
+
+
+def _apply_metadata_quality_gate(meta: dict[str, Any], *, source_key: str, novel_id: str) -> dict[str, Any]:
+    meta.setdefault("source_key", source_key)
+    meta.setdefault("source", source_key)
+    quality = evaluate_metadata_quality(meta, source_key=source_key, novel_id=novel_id)
+    meta["source_quality"] = quality.to_dict()
+    if quality.warnings:
+        logger.warning("Metadata quality warnings for %s/%s: %s", source_key, novel_id, quality.warnings)
+    if quality.errors:
+        raise SourceError(f"Metadata quality gate failed for {source_key}/{novel_id}: {', '.join(quality.errors)}")
+    return meta
+
+
+def _stored_chapter_hashes(storage: Any, novel_id: str, *, exclude_chapter_id: str) -> set[str]:
+    hashes: set[str] = set()
+    list_chapters = getattr(storage, "list_stored_chapters", None)
+    if not callable(list_chapters):
+        return hashes
+    load_chapter = getattr(storage, "load_chapter", None)
+    if not callable(load_chapter):
+        return hashes
+    stored_chapter_ids = list_chapters(novel_id)
+    if not isinstance(stored_chapter_ids, list):
+        return hashes
+    for chapter_id in stored_chapter_ids:
+        if str(chapter_id) == exclude_chapter_id:
+            continue
+        chapter = load_chapter(novel_id, str(chapter_id))
+        text = chapter.get("text") if isinstance(chapter, dict) else None
+        if isinstance(text, str) and text.strip():
+            hashes.add(chapter_content_hash(text))
+    return hashes
 
 async def scrape_metadata(
     self: Any,
@@ -26,6 +66,7 @@ async def scrape_metadata(
     source = self._source_factory(source_key)
     fetch_target = source_identifier.strip() if isinstance(source_identifier, str) and source_identifier.strip() else novel_id
     meta = await source.fetch_metadata(fetch_target, max_chapter=max_chapter)
+    meta = _apply_metadata_quality_gate(meta, source_key=source_key, novel_id=novel_id)
     if progress_callback:
         chapter_count = len(meta.get("chapters") or [])
         progress_callback(f"Fetched: {str(meta.get('title') or novel_id)!r}  ({chapter_count} chapters listed)")
@@ -75,6 +116,7 @@ async def scrape_chapters(
     if mode == "full":
         self.storage.delete_novel(novel_id)
         meta = await source.fetch_metadata(novel_id)
+        meta = _apply_metadata_quality_gate(meta, source_key=source_key, novel_id=novel_id)
         if not meta.get("source_language"):
             detected = self._infer_source_language(source_key, meta)
             if detected:
@@ -119,6 +161,28 @@ async def scrape_chapters(
 
         images = payload.get("images")
         image_manifest = [image for image in images if isinstance(image, dict)] if isinstance(images, list) else []
+        quality = evaluate_chapter_quality(
+            text,
+            source_key=source_key,
+            url=chapter.get("url") if isinstance(chapter.get("url"), str) else None,
+            images=image_manifest,
+            duplicate_hashes=_stored_chapter_hashes(self.storage, novel_id, exclude_chapter_id=chapter_id),
+        )
+        if quality.warnings:
+            logger.warning(
+                "Chapter quality warnings for %s/%s/%s: %s",
+                source_key,
+                novel_id,
+                chapter_id,
+                quality.warnings,
+            )
+            if progress_callback:
+                progress_callback(f"  Quality warnings: {', '.join(quality.warnings)}")
+        if quality.errors:
+            raise SourceError(
+                f"Chapter quality gate failed for {source_key}/{novel_id}/{chapter_id}: "
+                + ", ".join(quality.errors)
+            )
 
         existing = self.storage.load_chapter(novel_id, chapter_id) or {}
         existing_text = existing.get("text")

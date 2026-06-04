@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
 from novelai.infrastructure.http.fetch_service import FetchService, get_default_fetch_service
+from novelai.sources.quality import detect_age_gate_text, detect_block_page_text
 from novelai.sources._helpers import (
     attribute_to_str,
     extract_image_references,
@@ -491,6 +492,10 @@ class SyosetuNcodeSource(SourceAdapter):
         }
 
     def _parse_chapter_payload(self, html: str, url: str) -> dict[str, Any]:
+        if detect_age_gate_text(html):
+            raise SourceError("Syosetu page appears to be an age gate or auth redirect.")
+        if detect_block_page_text(html):
+            raise SourceError("Syosetu page appears to be blocked or unavailable.")
         soup = BeautifulSoup(html, "lxml")
         sections = self._find_story_sections(soup)
         if not sections:
