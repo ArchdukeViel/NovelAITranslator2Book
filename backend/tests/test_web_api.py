@@ -1084,16 +1084,20 @@ class TestAdmin:
         status_resp = c.get("/novels/admin/provider-api-key/gemini")
         assert status_resp.status_code == 200
         assert status_resp.json()["configured"] is False
+        assert status_resp.json()["provider_key"] == "gemini"
+        assert status_resp.json()["provider_model"] == "gemini-2.5-flash"
 
         set_resp = c.post(
             "/novels/admin/provider-api-key",
-            json={"provider": "gemini", "api_key": "AIza-test-key"},
+            json={"provider_key": "gemini", "api_key": "AIza-test-key"},
         )
 
         assert set_resp.status_code == 200
         assert set_resp.json()["configured"] is True
         assert set_resp.json()["preferred_provider"] == "gemini"
+        assert set_resp.json()["preferred_provider_key"] == "gemini"
         assert set_resp.json()["model"] == "gemini-2.5-flash"
+        assert set_resp.json()["provider_model"] == "gemini-2.5-flash"
         assert set_resp.json()["validation_status"] == "working"
         assert preferences.get_api_key("gemini") == "AIza-test-key"
         assert preferences.get_preferred_provider() == "gemini"
@@ -1122,7 +1126,7 @@ class TestAdmin:
 
         resp = c.post(
             "/novels/admin/provider-api-key/validate",
-            json={"provider": "gemini", "api_key": "AIza-temp-key"},
+            json={"provider_key": "gemini", "api_key": "AIza-temp-key"},
         )
 
         assert resp.status_code == 200
@@ -1223,10 +1227,20 @@ class TestActivity:
 
         create_resp = c.post(
             "/novels/activity/translation",
-            json={"novel_id": "test-n1", "chapters": "1-2", "provider": "openai", "model": "gpt-5.4"},
+            json={
+                "novel_id": "test-n1",
+                "chapters": "1-2",
+                "provider_key": "openai",
+                "provider_model": "gpt-5.4",
+            },
         )
         assert create_resp.status_code == 200
-        job_id = create_resp.json()["id"]
+        created_payload = create_resp.json()
+        job_id = created_payload["id"]
+        assert created_payload["provider"] == "openai"
+        assert created_payload["model"] == "gpt-5.4"
+        assert created_payload["provider_key"] == "openai"
+        assert created_payload["provider_model"] == "gpt-5.4"
 
         update_resp = c.patch(
             f"/novels/activity/{job_id}",

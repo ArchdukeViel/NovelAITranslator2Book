@@ -6,6 +6,7 @@ from pathlib import Path
 
 FRONTEND_DIR = Path("frontend")
 API_CLIENT = FRONTEND_DIR / "lib" / "api.ts"
+API_TYPES = FRONTEND_DIR / "lib" / "api-types.ts"
 
 
 def test_frontend_fetch_calls_are_centralized_in_api_client() -> None:
@@ -26,11 +27,19 @@ def test_frontend_fetch_calls_are_centralized_in_api_client() -> None:
 
 def test_frontend_api_client_exposes_error_and_progress_contracts() -> None:
     text = API_CLIENT.read_text(encoding="utf-8")
+    types_text = API_TYPES.read_text(encoding="utf-8")
 
-    assert "export type ApiErrorPayload" in text
+    assert 'export type * from "@/lib/api-types"' in text
+    assert "export type ApiErrorPayload" in types_text
     assert "trace_id?: string | null" in text
+    assert "trace_id?: string | null" in types_text
     assert "export function describeApiError" in text
-    assert "export type JobProgress" in text
+    assert "export type JobProgress" in types_text
+    assert "paused_reason?: string | null" in types_text
+    assert "resume_after?: string | null" in types_text
+    assert "model_states?: ModelState[]" in types_text
+    assert "provider_key?: string" in types_text
+    assert "provider_model?: string" in types_text
     assert "export function activityProgress" in text
     assert "export function activityProgressLabel" in text
     assert "/novels/activity" in text
