@@ -119,6 +119,7 @@ class Container:
             from novelai.translation.pipeline.stages.parse import ParseStage
             from novelai.translation.pipeline.stages.post_process import PostProcessStage
             from novelai.translation.pipeline.stages.segment import SegmentStage
+            from novelai.translation.pipeline.stages.translation_qa import TranslationQAStage
             from novelai.translation.pipeline.stages.translate import TranslateStage
 
             stages = [
@@ -131,6 +132,7 @@ class Container:
                     settings_service=self.settings,
                     usage_service=self.usage,
                 ),
+                TranslationQAStage(),
                 PostProcessStage(),
             ]
             self._translation = TranslationService(pipeline=TranslationPipeline(stages=stages))

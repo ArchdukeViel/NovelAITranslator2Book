@@ -19,6 +19,7 @@ def _stage_status_after(stage_name: str) -> str:
         "SmartSegmentStage": "segmented",
         "SegmentStage": "segmented",
         "TranslateStage": "translated",
+        "TranslationQAStage": "translated",
         "PostProcessStage": "translated",
     }
     return mapping.get(stage_name, "completed")
@@ -28,6 +29,9 @@ def _event_code_from_exception(exc: BaseException) -> str:
     provider_code = getattr(exc, "provider_error_code", None)
     if provider_code is not None:
         return str(getattr(provider_code, "value", provider_code))
+    error_code = getattr(exc, "error_code", None)
+    if error_code is not None:
+        return str(getattr(error_code, "value", error_code))
     return exc.__class__.__name__
 
 

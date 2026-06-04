@@ -924,13 +924,20 @@ async def translate_chapters(
         except Exception as exc:
             logger.error("Failed to translate chapter %s/%s: %s", novel_id, chapter_id, exc)
             provider_code = getattr(getattr(exc, "provider_error_code", None), "value", None)
-            failed_state = ChapterState.NEEDS_RETRY if isinstance(provider_code, str) else ChapterState.FAILED
+            qa_status = getattr(exc, "qa_status", None)
+            if qa_status == ChapterState.QA_FAILED.value:
+                failed_state = ChapterState.QA_FAILED
+            elif qa_status == ChapterState.NEEDS_REVIEW.value:
+                failed_state = ChapterState.NEEDS_REVIEW
+            else:
+                failed_state = ChapterState.NEEDS_RETRY if isinstance(provider_code, str) else ChapterState.FAILED
             self.storage.save_chapter_state(
                 novel_id, chapter_id,
                 _make_state_data(failed_state, error=str(exc), previous=prev_state),
             )
             details = getattr(exc, "details", None)
             failed_chunk_id = details.get("chunk_id") if isinstance(details, dict) else None
+            error_code = provider_code or getattr(exc, "error_code", None) or exc.__class__.__name__
             failed_context = _pipeline_context_from_exception(exc)
             failed_events = _pipeline_events_from_exception(exc)
             if failed_events:
@@ -950,8 +957,8 @@ async def translate_chapters(
                         "provider_key": getattr(exc, "provider_key", effective_provider_key),
                         "provider_model": getattr(exc, "provider_model", effective_provider_model),
                         "attempt_number": details.get("attempt_number", 1) if isinstance(details, dict) else 1,
-                        "status": "needs_retry" if isinstance(provider_code, str) else "failed",
-                        "error_code": provider_code or exc.__class__.__name__,
+                        "status": failed_state.value,
+                        "error_code": str(error_code),
                     }
                 )
             if not failed_event_recorded:
@@ -967,8 +974,8 @@ async def translate_chapters(
                         "chunk_id": failed_chunk_id,
                         "stage_name": _failed_stage_name_from_exception(exc),
                         "status_before": "running",
-                        "status_after": "needs_retry" if isinstance(provider_code, str) else "failed",
-                        "error_code": provider_code or exc.__class__.__name__,
+                        "status_after": failed_state.value,
+                        "error_code": str(error_code),
                         "message": str(exc),
                     }
                 )
