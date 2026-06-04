@@ -8,6 +8,7 @@ from typing import Any
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState
 from novelai.glossary import glossary_status_counts, normalize_glossary_entries
+from novelai.prompts import METADATA_TRANSLATION_PROMPT_VERSION, build_metadata_translation_prompt
 from novelai.providers.model_fallbacks import model_candidates
 from novelai.services.orchestration.common import PreflightIssue, _make_state_data
 from novelai.sources.base import SourceAdapter
@@ -15,7 +16,6 @@ from novelai.sources.base import SourceAdapter
 logger = logging.getLogger(__name__)
 
 _METADATA_TRANSLATION_PROMPT_SOURCES = {"gemini", "openai"}
-_METADATA_TRANSLATION_PROMPT_VERSION = "metadata-literal-v2"
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
 _GENERIC_TITLE_RE = re.compile(
     r"^\s*(?:episode|chapter|part|volume|section|arc)(?:\s+[\w.-]+)?\s*$",
@@ -50,35 +50,6 @@ def _failed_stage_name_from_exception(exc: BaseException) -> str:
     if isinstance(current_stage, str) and current_stage.strip():
         return current_stage.strip()
     return "Pipeline"
-
-
-def _metadata_translation_prompt(source_text: str, field: str) -> str:
-    target_language = settings.TRANSLATION_TARGET_LANGUAGE or "English"
-    normalized_field = field.strip().lower()
-    field_label = {
-        "title": "novel title",
-        "author": "author name",
-        "synopsis": "novel synopsis",
-        "chapter_title": "chapter title",
-        "glossary_term": "glossary term",
-    }.get(normalized_field, "text")
-    extra_rules = ""
-    if normalized_field == "author":
-        extra_rules = "\n- For author names, return only the name; omit labels such as Author or Writer."
-    elif normalized_field in {"title", "chapter_title", "glossary_term"}:
-        extra_rules = "\n- Keep the result short and title-like; do not expand it into a summary."
-    return (
-        f"Translate this Japanese web novel {field_label} into {target_language}.\n"
-        "Rules:\n"
-        "- Return only the translated text.\n"
-        "- Do not explain, summarize, continue, rewrite, add alternatives, or add markdown.\n"
-        "- Preserve names, numbers, episode markers, and honorifics unless a standard English rendering exists.\n"
-        "- If the input is already in the target language, return it unchanged."
-        f"{extra_rules}\n"
-        "<source_text>\n"
-        f"{source_text}\n"
-        "</source_text>"
-    )
 
 
 def _metadata_translation_max_tokens(source_text: str, field: str) -> int:
@@ -606,7 +577,7 @@ async def _translate_text(
     max_tokens: int | None = None
     provider_kwargs: dict[str, Any] = {}
     if field_key and provider_key in _METADATA_TRANSLATION_PROMPT_SOURCES:
-        prompt = _metadata_translation_prompt(normalized, field_key)
+        prompt = build_metadata_translation_prompt(normalized, field_key)
         max_tokens = _metadata_translation_max_tokens(normalized, field_key)
         if provider_key == "gemini":
             provider_kwargs["temperature"] = 0.0
@@ -694,7 +665,7 @@ async def _translate_metadata_fields(
     """
     translated_metadata = dict(metadata)
     previous = existing_metadata or {}
-    can_reuse_previous = previous.get("metadata_translation_prompt_version") == _METADATA_TRANSLATION_PROMPT_VERSION
+    can_reuse_previous = previous.get("metadata_translation_prompt_version") == METADATA_TRANSLATION_PROMPT_VERSION
 
     title = translated_metadata.get("title")
     if isinstance(title, str) and title:
@@ -766,7 +737,7 @@ async def _translate_metadata_fields(
         translated_chapters.append(translated_chapter)
 
     translated_metadata["chapters"] = translated_chapters
-    translated_metadata["metadata_translation_prompt_version"] = _METADATA_TRANSLATION_PROMPT_VERSION
+    translated_metadata["metadata_translation_prompt_version"] = METADATA_TRANSLATION_PROMPT_VERSION
     return translated_metadata
 
 

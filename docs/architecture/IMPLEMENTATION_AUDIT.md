@@ -256,3 +256,68 @@ Current state:
 10. Add offline parser fixture tests and API/schema contract tests.
 11. Run a final core integration audit before scheduler work.
 12. Only after auth/role/security foundations exist, design public request approval and contributed credential workflows.
+
+## Final Implementation Pass
+
+This section records the post-implementation integration audit. Earlier sections preserve the original Prompt 0 audit context and may describe pre-implementation gaps that have since been partially or fully addressed.
+
+### Completed
+
+- Translation segmentation now has typed `Paragraph` and `TranslationChunk` contracts, deterministic paragraph/chunk IDs, budget-aware chunk packing, explicit `[CHAPTER ...]` and `[P ...]` markers, and backward-compatible `SegmentStage` aliasing.
+- Translation traceability now carries `novel_id`, `chapter_id`, `source_key`, `provider_key`, `provider_model`, `activity_id` / `job_id`, `chunk_id`, paragraph IDs, stage events, chunk states, and scheduler-state foundation fields.
+- Provider errors are normalized through `ProviderErrorCode` / `ProviderError` and mapped by `api/error_handlers.py` into the shared frontend-readable envelope.
+- Gemini and OpenAI provider tests cover rate limits, quota exhaustion, invalid/unavailable models, context limits, safety/refusal, timeout, empty output, partial output, invalid JSON, unknown provider errors, and success paths.
+- Deterministic `TranslationQAStage` exists in `translation/*`; QA prevents failed outputs from being saved as clean final text and checks placeholders, obvious refusal/error text, suspicious truncation/summary output, and paragraph/chapter mapping where structured data exists.
+- Metadata prompt construction has been moved from orchestration into `backend/src/novelai/prompts/metadata.py`; orchestration now imports `build_metadata_translation_prompt`.
+- Central HTTP fetching exists under `backend/src/novelai/infrastructure/http/*`; Syosetu/Novel18 uses `FetchService`, shared throttling, URL validation, and conditional-cache interfaces.
+- Source quality gates exist, including metadata/chapter checks, adult-source age-gate classification, generic confidence scoring, and offline parser fixture tests.
+- Storage contracts now document and support runtime traceability, chunk records, temporary bundles, chunk outputs, provider request record shapes, scheduler state, fetch cache entries, and exact translation cache keys.
+- `docs/reference/DATA_OUTPUT_STRUCTURE.md` documents implemented runtime shapes, owner modules, schema versions, retention behavior, and backward-compatibility notes.
+- API error responses preserve the shared envelope fields: `code`, `message`, `explanation`, `details`, optional `trace_id`, plus legacy `detail` / `error` compatibility fields.
+- Activity/job API responses expose canonical compatibility fields such as `activity_id`, `job_id`, `provider_key`, `provider_model`, `current_stage`, `current_label`, `completed`, `total`, `errors`, `warnings`, `paused_reason`, `resume_after`, and `model_states`.
+- Frontend API calls remain centralized in `frontend/lib/api.ts`; frontend activity pages display structured job progress and warning/error counts without implementing backend scheduling or QA logic.
+- CLI worker compatibility was restored so older `job_runner` aliases and user-facing “job” wording still work while the runtime uses `activity_runner`.
+
+### Remaining Debt
+
+- The full multi-model scheduler is not implemented. Model fallback exists, but scheduler policy for selecting the next model, pausing all-cooldown jobs, daily quota reset handling, and resumable routing belongs to Prompt 11.
+- Public contribution credentials are not implemented. The project still lacks authenticated public users, admin role separation, encrypted credential storage, credential owner IDs, revocation/deletion flows, contribution consent, usage limits, and credential audit logging.
+- Provider request record persistence is available in storage, but provider calls are not yet consistently recorded for every successful/failed request across all translation and metadata paths.
+- Temporary bundle persistence exists as a storage foundation, but bundle lifecycle integration is still limited; temporary bundles should remain retry/debug artifacts and must not become canonical chapter output.
+- Some source adapters still own direct HTTP client calls or inherited source-base fetch behavior. Syosetu/Novel18 is integrated with `FetchService`; Kakuyomu and Generic should move gradually in a later source-boundary pass.
+- `operations.py` and `admin.py` remain thicker than ideal. They contain preliminary-crawl fallback orchestration, export assembly, provider key validation/application, and runtime-state handling. These should be split only during focused service-boundary work.
+- Activity/job storage still stores legacy `id`, `provider`, and `model` fields for backward compatibility. API responses expose canonical aliases, but persisted schema migration should wait for a compatibility plan.
+- Chapter and translation version payloads still expose legacy `source`, `provider`, `model`, and generic `id` fields in some places. These are stable UI/storage contracts and should not be renamed destructively.
+- `backend/src/novelai/utils/http_client.py` remains for legacy/shared callers while the new `infrastructure/http` layer is adopted incrementally.
+- Existing full frontend lint script uses deprecated `next lint` and prompts interactively because no ESLint config is committed.
+
+### Risky Areas
+
+- Provider quota handling: normalized errors and model-state shapes exist, but without Prompt 11 routing a long job can still stop instead of waiting/resuming intelligently.
+- Multi-model fallback: fallback must continue to preserve glossary selection, prompt versioning, exact cache keys, QA, chunk state, and provider/model trace metadata.
+- Cache correctness: exact cache-key helpers exist and tests cover key drift, but every translation path must continue passing prompt-affecting metadata into cache keys.
+- Temporary bundle splitting: multi-chapter bundles require structured output or safe paragraph maps; unsafe plain-text multi-chapter output must remain `qa_failed` or `needs_review`.
+- Source parser drift: fixture tests protect current selectors, but live source HTML can still change; quality gates should record structured warnings/errors rather than silently forwarding bad text.
+- Storage backward compatibility: runtime records are additive, but persisted legacy chapter bundles and activity records need compatibility readers until a migration plan exists.
+- API naming migration: frontend and storage still carry compatibility aliases. Removing `id`, `provider`, `model`, or `source` too early would break existing callers.
+
+### Test Results
+
+- `pytest backend/tests/test_pipeline_stages.py backend/tests/test_integration.py backend/tests/test_translation_qa.py backend/tests/test_gemini_provider.py backend/tests/test_openai_provider.py backend/tests/test_storage_contracts.py backend/tests/test_translation_cache.py backend/tests/test_source_quality.py backend/tests/test_fetch_service.py backend/tests/test_source_parser_fixtures.py backend/tests/test_web_api.py backend/tests/test_frontend_api_contract.py -q`
+  - Result: `194 passed`.
+- `pytest backend/tests -q`
+  - Initial result: `1 failed, 499 passed, 7 skipped`; failure was a CLI `job_runner` compatibility regression.
+  - After cleanup: `500 passed, 7 skipped`.
+- `pyright`
+  - Initial result: failed on the moved metadata prompt constant reference.
+  - After cleanup: `0 errors, 0 warnings, 0 informations`.
+- `npm run typecheck`
+  - Result: passed.
+- `npm run build`
+  - Result: passed.
+- `npm run lint`
+  - Result: could not complete as a non-interactive verification. After an unsandboxed retry, `next lint` started deprecated interactive ESLint configuration setup because the frontend has no committed ESLint config.
+
+### Recommended Next Phase
+
+The next implementation phase should be Prompt 11: implement the multi-model scheduler using the existing `ProviderError`, chunk state, scheduler state, cache-key, QA, and activity/job progress contracts. Do not implement public contribution credentials until the project first adds authenticated users, admin role separation, encrypted credential storage, revocation/deletion flows, audit logging, contribution consent, and usage limits.

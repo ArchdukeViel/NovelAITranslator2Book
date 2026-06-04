@@ -83,24 +83,26 @@ def _doctor_check() -> tuple[int, list[str]]:
 
 
 async def _run_worker_once() -> None:
-    activity = await container.activity_runner.run_once()
+    runner = getattr(container, "activity_runner", None) or getattr(container, "job_runner")
+    activity = await runner.run_once()
     if activity is None:
-        print("No pending activity.")
+        print("No pending job.")
         return
-    print(f"Processed activity {activity.get('id')} -> {activity.get('status')}")
+    print(f"Processed job {activity.get('id')} -> {activity.get('status')}")
 
 
 async def _run_worker_forever(poll_seconds: float | None) -> None:
+    runner = getattr(container, "activity_runner", None) or getattr(container, "job_runner")
     if poll_seconds is not None:
-        container.activity_runner.poll_seconds = max(0.05, float(poll_seconds))
+        runner.poll_seconds = max(0.05, float(poll_seconds))
 
-    print(f"Worker started. Polling every {container.activity_runner.poll_seconds:.2f}s. Press CTRL+C to stop.")
+    print(f"Worker started. Polling every {runner.poll_seconds:.2f}s. Press CTRL+C to stop.")
     while True:
-        activity = await container.activity_runner.run_once()
+        activity = await runner.run_once()
         if activity is None:
-            await asyncio.sleep(container.activity_runner.poll_seconds)
+            await asyncio.sleep(runner.poll_seconds)
         else:
-            print(f"Processed activity {activity.get('id')} -> {activity.get('status')}")
+            print(f"Processed job {activity.get('id')} -> {activity.get('status')}")
 
 
 def _frontend_url(
