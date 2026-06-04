@@ -28,7 +28,7 @@ from novelai.api.routers.novels import (
     get_usage,
 )
 from novelai.config.settings import settings
-from novelai.core.errors import ConfigError, ExportError, NovelAIError, PipelineError, StorageError
+from novelai.core.errors import ConfigError, ExportError, NovelAIError, PipelineError, ProviderError, ProviderErrorCode, StorageError
 from novelai.activity.queue import ActivityQueueService
 from novelai.activity.runner import BackgroundActivityRunner
 from novelai.activity.worker import ActivityWorkerService
@@ -240,6 +240,89 @@ def test_storage_error_handler_uses_file_not_found_cause(_no_api_key: None) -> N
     assert resp.status_code == 404
     assert payload["code"] == "STORAGE_FILE_NOT_FOUND"
     assert payload["category"] == "storage"
+
+
+def test_provider_error_handler_returns_structured_public_envelope(_no_api_key: None) -> None:
+    bootstrap()
+    app = create_app()
+
+    @app.get("/debug/provider/quota")
+    async def debug_provider_quota() -> None:
+        raise ProviderError(
+            ProviderErrorCode.QUOTA_EXHAUSTED,
+            provider_key="gemini",
+            provider_model="gemini-2.5-flash-lite",
+            message="raw provider traceback should not be public",
+            retry_after_seconds=21,
+            exhausted_until="2026-06-05T00:00:00Z",
+            details={"raw_message": "secret provider internals", "traceback": "stack"},
+        )
+
+    c = TestClient(app, raise_server_exceptions=False)
+    resp = c.get("/debug/provider/quota")
+    payload = resp.json()
+
+    assert resp.status_code == 503
+    assert payload["code"] == "PROVIDER_ERROR"
+    assert payload["message"] == "Provider quota exhausted"
+    assert payload["category"] == "provider"
+    assert payload["details"] == {
+        "provider_key": "gemini",
+        "provider_model": "gemini-2.5-flash-lite",
+        "provider_error_code": "provider_quota_exhausted",
+        "retry_after_seconds": 21,
+        "cooldown_until": None,
+        "exhausted_until": "2026-06-05T00:00:00Z",
+    }
+    assert "raw provider traceback" not in json.dumps(payload)
+    assert "secret provider internals" not in json.dumps(payload)
+
+
+def test_provider_error_handler_maps_rate_limit_retry_after(_no_api_key: None) -> None:
+    bootstrap()
+    app = create_app()
+
+    @app.get("/debug/provider/rate-limit")
+    async def debug_provider_rate_limit() -> None:
+        raise ProviderError(
+            ProviderErrorCode.RATE_LIMITED,
+            provider_key="gemini",
+            provider_model="gemini-2.5-flash",
+            message="Provider rate limit reached",
+            retry_after_seconds=9,
+            cooldown_until="2026-06-04T12:00:09Z",
+        )
+
+    c = TestClient(app, raise_server_exceptions=False)
+    resp = c.get("/debug/provider/rate-limit")
+    payload = resp.json()
+
+    assert resp.status_code == 429
+    assert payload["code"] == "PROVIDER_ERROR"
+    assert payload["details"]["provider_key"] == "gemini"
+    assert payload["details"]["provider_model"] == "gemini-2.5-flash"
+    assert payload["details"]["provider_error_code"] == "provider_rate_limited"
+    assert payload["details"]["retry_after_seconds"] == 9
+
+
+def test_provider_error_handler_maps_unknown_provider_error(_no_api_key: None) -> None:
+    bootstrap()
+    app = create_app()
+
+    @app.get("/debug/provider/unknown")
+    async def debug_provider_unknown() -> None:
+        raise ProviderError(
+            ProviderErrorCode.UNKNOWN,
+            provider_key="gemini",
+            provider_model="gemini-2.5-flash",
+            message="Provider request failed",
+        )
+
+    c = TestClient(app, raise_server_exceptions=False)
+    resp = c.get("/debug/provider/unknown")
+
+    assert resp.status_code == 502
+    assert resp.json()["details"]["provider_error_code"] == "provider_unknown_error"
 
 
 def test_unhandled_runtime_error_message_respects_debug_errors(

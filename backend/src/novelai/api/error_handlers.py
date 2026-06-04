@@ -24,6 +24,7 @@ from novelai.core.errors import (
     ProviderAPIError,
     ProviderConfigError,
     ProviderError,
+    ProviderErrorCode,
     SourceError,
     SourceFetchError,
     StorageError,
@@ -112,6 +113,20 @@ _EXPLANATION_BY_CODE: dict[str, str] = {
     "TRANSLATION_REQUEST_ERROR": "The translation request contains invalid values.",
     "UPSTREAM_SERVICE_ERROR": "A scraper, provider, or other upstream service failed while handling the request.",
     "VALIDATION_ERROR": "The request format is invalid. Check required fields and value types.",
+}
+
+_PROVIDER_STATUS_BY_CODE: dict[ProviderErrorCode, int] = {
+    ProviderErrorCode.RATE_LIMITED: status.HTTP_429_TOO_MANY_REQUESTS,
+    ProviderErrorCode.QUOTA_EXHAUSTED: status.HTTP_503_SERVICE_UNAVAILABLE,
+    ProviderErrorCode.MODEL_UNAVAILABLE: status.HTTP_503_SERVICE_UNAVAILABLE,
+    ProviderErrorCode.MODEL_DEPRECATED: status.HTTP_503_SERVICE_UNAVAILABLE,
+    ProviderErrorCode.CONTEXT_TOO_LARGE: status.HTTP_400_BAD_REQUEST,
+    ProviderErrorCode.SAFETY_BLOCKED: 422,
+    ProviderErrorCode.TIMEOUT: status.HTTP_504_GATEWAY_TIMEOUT,
+    ProviderErrorCode.INVALID_JSON: status.HTTP_502_BAD_GATEWAY,
+    ProviderErrorCode.EMPTY_OUTPUT: status.HTTP_502_BAD_GATEWAY,
+    ProviderErrorCode.PARTIAL_OUTPUT: status.HTTP_502_BAD_GATEWAY,
+    ProviderErrorCode.UNKNOWN: status.HTTP_502_BAD_GATEWAY,
 }
 
 
@@ -302,6 +317,39 @@ def _base_details(request: Request, exc: BaseException, operation: str) -> dict[
     if novel_code:
         details["novel_code"] = novel_code
     return details
+
+
+def _provider_error_status(exc: ProviderError) -> int:
+    return _PROVIDER_STATUS_BY_CODE.get(exc.provider_error_code, status.HTTP_502_BAD_GATEWAY)
+
+
+def _provider_error_message(exc: ProviderError) -> str:
+    messages = {
+        ProviderErrorCode.RATE_LIMITED: "Provider rate limit reached",
+        ProviderErrorCode.QUOTA_EXHAUSTED: "Provider quota exhausted",
+        ProviderErrorCode.MODEL_UNAVAILABLE: "Provider model unavailable",
+        ProviderErrorCode.MODEL_DEPRECATED: "Provider model deprecated",
+        ProviderErrorCode.CONTEXT_TOO_LARGE: "Provider context window exceeded",
+        ProviderErrorCode.SAFETY_BLOCKED: "Provider safety filter blocked the response",
+        ProviderErrorCode.TIMEOUT: "Provider request timed out",
+        ProviderErrorCode.INVALID_JSON: "Provider returned invalid JSON",
+        ProviderErrorCode.EMPTY_OUTPUT: "Provider returned empty output",
+        ProviderErrorCode.PARTIAL_OUTPUT: "Provider returned partial output",
+        ProviderErrorCode.UNKNOWN: _as_non_empty_string(str(exc)) or "Provider request failed",
+    }
+    return messages[exc.provider_error_code]
+
+
+def _provider_error_explanation(exc: ProviderError) -> str:
+    if exc.provider_error_code in {ProviderErrorCode.RATE_LIMITED, ProviderErrorCode.QUOTA_EXHAUSTED}:
+        return "The selected provider/model cannot complete this request right now."
+    if exc.provider_error_code in {ProviderErrorCode.MODEL_UNAVAILABLE, ProviderErrorCode.MODEL_DEPRECATED}:
+        return "The selected provider/model is not available for this request."
+    if exc.provider_error_code == ProviderErrorCode.CONTEXT_TOO_LARGE:
+        return "The translation request is larger than the selected provider/model can accept."
+    if exc.provider_error_code == ProviderErrorCode.SAFETY_BLOCKED:
+        return "The provider refused to produce output for this request."
+    return _EXPLANATION_BY_CODE["PROVIDER_ERROR"]
 
 
 def _classify_unhandled_error(request: Request, exc: Exception) -> ErrorClassification:
@@ -565,36 +613,26 @@ def add_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ProviderAPIError)
     async def provider_api_error_handler(request: Request, exc: ProviderAPIError):
         """Provider API call failed."""
-        logger.error("Provider API error: %s", exc)
-        details: dict[str, Any] = {"provider_error": str(exc)}
-        provider_status = getattr(exc, "status_code", None)
-        provider_model = getattr(exc, "model", None)
-        provider_key = getattr(exc, "provider", None)
-        provider_response = getattr(exc, "response_body", None)
-        if provider_status is not None:
-            details["provider_status"] = provider_status
-        if provider_model is not None:
-            details["model"] = provider_model
-        if provider_key is not None:
-            details["provider"] = provider_key
-        if provider_response is not None:
-            details["provider_response"] = provider_response
+        logger.error("Provider API error: %s details=%s", exc, getattr(exc, "details", None))
         return _json_error(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            code="PROVIDER_API_ERROR",
-            message="Translation service temporarily unavailable. Please try again later.",
-            details=details,
+            status_code=_provider_error_status(exc),
+            code="PROVIDER_ERROR",
+            message=_provider_error_message(exc),
+            explanation=_provider_error_explanation(exc),
+            details=exc.public_details(),
             category="provider",
         )
 
     @app.exception_handler(ProviderError)
     async def provider_error_handler(request: Request, exc: ProviderError):
         """Generic provider error."""
-        logger.error("Provider error: %s", exc)
+        logger.error("Provider error: %s details=%s", exc, getattr(exc, "details", None))
         return _json_error(
-            status_code=status.HTTP_502_BAD_GATEWAY,
+            status_code=_provider_error_status(exc),
             code="PROVIDER_ERROR",
-            message=str(exc),
+            message=_provider_error_message(exc),
+            explanation=_provider_error_explanation(exc),
+            details=exc.public_details(),
             category="provider",
         )
 

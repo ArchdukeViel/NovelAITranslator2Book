@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from novelai.config.settings import settings
+from novelai.core.errors import ProviderError
 from novelai.glossary import (
     GlossaryTerm,
     extract_term_context,
@@ -122,6 +123,21 @@ class TranslateStage(PipelineStage):
         if isinstance(chunk, TranslationChunk):
             return chunk.chunk_id
         return f"legacy_{chunk_index + 1:04d}"
+
+    @staticmethod
+    def _provider_error_metadata(
+        exc: ProviderError,
+        *,
+        chunk_id: str,
+        attempt_number: int,
+    ) -> dict[str, object]:
+        metadata: dict[str, object] = {
+            **exc.activity_details(),
+            "chunk_id": chunk_id,
+            "attempt_number": attempt_number,
+            "timestamp": _utc_now_iso(),
+        }
+        return metadata
 
     @staticmethod
     def _observe_chunk_context(
@@ -261,6 +277,7 @@ class TranslateStage(PipelineStage):
 
         async def worker(chunk_index: int, chunk: str | TranslationChunk) -> str:
             chunk_text = self._chunk_text(chunk)
+            chunk_id = self._chunk_id(chunk, chunk_index)
             async with semaphore:
                 async with glossary_lock:
                     selected_glossary = self._select_chunk_glossary(
@@ -271,7 +288,19 @@ class TranslateStage(PipelineStage):
                         max_context_chars=max_glossary_context_chars,
                     )
                 request = self._build_prompt_request(context, chunk_text, chunk_glossary=selected_glossary)
-                translated = await self._translate_chunk(provider_key, model, chunk_text, request=request)
+                try:
+                    translated = await self._translate_chunk(provider_key, model, chunk_text, request=request)
+                except ProviderError as exc:
+                    provider_errors = context.metadata.setdefault("provider_errors", [])
+                    error_metadata = self._provider_error_metadata(
+                        exc,
+                        chunk_id=chunk_id,
+                        attempt_number=1,
+                    )
+                    if isinstance(provider_errors, list):
+                        provider_errors.append(error_metadata)
+                    exc.details = {**exc.details, "chunk_id": chunk_id, "attempt_number": 1}
+                    raise
                 async with glossary_lock:
                     self._observe_chunk_context(chunk_text, glossary_state, chunk_index=chunk_index)
                 return translated

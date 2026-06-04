@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from novelai.activity.queue import ActivityQueueService
+from novelai.core.errors import ProviderError
 from novelai.core.platform import CrawlJobKind, JobStatus, TranslationJobKind
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class ActivityWorkerService:
@@ -67,6 +73,36 @@ class ActivityWorkerService:
         if subtype == "translating":
             return "TRANSLATION_ACTIVITY_FAILED"
         return "ACTIVITY_FAILED"
+
+    @staticmethod
+    def _provider_failure_metadata(activity: dict[str, Any], exc: BaseException) -> dict[str, Any]:
+        if not isinstance(exc, ProviderError):
+            return {}
+
+        metadata = activity.get("metadata")
+        activity_metadata = dict(metadata) if isinstance(metadata, dict) else {}
+        activity_id = str(activity.get("id") or "")
+        provider_payload = {
+            **exc.activity_details(),
+            "activity_id": activity_id,
+            "job_id": activity_id,
+            "novel_id": str(activity.get("novel_id") or ""),
+            "chapter_id": activity_metadata.get("chapter_id"),
+            "chunk_id": exc.details.get("chunk_id"),
+            "attempt_number": exc.details.get("attempt_number", int(activity.get("retry_count", 0) or 0) + 1),
+            "timestamp": _utc_now_iso(),
+        }
+        return {
+            "provider_key": exc.provider_key,
+            "provider_model": exc.provider_model,
+            "provider_error_code": exc.provider_error_code.value,
+            "retry_after_seconds": exc.retry_after_seconds,
+            "cooldown_until": exc.cooldown_until,
+            "exhausted_until": exc.exhausted_until,
+            "requests_this_minute": exc.requests_this_minute,
+            "requests_today": exc.requests_today,
+            "provider_error": provider_payload,
+        }
 
     def _resolve_translation_source_key(self, activity: dict[str, Any]) -> str:
         source_key = activity.get("source_key")
@@ -195,6 +231,7 @@ class ActivityWorkerService:
                 error=str(exc),
                 metadata={
                     **activity_metadata,
+                    **self._provider_failure_metadata(activity, exc),
                     "failure_code": self._failure_code(activity),
                     "failure_category": activity_metadata["activity_subtype"],
                     "failure_explanation": str(exc),

@@ -8,7 +8,7 @@ import pytest
 from pydantic import SecretStr
 
 from novelai.config.settings import settings
-from novelai.core.errors import ProviderError
+from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.prompts import build_json_translation_request, build_translation_request
 from novelai.providers.openai_provider import OpenAIProvider
 
@@ -19,8 +19,13 @@ class _FakeResponsesAPI:
 
     async def create(self, **kwargs):
         self._state["payload"] = kwargs
+        if "raise" in self._state:
+            raise self._state["raise"]
+        response = self._state.get("response")
+        if response is not None:
+            return response
         return SimpleNamespace(
-            output_text="translated text",
+            output_text=self._state.get("response_text", "translated text"),
             usage=SimpleNamespace(input_tokens=120, output_tokens=80, total_tokens=200),
         )
 
@@ -79,7 +84,7 @@ def test_openai_provider_uses_responses_payload(monkeypatch):
 
 
 def test_openai_provider_adds_json_schema_for_json_mode(monkeypatch):
-    state: dict[str, Any] = {}
+    state: dict[str, Any] = {"response_text": "{\"paragraphs\": []}"}
     previous_api_key = settings.PROVIDER_OPENAI_API_KEY
     settings.PROVIDER_OPENAI_API_KEY = SecretStr("test-key")
     monkeypatch.setattr(
@@ -108,7 +113,7 @@ def test_openai_provider_adds_json_schema_for_json_mode(monkeypatch):
 
 
 def test_openai_provider_accepts_custom_json_schema(monkeypatch):
-    state: dict[str, Any] = {}
+    state: dict[str, Any] = {"response_text": "{\"terms\": []}"}
     previous_api_key = settings.PROVIDER_OPENAI_API_KEY
     settings.PROVIDER_OPENAI_API_KEY = SecretStr("test-key")
     monkeypatch.setattr(
@@ -178,24 +183,188 @@ class _FakeAsyncOpenAIWithError:
         return False
 
 
-def test_openai_provider_propagates_api_error(monkeypatch):
-    """Provider should let API errors bubble up so callers can handle them."""
+class _FakeOpenAIError(Exception):
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        code: str | None = None,
+        type_: str | None = None,
+        headers: dict[str, str] | None = None,
+        body: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+        self.type = type_
+        self.headers = headers
+        self.body = body
+
+
+def _run_openai_with_state(monkeypatch: pytest.MonkeyPatch, state: dict[str, object]) -> None:
     previous = settings.PROVIDER_OPENAI_API_KEY
     settings.PROVIDER_OPENAI_API_KEY = SecretStr("test-key")
-
-    api_error = RuntimeError("quota exceeded")
     monkeypatch.setattr(
         OpenAIProvider,
         "_modern_async_client",
-        staticmethod(lambda: (lambda *, api_key: _FakeAsyncOpenAIWithError(api_key=api_key, exc=api_error))),
+        staticmethod(lambda: (lambda *, api_key: _FakeAsyncOpenAI(api_key=api_key, state=state))),
     )
-
     try:
         provider = OpenAIProvider()
-        with pytest.raises(RuntimeError, match="quota exceeded"):
-            asyncio.run(provider.translate(prompt="hello", model="gpt-5.4"))
+        asyncio.run(provider.translate(prompt="hello", model="gpt-5.4"))
     finally:
         settings.PROVIDER_OPENAI_API_KEY = previous
+
+
+def test_openai_provider_normalizes_rate_limit_retry_after(monkeypatch):
+    state: dict[str, object] = {
+        "raise": _FakeOpenAIError(
+            "429 rate limit reached for requests per minute",
+            status_code=429,
+            code="rate_limit_exceeded",
+            type_="rate_limit_error",
+            headers={"retry-after": "17", "authorization": "Bearer secret"},
+        )
+    }
+
+    with pytest.raises(ProviderError) as caught:
+        _run_openai_with_state(monkeypatch, state)
+
+    error = caught.value
+    assert error.provider_error_code == ProviderErrorCode.RATE_LIMITED
+    assert error.provider_key == "openai"
+    assert error.provider_model == "gpt-5.4"
+    assert error.retry_after_seconds == 17
+    assert error.cooldown_until is not None
+    assert "authorization" not in str(error.public_details()).lower()
+
+
+def test_openai_provider_normalizes_quota_exhaustion(monkeypatch):
+    state: dict[str, object] = {
+        "raise": _FakeOpenAIError(
+            "You exceeded your current quota, please check your plan and billing details.",
+            status_code=429,
+            code="insufficient_quota",
+            type_="insufficient_quota",
+        )
+    }
+
+    with pytest.raises(ProviderError) as caught:
+        _run_openai_with_state(monkeypatch, state)
+
+    assert caught.value.provider_error_code == ProviderErrorCode.QUOTA_EXHAUSTED
+    assert caught.value.provider_model == "gpt-5.4"
+
+
+def test_openai_provider_normalizes_model_unavailable(monkeypatch):
+    state: dict[str, object] = {
+        "raise": _FakeOpenAIError(
+            "The model `gpt-missing` does not exist or you do not have access to it.",
+            status_code=404,
+            code="model_not_found",
+            type_="invalid_request_error",
+        )
+    }
+
+    with pytest.raises(ProviderError) as caught:
+        _run_openai_with_state(monkeypatch, state)
+
+    assert caught.value.provider_error_code == ProviderErrorCode.MODEL_UNAVAILABLE
+
+
+def test_openai_provider_normalizes_context_too_large(monkeypatch):
+    state: dict[str, object] = {
+        "raise": _FakeOpenAIError(
+            "This model's maximum context length is 128000 tokens. Your messages resulted in too many tokens.",
+            status_code=400,
+            code="context_length_exceeded",
+        )
+    }
+
+    with pytest.raises(ProviderError) as caught:
+        _run_openai_with_state(monkeypatch, state)
+
+    assert caught.value.provider_error_code == ProviderErrorCode.CONTEXT_TOO_LARGE
+
+
+def test_openai_provider_normalizes_timeout(monkeypatch):
+    state: dict[str, object] = {"raise": TimeoutError("OpenAI request timed out")}
+
+    with pytest.raises(ProviderError) as caught:
+        _run_openai_with_state(monkeypatch, state)
+
+    assert caught.value.provider_error_code == ProviderErrorCode.TIMEOUT
+
+
+def test_openai_provider_normalizes_unknown_provider_error(monkeypatch):
+    state: dict[str, object] = {"raise": RuntimeError("transport exploded")}
+
+    with pytest.raises(ProviderError) as caught:
+        _run_openai_with_state(monkeypatch, state)
+
+    assert caught.value.provider_error_code == ProviderErrorCode.UNKNOWN
+    assert caught.value.provider_key == "openai"
+
+
+def test_openai_provider_normalizes_safety_refusal_response(monkeypatch):
+    state: dict[str, object] = {
+        "response": {
+            "output_text": "",
+            "output": [
+                {"content": [{"type": "refusal", "refusal": "I cannot help with that."}]}
+            ],
+        }
+    }
+
+    with pytest.raises(ProviderError) as caught:
+        _run_openai_with_state(monkeypatch, state)
+
+    assert caught.value.provider_error_code == ProviderErrorCode.SAFETY_BLOCKED
+
+
+def test_openai_provider_normalizes_empty_output(monkeypatch):
+    state: dict[str, object] = {"response": SimpleNamespace(output_text="")}
+
+    with pytest.raises(ProviderError) as caught:
+        _run_openai_with_state(monkeypatch, state)
+
+    assert caught.value.provider_error_code == ProviderErrorCode.EMPTY_OUTPUT
+
+
+def test_openai_provider_normalizes_partial_output(monkeypatch):
+    state: dict[str, object] = {
+        "response": {
+            "output_text": "partial",
+            "status": "incomplete",
+            "incomplete_details": {"reason": "max_output_tokens"},
+        }
+    }
+
+    with pytest.raises(ProviderError) as caught:
+        _run_openai_with_state(monkeypatch, state)
+
+    assert caught.value.provider_error_code == ProviderErrorCode.PARTIAL_OUTPUT
+
+
+def test_openai_provider_normalizes_invalid_json(monkeypatch):
+    state: dict[str, object] = {"response_text": "not json"}
+    previous = settings.PROVIDER_OPENAI_API_KEY
+    settings.PROVIDER_OPENAI_API_KEY = SecretStr("test-key")
+    monkeypatch.setattr(
+        OpenAIProvider,
+        "_modern_async_client",
+        staticmethod(lambda: (lambda *, api_key: _FakeAsyncOpenAI(api_key=api_key, state=state))),
+    )
+    try:
+        provider = OpenAIProvider()
+        request = build_json_translation_request(text="hello", source_language="Japanese", target_language="English")
+        with pytest.raises(ProviderError) as caught:
+            asyncio.run(provider.translate(prompt=request.text, model="gpt-5.4", request=request))
+    finally:
+        settings.PROVIDER_OPENAI_API_KEY = previous
+
+    assert caught.value.provider_error_code == ProviderErrorCode.INVALID_JSON
 
 
 def test_openai_provider_raises_when_openai_package_missing(monkeypatch):
