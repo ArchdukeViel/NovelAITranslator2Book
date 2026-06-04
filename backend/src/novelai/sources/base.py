@@ -1,18 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-import ipaddress
 import logging
-import socket
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, Protocol, TypeVar
-from urllib.parse import urlparse
 
 import httpx
 
-from novelai.core.errors import SourceError
+from novelai.infrastructure.http.client import validate_safe_url
 
 logger = logging.getLogger(__name__)
 
@@ -24,21 +21,7 @@ def validate_url(url: str) -> str:
 
     Returns the validated URL unchanged, or raises ``SourceError``.
     """
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise SourceError(f"Unsupported URL scheme: {parsed.scheme!r}. Only http/https are allowed.")
-    hostname = parsed.hostname
-    if not hostname:
-        raise SourceError(f"Invalid URL (missing hostname): {url}")
-    try:
-        resolved = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
-        for _family, _type, _proto, _canonname, sockaddr in resolved:
-            addr = ipaddress.ip_address(sockaddr[0])
-            if addr.is_private or addr.is_loopback or addr.is_reserved or addr.is_link_local:
-                raise SourceError(f"URL resolves to a private/reserved address: {hostname}")
-    except socket.gaierror:
-        pass  # DNS failure will be caught by httpx at request time
-    return url
+    return validate_safe_url(url)
 
 
 class SourceAdapter(ABC):

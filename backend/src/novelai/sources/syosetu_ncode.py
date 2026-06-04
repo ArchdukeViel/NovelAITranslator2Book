@@ -7,6 +7,7 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
+from novelai.infrastructure.http.fetch_service import FetchService, get_default_fetch_service
 from novelai.sources._helpers import (
     attribute_to_str,
     extract_image_references,
@@ -61,6 +62,9 @@ class SyosetuNcodeSource(SourceAdapter):
     )
     RUBY_REMOVE_SELECTORS = ("rt", "rp")
     SEPARATOR_LINE = "-" * 60
+
+    def __init__(self, fetch_service: FetchService | None = None) -> None:
+        self._fetch_service = fetch_service or get_default_fetch_service()
 
     @property
     def key(self) -> str:
@@ -124,55 +128,32 @@ class SyosetuNcodeSource(SourceAdapter):
         # can make httpx decode them as latin-1/cp1252 and produce mojibake.
         return response.content.decode("utf-8", errors="replace")
 
+    @staticmethod
+    def _decode_page_body(body: bytes) -> str:
+        return body.decode("utf-8", errors="replace")
+
     async def _fetch_page(self, url: str) -> str:
-        await self._rate_limit()
-        try:
-            from novelai.utils.http_client import create_async_client
-
-            async def _do_request() -> httpx.Response:
-                async with create_async_client(
-                    headers=self._request_headers(), cookies=self._build_request_cookies()
-                ) as client:
-                    resp = await client.get(url)
-                    resp.raise_for_status()
-                    return resp
-
-            resp = await self._with_retry(_do_request)
-        except httpx.HTTPStatusError as exc:
-            raise SourceError(
-                f"Failed to fetch Syosetu page from {url} (status={exc.response.status_code}). "
-                "Check that the novel or chapter URL is correct and the site is accessible."
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise SourceError(f"Failed to fetch Syosetu page from {url}: {exc}") from exc
-        html = self._decode_page_response(resp)
-        self._validate_fetched_page(url, resp.url, html)
+        result = await self._fetch_service.get_text(
+            url,
+            source_key=self.key,
+            headers=self._request_headers(),
+            cookies=self._build_request_cookies(),
+        )
+        html = self._decode_page_body(result.body)
+        self._validate_fetched_page(url, httpx.URL(result.final_url), html)
         return html
 
     async def fetch_asset(self, url: str, *, referer: str | None = None) -> dict[str, Any]:
-        await self._rate_limit()
-        try:
-            from novelai.utils.http_client import create_async_client
-
-            async def _do_request() -> httpx.Response:
-                async with create_async_client(
-                    headers=self._request_headers(referer=referer), cookies=self._build_request_cookies()
-                ) as client:
-                    response = await client.get(url)
-                    response.raise_for_status()
-                    return response
-
-            response = await self._with_retry(_do_request)
-        except httpx.HTTPStatusError as exc:
-            raise SourceError(
-                f"Failed to fetch Syosetu asset from {url} (status={exc.response.status_code})."
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise SourceError(f"Failed to fetch Syosetu asset from {url}: {exc}") from exc
-
+        response = await self._fetch_service.get_bytes(
+            url,
+            source_key=self.key,
+            referer=referer,
+            headers=self._request_headers(referer=referer),
+            cookies=self._build_request_cookies(),
+        )
         return {
-            "url": str(response.url),
-            "content": response.content,
+            "url": response.final_url,
+            "content": response.body,
             "content_type": response.headers.get("content-type"),
         }
 
