@@ -191,6 +191,8 @@ class ActivityWorkerService:
             chapters,
             provider_key=provider,
             provider_model=model,
+            job_id=str(activity.get("id") or ""),
+            activity_id=str(activity.get("id") or ""),
             force=force,
             source_language=source_language,
             target_language=target_language,
@@ -208,8 +210,21 @@ class ActivityWorkerService:
         activity_metadata = {
             "activity_subtype": self._activity_subtype(activity),
             "activity_phase": self._activity_phase(activity),
+            "current_stage": "queued",
+            "current_label": None,
+            "errors": [],
+            "warnings": [],
+            "completed": 0,
+            "total": None,
+            "paused_reason": None,
+            "resume_after": None,
+            "model_states": [],
         }
-        self.activity_log.update_activity_status(activity_id, JobStatus.RUNNING, metadata=activity_metadata)
+        self.activity_log.update_activity_status(
+            activity_id,
+            JobStatus.RUNNING,
+            metadata={**activity_metadata, "current_stage": "running"},
+        )
         try:
             if activity.get("type") == "crawl":
                 result_metadata = await self._run_crawl_activity(activity)
@@ -232,6 +247,8 @@ class ActivityWorkerService:
                 metadata={
                     **activity_metadata,
                     **self._provider_failure_metadata(activity, exc),
+                    "current_stage": "failed",
+                    "errors": [{"message": str(exc), "error_code": getattr(getattr(exc, "provider_error_code", None), "value", exc.__class__.__name__)}],
                     "failure_code": self._failure_code(activity),
                     "failure_category": activity_metadata["activity_subtype"],
                     "failure_explanation": str(exc),
@@ -244,7 +261,7 @@ class ActivityWorkerService:
         completed = self.activity_log.update_activity_status(
             activity_id,
             JobStatus.COMPLETED,
-            metadata={**activity_metadata, "result": result_metadata},
+            metadata={**activity_metadata, "current_stage": "completed", "completed": 1, "result": result_metadata},
         )
         return completed
 

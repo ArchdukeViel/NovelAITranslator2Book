@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, TypedDict
 
+from novelai.shared.pipeline import PipelineEvent
+
 
 @dataclass(frozen=True)
 class Paragraph:
@@ -133,10 +135,14 @@ class PipelineState:
 
     # Inputs (immutable)
     chapter_url: str
+    job_id: str | None = None
+    activity_id: str | None = None
     novel_id: str | None = None
     chapter_id: str | None = None
+    source_key: str | None = None
     provider_key: str | None = None
     provider_model: str | None = None
+    current_stage: str | None = None
 
     # Pipeline stages' working state
     raw_text: str | None = None
@@ -145,6 +151,12 @@ class PipelineState:
     paragraphs: list[Paragraph] = field(default_factory=list)
     translation_chunks: list[TranslationChunk] = field(default_factory=list)
     translations: list[str] = field(default_factory=list)
+    pipeline_events: list[dict[str, Any]] = field(default_factory=list)
+    chunk_states: dict[str, dict[str, Any]] = field(default_factory=dict)
+    scheduler_state: dict[str, Any] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    errors: list[dict[str, Any]] = field(default_factory=list)
+    data: dict[str, Any] = field(default_factory=dict)
 
     # Final output
     final_text: str | None = None
@@ -155,16 +167,26 @@ class PipelineState:
     def to_dict(self) -> dict[str, Any]:
         return {
             "chapter_url": self.chapter_url,
+            "job_id": self.job_id,
+            "activity_id": self.activity_id,
             "novel_id": self.novel_id,
             "chapter_id": self.chapter_id,
+            "source_key": self.source_key,
             "provider_key": self.provider_key,
             "provider_model": self.provider_model,
+            "current_stage": self.current_stage,
             "raw_text": self.raw_text,
             "normalized_text": self.normalized_text,
             "chunks": self.chunks,
             "paragraphs": [paragraph.to_dict() for paragraph in self.paragraphs],
             "translation_chunks": [chunk.to_dict() for chunk in self.translation_chunks],
             "translations": self.translations,
+            "pipeline_events": list(self.pipeline_events),
+            "chunk_states": dict(self.chunk_states),
+            "scheduler_state": dict(self.scheduler_state),
+            "warnings": list(self.warnings),
+            "errors": list(self.errors),
+            "data": dict(self.data),
             "final_text": self.final_text,
             "metadata": self.metadata,
         }
@@ -184,22 +206,84 @@ class PipelineState:
             for chunk in raw_translation_chunks
             if isinstance(chunk, dict)
         ] if isinstance(raw_translation_chunks, list) else []
+        raw_pipeline_events = data.get("pipeline_events")
+        pipeline_events: list[dict[str, Any]] = [
+            dict(event) for event in raw_pipeline_events if isinstance(event, dict)
+        ] if isinstance(raw_pipeline_events, list) else []
+        raw_chunk_states = data.get("chunk_states")
+        chunk_states: dict[str, dict[str, Any]] = {
+            str(key): dict(value)
+            for key, value in raw_chunk_states.items()
+            if isinstance(value, dict)
+        } if isinstance(raw_chunk_states, dict) else {}
+        raw_scheduler_state = data.get("scheduler_state")
+        scheduler_state: dict[str, Any] = dict(raw_scheduler_state) if isinstance(raw_scheduler_state, dict) else {}
+        raw_warnings = data.get("warnings")
+        warnings: list[str] = [str(item) for item in raw_warnings] if isinstance(raw_warnings, list) else []
+        raw_errors = data.get("errors")
+        errors: list[dict[str, Any]] = [
+            dict(item) for item in raw_errors if isinstance(item, dict)
+        ] if isinstance(raw_errors, list) else []
+        raw_data = data.get("data")
+        context_data: dict[str, Any] = dict(raw_data) if isinstance(raw_data, dict) else {}
 
         return cls(
             chapter_url=data["chapter_url"],
+            job_id=data.get("job_id"),
+            activity_id=data.get("activity_id"),
             novel_id=data.get("novel_id"),
             chapter_id=data.get("chapter_id"),
+            source_key=data.get("source_key"),
             provider_key=data.get("provider_key"),
             provider_model=data.get("provider_model"),
+            current_stage=data.get("current_stage"),
             raw_text=data.get("raw_text"),
             normalized_text=data.get("normalized_text"),
             chunks=data.get("chunks") or [],
             paragraphs=paragraphs,
             translation_chunks=translation_chunks,
             translations=data.get("translations") or [],
+            pipeline_events=pipeline_events,
+            chunk_states=chunk_states,
+            scheduler_state=scheduler_state,
+            warnings=warnings,
+            errors=errors,
+            data=context_data,
             final_text=data.get("final_text"),
             metadata=data.get("metadata") or {},
         )
+
+    def trace_event(
+        self,
+        *,
+        stage_name: str,
+        status_before: str | None = None,
+        status_after: str | None = None,
+        chunk_id: str | None = None,
+        warning_code: str | None = None,
+        error_code: str | None = None,
+        message: str | None = None,
+    ) -> dict[str, Any]:
+        event = PipelineEvent(
+            job_id=self.job_id,
+            activity_id=self.activity_id,
+            novel_id=self.novel_id,
+            chapter_id=self.chapter_id,
+            source_key=self.source_key,
+            provider_key=self.provider_key,
+            provider_model=self.provider_model,
+            credential_id=self.metadata.get("credential_id") if isinstance(self.metadata.get("credential_id"), str) else None,
+            credential_owner_user_id=self.metadata.get("credential_owner_user_id") if isinstance(self.metadata.get("credential_owner_user_id"), str) else None,
+            requesting_user_id=self.metadata.get("requesting_user_id") if isinstance(self.metadata.get("requesting_user_id"), str) else None,
+            chunk_id=chunk_id,
+            stage_name=stage_name,
+            status_before=status_before,
+            status_after=status_after,
+            warning_code=warning_code,
+            error_code=error_code,
+            message=message,
+        ).to_dict()
+        return event
 
 
 @dataclass
@@ -208,16 +292,26 @@ class PipelineResult:
 
     final_text: str
     chapter_url: str
+    job_id: str | None = None
+    activity_id: str | None = None
     novel_id: str | None = None
     chapter_id: str | None = None
+    source_key: str | None = None
     provider_key: str | None = None
     provider_model: str | None = None
+    current_stage: str | None = None
     raw_text: str | None = None
     normalized_text: str | None = None
     chunks: list[str] = field(default_factory=list)
     paragraphs: list[Paragraph] = field(default_factory=list)
     translation_chunks: list[TranslationChunk] = field(default_factory=list)
     translations: list[str] = field(default_factory=list)
+    pipeline_events: list[dict[str, Any]] = field(default_factory=list)
+    chunk_states: dict[str, dict[str, Any]] = field(default_factory=dict)
+    scheduler_state: dict[str, Any] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    errors: list[dict[str, Any]] = field(default_factory=list)
+    data: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -226,16 +320,26 @@ class PipelineResult:
         return cls(
             final_text=state.final_text or "",
             chapter_url=state.chapter_url,
+            job_id=state.job_id,
+            activity_id=state.activity_id,
             novel_id=state.novel_id,
             chapter_id=state.chapter_id,
+            source_key=state.source_key,
             provider_key=state.provider_key,
             provider_model=state.provider_model,
+            current_stage=state.current_stage,
             raw_text=state.raw_text,
             normalized_text=state.normalized_text,
             chunks=state.chunks,
             paragraphs=state.paragraphs,
             translation_chunks=state.translation_chunks,
             translations=state.translations,
+            pipeline_events=state.pipeline_events,
+            chunk_states=state.chunk_states,
+            scheduler_state=state.scheduler_state,
+            warnings=state.warnings,
+            errors=state.errors,
+            data=state.data,
             metadata=state.metadata,
         )
 

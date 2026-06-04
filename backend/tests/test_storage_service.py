@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from novelai.core.chapter_state import ChapterState
+from novelai.shared.pipeline import SchedulerModelState, SchedulerModelStatus
 from novelai.storage.service import StorageService
 from tests.conftest import TESTS_TMP_ROOT
 
@@ -347,6 +348,15 @@ def test_chapter_state_transitions(storage):
     assert len(state2["transitions"]) == 2
 
 
+def test_chapter_state_can_represent_partial_translation(storage):
+    storage.update_chapter_state("novel1", "ch1", ChapterState.TRANSLATED_PARTIAL)
+
+    state = storage.load_chapter_state("novel1", "ch1")
+
+    assert state is not None
+    assert state["current_state"] == ChapterState.TRANSLATED_PARTIAL
+
+
 def test_chapter_state_with_error(storage):
     """Test chapter state transitions with errors."""
     storage.update_chapter_state(
@@ -356,6 +366,82 @@ def test_chapter_state_with_error(storage):
     state = storage.load_chapter_state("novel1", "ch1")
     assert state["error_count"] == 1
     assert state["transitions"][-1].error == "API timeout"
+
+
+def test_pipeline_event_storage_filters_by_job_and_chapter(storage):
+    stored = storage.append_pipeline_event(
+        {
+            "job_id": "job_123",
+            "activity_id": "job_123",
+            "novel_id": "novel1",
+            "chapter_id": "ch1",
+            "source_key": "kakuyomu",
+            "provider_key": "gemini",
+            "provider_model": "gemini-3.1-flash-lite",
+            "chunk_id": "c0002",
+            "stage_name": "TranslateStage",
+            "status_before": "translating",
+            "status_after": "needs_retry",
+            "error_code": "provider_rate_limited",
+            "message": "Model cooling down for 21 seconds",
+        }
+    )
+
+    assert stored["timestamp"]
+    events = storage.list_pipeline_events(job_id="job_123", chapter_id="ch1")
+    assert len(events) == 1
+    assert events[0]["chunk_id"] == "c0002"
+    assert events[0]["error_code"] == "provider_rate_limited"
+
+
+def test_chunk_status_persistence_records_provider_model(storage):
+    stored = storage.upsert_chunk_state(
+        {
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "chapter_ids": ["ch1"],
+            "paragraph_ids": ["p0001"],
+            "provider_key": "openai",
+            "provider_model": "gpt-5.4",
+            "attempt_number": 1,
+            "status": "translated",
+        }
+    )
+
+    assert stored["created_at"]
+    assert stored["updated_at"]
+    states = storage.load_chunk_states(novel_id="novel1", chapter_id="ch1")
+    assert states == [stored]
+
+
+def test_scheduler_state_can_represent_cooldown_and_exhaustion(storage):
+    saved = storage.save_scheduler_state(
+        "job_123",
+        [
+            SchedulerModelState(
+                provider_key="gemini",
+                provider_model="gemini-3.1-flash-lite",
+                priority_order=1,
+                cooldown_until="2026-06-04T12:01:00Z",
+                last_error_code="provider_rate_limited",
+                last_error_message="Rate limited",
+                status=SchedulerModelStatus.COOLING_DOWN.value,
+            ),
+            {
+                "provider_key": "openai",
+                "provider_model": "gpt-5.4",
+                "priority_order": 2,
+                "exhausted_until": "2026-06-05T00:00:00Z",
+                "last_error_code": "provider_quota_exhausted",
+                "status": SchedulerModelStatus.DAILY_EXHAUSTED.value,
+            },
+        ],
+    )
+
+    loaded = storage.load_scheduler_state("job_123")
+    assert loaded == saved
+    statuses = {item["status"] for item in loaded["model_states"]}
+    assert statuses == {"cooling_down", "daily_exhausted"}
 
 
 def test_get_chapters_by_state(storage):

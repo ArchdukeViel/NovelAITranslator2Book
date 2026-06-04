@@ -3,10 +3,17 @@
 import pytest
 
 from novelai.translation.pipeline.context import PipelineState, TranslationChunk
+from novelai.translation.pipeline.pipeline import TranslationPipeline
+from novelai.translation.pipeline.stages.base import PipelineStage
 from novelai.translation.pipeline.stages.fetch import FetchStage
 from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.segment import SegmentStage, SmartSegmentStage
 from tests.conftest import MockSourceAdapter
+
+
+class _FailingStage(PipelineStage):
+    async def run(self, context: PipelineState) -> PipelineState:
+        raise RuntimeError("stage boom")
 
 
 @pytest.fixture
@@ -90,6 +97,43 @@ async def test_segment_stage_empty():
     assert len(result.chunks) == 0
     assert result.paragraphs == []
     assert result.translation_chunks == []
+
+
+@pytest.mark.asyncio
+async def test_pipeline_records_stage_transition_events():
+    segment = SegmentStage()
+    pipeline = TranslationPipeline([segment])
+    context = PipelineState(
+        chapter_url="test",
+        job_id="job_1",
+        activity_id="activity_1",
+        novel_id="novel1",
+        chapter_id="chapter_001",
+        source_key="kakuyomu",
+    )
+    context.normalized_text = "Paragraph 1"
+
+    result = await pipeline.run(context)
+
+    assert [event["status_after"] for event in result.pipeline_events] == ["running", "segmented"]
+    assert result.pipeline_events[0]["job_id"] == "job_1"
+    assert result.pipeline_events[0]["activity_id"] == "activity_1"
+    assert result.pipeline_events[0]["source_key"] == "kakuyomu"
+    assert result.pipeline_events[1]["stage_name"] == "SegmentStage"
+    assert result.pipeline_events[1]["timestamp"]
+
+
+@pytest.mark.asyncio
+async def test_pipeline_records_failed_stage_event():
+    pipeline = TranslationPipeline([_FailingStage()])
+    context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
+
+    with pytest.raises(RuntimeError, match="stage boom"):
+        await pipeline.run(context)
+
+    assert context.errors[0]["stage_name"] == "_FailingStage"
+    assert context.pipeline_events[-1]["status_after"] == "failed"
+    assert context.pipeline_events[-1]["error_code"] == "RuntimeError"
 
 
 @pytest.mark.asyncio

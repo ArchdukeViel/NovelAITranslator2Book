@@ -15,11 +15,20 @@ def _utc_now() -> datetime:
 class ChapterState(Enum):
     """Enum representing the processing state of a chapter."""
 
+    PENDING = "pending"
     SCRAPED = "scraped"  # Chapter content fetched from source
+    FETCHED = "fetched"
     PARSED = "parsed"  # Raw text parsed and normalized
+    QUALITY_FAILED = "quality_failed"
     SEGMENTED = "segmented"  # Text split into translatable chunks
+    TRANSLATING = "translating"
+    TRANSLATED_PARTIAL = "translated_partial"
     TRANSLATED = "translated"  # Chunks translated
+    QA_FAILED = "qa_failed"
+    NEEDS_RETRY = "needs_retry"
+    NEEDS_REVIEW = "needs_review"
     EXPORTED = "exported"  # Final content exported to file
+    FAILED = "failed"
 
 
 @dataclass
@@ -67,10 +76,15 @@ class ChapterMetadata:
     def can_proceed_to(self, target_state: ChapterState) -> bool:
         """Check if chapter can proceed to target state based on current state."""
         state_order = [
+            ChapterState.PENDING,
             ChapterState.SCRAPED,
+            ChapterState.FETCHED,
             ChapterState.PARSED,
             ChapterState.SEGMENTED,
+            ChapterState.TRANSLATING,
+            ChapterState.TRANSLATED_PARTIAL,
             ChapterState.TRANSLATED,
+            ChapterState.NEEDS_REVIEW,
             ChapterState.EXPORTED,
         ]
 

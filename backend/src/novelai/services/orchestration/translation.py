@@ -23,6 +23,35 @@ _GENERIC_TITLE_RE = re.compile(
 )
 
 
+def _pipeline_context_from_exception(exc: BaseException) -> Any | None:
+    context = getattr(exc, "pipeline_context", None)
+    return context if context is not None else None
+
+
+def _pipeline_events_from_exception(exc: BaseException) -> list[dict[str, Any]]:
+    events = getattr(exc, "pipeline_events", None)
+    if not isinstance(events, list):
+        context = _pipeline_context_from_exception(exc)
+        events = getattr(context, "pipeline_events", None)
+    if not isinstance(events, list):
+        return []
+    return [dict(event) for event in events if isinstance(event, dict)]
+
+
+def _failed_stage_name_from_exception(exc: BaseException) -> str:
+    failed_stage = getattr(exc, "failed_stage_name", None)
+    if isinstance(failed_stage, str) and failed_stage.strip():
+        return failed_stage.strip()
+    for event in reversed(_pipeline_events_from_exception(exc)):
+        if event.get("status_after") == "failed" and isinstance(event.get("stage_name"), str):
+            return str(event["stage_name"])
+    context = _pipeline_context_from_exception(exc)
+    current_stage = getattr(context, "current_stage", None)
+    if isinstance(current_stage, str) and current_stage.strip():
+        return current_stage.strip()
+    return "Pipeline"
+
+
 def _metadata_translation_prompt(source_text: str, field: str) -> str:
     target_language = settings.TRANSLATION_TARGET_LANGUAGE or "English"
     normalized_field = field.strip().lower()
@@ -748,6 +777,8 @@ async def translate_chapters(
     chapters: str,
     provider_key: str | None = None,
     provider_model: str | None = None,
+    job_id: str | None = None,
+    activity_id: str | None = None,
     force: bool = False,
     source_language: str | None = None,
     target_language: str | None = None,
@@ -824,7 +855,7 @@ async def translate_chapters(
         prev_state = self.storage.load_chapter_state(novel_id, chapter_id)
         self.storage.save_chapter_state(
             novel_id, chapter_id,
-            _make_state_data(ChapterState.SEGMENTED, previous=prev_state),
+            _make_state_data(ChapterState.TRANSLATING, previous=prev_state),
         )
 
         try:
@@ -848,8 +879,11 @@ async def translate_chapters(
             result = await self.translation.translate_chapter(
                 source_adapter=source,
                 chapter_url=chapter_url,
+                job_id=job_id,
+                activity_id=activity_id,
                 novel_id=novel_id,
                 chapter_id=chapter_id,
+                source_key=source_key,
                 provider_key=effective_provider_key,
                 provider_model=effective_provider_model,
                 source_language=effective_source_language,
@@ -883,13 +917,61 @@ async def translate_chapters(
                 novel_id, chapter_id,
                 _make_state_data(ChapterState.TRANSLATED, previous=prev_state),
             )
+            self.storage.append_pipeline_events(result.pipeline_events)
+            for chunk_state in result.chunk_states.values():
+                self.storage.upsert_chunk_state(chunk_state)
             self.storage.create_checkpoint(novel_id, chapter_id, "translated")
         except Exception as exc:
             logger.error("Failed to translate chapter %s/%s: %s", novel_id, chapter_id, exc)
+            provider_code = getattr(getattr(exc, "provider_error_code", None), "value", None)
+            failed_state = ChapterState.NEEDS_RETRY if isinstance(provider_code, str) else ChapterState.FAILED
             self.storage.save_chapter_state(
                 novel_id, chapter_id,
-                _make_state_data(ChapterState.SEGMENTED, error=str(exc), previous=prev_state),
+                _make_state_data(failed_state, error=str(exc), previous=prev_state),
             )
+            details = getattr(exc, "details", None)
+            failed_chunk_id = details.get("chunk_id") if isinstance(details, dict) else None
+            failed_context = _pipeline_context_from_exception(exc)
+            failed_events = _pipeline_events_from_exception(exc)
+            if failed_events:
+                self.storage.append_pipeline_events(failed_events)
+            failed_event_recorded = any(event.get("status_after") == "failed" for event in failed_events)
+            chunk_states = getattr(failed_context, "chunk_states", None)
+            if isinstance(chunk_states, dict):
+                for chunk_state in chunk_states.values():
+                    if isinstance(chunk_state, dict):
+                        self.storage.upsert_chunk_state(chunk_state)
+            if isinstance(failed_chunk_id, str) and failed_chunk_id.strip():
+                self.storage.upsert_chunk_state(
+                    {
+                        "chunk_id": failed_chunk_id,
+                        "novel_id": novel_id,
+                        "chapter_ids": [chapter_id],
+                        "provider_key": getattr(exc, "provider_key", effective_provider_key),
+                        "provider_model": getattr(exc, "provider_model", effective_provider_model),
+                        "attempt_number": details.get("attempt_number", 1) if isinstance(details, dict) else 1,
+                        "status": "needs_retry" if isinstance(provider_code, str) else "failed",
+                        "error_code": provider_code or exc.__class__.__name__,
+                    }
+                )
+            if not failed_event_recorded:
+                self.storage.append_pipeline_event(
+                    {
+                        "job_id": job_id,
+                        "activity_id": activity_id,
+                        "novel_id": novel_id,
+                        "chapter_id": chapter_id,
+                        "source_key": source_key,
+                        "provider_key": getattr(exc, "provider_key", effective_provider_key),
+                        "provider_model": getattr(exc, "provider_model", effective_provider_model),
+                        "chunk_id": failed_chunk_id,
+                        "stage_name": _failed_stage_name_from_exception(exc),
+                        "status_before": "running",
+                        "status_after": "needs_retry" if isinstance(provider_code, str) else "failed",
+                        "error_code": provider_code or exc.__class__.__name__,
+                        "message": str(exc),
+                    }
+                )
             self.storage.create_checkpoint(novel_id, chapter_id, "failed")
             raise
 

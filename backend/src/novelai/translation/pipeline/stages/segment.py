@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from novelai.config.settings import settings
+from novelai.shared.pipeline import ChunkTranslationStatus
 from novelai.translation.pipeline.context import Paragraph, PipelineContext, TranslationChunk
 from novelai.translation.pipeline.stages.base import PipelineStage
 
@@ -381,6 +382,17 @@ class SmartSegmentStage(PipelineStage):
         context.paragraphs = paragraphs
         context.translation_chunks = chunks
         context.chunks = [chunk.source_text for chunk in chunks]
+        context.chunk_states = {
+            chunk.chunk_id: {
+                "chunk_id": chunk.chunk_id,
+                "novel_id": chunk.novel_id,
+                "chapter_ids": list(chunk.chapter_ids),
+                "paragraph_ids": list(chunk.paragraph_ids),
+                "status": ChunkTranslationStatus.PENDING.value,
+                "attempt_number": 0,
+            }
+            for chunk in chunks
+        }
         context.metadata["segmentation"] = {
             "stage": "SmartSegmentStage",
             "target_chars_per_chunk": self.target_chars,
@@ -389,6 +401,9 @@ class SmartSegmentStage(PipelineStage):
             "chunk_count": len(chunks),
             "warnings": warnings,
         }
+        if warnings:
+            context.warnings.extend(warnings)
+            context.metadata["warnings"] = context.warnings
 
         logger.info("Segmented %s paragraphs into %s chunks", len(paragraphs), len(chunks))
         if warnings:

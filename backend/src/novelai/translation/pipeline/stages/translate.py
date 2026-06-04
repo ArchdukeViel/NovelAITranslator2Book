@@ -18,6 +18,7 @@ from novelai.translation.pipeline.context import PipelineContext, TranslationChu
 from novelai.translation.pipeline.stages.base import PipelineStage
 from novelai.prompts import build_translation_request
 from novelai.prompts.models import TranslationRequest
+from novelai.shared.pipeline import ChunkTranslationStatus
 from novelai.providers.base import TranslationProvider
 from novelai.providers.model_fallbacks import model_candidates
 from novelai.services.preferences_service import PreferencesService
@@ -202,7 +203,7 @@ class TranslateStage(PipelineStage):
         model: str,
         chunk: str,
         request: TranslationRequest | None = None,
-    ) -> str:
+    ) -> tuple[str, str, str]:
         provider_key, model = self._resolve_provider_and_model(provider_key, model)
         provider = self._provider_factory(provider_key)
         try:
@@ -217,7 +218,7 @@ class TranslateStage(PipelineStage):
             cached = self._cache.get(cache_key, provider.key, candidate_model)
             if cached is not None:
                 logger.debug("Cache hit for chunk (len=%s) using %s/%s", len(chunk), provider.key, candidate_model)
-                return cached
+                return cached, provider.key, candidate_model
 
             try:
                 logger.debug("Translating chunk (len=%s) with %s/%s", len(chunk), provider_key, candidate_model)
@@ -251,7 +252,7 @@ class TranslateStage(PipelineStage):
 
             self._usage.record(usage_entry)
             self._cache.set(cache_key, provider.key, candidate_model, text)
-            return text
+            return text, provider.key, candidate_model
 
         if last_error is not None:
             raise last_error
@@ -289,7 +290,22 @@ class TranslateStage(PipelineStage):
                     )
                 request = self._build_prompt_request(context, chunk_text, chunk_glossary=selected_glossary)
                 try:
-                    translated = await self._translate_chunk(provider_key, model, chunk_text, request=request)
+                    translated, used_provider_key, used_provider_model = await self._translate_chunk(
+                        provider_key,
+                        model,
+                        chunk_text,
+                        request=request,
+                    )
+                    context.chunk_states[chunk_id] = {
+                        **context.chunk_states.get(chunk_id, {}),
+                        "chunk_id": chunk_id,
+                        "novel_id": context.novel_id or "unknown_novel",
+                        "provider_key": used_provider_key,
+                        "provider_model": used_provider_model,
+                        "attempt_number": int(context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0) + 1,
+                        "status": ChunkTranslationStatus.TRANSLATED.value,
+                        "error_code": None,
+                    }
                 except ProviderError as exc:
                     provider_errors = context.metadata.setdefault("provider_errors", [])
                     error_metadata = self._provider_error_metadata(
@@ -300,6 +316,16 @@ class TranslateStage(PipelineStage):
                     if isinstance(provider_errors, list):
                         provider_errors.append(error_metadata)
                     exc.details = {**exc.details, "chunk_id": chunk_id, "attempt_number": 1}
+                    context.chunk_states[chunk_id] = {
+                        **context.chunk_states.get(chunk_id, {}),
+                        "chunk_id": chunk_id,
+                        "novel_id": context.novel_id or "unknown_novel",
+                        "provider_key": exc.provider_key,
+                        "provider_model": exc.provider_model,
+                        "attempt_number": 1,
+                        "status": ChunkTranslationStatus.NEEDS_RETRY.value,
+                        "error_code": exc.provider_error_code.value,
+                    }
                     raise
                 async with glossary_lock:
                     self._observe_chunk_context(chunk_text, glossary_state, chunk_index=chunk_index)

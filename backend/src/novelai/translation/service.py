@@ -42,8 +42,11 @@ class TranslationService:
         *,
         source_adapter: SourceAdapter | None,
         chapter_url: str,
+        job_id: str | None = None,
+        activity_id: str | None = None,
         novel_id: str | None = None,
         chapter_id: str | None = None,
+        source_key: str | None = None,
         provider_key: str | None = None,
         provider_model: str | None = None,
         source_language: str | None = None,
@@ -71,8 +74,11 @@ class TranslationService:
         # Create pipeline state (internal working context)
         state = PipelineState(
             chapter_url=chapter_url,
+            job_id=job_id,
+            activity_id=activity_id,
             novel_id=novel_id,
             chapter_id=chapter_id,
+            source_key=source_key,
             provider_key=provider_key,
             provider_model=provider_model,
         )
@@ -81,10 +87,16 @@ class TranslationService:
         # (source_adapter is not part of the main state to keep it serializable)
         if source_adapter is not None:
             state.metadata["_source_adapter"] = source_adapter
+        if job_id is not None:
+            state.metadata["job_id"] = job_id
+        if activity_id is not None:
+            state.metadata["activity_id"] = activity_id
         if novel_id is not None:
             state.metadata["novel_id"] = novel_id
         if chapter_id is not None:
             state.metadata["chapter_id"] = chapter_id
+        if source_key is not None:
+            state.metadata["source_key"] = source_key
         if source_language is not None:
             state.metadata["source_language"] = source_language
         if target_language is not None:

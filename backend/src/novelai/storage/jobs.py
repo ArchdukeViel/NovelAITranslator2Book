@@ -336,10 +336,15 @@ def rollback_to_state(self: Any, novel_id: str, chapter_id: str, target_state: C
 
     # Check if rolling back
     state_order = [
+        ChapterState.PENDING,
         ChapterState.SCRAPED,
+        ChapterState.FETCHED,
         ChapterState.PARSED,
         ChapterState.SEGMENTED,
+        ChapterState.TRANSLATING,
+        ChapterState.TRANSLATED_PARTIAL,
         ChapterState.TRANSLATED,
+        ChapterState.NEEDS_REVIEW,
         ChapterState.EXPORTED,
     ]
 

@@ -82,6 +82,16 @@ from novelai.storage.translations import (
     save_edited_translation,
     save_translated_chapter,
 )
+from novelai.storage.traceability import (
+    _trace_dir,
+    append_pipeline_event,
+    append_pipeline_events,
+    list_pipeline_events,
+    load_chunk_states,
+    load_scheduler_state,
+    save_scheduler_state,
+    upsert_chunk_state,
+)
 
 
 class StorageService:
@@ -329,3 +339,11 @@ class StorageService:
     get_chapters_ready_for_export = get_chapters_ready_for_export
     save_glossary = save_glossary
     load_glossary = load_glossary
+    _trace_dir = _trace_dir
+    append_pipeline_event = append_pipeline_event
+    append_pipeline_events = append_pipeline_events
+    list_pipeline_events = list_pipeline_events
+    upsert_chunk_state = upsert_chunk_state
+    load_chunk_states = load_chunk_states
+    save_scheduler_state = save_scheduler_state
+    load_scheduler_state = load_scheduler_state

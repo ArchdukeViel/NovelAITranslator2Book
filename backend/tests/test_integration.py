@@ -1,12 +1,18 @@
 """Integration tests for the full pipeline."""
 
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 from zipfile import ZipFile
 
 import pytest
 
 from novelai.runtime.bootstrap import bootstrap
 from novelai.core.chapter_state import ChapterState
+from novelai.core.errors import ProviderError, ProviderErrorCode
+from novelai.providers.base import TranslationProvider
+from novelai.services.novel_orchestration_service import NovelOrchestrationService
+from novelai.translation.service import TranslationService
 from novelai.translation.pipeline.context import PipelineState
 from novelai.translation.pipeline.pipeline import TranslationPipeline
 from novelai.translation.pipeline.stages.fetch import FetchStage
@@ -36,12 +42,168 @@ class FallbackPipelineProvider:
         return {"text": f"[{model}] {prompt}", "metadata": {"usage": {"total_tokens": 7}}}
 
 
+class TraceFailingProvider(TranslationProvider):
+    @property
+    def key(self) -> str:
+        return "mock"
+
+    def available_models(self) -> list[str]:
+        return ["mock-1.0"]
+
+    async def translate(
+        self,
+        prompt: str,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> Mapping[str, Any]:
+        raise ProviderError(
+            code=ProviderErrorCode.RATE_LIMITED,
+            provider_key="mock",
+            provider_model=model or "mock-1.0",
+            message="model is cooling down",
+            retry_after_seconds=21,
+        )
+
+
 @pytest.fixture
 def integration_fixture():
     """Create integration test fixture."""
     fixture = create_test_fixture()
     yield fixture
     fixture.cleanup()
+
+
+def _seed_trace_chapter(fixture: Any, novel_id: str = "trace_novel") -> None:
+    fixture.storage.save_metadata(
+        novel_id,
+        {
+            "novel_id": novel_id,
+            "title": "Trace Novel",
+            "source": "mock_source",
+            "source_language": "Japanese",
+            "chapters": [
+                {
+                    "id": "1",
+                    "num": 1,
+                    "title": "Chapter 1",
+                    "url": f"http://example.com/{novel_id}/1",
+                }
+            ],
+        },
+    )
+    fixture.storage.save_chapter(
+        novel_id,
+        "1",
+        "First paragraph.\n\nSecond paragraph.",
+        title="Chapter 1",
+        source_key="mock_source",
+        source_url=f"http://example.com/{novel_id}/1",
+    )
+
+
+def _trace_orchestrator(fixture: Any, provider: TranslationProvider | None = None) -> NovelOrchestrationService:
+    pipeline = TranslationPipeline(
+        stages=[
+            FetchStage(),
+            ParseStage(),
+            SmartSegmentStage(),
+            TranslateStage(
+                provider_factory=lambda key: provider or fixture.mock_provider,
+                cache=fixture.cache,
+                settings_service=fixture.settings_service,
+                usage_service=fixture.usage_service,
+            ),
+            PostProcessStage(glossary=fixture.mock_glossary),
+        ]
+    )
+    return NovelOrchestrationService(
+        storage=fixture.storage,
+        translation=TranslationService(pipeline=pipeline),
+        source_factory=lambda key: fixture.mock_source,
+        settings_service=fixture.settings_service,
+        translation_cache=fixture.cache,
+        usage_service=fixture.usage_service,
+    )
+
+
+async def _run_trace_failure(
+    fixture: Any,
+    orchestrator: NovelOrchestrationService,
+    *,
+    job_id: str,
+) -> list[dict[str, Any]]:
+    _seed_trace_chapter(fixture)
+    with pytest.raises(Exception):
+        await orchestrator.translate_chapters(
+            source_key="mock_source",
+            novel_id="trace_novel",
+            chapters="1",
+            provider_key="mock",
+            provider_model="mock-1.0",
+            job_id=job_id,
+            activity_id=f"activity_{job_id}",
+            force=True,
+            source_language="Japanese",
+            target_language="English",
+        )
+    return fixture.storage.list_pipeline_events(
+        job_id=job_id,
+        novel_id="trace_novel",
+        chapter_id="1",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("stage_cls", "expected_stage"),
+    [
+        (FetchStage, "FetchStage"),
+        (ParseStage, "ParseStage"),
+        (SmartSegmentStage, "SmartSegmentStage"),
+    ],
+)
+async def test_orchestration_failure_persists_actual_failed_stage(
+    integration_fixture,
+    monkeypatch,
+    stage_cls,
+    expected_stage,
+):
+    fixture = integration_fixture
+
+    async def fail_stage(self, context):
+        raise RuntimeError(f"{expected_stage} exploded")
+
+    monkeypatch.setattr(stage_cls, "run", fail_stage)
+
+    events = await _run_trace_failure(
+        fixture,
+        _trace_orchestrator(fixture),
+        job_id=f"job_{expected_stage.lower()}",
+    )
+
+    failed_events = [event for event in events if event.get("status_after") == "failed"]
+    assert failed_events
+    assert failed_events[-1]["stage_name"] == expected_stage
+    assert failed_events[-1]["message"] == f"{expected_stage} exploded"
+
+
+@pytest.mark.asyncio
+async def test_orchestration_provider_failure_persists_translate_stage(integration_fixture):
+    fixture = integration_fixture
+
+    events = await _run_trace_failure(
+        fixture,
+        _trace_orchestrator(fixture, provider=TraceFailingProvider()),
+        job_id="job_translate_provider_failure",
+    )
+
+    failed_events = [event for event in events if event.get("status_after") == "failed"]
+    assert failed_events
+    assert failed_events[-1]["stage_name"] == "TranslateStage"
+    assert failed_events[-1]["error_code"] == ProviderErrorCode.RATE_LIMITED.value
+    assert failed_events[-1]["provider_key"] == "mock"
+    assert failed_events[-1]["provider_model"] == "mock-1.0"
 
 
 @pytest.mark.asyncio
@@ -83,6 +245,13 @@ async def test_full_translation_pipeline(integration_fixture):
     assert result.final_text is not None
     assert "[TRANSLATED]" in result.final_text
     assert fixture.mock_provider.call_count > 0
+    assert result.pipeline_events
+    assert any(event.get("stage_name") == "TranslateStage" for event in result.pipeline_events)
+    assert result.chunk_states
+    first_chunk_state = next(iter(result.chunk_states.values()))
+    assert first_chunk_state["provider_key"] == "mock"
+    assert first_chunk_state["provider_model"] == "gpt-5.4"
+    assert first_chunk_state["status"] == "translated"
 
 
 @pytest.mark.asyncio
