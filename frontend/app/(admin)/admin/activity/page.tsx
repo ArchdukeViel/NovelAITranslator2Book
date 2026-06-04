@@ -5,25 +5,24 @@ import { ExternalLink, RotateCw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+import { EmptyState } from "@/components/admin/empty-state";
+import { ErrorBanner } from "@/components/admin/error-banner";
+import { LoadingRows } from "@/components/admin/loading-rows";
 import { PageHeading } from "@/components/admin/page-heading";
+import { SortableHeader } from "@/components/admin/sortable-header";
 import { StatusBadge } from "@/components/admin/status-badge";
+import { TableCheckbox } from "@/components/admin/table-checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
+import { compareSortableValues, useSortableTable } from "@/hooks/use-sortable-table";
 import { activityPhaseSummary, groupActivityByNovel, type ActivityGroup } from "@/lib/activity";
 import { api } from "@/lib/api";
-import { formatDate } from "@/lib/utils";
+import { formatDateTime } from "@/lib/format";
 
 const statusOptions = ["", "pending", "running", "completed", "failed", "cancelled"];
 type ActivitySortKey = "novel" | "phases" | "status" | "updated";
-type SortDirection = "asc" | "desc";
-
-function sortPointer(key: ActivitySortKey, activeKey: ActivitySortKey, direction: SortDirection) {
-  if (key !== activeKey) {
-    return "";
-  }
-  return direction === "asc" ? " \u25B2" : " \u25BC";
-}
 
 function activitySortValue(group: ActivityGroup, key: ActivitySortKey) {
   if (key === "novel") {
@@ -43,8 +42,8 @@ export default function ActivityPage() {
   const [status, setStatus] = React.useState("");
   const [novelId, setNovelId] = React.useState("");
   const [selectedActivityIds, setSelectedActivityIds] = React.useState<Set<string>>(new Set());
-  const [sortKey, setSortKey] = React.useState<ActivitySortKey>("updated");
-  const [sortDirection, setSortDirection] = React.useState<SortDirection>("desc");
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
+  const { sortKey, sortDirection, handleSort } = useSortableTable<ActivitySortKey>("updated", "desc");
   const activity = useQuery({
     queryKey: ["activity", status, novelId],
     queryFn: () =>
@@ -62,11 +61,7 @@ export default function ActivityPage() {
     return [...groups].sort((left, right) => {
       const leftValue = activitySortValue(left, sortKey);
       const rightValue = activitySortValue(right, sortKey);
-      const direction = sortDirection === "asc" ? 1 : -1;
-      if (typeof leftValue === "number" && typeof rightValue === "number") {
-        return (leftValue - rightValue) * direction;
-      }
-      return String(leftValue).localeCompare(String(rightValue)) * direction;
+      return compareSortableValues(leftValue, rightValue, sortDirection);
     });
   }, [groups, sortDirection, sortKey]);
   const allRowsSelected = groups.length > 0 && groups.every((group) => selectedActivityIds.has(group.id));
@@ -82,6 +77,7 @@ export default function ActivityPage() {
     },
     onSuccess: () => {
       setSelectedActivityIds(new Set());
+      setDeleteDialogOpen(false);
       void queryClient.invalidateQueries({ queryKey: ["activity"] });
     }
   });
@@ -102,24 +98,6 @@ export default function ActivityPage() {
     });
   };
 
-  const handleSort = (key: ActivitySortKey) => {
-    if (sortKey === key) {
-      setSortDirection((direction) => (direction === "asc" ? "desc" : "asc"));
-      return;
-    }
-    setSortKey(key);
-    setSortDirection(key === "updated" ? "desc" : "asc");
-  };
-
-  const header = (label: string, key: ActivitySortKey) => (
-    <th className="px-4 py-3">
-      <button type="button" className="font-semibold uppercase hover:text-foreground" onClick={() => handleSort(key)}>
-        {label}
-        {sortPointer(key, sortKey, sortDirection)}
-      </button>
-    </th>
-  );
-
   return (
     <>
       <PageHeading title="Activity Log" description="Track crawler and translation activity started from Add Novel and Library." />
@@ -137,7 +115,7 @@ export default function ActivityPage() {
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => deleteActivities.mutate(Array.from(selectedActivityIds))}
+                onClick={() => setDeleteDialogOpen(true)}
                 disabled={selectedActivityIds.size === 0 || deleteActivities.isPending}
               >
                 <Trash2 className="h-4 w-4" />
@@ -165,6 +143,8 @@ export default function ActivityPage() {
               <Input value={novelId} onChange={(event) => setNovelId(event.target.value)} placeholder="Novel ID" />
             </div>
           </PanelBody>
+          <ErrorBanner error={activity.error} fallback="Failed to load activity." />
+          <ErrorBanner error={deleteActivities.error} fallback="Failed to delete selected activity." />
         </Panel>
 
         <Panel>
@@ -177,29 +157,27 @@ export default function ActivityPage() {
                 <thead className="sticky top-0 z-[1] border-b bg-muted/55 text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className="w-12 px-4 py-3">
-                      <input className="table-checkbox" type="checkbox" checked={allRowsSelected} onChange={toggleAllRows} aria-label="Select all activity" />
+                      <TableCheckbox checked={allRowsSelected} onChange={toggleAllRows} aria-label="Select all activity" />
                     </th>
-                    {header("Novel", "novel")}
-                    {header("Activity", "phases")}
-                    {header("Status", "status")}
-                    {header("Updated", "updated")}
+                    <SortableHeader label="Novel" sortKey="novel" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
+                    <SortableHeader label="Activity" sortKey="phases" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
+                    <SortableHeader label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
+                    <SortableHeader label="Updated" sortKey="updated" activeKey={sortKey} direction={sortDirection} onSort={(key) => handleSort(key, "desc")} />
                     <th className="w-16 px-4 py-3" aria-label="Open activity" />
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedGroups.length === 0 ? (
-                    <tr>
-                      <td className="px-4 py-6 text-muted-foreground" colSpan={6}>
-                        No activity recorded yet.
-                      </td>
-                    </tr>
+                  {activity.isLoading || novels.isLoading ? (
+                    <LoadingRows colSpan={6} label="Loading activity..." />
+                  ) : activity.error || novels.error ? (
+                    <EmptyState title="Failed to load activity." colSpan={6} />
+                  ) : sortedGroups.length === 0 ? (
+                    <EmptyState title="No activity recorded yet." colSpan={6} />
                   ) : (
                     sortedGroups.map((group) => (
                       <tr className="border-b last:border-0" key={group.id}>
                         <td className="px-4 py-3">
-                          <input
-                            className="table-checkbox"
-                            type="checkbox"
+                          <TableCheckbox
                             checked={selectedActivityIds.has(group.id)}
                             onChange={() => toggleActivity(group.id)}
                             aria-label={`Select activity ${group.novelId}`}
@@ -213,7 +191,7 @@ export default function ActivityPage() {
                         <td className="px-4 py-3">
                           <StatusBadge status={group.status} />
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">{formatDate(group.updatedAt)}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{formatDateTime(group.updatedAt)}</td>
                         <td className="px-4 py-3 text-right">
                           <Link
                             href={`/admin/activity/${encodeURIComponent(group.novelId)}`}
@@ -233,6 +211,17 @@ export default function ActivityPage() {
           </PanelBody>
         </Panel>
       </div>
+
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        title="Delete selected activity"
+        description={`Delete ${selectedActivityIds.size} selected activity item(s)?`}
+        confirmLabel="Delete"
+        destructive
+        pending={deleteActivities.isPending}
+        onConfirm={() => deleteActivities.mutate(Array.from(selectedActivityIds))}
+        onCancel={() => setDeleteDialogOpen(false)}
+      />
     </>
   );
 }

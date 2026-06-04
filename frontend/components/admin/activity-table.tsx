@@ -4,13 +4,17 @@ import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 
+import { EmptyState } from "@/components/admin/empty-state";
+import { SortableHeader } from "@/components/admin/sortable-header";
 import { StatusBadge } from "@/components/admin/status-badge";
+import { TableCheckbox } from "@/components/admin/table-checkbox";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
+import { compareSortableValues, useSortableTable } from "@/hooks/use-sortable-table";
 import type { ActivityRecord } from "@/lib/api";
-import { cn, formatDate } from "@/lib/utils";
+import { formatDateTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 type ActivitySortKey = "novel" | "scope" | "status" | "updated";
-type SortDirection = "asc" | "desc";
 
 function activityUpdatedAt(activity: ActivityRecord) {
   return activity.finished_at || activity.started_at || activity.created_at || "";
@@ -27,13 +31,6 @@ function activitySortValue(activity: ActivityRecord, key: ActivitySortKey) {
     return activity.status;
   }
   return Date.parse(activityUpdatedAt(activity)) || 0;
-}
-
-function sortPointer(key: ActivitySortKey, activeKey: ActivitySortKey, direction: SortDirection) {
-  if (key !== activeKey) {
-    return "";
-  }
-  return direction === "asc" ? " \u25B2" : " \u25BC";
 }
 
 export type ActivityTableProps = {
@@ -63,38 +60,15 @@ export function ActivityTable({
   bodyClassName,
   tableContainerClassName
 }: ActivityTableProps) {
-  const [sortKey, setSortKey] = React.useState<ActivitySortKey>("updated");
-  const [sortDirection, setSortDirection] = React.useState<SortDirection>("desc");
+  const { sortKey, sortDirection, handleSort } = useSortableTable<ActivitySortKey>("updated", "desc");
 
   const sortedActivity = React.useMemo(() => {
     return [...activity].sort((left, right) => {
       const leftValue = activitySortValue(left, sortKey);
       const rightValue = activitySortValue(right, sortKey);
-      const direction = sortDirection === "asc" ? 1 : -1;
-      if (typeof leftValue === "number" && typeof rightValue === "number") {
-        return (leftValue - rightValue) * direction;
-      }
-      return String(leftValue).localeCompare(String(rightValue)) * direction;
+      return compareSortableValues(leftValue, rightValue, sortDirection);
     });
   }, [activity, sortDirection, sortKey]);
-
-  const handleSort = (key: ActivitySortKey) => {
-    if (sortKey === key) {
-      setSortDirection((direction) => (direction === "asc" ? "desc" : "asc"));
-      return;
-    }
-    setSortKey(key);
-    setSortDirection(key === "updated" ? "desc" : "asc");
-  };
-
-  const header = (label: string, key: ActivitySortKey) => (
-    <th className="px-4 py-3">
-      <button type="button" className="font-semibold uppercase hover:text-foreground" onClick={() => handleSort(key)}>
-        {label}
-        {sortPointer(key, sortKey, sortDirection)}
-      </button>
-    </th>
-  );
 
   return (
     <Panel className={className}>
@@ -108,31 +82,25 @@ export function ActivityTable({
               <tr>
                 {selectable ? (
                   <th className="w-12 px-4 py-3">
-                    <input className="table-checkbox" type="checkbox" checked={allSelected} onChange={onToggleAll} aria-label="Select all activity" />
+                    <TableCheckbox checked={allSelected} onChange={onToggleAll} aria-label="Select all activity" />
                   </th>
                 ) : null}
-                {header("Novel", "novel")}
-                {header("Scope", "scope")}
-                {header("Status", "status")}
-                {header("Updated", "updated")}
+                <SortableHeader label="Novel" sortKey="novel" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
+                <SortableHeader label="Scope" sortKey="scope" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
+                <SortableHeader label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
+                <SortableHeader label="Updated" sortKey="updated" activeKey={sortKey} direction={sortDirection} onSort={(key) => handleSort(key, "desc")} />
                 <th className="px-4 py-3" aria-label="Open activity" />
               </tr>
             </thead>
             <tbody>
               {sortedActivity.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-6 text-muted-foreground" colSpan={selectable ? 6 : 5}>
-                    {emptyText}
-                  </td>
-                </tr>
+                <EmptyState title={emptyText} colSpan={selectable ? 6 : 5} />
               ) : (
                 sortedActivity.map((activityItem) => (
                   <tr className="border-b last:border-0" key={activityItem.id}>
                     {selectable ? (
                       <td className="px-4 py-3">
-                        <input
-                          className="table-checkbox"
-                          type="checkbox"
+                        <TableCheckbox
                           checked={selectedActivityIds?.has(activityItem.id) ?? false}
                           onChange={() => onToggleActivity?.(activityItem.id)}
                           aria-label={`Select activity ${activityItem.id}`}
@@ -145,7 +113,7 @@ export function ActivityTable({
                       <StatusBadge status={activityItem.status} />
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {formatDate(activityUpdatedAt(activityItem))}
+                      {formatDateTime(activityUpdatedAt(activityItem))}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link

@@ -27,6 +27,8 @@ class TranslationActivityRequest(BaseModel):
     source_key: str | None = None
     kind: str = "translate"
     chapters: str = "all"
+    provider_key: str | None = None
+    provider_model: str | None = None
     provider: str | None = None
     model: str | None = None
     metadata: dict[str, Any] | None = None
@@ -196,8 +198,8 @@ async def create_translation_activity(
             source_key=body.source_key,
             kind=body.kind,
             chapters=body.chapters,
-            provider=body.provider,
-            model=body.model,
+            provider=body.provider_key or body.provider,
+            model=body.provider_model or body.model,
             metadata=body.metadata,
         ))
     except ValueError as exc:

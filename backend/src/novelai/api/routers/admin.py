@@ -53,16 +53,20 @@ _RUNTIME_STATE_DEFINITIONS = {
 
 class ProviderApiKeyRequest(BaseModel):
     provider: str = "gemini"
+    provider_key: str | None = None
     api_key: str
     model: str | None = None
+    provider_model: str | None = None
     apply_globally: bool = True
     validate_connection: bool = True
 
 
 class ProviderApiKeyValidationRequest(BaseModel):
     provider: str = "gemini"
+    provider_key: str | None = None
     api_key: str | None = None
     model: str | None = None
+    provider_model: str | None = None
 
 
 def _iso_from_timestamp(timestamp: float) -> str:
@@ -137,9 +141,12 @@ def _provider_api_key_status(preferences: PreferencesService, provider: str) -> 
     model = preferences.get_preferred_model() if preferred_provider == provider else _resolve_default_model(provider)
     return {
         "provider": provider,
+        "provider_key": provider,
         "configured": preferences.get_api_key(provider) is not None,
         "preferred_provider": preferred_provider,
+        "preferred_provider_key": preferred_provider,
         "model": model,
+        "provider_model": model,
         "fallback_models": model_candidates(provider, model),
         "validation_status": "unchecked",
         "validation_message": "Connection has not been checked in this server session.",
@@ -172,6 +179,7 @@ async def _validate_provider_api_key(
             return {
                 **_provider_api_key_status(preferences, provider),
                 "model": resolved_model,
+                "provider_model": resolved_model,
                 "validation_status": "failed",
                 "validation_message": "No API key is configured for this provider.",
             }
@@ -195,6 +203,7 @@ async def _validate_provider_api_key(
                 return {
                     **_provider_api_key_status(preferences, provider),
                     "model": candidate_model,
+                    "provider_model": candidate_model,
                     "fallback_models": model_candidates(provider, candidate_model, supported_models),
                     "validation_status": "working",
                     "validation_message": message,
@@ -204,6 +213,7 @@ async def _validate_provider_api_key(
         return {
             **_provider_api_key_status(preferences, provider),
             "model": resolved_model,
+            "provider_model": resolved_model,
             "validation_status": "failed",
             "validation_message": last_message or "No Gemini model candidate could be validated.",
         }
@@ -313,12 +323,12 @@ async def set_provider_api_key(
     preferences: PreferencesService = Depends(get_preferences),
     _auth: None = Depends(verify_api_key),
 ) -> dict[str, Any]:
-    provider = _normalize_api_provider(body.provider)
+    provider = _normalize_api_provider(body.provider_key or body.provider)
     api_key = body.api_key.strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="API key must not be empty")
 
-    model = _resolve_default_model(provider, body.model)
+    model = _resolve_default_model(provider, body.provider_model or body.model)
     preferences.set_api_key(api_key, provider_key=provider)
     if body.apply_globally:
         _apply_provider_globally(preferences, provider, model)
@@ -334,12 +344,12 @@ async def validate_provider_api_key(
     preferences: PreferencesService = Depends(get_preferences),
     _auth: None = Depends(verify_api_key),
 ) -> dict[str, Any]:
-    provider = _normalize_api_provider(body.provider)
+    provider = _normalize_api_provider(body.provider_key or body.provider)
     return await _validate_provider_api_key(
         preferences,
         provider=provider,
         api_key=body.api_key,
-        model=body.model,
+        model=body.provider_model or body.model,
     )
 
 

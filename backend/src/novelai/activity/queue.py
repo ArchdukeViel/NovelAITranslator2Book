@@ -201,6 +201,8 @@ class ActivityQueueService:
             "chapters": chapters,
             "provider": provider,
             "model": model,
+            "provider_key": provider,
+            "provider_model": model,
             "status": JobStatus.PENDING.value,
             "created_at": _utc_now_iso(),
             "started_at": None,
