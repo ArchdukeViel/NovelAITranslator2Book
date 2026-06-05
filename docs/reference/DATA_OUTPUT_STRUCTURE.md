@@ -11,7 +11,7 @@ storage/novel_library/
 |-- preferences.json
 |-- translation_cache.json
 |-- usage.json
-|-- jobs/
+|-- activity_log/
 |   |-- queue.json
 |   `-- source_health.json
 |-- requests/
@@ -117,9 +117,9 @@ Example:
 ]
 ```
 
-### `jobs/queue.json`
+### `activity_log/queue.json`
 
-Stores crawl and translation jobs.
+Stores crawl and translation activity. Legacy `jobs/queue.json` data is migrated into `activity_log/queue.json` when the activity queue service starts.
 
 Example:
 
@@ -158,7 +158,7 @@ Common statuses:
 - `failed`
 - `cancelled`
 
-### `jobs/source_health.json`
+### `activity_log/source_health.json`
 
 Tracks source adapter reliability.
 
@@ -558,7 +558,7 @@ Retention policy: may be kept for retry/debug; deleting it must not delete canon
 
 Owner module: `backend/src/novelai/storage/traceability.py`
 
-Mapping keyed by `job_id` for future scheduler state.
+Mapping keyed by `job_id` for scheduler model state used by admin-owned provider/model routing.
 
 Required fields:
 
@@ -844,11 +844,13 @@ GET  /api/health
 GET  /api/novels
 GET  /api/novels/{novel_id}/metadata
 GET  /api/novels/{novel_id}/chapters/{chapter_id}
-GET  /api/jobs
-GET  /api/jobs/{job_id}
-POST /api/jobs/crawl
-POST /api/jobs/translation
+GET  /api/novels/activity
+GET  /api/novels/activity/{activity_id}
+POST /api/novels/activity/crawl
+POST /api/novels/activity/translation
 ```
+
+Legacy `/api/novels/jobs*` compatibility routes may exist for older callers, but new code should use the activity routes and canonical `activity_id` / `job_id` fields.
 
 ## Scaling Notes
 
@@ -856,7 +858,7 @@ The JSON-backed store is good for local-first development, small deployments, an
 
 Recommended future upgrades:
 
-- PostgreSQL for novel metadata, chapter versions, jobs, requests, and usage.
+- PostgreSQL for novel metadata, chapter versions, activity/jobs, requests, and usage.
 - Object storage for images and exports.
-- Redis/RQ, Celery, Dramatiq, or another queue backend for jobs.
+- Redis/RQ, Celery, Dramatiq, or another queue backend for activity/jobs.
 - CDN in front of reader assets.

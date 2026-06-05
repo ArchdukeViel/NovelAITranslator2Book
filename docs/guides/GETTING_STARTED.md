@@ -4,6 +4,8 @@ This guide walks through the web-first setup for Novel AI: FastAPI backend, Next
 
 The commands are written for PowerShell on Windows because this workspace is currently on Windows. The same flow works on other platforms with equivalent shell syntax.
 
+Current mode is single-owner / controlled-admin. The backend has scheduler-enabled admin-owned provider/model routing and baseline owner/admin security hardening. Public user auth, public contribution credentials, database storage, batch mode, billing, organizations, and multi-admin teams are not implemented.
+
 ## 1. What You Are Running
 
 Local development uses separate processes:
@@ -163,12 +165,11 @@ Use the web UI for daily work:
 1. `/admin/dashboard`: operational home, worker state, queue snapshot, and recent jobs.
 2. `/admin/settings`: API token state, dummy API mode, and backend health.
 3. `/admin/crawler`: queue source crawls, run direct scrapes, import documents, and inspect quick source health.
-4. `/admin/source-health`: source adapter reliability table.
-5. `/admin/translation`: queue translations, run direct translations, view progress, and download exports.
-6. `/admin/jobs`: inspect queued, running, failed, completed, and cancelled jobs.
-7. `/admin/jobs/[jobId]`: inspect a single job payload and result metadata.
-8. `/admin/editor`: review source/translation text, create manual edit versions, and roll back active versions.
-9. `/admin/requests`: inspect reader/admin novel requests.
+4. `/admin/translation`: queue translations, run direct translations, view progress, and download exports.
+5. `/admin/activity`: inspect queued, running, paused, failed, completed, and cancelled crawler/translation activity.
+6. `/admin/activity/[activityId]`: inspect activity payloads, errors, scheduler progress, and provider/model state.
+7. `/admin/editor`: review source/translation text, create manual edit versions, and roll back active versions.
+8. `/admin/requests`: inspect reader/admin novel requests.
 
 Public reader routes:
 
@@ -188,7 +189,7 @@ The reader stores theme, font size, and width preferences in the frontend state.
 5. Select a source such as `syosetu_ncode`.
 6. Enter the novel ID or URL required by the source adapter.
 7. Queue metadata and chapter crawls.
-8. Open `/admin/jobs` and run a worker if jobs remain pending.
+8. Open `/admin/activity` and run a worker if activity remains pending.
 9. Open `/admin/translation`.
 10. Queue translation for a chapter range such as `1-3`.
 11. Open `/admin/editor` to review and edit output.
@@ -325,6 +326,7 @@ storage/novel_library
 ```
 
 This includes novel metadata, chapter bundles, translation versions, edit history, jobs, requests, usage logs, assets, and exports.
+Scheduler state, provider request records, chunk output records, fetch cache entries, and other runtime traceability records are also stored under this runtime root.
 
 See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md) for the file-level reference.
 

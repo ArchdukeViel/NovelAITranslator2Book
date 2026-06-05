@@ -2,7 +2,9 @@
 
 Novel AI is a web-first Japanese novel platform for crawling source sites, queueing translation jobs, editing translated chapters, exporting books, and serving a public reader UI.
 
-The project is now oriented toward a production-style web deployment, similar in shape to a WTR-Lab style site: a Next.js frontend for public/admin pages, a FastAPI backend under `/api`, durable local storage, and a worker process for crawler/translation jobs.
+The project is now oriented toward a production-style web deployment, similar in shape to a WTR-Lab style site: a Next.js frontend for public/admin pages, a FastAPI backend under `/api`, durable local file-backed storage, and a worker process for crawler/translation activity.
+
+Current mode is single-owner / controlled-admin. The project has scheduler-enabled admin-owned provider/model routing and baseline owner/admin security hardening, but it does not have public user auth, public contribution credentials, database storage, batch mode, billing, organizations, or multi-admin teams.
 
 ## Features
 
@@ -10,8 +12,9 @@ The project is now oriented toward a production-style web deployment, similar in
 - Import text, EPUB, PDF, image folders, and CBZ documents through backend adapters.
 - Queue crawl and translation jobs from the web admin UI.
 - Translate chapters with Gemini, OpenAI, or the dummy provider for local testing.
+- Route translation chunks through the backend scheduler with provider/model cooldown and quota state.
 - Review machine translations, save manual edits, switch active versions, and roll back chapter versions.
-- Track source health, job status, translation usage, glossary state, OCR review state, and export readiness.
+- Track source health, activity/job status, scheduler model state, translation usage, glossary state, OCR review state, and export readiness.
 - Export translated or source text as EPUB, HTML, or Markdown.
 - Serve public reader routes and admin routes from the Next.js frontend.
 
@@ -103,9 +106,9 @@ http://127.0.0.1:8000/api/health
 
 1. Configure API token state in `/admin/settings`.
 2. Queue crawls or imports in `/admin/crawler`.
-3. Inspect source health in `/admin/source-health`.
+3. Inspect source health from `/admin/dashboard` or `/admin/crawler`.
 4. Queue translations and exports in `/admin/translation`.
-5. Monitor jobs in `/admin/jobs` and `/admin/jobs/[jobId]`.
+5. Monitor crawler/translation activity in `/admin/activity` and `/admin/activity/[activityId]`.
 6. Review and edit chapter versions in `/admin/editor`.
 7. Read public chapters under `/novel/[slug]`.
 
@@ -154,6 +157,6 @@ npm run build
 ## Documentation
 
 - [docs/guides/GETTING_STARTED.md](docs/guides/GETTING_STARTED.md): comprehensive setup, workflow, and troubleshooting guide
-- [docs/architecture/architecture.md](docs/architecture/architecture.md): architecture, runtime flow, deployment, and roadmap
+- [docs/architecture/architecture.md](docs/architecture/architecture.md): canonical architecture, current status, runtime flow, blocked phases, debt register, and roadmap
 - [docs/reference/DATA_OUTPUT_STRUCTURE.md](docs/reference/DATA_OUTPUT_STRUCTURE.md): storage and output layout
 - [docs/reference/PYTHON_COMMANDS.md](docs/reference/PYTHON_COMMANDS.md): backend launcher and Python API reference

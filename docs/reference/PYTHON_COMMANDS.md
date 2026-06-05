@@ -2,6 +2,8 @@
 
 Command and Python API reference for the web-focused Novel AI backend.
 
+Current runtime terminology prefers activity over jobs in API/UI payloads. Some Python compatibility helpers still expose `jobs` or `provider` names; new persisted/API contracts should prefer canonical names such as `activity_id`, `job_id`, `provider_key`, and `provider_model`.
+
 ## Backend Launcher
 
 Run the FastAPI backend:
@@ -79,6 +81,8 @@ translation_job = jobs.enqueue_translation_job(
 )
 ```
 
+`provider` is the current compatibility argument for `enqueue_translation_job`; it is stored alongside canonical `provider_key` in activity records.
+
 ### Run One Job
 
 ```python
@@ -132,6 +136,8 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+The translation path uses scheduler-aware provider/model routing for admin-owned provider keys and records scheduler state in activity progress where available.
 
 ### Estimate Cost
 
