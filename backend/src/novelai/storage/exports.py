@@ -4,6 +4,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from novelai.core.security import validate_storage_identifier
+
 logger = logging.getLogger(__name__)
 
 def build_export_path(
@@ -13,14 +15,16 @@ def build_export_path(
     output_dir: str | Path | None = None,
 ) -> Path:
     """Resolve where an export should be written."""
+    safe_novel_id = validate_storage_identifier(str(novel_id), "novel_id")
+    safe_export_format = validate_storage_identifier(str(export_format), "export_format")
     if output_dir is not None:
         custom_dir = Path(output_dir).expanduser()
         custom_dir.mkdir(parents=True, exist_ok=True)
-        return custom_dir / f"{novel_id}.{export_format}"
+        return custom_dir / f"{safe_novel_id}.{safe_export_format}"
 
-    novel_dir = self._novel_dir(novel_id)
+    novel_dir = self._novel_dir(safe_novel_id)
     novel_dir.mkdir(parents=True, exist_ok=True)
-    return novel_dir / f"full_novel.{export_format}"
+    return novel_dir / f"full_novel.{safe_export_format}"
 
 
 def get_chapters_ready_for_export(self: Any, novel_id: str) -> list[str]:

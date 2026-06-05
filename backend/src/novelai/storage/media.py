@@ -6,11 +6,13 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from novelai.core.security import safe_child_path, validate_storage_identifier
 from novelai.storage.common import _UNSET
 
 
 def _chapter_image_dir(self: Any, novel_id: str, chapter_id: str) -> Path:
-    image_dir = self._novel_dir(novel_id) / "assets" / "images" / str(chapter_id)
+    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
+    image_dir = self._novel_dir(novel_id) / "assets" / "images" / safe_chapter_id
     image_dir.mkdir(parents=True, exist_ok=True)
     return image_dir
 
@@ -36,7 +38,8 @@ def _guess_asset_suffix(self: Any, source_url: str | None, content_type: str | N
 
 
 def clear_chapter_image_assets(self: Any, novel_id: str, chapter_id: str) -> None:
-    image_dir = self._novel_dir(novel_id) / "assets" / "images" / str(chapter_id)
+    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
+    image_dir = self._novel_dir(novel_id) / "assets" / "images" / safe_chapter_id
     if image_dir.exists():
         shutil.rmtree(image_dir, ignore_errors=True)
 
@@ -66,7 +69,7 @@ def save_chapter_image_asset(
 def resolve_asset_path(self: Any, novel_id: str, local_path: str | None) -> Path | None:
     if not isinstance(local_path, str) or not local_path.strip():
         return None
-    return self._novel_dir(novel_id) / Path(local_path)
+    return safe_child_path(self._novel_dir(novel_id), local_path)
 
 
 def load_chapter_export_images(self: Any, novel_id: str, chapter_id: str) -> list[dict[str, Any]]:

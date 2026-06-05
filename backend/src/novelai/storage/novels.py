@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from novelai.config.workflow_profiles import normalize_workflow_profiles
+from novelai.core.security import validate_storage_identifier
 from novelai.storage.common import _utc_now_iso
 from novelai.utils import atomic_write
 
@@ -51,7 +52,7 @@ def _normalize_library_novel_id(self: Any, value: Any) -> str | None:
         return normalized.lower()
     if _LEGACY_SYOSETU_NCODE_FOLDER_PATTERN.fullmatch(normalized):
         return f"n{normalized.lower()}"
-    return normalized
+    return validate_storage_identifier(normalized, "novel_id")
 
 
 def _legacy_folder_candidates(self: Any, novel_id: str) -> list[str]:
@@ -67,6 +68,12 @@ def _get_folder_name(self: Any, novel_id: str) -> str:
     normalized_id = self._normalize_library_novel_id(novel_id) or novel_id
     entry = index.get(normalized_id, {})
     folder_name = entry.get("folder_name") if isinstance(entry, dict) else None
+    if isinstance(folder_name, str):
+        try:
+            folder_name = validate_storage_identifier(folder_name, "folder_name")
+        except ValueError:
+            logger.warning("Ignoring unsafe folder name in novel index for %s.", normalized_id)
+            folder_name = None
     if folder_name and (self.novels_dir / folder_name).exists():
         return folder_name
 

@@ -334,6 +334,7 @@ class TestFixture:
                     cache=self.cache,
                     settings_service=self.settings_service,
                     usage_service=self.usage_service,
+                    storage=self.storage,
                 ),
                 TranslationQAStage(),
                 PostProcessStage(glossary=self.mock_glossary),

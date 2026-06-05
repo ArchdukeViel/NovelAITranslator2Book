@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from novelai.config.settings import settings
+from novelai.core.security import redact_secret_text, redact_sensitive
 
 # Context variable for request/correlation tracking
 _request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
@@ -64,7 +65,7 @@ class StructuredFormatter(logging.Formatter):
             "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat().replace("+00:00", "Z"),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": redact_secret_text(record.getMessage()),
             "module": record.module,
             "function": record.funcName,
             "line": record.lineno,
@@ -77,12 +78,12 @@ class StructuredFormatter(logging.Formatter):
 
         # Add exception info if present
         if record.exc_info:
-            log_data["exception"] = self.formatException(record.exc_info)
+            log_data["exception"] = redact_secret_text(self.formatException(record.exc_info))
 
         # Add extra fields if present (e.g., from logger.info("msg", extra={"key": "value"}))
         extra_fields = getattr(record, "extra_fields", None)
         if isinstance(extra_fields, dict):
-            log_data.update(extra_fields)
+            log_data.update(redact_sensitive(extra_fields))
 
         return json.dumps(log_data, ensure_ascii=False)
 
@@ -109,9 +110,9 @@ class SimpleFormatter(logging.Formatter):
         # Format: [LEVEL] logger.name: message  (request_id if present)
         request_id = getattr(record, "request_id", None)
         rid_suffix = f" [{request_id}]" if request_id else ""
-        msg = f"[{levelname}] {record.name}: {record.getMessage()}{rid_suffix}"
+        msg = f"[{levelname}] {record.name}: {redact_secret_text(record.getMessage())}{rid_suffix}"
         if record.exc_info:
-            msg += f"\n{self.formatException(record.exc_info)}"
+            msg += f"\n{redact_secret_text(self.formatException(record.exc_info))}"
 
         return msg
 

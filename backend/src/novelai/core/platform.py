@@ -22,6 +22,9 @@ class NovelRequestStatus(StrEnum):
 class JobStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
+    PAUSED = "paused"
+    PAUSED_UNTIL_COOLDOWN = "paused_until_cooldown"
+    PAUSED_UNTIL_QUOTA_RESET = "paused_until_quota_reset"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"

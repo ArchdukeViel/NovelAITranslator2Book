@@ -8,7 +8,8 @@ from __future__ import annotations
 import errno
 import logging
 import os
-from typing import Any, NamedTuple, TypeVar
+from pathlib import Path
+from typing import Any, NamedTuple
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
@@ -29,6 +30,7 @@ from novelai.core.errors import (
     SourceFetchError,
     StorageError,
 )
+from novelai.core.security import redact_secret_text, redact_sensitive
 
 logger = logging.getLogger(__name__)
 DEBUG_ERRORS = os.getenv("DEBUG_ERRORS", "false").lower() == "true"
@@ -36,7 +38,6 @@ DEBUG_ERRORS = os.getenv("DEBUG_ERRORS", "false").lower() == "true"
 DEFAULT_INTERNAL_STATUS = status.HTTP_500_INTERNAL_SERVER_ERROR
 DEFAULT_INTERNAL_CODE = "INTERNAL_ERROR"
 DEFAULT_INTERNAL_MESSAGE = "Internal Server Error"
-_TExc = TypeVar("_TExc", bound=BaseException)
 
 _NON_NOVEL_ROUTE_PARTS = {
     "",
@@ -77,7 +78,7 @@ _EXPLANATION_BY_CODE: dict[str, str] = {
     "EXPORT_ERROR": "The export pipeline could not generate the requested output file.",
     "FAILED_DEPENDENCY": "This action could not complete because a required internal dependency failed.",
     "INSUFFICIENT_STORAGE": "The storage layer could not complete the operation with the current storage state.",
-    "INTERNAL_ERROR": "The backend hit an unexpected condition. Check the Activity Log or server console for the traceback.",
+    "INTERNAL_ERROR": "The backend hit an unexpected condition. Check the Activity Log or server logs with the trace ID.",
     "INTERNAL_FIELD_MISSING": "The backend expected an internal field that was not present in the current payload.",
     "INVALID_OPERATION": "The requested operation is not valid for the current data or workflow state.",
     "JOB_ERROR": "A background activity failed while preparing or running the requested task.",
@@ -164,7 +165,7 @@ def _exception_chain(exc: BaseException) -> list[BaseException]:
     return chain
 
 
-def _find_in_exception_chain(exc: BaseException, cls: type[_TExc]) -> _TExc | None:
+def _find_in_exception_chain[TExc: BaseException](exc: BaseException, cls: type[TExc]) -> TExc | None:
     for item in _exception_chain(exc):
         if isinstance(item, cls):
             return item
@@ -206,7 +207,7 @@ def _error_payload(
     trace_id: str | None = None,
 ) -> dict[str, Any]:
     normalized_code = code.strip().upper() or DEFAULT_INTERNAL_CODE
-    normalized_message = message.strip() or normalized_code.replace("_", " ").title()
+    normalized_message = redact_secret_text(message.strip() or normalized_code.replace("_", " ").title())
     payload: dict[str, Any] = {
         "error": normalized_code,
         "code": normalized_code,
@@ -217,7 +218,7 @@ def _error_payload(
     if category:
         payload["category"] = category
     if details is not None:
-        payload["details"] = details
+        payload["details"] = redact_sensitive(details)
     if trace_id:
         payload["trace_id"] = trace_id
     return payload
@@ -315,12 +316,12 @@ def _request_operation(request: Request) -> str:
 def _base_details(request: Request, exc: BaseException, operation: str) -> dict[str, Any]:
     chain = _exception_chain(exc)
     cause_chain = [
-        {"type": e.__class__.__name__, "message": str(e)}
+        {"type": e.__class__.__name__, "message": redact_secret_text(str(e))}
         for e in chain[1:]  # skip the top-level (already in "exception")
     ]
     details = {
         "exception": exc.__class__.__name__,
-        "error": str(exc),
+        "error": redact_secret_text(str(exc)),
         "cause_chain": cause_chain or None,
         "operation": operation,
         "method": request.method,
@@ -630,7 +631,11 @@ def add_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ProviderAPIError)
     async def provider_api_error_handler(request: Request, exc: ProviderAPIError):
         """Provider API call failed."""
-        logger.error("Provider API error: %s details=%s", exc, getattr(exc, "details", None))
+        logger.error(
+            "Provider API error: %s details=%s",
+            redact_secret_text(str(exc)),
+            redact_sensitive(getattr(exc, "details", None)),
+        )
         return _json_error(
             status_code=_provider_error_status(exc),
             code="PROVIDER_ERROR",
@@ -644,7 +649,11 @@ def add_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ProviderError)
     async def provider_error_handler(request: Request, exc: ProviderError):
         """Generic provider error."""
-        logger.error("Provider error: %s details=%s", exc, getattr(exc, "details", None))
+        logger.error(
+            "Provider error: %s details=%s",
+            redact_secret_text(str(exc)),
+            redact_sensitive(getattr(exc, "details", None)),
+        )
         return _json_error(
             status_code=_provider_error_status(exc),
             code="PROVIDER_ERROR",
@@ -659,7 +668,7 @@ def add_error_handlers(app: FastAPI) -> None:
     async def source_fetch_error_handler(request: Request, exc: SourceFetchError):
         """Failed to fetch from source."""
         logger.error("Source fetch error: %s", exc)
-        details: dict[str, Any] = {"source_error": str(exc)}
+        details: dict[str, Any] = {"source_error": redact_secret_text(str(exc))}
         source_status = getattr(exc, "status_code", None)
         source_url = getattr(exc, "url", None)
         if source_status is not None:
@@ -713,7 +722,7 @@ def add_error_handlers(app: FastAPI) -> None:
         logger.error("Storage error: %s", exc)
         status_code = DEFAULT_INTERNAL_STATUS
         code = "STORAGE_ERROR"
-        message = str(exc).strip() or "Storage service error. Please try again."
+        message = "Storage service error. Please try again."
         if _find_in_exception_chain(exc, FileNotFoundError):
             status_code = status.HTTP_404_NOT_FOUND
             code = "STORAGE_FILE_NOT_FOUND"
@@ -728,12 +737,13 @@ def add_error_handlers(app: FastAPI) -> None:
         cause = exc.__cause__
         os_cause = _find_in_exception_chain(exc, OSError)
         details: dict[str, Any] = {
-            "storage_error": str(exc),
-            "cause": str(cause) if cause is not None else None,
+            "storage_error": exc.__class__.__name__,
+            "cause": cause.__class__.__name__ if cause is not None else None,
         }
         if os_cause:
             details["errno"] = os_cause.errno
-            details["filename"] = os_cause.filename
+            if os_cause.filename:
+                details["filename"] = Path(str(os_cause.filename)).name
             details["strerror"] = os_cause.strerror
 
         return _json_error(

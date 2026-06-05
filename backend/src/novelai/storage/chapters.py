@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from novelai.core.chapter_state import ChapterState
+from novelai.core.security import validate_storage_identifier
 from novelai.services.query_builder import ChapterQueryBuilder
 from novelai.storage.common import _utc_now_iso
 from novelai.utils import atomic_write
@@ -19,12 +20,14 @@ def _chapter_dir(self: Any, novel_id: str) -> Path:
 
 
 def _chapter_path(self: Any, novel_id: str, chapter_id: str) -> Path:
-    return self._chapter_dir(novel_id) / f"{chapter_id}.json"
+    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
+    return self._chapter_dir(novel_id) / f"{safe_chapter_id}.json"
 
 
 def _load_legacy_raw_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
-    json_path = self._novel_dir(novel_id) / "raw" / f"{chapter_id}.json"
-    txt_path = self._novel_dir(novel_id) / "raw" / f"{chapter_id}.txt"
+    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
+    json_path = self._novel_dir(novel_id) / "raw" / f"{safe_chapter_id}.json"
+    txt_path = self._novel_dir(novel_id) / "raw" / f"{safe_chapter_id}.txt"
 
     if json_path.exists():
         try:
@@ -39,8 +42,9 @@ def _load_legacy_raw_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[
 
 
 def _load_legacy_translated_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
-    json_path = self._novel_dir(novel_id) / "translated" / f"{chapter_id}.json"
-    txt_path = self._novel_dir(novel_id) / "translated" / f"{chapter_id}.txt"
+    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
+    json_path = self._novel_dir(novel_id) / "translated" / f"{safe_chapter_id}.json"
+    txt_path = self._novel_dir(novel_id) / "translated" / f"{safe_chapter_id}.txt"
 
     if json_path.exists():
         try:
@@ -60,7 +64,7 @@ def _load_chapter_bundle(self: Any, novel_id: str, chapter_id: str) -> dict[str,
     Falls back to legacy ``raw/`` and ``translated/`` directories if the
     unified bundle file does not exist.
     """
-    chapter_path = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME / f"{chapter_id}.json"
+    chapter_path = self._chapter_path(novel_id, chapter_id)
     if chapter_path.exists():
         try:
             data = json.loads(chapter_path.read_text(encoding="utf-8"))
@@ -75,7 +79,8 @@ def _load_chapter_bundle(self: Any, novel_id: str, chapter_id: str) -> dict[str,
     if raw is None and translated is None:
         return None
 
-    bundle: dict[str, Any] = {"id": chapter_id}
+    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
+    bundle: dict[str, Any] = {"id": safe_chapter_id}
     if raw is not None:
         bundle["title"] = raw.get("title")
         bundle["source_key"] = raw.get("source_key")
@@ -134,7 +139,9 @@ def save_chapter(
     ocr_artifacts: list[dict[str, Any]] | None = None,
 ) -> Path:
     """Save a raw / scraped chapter as structured JSON."""
-    payload: dict[str, Any] = self._load_chapter_bundle(novel_id, chapter_id) or {"id": chapter_id}
+    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
+    payload: dict[str, Any] = self._load_chapter_bundle(novel_id, safe_chapter_id) or {"id": safe_chapter_id}
+    payload["id"] = safe_chapter_id
     payload["title"] = title if title is not None else payload.get("title")
     payload["source_key"] = source_key if source_key is not None else payload.get("source_key")
     payload["source_url"] = source_url if source_url is not None else payload.get("source_url")
@@ -158,7 +165,7 @@ def save_chapter(
         payload["ocr_artifacts"] = self._normalize_named_dict_items(ocr_artifacts)
     existing_raw = payload.get("raw") if isinstance(payload.get("raw"), dict) else {}
     payload["raw"] = {
-        "id": chapter_id,
+        "id": safe_chapter_id,
         "scraped_at": _utc_now_iso(),
         "text": text,
         "paragraphs": self._text_paragraphs(text),
@@ -166,7 +173,7 @@ def save_chapter(
         if images is not None
         else self._normalize_image_manifest(existing_raw.get("images") if isinstance(existing_raw, dict) else None),
     }
-    return self._persist_chapter_bundle(novel_id, chapter_id, payload)
+    return self._persist_chapter_bundle(novel_id, safe_chapter_id, payload)
 
 
 def load_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
@@ -183,8 +190,9 @@ def load_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | 
     if not isinstance(raw, dict):
         return None
 
+    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
     return {
-        "id": chapter_id,
+        "id": safe_chapter_id,
         "title": payload.get("title"),
         "source_key": payload.get("source_key"),
         "source_url": payload.get("source_url"),

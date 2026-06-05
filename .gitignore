@@ -88,6 +88,17 @@ output/
 input/
 logs/
 *.log
+backups/
+storage/backups/
+*.bak
+*.backup
+*.orig
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
 
 # Legacy path (pre-consolidation)
 data/

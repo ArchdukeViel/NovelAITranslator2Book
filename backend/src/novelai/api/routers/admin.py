@@ -96,7 +96,7 @@ def _runtime_state_record(key: str, path: Path) -> dict[str, Any]:
         "key": key,
         "label": definition["label"],
         "filename": definition["filename"],
-        "path": str(path),
+        "path": f"runtime/{definition['filename']}",
         "exists": exists,
         "size_bytes": stat.st_size if stat is not None else 0,
         "updated_at": _iso_from_timestamp(stat.st_mtime) if stat is not None else None,
@@ -196,7 +196,7 @@ async def _validate_provider_api_key(
         for candidate_model in model_candidates(provider, resolved_model, supported_models):
             try:
                 ok, message = await provider_client.validate_connection(model=candidate_model)
-            except Exception as exc:  # noqa: BLE001 - validation should report provider failures, not crash settings
+            except Exception as exc:
                 ok = False
                 message = str(exc)
             if ok:
