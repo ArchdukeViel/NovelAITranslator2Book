@@ -234,11 +234,11 @@ Do not combine admin frontend refactor work with Prompt 11 unless the change is 
 
 ## Commands Run
 
-- `Get-Content docs\architecture\architecture.md`
+- `Get-Content docs/architecture/architecture.md`
   - Result: inspected source-of-truth architecture.
-- `Get-Content docs\architecture\IMPLEMENTATION_AUDIT.md`
+- `Get-Content docs/archive/architecture/IMPLEMENTATION_AUDIT.md`
   - Result: inspected final implementation audit and previous test results.
-- `Get-Content docs\architecture\PROMPT_1_TO_10_SUMMARY.md`
+- `Get-Content docs/archive/architecture/PROMPT_1_TO_10_SUMMARY.md`
   - Result: inspected prompt summary.
 - `Get-Content docs\reference\DATA_OUTPUT_STRUCTURE.md`
   - Result: inspected storage/runtime schema documentation.

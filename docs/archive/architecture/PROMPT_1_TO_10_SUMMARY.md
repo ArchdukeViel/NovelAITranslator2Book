@@ -182,7 +182,7 @@ Ran the final integration audit and performed only small safe cleanup.
 
 Key outcomes:
 
-- Updated `docs/architecture/IMPLEMENTATION_AUDIT.md` with the `## Final Implementation Pass` section.
+- Updated the historical implementation audit now archived at `docs/archive/architecture/IMPLEMENTATION_AUDIT.md` with the `## Final Implementation Pass` section.
 - Moved metadata prompt construction into `backend/src/novelai/prompts/metadata.py`.
 - Updated orchestration to import `build_metadata_translation_prompt` from `novelai.prompts`.
 - Restored CLI worker compatibility for older `job_runner` naming while preserving the newer activity runner.
@@ -213,7 +213,7 @@ Recorded final verification from Prompt 10:
 - `npm run lint`
   - Result: could not complete as a non-interactive verification. `next lint` started deprecated interactive ESLint configuration setup because the frontend has no committed ESLint config.
 
-These results are documented in `docs/architecture/IMPLEMENTATION_AUDIT.md`.
+These results are documented in the historical audit now archived at `docs/archive/architecture/IMPLEMENTATION_AUDIT.md`.
 
 ## Historical Architecture State
 

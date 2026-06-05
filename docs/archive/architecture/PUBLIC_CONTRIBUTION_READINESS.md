@@ -148,7 +148,7 @@ Prompt 12 is blocked by missing security foundations:
 - no scheduler enforcement of credential scope
 - no private-user-job isolation from contributed credentials
 
-Baseline single-owner hardening exists in `docs/architecture/SECURITY_PROTECTION_PLAN.md`, but that document explicitly defers public contribution security until these boundaries are introduced.
+Baseline single-owner hardening was documented in the historical security plan now archived at `docs/archive/architecture/SECURITY_PROTECTION_PLAN.md`, but that archived document explicitly defers public contribution security until these boundaries are introduced.
 
 ## Required Backend Work Before Prompt 12
 
