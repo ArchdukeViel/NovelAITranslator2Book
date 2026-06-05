@@ -1394,6 +1394,13 @@ class TestActivity:
 # ---------------------------------------------------------------------------
 
 
+def _assert_request_id_mirror(payload: dict[str, object]) -> str:
+    assert "id" in payload
+    assert "request_id" in payload
+    assert payload["request_id"] == payload["id"]
+    return str(payload["id"])
+
+
 class TestNovelRequests:
     def test_create_vote_and_list_request(self, _no_api_key: None) -> None:
         bootstrap()
@@ -1411,17 +1418,20 @@ class TestNovelRequests:
             },
         )
         assert create_resp.status_code == 200
-        request_id = create_resp.json()["id"]
+        request_id = _assert_request_id_mirror(create_resp.json())
 
         vote_resp = c.post(f"/novels/requests/{request_id}/vote", json={"voter": "reader-2"})
         assert vote_resp.status_code == 200
-        assert vote_resp.json()["vote_count"] == 1
+        voted = vote_resp.json()
+        assert voted["vote_count"] == 1
+        assert _assert_request_id_mirror(voted) == request_id
 
         list_resp = c.get("/novels/requests", params={"status": "pending"})
         assert list_resp.status_code == 200
         listed = list_resp.json()["requests"]
         assert len(listed) == 1
         assert listed[0]["id"] == request_id
+        assert _assert_request_id_mirror(listed[0]) == request_id
         assert listed[0]["source_candidates"][0]["source_key"] == "syosetu_ncode"
 
     def test_update_request_status_and_add_source_candidate(self, _no_api_key: None) -> None:
@@ -1429,14 +1439,16 @@ class TestNovelRequests:
         storage = _fresh_storage()
         requests = NovelRequestService(_TMP / "requests")
         c = _make_app(storage, requests=requests)
-        request_id = c.post("/novels/requests", json={"title": "Requested Novel"}).json()["id"]
+        request_id = _assert_request_id_mirror(c.post("/novels/requests", json={"title": "Requested Novel"}).json())
 
         status_resp = c.patch(
             f"/novels/requests/{request_id}",
             json={"status": "approved", "reviewed_by": "admin"},
         )
         assert status_resp.status_code == 200
-        assert status_resp.json()["status"] == "approved"
+        status_payload = status_resp.json()
+        assert status_payload["status"] == "approved"
+        assert _assert_request_id_mirror(status_payload) == request_id
 
         candidate_resp = c.post(
             f"/novels/requests/{request_id}/source-candidates",
@@ -1447,7 +1459,9 @@ class TestNovelRequests:
 
         get_resp = c.get(f"/novels/requests/{request_id}")
         assert get_resp.status_code == 200
-        assert len(get_resp.json()["source_candidates"]) == 1
+        get_payload = get_resp.json()
+        assert len(get_payload["source_candidates"]) == 1
+        assert _assert_request_id_mirror(get_payload) == request_id
 
     def test_invalid_request_status_returns_400(self, _no_api_key: None) -> None:
         bootstrap()

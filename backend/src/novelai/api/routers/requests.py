@@ -36,6 +36,17 @@ class SourceCandidateCreateRequest(BaseModel):
     notes: str | None = None
 
 
+def _request_response(item: dict[str, Any]) -> dict[str, Any]:
+    response = dict(item)
+    if "id" in response:
+        response["request_id"] = response["id"]
+    return response
+
+
+def _request_list_response(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [_request_response(item) for item in items]
+
+
 @router.get("/requests")
 async def list_novel_requests(
     status: str | None = None,
@@ -47,7 +58,7 @@ async def list_novel_requests(
         items = requests.list_requests(status=status, limit=limit)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"requests": items}
+    return {"requests": _request_list_response(items)}
 
 
 @router.post("/requests")
@@ -57,12 +68,14 @@ async def create_novel_request(
     _auth: None = Depends(verify_api_key),
 ) -> dict[str, Any]:
     try:
-        return requests.create_request(
-            title=body.title,
-            source_key=body.source_key,
-            source_url=body.source_url,
-            requested_by=body.requested_by,
-            notes=body.notes,
+        return _request_response(
+            requests.create_request(
+                title=body.title,
+                source_key=body.source_key,
+                source_url=body.source_url,
+                requested_by=body.requested_by,
+                notes=body.notes,
+            )
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -77,7 +90,7 @@ async def get_novel_request(
     item = requests.get_request(request_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Novel request not found")
-    return item
+    return _request_response(item)
 
 
 @router.post("/requests/{request_id}/vote")
@@ -90,7 +103,7 @@ async def vote_novel_request(
     item = requests.vote_request(request_id, voter=body.voter)
     if item is None:
         raise HTTPException(status_code=404, detail="Novel request not found")
-    return item
+    return _request_response(item)
 
 
 @router.patch("/requests/{request_id}")
@@ -111,7 +124,7 @@ async def update_novel_request_status(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if item is None:
         raise HTTPException(status_code=404, detail="Novel request not found")
-    return item
+    return _request_response(item)
 
 
 @router.post("/requests/{request_id}/source-candidates")
