@@ -1,0 +1,471 @@
+NOVELAI CODEX PROJECT RULES AND GUARDRAILS
+
+Purpose:
+This file defines non-negotiable rules, safety boundaries, and operating procedures for AI-assisted development in this repository. It exists to keep future VS Code Codex runs disciplined, small, auditable, and aligned with the current NovelAI architecture.
+
+This is an operational guardrails document, not an implementation plan. It does not authorize cleanup, refactoring, deletion, migration, security changes, public contribution work, or broad architecture changes by itself.
+
+============================================================
+1. CORE DEVELOPMENT PRINCIPLES
+============================================================
+
+- Understand before changing.
+- Read relevant markdown documentation before editing code.
+- Treat docs/architecture/architecture.md as the highest active project-level design authority unless the user explicitly says otherwise.
+- Prefer small, isolated, reviewable changes.
+- Do not mix unrelated concerns in one run.
+- Preserve existing behavior unless the prompt explicitly asks to change it.
+- Do not guess when architecture, naming, storage, API, scheduler, or security intent is unclear.
+- Report uncertainty directly and early.
+- Favor boring, testable fixes over clever rewrites.
+- Prefer compatibility-preserving changes unless the task explicitly allows breaking changes.
+- Keep public contribution safety in mind even when the current task does not mention public contribution.
+- Do not turn an audit prompt into an implementation prompt.
+- Do not turn a docs prompt into a source-code refactor.
+- Do not refactor for aesthetics alone.
+- Do not flatten package or folder structure unless the prompt explicitly authorizes a dedicated mechanical migration.
+
+============================================================
+2. REPOSITORY-SPECIFIC CONTEXT
+============================================================
+
+Project summary:
+- NovelAI is a web-first Japanese novel crawling, translation, editing, export, and public reader platform.
+- The current product shape is a Next.js frontend, FastAPI backend under /api, local file-backed storage, and an optional worker process for crawler/translation activity.
+- Current mode is single-owner / controlled-admin.
+- The project has scheduler-enabled admin-owned provider/model routing and baseline owner/admin security hardening.
+- The project is not public-contribution ready.
+- Public user auth, public contribution credentials, database storage, batch mode, billing, organizations, and multi-admin teams are not implemented.
+
+Backend role:
+- The backend owns FastAPI routes, application services, crawling/source ingestion, document import adapters, translation orchestration, provider integration, scheduler behavior, QA, storage access, activity/job state, export generation, security boundaries, and runtime traceability.
+- Backend code lives under backend/src/novelai/.
+- Backend tests live under backend/tests/.
+- Python package metadata remains at repository root so pip install -e ., pytest, and pyright work from the root workspace.
+
+Frontend role:
+- The frontend owns public reader pages and admin UI pages.
+- The frontend uses Next.js App Router, TypeScript, Tailwind CSS, shadcn/ui-style primitives, TanStack Query, and Zustand.
+- Frontend code lives under frontend/.
+- Browser/backend communication must go through frontend/lib/api.ts.
+- The frontend displays backend state; it must not own scheduler policy, provider policy, translation QA, prompt building, storage policy, or credential security policy.
+
+Storage role:
+- Runtime storage is local, file-backed, and JSON-backed today.
+- Runtime data is written under storage/novel_library/ by default.
+- Runtime storage contains novel metadata, chapter bundles, translation versions, edit history, jobs/activity records, requests, usage logs, assets, exports, scheduler state, provider request records, chunk outputs, fetch cache entries, and traceability records.
+- Runtime storage is project/user data. Treat it as private and non-disposable.
+- Storage path knowledge belongs behind backend/src/novelai/storage/*.
+
+Documentation role:
+- docs/architecture/architecture.md is the canonical active architecture file.
+- readme.md gives the project overview, layout, setup, workflow, and verification commands.
+- docs/guides/GETTING_STARTED.md gives setup, workflow, environment, and troubleshooting guidance.
+- docs/reference/DATA_OUTPUT_STRUCTURE.md describes runtime storage layout and persistence rules.
+- docs/reference/PYTHON_COMMANDS.md describes backend launcher commands and Python API usage.
+- Historical docs may exist. Do not treat historical or archived plans as canonical without comparing them against current architecture and implementation.
+
+Known major work areas:
+- Scheduler runtime persistence and resume hardening.
+- Remaining source adapter FetchService migration where legacy direct HTTP behavior remains.
+- Router thinning and service extraction, especially if operations/admin routers remain thick.
+- Naming/API contract standardization around canonical names and legacy aliases.
+- Runtime storage compatibility discipline.
+- Public contribution mode remains blocked until auth, authorization, object-level ownership, encrypted credential storage, audit, usage limits, and consent exist.
+
+UNCERTAIN:
+- Whether every runtime path currently records provider requests and chunk outputs completely.
+- Whether every source adapter has fully migrated to FetchService.
+- Whether frontend lint is configured non-interactively in the local workspace.
+- Whether local storage contains untracked user data not visible to GitHub.
+
+============================================================
+3. DOCUMENTATION RULES
+============================================================
+
+- Read canonical docs before source changes.
+- Start with docs/architecture/architecture.md when architecture, backend/frontend boundaries, storage, scheduler, security, naming, or roadmap are involved.
+- Read readme.md before broad project setup, verification, or workflow changes.
+- Read docs/guides/GETTING_STARTED.md before changing install, run, deployment, or environment behavior.
+- Read docs/reference/DATA_OUTPUT_STRUCTURE.md before changing storage schema, runtime record format, persistence paths, cache behavior, traceability records, or export artifacts.
+- Read docs/reference/PYTHON_COMMANDS.md before changing CLI, worker, launcher, or Python API behavior.
+- Do not treat old plans, old audits, pasted prompt files, scratch files, archived docs, or generated reports as canonical unless the current prompt explicitly names them as source of truth.
+- Do not delete historical docs unless a prompt explicitly allows deletion.
+- Prefer archiving old planning docs over deleting them.
+- Keep one canonical architecture source when possible.
+- Do not reintroduce scattered prompt packs, generated reports, or project tree exports into docs/architecture/.
+- Update docs only when the prompt allows documentation changes.
+- If docs contradict code, report the mismatch instead of silently choosing one.
+- If docs contradict each other, identify which doc appears canonical and explain the evidence.
+- If architecture intent is unclear, stop and report instead of improvising.
+- Do not hide uncertainty with confident wording.
+
+============================================================
+4. SOURCE CODE CHANGE RULES
+============================================================
+
+- Do not modify source code unless explicitly allowed.
+- Do not perform broad refactors during audits.
+- Do not rename public APIs casually.
+- Do not change storage schema or file layout casually.
+- Do not change generated files unless required and explained.
+- Do not introduce hidden behavior changes.
+- Do not change unrelated formatting across many files.
+- Do not combine backend, frontend, storage, deployment, and docs changes unless the prompt explicitly allows it.
+- Do not mix cleanup with feature work.
+- Do not mix security work with UI polish.
+- Do not mix package flattening with behavior changes.
+- Preserve backward compatibility unless the task explicitly allows a breaking change.
+- Add or update tests for changed contracts.
+- Keep imports, config, scripts, and test paths aligned after any structural change.
+- Avoid broad search-and-replace unless the affected concept has a confirmed canonical name and compatibility plan.
+- Do not introduce new dependencies without explaining why existing code cannot solve the problem safely.
+- Do not add network calls to tests that are supposed to use offline fixtures.
+- Do not change lock files unless dependency changes are explicitly allowed.
+
+============================================================
+5. BACKEND RULES
+============================================================
+
+- Preserve route behavior unless explicitly changing API contracts.
+- Keep API routers thin.
+- Routers may validate request payloads, apply admin token dependency, call services, and return typed models.
+- Routers must not scrape websites, build prompts, translate text, write storage files directly, parse provider-specific errors, or expose raw secrets.
+- Put use-case orchestration in backend/src/novelai/services/* or the documented orchestration layer.
+- Put background activity, job runtime, workers, progress, and events in backend/src/novelai/activity/* or the documented runtime/job layer.
+- Put source-specific selectors and parsing in backend/src/novelai/sources/*.
+- Put HTTP fetching, throttling, retry, URL safety, and fetch cache behavior in backend/src/novelai/infrastructure/* or the documented equivalent.
+- Put provider-specific API details in backend/src/novelai/providers/*.
+- Put prompt construction in backend/src/novelai/prompts/*.
+- Put persistence behind backend/src/novelai/storage/*.
+- Put translation stages, QA, scheduler behavior, post-processing, and related pipeline logic in backend/src/novelai/translation/* or the documented service/job layer.
+- Keep router/service/storage responsibilities separated.
+- Avoid thick routers when service-layer extraction is appropriate.
+- Preserve error response consistency.
+- Known provider/domain failures should map into structured error envelopes, not anonymous generic 500 responses.
+- Public/frontend-facing errors must not expose raw tracebacks, API keys, authorization headers, cookies, provider request headers, provider secrets, or unsafe filesystem internals.
+- Preserve provider/source adapter boundaries.
+- Source adapters must not write storage files directly.
+- Source adapters must not call translation providers.
+- Source registry should remain the source lookup mechanism.
+- Source tests should use offline fixtures and must not require live websites.
+- Be careful with job status, activity status, translation status, novel IDs, chapter IDs, paragraph IDs, chunk IDs, source names, provider keys, provider models, and request IDs.
+- Do not silently change storage paths or persisted JSON formats.
+- Do not add credentials, secrets, auth shortcuts, fake users, unsafe public endpoints, or frontend-only security boundaries.
+- Do not fake user identity with localStorage IDs, request-provided user IDs, unsigned cookies, or frontend-only flags.
+- Do not implement public contribution credentials unless auth, roles, object authorization, encrypted credential storage, approval, audit logging, usage limits, and consent are explicitly designed and implemented.
+- The runtime container is the composition root for shared services. Do not create hidden singleton-like runtime state in random modules.
+
+============================================================
+6. FRONTEND RULES
+============================================================
+
+- Preserve API client contracts unless backend contract changes are part of the task.
+- Use frontend/lib/api.ts as the browser/backend API client boundary.
+- Keep frontend types aligned with backend API payloads.
+- Adding backend API fields without updating frontend types is contract drift.
+- Do not read runtime storage directly from frontend code.
+- Do not call translation providers from React or frontend server code.
+- Do not implement scheduler policy in React.
+- Do not implement translation QA in React.
+- Do not build translation prompts in React.
+- Do not own credential/security policy in React.
+- Standardize shared UI patterns deliberately, not randomly.
+- Avoid duplicating table states, loading states, empty states, dialogs, progress display, scheduler badges, and error display logic.
+- Do not rewrite entire pages when extracting small shared utilities is enough.
+- Keep admin pages consistent.
+- Keep public reader routes separate from admin operation routes.
+- Do not introduce client-side assumptions that contradict backend schemas.
+- Do not add public contribution credential UI while the readiness gate remains Not Ready.
+- Run frontend typecheck/build checks when frontend code changes.
+- Run lint only if it is configured non-interactively. If lint prompts for ESLint setup, stop and report that lint is not currently safe to run non-interactively.
+
+============================================================
+7. STORAGE AND DATA SAFETY RULES
+============================================================
+
+- Treat storage data as user/project data, not disposable junk.
+- Do not delete storage artifacts unless explicitly instructed.
+- Do not migrate storage layout without a dedicated migration plan.
+- Do not rewrite novel/chapter/job/activity data casually.
+- Do not change storage naming conventions unless a canonical naming plan exists.
+- Keep sample/generated/test data clearly separated from real project data.
+- Runtime storage lives under storage/novel_library/ by default.
+- Runtime storage should remain untracked unless intentionally sanitized as a fixture or example.
+- Storage path knowledge belongs only in backend/src/novelai/storage/*.
+- Canonical storage is chapter-based.
+- Temporary chunks and bundles are runtime/cache/retry artifacts, not canonical chapter output.
+- Raw scraped chapter files should not be silently deleted after translation.
+- Parsed chapter files should not be silently deleted after translation.
+- Final translated output is saved per chapter.
+- Temporary bundle deletion must not break final translated chapters.
+- Provider request records must not store API keys, authorization headers, cookies, raw secrets, raw provider headers, or raw tracebacks.
+- Runtime files are private unless explicitly published through safe storage readers and API/export services.
+- Frontend must never receive raw filesystem paths.
+- Do not serve storage/novel_library directly as static files.
+- If storage backward compatibility is uncertain, stop and report.
+
+============================================================
+8. SECURITY AND PUBLIC CONTRIBUTION GUARDRAILS
+============================================================
+
+- Never commit secrets, API keys, tokens, cookies, credentials, or .env values.
+- Never expose raw provider credentials after creation.
+- Never log raw API keys, authorization headers, cookies, provider request headers, passwords, or common secret fields.
+- Do not weaken credential boundaries.
+- Do not implement public contribution features unless real auth, authorization, credential storage, and owner/admin boundaries are clearly designed.
+- Do not add temporary bypasses for auth/security.
+- Do not expose local storage paths, provider credentials, internal runtime paths, or internal admin endpoints unnecessarily.
+- Treat credential lifecycle, encrypted storage, and object-level authorization as high-risk areas.
+- Stop and report if a requested change touches security-sensitive behavior without enough design detail.
+- Current public contribution readiness is Not Ready.
+- Prompt 12/public contribution credentials must remain blocked until the readiness gate is Ready.
+- Required blockers before public contribution credentials:
+  - Real authenticated registered users.
+  - Backend owner_admin role/permission boundary.
+  - Object-level authorization for credentials, requests, jobs, activities, novels, and exports.
+  - Request approval semantics tied to authenticated identities.
+  - Encrypted credential storage.
+  - Credential revoke/delete lifecycle.
+  - Security audit logging.
+  - Contribution consent capture.
+  - Usage limits and scheduler scope enforcement.
+  - Tests proving user A cannot access user B objects and raw keys are never returned after creation.
+- Public contributed credentials, if ever implemented, may only be used for approved public-library jobs.
+- Do not fake security with browser localStorage, unsigned cookies, request-provided user names, frontend-only flags, or hidden admin assumptions.
+- URL fetching must preserve SSRF protections, including rejection of private/internal targets, non-http schemes, embedded URL credentials, localhost names, metadata hostnames, loopback/private/link-local/reserved/multicast/unspecified addresses.
+- Unknown 500 responses must not expose tracebacks by default.
+
+============================================================
+9. NAMING AND API CONTRACT RULES
+============================================================
+
+- Keep backend, frontend, docs, tests, and storage naming consistent.
+- Do not introduce new aliases unless required for compatibility.
+- Prefer canonical names over legacy names.
+- Document any compatibility aliases.
+- Treat aliases as debt, not as a naming style.
+- Canonical names include:
+  - source_key
+  - source_novel_id
+  - source_url
+  - novel_id
+  - chapter_id
+  - paragraph_id
+  - chunk_id
+  - bundle_id
+  - provider_key
+  - provider_model
+  - activity_id
+  - job_id
+  - request_id
+  - credential_id
+  - requesting_user_id
+  - credential_owner_user_id
+  - prompt_version
+  - glossary_hash
+- Compatibility aliases tolerated only where existing storage/API/frontend behavior requires them:
+  - id
+  - source
+  - provider
+  - model
+  - slug
+- Be careful with:
+  - novel_id
+  - chapter_id
+  - paragraph_id
+  - chunk_id
+  - job_id
+  - activity_id
+  - request_id
+  - source/provider names
+  - translation status
+  - activity/job status
+  - scrape/fetch/parse/translate terminology
+  - API route paths
+  - environment variable names
+  - provider/model scheduler state
+  - prompt/cache key metadata
+- Current runtime terminology prefers activity over jobs in API/UI payloads, while some Python compatibility helpers still expose jobs/provider names.
+- New persisted/API contracts should prefer activity_id, job_id, provider_key, and provider_model where applicable.
+- If canonical naming is unclear, stop and report.
+
+============================================================
+10. TESTING AND VERIFICATION RULES
+============================================================
+
+- Always show git status --short before and after meaningful changes when working in a local checkout.
+- When operating through a GitHub connector without local checkout access, state that local git status is unavailable through the connector.
+- Run relevant tests/checks after changes.
+- Prefer targeted checks first, then broader checks when possible.
+- If tests cannot run, explain exactly why.
+- Do not claim tests passed unless they actually ran.
+- Include command outputs or concise summaries.
+- For backend changes, run documented backend tests/type checks where available.
+- Backend verification commands:
+  - pytest backend/tests -q
+  - pytest --tb=short -q
+  - pyright
+  - ruff check backend/src backend/tests, if appropriate and installed
+- For frontend changes, run documented frontend typecheck/build checks where available.
+- Frontend verification commands:
+  - cd frontend
+  - npm run typecheck
+  - npm run build
+- For docs-only changes, at minimum verify file paths and links if possible.
+- For API/frontend contract changes, test both backend behavior and frontend type compatibility.
+- For storage changes, add or update tests around old and new runtime records.
+- For source parser changes, use offline fixtures and avoid live-site dependency.
+- For scheduler changes, test pause/resume behavior, provider/model selection, cooldown/exhaustion state, successful chunk reuse, and provider/model traceability.
+- For security changes, add negative tests proving forbidden access stays forbidden.
+- Do not run destructive commands as a substitute for understanding failures.
+
+============================================================
+11. GIT AND FILE SAFETY RULES
+============================================================
+
+- Never run destructive git commands unless explicitly requested.
+- Do not reset, checkout, clean, rebase, or force-push without explicit instruction.
+- Do not delete untracked user files.
+- Do not assume untracked files are safe to remove.
+- Do not change files outside the requested scope.
+- Always summarize changed files.
+- Stop if the working tree contains unexpected changes unrelated to the task.
+- Inspect git status before editing in a local checkout.
+- Inspect git diff after editing in a local checkout.
+- If an unrelated file is already modified, do not overwrite it.
+- If a generated file changes unexpectedly, explain why and ask whether it should be kept.
+- Do not commit secrets, local env files, runtime storage, logs, backups, or generated artifacts.
+- Do not delete or archive files unless the current prompt explicitly permits it.
+- Do not create broad new folder structures unless the prompt explicitly permits it.
+- Prefer one focused commit per phase.
+
+============================================================
+12. AI AGENT OPERATING PROCEDURE
+============================================================
+
+Every future AI coding run should follow this procedure:
+
+1. Read the user prompt carefully.
+2. Identify the task type: audit, planning, docs-only change, backend change, frontend change, storage change, security change, or full implementation.
+3. Identify allowed changes.
+4. Identify forbidden changes.
+5. Check current git status when working in a local checkout.
+6. Read relevant documentation first.
+7. Identify which architectural boundary owns the change.
+8. Inspect relevant source files.
+9. Confirm current behavior before changing behavior.
+10. Make the smallest safe change.
+11. Avoid unrelated formatting churn.
+12. Run relevant targeted checks.
+13. Run broader checks when the change risk justifies it.
+14. Review the diff.
+15. Report changed files, checks, risks, uncertainty, and remaining work.
+
+For audits:
+- Do not modify files.
+- Prefer precise file paths and concrete evidence.
+- Separate confirmed facts from uncertainty.
+- Give prioritized recommendations instead of a wall of vague cleanup wishes.
+
+For implementation:
+- Keep the scope narrow.
+- Do not mix phases.
+- Add/update tests when contracts change.
+- Stop on security/storage/naming uncertainty.
+
+============================================================
+13. STOP CONDITIONS
+============================================================
+
+Stop and report instead of continuing when any of these occur:
+
+- Contradictory docs.
+- Unclear canonical architecture.
+- Unclear canonical naming.
+- Missing tests around risky behavior.
+- Security-sensitive ambiguity.
+- Credential/auth/public contribution uncertainty.
+- Storage migration uncertainty.
+- Runtime data safety uncertainty.
+- Unexpected git changes.
+- Prompt asks for too many unrelated changes.
+- Required file does not exist and the prompt does not authorize creating it.
+- The requested change would require broad architecture decisions.
+- The requested change would weaken security.
+- The requested change would expose secrets or runtime paths.
+- The requested change would serve storage/novel_library directly.
+- The requested change would implement public contribution credentials before the readiness gate is Ready.
+- The requested change would require database migration without a dedicated migration plan.
+- The requested change would flatten backend package structure while also changing behavior.
+- The requested change would rename API/storage fields without a compatibility plan.
+- Tests fail in a way that suggests a real regression.
+- Tooling prompts interactively when a non-interactive check is required.
+
+When stopping, report:
+- What blocked progress.
+- Files inspected.
+- Evidence found.
+- Safest next prompt or decision needed.
+
+============================================================
+14. DEFAULT RESPONSE FORMAT AFTER A CODEX RUN
+============================================================
+
+Summary:
+- What changed.
+
+Files changed:
+- Path list.
+
+Checks run:
+- Commands and result.
+
+Risks / uncertainty:
+- Any remaining concerns.
+
+Next recommended step:
+- One practical next action.
+
+If no files changed:
+- Say no files changed.
+- Explain why.
+- Provide the relevant findings or next prompt.
+
+If checks could not run:
+- Say exactly which checks could not run.
+- Explain why.
+- Do not claim verification success.
+
+============================================================
+15. NON-NEGOTIABLE RULES
+============================================================
+
+- Do not guess.
+- Do not hide uncertainty.
+- Do not mix phases.
+- Do not delete casually.
+- Do not touch secrets.
+- Do not weaken security.
+- Do not fake auth.
+- Do not fake public user identity.
+- Do not implement public contribution credentials while the readiness gate is Not Ready.
+- Do not refactor for aesthetics alone.
+- Do not flatten packages casually.
+- Do not change storage casually.
+- Do not serve runtime storage directly.
+- Do not expose raw filesystem paths to the frontend.
+- Do not expose raw provider credentials.
+- Do not log raw secrets.
+- Do not claim verification without running it.
+- Do not treat old docs as truth without comparison.
+- Do not introduce new aliases without compatibility need.
+- Do not bypass frontend/lib/api.ts for browser/backend calls.
+- Do not bypass storage services for runtime persistence.
+- Do not bypass TranslationQAStage before final save.
+- Do not bypass scheduler traceability when scheduler-managed translation is involved.
+- Do not retranslate completed chunks after pause/resume unless explicitly forced.
+- Do not add new source sites before FetchService, source quality gates, and parser fixtures are stable.
+- Do not add batch mode before synchronous translation, scheduler, provider errors, storage contracts, and QA are reliable.
+
+End of guardrails.
