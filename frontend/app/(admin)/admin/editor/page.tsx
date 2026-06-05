@@ -5,6 +5,7 @@ import { ExternalLink, RotateCcw, Save } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 
+import { ErrorBanner } from "@/components/admin/error-banner";
 import { PageHeading } from "@/components/admin/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -201,7 +202,7 @@ export default function EditorPage() {
                 onChange={(event) => setDraftText(event.target.value)}
                 placeholder="Translated chapter text"
               />
-              {saveEdit.error ? <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{String(saveEdit.error)}</div> : null}
+              <ErrorBanner error={saveEdit.error} fallback="Failed to save edit." className="rounded-md border border-destructive/40 px-3" />
             </PanelBody>
           </Panel>
 
