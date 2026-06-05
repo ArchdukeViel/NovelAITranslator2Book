@@ -234,7 +234,7 @@ Do not implement public user contributed credentials unless the project already 
 - audit logging
 - contribution consent and usage limits
 
-Current state:
+Historical state at the time of this audit:
 
 - No public account/authentication system exists.
 - No `registered_user` or `owner_admin` role model exists.
@@ -322,9 +322,9 @@ This section records the post-implementation integration audit. Earlier sections
 - `npm run lint`
   - Result: could not complete as a non-interactive verification. After an unsandboxed retry, `next lint` started deprecated interactive ESLint configuration setup because the frontend has no committed ESLint config.
 
-### Recommended Next Phase
+### Historical Recommended Next Phase (Superseded)
 
-The next implementation phase should be Prompt 11: implement the multi-model scheduler using the existing `ProviderError`, chunk state, scheduler state, cache-key, QA, and activity/job progress contracts. Do not implement public contribution credentials until the project first adds authenticated users, admin role separation, encrypted credential storage, revocation/deletion flows, audit logging, contribution consent, and usage limits.
+At the time, this note recommended Prompt 11: implement the multi-model scheduler using the existing `ProviderError`, chunk state, scheduler state, cache-key, QA, and activity/job progress contracts. Do not use this archived recommendation as current guidance; use `docs/architecture/architecture.md`.
 
 ## Documentation Cleanup Pass
 

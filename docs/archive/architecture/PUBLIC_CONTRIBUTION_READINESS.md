@@ -332,9 +332,9 @@ Do not implement:
 
 These would create a false security boundary.
 
-## Recommended Next Step
+## Historical Recommended Next Step
 
-Delay Prompt 12.
+At the time, this note recommended delaying Prompt 12. Use `docs/architecture/architecture.md` for the current public-contribution readiness gate.
 
 Recommended sequence:
 

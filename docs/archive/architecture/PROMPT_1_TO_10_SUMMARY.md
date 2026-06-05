@@ -215,9 +215,9 @@ Recorded final verification from Prompt 10:
 
 These results are documented in `docs/architecture/IMPLEMENTATION_AUDIT.md`.
 
-## Current Architecture State
+## Historical Architecture State
 
-Current inspected state:
+Inspected state at the time:
 
 - Recent commits show one implementation commit per major prompt from Prompt 1 through Prompt 10.
 - `backend/src/novelai/translation/` contains SmartSegmentStage, typed pipeline context, TranslateStage compatibility, TranslationQAStage, and deterministic QA helpers.
@@ -260,9 +260,9 @@ Current worktree safety note:
 - Consider generated TypeScript types from FastAPI OpenAPI once API shapes stabilize.
 - Remove legacy compatibility aliases only after a planned migration and test coverage.
 
-## Recommended Next Phase
+## Historical Recommended Next Phase (Superseded)
 
-The recommended next phase is Prompt 11: implement the multi-model scheduler.
+At the time, the recommended next phase was Prompt 11: implement the multi-model scheduler. Use `docs/architecture/architecture.md` for current guidance.
 
 Prompt 11 should build on the contracts already in place:
 

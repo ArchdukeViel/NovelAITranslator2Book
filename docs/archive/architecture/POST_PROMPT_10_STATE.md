@@ -123,7 +123,7 @@ Confirmed statuses:
 
 Readiness assessment:
 
-- Ready for Prompt 11 implementation.
+- Historical assessment at the time: ready for Prompt 11 implementation.
 - Not currently a scheduler. No routing policy selects the next model, pauses all-cooldown jobs, resumes after cooldown, or avoids retranslating successful chunks after restart.
 
 ## Frontend Admin Refactor Readiness
@@ -214,9 +214,9 @@ Risks:
 - No object-level public user authorization exists.
 - Public contribution credentials are blocked until auth, roles, encrypted storage, revocation/deletion, audit logging, consent, and usage limits are implemented.
 
-## Recommended Next Prompt
+## Historical Recommended Next Prompt (Superseded)
 
-Run Prompt 11: multi-model scheduler.
+At the time, this note recommended Prompt 11: multi-model scheduler. Use `docs/architecture/architecture.md` for current implementation guidance.
 
 Prompt 11 should:
 

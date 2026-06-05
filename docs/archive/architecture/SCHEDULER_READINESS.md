@@ -6,9 +6,9 @@ This historical document was consolidated into `docs/architecture/architecture.m
 
 ## Verdict
 
-Ready.
+Historical verdict at the time: ready.
 
-Prompt 11 can begin because the hard prerequisites are present: typed chunk identity, provider error classification, exact cache-key foundations, QA before final save, activity/job progress shape, and serializable scheduler state. This is not a claim that scheduler behavior is implemented. The main remaining work is to wire the existing storage hooks into the runtime scheduler path so provider requests, chunk attempts, and chunk outputs are persisted consistently as routing decisions happen.
+At the time, this note said Prompt 11 could begin because the hard prerequisites were present: typed chunk identity, provider error classification, exact cache-key foundations, QA before final save, activity/job progress shape, and serializable scheduler state. This historical verdict is superseded by `docs/architecture/architecture.md`.
 
 ## Confirmed Prerequisites
 

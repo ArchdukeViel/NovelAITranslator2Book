@@ -2,22 +2,23 @@
 
 This historical document was consolidated into `docs/architecture/architecture.md`. It may contain stale implementation status and should not be used as current architecture guidance.
 
-# Architecture Documents
+# Archived Architecture Documents
 
-## Canonical Docs
+These files are preserved for historical context only. The active canonical architecture source is `docs/architecture/architecture.md`.
 
-- `architecture.md` - project architecture and rules
-- `IMPLEMENTATION_AUDIT.md` - implementation audit history
-- `POST_PROMPT_10_STATE.md` - post-core reliability state gate
-- `SCHEDULER_READINESS.md` - scheduler readiness gate
-- `SECURITY_PROTECTION_PLAN.md` - baseline owner/admin security plan
-- `PUBLIC_CONTRIBUTION_READINESS.md` - public contribution readiness gate
-- `FRONTEND_ARCHITECTURE.md` - frontend/admin architecture
-- `PROMPT_1_TO_10_SUMMARY.md` - implementation summary for prompts 1-10
+## Historical Documents
 
-## Reference Docs
+- `IMPLEMENTATION_AUDIT.md` - historical implementation audit
+- `POST_PROMPT_10_STATE.md` - historical post-core reliability state gate
+- `SCHEDULER_READINESS.md` - historical scheduler readiness gate
+- `SECURITY_PROTECTION_PLAN.md` - historical baseline owner/admin security plan
+- `PUBLIC_CONTRIBUTION_READINESS.md` - historical public contribution readiness gate
+- `FRONTEND_ARCHITECTURE.md` - historical frontend/admin architecture
+- `PROMPT_1_TO_10_SUMMARY.md` - historical implementation summary for prompts 1-10
 
-- `../reference/DATA_OUTPUT_STRUCTURE.md` - runtime/storage output contracts, if present
+## Active References To Check Separately
+
+- `docs/reference/DATA_OUTPUT_STRUCTURE.md` - active runtime/storage output reference
 
 ## Policy
 

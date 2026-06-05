@@ -362,7 +362,7 @@ Storage rules:
 - Runtime files are private unless explicitly published through safe storage readers and API/export services.
 - Frontend must never receive raw filesystem paths.
 
-`storage/README.md` documents local runtime storage policy. Runtime subfolders such as `storage/novel_library/`, `storage/output/`, `storage/input/`, and `storage/logs/` should stay ignored/untracked unless explicitly documented as examples.
+`docs/reference/DATA_OUTPUT_STRUCTURE.md` documents local runtime storage policy and output shapes. Runtime subfolders such as `storage/novel_library/`, `storage/output/`, `storage/input/`, and `storage/logs/` should stay ignored/untracked unless explicitly documented as examples.
 
 ## 9. API and Frontend Contract Architecture
 
