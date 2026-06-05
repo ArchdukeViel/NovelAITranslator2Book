@@ -1401,6 +1401,13 @@ def _assert_request_id_mirror(payload: dict[str, object]) -> str:
     return str(payload["id"])
 
 
+def _assert_source_candidate_url_mirror(payload: dict[str, object]) -> str | None:
+    assert "url" in payload
+    assert "source_url" in payload
+    assert payload["source_url"] == payload["url"]
+    return str(payload["url"]) if payload["url"] is not None else None
+
+
 class TestNovelRequests:
     def test_create_vote_and_list_request(self, _no_api_key: None) -> None:
         bootstrap()
@@ -1433,6 +1440,7 @@ class TestNovelRequests:
         assert listed[0]["id"] == request_id
         assert _assert_request_id_mirror(listed[0]) == request_id
         assert listed[0]["source_candidates"][0]["source_key"] == "syosetu_ncode"
+        assert _assert_source_candidate_url_mirror(listed[0]["source_candidates"][0]) == "https://ncode.syosetu.com/n1234ab/"
 
     def test_update_request_status_and_add_source_candidate(self, _no_api_key: None) -> None:
         bootstrap()
@@ -1455,13 +1463,16 @@ class TestNovelRequests:
             json={"source_key": "kakuyomu", "source_url": "https://kakuyomu.jp/works/123"},
         )
         assert candidate_resp.status_code == 200
-        assert candidate_resp.json()["source_key"] == "kakuyomu"
+        candidate_payload = candidate_resp.json()
+        assert candidate_payload["source_key"] == "kakuyomu"
+        assert _assert_source_candidate_url_mirror(candidate_payload) == "https://kakuyomu.jp/works/123"
 
         get_resp = c.get(f"/novels/requests/{request_id}")
         assert get_resp.status_code == 200
         get_payload = get_resp.json()
         assert len(get_payload["source_candidates"]) == 1
         assert _assert_request_id_mirror(get_payload) == request_id
+        assert _assert_source_candidate_url_mirror(get_payload["source_candidates"][0]) == "https://kakuyomu.jp/works/123"
 
     def test_invalid_request_status_returns_400(self, _no_api_key: None) -> None:
         bootstrap()

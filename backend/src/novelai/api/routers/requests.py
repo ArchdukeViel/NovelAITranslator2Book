@@ -36,10 +36,24 @@ class SourceCandidateCreateRequest(BaseModel):
     notes: str | None = None
 
 
+def _source_candidate_response(item: dict[str, Any]) -> dict[str, Any]:
+    response = dict(item)
+    if "url" in response:
+        response["source_url"] = response["url"]
+    return response
+
+
 def _request_response(item: dict[str, Any]) -> dict[str, Any]:
     response = dict(item)
     if "id" in response:
         response["request_id"] = response["id"]
+    candidates = response.get("source_candidates")
+    if isinstance(candidates, list):
+        response["source_candidates"] = [
+            _source_candidate_response(candidate)
+            for candidate in candidates
+            if isinstance(candidate, dict)
+        ]
     return response
 
 
@@ -146,4 +160,4 @@ async def add_source_candidate(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if item is None:
         raise HTTPException(status_code=404, detail="Novel request not found")
-    return item
+    return _source_candidate_response(item)
