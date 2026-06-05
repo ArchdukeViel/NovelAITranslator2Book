@@ -91,18 +91,31 @@ export type ModelState = {
   provider_key: string;
   provider_model: string;
   status: string;
+  priority_order?: number | null;
+  rpm_limit?: number | null;
+  rpd_limit?: number | null;
+  requests_this_minute?: number | null;
+  requests_today?: number | null;
+  window_started_at?: string | null;
+  day_started_at?: string | null;
   cooldown_until?: string | null;
   exhausted_until?: string | null;
+  last_error_code?: string | null;
+  last_error_message?: string | null;
+  selection_reason?: string | null;
 };
 
 export type JobProgress = {
   status: string;
+  provider_key?: string | null;
+  provider_model?: string | null;
   current_stage?: string | null;
   current_label?: string | null;
   completed?: number | null;
   total?: number | null;
   paused_reason?: string | null;
   resume_after?: string | null;
+  selection_reason?: string | null;
   errors?: unknown[];
   warnings?: unknown[];
   model_states?: ModelState[];

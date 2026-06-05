@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/admin/empty-state";
 import { ErrorBanner } from "@/components/admin/error-banner";
 import { LoadingRows } from "@/components/admin/loading-rows";
 import { PageHeading } from "@/components/admin/page-heading";
+import { SchedulerBadges } from "@/components/admin/scheduler-state";
 import { SortableHeader } from "@/components/admin/sortable-header";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { TableCheckbox } from "@/components/admin/table-checkbox";
@@ -21,7 +22,7 @@ import { activityPhaseSummary, groupActivityByNovel, type ActivityGroup } from "
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 
-const statusOptions = ["", "pending", "running", "completed", "failed", "cancelled"];
+const statusOptions = ["", "pending", "running", "paused", "paused_until_cooldown", "paused_until_quota_reset", "completed", "failed", "cancelled"];
 type ActivitySortKey = "novel" | "phases" | "status" | "updated";
 
 function activitySortValue(group: ActivityGroup, key: ActivitySortKey) {
@@ -190,6 +191,9 @@ export default function ActivityPage() {
                         <td className="px-4 py-3 text-muted-foreground">{activityPhaseSummary(group.phases)}</td>
                         <td className="px-4 py-3">
                           <StatusBadge status={group.status} />
+                          {group.activity.map((activityItem) => (
+                            <SchedulerBadges key={activityItem.id} activity={activityItem} />
+                          ))}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">{formatDateTime(group.updatedAt)}</td>
                         <td className="px-4 py-3 text-right">

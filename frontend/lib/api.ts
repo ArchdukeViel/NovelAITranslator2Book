@@ -167,17 +167,28 @@ function metadataProgress(activity: ActivityRecord): Record<string, unknown> {
 
 export function activityProgress(activity: ActivityRecord): JobProgress {
   const progress = metadataProgress(activity);
+  const metadata = activity.metadata ?? {};
+  const progressErrors = Array.isArray(progress.errors) ? progress.errors : [];
+  const metadataErrors = Array.isArray(metadata.errors) ? metadata.errors : [];
+  const providerError = metadata.provider_error ? [metadata.provider_error] : [];
+  const progressWarnings = Array.isArray(progress.warnings) ? progress.warnings : [];
+  const metadataWarnings = Array.isArray(metadata.warnings) ? metadata.warnings : [];
+  const progressModelStates = Array.isArray(progress.model_states) ? (progress.model_states as ModelState[]) : [];
+  const metadataModelStates = Array.isArray(metadata.model_states) ? (metadata.model_states as ModelState[]) : [];
   return {
     status: activity.status,
-    current_stage: activity.current_stage ?? payloadText(progress.current_stage),
-    current_label: activity.current_label ?? payloadText(progress.current_label),
-    completed: activity.completed ?? progressNumber(progress.completed),
-    total: activity.total ?? progressNumber(progress.total),
-    paused_reason: activity.paused_reason ?? payloadText(progress.paused_reason),
-    resume_after: activity.resume_after ?? payloadText(progress.resume_after),
-    errors: activity.errors ?? (Array.isArray(progress.errors) ? progress.errors : []),
-    warnings: activity.warnings ?? (Array.isArray(progress.warnings) ? progress.warnings : []),
-    model_states: activity.model_states ?? (Array.isArray(progress.model_states) ? (progress.model_states as ModelState[]) : [])
+    provider_key: activity.provider_key ?? activity.provider ?? payloadText(progress.provider_key) ?? payloadText(metadata.provider_key) ?? payloadText(progress.provider),
+    provider_model: activity.provider_model ?? activity.model ?? payloadText(progress.provider_model) ?? payloadText(metadata.provider_model) ?? payloadText(progress.model),
+    current_stage: activity.current_stage ?? payloadText(progress.current_stage) ?? payloadText(metadata.current_stage),
+    current_label: activity.current_label ?? payloadText(progress.current_label) ?? payloadText(metadata.current_label),
+    completed: activity.completed ?? progressNumber(progress.completed) ?? progressNumber(metadata.completed),
+    total: activity.total ?? progressNumber(progress.total) ?? progressNumber(metadata.total),
+    paused_reason: activity.paused_reason ?? payloadText(progress.paused_reason) ?? payloadText(metadata.paused_reason),
+    resume_after: activity.resume_after ?? payloadText(progress.resume_after) ?? payloadText(metadata.resume_after),
+    selection_reason: payloadText(progress.selection_reason) ?? payloadText(metadata.selection_reason),
+    errors: activity.errors ?? (progressErrors.length ? progressErrors : [...metadataErrors, ...providerError]),
+    warnings: activity.warnings ?? (progressWarnings.length ? progressWarnings : metadataWarnings),
+    model_states: activity.model_states ?? (progressModelStates.length ? progressModelStates : metadataModelStates)
   };
 }
 

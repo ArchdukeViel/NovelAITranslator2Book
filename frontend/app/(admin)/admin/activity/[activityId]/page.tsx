@@ -6,7 +6,11 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import * as React from "react";
 
+import { EmptyState } from "@/components/admin/empty-state";
+import { ErrorBanner } from "@/components/admin/error-banner";
+import { LoadingRows } from "@/components/admin/loading-rows";
 import { PageHeading } from "@/components/admin/page-heading";
+import { SchedulerStatePanel, hasSchedulerProgress } from "@/components/admin/scheduler-state";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
@@ -88,6 +92,7 @@ export default function ActivityDetailPage() {
         </Link>
       </div>
       <PageHeading title="Activity Detail" description={activity.data?.novelId ?? activityId} />
+      <ErrorBanner error={activity.error} fallback="Failed to load activity detail." className="mb-4 rounded-md border" />
 
       <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
         <Panel>
@@ -157,7 +162,13 @@ export default function ActivityDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activeActivity.map((activityItem) => (
+                  {activity.isLoading ? (
+                    <LoadingRows colSpan={4} label="Loading activity..." />
+                  ) : activity.error ? (
+                    <EmptyState title="Failed to load activity." colSpan={4} />
+                  ) : activeActivity.length === 0 ? (
+                    <EmptyState title="No activity records found." colSpan={4} />
+                  ) : activeActivity.map((activityItem) => (
                     (() => {
                       const progress = activityProgress(activityItem);
                       const progressLabel = activityProgressLabel(activityItem);
@@ -193,6 +204,11 @@ export default function ActivityDetailPage() {
                     <div className="border-b px-3 py-2 text-xs uppercase text-muted-foreground">{displayToken(activityPhase(activityItem))}</div>
                     {activityItem.error ? (
                       <div className="border-b border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{activityItem.error}</div>
+                    ) : null}
+                    {hasSchedulerProgress(activityItem) ? (
+                      <div className="border-b p-3">
+                        <SchedulerStatePanel activity={activityItem} />
+                      </div>
                     ) : null}
                     <pre className="seamless-scrollbar max-h-80 overflow-auto bg-muted/35 p-3 text-xs leading-5">
                       {JSON.stringify(activityItem, null, 2)}

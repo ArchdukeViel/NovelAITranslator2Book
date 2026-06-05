@@ -5,6 +5,7 @@ import Link from "next/link";
 import * as React from "react";
 
 import { EmptyState } from "@/components/admin/empty-state";
+import { SchedulerBadges } from "@/components/admin/scheduler-state";
 import { SortableHeader } from "@/components/admin/sortable-header";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { TableCheckbox } from "@/components/admin/table-checkbox";
@@ -111,6 +112,7 @@ export function ActivityTable({
                     <td className="px-4 py-3">{activityItem.chapters || "-"}</td>
                     <td className="px-4 py-3">
                       <StatusBadge status={activityItem.status} />
+                      <SchedulerBadges activity={activityItem} />
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {formatDateTime(activityUpdatedAt(activityItem))}

@@ -60,6 +60,9 @@ export function activityStatus(activities: ActivityRecord[]) {
   if (activities.some((activity) => activity.status === "running")) {
     return "running";
   }
+  if (activities.some((activity) => activity.status.startsWith("paused"))) {
+    return "paused";
+  }
   if (activities.some((activity) => activity.status === "failed")) {
     return "failed";
   }

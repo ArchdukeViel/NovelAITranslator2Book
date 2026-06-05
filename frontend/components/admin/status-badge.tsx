@@ -9,7 +9,7 @@ export function StatusBadge({ status }: { status?: string | null }) {
         ? "blue"
         : normalized === "failed" || normalized === "rejected"
           ? "red"
-          : normalized === "pending" || normalized === "needs_review"
+          : normalized === "pending" || normalized === "needs_review" || normalized.startsWith("paused")
             ? "amber"
             : "neutral";
 
