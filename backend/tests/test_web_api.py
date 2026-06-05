@@ -1304,19 +1304,90 @@ class TestActivity:
 
         payload = get_resp.json()
         assert get_resp.status_code == 200
+        assert payload["id"] == created["id"]
         assert payload["activity_id"] == created["id"]
         assert payload["job_id"] == created["id"]
+        assert payload["provider"] == "gemini"
+        assert payload["model"] == "gemini-2.5-flash-lite"
         assert payload["provider_key"] == "gemini"
         assert payload["provider_model"] == "gemini-2.5-flash-lite"
         assert payload["current_stage"] == "TranslateStage"
         assert payload["current_label"] == "Chapter 2 / Chunk 3"
         assert payload["completed"] == 27
         assert payload["total"] == 100
+        assert payload["paused_reason"] is None
+        assert payload["resume_after"] is None
         assert payload["warnings"][0]["code"] == "model_switch_warning"
         assert payload["errors"][0]["code"] == "provider_rate_limited"
         assert payload["model_states"][0]["status"] == "cooling_down"
         assert list_resp.json()["activity"][0]["current_stage"] == "TranslateStage"
         assert list_resp.json()["jobs"][0]["job_id"] == created["id"]
+
+    def test_jobs_aliases_preserve_activity_identifiers_and_provider_mirrors(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        jobs = ActivityQueueService(_TMP / "jobs")
+        created = jobs.create_translation_activity(
+            novel_id="test-n1",
+            chapters="1-2",
+            provider="openai",
+            model="gpt-5.4",
+        )
+        c = _make_app(storage, jobs)
+
+        list_resp = c.get("/novels/jobs", params={"job_type": "translation", "status": "pending"})
+        detail_resp = c.get(f"/novels/jobs/{created['id']}")
+
+        assert list_resp.status_code == 200
+        list_payload = list_resp.json()
+        assert len(list_payload["activity"]) == 1
+        assert len(list_payload["jobs"]) == 1
+        assert list_payload["activity"][0] == list_payload["jobs"][0]
+        assert detail_resp.status_code == 200
+        detail_payload = detail_resp.json()
+        assert detail_payload["id"] == created["id"]
+        assert detail_payload["activity_id"] == created["id"]
+        assert detail_payload["job_id"] == created["id"]
+        assert detail_payload["provider"] == "openai"
+        assert detail_payload["model"] == "gpt-5.4"
+        assert detail_payload["provider_key"] == "openai"
+        assert detail_payload["provider_model"] == "gpt-5.4"
+
+    def test_activity_root_metadata_progress_fields_and_default_arrays_are_normalized(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        jobs = ActivityQueueService(_TMP / "jobs")
+        created = jobs.create_crawl_activity(
+            novel_id="test-n1",
+            source_key="syosetu_ncode",
+            kind="chapters",
+            metadata={
+                "current_stage": "RootStage",
+                "current_label": "Root progress",
+                "completed": 1,
+                "total": 2,
+                "paused_reason": "manual_pause",
+                "resume_after": "2026-06-04T12:10:00Z",
+            },
+        )
+        c = _make_app(storage, jobs)
+
+        resp = c.get(f"/novels/activity/{created['id']}")
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["id"] == created["id"]
+        assert payload["activity_id"] == created["id"]
+        assert payload["job_id"] == created["id"]
+        assert payload["current_stage"] == "RootStage"
+        assert payload["current_label"] == "Root progress"
+        assert payload["completed"] == 1
+        assert payload["total"] == 2
+        assert payload["paused_reason"] == "manual_pause"
+        assert payload["resume_after"] == "2026-06-04T12:10:00Z"
+        assert payload["errors"] == []
+        assert payload["warnings"] == []
+        assert payload["model_states"] == []
 
     def test_delete_activity(self, _no_api_key: None) -> None:
         bootstrap()
