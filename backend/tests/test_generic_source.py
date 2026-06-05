@@ -79,10 +79,7 @@ class TestGenericSourceHelpers:
         soup = _soup("<html><body></body></html>")
         assert GenericSource._extract_author(soup) is None
 
-    def test_request_headers(self) -> None:
-        headers = GenericSource._request_headers()
-        assert "User-Agent" in headers
-
-    def test_request_headers_with_referer(self) -> None:
-        headers = GenericSource._request_headers(referer="https://ref.com")
-        assert headers["Referer"] == "https://ref.com"
+    def test_fetch_service_is_injected(self) -> None:
+        fetch_service = object()
+        src = GenericSource(fetch_service=fetch_service)  # type: ignore[arg-type]
+        assert src._fetch_service is fetch_service

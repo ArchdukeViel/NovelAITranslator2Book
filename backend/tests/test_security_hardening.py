@@ -11,10 +11,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from novelai.api.error_handlers import add_error_handlers
-from novelai.api.routers.admin import _runtime_state_record
 from novelai.core.errors import ProviderError, ProviderErrorCode, SourceError
 from novelai.core.security import redact_secret_text, redact_sensitive
 from novelai.infrastructure.http.client import validate_safe_url
+from novelai.services.admin_service import AdminService
+from novelai.services.preferences_service import PreferencesService
+from novelai.services.translation_cache import TranslationCache
+from novelai.services.usage_service import UsageService
 from novelai.storage.service import StorageService
 from novelai.utils.logging import SimpleFormatter, StructuredFormatter
 
@@ -176,10 +179,16 @@ def test_log_formatters_redact_secret_values() -> None:
 
 
 def test_admin_runtime_state_does_not_expose_absolute_path(workspace_tmp_path: Path) -> None:
-    path = workspace_tmp_path / "preferences.json"
-    path.write_text("{}", encoding="utf-8")
+    preferences = PreferencesService(workspace_tmp_path)
+    preferences.set_preferred_provider("dummy")
+    service = AdminService(
+        preferences=preferences,
+        translation_cache=TranslationCache(workspace_tmp_path),
+        usage=UsageService(workspace_tmp_path),
+        activity_runner=object(),  # type: ignore[arg-type]
+    )
 
-    record = _runtime_state_record("preferences", path)
+    record = service.runtime_state_record("preferences")
 
     assert record["path"] == "runtime/preferences.json"
     assert str(workspace_tmp_path) not in str(record)

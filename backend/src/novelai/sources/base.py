@@ -117,26 +117,13 @@ class SourceAdapter(ABC):
 
     async def fetch_asset(self, url: str, *, referer: str | None = None) -> Mapping[str, Any]:
         """Download an asset referenced by chapter content."""
-        validate_url(url)
-        await self._rate_limit()
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        if isinstance(referer, str) and referer.strip():
-            headers["Referer"] = referer.strip()
+        from novelai.infrastructure.http.fetch_service import get_default_fetch_service
 
-        from novelai.utils.http_client import create_async_client
-
-        async def _do_request() -> httpx.Response:
-            async with create_async_client(headers=headers) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
-                return resp
-
-        response = await self._with_retry(_do_request)
-
+        result = await get_default_fetch_service().get_bytes(url, source_key=self.key, referer=referer)
         return {
-            "url": str(response.url),
-            "content": response.content,
-            "content_type": response.headers.get("content-type"),
+            "url": result.final_url,
+            "content": result.body,
+            "content_type": result.headers.get("content-type"),
         }
 
 

@@ -10,17 +10,17 @@ import re
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
-import httpx
 from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
+from novelai.infrastructure.http.fetch_service import FetchService, get_default_fetch_service
 from novelai.sources.quality import QualityGateResult
 from novelai.sources._helpers import (
     extract_image_references,
     image_placeholder,
     iter_story_blocks,
 )
-from novelai.sources.base import SourceAdapter, validate_url
+from novelai.sources.base import SourceAdapter
 from novelai.sources.html_parsers import HTMLParserMixin
 from novelai.utils.text_normalization import normalize_text as _shared_normalize_text
 
@@ -77,6 +77,9 @@ _GENERIC_ASSET_PATH_RE = re.compile(r"\.(?:jpg|jpeg|png|gif|webp|svg|css|js|ico|
 class GenericSource(SourceAdapter):
     """Heuristic scraper for any novel URL not matched by a dedicated adapter."""
 
+    def __init__(self, fetch_service: FetchService | None = None) -> None:
+        self._fetch_service = fetch_service or get_default_fetch_service()
+
     @property
     def key(self) -> str:
         return "generic"
@@ -93,37 +96,12 @@ class GenericSource(SourceAdapter):
             return f"{parsed.netloc}{parsed.path}".rstrip("/")
         return candidate
 
-    # ------------------------------------------------------------------
-    # HTTP helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _request_headers(*, referer: str | None = None) -> dict[str, str]:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        if isinstance(referer, str) and referer.strip():
-            headers["Referer"] = referer.strip()
-        return headers
-
     async def _fetch_page(self, url: str) -> str:
-        validate_url(url)
-        await self._rate_limit()
         try:
-            from novelai.utils.http_client import create_async_client
-
-            async def _do_request() -> httpx.Response:
-                async with create_async_client(headers=self._request_headers()) as client:
-                    resp = await client.get(url)
-                    resp.raise_for_status()
-                    return resp
-
-            resp = await self._with_retry(_do_request)
-        except httpx.HTTPStatusError as exc:
-            raise SourceError(
-                f"Failed to fetch page from {url} (status={exc.response.status_code})."
-            ) from exc
-        except httpx.HTTPError as exc:
+            result = await self._fetch_service.get_text(url, source_key=self.key)
+        except SourceError as exc:
             raise SourceError(f"Failed to fetch page from {url}: {exc}") from exc
-        return resp.text
+        return result.text
 
     # ------------------------------------------------------------------
     # HTML extraction

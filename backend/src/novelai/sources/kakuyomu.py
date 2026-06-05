@@ -7,6 +7,7 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
+from novelai.infrastructure.http.fetch_service import FetchService, get_default_fetch_service
 from novelai.sources._helpers import (
     attribute_to_str,
     extract_image_references,
@@ -68,6 +69,9 @@ class KakuyomuSource(SourceAdapter):
     RUBY_REMOVE_SELECTORS = ("rt", "rp")
     SEPARATOR_LINE = "-" * 60
 
+    def __init__(self, fetch_service: FetchService | None = None) -> None:
+        self._fetch_service = fetch_service or get_default_fetch_service()
+
     @property
     def key(self) -> str:
         return "kakuyomu"
@@ -115,56 +119,23 @@ class KakuyomuSource(SourceAdapter):
         work_id = self.normalize_novel_id(identifier_or_url)
         return f"https://kakuyomu.jp/works/{work_id.strip('/')}/"
 
-    def _request_headers(self, *, referer: str | None = None) -> dict[str, str]:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        if isinstance(referer, str) and referer.strip():
-            headers["Referer"] = referer.strip()
-        return headers
-
     async def _fetch_page(self, url: str) -> str:
-        await self._rate_limit()
         try:
-            from novelai.utils.http_client import create_async_client
-
-            async def _do_request() -> httpx.Response:
-                async with create_async_client(headers=self._request_headers()) as client:
-                    resp = await client.get(url)
-                    resp.raise_for_status()
-                    return resp
-
-            resp = await self._with_retry(_do_request)
-        except httpx.HTTPStatusError as exc:
-            raise SourceError(
-                f"Failed to fetch Kakuyomu page from {url} (status={exc.response.status_code}). "
-                "Check that the work or episode URL is correct and the site is accessible."
-            ) from exc
-        except httpx.HTTPError as exc:
+            result = await self._fetch_service.get_text(url, source_key=self.key)
+        except SourceError as exc:
             raise SourceError(f"Failed to fetch Kakuyomu page from {url}: {exc}") from exc
-        return resp.text
+        return result.text
 
     async def fetch_asset(self, url: str, *, referer: str | None = None) -> dict[str, Any]:
-        await self._rate_limit()
         try:
-            from novelai.utils.http_client import create_async_client
-
-            async def _do_request() -> httpx.Response:
-                async with create_async_client(headers=self._request_headers(referer=referer)) as client:
-                    response = await client.get(url)
-                    response.raise_for_status()
-                    return response
-
-            response = await self._with_retry(_do_request)
-        except httpx.HTTPStatusError as exc:
-            raise SourceError(
-                f"Failed to fetch Kakuyomu asset from {url} (status={exc.response.status_code})."
-            ) from exc
-        except httpx.HTTPError as exc:
+            result = await self._fetch_service.get_bytes(url, source_key=self.key, referer=referer)
+        except SourceError as exc:
             raise SourceError(f"Failed to fetch Kakuyomu asset from {url}: {exc}") from exc
 
         return {
-            "url": str(response.url),
-            "content": response.content,
-            "content_type": response.headers.get("content-type"),
+            "url": result.final_url,
+            "content": result.body,
+            "content_type": result.headers.get("content-type"),
         }
 
     def _first_text(self, soup: BeautifulSoup | Tag, selectors: tuple[str, ...]) -> str | None:
