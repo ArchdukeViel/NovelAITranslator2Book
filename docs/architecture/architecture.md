@@ -2,10 +2,62 @@
 
 **Status:** Canonical project architecture  
 **Audience:** Future development, Codex prompts, backend/frontend refactors, tests, deployment decisions  
-**Last reviewed:** 2026-06-04  
-**Aligned with:** Revised Codex implementation prompt sequence with Prompt 12 public contribution workflow and Prompt 13 security hardening
+**Last reviewed:** 2026-06-05
+**Aligned with:** current single-owner/admin implementation after scheduler, scheduler UI, baseline security hardening, and public contribution readiness review
 
 This document is the spine of the NovelAI project. If a new feature, refactor, or bug fix violates this file, the feature is probably wrong. Architecture is not decoration; it is the law that keeps this project from becoming wet spaghetti in a storm drain.
+
+---
+
+## Current Implementation Status
+
+Current project mode:
+
+```text
+single-owner / controlled-admin
+file-backed runtime storage
+scheduler-enabled for admin-owned provider/model routing
+scheduler state visible in admin activity/job screens
+baseline owner/admin security hardened
+not public-contribution ready
+not multi-tenant
+not database-backed
+```
+
+Implemented:
+
+- smart segmentation with deterministic paragraph and chunk IDs
+- provider error classification and API error-envelope mapping
+- pipeline/job/chunk traceability
+- deterministic translation QA before final save
+- storage/cache contracts, including provider requests, chunk outputs, scheduler state, fetch cache, and exact translation cache keys
+- central FetchService foundation with shared HTTP client, throttle, cache hooks, and URL safety validation
+- source quality gates and Generic confidence scoring
+- offline parser fixture tests
+- API/frontend error and progress contract cleanup
+- admin frontend shared primitives and scheduler-aware activity display
+- multi-model scheduler backend for provider/model selection, cooldown/quota state, pause/resume status, and chunk-attempt provider/model traceability
+- baseline owner/admin security hardening for path traversal, runtime storage isolation, secret redaction, structured errors, SSRF checks, and ignore policy
+
+Explicitly not implemented:
+
+- public user authentication
+- `owner_admin` role model
+- public contribution credentials
+- encrypted user credential storage
+- credential revocation/deletion/audit lifecycle
+- per-credential usage limits
+- public contribution consent flow
+- database migration
+- batch mode
+- billing, organizations, or multi-admin teams
+
+Status references:
+
+- Scheduler readiness/history: `docs/architecture/SCHEDULER_READINESS.md`
+- Frontend/admin structure: `docs/architecture/FRONTEND_ARCHITECTURE.md`
+- Baseline security posture: `docs/architecture/SECURITY_PROTECTION_PLAN.md`
+- Public contribution gate: `docs/architecture/PUBLIC_CONTRIBUTION_READINESS.md`
 
 ---
 
@@ -15,9 +67,9 @@ NovelAI is a web-based Japanese novel ingestion, translation, editing, library, 
 
 It has four primary surfaces:
 
-1. **Owner/admin surface** — crawl/import sources, manage requests, approve translations, manage jobs, translate chapters, edit output, configure providers, inspect activity, manage sanitized credentials, and export.
+1. **Owner/admin surface** — crawl/import sources, manage requests, approve translations, manage jobs, translate chapters, edit output, configure providers, inspect activity/scheduler state, and export.
 2. **Public reader surface** — browse published translated novels and read published chapters.
-3. **Registered user surface** — request novel/chapter translations and optionally contribute Gemini API quota for approved public-library translation jobs.
+3. **Future registered user surface** — request novel/chapter translations and optionally contribute Gemini API quota for approved public-library translation jobs. This is not implemented.
 4. **Backend runtime** — source ingestion, input import, translation pipeline, storage, usage/cost tracking, activity logging, scheduler state, security controls, and export generation.
 
 ### 1.1 Core mode
@@ -105,6 +157,18 @@ object-level authorization
 
 Do not fake user ownership with browser localStorage IDs. That is not auth; that is a cardboard badge.
 
+`docs/architecture/PUBLIC_CONTRIBUTION_READINESS.md` currently says **Not Ready**. Prompt 12 must not be implemented while that verdict remains Not Ready.
+
+Current blockers:
+
+- no authenticated registered users
+- no `owner_admin` authorization boundary
+- no object-level authorization
+- no encrypted credential storage
+- no credential revocation/deletion/audit lifecycle
+- no per-credential usage limits
+- no contribution consent flow
+
 ---
 
 ## 2. North Star
@@ -126,9 +190,12 @@ Smart segmentation
 → source fetcher/parser split
 → quality gates
 → multi-model scheduler
-→ request approval and contributed credentials
-→ security hardening
+→ baseline owner/admin security hardening
+→ request approval, auth, and contributed credentials
+→ contribution-mode security hardening
 ```
+
+The core reliability path through scheduler and baseline owner/admin hardening is implemented. Public contribution remains gated on real authentication, authorization, encrypted credential storage, revocation/audit flows, consent, and usage limits.
 
 Do not chase more source sites, prompt tweaks, or UI glitter until the pipeline can explain exactly what failed, where it failed, whether retrying will waste money, and whether any sensitive data could leak.
 
@@ -954,7 +1021,7 @@ Japanese source text with stable markers
 
 ### 10.10 Multi-model scheduler
 
-The scheduler belongs in the translation/service/job layer, not in providers.
+The scheduler belongs in the translation/service/job layer, not in providers. The current backend includes a scheduler for admin-owned provider/model routing in the translation path.
 
 Scheduler responsibilities:
 
@@ -966,6 +1033,7 @@ preserve chunk progress
 record provider/model per attempt
 route fallback only when policy allows
 avoid random round-robin that damages style
+publish model state to activity/job progress
 ```
 
 Supported routing modes:
@@ -975,7 +1043,17 @@ volume_first
 quality_first
 ```
 
-The scheduler must prefer one main model per chapter when possible and use stronger models for failed/weak chunks, retries, or final quality mode. Multi-model routing must not bypass glossary, prompt versioning, QA, cache keys, or chunk status tracking.
+The scheduler owns provider/model selection, cooldown and quota state, pause/resume status, model-state progress reporting, and chunk-attempt provider/model traceability.
+
+The scheduler must:
+
+1. Prefer one main model per chapter when possible.
+2. Use stronger or fallback models only when policy allows, such as failed/weak chunks, retries, unavailable models, cooldown, quota exhaustion, or final quality mode.
+3. Never bypass glossary handling, prompt versioning, exact cache keys, provider request recording, chunk status tracking, or QA before final save.
+4. Never leak provider credentials or raw provider request headers through progress, storage summaries, logs, or API responses.
+5. Never randomly rotate models when consistency matters.
+6. Never retranslate successful chunks after pause/resume unless explicitly forced.
+7. Keep final translated output chapter-based even when chunks or temporary bundles are used internally.
 
 ### 10.11 Cost and quality rules
 
@@ -1512,6 +1590,8 @@ Rules:
 
 ## 14. Frontend Architecture
 
+The detailed frontend/admin structure lives in `docs/architecture/FRONTEND_ARCHITECTURE.md`. This section is the canonical boundary summary; the companion doc tracks the concrete admin route/component organization.
+
 ### 14.1 Route groups
 
 The frontend uses Next.js App Router with conceptual route groups:
@@ -1548,8 +1628,10 @@ Admin pages are for operations. Public pages are for reading and own-account act
 6. Admin pages should expose activity/job status instead of pretending long work is instant.
 7. Public user pages manage only the authenticated user's own credentials/requests.
 8. Admin pages manage request approval and sanitized credential metadata.
-9. No frontend page receives raw API key after creation.
-10. No frontend page reads runtime storage directly.
+9. React displays scheduler, QA, storage, provider, and credential state returned by the backend; it does not implement those policies.
+10. `frontend/lib/api.ts` is the only browser/backend API client.
+11. No frontend page receives raw API key after creation.
+12. No frontend page reads runtime storage directly.
 
 ### 14.4 Public contribution UI
 
@@ -1813,6 +1895,29 @@ A quota error, invalid model, blocked output, or invalid JSON response must neve
 ## 19. Security and Safety
 
 Security is not a later coat of paint. It is part of the architecture.
+
+### 19.0 Baseline Security Posture
+
+Current single-owner / controlled-admin mode includes:
+
+- path traversal protection for storage-backed identifiers
+- runtime storage isolation; `storage/novel_library` is private runtime data, not a static public directory
+- API/log secret redaction for API keys, bearer tokens, cookies, authorization headers, provider headers, and common secret fields
+- structured error envelopes without raw tracebacks by default
+- FetchService SSRF protection for integrated source adapters
+- git ignore policy for runtime storage, secrets, logs, backups, and generated artifacts
+
+These protections are documented in `docs/architecture/SECURITY_PROTECTION_PLAN.md`.
+
+Out of scope until public contribution mode:
+
+- registered public users
+- `owner_admin` role separation
+- encrypted contributed credential storage
+- credential lifecycle audit logs
+- contribution consent and limits
+- scheduler enforcement of contributed credential scope
+- separate public-user and admin credential management UIs
 
 ### 19.1 URL safety
 
@@ -2182,9 +2287,9 @@ If the answer is fuzzy, stop. Fuzzy architecture breeds bugs with teeth.
 
 ---
 
-## 24. Immediate Architecture Debt
+## 24. Architecture Debt And Next Phases
 
-These are the pressure points to fix before scaling features. This is the current execution order.
+The original core reliability priorities remain below as the architectural checklist. Priorities 1-10 are implemented as the current baseline, and Priority 11 is implemented for admin-owned provider/model routing. Remaining work should focus on migration debt, contribution-mode prerequisites, and hardening that depends on real user/credential boundaries.
 
 ### Priority 1 — Smart segmentation
 
@@ -2372,7 +2477,9 @@ Requirements:
 
 ### Priority 11 — Multi-model scheduler
 
-Add provider/model scheduler after traceability and provider errors are stable.
+Status: implemented for admin-owned provider/model routing.
+
+The scheduler uses traceability, provider errors, chunk state, scheduler state, cache keys, QA, and activity/job progress contracts.
 
 Requirements:
 
@@ -2383,10 +2490,14 @@ Requirements:
 - provider/model per chunk
 - no random round-robin quality drift
 - cache/prompt/QA not bypassed
+- successful chunks are not retranslated unless explicitly forced
+- scheduler state is visible through activity/job progress
 
 ### Priority 12 — Owner-approved request workflow and contribution credentials
 
-Run only after core pipeline and scheduler are stable and auth/owner_admin boundaries exist or are explicitly introduced.
+Status: blocked.
+
+Do not run Prompt 12 while `docs/architecture/PUBLIC_CONTRIBUTION_READINESS.md` says Not Ready. Run only after core pipeline and scheduler are stable and auth/owner_admin boundaries exist or are explicitly introduced.
 
 Requirements:
 
@@ -2401,19 +2512,22 @@ Requirements:
 
 ### Priority 13 — Security hardening and storage isolation
 
-Run after public contribution design is clear.
+Status: baseline owner/admin hardening implemented; full contribution-mode hardening remains future work.
 
 Requirements:
 
-- credential protection
-- private storage isolation
-- object-level authorization
-- path traversal protection
-- anti-scrape/read rate limits
-- source URL SSRF protection
-- logging redaction
-- backup/incident plan
-- deployment hardening
+- current baseline: path traversal protection
+- current baseline: private runtime storage isolation
+- current baseline: source URL SSRF protection for FetchService-integrated adapters
+- current baseline: API/log secret redaction
+- current baseline: structured unknown errors without raw tracebacks by default
+- current baseline: ignore policy for runtime storage, secrets, logs, backups, and generated artifacts
+- future contribution-mode work: object-level authorization
+- future contribution-mode work: encrypted user credential storage
+- future contribution-mode work: credential revocation/deletion/audit lifecycle
+- future contribution-mode work: anti-scrape/read rate limits for public-user scale
+- future contribution-mode work: encrypted backup policy and incident response
+- future contribution-mode work: deployment hardening around auth/session boundaries
 
 ---
 

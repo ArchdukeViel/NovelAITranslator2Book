@@ -321,3 +321,10 @@ This section records the post-implementation integration audit. Earlier sections
 ### Recommended Next Phase
 
 The next implementation phase should be Prompt 11: implement the multi-model scheduler using the existing `ProviderError`, chunk state, scheduler state, cache-key, QA, and activity/job progress contracts. Do not implement public contribution credentials until the project first adds authenticated users, admin role separation, encrypted credential storage, revocation/deletion flows, audit logging, contribution consent, and usage limits.
+
+## Documentation Cleanup Pass
+
+- Removed or archived temporary prompt/result Markdown files.
+- Preserved canonical architecture documents.
+- Updated `architecture.md` to reflect scheduler, security, frontend, and public-contribution readiness status.
+- Public contribution remains gated by `PUBLIC_CONTRIBUTION_READINESS.md`.
