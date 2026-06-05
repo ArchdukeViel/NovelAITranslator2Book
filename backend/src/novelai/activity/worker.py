@@ -179,8 +179,10 @@ class ActivityWorkerService:
         if not isinstance(chapters, str) or not chapters.strip():
             chapters = "all"
 
-        provider = activity.get("provider") if isinstance(activity.get("provider"), str) else None
-        model = activity.get("model") if isinstance(activity.get("model"), str) else None
+        provider_value = activity.get("provider_key") or activity.get("provider")
+        model_value = activity.get("provider_model") or activity.get("model")
+        provider = provider_value if isinstance(provider_value, str) else None
+        model = model_value if isinstance(model_value, str) else None
         source_language = (
             metadata.get("source_language")
             if isinstance(metadata.get("source_language"), str)

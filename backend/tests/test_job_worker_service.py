@@ -34,6 +34,16 @@ class StubOrchestrator:
             raise RuntimeError("translation failed")
 
 
+def _patch_activity_record(activity_log: ActivityQueueService, activity_id: str, **updates: object) -> None:
+    activity_items = activity_log._load_activity()
+    for activity in activity_items:
+        if activity.get("id") == activity_id:
+            activity.update(updates)
+            activity_log._persist_activity(activity_items)
+            return
+    raise AssertionError(f"Activity not found: {activity_id}")
+
+
 @pytest.fixture
 def worker_env():
     TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
@@ -87,6 +97,54 @@ async def test_run_translation_activity_uses_stored_metadata_source(worker_env) 
     assert orchestrator.calls[0][0] == "translate_chapters"
     assert orchestrator.calls[0][1][:3] == ("kakuyomu", "novel-1", "1")
     assert orchestrator.calls[0][2]["provider_key"] == "openai"
+    assert orchestrator.calls[0][2]["provider_model"] == "gpt-5.4"
+
+
+@pytest.mark.asyncio
+async def test_run_translation_activity_prefers_canonical_provider_fields(worker_env) -> None:
+    storage, activity_log, orchestrator, worker = worker_env
+    storage.save_metadata("novel-1", {"source": "kakuyomu", "chapters": [{"id": "1"}]})
+    activity = activity_log.create_translation_activity(
+        novel_id="novel-1",
+        chapters="1",
+        provider="legacy-provider",
+        model="legacy-model",
+    )
+    _patch_activity_record(
+        activity_log,
+        str(activity["id"]),
+        provider_key="canonical-provider",
+        provider_model="canonical-model",
+    )
+
+    result = await worker.run_activity(activity["id"])
+
+    assert result is not None
+    assert result["status"] == "completed"
+    assert orchestrator.calls[0][0] == "translate_chapters"
+    assert orchestrator.calls[0][2]["provider_key"] == "canonical-provider"
+    assert orchestrator.calls[0][2]["provider_model"] == "canonical-model"
+
+
+@pytest.mark.asyncio
+async def test_run_translation_activity_falls_back_to_legacy_provider_fields(worker_env) -> None:
+    storage, activity_log, orchestrator, worker = worker_env
+    storage.save_metadata("novel-1", {"source": "kakuyomu", "chapters": [{"id": "1"}]})
+    activity = activity_log.create_translation_activity(
+        novel_id="novel-1",
+        chapters="1",
+        provider="legacy-provider",
+        model="legacy-model",
+    )
+    _patch_activity_record(activity_log, str(activity["id"]), provider_key=None, provider_model=None)
+
+    result = await worker.run_activity(activity["id"])
+
+    assert result is not None
+    assert result["status"] == "completed"
+    assert orchestrator.calls[0][0] == "translate_chapters"
+    assert orchestrator.calls[0][2]["provider_key"] == "legacy-provider"
+    assert orchestrator.calls[0][2]["provider_model"] == "legacy-model"
 
 
 @pytest.mark.asyncio
