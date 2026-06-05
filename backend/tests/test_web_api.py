@@ -65,6 +65,15 @@ def _seed_novel(storage: StorageService, novel_id: str = "test-n1") -> None:
     storage.save_translated_chapter(novel_id, "1", "Translated ch1", provider="dummy", model="dummy")
 
 
+def _assert_provider_mirrors(payload: dict[str, object]) -> None:
+    assert "provider" in payload
+    assert "model" in payload
+    assert "provider_key" in payload
+    assert "provider_model" in payload
+    assert payload["provider_key"] == payload["provider"]
+    assert payload["provider_model"] == payload["model"]
+
+
 def _make_app(
     storage: StorageService,
     activity_log: ActivityQueueService | None = None,
@@ -887,7 +896,9 @@ class TestChapters:
     def test_get_translated_chapter(self, seeded_client: TestClient) -> None:
         resp = seeded_client.get("/novels/test-n1/chapters/1/translated")
         assert resp.status_code == 200
-        assert resp.json()["chapter_id"] == "1"
+        payload = resp.json()
+        assert payload["chapter_id"] == "1"
+        _assert_provider_mirrors(payload)
 
     def test_get_translated_chapter_not_found(self, seeded_client: TestClient) -> None:
         resp = seeded_client.get("/novels/test-n1/chapters/2/translated")
@@ -901,6 +912,7 @@ class TestChapters:
         assert len(data["versions"]) == 1
         assert data["versions"][0]["text"] == "Translated ch1"
         assert data["versions"][0]["active"] is True
+        _assert_provider_mirrors(data["versions"][0])
 
     def test_update_translated_chapter_creates_edit_history(self, seeded_client: TestClient) -> None:
         resp = seeded_client.put(
@@ -911,6 +923,7 @@ class TestChapters:
         data = resp.json()
         assert data["text"] == "Edited ch1"
         assert data["version_kind"] == "manual_edit"
+        _assert_provider_mirrors(data)
 
         history_resp = seeded_client.get("/novels/test-n1/chapters/1/translated/edit-history")
         assert history_resp.status_code == 200
@@ -931,8 +944,10 @@ class TestChapters:
             json={"version_id": "v1", "editor": "admin", "note": "restore original"},
         )
         assert rollback_resp.status_code == 200
-        assert rollback_resp.json()["text"] == "Translated ch1"
-        assert rollback_resp.json()["version_id"] == "v1"
+        rollback_payload = rollback_resp.json()
+        assert rollback_payload["text"] == "Translated ch1"
+        assert rollback_payload["version_id"] == "v1"
+        _assert_provider_mirrors(rollback_payload)
 
         history_resp = seeded_client.get("/novels/test-n1/chapters/1/translated/edit-history")
         history = history_resp.json()["history"]

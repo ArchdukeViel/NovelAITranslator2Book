@@ -23,6 +23,23 @@ class TranslationRollbackRequest(BaseModel):
     note: str | None = None
 
 
+def _translation_provider_response(item: dict[str, Any]) -> dict[str, Any]:
+    response = dict(item)
+    if "provider" in response:
+        response["provider_key"] = response["provider"]
+    if "model" in response:
+        response["provider_model"] = response["model"]
+    return response
+
+
+def _translated_chapter_response(novel_id: str, chapter_id: str, translated: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "novel_id": novel_id,
+        "chapter_id": chapter_id,
+        **_translation_provider_response(translated),
+    }
+
+
 @router.get("/{novel_id}/chapters/{chapter_id}/translated/versions")
 async def list_translated_chapter_versions(
     novel_id: str,
@@ -35,7 +52,11 @@ async def list_translated_chapter_versions(
     versions = storage.list_translated_chapter_versions(novel_id, chapter_id)
     if not versions:
         raise HTTPException(status_code=404, detail="Translated chapter not found")
-    return {"novel_id": novel_id, "chapter_id": chapter_id, "versions": versions}
+    return {
+        "novel_id": novel_id,
+        "chapter_id": chapter_id,
+        "versions": [_translation_provider_response(version) for version in versions],
+    }
 
 
 @router.get("/{novel_id}/chapters/{chapter_id}/translated/edit-history")
@@ -85,7 +106,7 @@ async def update_translated_chapter(
     translated = storage.load_translated_chapter(novel_id, chapter_id)
     if translated is None:
         raise HTTPException(status_code=500, detail="Edited translation could not be loaded")
-    return {"novel_id": novel_id, "chapter_id": chapter_id, **translated}
+    return _translated_chapter_response(novel_id, chapter_id, translated)
 
 
 @router.post("/{novel_id}/chapters/{chapter_id}/translated/rollback")
@@ -111,4 +132,4 @@ async def rollback_translated_chapter(
     translated = storage.load_translated_chapter(novel_id, chapter_id)
     if translated is None:
         raise HTTPException(status_code=500, detail="Rolled back translation could not be loaded")
-    return {"novel_id": novel_id, "chapter_id": chapter_id, **translated}
+    return _translated_chapter_response(novel_id, chapter_id, translated)

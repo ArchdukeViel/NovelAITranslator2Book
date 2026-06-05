@@ -46,6 +46,23 @@ def _metadata_chapter_count(meta: dict[str, Any]) -> int:
     return len(chapters) if isinstance(chapters, list) else 0
 
 
+def _translation_provider_response(item: dict[str, Any]) -> dict[str, Any]:
+    response = dict(item)
+    if "provider" in response:
+        response["provider_key"] = response["provider"]
+    if "model" in response:
+        response["provider_model"] = response["model"]
+    return response
+
+
+def _translated_chapter_response(novel_id: str, chapter_id: str, translated: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "novel_id": novel_id,
+        "chapter_id": chapter_id,
+        **_translation_provider_response(translated),
+    }
+
+
 @router.get("/", response_model=list[NovelSummary])
 async def list_novels(
     storage: StorageService = Depends(get_storage),
@@ -147,7 +164,7 @@ async def get_translated_chapter(
     translated = storage.load_translated_chapter(novel_id, chapter_id)
     if translated is None:
         raise HTTPException(status_code=404, detail="Translated chapter not found")
-    return {"novel_id": novel_id, "chapter_id": chapter_id, **translated}
+    return _translated_chapter_response(novel_id, chapter_id, translated)
 
 
 @router.get("/{novel_id}/reader")
