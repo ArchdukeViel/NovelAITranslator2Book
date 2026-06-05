@@ -131,6 +131,7 @@ class Container:
                     cache=self.translation_cache,
                     settings_service=self.settings,
                     usage_service=self.usage,
+                    storage=self.storage,
                 ),
                 TranslationQAStage(),
                 PostProcessStage(),

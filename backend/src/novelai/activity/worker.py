@@ -104,6 +104,17 @@ class ActivityWorkerService:
             "provider_error": provider_payload,
         }
 
+    @staticmethod
+    def _pause_status(exc: BaseException) -> JobStatus | None:
+        paused_reason = getattr(exc, "paused_reason", None)
+        if not isinstance(paused_reason, str) or not paused_reason.strip():
+            return None
+        if paused_reason == "all_models_cooling_down":
+            return JobStatus.PAUSED_UNTIL_COOLDOWN
+        if paused_reason == "all_models_daily_exhausted":
+            return JobStatus.PAUSED_UNTIL_QUOTA_RESET
+        return JobStatus.PAUSED
+
     def _resolve_translation_source_key(self, activity: dict[str, Any]) -> str:
         source_key = activity.get("source_key")
         if isinstance(source_key, str) and source_key.strip():
@@ -240,6 +251,30 @@ class ActivityWorkerService:
                 and str(activity.get("source_key") or "").strip()
             ):
                 self.activity_log.record_source_health(str(activity.get("source_key") or ""), success=False, error=str(exc))
+            paused_status = self._pause_status(exc)
+            if paused_status is not None:
+                paused = self.activity_log.update_activity_status(
+                    activity_id,
+                    paused_status,
+                    error=str(exc),
+                    metadata={
+                        **activity_metadata,
+                        "current_stage": "paused",
+                        "status": "paused",
+                        "paused_reason": getattr(exc, "paused_reason", None),
+                        "resume_after": getattr(exc, "resume_after", None),
+                        "model_states": getattr(exc, "model_states", []),
+                        "errors": [
+                            {
+                                "message": str(exc),
+                                "error_code": getattr(exc, "error_code", exc.__class__.__name__),
+                            }
+                        ],
+                    },
+                )
+                if paused is None:
+                    raise
+                return paused
             failed = self.activity_log.update_activity_status(
                 activity_id,
                 JobStatus.FAILED,

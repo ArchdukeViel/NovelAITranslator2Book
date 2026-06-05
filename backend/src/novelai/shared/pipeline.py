@@ -120,6 +120,7 @@ class SchedulerModelState:
     requests_this_minute: int = 0
     requests_today: int = 0
     window_started_at: str | None = None
+    day_started_at: str | None = None
     cooldown_until: str | None = None
     exhausted_until: str | None = None
     last_error_code: str | None = None

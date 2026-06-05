@@ -90,6 +90,14 @@ class AppSettings(BaseSettings):
     TRANSLATION_CHUNK_OVERLAP_PARAGRAPHS: int = 1
     TRANSLATION_ALLOW_MULTI_CHAPTER_BUNDLES: bool = True
     TRANSLATION_MAX_CHAPTERS_PER_BUNDLE: int = 3
+    TRANSLATION_SCHEDULER_POLICY: str = "volume_first"
+    TRANSLATION_MODEL_POLICY: list[dict[str, object]] = Field(
+        default_factory=list,
+        description=(
+            "Editable scheduler model policy. Items may define provider_key, provider_model, "
+            "priority_order, quality_priority_order, rpm_limit, and rpd_limit."
+        ),
+    )
     COST_PER_TOKEN_USD: float = 0.000002
     TRANSLATION_TARGET_LANGUAGE: str = "English"
 

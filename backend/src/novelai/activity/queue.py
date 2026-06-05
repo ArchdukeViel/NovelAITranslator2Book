@@ -135,10 +135,13 @@ class ActivityQueueService:
     def _status_sort_key(activity: dict[str, Any]) -> tuple[int, str]:
         priority = {
             JobStatus.RUNNING.value: 0,
-            JobStatus.PENDING.value: 1,
-            JobStatus.FAILED.value: 2,
-            JobStatus.COMPLETED.value: 3,
-            JobStatus.CANCELLED.value: 4,
+            JobStatus.PAUSED.value: 1,
+            JobStatus.PAUSED_UNTIL_COOLDOWN.value: 1,
+            JobStatus.PAUSED_UNTIL_QUOTA_RESET.value: 1,
+            JobStatus.PENDING.value: 2,
+            JobStatus.FAILED.value: 3,
+            JobStatus.COMPLETED.value: 4,
+            JobStatus.CANCELLED.value: 5,
         }
         return (priority.get(str(activity.get("status")), 99), str(activity.get("created_at") or ""))
 

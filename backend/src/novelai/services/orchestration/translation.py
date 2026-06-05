@@ -896,7 +896,10 @@ async def translate_chapters(
             logger.error("Failed to translate chapter %s/%s: %s", novel_id, chapter_id, exc)
             provider_code = getattr(getattr(exc, "provider_error_code", None), "value", None)
             qa_status = getattr(exc, "qa_status", None)
-            if qa_status == ChapterState.QA_FAILED.value:
+            paused_reason = getattr(exc, "paused_reason", None)
+            if isinstance(paused_reason, str) and paused_reason.strip():
+                failed_state = ChapterState.TRANSLATED_PARTIAL
+            elif qa_status == ChapterState.QA_FAILED.value:
                 failed_state = ChapterState.QA_FAILED
             elif qa_status == ChapterState.NEEDS_REVIEW.value:
                 failed_state = ChapterState.NEEDS_REVIEW
