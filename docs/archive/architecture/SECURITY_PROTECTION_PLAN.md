@@ -1,3 +1,7 @@
+# Archived Architecture Note
+
+This historical document was consolidated into `docs/architecture/architecture.md`. It may contain stale implementation status and should not be used as current architecture guidance.
+
 # Security Protection Plan
 
 ## Scope
