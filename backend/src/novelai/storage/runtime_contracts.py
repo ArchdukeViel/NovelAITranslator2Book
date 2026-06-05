@@ -209,6 +209,63 @@ def update_translation_chunk_status(
     return self.save_translation_chunks(novel_id, [created])[0]
 
 
+def save_chunk_attempt_record(self: Any, attempt: dict[str, Any] | Any) -> dict[str, Any]:
+    payload = _redact_sensitive(_as_dict(attempt))
+    novel_id = str(payload.get("novel_id") or "").strip()
+    chunk_id = str(payload.get("chunk_id") or "").strip()
+    if not novel_id:
+        raise ValueError("novel_id is required.")
+    if not chunk_id:
+        raise ValueError("chunk_id is required.")
+
+    now = _utc_now_iso()
+    try:
+        attempt_number = int(payload.get("attempt_number") or 0)
+    except (TypeError, ValueError):
+        attempt_number = 0
+    if attempt_number < 0:
+        attempt_number = 0
+
+    path = self._translation_runtime_dir() / "chunk_attempts.json"
+    records = _read_mapping(path)
+    attempt_id = str(payload.get("attempt_id") or _record_key(novel_id, chunk_id, attempt_number)).strip()
+    existing = records.get(attempt_id)
+    created_at = existing.get("created_at") if isinstance(existing, dict) else None
+    record = {
+        **(existing if isinstance(existing, dict) else {}),
+        **payload,
+        "schema_version": SCHEMA_VERSION,
+        "attempt_id": attempt_id,
+        "chunk_id": chunk_id,
+        "novel_id": novel_id,
+        "chapter_ids": _list_strings(payload.get("chapter_ids") or payload.get("chapter_id")),
+        "paragraph_ids": _list_strings(payload.get("paragraph_ids")),
+        "attempt_number": attempt_number,
+        "status": str(payload.get("status") or "pending"),
+        "created_at": str(payload.get("created_at") or created_at or now),
+        "updated_at": now,
+    }
+    records[attempt_id] = record
+    _write_mapping(path, records)
+    return dict(record)
+
+
+def list_chunk_attempt_records(
+    self: Any,
+    *,
+    novel_id: str | None = None,
+    chunk_id: str | None = None,
+    status: str | None = None,
+) -> list[dict[str, Any]]:
+    path = self._translation_runtime_dir() / "chunk_attempts.json"
+    records = _read_mapping(path)
+    items = [dict(item) for item in records.values() if isinstance(item, dict)]
+    for key, value in (("novel_id", novel_id), ("chunk_id", chunk_id), ("status", status)):
+        if isinstance(value, str) and value.strip():
+            items = [item for item in items if item.get(key) == value]
+    return items
+
+
 def save_translation_bundle(self: Any, bundle: dict[str, Any] | Any) -> dict[str, Any]:
     payload = _as_dict(bundle)
     novel_id = str(payload.get("novel_id") or "").strip()
@@ -283,7 +340,9 @@ def save_translation_output(self: Any, output: dict[str, Any] | Any) -> dict[str
         "structured_paragraph_map": payload.get("structured_paragraph_map") or [],
         "qa_warnings": _list_strings(payload.get("qa_warnings")),
         "qa_errors": _list_strings(payload.get("qa_errors")),
+        "output_hash": payload.get("output_hash") or _hash_text(str(payload.get("translated_text") or "")),
         "created_at": str(payload.get("created_at") or now),
+        "updated_at": now,
     }
     records[_record_key(novel_id, output_id)] = record
     _write_mapping(path, records)

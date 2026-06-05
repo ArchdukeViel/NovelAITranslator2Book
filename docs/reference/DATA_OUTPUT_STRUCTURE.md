@@ -26,6 +26,7 @@ storage/novel_library/
 |   |   `-- scheduler_states.json
 |   `-- translation/
 |       |-- chunks.json
+|       |-- chunk_attempts.json
 |       |-- bundles.json
 |       `-- outputs.json
 `-- novels/
@@ -638,6 +639,44 @@ Migration/backward compatibility: existing runtime data may lack these records. 
 
 Retention policy: may be retained for retry/debug. Deleting it must not delete raw chapters, parsed chapters, or final translations.
 
+### `runtime/translation/chunk_attempts.json`
+
+Owner module: `backend/src/novelai/storage/runtime_contracts.py`
+
+Mapping keyed by `<novel_id>:<chunk_id>:<attempt_number>` for scheduler-managed provider attempts and resume skips.
+
+Required fields:
+
+- `schema_version`
+- `attempt_id`
+- `chunk_id`
+- `novel_id`
+- `chapter_ids`
+- `paragraph_ids`
+- `attempt_number`
+- `status`
+- `created_at`
+- `updated_at`
+
+Optional fields:
+
+- `source_text_hash`
+- `provider_key`
+- `provider_model`
+- `scheduler_policy`
+- `selection_reason`
+- `error_code`
+- `qa_score`
+- `qa_status`
+
+Allowed statuses: `pending`, `running`, `succeeded`, `failed`, `qa_failed`, `skipped_cache_hit`, `skipped_already_succeeded`.
+
+Schema version: `1`.
+
+Migration/backward compatibility: older runtime data may only have `chunk_states.json`. Missing attempt records do not make final chapter translations unreadable.
+
+Retention policy: retry/debug artifact. Deleting it must not delete canonical chapter output or temporary bundle records.
+
 ### `runtime/translation/bundles.json`
 
 Owner module: `backend/src/novelai/storage/runtime_contracts.py`
@@ -700,10 +739,17 @@ Optional fields:
 - `qa_score`
 - `qa_warnings`
 - `qa_errors`
+- `qa_status`
 - `prompt_version`
 - `glossary_hash`
+- `source_text_hash`
+- `output_hash`
 - `provider_key`
 - `provider_model`
+- `scheduler_policy`
+- `selection_reason`
+- `attempt_number`
+- `cache_hit`
 
 Schema version: `1`.
 
@@ -733,6 +779,7 @@ Optional fields:
 - `job_id` / `activity_id`
 - `novel_id`
 - `chapter_id` / `chapter_ids`
+- `paragraph_ids`
 - `chunk_id`
 - `bundle_id`
 - `prompt_version`
@@ -741,6 +788,9 @@ Optional fields:
 - `style_preset`
 - `json_output`
 - `consistency_mode`
+- `scheduler_policy`
+- `selection_reason`
+- `attempt_number`
 - `input_tokens`
 - `output_tokens`
 - `total_tokens`

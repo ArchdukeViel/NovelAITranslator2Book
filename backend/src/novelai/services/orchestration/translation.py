@@ -52,6 +52,31 @@ def _failed_stage_name_from_exception(exc: BaseException) -> str:
     return "Pipeline"
 
 
+def _persist_chunk_qa_results_to_outputs(storage: Any, novel_id: str, chunk_states: dict[str, Any]) -> None:
+    if not isinstance(novel_id, str) or not novel_id.strip():
+        return
+    for chunk_id, state in chunk_states.items():
+        if not isinstance(chunk_id, str) or not chunk_id.strip() or not isinstance(state, dict):
+            continue
+        outputs = storage.read_translation_output(novel_id, chunk_id=chunk_id)
+        if not isinstance(outputs, list) or not outputs:
+            continue
+        latest = outputs[-1]
+        if not isinstance(latest, dict):
+            continue
+        qa_status = state.get("status")
+        storage.save_translation_output(
+            {
+                **latest,
+                "output_id": latest.get("output_id"),
+                "qa_score": state.get("qa_score"),
+                "qa_warnings": state.get("qa_warnings") or [],
+                "qa_errors": state.get("qa_errors") or [],
+                "qa_status": qa_status,
+            }
+        )
+
+
 def _metadata_translation_max_tokens(source_text: str, field: str) -> int:
     normalized_field = field.strip().lower()
     if normalized_field == "author":
@@ -863,6 +888,7 @@ async def translate_chapters(
                 style_preset=style_preset,
                 consistency_mode=consistency_mode,
                 json_output=json_output,
+                force_retranslate=force,
                 raw_text=raw_text,
                 raw_images=raw_images,
             )
@@ -891,6 +917,7 @@ async def translate_chapters(
             self.storage.append_pipeline_events(result.pipeline_events)
             for chunk_state in result.chunk_states.values():
                 self.storage.upsert_chunk_state(chunk_state)
+            _persist_chunk_qa_results_to_outputs(self.storage, novel_id, result.chunk_states)
             self.storage.create_checkpoint(novel_id, chapter_id, "translated")
         except Exception as exc:
             logger.error("Failed to translate chapter %s/%s: %s", novel_id, chapter_id, exc)
@@ -922,6 +949,7 @@ async def translate_chapters(
                 for chunk_state in chunk_states.values():
                     if isinstance(chunk_state, dict):
                         self.storage.upsert_chunk_state(chunk_state)
+                _persist_chunk_qa_results_to_outputs(self.storage, novel_id, chunk_states)
             if isinstance(failed_chunk_id, str) and failed_chunk_id.strip():
                 self.storage.upsert_chunk_state(
                     {

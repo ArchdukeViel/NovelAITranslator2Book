@@ -57,6 +57,7 @@ class TranslationService:
         style_preset: str | None = None,
         consistency_mode: bool = False,
         json_output: bool = False,
+        force_retranslate: bool = False,
         raw_text: str | None = None,
         raw_images: list[dict[str, Any]] | None = None,
     ) -> PipelineResult:
@@ -111,6 +112,8 @@ class TranslationService:
             state.metadata["consistency_mode"] = True
         if json_output:
             state.metadata["json_output"] = True
+        if force_retranslate:
+            state.metadata["force_retranslate"] = True
         if raw_text is not None:
             state.metadata["_prefetched_text"] = raw_text
         if raw_images is not None:

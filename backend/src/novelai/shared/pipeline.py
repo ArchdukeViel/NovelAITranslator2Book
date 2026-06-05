@@ -31,6 +31,16 @@ class ChunkTranslationStatus(StrEnum):
     FAILED = "failed"
 
 
+class ChunkAttemptStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    QA_FAILED = "qa_failed"
+    SKIPPED_CACHE_HIT = "skipped_cache_hit"
+    SKIPPED_ALREADY_SUCCEEDED = "skipped_already_succeeded"
+
+
 class SchedulerModelStatus(StrEnum):
     AVAILABLE = "available"
     COOLING_DOWN = "cooling_down"

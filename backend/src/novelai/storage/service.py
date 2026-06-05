@@ -98,12 +98,14 @@ from novelai.storage.runtime_contracts import (
     _translation_runtime_dir,
     delete_translation_bundle,
     fetch_cache_conditional_headers,
+    list_chunk_attempt_records,
     list_provider_request_records,
     read_fetch_cache_entry,
     read_translation_bundle,
     read_translation_chunks,
     read_translation_output,
     save_fetch_cache_entry,
+    save_chunk_attempt_record,
     save_provider_request_record,
     save_translation_bundle,
     save_translation_chunks,
@@ -371,6 +373,8 @@ class StorageService:
     save_translation_chunks = save_translation_chunks
     read_translation_chunks = read_translation_chunks
     update_translation_chunk_status = update_translation_chunk_status
+    save_chunk_attempt_record = save_chunk_attempt_record
+    list_chunk_attempt_records = list_chunk_attempt_records
     save_translation_bundle = save_translation_bundle
     read_translation_bundle = read_translation_bundle
     delete_translation_bundle = delete_translation_bundle

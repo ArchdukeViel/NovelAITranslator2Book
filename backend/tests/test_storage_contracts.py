@@ -54,6 +54,26 @@ def test_translation_chunk_output_and_provider_request_persistence(storage: Stor
     assert updated["provider_model"] == "gemini-2.5-flash-lite"
     assert updated["last_error_code"] == "provider_rate_limited"
 
+    attempt = storage.save_chunk_attempt_record(
+        {
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "chapter_ids": ["chapter_001"],
+            "paragraph_ids": ["p0001", "p0002"],
+            "attempt_number": 1,
+            "provider_key": "gemini",
+            "provider_model": "gemini-2.5-flash-lite",
+            "scheduler_policy": "volume_first",
+            "selection_reason": "primary_available",
+            "status": "failed",
+            "error_code": "provider_rate_limited",
+            "headers": {"authorization": "Bearer should-not-be-stored"},
+        }
+    )
+    assert attempt["status"] == "failed"
+    assert "headers" not in attempt
+    assert storage.list_chunk_attempt_records(novel_id="novel1", chunk_id="c0001") == [attempt]
+
     output = storage.save_translation_output(
         {
             "output_id": "out_c0001",
@@ -72,6 +92,7 @@ def test_translation_chunk_output_and_provider_request_persistence(storage: Stor
     )
     loaded_output = storage.read_translation_output("novel1", output_id="out_c0001")
     assert loaded_output == output
+    assert output["output_hash"]
 
     request = storage.save_provider_request_record(
         {
@@ -176,6 +197,7 @@ def test_storage_contracts_are_documented() -> None:
     doc = Path("docs/reference/DATA_OUTPUT_STRUCTURE.md").read_text(encoding="utf-8")
     required_fragments = [
         "runtime/translation/chunks.json",
+        "runtime/translation/chunk_attempts.json",
         "runtime/translation/bundles.json",
         "runtime/translation/outputs.json",
         "runtime/provider_requests.json",

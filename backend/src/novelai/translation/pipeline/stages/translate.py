@@ -29,7 +29,7 @@ from novelai.translation.scheduler import (
 )
 from novelai.prompts import build_translation_request
 from novelai.prompts.models import TranslationRequest
-from novelai.shared.pipeline import ChunkTranslationStatus
+from novelai.shared.pipeline import ChunkAttemptStatus, ChunkTranslationStatus
 from novelai.providers.base import TranslationProvider
 from novelai.providers.model_fallbacks import model_candidates
 from novelai.services.preferences_service import PreferencesService
@@ -171,6 +171,19 @@ class TranslateStage(PipelineStage):
         return metadata
 
     @staticmethod
+    def _prompt_version(context: PipelineContext) -> str:
+        value = context.metadata.get("prompt_version")
+        return value if isinstance(value, str) and value.strip() else "translation_request_v1"
+
+    @staticmethod
+    def _glossary_hash(context: PipelineContext) -> str:
+        return _hash_text(str(context.metadata.get("glossary") or ""))
+
+    @staticmethod
+    def _force_retranslate(context: PipelineContext) -> bool:
+        return bool(context.metadata.get("force_retranslate_chunks") or context.metadata.get("force_retranslate"))
+
+    @staticmethod
     def _safe_job_id(context: PipelineContext) -> str | None:
         for value in (context.job_id, context.activity_id, context.novel_id):
             if isinstance(value, str) and value.strip():
@@ -186,6 +199,11 @@ class TranslateStage(PipelineStage):
         request: TranslationRequest | None,
         provider_key: str,
         provider_model: str,
+        chapter_ids: list[str] | None = None,
+        paragraph_ids: list[str] | None = None,
+        attempt_number: int | None = None,
+        scheduler_policy: str | None = None,
+        selection_reason: str | None = None,
         started_at: str,
         finished_at: str,
         success: bool,
@@ -198,16 +216,21 @@ class TranslateStage(PipelineStage):
             "activity_id": context.activity_id,
             "novel_id": context.novel_id,
             "chapter_id": context.chapter_id,
+            "chapter_ids": list(chapter_ids or []),
+            "paragraph_ids": list(paragraph_ids or []),
             "chunk_id": chunk_id,
             "provider_key": provider_key,
             "provider_model": provider_model,
-            "prompt_version": context.metadata.get("prompt_version") or "translation_request_v1",
+            "prompt_version": TranslateStage._prompt_version(context),
             "source_text_hash": _hash_text(chunk_text),
             "prompt_hash": _hash_text(prompt_text),
-            "glossary_hash": _hash_text(str(context.metadata.get("glossary") or "")),
+            "glossary_hash": TranslateStage._glossary_hash(context),
             "style_preset": context.metadata.get("style_preset"),
             "json_output": bool(context.metadata.get("json_output", False)),
             "consistency_mode": bool(context.metadata.get("consistency_mode", False)),
+            "scheduler_policy": scheduler_policy,
+            "selection_reason": selection_reason,
+            "attempt_number": attempt_number,
             "request_started_at": started_at,
             "request_finished_at": finished_at,
             "status": "success" if success else "failed",
@@ -300,6 +323,7 @@ class TranslateStage(PipelineStage):
                     "chapter_ids": self._chapter_ids(context, chunk),
                     "paragraph_ids": self._paragraph_ids(chunk),
                     "source_text": chunk_text,
+                    "source_text_hash": _hash_text(chunk_text),
                     "char_count": len(chunk_text),
                     "status": context.chunk_states.get(chunk_id, {}).get("status", ChunkTranslationStatus.PENDING.value),
                 }
@@ -321,6 +345,7 @@ class TranslateStage(PipelineStage):
         context: PipelineContext,
         *,
         chunk_id: str,
+        chunk_text: str,
     ) -> str | None:
         novel_id = context.novel_id
         if not isinstance(novel_id, str) or not novel_id.strip():
@@ -332,8 +357,61 @@ class TranslateStage(PipelineStage):
         if not isinstance(stored, list) or not stored:
             return None
         latest = stored[-1]
-        text = latest.get("translated_text") if isinstance(latest, dict) else None
+        if not isinstance(latest, dict):
+            return None
+        expected = {
+            "source_text_hash": _hash_text(chunk_text),
+            "prompt_version": self._prompt_version(context),
+            "glossary_hash": self._glossary_hash(context),
+            "style_preset": context.metadata.get("style_preset"),
+            "json_output": bool(context.metadata.get("json_output", False)),
+            "consistency_mode": bool(context.metadata.get("consistency_mode", False)),
+        }
+        for key, value in expected.items():
+            if latest.get(key) != value:
+                return None
+        text = latest.get("translated_text")
         return text if isinstance(text, str) else None
+
+    def _save_chunk_attempt(
+        self,
+        context: PipelineContext,
+        *,
+        chunk: str | TranslationChunk,
+        chunk_index: int,
+        attempt_number: int,
+        provider_key: str | None,
+        provider_model: str | None,
+        scheduler_policy: str | None,
+        selection_reason: str | None,
+        status: str,
+        error_code: str | None = None,
+        qa_score: float | None = None,
+        qa_status: str | None = None,
+    ) -> None:
+        novel_id = context.novel_id
+        if not isinstance(novel_id, str) or not novel_id.strip():
+            return
+        chunk_id = self._chunk_id(chunk, chunk_index)
+        chunk_text = self._chunk_text(chunk)
+        self._storage.save_chunk_attempt_record(
+            {
+                "chunk_id": chunk_id,
+                "novel_id": novel_id,
+                "chapter_ids": self._chapter_ids(context, chunk),
+                "paragraph_ids": self._paragraph_ids(chunk),
+                "source_text_hash": _hash_text(chunk_text),
+                "attempt_number": attempt_number,
+                "provider_key": provider_key,
+                "provider_model": provider_model,
+                "scheduler_policy": scheduler_policy,
+                "selection_reason": selection_reason,
+                "status": status,
+                "error_code": error_code,
+                "qa_score": qa_score,
+                "qa_status": qa_status,
+            }
+        )
 
     def _save_chunk_output(
         self,
@@ -345,22 +423,36 @@ class TranslateStage(PipelineStage):
         provider_key: str,
         provider_model: str,
         cache_hit: bool,
+        attempt_number: int,
+        scheduler_policy: str | None,
+        selection_reason: str | None,
     ) -> None:
         novel_id = context.novel_id
         if not isinstance(novel_id, str) or not novel_id.strip():
             return
         chunk_id = self._chunk_id(chunk, chunk_index)
+        chunk_text = self._chunk_text(chunk)
         self._storage.save_translation_output(
             {
+                "output_id": f"{chunk_id}:attempt_{attempt_number:04d}",
                 "chunk_id": chunk_id,
                 "novel_id": novel_id,
                 "chapter_ids": self._chapter_ids(context, chunk),
                 "paragraph_ids": self._paragraph_ids(chunk),
                 "translated_text": translated_text,
+                "source_text_hash": _hash_text(chunk_text),
+                "output_hash": _hash_text(translated_text),
                 "provider_key": provider_key,
                 "provider_model": provider_model,
-                "prompt_version": context.metadata.get("prompt_version") or "translation_request_v1",
-                "glossary_hash": _hash_text(str(context.metadata.get("glossary") or "")),
+                "prompt_version": self._prompt_version(context),
+                "glossary_hash": self._glossary_hash(context),
+                "style_preset": context.metadata.get("style_preset"),
+                "json_output": bool(context.metadata.get("json_output", False)),
+                "consistency_mode": bool(context.metadata.get("consistency_mode", False)),
+                "scheduler_policy": scheduler_policy,
+                "selection_reason": selection_reason,
+                "attempt_number": attempt_number,
+                "qa_status": "pending",
                 "cache_hit": cache_hit,
             }
         )
@@ -433,6 +525,22 @@ class TranslateStage(PipelineStage):
             json_output=json_output,
         )
 
+    def _cached_translation(
+        self,
+        *,
+        provider_key: str,
+        provider_model: str,
+        chunk: str,
+        request: TranslationRequest | None,
+    ) -> tuple[str, str, str] | None:
+        provider_key, provider_model = self._resolve_provider_and_model(provider_key, provider_model)
+        provider = self._provider_factory(provider_key)
+        cache_key = request.cache_key() if request is not None else chunk
+        cached = self._cache.get(cache_key, provider.key, provider_model)
+        if cached is None:
+            return None
+        return cached, provider.key, provider_model
+
     async def _translate_with_model(
         self,
         context: PipelineContext,
@@ -440,16 +548,16 @@ class TranslateStage(PipelineStage):
         provider_key: str,
         provider_model: str,
         chunk_id: str,
+        chapter_ids: list[str],
+        paragraph_ids: list[str],
+        attempt_number: int,
+        scheduler_policy: str,
+        selection_reason: str,
         chunk: str,
         request: TranslationRequest | None = None,
     ) -> tuple[str, str, str, bool]:
         provider_key, provider_model = self._resolve_provider_and_model(provider_key, provider_model)
         provider = self._provider_factory(provider_key)
-        cache_key = request.cache_key() if request is not None else chunk
-        cached = self._cache.get(cache_key, provider.key, provider_model)
-        if cached is not None:
-            logger.debug("Cache hit for chunk %s using %s/%s", chunk_id, provider.key, provider_model)
-            return cached, provider.key, provider_model, True
 
         started_at = utc_now_iso()
         try:
@@ -465,6 +573,11 @@ class TranslateStage(PipelineStage):
                     request=request,
                     provider_key=exc.provider_key,
                     provider_model=exc.provider_model,
+                    chapter_ids=chapter_ids,
+                    paragraph_ids=paragraph_ids,
+                    attempt_number=attempt_number,
+                    scheduler_policy=scheduler_policy,
+                    selection_reason=selection_reason,
                     started_at=started_at,
                     finished_at=finished_at,
                     success=False,
@@ -483,6 +596,11 @@ class TranslateStage(PipelineStage):
                     request=request,
                     provider_key=provider.key,
                     provider_model=provider_model,
+                    chapter_ids=chapter_ids,
+                    paragraph_ids=paragraph_ids,
+                    attempt_number=attempt_number,
+                    scheduler_policy=scheduler_policy,
+                    selection_reason=selection_reason,
                     started_at=started_at,
                     finished_at=finished_at,
                     success=False,
@@ -506,6 +624,7 @@ class TranslateStage(PipelineStage):
             logger.debug("Translation tokens: %s", usage_entry["tokens"])
 
         self._usage.record(usage_entry)
+        cache_key = request.cache_key() if request is not None else chunk
         self._cache.set(cache_key, provider.key, provider_model, text)
         self._storage.save_provider_request_record(
             self._provider_request_record(
@@ -515,6 +634,11 @@ class TranslateStage(PipelineStage):
                 request=request,
                 provider_key=provider.key,
                 provider_model=provider_model,
+                chapter_ids=chapter_ids,
+                paragraph_ids=paragraph_ids,
+                attempt_number=attempt_number,
+                scheduler_policy=scheduler_policy,
+                selection_reason=selection_reason,
                 started_at=started_at,
                 finished_at=utc_now_iso(),
                 success=True,
@@ -564,11 +688,32 @@ class TranslateStage(PipelineStage):
                 }
             )
 
+        def mark_chunk_completed(chunk_index: int) -> None:
+            nonlocal completed
+            completed += 1
+            if isinstance(progress, dict):
+                progress["completed"] = completed
+                progress["current_label"] = f"Chunk {chunk_index + 1} / {len(chunks)}"
+                progress["model_states"] = scheduler.to_model_state_list()
+
         async def worker(chunk_index: int, chunk: str | TranslationChunk) -> str:
             chunk_text = self._chunk_text(chunk)
             chunk_id = self._chunk_id(chunk, chunk_index)
-            existing = self._load_existing_chunk_output(context, chunk_id=chunk_id)
-            if existing is not None and not bool(context.metadata.get("force_retranslate_chunks", False)):
+            existing = self._load_existing_chunk_output(context, chunk_id=chunk_id, chunk_text=chunk_text)
+            if existing is not None and not self._force_retranslate(context):
+                existing_state = context.chunk_states.get(chunk_id, {})
+                self._save_chunk_attempt(
+                    context,
+                    chunk=chunk,
+                    chunk_index=chunk_index,
+                    attempt_number=int(existing_state.get("attempt_number", 0) or 0),
+                    provider_key=existing_state.get("provider_key") if isinstance(existing_state.get("provider_key"), str) else None,
+                    provider_model=existing_state.get("provider_model") if isinstance(existing_state.get("provider_model"), str) else None,
+                    scheduler_policy=scheduler.policy.value,
+                    selection_reason="resume_successful_chunk",
+                    status=ChunkAttemptStatus.SKIPPED_ALREADY_SUCCEEDED.value,
+                )
+                mark_chunk_completed(chunk_index)
                 return existing
             async with semaphore:
                 async with glossary_lock:
@@ -613,11 +758,63 @@ class TranslateStage(PipelineStage):
                                 raise paused
                             used_provider_key = str(selection.provider_key)
                             used_provider_model = str(selection.provider_model)
-                            scheduler.record_attempt_start(used_provider_key, used_provider_model, utc_now())
-                            self._save_scheduler_state(context, scheduler)
 
                         attempted_models.add((used_provider_key, used_provider_model))
                         attempt_number = int(context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0) + 1
+                        cached = self._cached_translation(
+                            provider_key=used_provider_key,
+                            provider_model=used_provider_model,
+                            chunk=chunk_text,
+                            request=request,
+                        )
+                        if cached is not None:
+                            translated, used_provider_key, used_provider_model = cached
+                            logger.debug("Cache hit for chunk %s using %s/%s", chunk_id, used_provider_key, used_provider_model)
+                            context.chunk_states[chunk_id] = {
+                                **context.chunk_states.get(chunk_id, {}),
+                                "chunk_id": chunk_id,
+                                "novel_id": context.novel_id or "unknown_novel",
+                                "chapter_ids": self._chapter_ids(context, chunk),
+                                "paragraph_ids": self._paragraph_ids(chunk),
+                                "provider_key": used_provider_key,
+                                "provider_model": used_provider_model,
+                                "attempt_number": attempt_number,
+                                "policy": scheduler.policy.value,
+                                "selection_reason": selection.reason,
+                                "status": ChunkTranslationStatus.TRANSLATED.value,
+                                "error_code": None,
+                                "cache_hit": True,
+                                "updated_at": utc_now_iso(),
+                            }
+                            self._persist_chunk_state(context, chunk_id)
+                            self._save_chunk_attempt(
+                                context,
+                                chunk=chunk,
+                                chunk_index=chunk_index,
+                                attempt_number=attempt_number,
+                                provider_key=used_provider_key,
+                                provider_model=used_provider_model,
+                                scheduler_policy=scheduler.policy.value,
+                                selection_reason=selection.reason,
+                                status=ChunkAttemptStatus.SKIPPED_CACHE_HIT.value,
+                            )
+                            self._save_chunk_output(
+                                context,
+                                chunk=chunk,
+                                chunk_index=chunk_index,
+                                translated_text=translated,
+                                provider_key=used_provider_key,
+                                provider_model=used_provider_model,
+                                cache_hit=True,
+                                attempt_number=attempt_number,
+                                scheduler_policy=scheduler.policy.value,
+                                selection_reason=selection.reason,
+                            )
+                            break
+
+                        async with scheduler_lock:
+                            scheduler.record_attempt_start(used_provider_key, used_provider_model, utc_now())
+                            self._save_scheduler_state(context, scheduler)
                         context.chunk_states[chunk_id] = {
                             **context.chunk_states.get(chunk_id, {}),
                             "chunk_id": chunk_id,
@@ -633,12 +830,28 @@ class TranslateStage(PipelineStage):
                             "updated_at": utc_now_iso(),
                         }
                         self._persist_chunk_state(context, chunk_id)
+                        self._save_chunk_attempt(
+                            context,
+                            chunk=chunk,
+                            chunk_index=chunk_index,
+                            attempt_number=attempt_number,
+                            provider_key=used_provider_key,
+                            provider_model=used_provider_model,
+                            scheduler_policy=scheduler.policy.value,
+                            selection_reason=selection.reason,
+                            status=ChunkAttemptStatus.RUNNING.value,
+                        )
                         try:
                             translated, used_provider_key, used_provider_model, cache_hit = await self._translate_with_model(
                                 context,
                                 provider_key=used_provider_key,
                                 provider_model=used_provider_model,
                                 chunk_id=chunk_id,
+                                chapter_ids=self._chapter_ids(context, chunk),
+                                paragraph_ids=self._paragraph_ids(chunk),
+                                attempt_number=attempt_number,
+                                scheduler_policy=scheduler.policy.value,
+                                selection_reason=selection.reason,
                                 chunk=chunk_text,
                                 request=request,
                             )
@@ -666,6 +879,18 @@ class TranslateStage(PipelineStage):
                                 "updated_at": utc_now_iso(),
                             }
                             self._persist_chunk_state(context, chunk_id)
+                            self._save_chunk_attempt(
+                                context,
+                                chunk=chunk,
+                                chunk_index=chunk_index,
+                                attempt_number=attempt_number,
+                                provider_key=exc.provider_key,
+                                provider_model=exc.provider_model,
+                                scheduler_policy=scheduler.policy.value,
+                                selection_reason=selection.reason,
+                                status=ChunkAttemptStatus.FAILED.value,
+                                error_code=exc.provider_error_code.value,
+                            )
                             if exc.provider_error_code in {
                                 ProviderErrorCode.RATE_LIMITED,
                                 ProviderErrorCode.QUOTA_EXHAUSTED,
@@ -691,6 +916,17 @@ class TranslateStage(PipelineStage):
                             "updated_at": utc_now_iso(),
                         }
                         self._persist_chunk_state(context, chunk_id)
+                        self._save_chunk_attempt(
+                            context,
+                            chunk=chunk,
+                            chunk_index=chunk_index,
+                            attempt_number=attempt_number,
+                            provider_key=used_provider_key,
+                            provider_model=used_provider_model,
+                            scheduler_policy=scheduler.policy.value,
+                            selection_reason=selection.reason,
+                            status=ChunkAttemptStatus.SUCCEEDED.value,
+                        )
                         self._save_chunk_output(
                             context,
                             chunk=chunk,
@@ -699,18 +935,16 @@ class TranslateStage(PipelineStage):
                             provider_key=used_provider_key,
                             provider_model=used_provider_model,
                             cache_hit=cache_hit,
+                            attempt_number=attempt_number,
+                            scheduler_policy=scheduler.policy.value,
+                            selection_reason=selection.reason,
                         )
                         break
                 except ProviderError as exc:
                     raise
                 async with glossary_lock:
                     self._observe_chunk_context(chunk_text, glossary_state, chunk_index=chunk_index)
-                nonlocal completed
-                completed += 1
-                if isinstance(progress, dict):
-                    progress["completed"] = completed
-                    progress["current_label"] = f"Chunk {chunk_index + 1} / {len(chunks)}"
-                    progress["model_states"] = scheduler.to_model_state_list()
+                mark_chunk_completed(chunk_index)
                 return translated
 
         context.translations = await asyncio.gather(*[worker(i, c) for i, c in enumerate(chunks)])
