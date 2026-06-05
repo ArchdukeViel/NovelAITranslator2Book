@@ -48,6 +48,8 @@ export type TranslatedChapter = {
   version_kind?: string | null;
   provider?: string | null;
   model?: string | null;
+  provider_key?: string | null;
+  provider_model?: string | null;
   translated_at?: string | null;
   created_at?: string | null;
   text: string;
@@ -66,6 +68,8 @@ export type TranslationVersion = Record<string, unknown> & {
   active?: boolean;
   provider?: string | null;
   model?: string | null;
+  provider_key?: string | null;
+  provider_model?: string | null;
   created_at?: string | null;
   translated_at?: string | null;
 };
@@ -166,12 +170,26 @@ export type SourceHealth = {
 
 export type NovelRequestRecord = {
   id: string;
+  request_id?: string;
   title: string;
   status: string;
   requested_by?: string | null;
   vote_count: number;
   created_at?: string | null;
-  source_candidates: Array<Record<string, unknown>>;
+  source_candidates: Array<
+    Record<string, unknown> & {
+      id?: string;
+      source_key?: string | null;
+      url?: string | null;
+      source_url?: string | null;
+      submitted_by?: string | null;
+      status?: string | null;
+      created_at?: string | null;
+      reviewed_at?: string | null;
+      reviewed_by?: string | null;
+      notes?: string | null;
+    }
+  >;
 };
 
 export type ReaderNovel = {
