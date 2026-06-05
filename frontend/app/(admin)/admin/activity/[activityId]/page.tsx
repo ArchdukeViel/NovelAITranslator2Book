@@ -25,7 +25,8 @@ import {
 } from "@/lib/activity";
 import { activityProgress, activityProgressLabel, api } from "@/lib/api";
 import type { ActivityRecord } from "@/lib/api";
-import { cn, formatDate } from "@/lib/utils";
+import { formatDateTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const PHASE_ORDER: ActivityPhaseKey[] = ["preliminary", "scraping", "translating", "other"];
 
@@ -120,7 +121,7 @@ export default function ActivityDetailPage() {
               </div>
               <div>
                 <dt className="text-muted-foreground">Latest update</dt>
-                <dd className="font-medium">{formatDate(firstActivity ? activityUpdatedAtValue(firstActivity) : undefined)}</dd>
+                <dd className="font-medium">{formatDateTime(firstActivity ? activityUpdatedAtValue(firstActivity) : undefined)}</dd>
               </div>
             </dl>
           </PanelBody>
@@ -190,7 +191,7 @@ export default function ActivityDetailPage() {
                               </div>
                             ) : null}
                           </td>
-                          <td className="px-3 py-3 text-muted-foreground">{formatDate(activityUpdatedAtValue(activityItem))}</td>
+                          <td className="px-3 py-3 text-muted-foreground">{formatDateTime(activityUpdatedAtValue(activityItem))}</td>
                         </tr>
                       );
                     })()

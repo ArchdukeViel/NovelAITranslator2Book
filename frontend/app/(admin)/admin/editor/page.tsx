@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import { formatDate } from "@/lib/utils";
+import { formatDateTime } from "@/lib/format";
 
 export default function EditorPage() {
   const queryClient = useQueryClient();
@@ -171,7 +171,7 @@ export default function EditorPage() {
                         <div className="font-medium">{versionId}</div>
                         <Badge tone={version.active ? "green" : "neutral"}>{version.active ? "active" : String(version.version_kind || version.kind || "stored")}</Badge>
                       </div>
-                      <div className="mt-1 text-xs text-muted-foreground">{formatDate(version.created_at || version.translated_at)}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{formatDateTime(version.created_at || version.translated_at)}</div>
                       <Button className="mt-3 w-full" size="sm" variant="outline" onClick={() => rollback.mutate(versionId)} disabled={!versionId || version.active || rollback.isPending}>
                         <RotateCcw className="h-4 w-4" />
                         Rollback
@@ -231,7 +231,7 @@ export default function EditorPage() {
                         {" -> "}
                         {entry.version_id || "-"}
                       </div>
-                      <div className="mt-1 text-xs text-muted-foreground">{formatDate(entry.created_at)}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{formatDateTime(entry.created_at)}</div>
                       {entry.note ? <div className="mt-2 text-muted-foreground">{entry.note}</div> : null}
                     </div>
                   ))
