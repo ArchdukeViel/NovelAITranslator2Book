@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
+import { EmptyState } from "@/components/admin/empty-state";
 import { ErrorBanner } from "@/components/admin/error-banner";
+import { LoadingRows } from "@/components/admin/loading-rows";
 import { PageHeading } from "@/components/admin/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -281,11 +283,7 @@ export default function SettingsPage() {
                       </tr>
                     ))
                   ) : (
-                    <tr>
-                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={6}>
-                        No API tokens added.
-                      </td>
-                    </tr>
+                    <EmptyState title="No API tokens added." colSpan={6} className="text-center" />
                   )}
                 </tbody>
               </table>
@@ -355,18 +353,10 @@ export default function SettingsPage() {
                     </tr>
                   ))}
                   {runtimeState.isLoading ? (
-                    <tr>
-                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={5}>
-                        Loading runtime storage...
-                      </td>
-                    </tr>
+                    <LoadingRows colSpan={5} label="Loading runtime storage..." rows={1} />
                   ) : null}
                   {!runtimeState.isLoading && (runtimeState.data?.items ?? []).length === 0 ? (
-                    <tr>
-                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={5}>
-                        No runtime state files found.
-                      </td>
-                    </tr>
+                    <EmptyState title="No runtime state files found." colSpan={5} className="text-center" />
                   ) : null}
                 </tbody>
               </table>
