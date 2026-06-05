@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from novelai.api.response_helpers import request_list_response, request_response, source_candidate_response
 from novelai.api.routers.dependencies import get_requests, verify_api_key
 from novelai.services.novel_request_service import NovelRequestService
 
@@ -36,31 +37,6 @@ class SourceCandidateCreateRequest(BaseModel):
     notes: str | None = None
 
 
-def _source_candidate_response(item: dict[str, Any]) -> dict[str, Any]:
-    response = dict(item)
-    if "url" in response:
-        response["source_url"] = response["url"]
-    return response
-
-
-def _request_response(item: dict[str, Any]) -> dict[str, Any]:
-    response = dict(item)
-    if "id" in response:
-        response["request_id"] = response["id"]
-    candidates = response.get("source_candidates")
-    if isinstance(candidates, list):
-        response["source_candidates"] = [
-            _source_candidate_response(candidate)
-            for candidate in candidates
-            if isinstance(candidate, dict)
-        ]
-    return response
-
-
-def _request_list_response(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [_request_response(item) for item in items]
-
-
 @router.get("/requests")
 async def list_novel_requests(
     status: str | None = None,
@@ -72,7 +48,7 @@ async def list_novel_requests(
         items = requests.list_requests(status=status, limit=limit)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"requests": _request_list_response(items)}
+    return {"requests": request_list_response(items)}
 
 
 @router.post("/requests")
@@ -82,7 +58,7 @@ async def create_novel_request(
     _auth: None = Depends(verify_api_key),
 ) -> dict[str, Any]:
     try:
-        return _request_response(
+        return request_response(
             requests.create_request(
                 title=body.title,
                 source_key=body.source_key,
@@ -104,7 +80,7 @@ async def get_novel_request(
     item = requests.get_request(request_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Novel request not found")
-    return _request_response(item)
+    return request_response(item)
 
 
 @router.post("/requests/{request_id}/vote")
@@ -117,7 +93,7 @@ async def vote_novel_request(
     item = requests.vote_request(request_id, voter=body.voter)
     if item is None:
         raise HTTPException(status_code=404, detail="Novel request not found")
-    return _request_response(item)
+    return request_response(item)
 
 
 @router.patch("/requests/{request_id}")
@@ -138,7 +114,7 @@ async def update_novel_request_status(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if item is None:
         raise HTTPException(status_code=404, detail="Novel request not found")
-    return _request_response(item)
+    return request_response(item)
 
 
 @router.post("/requests/{request_id}/source-candidates")
@@ -160,4 +136,4 @@ async def add_source_candidate(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if item is None:
         raise HTTPException(status_code=404, detail="Novel request not found")
-    return _source_candidate_response(item)
+    return source_candidate_response(item)
