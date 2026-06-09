@@ -13,10 +13,12 @@ Historical architecture notes may be archived under `docs/archive/architecture/`
 Current mode:
 
 ```text
-single-owner / controlled-admin (current runtime)
-file-backed runtime storage (current runtime)
+single-owner / controlled-admin with public platform features
+Postgres-backed metadata (14 tables), file-backed chapter content
+Redis/RQ background workers for crawl and translation jobs
+guest/user/owner authentication (backend-enforced)
+public reader + user library/progress/ratings/requests
 scheduler-enabled for admin-owned provider/model routing
-scheduler state visible in admin activity/job screens
 baseline owner/admin security hardened
 not multi-admin-team
 ```
@@ -76,31 +78,40 @@ Implemented:
 - Admin frontend shared primitives and scheduler-aware activity display.
 - Multi-model scheduler backend for admin-owned provider/model selection, cooldown/quota state, pause/resume status, model-state progress reporting, and chunk-attempt provider/model traceability.
 - Baseline owner/admin security hardening: path traversal protection, runtime storage isolation, secret redaction, structured errors, SSRF checks, and ignore policy.
+- PostgreSQL 16 database with SQLAlchemy 2.x ORM and Alembic migrations (14 tables: novels, chapters, users, crawl_jobs, translation_jobs, provider_requests, reading_progress, reading_history, library_items, reviews, novel_requests, audit_logs, system_settings, alembic_version).
+- Redis 7 + RQ background workers for crawl and translation jobs.
+- HTTP-only session authentication with guest/user/owner role model and `require_role()` FastAPI dependency.
+- Object-level authorization on user-owned endpoints (library, progress, reviews, requests).
+- Public catalog router with search, filter, pagination for published novels.
+- User data router: library items, reading progress, reading history, reviews, novel requests.
 
 Explicitly not implemented:
 
-- Public user authentication.
-- `owner_admin` role model.
-- Object-level authorization for user-owned objects.
-- Public contribution credentials.
+- Public contribution credentials (later gated phase, Section 12).
 - Encrypted user credential storage.
 - Credential revocation/deletion/audit lifecycle.
 - Per-credential usage limits.
 - Public contribution consent flow.
-- Database migration.
 - Batch mode.
 - Billing, organizations, or multi-admin teams.
 - Backend package flattening from `backend/src/novelai` to another layout.
+- Object storage boundary (S3/R2/B2) for deployed content/assets/exports.
+- Data migration script from file-backed storage to Postgres.
 
 ## 3. Non-Goals and Blocked Phases
 
-Authorized for the deployable v1 target (Section 18) but sequenced — build only
-under the platform expansion plan, not during routine reliability/scheduler work:
+The following are authorized for the v1 target and have been implemented
+(see Section 2 for details):
 
 - Public user authentication and guest/user/owner role model (Section 19).
 - Database support for users, sessions, ownership, and saved data (Section 21).
-- Object storage boundary for deployed content/assets/exports (Section 22).
 - Public reader/user features: library, reading progress, ratings, requests (Section 20).
+
+Still pending for v1:
+
+- Object storage boundary for deployed content/assets/exports (Section 22).
+- Owner dashboard hardening (audit log wiring, user management UI).
+- Data migration script from file-backed storage to Postgres.
 
 Still blocked / gated (do NOT implement, even during platform expansion):
 
