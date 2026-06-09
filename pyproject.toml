@@ -49,6 +49,9 @@ worker = [
   "rq>=1.16",
   "redis>=5.0",
 ]
+auth = [
+  "itsdangerous>=2.2",
+]
 dev = [
   "google-genai>=1.36.0",
   "openai>=2.26.0",

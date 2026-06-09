@@ -5,11 +5,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from novelai.config.settings import settings
 from novelai.api.error_handlers import add_error_handlers
 from novelai.api.routers.library import NovelSummary, list_novels
 from novelai.api.routers import novels
+from novelai.api.routers.auth import router as auth_router
 from novelai.runtime.bootstrap import bootstrap
 from novelai.runtime.container import container
 
@@ -31,6 +33,17 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Novel AI", lifespan=lifespan)
 
+    # Session middleware (HTTP-only signed cookies — v1 auth strategy, architecture §19).
+    # Must be added before CORS middleware.
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.SESSION_SECRET_KEY,
+        session_cookie="novelai_session",
+        max_age=settings.SESSION_MAX_AGE,
+        same_site="lax",
+        https_only=settings.ENV == "production",
+    )
+
     # CORS: restrict to configured origins (empty list = nothing allowed)
     if settings.WEB_CORS_ORIGINS:
         app.add_middleware(
@@ -43,6 +56,9 @@ def create_app() -> FastAPI:
 
     # Register error handlers
     add_error_handlers(app)
+
+    # Auth routes (login/logout/me — no API key required)
+    app.include_router(auth_router)
 
     app.include_router(novels.router, prefix="/novels", tags=["novels"])
     app.include_router(novels.router, prefix="/api/novels", tags=["novels-api"])

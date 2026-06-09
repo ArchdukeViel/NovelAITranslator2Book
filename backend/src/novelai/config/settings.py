@@ -107,6 +107,16 @@ class AppSettings(BaseSettings):
     # --- Redis (Phase 3 workers)
     REDIS_URL: str | None = None
 
+    # --- Auth / Session (Phase 4)
+    # Secret key for signing HTTP-only session cookies.
+    # Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+    SESSION_SECRET_KEY: str = "changeme-generate-a-real-secret-in-production"
+    # Bootstrap secret for the owner to log in before Google OAuth is available.
+    # Set to a strong random value in .env; never commit the real value.
+    OWNER_BOOTSTRAP_SECRET: str | None = None
+    # Session cookie max age in seconds (default: 8 hours).
+    SESSION_MAX_AGE: int = 28_800
+
     # --- Cache
     TRANSLATION_CACHE_MAX_ENTRIES: int = 50_000
     USAGE_LOG_MAX_ENTRIES: int = 10_000
