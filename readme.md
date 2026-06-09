@@ -156,6 +156,7 @@ npm run build
 
 ## Documentation
 
+- [AGENTS.md](AGENTS.md): agent-neutral onboarding and operating rules for AI assistants
 - [docs/guides/GETTING_STARTED.md](docs/guides/GETTING_STARTED.md): comprehensive setup, workflow, and troubleshooting guide
 - [docs/architecture/architecture.md](docs/architecture/architecture.md): canonical architecture, current status, runtime flow, blocked phases, debt register, and roadmap
 - [docs/reference/DATA_OUTPUT_STRUCTURE.md](docs/reference/DATA_OUTPUT_STRUCTURE.md): storage and output layout

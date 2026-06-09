@@ -618,9 +618,9 @@ Do not add batch mode before synchronous translation, scheduler, provider errors
 
 Do not add database support just to avoid designing storage contracts. Database migration is a product/scale decision, not a shortcut.
 
-## 16. Codex Prompting Rules
+## 16. Agent Prompting Rules
 
-Use this header in future Codex prompts:
+Use this header in future agent prompts (Codex, Hermes, Cline, etc.):
 
 ```text
 You are working inside the NovelAI project. Follow docs/architecture/architecture.md as the highest project-level design authority.
