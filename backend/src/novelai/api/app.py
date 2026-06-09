@@ -12,6 +12,7 @@ from novelai.api.error_handlers import add_error_handlers
 from novelai.api.routers.library import NovelSummary, list_novels
 from novelai.api.routers import novels
 from novelai.api.routers.auth import router as auth_router
+from novelai.api.routers.public import router as public_router
 from novelai.runtime.bootstrap import bootstrap
 from novelai.runtime.container import container
 
@@ -59,6 +60,9 @@ def create_app() -> FastAPI:
 
     # Auth routes (login/logout/me — no API key required)
     app.include_router(auth_router)
+
+    # Public catalog routes (guest-accessible, no auth required)
+    app.include_router(public_router)
 
     app.include_router(novels.router, prefix="/novels", tags=["novels"])
     app.include_router(novels.router, prefix="/api/novels", tags=["novels-api"])
