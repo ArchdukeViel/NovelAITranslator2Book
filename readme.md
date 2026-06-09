@@ -2,9 +2,17 @@
 
 Novel AI is a web-first Japanese novel platform for crawling source sites, queueing translation jobs, editing translated chapters, exporting books, and serving a public reader UI.
 
-The project is now oriented toward a production-style web deployment, similar in shape to a WTR-Lab style site: a Next.js frontend for public/admin pages, a FastAPI backend under `/api`, durable local file-backed storage, and a worker process for crawler/translation activity.
+The project is now oriented toward a production-style web deployment, similar in shape to a WTR-Lab style site: a Next.js frontend for public/admin pages, a FastAPI backend under `/api`, PostgreSQL-backed metadata, file/object-backed chapter content, and Redis/RQ background workers for crawler/translation activity.
 
-Current mode is single-owner / controlled-admin. The project has scheduler-enabled admin-owned provider/model routing and baseline owner/admin security hardening, but it does not have public user auth, public contribution credentials, database storage, batch mode, billing, organizations, or multi-admin teams.
+Current mode is single-owner / controlled-admin transitioning to a public platform. The project has:
+- Scheduler-enabled admin-owned provider/model routing
+- PostgreSQL 16 with SQLAlchemy 2.x + Alembic migrations (metadata, users, jobs)
+- Redis 7 + RQ background workers
+- Guest/user/owner authentication (backend-enforced)
+- Public reader routes and user library/progress/ratings/requests
+- Baseline owner/admin security hardening
+
+Not implemented: public contribution credentials (later gated phase), batch mode, billing, organizations, multi-admin teams.
 
 ## Features
 
@@ -35,7 +43,7 @@ Python project metadata stays at the repository root so `pip install -e .`, `pyt
 - Python 3.13 or newer
 - Node.js LTS with npm
 - Git
-- Docker Desktop, only for production-like local deployment
+- Docker Desktop (required for PostgreSQL + Redis via compose)
 - Gemini or OpenAI API key for real translation
 
 ## Local Install
@@ -43,7 +51,7 @@ Python project metadata stays at the repository root so `pip install -e .`, `pyt
 ```powershell
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -e ".[documents,openai,gemini,dev]"
+.\.venv\Scripts\python.exe -m pip install -e ".[documents,openai,gemini,dev,db,worker]"
 
 cd frontend
 npm install
@@ -56,6 +64,18 @@ cd "C:\Akmal\Novel AI"
 Copy-Item .env.example .env
 ```
 
+Start PostgreSQL and Redis via Docker:
+
+```powershell
+docker compose -f deploy/compose.yml up -d postgres redis
+```
+
+Run database migrations:
+
+```powershell
+.\.venv\Scripts\alembic -c backend/alembic.ini upgrade head
+```
+
 Common `.env` values:
 
 ```env
@@ -65,6 +85,8 @@ PROVIDER_GEMINI_API_KEY=your_key_here
 PROVIDER_OPENAI_API_KEY=your_key_here
 TRANSLATION_TARGET_LANGUAGE=English
 WEB_RATE_LIMITER_BACKEND=memory
+DATABASE_URL=postgresql+psycopg://novelai:novelai@localhost:5432/novelai
+REDIS_URL=redis://localhost:6379/0
 ```
 
 ## Run Locally
@@ -144,6 +166,13 @@ Backend:
 ```powershell
 pytest --tb=short -q
 pyright
+```
+
+Database migrations:
+
+```powershell
+.\.venv\Scripts\alembic -c backend/alembic.ini current
+.\.venv\Scripts\alembic -c backend/alembic.ini upgrade head
 ```
 
 Frontend:
