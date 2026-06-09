@@ -106,6 +106,9 @@ data/
 # Session exports
 SESSION_EXPORT_*.json
 
+# Agent working directory (Hermes plans/scratch live here; promote keepers to docs/)
+.hermes/
+
 # Documentation (tracking)
 # Note: All .md files are tracked in git for documentation history
 # docs/history/ contains archived phase completion and review docs
