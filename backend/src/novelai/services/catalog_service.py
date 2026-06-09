@@ -11,7 +11,6 @@ the two can run in parallel during the file→DB transition.
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 
 from sqlalchemy.orm import Session
 

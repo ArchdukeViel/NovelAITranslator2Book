@@ -27,7 +27,6 @@ from pydantic import BaseModel
 from novelai.api.routers.dependencies import (
     get_storage,
     metadata_chapters,
-    reader_author,
     reader_title,
 )
 from novelai.storage.service import StorageService
