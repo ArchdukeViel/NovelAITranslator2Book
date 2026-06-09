@@ -100,8 +100,6 @@ claiming a change is verified.
 
 - Treat `docs/architecture/architecture.md` as authority; do not create
   competing roadmap/architecture docs that fragment the source of truth.
-- `docs/archive/architecture/*` is intentionally retained project memory — read
-  for history, do not delete or "clean up."
 - Do not reintroduce `project_tree.txt` or other tree/scratch exports into the
   repo or `docs/`.
 - Verify claims by reading code and running tests; state what you checked and
