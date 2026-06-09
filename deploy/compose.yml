@@ -1,6 +1,32 @@
 name: novel-ai
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-novelai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-DEV_DEFAULT_REMOVED}
+      POSTGRES_DB: ${POSTGRES_DB:-novelai}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-novelai} -d ${POSTGRES_DB:-novelai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   caddy:
     image: caddy:2.8-alpine
     depends_on:
@@ -44,8 +70,15 @@ services:
       - PROVIDER_GEMINI_API_KEY
       - PROVIDER_OPENAI_API_KEY
       - TRANSLATION_TARGET_LANGUAGE=${TRANSLATION_TARGET_LANGUAGE:-English}
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-DEV_DEFAULT_REMOVED}@postgres:5432/${POSTGRES_DB:-novelai}
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - ../storage/novel_library:/app/storage/novel_library
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   worker:
@@ -66,12 +99,19 @@ services:
       - PROVIDER_GEMINI_API_KEY
       - PROVIDER_OPENAI_API_KEY
       - TRANSLATION_TARGET_LANGUAGE=${TRANSLATION_TARGET_LANGUAGE:-English}
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-DEV_DEFAULT_REMOVED}@postgres:5432/${POSTGRES_DB:-novelai}
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - ../storage/novel_library:/app/storage/novel_library
     depends_on:
-      - backend
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
   caddy_data:
   caddy_config:
+  postgres_data:
+  redis_data:
