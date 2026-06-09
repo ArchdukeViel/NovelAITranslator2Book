@@ -120,6 +120,33 @@ def get_usage() -> UsageService:
     return container.usage
 
 
+def get_db_session():
+    """FastAPI dependency: yield a SQLAlchemy session, commit on clean exit.
+
+    Requires DATABASE_URL to be configured. Raises 503 if not.
+    Override in tests via app.dependency_overrides[get_db_session].
+    """
+    from novelai.db.engine import get_sessionmaker
+    from novelai.config.settings import settings
+    from fastapi import HTTPException
+
+    if not settings.DATABASE_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="Database is not configured on this server.",
+        )
+    SM = get_sessionmaker()
+    session = SM()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
 def metadata_chapters(meta: dict[str, Any]) -> list[dict[str, Any]]:
     chapters = meta.get("chapters")
     return [chapter for chapter in chapters if isinstance(chapter, dict)] if isinstance(chapters, list) else []
