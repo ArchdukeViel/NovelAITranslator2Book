@@ -412,3 +412,32 @@ Non-negotiable rules:
 When asked for a review, prioritize architecture violations, bugs, behavioral regressions, missing tests, and contract drift.
 
 When asked for cleanup, avoid package flattening, broad migrations, and unrelated refactors unless explicitly requested.
+
+---
+
+## 18. Permission Matrix
+
+Single-owner platform with guest/user/owner roles. Enforced in the backend, never the frontend.
+
+| Capability | Guest | User | Owner |
+|---|---|---|---|
+| View public catalog | Yes | Yes | Yes |
+| Read public chapters | Yes | Yes | Yes |
+| Search/filter novels | Yes | Yes | Yes |
+| Save to library | No | Yes | Yes |
+| Track reading progress | No | Yes | Yes |
+| Rate/review | No | Yes | Yes |
+| Request novel/chapter | Limited | Yes (rate-limited) | Yes |
+| Start crawler | No | No | Yes |
+| Start translation | No | Request only | Yes |
+| Edit metadata | No | No | Yes |
+| Delete/unpublish content | No | No | Yes |
+| View logs/errors | No | No | Yes |
+| Configure providers | No | No | Yes |
+| View provider/API usage | No | No | Yes |
+| Manage users | No | No | Yes |
+| Change system settings | No | No | Yes |
+
+**Core rule**: Owner does dangerous operations. Users request things. Guests read public content.
+
+RLS policies at `docs/sql/rls_policies.sql` enforce this at the database level.
