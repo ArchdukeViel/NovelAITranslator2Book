@@ -101,6 +101,12 @@ class AppSettings(BaseSettings):
     COST_PER_TOKEN_USD: float = 0.000002
     TRANSLATION_TARGET_LANGUAGE: str = "English"
 
+    # --- Database
+    DATABASE_URL: str | None = None
+
+    # --- Redis (Phase 3 workers)
+    REDIS_URL: str | None = None
+
     # --- Cache
     TRANSLATION_CACHE_MAX_ENTRIES: int = 50_000
     USAGE_LOG_MAX_ENTRIES: int = 10_000
