@@ -45,12 +45,15 @@ Preserve canonical field names (`novel_id`, `chapter_id`, `paragraph_id`,
 
 ## Blocked Phases (deliberate, NOT missing work)
 
-Do NOT implement these unless the readiness gate in architecture.md §12 is
+Do NOT implement these unless the readiness gate in architecture.md §13 is
 explicitly moved to Ready:
-- Public user authentication / registered users
+- Public contribution credentials and encrypted credential storage
+- Batch mode, billing, organizations, multi-admin teams
+
+The following are now implemented:
+- Public user authentication / registered users (Google OAuth ready, schema supports it)
 - `owner_admin` role model and object-level authorization
-- Public contribution credentials (Prompt 12) and encrypted credential storage
-- Database migration, batch mode, billing, organizations, multi-admin teams
+- Database migration (Supabase PostgreSQL 16)
 
 Do not fake users with localStorage IDs, request-provided user names, unsigned
 cookies, or frontend-only flags.

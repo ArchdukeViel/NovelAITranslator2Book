@@ -2,7 +2,7 @@
 
 Documentation for Novel AI, organized around the current web-first direction.
 
-Current mode is single-owner / controlled-admin with file-backed runtime storage, scheduler-enabled admin-owned provider/model routing, and baseline owner/admin security hardening. Public auth, public contribution credentials, database storage, batch mode, billing, organizations, and multi-admin teams are not implemented.
+Current mode is single-owner / controlled-admin with Supabase PostgreSQL 16 for metadata, file-backed chapter content, scheduler-enabled admin-owned provider/model routing, and baseline owner/admin security hardening. Public auth and database storage are implemented. Public contribution credentials, batch mode, billing, organizations, and multi-admin teams are not implemented.
 
 ## Start Here
 

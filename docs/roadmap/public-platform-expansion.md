@@ -50,12 +50,12 @@ explicitly out of scope (still blocked).
 
 ## Phase Overview
 
-| Phase | Theme | Output type | Gate to start |
+| Phase | Theme | Output type | Status |
 |---|---|---|---|
-| 1 | Architecture expansion + arch.md update | Docs/decisions | Owner approval of direction |
-| 2 | Database foundation (SQLAlchemy + Alembic + Postgres) | Code (detailed) | Phase 1 merged |
-| 3 | Background workers (Redis + RQ) | Code (outline) | Phase 2 merged |
-| 4 | Auth: guest / user / owner | Code (outline) | Phase 2 stable |
+| 1 | Architecture expansion + arch.md update | Docs/decisions | ✅ Complete |
+| 2 | Database foundation (SQLAlchemy + Alembic + Postgres) | Code (detailed) | ✅ Complete (Supabase) |
+| 3 | Background workers (Redis + RQ) | Code (outline) | ✅ Complete |
+| 4 | Auth: guest / user / owner | Code (outline) | ✅ Complete |
 | 5 | Public reader features | Code (outline) | Phase 2 + 4 |
 | 6 | User library / progress / ratings / requests | Code (outline) | Phase 4 + 5 |
 | 7 | Owner dashboard hardening | Code (outline) | Phase 3 + 4 |

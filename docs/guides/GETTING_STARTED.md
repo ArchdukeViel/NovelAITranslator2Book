@@ -4,7 +4,7 @@ This guide walks through the web-first setup for Novel AI: FastAPI backend, Next
 
 The commands are written for PowerShell on Windows because this workspace is currently on Windows. The same flow works on other platforms with equivalent shell syntax.
 
-Current mode is single-owner / controlled-admin. The backend has scheduler-enabled admin-owned provider/model routing and baseline owner/admin security hardening. Public user auth, public contribution credentials, database storage, batch mode, billing, organizations, and multi-admin teams are not implemented.
+Current mode is single-owner / controlled-admin. The backend has scheduler-enabled admin-owned provider/model routing and baseline owner/admin security hardening. Database storage (Supabase PostgreSQL 16) and public user auth are implemented. Public contribution credentials, batch mode, billing, organizations, and multi-admin teams are not implemented.
 
 ## 1. What You Are Running
 
