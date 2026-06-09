@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
 from novelai.api.auth.roles import require_role
-from novelai.api.auth.session import GUEST, SessionUser, get_current_user
+from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.config.settings import settings
 
 logger = logging.getLogger(__name__)

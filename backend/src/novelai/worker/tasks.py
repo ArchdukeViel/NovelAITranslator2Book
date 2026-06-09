@@ -25,8 +25,6 @@ import asyncio
 import logging
 from typing import Any
 
-from rq import Queue, get_current_job
-
 from novelai.worker.queue import QUEUE_CRAWL, QUEUE_TRANSLATION, get_queue
 
 logger = logging.getLogger(__name__)
