@@ -4,7 +4,7 @@
 
 Status: canonical project architecture.
 
-Last reviewed: 2026-06-05.
+Last reviewed: 2026-06-09.
 
 This is the single active architecture reasoning file for NovelAI. It is the source of truth for future Codex prompts, implementation decisions, project boundaries, refactor rules, and architecture audits.
 
@@ -13,17 +13,32 @@ Historical architecture notes may be archived under `docs/archive/architecture/`
 Current mode:
 
 ```text
-single-owner / controlled-admin
-file-backed runtime storage
+single-owner / controlled-admin (current runtime)
+file-backed runtime storage (current runtime)
 scheduler-enabled for admin-owned provider/model routing
 scheduler state visible in admin activity/job screens
 baseline owner/admin security hardened
-not public-contribution ready
-not multi-tenant
-not database-backed
+not multi-admin-team
 ```
 
-This document intentionally does not claim that public auth, `owner_admin` roles, public contribution credentials, encrypted user credential storage, database support, batch mode, billing, organizations, or multi-admin teams exist. They do not exist unless later code and tests prove otherwise.
+Authorized target mode (see Section 18, Deployable v1 Target Mode):
+
+```text
+deployable single-owner public platform (v1)
+guest / user / owner roles, backend-enforced
+Postgres-backed users, sessions, ownership, and saved data
+file/object-backed chapter content, assets, and exports
+public reader + user library/progress/ratings/requests
+public contribution credentials NOT in v1 (later gated phase, Section 12)
+```
+
+This document records the current runtime AND an authorized transition target. A
+capability does not exist until later code and tests prove it. The v1 target
+authorizes public auth, the guest/user/owner role model, database support for
+users/ownership/saved data, and an object storage boundary — sequenced behind
+the platform expansion plan. It does NOT authorize public contribution
+credentials (later gated phase), batch mode, billing, organizations, or
+multi-admin teams.
 
 ## 1. Product Boundary
 
@@ -33,8 +48,9 @@ The product has four conceptual surfaces:
 
 1. Owner/admin surface: crawl/import sources, manage requests, manage jobs, translate chapters, edit output, configure providers, inspect activity/scheduler state, and export.
 2. Public reader surface: browse published translated novels and read published chapters.
-3. Future registered user surface: request novel/chapter translations and optionally contribute Gemini API quota for approved public-library jobs. This is blocked and not implemented.
-4. Backend runtime: source ingestion, input import, translation pipeline, storage, usage/cost tracking, activity logging, scheduler state, security controls, and export generation.
+3. Registered user surface (authorized for v1): public users sign up, log in, save novels to a library, track reading progress, rate/review, and request novels/chapters. See Section 20.
+4. Contribution surface (later gated phase): registered users optionally contribute Gemini/OpenAI provider quota for approved public-library jobs. Gated behind Section 12; not part of v1.
+5. Backend runtime: source ingestion, input import, translation pipeline, storage, usage/cost tracking, activity logging, scheduler state, security controls, and export generation.
 
 Current core mode is a single-owner / controlled-admin translation system. It includes owner/admin operations, public reading, source ingestion, translation, storage, jobs/activity, provider settings, scheduler, exports, and baseline security protections.
 
@@ -78,19 +94,28 @@ Explicitly not implemented:
 
 ## 3. Non-Goals and Blocked Phases
 
-Do not implement these during normal reliability or scheduler work:
+Authorized for the deployable v1 target (Section 18) but sequenced — build only
+under the platform expansion plan, not during routine reliability/scheduler work:
 
-- Prompt 12 public contribution credentials.
-- Auth/user accounts.
-- `owner_admin` roles.
+- Public user authentication and guest/user/owner role model (Section 19).
+- Database support for users, sessions, ownership, and saved data (Section 21).
+- Object storage boundary for deployed content/assets/exports (Section 22).
+- Public reader/user features: library, reading progress, ratings, requests (Section 20).
+
+Still blocked / gated (do NOT implement, even during platform expansion):
+
+- Public contribution credentials (later gated phase, Section 12).
 - Public credential UI.
 - Credential pooling or marketplace behavior.
-- Database support.
 - Batch mode.
 - Billing, organizations, or multi-admin teams.
 - Broad folder migrations or package flattening.
 
-Prompt 12 remains blocked while the public contribution readiness gate is Not Ready. Do not fake user ownership with browser localStorage IDs, request-provided user names, unsigned cookies, or frontend-only flags.
+Public contribution credentials remain gated behind Section 12. Whether or not
+auth and a database exist, do not fake user ownership with browser localStorage
+IDs, request-provided user names, unsigned cookies, or frontend-only flags;
+ownership is established only by the backend session/authorization layer
+(Section 19).
 
 ## 4. Backend Architecture
 
@@ -459,7 +484,7 @@ React displays scheduler state, QA state, provider state, storage-backed job sta
 
 Shared admin primitives include error banners, empty states, loading rows, progress bars, scheduler badges/panels, dialogs, sortable headers, and related presentational components.
 
-No public contribution credential UI exists. Do not add it until the readiness gate is Ready.
+No public contribution credential UI exists. Do not add it until the Section 12 gated phase opens.
 
 ## 11. Security Architecture
 
@@ -520,30 +545,40 @@ Security still missing for public contribution mode:
 - Scheduler enforcement of contributed credential scope.
 - Separate public-user and admin credential management UIs.
 
-## 12. Public Contribution Readiness Gate
+## 12. Public Contribution Credentials — Later Gated Phase
 
-Verdict: Not Ready.
+Verdict: Later gated phase (NOT in v1, NOT blocked indefinitely).
 
-Prompt 12 must not be implemented while this gate remains Not Ready.
+This reclassifies the former "Not Ready / blocked" stance. Public API
+contribution (registered users donating Gemini/OpenAI provider quota for
+approved public-library jobs) is an explicitly planned future phase that opens
+only after its gate conditions below are met and tested. It is out of scope for
+the deployable v1 target (Section 18). The v1 auth + database + ownership work
+(Sections 19/21) is a prerequisite, not the gate itself.
 
-Current blockers:
+This phase must not open until ALL of the following exist and are tested. These
+warnings are preserved and non-negotiable:
 
-- No authenticated registered users.
-- No `owner_admin` authorization boundary.
-- No object-level authorization.
-- No encrypted credential storage.
-- No credential revocation/deletion/audit lifecycle.
-- No per-credential usage limits.
-- No contribution consent flow.
-- No scheduler enforcement of contributed credential scope.
-- No separation between public-user credential management and admin credential management.
+- Encrypted contributed-credential storage (encryption at rest; raw keys never
+  returned, logged, or exposed after creation).
+- Explicit contribution consent capture per credential.
+- Credential revocation/deletion lifecycle.
+- Per-credential usage limits and scheduler enforcement of contributed
+  credential scope (contributed keys usable only for approved public-library jobs).
+- Security audit records for credential create/use/revoke/delete.
+- Strict object-level authorization (user A cannot access user B's credentials,
+  requests, jobs, activities, novels, or exports).
+- Per-user ownership of each contributed credential.
+- Credential validation before activation (verify the key works before it becomes usable).
+- A usage ledger recording every contributed-credential request.
+- Provider isolation so a contributed credential is used only for its own provider and scope.
+- Abuse and rate-limit controls on contributed-credential usage.
+- Owner disable controls to globally suspend contribution or disable a specific credential.
 
-Do not fake users with localStorage, request-provided user IDs, unsigned cookies, or frontend-only flags.
+Gate prerequisites (build order):
 
-Before Prompt 12, the project needs:
-
-1. Real authentication/account boundary.
-2. Backend role/permission boundary with `owner_admin`.
+1. Real authentication/account boundary (Section 19).
+2. Backend role/permission boundary (guest/user/owner).
 3. Object-level authorization for credentials, requests, jobs, activities, novels, and exports.
 4. Request approval semantics tied to authenticated requester/reviewer identities.
 5. Encrypted credential storage.
@@ -552,6 +587,9 @@ Before Prompt 12, the project needs:
 8. Contribution consent capture.
 9. Usage limits and scheduler scope enforcement.
 10. Tests proving user A cannot access user B's objects and raw keys are never returned after creation.
+
+Do not fake users with localStorage, request-provided user IDs, unsigned
+cookies, or frontend-only flags.
 
 ## 13. Implementation History Summary
 
@@ -570,7 +608,7 @@ Prompts 1-10 completed the core reliability pass:
 
 Prompt 11 scheduler readiness was established after the core reliability pass. The backend now includes scheduler behavior for admin-owned provider/model routing and the admin UI displays scheduler state.
 
-Prompt 12 public contribution credentials remain blocked.
+Prompt 12 public contribution credentials are reclassified from blocked to a later gated phase (Section 12); not in v1.
 
 Prompt 13A baseline owner/admin security hardening is implemented. Full contribution-mode security remains future work because it depends on real auth, roles, object-level authorization, encrypted credential storage, and audit/consent boundaries.
 
@@ -578,7 +616,7 @@ Prompt 13A baseline owner/admin security hardening is implemented. Full contribu
 
 P0 - correctness/security risk:
 
-- Public contribution mode is blocked; do not implement credentials before auth, roles, object authorization, encrypted storage, audit, usage limits, and consent.
+- Public contribution credentials are a later gated phase (Section 12); do not implement them before encrypted storage, consent, revocation, usage limits, audit records, and strict authorization exist. v1 auth/DB/ownership (Sections 19/21) is a prerequisite, not the gate.
 - Runtime provider request records and chunk output records must remain complete for scheduler-managed paths so failures and resumptions are inspectable.
 - Successful chunk reuse after pause/resume needs continued hardening so completed chunks are not retranslated unless explicitly forced.
 - Private runtime storage must stay isolated from frontend/static serving.
@@ -609,8 +647,8 @@ Recommended order:
 2. Migrate remaining source adapters to FetchService.
 3. Thin routers by moving remaining orchestration into services.
 4. Optional backend package flattening as a dedicated mechanical migration, not mixed with scheduler/frontend/security work.
-5. Add public auth/role/product boundary only if public contribution remains desired.
-6. Run Prompt 12 only after the public contribution readiness gate says Ready.
+5. Build the v1 public platform: database foundation (Section 21), auth/session boundary (Section 19), public reader + user features (Section 20), object storage boundary (Section 22).
+6. Open the contribution-credentials gated phase only after Section 12's encryption/consent/revocation/usage-limit/audit/authorization conditions are met and tested.
 
 Do not add new source sites before FetchService, source quality gates, and parser fixtures are stable.
 
@@ -679,3 +717,152 @@ rg "old architecture companion doc names" docs -g "*.md"
 ```
 
 Run lint only if configured non-interactively. If lint prompts for ESLint setup, skip it and report that lint is not configured non-interactively.
+
+## 18. Deployable v1 Target Mode
+
+Status: authorized target. Sequenced behind the platform expansion plan
+(`.hermes/plans/`), built phase-by-phase, not all at once.
+
+v1 is a deployable single-owner public platform: a public reader plus
+registered-user features (library, reading progress, ratings, requests), backed
+by a database for users/sessions/ownership/saved data and an object storage
+boundary for deployed content/assets/exports. The single owner is the only
+admin.
+
+In scope for v1:
+
+- Guest / user / owner role model, backend-enforced (Section 19).
+- Public reader over a database-backed catalog (Section 20).
+- User accounts with login and saved data (Sections 19, 21).
+- Object storage boundary for content/assets/exports at deploy scale (Section 22).
+- Owner-only operational controls (existing admin surface, hardened).
+
+Out of scope for v1:
+
+- Public contribution credentials (later gated phase, Section 12).
+- Batch mode, billing, organizations, multi-admin teams.
+
+v1 must not be deployed publicly until the owner boundary (Section 19) is
+backend-enforced and tested, and rate limiting protects provider-backed actions.
+Public users must never be able to trigger paid translation jobs directly.
+
+## 19. Authentication and Session Architecture
+
+Status: authorized for v1. Build after the database foundation (Section 21) is
+stable; do not implement auth before the schema and API boundary are clear.
+
+Single owner-admin rule:
+
+- Exactly one owner. The owner is the only admin. There is no separate admin
+  team, no admin-invitation flow, and no staff/team permissions in v1.
+- The owner is seeded via secure backend bootstrap (env/CLI), never via a public
+  signup path.
+
+Role model (backend-enforced):
+
+```text
+guest  - unauthenticated; read public catalog/chapters and search only
+user   - authenticated; library, reading progress, reading history,
+         ratings/reviews, requests, profile
+owner  - authenticated; all dangerous operations (crawl, translate, providers,
+         usage, logs, edit/delete, settings, user management)
+```
+
+Enforcement rules:
+
+- Authorization is enforced in the backend API, not by hiding frontend routes.
+  Frontend route protection alone is fake security.
+- Every dangerous router requires an owner-role dependency and rejects
+  non-owner calls with 401/403 — never 200.
+- Object-level authorization: a user may only read/write their own saved data
+  (library, progress, reviews, requests). Tests must prove user A cannot access
+  user B's objects.
+- Ownership is established only by the backend session/authorization layer, never
+  by client-supplied IDs, localStorage, unsigned cookies, or frontend flags.
+
+Session strategy (pinned decision for v1):
+
+- v1 authentication uses secure, HTTP-only, same-site session cookies with
+  server-side session state. This is the decided default for v1.
+- JWT is NOT the v1 default. JWT may be reconsidered later only if mobile or
+  external API-client requirements appear; if adopted then, handle token
+  rotation and revocation carefully.
+
+Google OAuth first decision:
+
+- Google OAuth is the first/primary intended login method for public users.
+  Design the user/auth schema for OAuth identities from the start
+  (`auth_provider`, provider subject ID). Email/password may be added later but
+  is not required for v1.
+- OAuth is still implemented after the database foundation and API boundary are
+  stable — it is a login method, not the foundation.
+
+## 20. Public Reader and Registered-User Features
+
+Status: authorized for v1. See the permission matrix in the expansion plan.
+
+Guest (unauthenticated):
+
+- Browse public catalog, read published chapters, search/filter
+  (title/author/tag/status/language/recent/popular).
+
+User (authenticated):
+
+- Save novels to a personal library.
+- Track reading progress per novel/chapter.
+- View reading history.
+- Rate and review novels.
+- Request novels/chapters (rate-limited). Requests are requests only — they never
+  auto-trigger paid translation. The owner approves and runs jobs.
+- Manage a profile page.
+
+Frontend rules unchanged: public/user pages call the backend only through
+`frontend/lib/api.ts`; React renders backend-owned state and never owns
+authorization, scheduler, QA, or provider policy.
+
+## 21. Database Boundary (Users, Sessions, Ownership, Saved Data)
+
+Status: authorized for v1. PostgreSQL is the system of record for metadata and
+user-facing state. File/object storage remains the system of record for heavy
+content (raw/translated chapter text, covers, logs, exports).
+
+Database owns:
+
+- Users and roles, auth-provider identities.
+- Sessions (or session references) and ownership links.
+- Saved data: library items, reading progress, ratings/reviews, requests.
+- Catalog metadata: novels, chapters (with storage keys + checksums), tags.
+- Job/usage records: crawl jobs, translation jobs, provider requests.
+- Audit logs and system settings.
+
+Database does NOT own:
+
+- Raw chapter text, translated chapter text, covers, exports, or logs — those
+  live in file/object storage; the database stores their keys/paths/checksums.
+
+Boundary rules:
+
+- All database access lives behind a dedicated `db` boundary (engine, session,
+  models) consumed by `services/*`. Routers never touch the session directly.
+- Use SQLAlchemy + Alembic. Every schema change ships a reviewed migration that
+  is reversible (up/down tested).
+- Storage-path knowledge stays in the storage boundary; the database stores keys,
+  not absolute filesystem paths. The frontend never receives raw paths.
+- Migration from file-backed runtime to database is parallel-run with a one-time
+  backfill, not a big-bang deletion of file-backed code.
+
+## 22. Object Storage Boundary (Deployed Content, Assets, Exports)
+
+Status: authorized for v1 deployment.
+
+- Development: local `storage/` folder remains acceptable; runtime data stays
+  private and untracked.
+- Public deployment: S3-compatible object storage (Cloudflare R2, Backblaze B2,
+  AWS S3, or MinIO) for raw/translated chapter text, covers/assets, logs, and
+  exports.
+- The database stores object keys and checksums; object storage stores bytes.
+- Object storage must not be served as open static files where it would expose
+  unpublished content or runtime internals; access goes through safe storage
+  readers and API/export services.
+- Credentials for object storage are secrets — never logged, never returned to
+  the frontend, never committed.
