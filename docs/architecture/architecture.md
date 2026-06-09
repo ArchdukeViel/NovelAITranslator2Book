@@ -205,8 +205,9 @@ frontend/lib/               API client, shared types, client utilities
 **Contract layer**:
 - `frontend/lib/api.ts` is the only browser/backend API client.
 - Admin pages render workflows and call typed API functions.
-- React displays scheduler state, QA state, provider state returned by the backend. React does not decide those policies.
-- No public contribution credential UI exists until §12 opens.
+- React displays scheduler state, QA state, provider state and provides admin controls that trigger backend-owned operations.
+- Scheduler/QA/provider policy logic stays in the backend; React surfaces UI controls that call backend endpoints.
+- No public contribution credential UI exists until §13 opens.
 
 ## 10. Security Architecture
 
@@ -399,7 +400,7 @@ Non-negotiable rules:
 - Put persistence only behind storage services.
 - Put prompt construction only in prompts.
 - Put provider-specific API logic only in providers.
-- Put scheduler policy in translation/service/job layer, not providers or React.
+- Put scheduler policy in translation/service/job layer. React may surface admin UI controls that trigger backend endpoints, but policy logic stays backend-owned.
 - Frontend must call backend only through frontend/lib/api.ts.
 - Preserve canonical names: source_key, novel_id, chapter_id, paragraph_id, chunk_id, provider_key, provider_model, activity_id, job_id, request_id.
 - Add/update tests for every changed contract.
