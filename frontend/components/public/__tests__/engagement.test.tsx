@@ -74,6 +74,9 @@ describe("public engagement UI", () => {
       if (url === "/api/auth/me") {
         return Promise.resolve(jsonResponse(user));
       }
+      if (url === "/api/auth/csrf") {
+        return Promise.resolve(jsonResponse({ csrf_token: "csrf-test" }));
+      }
       if (url === "/api/user/reviews/demo" && init?.method === "PUT") {
         return Promise.resolve(
           jsonResponse({
@@ -103,6 +106,10 @@ describe("public engagement UI", () => {
         expect.objectContaining({ method: "PUT" })
       );
     });
+    const reviewMutation = fetchMock.mock.calls.find(
+      ([url, init]) => String(url) === "/api/user/reviews/demo" && init?.method === "PUT"
+    );
+    expect(new Headers(reviewMutation?.[1]?.headers).get("X-CSRF-Token")).toBe("csrf-test");
     expect(await screen.findByText("Review saved with status: pending")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /delete review/i }));
@@ -135,6 +142,9 @@ describe("public engagement UI", () => {
       if (url === "/api/auth/me") {
         return Promise.resolve(jsonResponse(user));
       }
+      if (url === "/api/auth/csrf") {
+        return Promise.resolve(jsonResponse({ csrf_token: "csrf-test" }));
+      }
       if (url === "/api/user/requests" && init?.method === "POST") {
         return Promise.resolve(
           jsonResponse({
@@ -165,6 +175,10 @@ describe("public engagement UI", () => {
         expect.objectContaining({ method: "POST" })
       );
     });
+    const requestMutation = fetchMock.mock.calls.find(
+      ([url, init]) => String(url) === "/api/user/requests" && init?.method === "POST"
+    );
+    expect(new Headers(requestMutation?.[1]?.headers).get("X-CSRF-Token")).toBe("csrf-test");
     expect(await screen.findByText("Request #5 is pending.")).toBeInTheDocument();
   });
 

@@ -78,6 +78,9 @@ describe("public reading-state UI", () => {
       if (url === "/api/auth/me") {
         return Promise.resolve(jsonResponse(user));
       }
+      if (url === "/api/auth/csrf") {
+        return Promise.resolve(jsonResponse({ csrf_token: "csrf-test" }));
+      }
       if (url === "/api/user/library/demo" && !init?.method) {
         return Promise.resolve(
           jsonResponse({ detail: "Library item not found." }, 404)
@@ -102,9 +105,16 @@ describe("public reading-state UI", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/user/library/demo",
-        expect.objectContaining({ method: "POST" })
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({}),
+        })
       );
     });
+    const mutation = fetchMock.mock.calls.find(
+      ([url, init]) => String(url) === "/api/user/library/demo" && init?.method === "POST"
+    );
+    expect(new Headers(mutation?.[1]?.headers).get("X-CSRF-Token")).toBe("csrf-test");
   });
 
   it("shows continue-reading link for authenticated saved progress", async () => {

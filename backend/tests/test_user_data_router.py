@@ -11,7 +11,9 @@ from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
 
 from novelai.api.auth.session import SessionUser, get_current_user
+from novelai.api.auth.security import reset_public_rate_limits
 from novelai.api.routers.dependencies import get_db_session
+from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.db.base import Base
 
@@ -61,6 +63,7 @@ def app(db_session):
     current = {"user": None}
     _app = FastAPI()
     _app.add_middleware(SessionMiddleware, secret_key="test", https_only=False)
+    _app.include_router(auth_router)
     _app.include_router(user_data_router)
 
     def _db_override():
@@ -81,8 +84,21 @@ def client(app):
     return TestClient(app, raise_server_exceptions=True)
 
 
+@pytest.fixture(autouse=True)
+def _reset_public_security_state():
+    reset_public_rate_limits()
+    yield
+    reset_public_rate_limits()
+
+
 def set_user(app: FastAPI, user_id: int, role: str = "user") -> None:
     app.state.current_user["user"] = SessionUser(user_id=user_id, email=f"user{user_id}@test.com", role=role)
+
+
+def csrf_headers(client: TestClient) -> dict[str, str]:
+    resp = client.get("/api/auth/csrf")
+    assert resp.status_code == 200
+    return {"X-CSRF-Token": resp.json()["csrf_token"]}
 
 
 def assert_keys(data: dict, keys: set[str]) -> None:
@@ -107,25 +123,31 @@ class TestAuthGuard:
         ],
     )
     def test_guest_blocked_from_user_endpoints(self, client, method, path, json) -> None:
-        resp = client.request(method.upper(), path, json=json)
+        headers = csrf_headers(client) if method in {"post", "put", "delete"} else None
+        resp = client.request(method.upper(), path, json=json, headers=headers)
         assert resp.status_code == 401
+
+    def test_user_mutation_requires_csrf_token_before_auth_logic(self, client) -> None:
+        assert client.post("/api/user/library/test-novel").status_code == 403
+        assert client.post("/api/user/library/test-novel", headers={"X-CSRF-Token": "bad"}).status_code == 403
 
 
 class TestLibraryContract:
     def test_list_add_get_delete_library_shapes_and_idempotency(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
+        headers = csrf_headers(client)
 
         empty = client.get("/api/user/library")
         assert empty.status_code == 200
         assert empty.json() == []
 
-        created = client.post("/api/user/library/test-novel", json={"user_id": 999})
+        created = client.post("/api/user/library/test-novel", json={"user_id": 999}, headers=headers)
         assert created.status_code == 201
         assert_keys(created.json(), {"slug", "status", "added_at"})
         assert created.json()["slug"] == "test-novel"
         assert created.json()["status"] == "reading"
 
-        duplicate = client.post("/api/user/library/test-novel")
+        duplicate = client.post("/api/user/library/test-novel", headers=headers)
         assert duplicate.status_code == 201
         assert duplicate.json()["slug"] == "test-novel"
 
@@ -133,24 +155,26 @@ class TestLibraryContract:
         assert item.status_code == 200
         assert_keys(item.json(), {"slug", "status", "added_at"})
 
-        deleted = client.delete("/api/user/library/test-novel")
+        deleted = client.delete("/api/user/library/test-novel", headers=headers)
         assert deleted.status_code == 204
-        missing_delete = client.delete("/api/user/library/test-novel")
+        missing_delete = client.delete("/api/user/library/test-novel", headers=headers)
         assert missing_delete.status_code == 204
 
     def test_library_unknown_novel_and_missing_membership_statuses(self, app, client) -> None:
         set_user(app, 42)
-        assert client.post("/api/user/library/missing").status_code == 404
+        headers = csrf_headers(client)
+        assert client.post("/api/user/library/missing", headers=headers).status_code == 404
         assert client.get("/api/user/library/missing").status_code == 404
 
     def test_user_b_cannot_see_or_remove_user_a_library(self, app, client, seeded_catalog) -> None:
+        headers = csrf_headers(client)
         set_user(app, 1)
-        assert client.post("/api/user/library/test-novel").status_code == 201
+        assert client.post("/api/user/library/test-novel", headers=headers).status_code == 201
 
         set_user(app, 2)
         assert client.get("/api/user/library").json() == []
         assert client.get("/api/user/library/test-novel").status_code == 404
-        assert client.delete("/api/user/library/test-novel").status_code == 204
+        assert client.delete("/api/user/library/test-novel", headers=headers).status_code == 204
 
         set_user(app, 1)
         assert len(client.get("/api/user/library").json()) == 1
@@ -159,6 +183,7 @@ class TestLibraryContract:
 class TestProgressContract:
     def test_progress_get_and_put_shape_and_upsert(self, app, client, seeded_catalog, db_session) -> None:
         set_user(app, 42)
+        headers = csrf_headers(client)
         chapter_id = str(seeded_catalog["chapter"].id)
 
         initial = client.get("/api/user/progress/test-novel")
@@ -169,38 +194,43 @@ class TestProgressContract:
         updated = client.put(
             "/api/user/progress/test-novel",
             json={"chapter_id": chapter_id, "progress_percent": 0.75, "user_id": 999},
+            headers=headers,
         )
         assert updated.status_code == 422
 
         updated = client.put(
             "/api/user/progress/test-novel",
             json={"chapter_id": chapter_id, "progress_percent": 0.75},
+            headers=headers,
         )
         assert updated.status_code == 200
         assert updated.json()["chapter_id"] == chapter_id
         assert updated.json()["progress_percent"] == 0.75
 
-        overwritten = client.put("/api/user/progress/test-novel", json={"progress_percent": 0.5})
+        overwritten = client.put("/api/user/progress/test-novel", json={"progress_percent": 0.5}, headers=headers)
         assert overwritten.status_code == 200
         assert overwritten.json()["progress_percent"] == 0.5
         assert db_session.query(ReadingProgress).filter_by(user_id=42, novel_id=seeded_catalog["novel"].id).count() == 1
 
     def test_progress_validation(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
+        headers = csrf_headers(client)
         assert client.get("/api/user/progress/missing").status_code == 404
-        assert client.put("/api/user/progress/test-novel", json={"progress_percent": 1.5}).status_code == 422
+        assert client.put("/api/user/progress/test-novel", json={"progress_percent": 1.5}, headers=headers).status_code == 422
         assert client.put(
             "/api/user/progress/test-novel",
             json={"chapter_id": str(seeded_catalog["other_chapter"].id), "progress_percent": 0.3},
+            headers=headers,
         ).status_code == 404
 
     def test_user_b_cannot_read_or_update_user_a_progress(self, app, client, seeded_catalog) -> None:
+        headers = csrf_headers(client)
         set_user(app, 1)
-        client.put("/api/user/progress/test-novel", json={"progress_percent": 0.9})
+        client.put("/api/user/progress/test-novel", json={"progress_percent": 0.9}, headers=headers)
 
         set_user(app, 2)
         assert client.get("/api/user/progress/test-novel").json()["progress_percent"] == 0.0
-        client.put("/api/user/progress/test-novel", json={"progress_percent": 0.2})
+        client.put("/api/user/progress/test-novel", json={"progress_percent": 0.2}, headers=headers)
 
         set_user(app, 1)
         assert client.get("/api/user/progress/test-novel").json()["progress_percent"] == 0.9
@@ -209,9 +239,10 @@ class TestProgressContract:
 class TestHistoryContract:
     def test_history_records_body_shape_and_lists_newest_first(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
+        headers = csrf_headers(client)
         chapter_id = str(seeded_catalog["chapter"].id)
-        first = client.post("/api/user/history", json={"slug": "test-novel", "chapter_id": chapter_id})
-        second = client.post("/api/user/history", json={"slug": "test-novel"})
+        first = client.post("/api/user/history", json={"slug": "test-novel", "chapter_id": chapter_id}, headers=headers)
+        second = client.post("/api/user/history", json={"slug": "test-novel"}, headers=headers)
         assert first.status_code == 201
         assert_keys(first.json(), {"id", "slug", "chapter_id", "read_at"})
         assert second.status_code == 201
@@ -224,13 +255,15 @@ class TestHistoryContract:
 
     def test_history_validation_and_legacy_query_compatibility(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
-        assert client.post("/api/user/history").status_code == 400
-        assert client.post("/api/user/history", json={"slug": "missing"}).status_code == 404
-        assert client.post("/api/user/history?slug=test-novel").status_code == 201
+        headers = csrf_headers(client)
+        assert client.post("/api/user/history", headers=headers).status_code == 400
+        assert client.post("/api/user/history", json={"slug": "missing"}, headers=headers).status_code == 404
+        assert client.post("/api/user/history?slug=test-novel", headers=headers).status_code == 201
 
     def test_user_b_cannot_see_user_a_history(self, app, client, seeded_catalog) -> None:
+        headers = csrf_headers(client)
         set_user(app, 1)
-        client.post("/api/user/history", json={"slug": "test-novel"})
+        client.post("/api/user/history", json={"slug": "test-novel"}, headers=headers)
 
         set_user(app, 2)
         assert client.get("/api/user/history").json()["items"] == []
@@ -239,54 +272,68 @@ class TestHistoryContract:
 class TestReviewContract:
     def test_put_review_upserts_and_delete_is_idempotent(self, app, client, seeded_catalog, db_session) -> None:
         set_user(app, 42)
-        created = client.put("/api/user/reviews/test-novel", json={"rating": 5, "body": "Great"})
+        headers = csrf_headers(client)
+        created = client.put("/api/user/reviews/test-novel", json={"rating": 5, "body": "Great"}, headers=headers)
         assert created.status_code == 200
         assert_keys(created.json(), {"slug", "rating", "body", "status", "updated_at"})
         assert created.json()["status"] == "pending"
 
-        updated = client.put("/api/user/reviews/test-novel", json={"rating": 4, "body": "Still good"})
+        updated = client.put("/api/user/reviews/test-novel", json={"rating": 4, "body": "Still good"}, headers=headers)
         assert updated.status_code == 200
         assert updated.json()["rating"] == 4
         assert db_session.query(Review).filter_by(user_id=42, novel_id=seeded_catalog["novel"].id).count() == 1
 
-        assert client.delete("/api/user/reviews/test-novel").status_code == 204
-        assert client.delete("/api/user/reviews/test-novel").status_code == 204
+        assert client.delete("/api/user/reviews/test-novel", headers=headers).status_code == 204
+        assert client.delete("/api/user/reviews/test-novel", headers=headers).status_code == 204
 
     def test_legacy_post_review_preserved_with_contract_shape(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
-        resp = client.post("/api/user/reviews/test-novel", json={"rating": 5, "body": "Great novel!"})
+        resp = client.post("/api/user/reviews/test-novel", json={"rating": 5, "body": "Great novel!"}, headers=csrf_headers(client))
         assert resp.status_code == 201
         assert_keys(resp.json(), {"slug", "rating", "body", "status", "updated_at"})
 
     def test_review_validation_and_unknown_novel(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
-        assert client.put("/api/user/reviews/test-novel", json={"rating": 6}).status_code == 422
-        assert client.put("/api/user/reviews/test-novel", json={"rating": 0}).status_code == 422
-        assert client.put("/api/user/reviews/unknown", json={"rating": 3}).status_code == 404
-        assert client.put("/api/user/reviews/test-novel", json={"rating": 5, "user_id": 99}).status_code == 422
+        headers = csrf_headers(client)
+        assert client.put("/api/user/reviews/test-novel", json={"rating": 6}, headers=headers).status_code == 422
+        assert client.put("/api/user/reviews/test-novel", json={"rating": 0}, headers=headers).status_code == 422
+        assert client.put("/api/user/reviews/unknown", json={"rating": 3}, headers=headers).status_code == 404
+        assert client.put("/api/user/reviews/test-novel", json={"rating": 5, "user_id": 99}, headers=headers).status_code == 422
 
     def test_user_b_cannot_modify_user_a_review(self, app, client, seeded_catalog) -> None:
+        headers = csrf_headers(client)
         set_user(app, 1)
-        client.put("/api/user/reviews/test-novel", json={"rating": 5})
+        client.put("/api/user/reviews/test-novel", json={"rating": 5}, headers=headers)
 
         set_user(app, 2)
-        client.delete("/api/user/reviews/test-novel")
+        client.delete("/api/user/reviews/test-novel", headers=headers)
 
         set_user(app, 1)
-        client.put("/api/user/reviews/test-novel", json={"rating": 4})
+        client.put("/api/user/reviews/test-novel", json={"rating": 4}, headers=headers)
         set_user(app, 2)
-        client.put("/api/user/reviews/test-novel", json={"rating": 2})
+        client.put("/api/user/reviews/test-novel", json={"rating": 2}, headers=headers)
         set_user(app, 1)
         # User A's review still exists independently; no public read endpoint is exposed yet.
-        assert client.delete("/api/user/reviews/test-novel").status_code == 204
+        assert client.delete("/api/user/reviews/test-novel", headers=headers).status_code == 204
+
+    def test_review_mutation_rate_limit_eventually_returns_429(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        headers = csrf_headers(client)
+        statuses = [
+            client.put("/api/user/reviews/test-novel", json={"rating": 5}, headers=headers).status_code
+            for _ in range(21)
+        ]
+        assert statuses[:20] == [200] * 20
+        assert statuses[-1] == 429
 
 
 class TestRequestContract:
     def test_request_create_list_shape_and_duplicate_pending_idempotency(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
+        headers = csrf_headers(client)
         payload = {"request_type": "novel", "source_url": "https://example.com/novel"}
-        created = client.post("/api/user/requests", json=payload)
-        duplicate = client.post("/api/user/requests", json=payload)
+        created = client.post("/api/user/requests", json=payload, headers=headers)
+        duplicate = client.post("/api/user/requests", json=payload, headers=headers)
         assert created.status_code == 201
         assert duplicate.status_code == 201
         assert duplicate.json()["id"] == created.json()["id"]
@@ -300,46 +347,66 @@ class TestRequestContract:
 
     def test_chapter_request_validation(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
+        headers = csrf_headers(client)
         chapter_id = str(seeded_catalog["chapter"].id)
         resp = client.post(
             "/api/user/requests",
             json={"request_type": "chapter", "slug": "test-novel", "chapter_id": chapter_id},
+            headers=headers,
         )
         assert resp.status_code == 201
         assert resp.json()["slug"] == "test-novel"
         assert resp.json()["chapter_id"] is None
 
-        assert client.post("/api/user/requests", json={"request_type": "bad"}).status_code == 422
-        assert client.post("/api/user/requests", json={"request_type": "novel"}).status_code == 422
+        assert client.post("/api/user/requests", json={"request_type": "bad"}, headers=headers).status_code == 422
+        assert client.post("/api/user/requests", json={"request_type": "novel"}, headers=headers).status_code == 422
         assert client.post(
             "/api/user/requests",
             json={"request_type": "chapter", "slug": "test-novel", "chapter_id": str(seeded_catalog["other_chapter"].id)},
+            headers=headers,
         ).status_code == 404
         assert client.post(
             "/api/user/requests",
             json={"request_type": "novel", "source_url": "https://example.com/novel", "user_id": 1},
+            headers=headers,
         ).status_code == 422
 
     def test_user_b_cannot_see_user_a_requests(self, app, client, seeded_catalog) -> None:
+        headers = csrf_headers(client)
         set_user(app, 1)
-        client.post("/api/user/requests", json={"request_type": "novel", "source_url": "https://example.com/novel"})
+        client.post("/api/user/requests", json={"request_type": "novel", "source_url": "https://example.com/novel"}, headers=headers)
 
         set_user(app, 2)
         assert client.get("/api/user/requests").json()["items"] == []
 
     def test_requests_never_auto_trigger_jobs(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
-        resp = client.post("/api/user/requests", json={"request_type": "chapter", "slug": "test-novel"})
+        resp = client.post("/api/user/requests", json={"request_type": "chapter", "slug": "test-novel"}, headers=csrf_headers(client))
         assert resp.status_code == 201
         assert resp.json()["status"] == "pending"
         assert "auto_translate" not in resp.json()
         assert "triggered" not in resp.json()
 
+    def test_request_create_rate_limit_eventually_returns_429(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        headers = csrf_headers(client)
+        statuses = [
+            client.post(
+                "/api/user/requests",
+                json={"request_type": "novel", "source_url": f"https://example.com/novel-{idx}"},
+                headers=headers,
+            ).status_code
+            for idx in range(11)
+        ]
+        assert statuses[:10] == [201] * 10
+        assert statuses[-1] == 429
+
 
 class TestOwnerSessionDoesNotBypassOwnership:
     def test_owner_only_sees_owner_session_user_data(self, app, client, seeded_catalog) -> None:
+        headers = csrf_headers(client)
         set_user(app, 1, role="user")
-        client.post("/api/user/library/test-novel")
+        client.post("/api/user/library/test-novel", headers=headers)
 
         set_user(app, 999, role="owner")
         assert client.get("/api/user/library").json() == []

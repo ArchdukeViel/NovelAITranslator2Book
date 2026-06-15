@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 from sqlalchemy.orm import Session
 
+from novelai.api.auth.security import require_csrf_token, require_public_rate_limit
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.session import SessionUser
 from novelai.api.routers.dependencies import get_db_session
@@ -94,12 +95,19 @@ def get_library_item(
     return _library_response(item, slug)
 
 
-@router.post("/library/{slug}", status_code=201, response_model=LibraryItemResponse)
+@router.post(
+    "/library/{slug}",
+    status_code=201,
+    response_model=LibraryItemResponse,
+    dependencies=[Depends(require_csrf_token)],
+)
 def add_to_library(
     slug: str,
+    request: Request,
     user: SessionUser = Depends(require_role("user")),
     session: Session = Depends(get_db_session),
 ) -> LibraryItemResponse:
+    require_public_rate_limit(request, "library_mutation", user_id=user.user_id)
     novel = _get_novel(slug, session)
     existing = session.query(LibraryItem).filter_by(user_id=user.user_id, novel_id=novel.id).one_or_none()
     if existing:
@@ -110,12 +118,18 @@ def add_to_library(
     return _library_response(item, slug)
 
 
-@router.delete("/library/{slug}", status_code=204)
+@router.delete(
+    "/library/{slug}",
+    status_code=204,
+    dependencies=[Depends(require_csrf_token)],
+)
 def remove_from_library(
     slug: str,
+    request: Request,
     user: SessionUser = Depends(require_role("user")),
     session: Session = Depends(get_db_session),
 ) -> None:
+    require_public_rate_limit(request, "library_mutation", user_id=user.user_id)
     novel = _get_novel(slug, session)
     item = session.query(LibraryItem).filter_by(user_id=user.user_id, novel_id=novel.id).one_or_none()
     if item:
@@ -154,13 +168,19 @@ def get_progress(
     )
 
 
-@router.put("/progress/{slug}", response_model=ProgressResponse)
+@router.put(
+    "/progress/{slug}",
+    response_model=ProgressResponse,
+    dependencies=[Depends(require_csrf_token)],
+)
 def update_progress(
     slug: str,
     payload: ProgressUpdate,
+    request: Request,
     user: SessionUser = Depends(require_role("user")),
     session: Session = Depends(get_db_session),
 ) -> ProgressResponse:
+    require_public_rate_limit(request, "progress_write", user_id=user.user_id)
     novel = _get_novel(slug, session)
     chapter_db_id = _get_chapter_for_novel(payload.chapter_id, novel.id, session)
     rp = session.query(ReadingProgress).filter_by(user_id=user.user_id, novel_id=novel.id).one_or_none()
@@ -198,14 +218,21 @@ class HistoryListResponse(BaseModel):
     next_cursor: str | None = None
 
 
-@router.post("/history", status_code=201, response_model=HistoryEntryResponse)
+@router.post(
+    "/history",
+    status_code=201,
+    response_model=HistoryEntryResponse,
+    dependencies=[Depends(require_csrf_token)],
+)
 def record_history(
+    request: Request,
     payload: HistoryRecordRequest | None = Body(default=None),
     slug: str | None = Query(default=None),
     chapter_id: str | None = Query(default=None),
     user: SessionUser = Depends(require_role("user")),
     session: Session = Depends(get_db_session),
 ) -> HistoryEntryResponse:
+    require_public_rate_limit(request, "history_record", user_id=user.user_id)
     effective_slug = payload.slug if payload else slug
     effective_chapter_id = payload.chapter_id if payload else chapter_id
     if effective_slug is None:
@@ -282,32 +309,51 @@ def _upsert_review(slug: str, payload: ReviewCreate, user: SessionUser, session:
     )
 
 
-@router.put("/reviews/{slug}", response_model=ReviewResponse)
+@router.put(
+    "/reviews/{slug}",
+    response_model=ReviewResponse,
+    dependencies=[Depends(require_csrf_token)],
+)
 def put_review(
     slug: str,
     payload: ReviewCreate,
+    request: Request,
     user: SessionUser = Depends(require_role("user")),
     session: Session = Depends(get_db_session),
 ) -> ReviewResponse:
+    require_public_rate_limit(request, "review_mutation", user_id=user.user_id)
     return _upsert_review(slug, payload, user, session)
 
 
-@router.post("/reviews/{slug}", status_code=201, response_model=ReviewResponse)
+@router.post(
+    "/reviews/{slug}",
+    status_code=201,
+    response_model=ReviewResponse,
+    dependencies=[Depends(require_csrf_token)],
+)
 def post_review(
     slug: str,
     payload: ReviewCreate,
+    request: Request,
     user: SessionUser = Depends(require_role("user")),
     session: Session = Depends(get_db_session),
 ) -> ReviewResponse:
+    require_public_rate_limit(request, "review_mutation", user_id=user.user_id)
     return _upsert_review(slug, payload, user, session)
 
 
-@router.delete("/reviews/{slug}", status_code=204)
+@router.delete(
+    "/reviews/{slug}",
+    status_code=204,
+    dependencies=[Depends(require_csrf_token)],
+)
 def delete_review(
     slug: str,
+    request: Request,
     user: SessionUser = Depends(require_role("user")),
     session: Session = Depends(get_db_session),
 ) -> None:
+    require_public_rate_limit(request, "review_mutation", user_id=user.user_id)
     novel = _get_novel(slug, session)
     review = session.query(Review).filter_by(user_id=user.user_id, novel_id=novel.id).one_or_none()
     if review is not None:
@@ -361,12 +407,19 @@ def _request_response(req: NovelRequest, session: Session) -> RequestResponse:
     )
 
 
-@router.post("/requests", status_code=201, response_model=RequestResponse)
+@router.post(
+    "/requests",
+    status_code=201,
+    response_model=RequestResponse,
+    dependencies=[Depends(require_csrf_token)],
+)
 def create_request(
     payload: RequestCreate,
+    request: Request,
     user: SessionUser = Depends(require_role("user")),
     session: Session = Depends(get_db_session),
 ) -> RequestResponse:
+    require_public_rate_limit(request, "request_create", user_id=user.user_id)
     novel_id = None
     if payload.slug is not None:
         novel = _get_novel(payload.slug, session)
