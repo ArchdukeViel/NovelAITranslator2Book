@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import HistoryPage from "@/app/(public)/account/history/page";
+import LibraryPage from "@/app/(public)/account/library/page";
 import { ContinueReading } from "@/components/public/continue-reading";
 import { SaveToLibrary } from "@/components/public/save-to-library";
 
@@ -44,6 +45,7 @@ const user = {
 };
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
 });
 
@@ -117,7 +119,7 @@ describe("public reading-state UI", () => {
     expect(new Headers(mutation?.[1]?.headers).get("X-CSRF-Token")).toBe("csrf-test");
   });
 
-  it("shows continue-reading link for authenticated saved progress", async () => {
+  it("shows continue-reading link with chapter info for authenticated saved progress", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
       if (url === "/api/auth/me") {
@@ -128,7 +130,7 @@ describe("public reading-state UI", () => {
           jsonResponse({
             slug: "demo",
             chapter_id: "7",
-            progress_percent: 0.25,
+            progress_percent: 0,
             updated_at: "2026-06-15T00:00:00Z",
           })
         );
@@ -138,11 +140,32 @@ describe("public reading-state UI", () => {
 
     renderWithQuery(<ContinueReading slug="demo" />);
 
-    const link = await screen.findByRole("link", { name: /continue reading/i });
+    const link = await screen.findByRole("link", { name: /continue from ch/i });
     expect(link).toHaveAttribute("href", "/novel/demo/chapter/7");
   });
 
-  it("renders authenticated reading history entries", async () => {
+  it("shows start-reading link when no saved progress (404) but firstChapterId exists", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/auth/me") {
+        return Promise.resolve(jsonResponse(user));
+      }
+      if (url === "/api/user/progress/demo") {
+        // No saved progress — 404 is "no progress", not an error
+        return Promise.resolve(
+          jsonResponse({ detail: "Progress not found." }, 404)
+        );
+      }
+      return Promise.resolve(jsonResponse({ detail: "unexpected" }, 500));
+    });
+
+    renderWithQuery(<ContinueReading slug="demo" firstChapterId="1" />);
+
+    const link = await screen.findByRole("link", { name: /start reading/i });
+    expect(link).toHaveAttribute("href", "/novel/demo/chapter/1");
+  });
+
+  it("renders authenticated reading history entries with links", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
       if (url === "/api/auth/me") {
@@ -168,10 +191,83 @@ describe("public reading-state UI", () => {
 
     renderWithQuery(<HistoryPage />);
 
-    expect(await screen.findByText("demo")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /demo/i })).toHaveAttribute(
-      "href",
-      "/novel/demo/chapter/7"
-    );
+    // History entry shows slug + chapter reference as a link
+    const entryLink = await screen.findByRole("link", { name: /demo — ch\. 7/i });
+    expect(entryLink).toHaveAttribute("href", "/novel/demo/chapter/7");
+
+    // "Open" action link to the chapter
+    const openLink = screen.getByRole("link", { name: /^open$/i });
+    expect(openLink).toHaveAttribute("href", "/novel/demo/chapter/7");
+
+    // "View My Library" cross-link appears
+    expect(screen.getByRole("link", { name: /view my library/i })).toBeInTheDocument();
+  });
+
+  it("renders authenticated library entries with links and remove button", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/auth/me") {
+        return Promise.resolve(jsonResponse(user));
+      }
+      if (url === "/api/user/library") {
+        return Promise.resolve(
+          jsonResponse([
+            {
+              slug: "demo",
+              status: "reading",
+              added_at: "2026-06-15T00:00:00Z",
+            },
+          ])
+        );
+      }
+      return Promise.resolve(jsonResponse({ detail: "unexpected" }, 500));
+    });
+
+    renderWithQuery(<LibraryPage />);
+
+    // Library entry shows slug as a link to the novel
+    const novelLink = await screen.findByRole("link", { name: /demo/ });
+    expect(novelLink).toHaveAttribute("href", "/novel/demo");
+
+    // Status badge
+    expect(screen.getByText("Reading")).toBeInTheDocument();
+
+    // Remove button exists
+    expect(screen.getByRole("button", { name: /remove/i })).toBeInTheDocument();
+
+    // Cross-link to history
+    expect(screen.getByRole("link", { name: /view reading history/i })).toBeInTheDocument();
+  });
+
+  it("shows saved state with view-library link for an already-saved novel", async () => {
+    // Simulate: library item already exists (already saved)
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input);
+      const method = init?.method;
+      if (url === "/api/auth/me") {
+        return Promise.resolve(jsonResponse(user));
+      }
+      // GET /api/user/library/demo — item exists (saved)
+      if (url === "/api/user/library/demo" && !method) {
+        return Promise.resolve(
+          jsonResponse({
+            slug: "demo",
+            status: "reading",
+            added_at: "2026-06-15T00:00:00Z",
+          })
+        );
+      }
+      return Promise.resolve(jsonResponse({ detail: "unexpected" }, 500));
+    });
+
+    renderWithQuery(<SaveToLibrary slug="demo" />);
+
+    // Already saved — shows "Saved" button
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /saved/i })).toBeInTheDocument();
+    });
+
+    // View Library link
+    expect(screen.getByRole("link", { name: /view library/i })).toBeInTheDocument();
   });
 });

@@ -6,6 +6,7 @@ import { BookOpen, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoginPrompt } from "@/components/public/login-prompt";
 import { useProgress, usePublicAuth } from "@/hooks/public";
+import { ApiError } from "@/lib/api";
 
 interface ContinueReadingProps {
   slug: string;
@@ -39,7 +40,14 @@ export function ContinueReading({ slug, firstChapterId }: ContinueReadingProps) 
     );
   }
 
-  if (progress.isError) {
+  // 404 from progress endpoint means "no saved progress" — not an error.
+  // Show "Start Reading" or "No chapters available" instead of an error message.
+  const isNoProgress =
+    progress.isError &&
+    progress.error instanceof ApiError &&
+    progress.error.status === 404;
+
+  if (progress.isError && !isNoProgress) {
     return (
       <p className="text-sm text-destructive">
         Could not load saved progress.
@@ -49,25 +57,27 @@ export function ContinueReading({ slug, firstChapterId }: ContinueReadingProps) 
 
   const chapterId = progress.data?.chapter_id;
 
-  // Has saved progress → Continue Reading
+  // Has saved progress → Continue Reading (show chapter ID if available)
   if (chapterId) {
+    const href = `/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapterId)}`;
     return (
       <Link
         className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
-        href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapterId)}`}
+        href={href}
       >
         <BookOpen className="h-4 w-4" />
-        Continue Reading
+        Continue from Ch. {chapterId}
       </Link>
     );
   }
 
   // No saved progress but chapters exist → Start Reading
   if (firstChapterId) {
+    const href = `/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(firstChapterId)}`;
     return (
       <Link
         className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
-        href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(firstChapterId)}`}
+        href={href}
       >
         <BookOpen className="h-4 w-4" />
         Start Reading
