@@ -1,16 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { LogIn, LogOut, User } from "lucide-react";
+import { LogIn, LogOut, Loader2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoginView } from "@/components/public/login-view";
 import { useLogout, usePublicAuth } from "@/hooks/public/use-auth";
 
+interface CurrentUserIndicatorProps {
+  /** Callback after a navigation action (used by mobile menu to close). */
+  onNavigate?: () => void;
+}
+
 /**
- * Current User Indicator for the Public_Header.
- * Public auth may identify a user session, but admin access remains separate.
+ * Current User Indicator for the Public Header.
+ * Shows email + sign-out when authenticated, sign-in button when guest.
+ * Login panel uses a center-screen overlay with backdrop instead of
+ * absolute-position dropdown to avoid overflow/clipping on mobile.
  */
-export function CurrentUserIndicator() {
+export function CurrentUserIndicator({ onNavigate }: CurrentUserIndicatorProps) {
   const [showLogin, setShowLogin] = useState(false);
   const { isAuthenticated, user } = usePublicAuth();
   const logout = useLogout();
@@ -29,15 +36,19 @@ export function CurrentUserIndicator() {
           disabled={logout.isPending}
           aria-label="Sign out"
         >
-          <LogOut className="h-4 w-4" />
-          <span>Sign out</span>
+          {logout.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <LogOut className="h-4 w-4" />
+          )}
+          <span>{logout.isPending ? "Signing out…" : "Sign out"}</span>
         </Button>
       </div>
     );
   }
 
   return (
-    <div className="relative">
+    <>
       <Button
         variant="ghost"
         size="sm"
@@ -48,11 +59,23 @@ export function CurrentUserIndicator() {
         <span>Sign in</span>
       </Button>
 
+      {/* Center-screen overlay with backdrop — mobile-safe, no overflow risk */}
       {showLogin && (
-        <div className="absolute right-0 top-full z-50 mt-2">
-          <LoginView onClose={() => setShowLogin(false)} />
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowLogin(false);
+          }}
+        >
+          <LoginView
+            onClose={() => setShowLogin(false)}
+            onSuccess={() => {
+              setShowLogin(false);
+              onNavigate?.();
+            }}
+          />
         </div>
       )}
-    </div>
+    </>
   );
 }
