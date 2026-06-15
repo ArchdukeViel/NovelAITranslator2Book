@@ -8,9 +8,40 @@ import { Button } from "@/components/ui/button";
 import { SearchEntry } from "@/components/public/search-entry";
 import { BrowseNav } from "@/components/public/browse-nav";
 import { CurrentUserIndicator } from "@/components/public/current-user-indicator";
+import { usePublicAuth } from "@/hooks/public/use-auth";
+
+/** Account navigation links — visible only when authenticated. */
+function AccountNav({ onNavigate }: { onNavigate?: () => void }) {
+  const { isAuthenticated } = usePublicAuth();
+
+  if (!isAuthenticated) return null;
+
+  return (
+    <div className="flex items-center gap-3">
+      <Link
+        href="/account/history"
+        onClick={onNavigate}
+        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        History
+      </Link>
+      <Link
+        href="/account/requests"
+        onClick={onNavigate}
+        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Requests
+      </Link>
+    </div>
+  );
+}
 
 export function PublicHeader() {
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  function closeMobile() {
+    setMobileOpen(false);
+  }
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background">
@@ -27,6 +58,7 @@ export function PublicHeader() {
         <div className="hidden flex-1 items-center gap-4 md:flex">
           <SearchEntry />
           <BrowseNav />
+          <AccountNav />
           <div className="ml-auto">
             <CurrentUserIndicator />
           </div>
@@ -51,7 +83,8 @@ export function PublicHeader() {
           <div className="flex flex-col gap-3">
             <SearchEntry />
             <BrowseNav />
-            <CurrentUserIndicator />
+            <AccountNav onNavigate={closeMobile} />
+            <CurrentUserIndicator onNavigate={closeMobile} />
           </div>
         </div>
       )}

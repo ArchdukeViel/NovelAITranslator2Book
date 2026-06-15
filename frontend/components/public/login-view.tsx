@@ -1,7 +1,6 @@
 "use client";
 
 import { LogIn, X } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
 import { useStartGoogleOAuth } from "@/hooks/public/use-auth";
 
@@ -10,6 +9,10 @@ interface LoginViewProps {
   onSuccess?: () => void;
 }
 
+/**
+ * Login panel with Google OAuth sign-in.
+ * Shows benefit bullet list to give guests a clear reason to sign in.
+ */
 export function LoginView({ onClose }: LoginViewProps) {
   const startGoogleOAuth = useStartGoogleOAuth();
 
@@ -27,13 +30,20 @@ export function LoginView({ onClose }: LoginViewProps) {
         </Button>
       </div>
 
-      <div className="space-y-2 text-sm text-muted-foreground">
-        <p>Continue with Google to use the public reader account session.</p>
-        <p>Guest reading is still available.</p>
-        <p>Library, progress, reviews, and requests are available after sign-in.</p>
-      </div>
+      <p className="text-sm text-muted-foreground mb-3">
+        Continue with Google to unlock reader features:
+      </p>
+      <ul className="space-y-1 text-sm text-muted-foreground mb-5">
+        <li>Save novels to your library</li>
+        <li>Continue reading where you left off</li>
+        <li>Keep your reading history</li>
+        <li>Leave reviews and request new content</li>
+      </ul>
+      <p className="text-xs text-muted-foreground mb-4">
+        Guest reading is always available without sign-in.
+      </p>
 
-      <div className="mt-5 flex flex-col gap-2">
+      <div className="flex flex-col gap-2">
         <Button
           type="button"
           onClick={() => startGoogleOAuth()}
