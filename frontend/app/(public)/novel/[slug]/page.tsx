@@ -209,14 +209,14 @@ export default function NovelDetailPage() {
                   </div>
                   {chapter.translated ? (
                     <Link
-                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium hover:bg-muted"
+                      className="inline-flex shrink-0 h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium hover:bg-muted"
                       href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapter.chapter_id)}`}
                     >
                       <BookOpen className="h-3.5 w-3.5" />
                       Read
                     </Link>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <span className="inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground">
                       <Clock className="h-3.5 w-3.5" />
                       <Badge tone="amber">Pending</Badge>
                     </span>

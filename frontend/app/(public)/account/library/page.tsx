@@ -130,7 +130,7 @@ function LibraryRow({ item }: { item: { slug: string; status: string; added_at: 
           <span>{formatAddedAt(item.added_at)}</span>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <Link
           className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
           href={novelHref}
