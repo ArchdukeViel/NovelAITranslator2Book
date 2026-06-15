@@ -7,12 +7,12 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from novelai.activity.runner import BackgroundActivityRunner
+from novelai.api.auth.roles import require_role
 from novelai.api.routers.dependencies import (
     get_activity_runner,
     get_preferences,
     get_translation_cache,
     get_usage,
-    verify_api_key,
 )
 from novelai.services.admin_service import AdminService
 from novelai.services.preferences_service import PreferencesService
@@ -66,7 +66,7 @@ def _raise_admin_error(exc: Exception) -> None:
 @router.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(
     service: AdminService = Depends(get_admin_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> HTMLResponse:
     return HTMLResponse(service.dashboard_html())
 
@@ -75,7 +75,7 @@ async def admin_dashboard(
 async def get_provider_api_key_status(
     provider: str,
     service: AdminService = Depends(get_admin_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     try:
         return service.provider_api_key_status(provider)
@@ -88,7 +88,7 @@ async def get_provider_api_key_status(
 async def set_provider_api_key(
     body: ProviderApiKeyRequest,
     service: AdminService = Depends(get_admin_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     try:
         status = service.set_provider_api_key(
@@ -112,7 +112,7 @@ async def set_provider_api_key(
 async def validate_provider_api_key(
     body: ProviderApiKeyValidationRequest,
     service: AdminService = Depends(get_admin_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     try:
         return await service.validate_provider_api_key(
@@ -129,7 +129,7 @@ async def validate_provider_api_key(
 async def clear_provider_api_key(
     provider: str,
     service: AdminService = Depends(get_admin_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     try:
         return service.clear_provider_api_key(provider)
@@ -141,7 +141,7 @@ async def clear_provider_api_key(
 @router.get("/admin/runtime-state")
 async def list_runtime_state(
     service: AdminService = Depends(get_admin_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     return service.list_runtime_state()
 
@@ -150,7 +150,7 @@ async def list_runtime_state(
 async def refresh_runtime_state(
     state_key: str,
     service: AdminService = Depends(get_admin_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     try:
         return service.refresh_runtime_state(state_key)
@@ -163,7 +163,7 @@ async def refresh_runtime_state(
 async def clear_runtime_state(
     state_key: str,
     service: AdminService = Depends(get_admin_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     try:
         return service.clear_runtime_state(state_key)
@@ -175,7 +175,7 @@ async def clear_runtime_state(
 @router.get("/admin/worker")
 async def get_worker_status(
     service: AdminService = Depends(get_admin_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     return service.worker_status()
 
@@ -183,7 +183,7 @@ async def get_worker_status(
 @router.post("/admin/worker/start")
 async def start_worker(
     service: AdminService = Depends(get_admin_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     return await service.start_worker()
 
@@ -191,7 +191,7 @@ async def start_worker(
 @router.post("/admin/worker/stop")
 async def stop_worker(
     service: AdminService = Depends(get_admin_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     return await service.stop_worker()
 
@@ -199,6 +199,6 @@ async def stop_worker(
 @router.post("/admin/worker/run-once")
 async def run_worker_once(
     service: AdminService = Depends(get_admin_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     return await service.run_worker_once()

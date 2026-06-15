@@ -5,8 +5,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from novelai.api.auth.roles import require_role
 from novelai.api.response_helpers import translation_provider_response, translated_chapter_response
-from novelai.api.routers.dependencies import _rate_limit, get_storage, verify_api_key
+from novelai.api.routers.dependencies import _rate_limit, get_storage
 from novelai.storage.service import StorageService
 
 router = APIRouter()
@@ -29,7 +30,7 @@ async def list_translated_chapter_versions(
     novel_id: str,
     chapter_id: str,
     storage: StorageService = Depends(get_storage),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     if storage.load_metadata(novel_id) is None:
         raise HTTPException(status_code=404, detail="Novel not found")
@@ -48,7 +49,7 @@ async def get_translation_edit_history(
     novel_id: str,
     chapter_id: str,
     storage: StorageService = Depends(get_storage),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     if storage.load_metadata(novel_id) is None:
         raise HTTPException(status_code=404, detail="Novel not found")
@@ -68,7 +69,7 @@ async def update_translated_chapter(
     body: TranslationEditRequest,
     request: Request,
     storage: StorageService = Depends(get_storage),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     _rate_limit(request, "edit")
     if storage.load_metadata(novel_id) is None:
@@ -100,7 +101,7 @@ async def rollback_translated_chapter(
     body: TranslationRollbackRequest,
     request: Request,
     storage: StorageService = Depends(get_storage),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     _rate_limit(request, "edit")
     if storage.load_metadata(novel_id) is None:

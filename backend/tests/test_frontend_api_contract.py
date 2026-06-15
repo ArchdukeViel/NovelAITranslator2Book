@@ -6,6 +6,11 @@ from pathlib import Path
 
 FRONTEND_DIR = Path("frontend")
 API_CLIENT = FRONTEND_DIR / "lib" / "api.ts"
+PUBLIC_API_CLIENT = FRONTEND_DIR / "lib" / "public-api.ts"
+APPROVED_API_CLIENTS = {
+    API_CLIENT,
+    PUBLIC_API_CLIENT,
+}
 API_TYPES = FRONTEND_DIR / "lib" / "api-types.ts"
 
 
@@ -16,7 +21,8 @@ def test_frontend_fetch_calls_are_centralized_in_api_client() -> None:
             continue
         if path.suffix not in {".ts", ".tsx"}:
             continue
-        if path == API_CLIENT:
+        # Frontend intentionally has separate admin/shared and public-reader API clients.
+        if path in APPROVED_API_CLIENTS:
             continue
         text = path.read_text(encoding="utf-8")
         if re.search(r"\bfetch\s*\(", text) or re.search(r"\baxios\s*\(", text):

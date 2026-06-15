@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from novelai.api.auth.roles import require_role
 from novelai.api.response_helpers import translated_chapter_response
 from novelai.api.routers.dependencies import (
     _rate_limit,
@@ -13,7 +14,6 @@ from novelai.api.routers.dependencies import (
     metadata_chapters,
     reader_author,
     reader_title,
-    verify_api_key,
 )
 from novelai.storage.service import StorageService
 
@@ -50,7 +50,7 @@ def _metadata_chapter_count(meta: dict[str, Any]) -> int:
 @router.get("/", response_model=list[NovelSummary])
 async def list_novels(
     storage: StorageService = Depends(get_storage),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> list[NovelSummary]:
     summaries: list[NovelSummary] = []
     for novel_id in storage.list_novels():
@@ -79,7 +79,7 @@ async def list_novels(
 async def get_novel(
     novel_id: str,
     storage: StorageService = Depends(get_storage),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     meta = storage.load_metadata(novel_id)
     if meta is None:
@@ -92,7 +92,7 @@ async def delete_novel(
     novel_id: str,
     request: Request,
     storage: StorageService = Depends(get_storage),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> None:
     _rate_limit(request, "delete")
     if storage.load_metadata(novel_id) is None:
@@ -104,7 +104,7 @@ async def delete_novel(
 async def list_chapters(
     novel_id: str,
     storage: StorageService = Depends(get_storage),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> list[ChapterSummary]:
     meta = storage.load_metadata(novel_id)
     if meta is None:
@@ -127,7 +127,7 @@ async def get_chapter(
     novel_id: str,
     chapter_id: str,
     storage: StorageService = Depends(get_storage),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     chapter = storage.load_chapter(novel_id, chapter_id)
     if chapter is None:
@@ -143,7 +143,7 @@ async def get_translated_chapter(
     novel_id: str,
     chapter_id: str,
     storage: StorageService = Depends(get_storage),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     translated = storage.load_translated_chapter(novel_id, chapter_id)
     if translated is None:
@@ -155,7 +155,7 @@ async def get_translated_chapter(
 async def get_reader_novel(
     novel_id: str,
     storage: StorageService = Depends(get_storage),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     meta = storage.load_metadata(novel_id)
     if meta is None:
@@ -194,7 +194,7 @@ async def get_reader_chapter(
     novel_id: str,
     chapter_id: str,
     storage: StorageService = Depends(get_storage),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     meta = storage.load_metadata(novel_id)
     if meta is None:
@@ -229,7 +229,7 @@ async def get_reader_chapter(
 async def get_progress(
     novel_id: str,
     storage: StorageService = Depends(get_storage),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     meta = storage.load_metadata(novel_id)
     if meta is None:

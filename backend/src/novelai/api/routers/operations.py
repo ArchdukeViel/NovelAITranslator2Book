@@ -7,7 +7,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from novelai.activity.queue import ActivityQueueService
-from novelai.api.routers.dependencies import _rate_limit, get_activity_log, get_orchestrator, get_storage, verify_api_key
+from novelai.api.auth.roles import require_role
+from novelai.api.routers.dependencies import _rate_limit, get_activity_log, get_orchestrator, get_storage
 from novelai.runtime.container import container
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.orchestration.operations import OperationError, OperationsService
@@ -75,7 +76,7 @@ async def scrape_novel(
     body: ScrapeRequest,
     request: Request,
     service: OperationsService = Depends(get_operations_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     _rate_limit(request, "scrape")
     try:
@@ -98,7 +99,7 @@ async def preliminary_crawl_novel(
     body: PreliminaryCrawlRequest,
     request: Request,
     service: OperationsService = Depends(get_operations_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     _rate_limit(request, "scrape")
     try:
@@ -120,7 +121,7 @@ async def import_document(
     body: ImportRequest,
     request: Request,
     service: OperationsService = Depends(get_operations_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     _rate_limit(request, "scrape")
     try:
@@ -141,7 +142,7 @@ async def translate_novel(
     body: TranslateRequest,
     request: Request,
     service: OperationsService = Depends(get_operations_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, str]:
     _rate_limit(request, "translate")
     try:
@@ -166,7 +167,7 @@ async def export_novel(
     body: ExportRequest,
     request: Request,
     service: OperationsService = Depends(get_operations_service),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> FileResponse:
     _rate_limit(request, "export")
     try:
