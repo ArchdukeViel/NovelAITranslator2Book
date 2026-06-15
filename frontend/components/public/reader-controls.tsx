@@ -1,9 +1,11 @@
 "use client";
 
-import { Minus, Plus } from "lucide-react";
+import { Minus, Plus, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useReaderPrefsStore } from "@/lib/reader-prefs";
+
+const DEFAULTS = { theme: "light" as const, fontSize: 18, width: "comfortable" as const };
 
 /**
  * Reader typography, theme, and width controls.
@@ -15,9 +17,12 @@ export function ReaderControls() {
   const { fontSize, theme, width, setFontSize, setTheme, setWidth } =
     useReaderPrefsStore();
 
+  const isDefault = fontSize === DEFAULTS.fontSize && theme === DEFAULTS.theme && width === DEFAULTS.width;
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       {/* Font size controls */}
+      <span className="text-xs opacity-60 select-none">Font size</span>
       <Button
         variant="outline"
         size="icon"
@@ -67,6 +72,22 @@ export function ReaderControls() {
         <option value="comfortable">Comfortable</option>
         <option value="wide">Wide</option>
       </select>
+
+      {/* Reset to defaults */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => {
+          setTheme(DEFAULTS.theme);
+          setFontSize(DEFAULTS.fontSize);
+          setWidth(DEFAULTS.width);
+        }}
+        aria-label="Reset reader settings to defaults"
+        disabled={isDefault}
+        title="Reset to defaults"
+      >
+        <RotateCcw className="h-4 w-4" />
+      </Button>
     </div>
   );
 }

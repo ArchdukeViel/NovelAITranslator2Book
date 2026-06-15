@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { ArrowLeft, BookOpen } from "lucide-react";
 
 import { ReaderControls } from "@/components/public/reader-controls";
 import {
@@ -18,6 +19,63 @@ import { useReaderPrefsStore } from "@/lib/reader-prefs";
 import "../../../../reader.css";
 
 /**
+ * ChapterNav — reusable previous/next navigation component.
+ * Used at both top and bottom of the reader.
+ */
+function ChapterNav({
+  slug,
+  previousChapterId,
+  nextChapterId,
+  novelHref,
+}: {
+  slug: string;
+  previousChapterId: string | null;
+  nextChapterId: string | null;
+  novelHref: string;
+}) {
+  return (
+    <nav
+      className="flex flex-wrap items-center justify-between gap-3"
+      aria-label="Chapter navigation"
+    >
+      <div className="flex items-center gap-3">
+        {previousChapterId ? (
+          <Link
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors hover:bg-muted"
+            href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(previousChapterId)}`}
+          >
+            ← Previous
+          </Link>
+        ) : (
+          <span className="inline-flex h-9 items-center rounded-md border px-3 text-sm opacity-40 select-none">
+            ← First chapter
+          </span>
+        )}
+        <Link
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors hover:bg-muted"
+          href={novelHref}
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+          All chapters
+        </Link>
+      </div>
+      {nextChapterId ? (
+        <Link
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors hover:bg-muted"
+          href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(nextChapterId)}`}
+        >
+          Next →
+        </Link>
+      ) : (
+        <span className="inline-flex h-9 items-center rounded-md border px-3 text-sm opacity-40 select-none">
+          Latest chapter →
+        </span>
+      )}
+    </nav>
+  );
+}
+
+/**
  * Reader_View — chapter reading page with theme, font-size, and width controls.
  * Uses the public-scoped useChapter hook (no owner credential).
  * Theme applied via data-reader-theme attribute; NEVER toggles html.dark.
@@ -27,6 +85,7 @@ export default function ChapterPage() {
   const params = useParams<{ slug: string; chapterId: string }>();
   const slug = decodeURIComponent(params.slug);
   const chapterId = decodeURIComponent(params.chapterId);
+  const novelHref = `/novel/${encodeURIComponent(slug)}`;
 
   const { data, isPending, isError, error } = useChapter(slug, chapterId);
   const { isAuthenticated } = usePublicAuth();
@@ -35,6 +94,7 @@ export default function ChapterPage() {
   const trackedChapterRef = useRef<string | null>(null);
   const { theme, fontSize, width } = useReaderPrefsStore();
 
+  // --- Reading progress / history tracking (unchanged) ---
   useEffect(() => {
     if (!isAuthenticated || !data || trackedChapterRef.current === chapterId) {
       return;
@@ -50,7 +110,7 @@ export default function ChapterPage() {
     });
   }, [chapterId, data, isAuthenticated, recordHistory, slug, updateProgress]);
 
-  // 404: chapter-unavailable message
+  // --- 404: chapter-unavailable message ---
   if (
     isError &&
     error instanceof ApiError &&
@@ -64,9 +124,10 @@ export default function ChapterPage() {
             This chapter could not be found or is not available.
           </p>
           <Link
-            href={`/novel/${encodeURIComponent(slug)}`}
-            className="mt-4 inline-block text-sm underline hover:opacity-80"
+            href={novelHref}
+            className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium underline hover:opacity-80"
           >
+            <ArrowLeft className="h-4 w-4" />
             Back to Novel
           </Link>
         </div>
@@ -74,17 +135,18 @@ export default function ChapterPage() {
     );
   }
 
-  // Other errors: sanitized error message via toReaderError
+  // --- Other errors: sanitized error message via toReaderError ---
   if (isError) {
     return (
       <div className="flex min-h-screen items-center justify-center p-8">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold">Error</h1>
+          <h1 className="text-2xl font-semibold">Something went wrong</h1>
           <p className="mt-2 text-sm opacity-70">{toReaderError(error)}</p>
           <Link
-            href={`/novel/${encodeURIComponent(slug)}`}
-            className="mt-4 inline-block text-sm underline hover:opacity-80"
+            href={novelHref}
+            className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium underline hover:opacity-80"
           >
+            <ArrowLeft className="h-4 w-4" />
             Back to Novel
           </Link>
         </div>
@@ -92,14 +154,21 @@ export default function ChapterPage() {
     );
   }
 
-  // Loading indicator while pending
+  // --- Loading state: reader-themed skeleton, not generic spinner ---
   if (isPending) {
     return (
       <div className="flex min-h-screen items-center justify-center p-8">
-        <p className="text-sm opacity-70">Loading chapter…</p>
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-muted border-t-foreground" />
+          <p className="text-sm opacity-70">Loading chapter…</p>
+        </div>
       </div>
     );
   }
+
+  // --- Main reader view ---
+  const novelTitle = data.novel_title || slug;
+  const chapterTitle = data.title || `Chapter ${chapterId}`;
 
   return (
     <div
@@ -107,52 +176,56 @@ export default function ChapterPage() {
       className={`reader-container ${widthClass(width)}`}
       style={{ fontSize: `${fontSize}px` }}
     >
-      {/* Controls bar */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <Link
-          href={`/novel/${encodeURIComponent(slug)}`}
-          className="text-sm opacity-75 hover:opacity-100"
-        >
-          ← Back to Novel
-        </Link>
+      {/* Breadcrumb / header bar */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 text-sm">
+          <Link
+            href={novelHref}
+            className="inline-flex items-center gap-1.5 opacity-75 hover:opacity-100"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {novelTitle}
+          </Link>
+          <span className="opacity-40 select-none">/</span>
+          <span className="opacity-75">{chapterTitle}</span>
+        </div>
         <ReaderControls />
       </div>
 
+      {/* Top chapter navigation */}
+      <ChapterNav
+        slug={slug}
+        previousChapterId={data.previous_chapter_id}
+        nextChapterId={data.next_chapter_id}
+        novelHref={novelHref}
+      />
+
       {/* Chapter header */}
-      <header className="mb-8">
+      <header className="mt-8 mb-8">
         <h1 className="text-3xl font-semibold tracking-normal">
-          {data.title || `Chapter ${chapterId}`}
+          {chapterTitle}
         </h1>
+        {data.novel_title && (
+          <p className="mt-1 text-sm opacity-60">
+            from {novelTitle}
+          </p>
+        )}
       </header>
 
       {/* Chapter text */}
-      <article className="whitespace-pre-wrap font-serif leading-[1.9]">
+      <article className="reader-text whitespace-pre-wrap font-serif leading-[1.9]">
         {data.text}
       </article>
 
-      {/* Chapter navigation */}
-      <nav className="mt-10 flex justify-between gap-3 border-t pt-5">
-        {data.previous_chapter_id ? (
-          <Link
-            className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:opacity-80"
-            href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(data.previous_chapter_id)}`}
-          >
-            ← Previous
-          </Link>
-        ) : (
-          <span />
-        )}
-        {data.next_chapter_id ? (
-          <Link
-            className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:opacity-80"
-            href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(data.next_chapter_id)}`}
-          >
-            Next →
-          </Link>
-        ) : (
-          <span />
-        )}
-      </nav>
+      {/* Bottom chapter navigation */}
+      <div className="mt-10 border-t pt-5">
+        <ChapterNav
+          slug={slug}
+          previousChapterId={data.previous_chapter_id}
+          nextChapterId={data.next_chapter_id}
+          novelHref={novelHref}
+        />
+      </div>
     </div>
   );
 }

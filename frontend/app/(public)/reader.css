@@ -36,3 +36,20 @@
   padding: 2rem 1.25rem;
   transition: background-color 0.2s, color 0.2s;
 }
+
+/* Reader text: comfortable paragraph spacing, max line length
+ * enforced by widthClass on the container; paragraph-gap adds
+ * breathing room between translated paragraphs. */
+.reader-text {
+  line-height: 1.9;
+  letter-spacing: 0.01em;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Mobile adjustments */
+@media (max-width: 640px) {
+  .reader-container {
+    padding: 1.5rem 1rem;
+  }
+}
