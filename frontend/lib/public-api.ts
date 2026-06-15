@@ -34,6 +34,8 @@ import type {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 const DEFAULT_PUBLIC_RETURN_TO = "/";
+const CSRF_HEADER_NAME = "X-CSRF-Token";
+let csrfTokenPromise: Promise<string> | null = null;
 
 // ---------------------------------------------------------------------------
 // Error parsing (mirrors lib/api.ts responseError logic, reuses ApiError class)
@@ -116,14 +118,31 @@ export async function publicFetch(
   path: string,
   init?: RequestInit
 ): Promise<Response> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const unsafeMethod = !["GET", "HEAD", "OPTIONS"].includes(method);
+  const headers = new Headers(init?.headers);
+  if (unsafeMethod && path !== "/api/auth/csrf" && !headers.has(CSRF_HEADER_NAME)) {
+    headers.set(CSRF_HEADER_NAME, await getCsrfToken());
+  }
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    headers,
     credentials: "include",
   });
   if (!response.ok) {
     throw await responseError(response);
   }
   return response;
+}
+
+async function getCsrfToken(): Promise<string> {
+  csrfTokenPromise ??= publicGet<{ csrf_token: string }>("/api/auth/csrf")
+    .then((payload) => payload.csrf_token)
+    .catch((error) => {
+      csrfTokenPromise = null;
+      throw error;
+    });
+  return csrfTokenPromise;
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +249,10 @@ export const publicApi = {
 // ---------------------------------------------------------------------------
 
 export const authApi = {
+  csrf(): Promise<{ csrf_token: string }> {
+    return publicGet<{ csrf_token: string }>("/api/auth/csrf");
+  },
+
   me(): Promise<AuthUser> {
     return publicGet<AuthUser>("/api/auth/me");
   },

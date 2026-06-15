@@ -33,6 +33,12 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     bootstrap()
 
+    if (
+        settings.ENV == "production"
+        and settings.SESSION_SECRET_KEY == "changeme-generate-a-real-secret-in-production"
+    ):
+        raise RuntimeError("SESSION_SECRET_KEY must be set to a strong secret in production.")
+
     app = FastAPI(title="Novel AI", lifespan=lifespan)
 
     # Session middleware (HTTP-only signed cookies — v1 auth strategy, architecture §19).
@@ -53,7 +59,7 @@ def create_app() -> FastAPI:
             allow_origins=settings.WEB_CORS_ORIGINS,
             allow_credentials=True,
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-            allow_headers=["Authorization", "Content-Type"],
+            allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
         )
 
     # Register error handlers

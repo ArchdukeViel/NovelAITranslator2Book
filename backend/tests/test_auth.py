@@ -15,6 +15,7 @@ from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
 
 from novelai.api.auth.google_oauth import GoogleOAuthProfile, get_google_oauth_client
+from novelai.api.auth.security import reset_public_rate_limits
 from novelai.api.auth.session import GUEST, SessionUser, get_current_user
 from novelai.api.auth.roles import require_role
 from novelai.api.routers.dependencies import get_db_session
@@ -59,6 +60,13 @@ def app():
 @pytest.fixture()
 def client(app):
     return TestClient(app, raise_server_exceptions=True)
+
+
+@pytest.fixture(autouse=True)
+def _reset_public_rate_limits():
+    reset_public_rate_limits()
+    yield
+    reset_public_rate_limits()
 
 
 @pytest.fixture()
@@ -138,6 +146,12 @@ def _start_oauth(client: TestClient, next_path: str = "/account/history") -> str
     assert "accounts.google.com" in location
     marker = "state="
     return location.split(marker, 1)[1].split("&", 1)[0]
+
+
+def _csrf_headers(client: TestClient) -> dict[str, str]:
+    resp = client.get("/api/auth/csrf")
+    assert resp.status_code == 200
+    return {"X-CSRF-Token": resp.json()["csrf_token"]}
 
 
 # ---------------------------------------------------------------------------
@@ -251,11 +265,15 @@ class TestAuthRouterLogout:
     def test_logout_clears_session(self, owner_client):
         # Confirm owner before logout
         assert owner_client.get("/test/me").json()["role"] == "owner"
-        resp = owner_client.post("/api/auth/logout")
+        resp = owner_client.post("/api/auth/logout", headers=_csrf_headers(owner_client))
         assert resp.status_code == 200
         assert resp.json()["status"] == "logged_out"
         # After logout, back to guest
         assert owner_client.get("/test/me").json()["role"] == "guest"
+
+    def test_logout_requires_csrf_token(self, owner_client):
+        assert owner_client.post("/api/auth/logout").status_code == 403
+        assert owner_client.post("/api/auth/logout", headers={"X-CSRF-Token": "bad"}).status_code == 403
 
 
 class TestAuthRouterMe:
@@ -265,6 +283,11 @@ class TestAuthRouterMe:
         data = resp.json()
         assert data["role"] == "guest"
         assert data["is_authenticated"] is False
+
+    def test_csrf_endpoint_is_safe_get(self, client):
+        resp = client.get("/api/auth/csrf")
+        assert resp.status_code == 200
+        assert isinstance(resp.json()["csrf_token"], str)
 
     def test_me_returns_owner_when_authenticated(self, owner_client):
         resp = owner_client.get("/api/auth/me")
@@ -317,6 +340,14 @@ class TestGoogleOAuth:
         assert resp.status_code == 302
         assert "accounts.google.com" in resp.headers["location"]
         assert "state=" in resp.headers["location"]
+
+    def test_start_rate_limit_eventually_returns_429(self, oauth_client):
+        statuses = [
+            oauth_client.get("/api/auth/google/start", follow_redirects=False).status_code
+            for _ in range(11)
+        ]
+        assert statuses[:10] == [302] * 10
+        assert statuses[-1] == 429
 
     def test_callback_rejects_missing_state(self, oauth_client):
         resp = oauth_client.get("/api/auth/google/callback?code=abc", follow_redirects=False)

@@ -29,6 +29,12 @@ from starlette.responses import RedirectResponse
 
 from novelai.api.auth.google_oauth import GoogleOAuthClient, GoogleOAuthProfile, get_google_oauth_client
 from novelai.api.auth.roles import require_role
+from novelai.api.auth.security import (
+    clear_csrf_token,
+    get_or_create_csrf_token,
+    require_csrf_token,
+    require_public_rate_limit,
+)
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import get_db_session
 from novelai.config.settings import settings
@@ -59,6 +65,10 @@ class UserResponse(BaseModel):
     role: str
     is_authenticated: bool
     is_owner: bool
+
+
+class CsrfResponse(BaseModel):
+    csrf_token: str
 
 
 def _user_response(user: SessionUser) -> UserResponse:
@@ -197,6 +207,7 @@ async def login(payload: LoginRequest, request: Request) -> UserResponse:
 
     This is the v1 entry point until Google OAuth is implemented.
     """
+    require_public_rate_limit(request, "auth_login")
     bootstrap_secret = settings.OWNER_BOOTSTRAP_SECRET
     if not bootstrap_secret:
         logger.warning("Owner login attempted but OWNER_BOOTSTRAP_SECRET is not configured.")
@@ -231,6 +242,7 @@ async def google_start(
     This endpoint only creates state and redirects to Google. It never creates a
     local user and never touches owner bootstrap auth.
     """
+    require_public_rate_limit(request, "oauth_start")
     if not _oauth_configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -258,6 +270,7 @@ async def google_callback(
     session: Session = Depends(get_db_session),
 ) -> RedirectResponse:
     """Complete public Google OAuth login and create/resume a user session."""
+    require_public_rate_limit(request, "oauth_callback")
     expected_state = request.session.get(_OAUTH_STATE_KEY)
     return_to = _safe_return_path(request.session.get(_OAUTH_RETURN_TO_KEY))
 
@@ -291,9 +304,17 @@ async def google_callback(
         _clear_google_oauth_session(request)
 
 
-@router.post("/logout")
+@router.get("/csrf")
+async def csrf(request: Request) -> CsrfResponse:
+    """Return a session-bound CSRF token for browser state-changing requests."""
+    return CsrfResponse(csrf_token=get_or_create_csrf_token(request))
+
+
+@router.post("/logout", dependencies=[Depends(require_csrf_token)])
 async def logout(request: Request) -> dict[str, str]:
     """Clear the current session (log out any role)."""
+    require_public_rate_limit(request, "auth_logout")
+    clear_csrf_token(request)
     request.session.clear()
     return {"status": "logged_out"}
 
