@@ -249,32 +249,32 @@ async function apiDownload(path: string, body: unknown): Promise<Blob> {
 
 export const api = {
   health: () => apiFetch<{ status: string }>("/health"),
-  inputAdapters: () => apiFetch<string[]>("/novels/input-adapters"),
-  novels: () => apiFetch<NovelSummary[]>("/novels"),
-  novel: (novelId: string) => apiFetch<NovelMetadata>(`/novels/${encodeURIComponent(novelId)}`),
+  inputAdapters: () => apiFetch<string[]>("/admin/input-adapters"),
+  novels: () => apiFetch<NovelSummary[]>("/admin/novels"),
+  novel: (novelId: string) => apiFetch<NovelMetadata>(`/admin/novels/${encodeURIComponent(novelId)}`),
   deleteNovel: (novelId: string) =>
-    apiFetch<void>(`/novels/${encodeURIComponent(novelId)}`, {
+    apiFetch<void>(`/admin/novels/${encodeURIComponent(novelId)}`, {
       method: "DELETE"
     }),
-  chapters: (novelId: string) => apiFetch<ChapterSummary[]>(`/novels/${encodeURIComponent(novelId)}/chapters`),
+  chapters: (novelId: string) => apiFetch<ChapterSummary[]>(`/admin/novels/${encodeURIComponent(novelId)}/chapters`),
   chapter: (novelId: string, chapterId: string) =>
-    apiFetch<ChapterDetail>(`/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}`),
+    apiFetch<ChapterDetail>(`/admin/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}`),
   translatedChapter: (novelId: string, chapterId: string) =>
-    apiFetch<TranslatedChapter>(`/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}/translated`),
+    apiFetch<TranslatedChapter>(`/admin/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}/translated`),
   translationVersions: (novelId: string, chapterId: string) =>
     apiFetch<{ novel_id: string; chapter_id: string; versions: TranslationVersion[] }>(
-      `/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}/translated/versions`
+      `/admin/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}/translated/versions`
     ),
   translationEditHistory: (novelId: string, chapterId: string) =>
     apiFetch<{ novel_id: string; chapter_id: string; history: TranslationEditHistory[] }>(
-      `/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}/translated/edit-history`
+      `/admin/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}/translated/edit-history`
     ),
   updateTranslatedChapter: (
     novelId: string,
     chapterId: string,
     payload: { text: string; editor?: string; note?: string }
   ) =>
-    apiFetch<TranslatedChapter>(`/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}/translated`, {
+    apiFetch<TranslatedChapter>(`/admin/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}/translated`, {
       method: "PUT",
       body: JSON.stringify(payload)
     }),
@@ -284,91 +284,91 @@ export const api = {
     payload: { version_id: string; editor?: string; note?: string }
   ) =>
     apiFetch<TranslatedChapter>(
-      `/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}/translated/rollback`,
+      `/admin/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}/translated/rollback`,
       {
         method: "POST",
         body: JSON.stringify(payload)
       }
     ),
-  progress: (novelId: string) => apiFetch<NovelProgress>(`/novels/${encodeURIComponent(novelId)}/progress`),
-  readerNovel: (novelId: string) => apiFetch<ReaderNovel>(`/novels/${encodeURIComponent(novelId)}/reader`),
+  progress: (novelId: string) => apiFetch<NovelProgress>(`/admin/novels/${encodeURIComponent(novelId)}/progress`),
+  readerNovel: (novelId: string) => apiFetch<ReaderNovel>(`/admin/novels/${encodeURIComponent(novelId)}/reader`),
   readerChapter: (novelId: string, chapterId: string) =>
-    apiFetch<ReaderChapter>(`/novels/${encodeURIComponent(novelId)}/reader/chapters/${encodeURIComponent(chapterId)}`),
+    apiFetch<ReaderChapter>(`/admin/novels/${encodeURIComponent(novelId)}/reader/chapters/${encodeURIComponent(chapterId)}`),
   activity: (params: { status?: string; activity_type?: string; novel_id?: string; limit?: number } = {}) => {
     const search = new URLSearchParams();
     if (params.status) search.set("status", params.status);
     if (params.activity_type) search.set("activity_type", params.activity_type);
     if (params.novel_id) search.set("novel_id", params.novel_id);
     search.set("limit", String(params.limit ?? 50));
-    return apiFetch<{ activity: ActivityRecord[] }>(`/novels/activity?${search.toString()}`);
+    return apiFetch<{ activity: ActivityRecord[] }>(`/admin/activity?${search.toString()}`);
   },
-  activityItem: (activityId: string) => apiFetch<ActivityRecord>(`/novels/activity/${encodeURIComponent(activityId)}`),
+  activityItem: (activityId: string) => apiFetch<ActivityRecord>(`/admin/activity/${encodeURIComponent(activityId)}`),
   deleteActivity: (activityId: string) =>
-    apiFetch<void>(`/novels/activity/${encodeURIComponent(activityId)}`, {
+    apiFetch<void>(`/admin/activity/${encodeURIComponent(activityId)}`, {
       method: "DELETE"
     }),
   runActivity: (activityId: string) =>
-    apiFetch<ActivityRecord>(`/novels/activity/${encodeURIComponent(activityId)}/run`, {
+    apiFetch<ActivityRecord>(`/admin/activity/${encodeURIComponent(activityId)}/run`, {
       method: "POST"
     }),
   runNextActivity: (activityType?: string) => {
     const suffix = activityType ? `?activity_type=${encodeURIComponent(activityType)}` : "";
-    return apiFetch<ActivityRecord>(`/novels/activity/run-next${suffix}`, { method: "POST" });
+    return apiFetch<ActivityRecord>(`/admin/activity/run-next${suffix}`, { method: "POST" });
   },
   updateActivityStatus: (activityId: string, payload: { status: string; error?: string; metadata?: Record<string, unknown> }) =>
-    apiFetch<ActivityRecord>(`/novels/activity/${encodeURIComponent(activityId)}`, {
+    apiFetch<ActivityRecord>(`/admin/activity/${encodeURIComponent(activityId)}`, {
       method: "PATCH",
       body: JSON.stringify(payload)
     }),
-  sourceHealth: () => apiFetch<{ sources: SourceHealth[] }>("/novels/activity/source-health"),
-  sourceHealthDetail: (sourceKey: string) => apiFetch<SourceHealth>(`/novels/activity/source-health/${encodeURIComponent(sourceKey)}`),
+  sourceHealth: () => apiFetch<{ sources: SourceHealth[] }>("/admin/activity/source-health"),
+  sourceHealthDetail: (sourceKey: string) => apiFetch<SourceHealth>(`/admin/activity/source-health/${encodeURIComponent(sourceKey)}`),
   providerApiKeyStatus: (provider = "gemini") =>
-    apiFetch<ProviderApiKeyStatus>(`/novels/admin/provider-api-key/${encodeURIComponent(provider)}`),
+    apiFetch<ProviderApiKeyStatus>(`/admin/provider-api-key/${encodeURIComponent(provider)}`),
   setProviderApiKey: (payload: ProviderApiKeyValidationPayload & { api_key: string; apply_globally?: boolean; validate_connection?: boolean }) =>
-    apiFetch<ProviderApiKeyStatus>("/novels/admin/provider-api-key", {
+    apiFetch<ProviderApiKeyStatus>("/admin/provider-api-key", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
   validateProviderApiKey: (payload: ProviderApiKeyValidationPayload) =>
-    apiFetch<ProviderApiKeyStatus>("/novels/admin/provider-api-key/validate", {
+    apiFetch<ProviderApiKeyStatus>("/admin/provider-api-key/validate", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
   clearProviderApiKey: (provider = "gemini") =>
-    apiFetch<ProviderApiKeyStatus>(`/novels/admin/provider-api-key/${encodeURIComponent(provider)}`, {
+    apiFetch<ProviderApiKeyStatus>(`/admin/provider-api-key/${encodeURIComponent(provider)}`, {
       method: "DELETE"
     }),
-  runtimeState: () => apiFetch<{ items: RuntimeStateItem[] }>("/novels/admin/runtime-state"),
+  runtimeState: () => apiFetch<{ items: RuntimeStateItem[] }>("/admin/runtime-state"),
   refreshRuntimeState: (key: string) =>
-    apiFetch<RuntimeStateItem>(`/novels/admin/runtime-state/${encodeURIComponent(key)}/refresh`, {
+    apiFetch<RuntimeStateItem>(`/admin/runtime-state/${encodeURIComponent(key)}/refresh`, {
       method: "POST"
     }),
   clearRuntimeState: (key: string) =>
-    apiFetch<RuntimeStateItem>(`/novels/admin/runtime-state/${encodeURIComponent(key)}`, {
+    apiFetch<RuntimeStateItem>(`/admin/runtime-state/${encodeURIComponent(key)}`, {
       method: "DELETE"
     }),
-  workerStatus: () => apiFetch<WorkerStatus>("/novels/admin/worker"),
-  workerStart: () => apiFetch<WorkerStatus>("/novels/admin/worker/start", { method: "POST" }),
-  workerStop: () => apiFetch<WorkerStatus>("/novels/admin/worker/stop", { method: "POST" }),
-  workerRunOnce: () => apiFetch<{ activity: ActivityRecord | null; worker: WorkerStatus }>("/novels/admin/worker/run-once", { method: "POST" }),
-  requests: () => apiFetch<{ requests: NovelRequestRecord[] }>("/novels/requests?limit=50"),
+  workerStatus: () => apiFetch<WorkerStatus>("/admin/worker"),
+  workerStart: () => apiFetch<WorkerStatus>("/admin/worker/start", { method: "POST" }),
+  workerStop: () => apiFetch<WorkerStatus>("/admin/worker/stop", { method: "POST" }),
+  workerRunOnce: () => apiFetch<{ activity: ActivityRecord | null; worker: WorkerStatus }>("/admin/worker/run-once", { method: "POST" }),
+  requests: () => apiFetch<{ requests: NovelRequestRecord[] }>("/admin/requests?limit=50"),
   createRequest: (payload: { title: string; source_key?: string; source_url?: string; requested_by?: string; notes?: string }) =>
-    apiFetch<NovelRequestRecord>("/novels/requests", {
+    apiFetch<NovelRequestRecord>("/admin/requests", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
   updateRequestStatus: (requestId: string, payload: { status: string; reviewed_by?: string; notes?: string }) =>
-    apiFetch<NovelRequestRecord>(`/novels/requests/${encodeURIComponent(requestId)}`, {
+    apiFetch<NovelRequestRecord>(`/admin/requests/${encodeURIComponent(requestId)}`, {
       method: "PATCH",
       body: JSON.stringify(payload)
     }),
   createCrawlActivity: (payload: { novel_id: string; source_key: string; kind: string; chapters?: string; source_url?: string; metadata?: Record<string, unknown> }) =>
-    apiFetch<ActivityRecord>("/novels/activity/crawl", {
+    apiFetch<ActivityRecord>("/admin/activity/crawl", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
   createTranslationActivity: (payload: CreateTranslationActivityPayload) =>
-    apiFetch<ActivityRecord>("/novels/activity/translation", {
+    apiFetch<ActivityRecord>("/admin/activity/translation", {
       method: "POST",
       body: JSON.stringify(payload)
     }),
@@ -376,7 +376,7 @@ export const api = {
     novelId: string,
     payload: { source_key?: string; url: string; chapters?: string; mode?: string; max_chapter?: number | null }
   ) =>
-    apiFetch<{ novel_id: string; source_key: string; chapters: number }>(`/novels/${encodeURIComponent(novelId)}/scrape`, {
+    apiFetch<{ novel_id: string; source_key: string; chapters: number }>(`/admin/novels/${encodeURIComponent(novelId)}/scrape`, {
       method: "POST",
       body: JSON.stringify(payload)
     }),
@@ -384,13 +384,13 @@ export const api = {
     novelId: string,
     payload: { source_key?: string; identifier: string; mode?: string; max_chapter?: number | null }
   ) =>
-    apiFetch<PreliminaryCrawlResult>(`/novels/${encodeURIComponent(novelId)}/preliminary-crawl`, {
+    apiFetch<PreliminaryCrawlResult>(`/admin/novels/${encodeURIComponent(novelId)}/preliminary-crawl`, {
       method: "POST",
       body: JSON.stringify(payload)
     }),
   importNow: (novelId: string, payload: { adapter_key: string; source: string; max_units?: number | null }) =>
     apiFetch<{ novel_id: string; adapter_key: string; chapters: number; document_type?: string | null }>(
-      `/novels/${encodeURIComponent(novelId)}/import`,
+      `/admin/novels/${encodeURIComponent(novelId)}/import`,
       {
         method: "POST",
         body: JSON.stringify(payload)
@@ -408,12 +408,12 @@ export const api = {
       target_language?: string;
     }
   ) =>
-    apiFetch<{ novel_id: string; status: string }>(`/novels/${encodeURIComponent(novelId)}/translate`, {
+    apiFetch<{ novel_id: string; status: string }>(`/admin/novels/${encodeURIComponent(novelId)}/translate`, {
       method: "POST",
       body: JSON.stringify(payload)
     }),
   exportNovel: (novelId: string, payload: { format: string; chapters?: string | null }) =>
-    apiDownload(`/novels/${encodeURIComponent(novelId)}/export`, payload)
+    apiDownload(`/admin/novels/${encodeURIComponent(novelId)}/export`, payload)
 };
 // ===========================================
 // Admin Auth namespace (Task 3.2)

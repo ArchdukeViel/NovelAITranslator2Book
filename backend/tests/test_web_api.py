@@ -126,6 +126,7 @@ def test_router_path_method_snapshot() -> None:
         (("GET",), "/activity/source-health/{source_key}"),
         (("GET",), "/activity/{activity_id}"),
         (("GET",), "/admin"),
+        (("GET",), "/admin/providers/{provider}"),
         (("GET",), "/admin/provider-api-key/{provider}"),
         (("GET",), "/admin/runtime-state"),
         (("GET",), "/admin/worker"),
@@ -152,6 +153,8 @@ def test_router_path_method_snapshot() -> None:
         (("POST",), "/admin/worker/run-once"),
         (("POST",), "/admin/worker/start"),
         (("POST",), "/admin/worker/stop"),
+        (("POST",), "/admin/providers"),
+        (("POST",), "/admin/providers/{provider}/validate"),
         (("POST",), "/admin/provider-api-key"),
         (("POST",), "/admin/provider-api-key/validate"),
         (("POST",), "/admin/runtime-state/{state_key}/refresh"),
@@ -173,6 +176,7 @@ def test_router_path_method_snapshot() -> None:
         (("POST",), "/{novel_id}/scrape"),
         (("POST",), "/{novel_id}/translate"),
         (("PUT",), "/{novel_id}/chapters/{chapter_id}/translated"),
+        (("DELETE",), "/admin/providers/{provider}"),
         (("DELETE",), "/admin/provider-api-key/{provider}"),
         (("DELETE",), "/admin/runtime-state/{state_key}"),
     }
@@ -824,6 +828,19 @@ class TestAuth:
             ("POST", "/novels/test-n1/chapters/1/translated/rollback", {"version_id": "v1"}),
             ("PATCH", "/novels/requests/request-1", {"status": "approved"}),
             ("POST", "/novels/test-n1/export", {"format": "epub"}),
+            ("GET", "/api/admin/novels", None),
+            ("GET", "/api/admin/sources", None),
+            ("GET", "/api/admin/worker", None),
+            ("GET", "/api/admin/activity", None),
+            ("GET", "/api/admin/providers/gemini", None),
+            ("POST", "/api/admin/activity/crawl", {"novel_id": "test-n1", "source_key": "dummy", "kind": "chapters"}),
+            ("PATCH", "/api/admin/activity/activity-1", {"status": "failed"}),
+            ("DELETE", "/api/admin/activity/activity-1", None),
+            ("POST", "/api/admin/novels/test-n1/scrape", {"source_key": "dummy", "url": "https://example.com/n1"}),
+            ("PUT", "/api/admin/novels/test-n1/chapters/1/translated", {"text": "edited"}),
+            ("POST", "/api/admin/novels/test-n1/chapters/1/translated/rollback", {"version_id": "v1"}),
+            ("PATCH", "/api/admin/requests/request-1", {"status": "approved"}),
+            ("POST", "/api/admin/novels/test-n1/export", {"format": "epub"}),
         ],
     )
     def test_dangerous_routes_reject_guest_and_non_owner(
@@ -882,6 +899,11 @@ class TestListDetail:
 
     def test_api_prefixed_novels_route_without_trailing_slash_does_not_redirect(self, seeded_client: TestClient) -> None:
         resp = seeded_client.get("/api/novels", follow_redirects=False)
+        assert resp.status_code == 200
+        assert resp.json()[0]["novel_id"] == "test-n1"
+
+    def test_api_admin_novels_route_without_trailing_slash_does_not_redirect(self, seeded_client: TestClient) -> None:
+        resp = seeded_client.get("/api/admin/novels", follow_redirects=False)
         assert resp.status_code == 200
         assert resp.json()[0]["novel_id"] == "test-n1"
 
@@ -1133,6 +1155,9 @@ class TestAdmin:
         status_resp = c.get("/novels/admin/worker")
         assert status_resp.status_code == 200
         assert status_resp.json()["running"] is False
+        canonical_status_resp = c.get("/api/admin/worker")
+        assert canonical_status_resp.status_code == 200
+        assert canonical_status_resp.json()["running"] is False
 
         start_resp = c.post("/novels/admin/worker/start")
         assert start_resp.status_code == 200
@@ -1169,6 +1194,14 @@ class TestAdmin:
         assert status_resp.json()["configured"] is False
         assert status_resp.json()["provider_key"] == "gemini"
         assert status_resp.json()["provider_model"] == "gemini-2.5-flash"
+        canonical_status_resp = c.get("/api/admin/provider-api-key/gemini")
+        assert canonical_status_resp.status_code == 200
+        assert canonical_status_resp.json()["provider_key"] == "gemini"
+        credential_resp = c.get("/api/admin/providers/gemini")
+        assert credential_resp.status_code == 200
+        assert credential_resp.json()["id"] == "gemini"
+        assert credential_resp.json()["configured"] is False
+        assert credential_resp.json()["validation_status"] == "Unchecked"
 
         set_resp = c.post(
             "/novels/admin/provider-api-key",
@@ -1186,6 +1219,10 @@ class TestAdmin:
         assert preferences.get_preferred_provider() == "gemini"
         assert preferences.get_preferred_model() == "gemini-2.5-flash"
         assert preferences.get_llm_step_config("body_translation")["provider"] == "gemini"
+        canonical_credential_resp = c.get("/api/admin/providers/gemini")
+        assert canonical_credential_resp.status_code == 200
+        assert canonical_credential_resp.json()["configured"] is True
+        assert canonical_credential_resp.json()["is_active"] is True
 
         clear_resp = c.delete("/novels/admin/provider-api-key/gemini")
         assert clear_resp.status_code == 200
@@ -1215,6 +1252,13 @@ class TestAdmin:
         assert resp.status_code == 200
         assert resp.json()["validation_status"] == "working"
         assert preferences.get_api_key("gemini") is None
+        canonical_resp = c.post(
+            "/api/admin/providers/gemini/validate",
+            json={"api_key": "AIza-temp-key"},
+        )
+        assert canonical_resp.status_code == 200
+        assert canonical_resp.json()["validation_status"] == "Working"
+        assert preferences.get_api_key("gemini") is None
 
     def test_admin_runtime_state_can_list_refresh_and_clear(self, _no_api_key: None) -> None:
         bootstrap()
@@ -1237,8 +1281,12 @@ class TestAdmin:
         list_resp = c.get("/novels/admin/runtime-state")
 
         assert list_resp.status_code == 200
+        canonical_list_resp = c.get("/api/admin/runtime-state")
+        assert canonical_list_resp.status_code == 200
         items = {item["key"]: item for item in list_resp.json()["items"]}
+        canonical_items = {item["key"]: item for item in canonical_list_resp.json()["items"]}
         assert set(items) == {"preferences", "translation_cache", "usage"}
+        assert set(canonical_items) == set(items)
         assert items["preferences"]["exists"] is True
         assert items["translation_cache"]["affects_process"] is True
         assert items["usage"]["affects_process"] is False
@@ -1291,6 +1339,9 @@ class TestActivity:
         activity_list = activity_resp.json()["activity"]
         assert len(activity_list) == 1
         assert activity_list[0]["id"] == created["id"]
+        canonical_activity_resp = c.get("/api/admin/activity", params={"activity_type": "crawl", "status": "pending"})
+        assert canonical_activity_resp.status_code == 200
+        assert canonical_activity_resp.json()["activity"][0]["id"] == created["id"]
 
         list_resp = c.get("/novels/activity", params={"activity_type": "crawl", "status": "pending"})
         assert list_resp.status_code == 200
@@ -1595,6 +1646,9 @@ class TestNovelRequests:
         assert _assert_request_id_mirror(listed[0]) == request_id
         assert listed[0]["source_candidates"][0]["source_key"] == "syosetu_ncode"
         assert _assert_source_candidate_url_mirror(listed[0]["source_candidates"][0]) == "https://ncode.syosetu.com/n1234ab/"
+        canonical_list_resp = c.get("/api/admin/requests", params={"status": "pending"})
+        assert canonical_list_resp.status_code == 200
+        assert canonical_list_resp.json()["requests"][0]["id"] == request_id
 
     def test_update_request_status_and_add_source_candidate(self, _no_api_key: None) -> None:
         bootstrap()
