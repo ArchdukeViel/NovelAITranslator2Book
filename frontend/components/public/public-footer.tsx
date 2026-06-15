@@ -16,6 +16,9 @@ export function PublicFooter() {
           </Link>
           {isAuthenticated && (
             <>
+              <Link href="/account/library" className="hover:text-foreground transition-colors">
+                Library
+              </Link>
               <Link href="/account/history" className="hover:text-foreground transition-colors">
                 History
               </Link>

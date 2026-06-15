@@ -19,6 +19,13 @@ function AccountNav({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex items-center gap-3">
       <Link
+        href="/account/library"
+        onClick={onNavigate}
+        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Library
+      </Link>
+      <Link
         href="/account/history"
         onClick={onNavigate}
         className="text-sm text-muted-foreground hover:text-foreground transition-colors"

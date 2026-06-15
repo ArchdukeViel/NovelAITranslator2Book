@@ -1,5 +1,12 @@
 /// <reference types="vitest/globals" />
 import "@testing-library/jest-dom/vitest";
+import { cleanup } from "@testing-library/react";
+
+// Auto-cleanup React DOM after each test to prevent cross-file DOM pollution
+// when using singleFork (all tests share one jsdom environment).
+afterEach(() => {
+  cleanup();
+});
 
 /**
  * In-memory Storage shim for localStorage/sessionStorage in tests.

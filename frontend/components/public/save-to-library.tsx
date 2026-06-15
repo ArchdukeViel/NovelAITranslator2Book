@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Bookmark, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -60,22 +61,49 @@ export function SaveToLibrary({ slug }: SaveToLibraryProps) {
 
   return (
     <div className="flex flex-col gap-1">
-      <Button
-        variant={isSaved ? "secondary" : "outline"}
-        size="sm"
-        disabled={!slug || isBusy}
-        onClick={onClick}
-        type="button"
-      >
-        {isBusy ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Bookmark className="h-4 w-4" />
-        )}
-        {isSaved ? "Remove from Library" : "Save to Library"}
-      </Button>
+      {isSaved ? (
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!slug || isBusy}
+            onClick={onClick}
+            type="button"
+          >
+            {isBusy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Bookmark className="h-4 w-4 fill-current" />
+            )}
+            Saved
+          </Button>
+          <Link
+            href="/account/library"
+            className="text-xs text-muted-foreground underline hover:text-foreground transition-colors"
+          >
+            View Library
+          </Link>
+        </div>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!slug || isBusy}
+          onClick={onClick}
+          type="button"
+        >
+          {isBusy ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Bookmark className="h-4 w-4" />
+          )}
+          Save to Library
+        </Button>
+      )}
       {error && (
-        <p className="text-xs text-destructive">Library update failed.</p>
+        <p className="text-xs text-destructive">
+          Could not update library. Try again later.
+        </p>
       )}
     </div>
   );
