@@ -123,10 +123,10 @@ export default function RequestsPage() {
                   return (
                     <div className="px-4 py-3" key={request.id}>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium capitalize">
+                        <span className="min-w-0 flex-1 text-sm font-medium capitalize">
                           {request.request_type} request
                         </span>
-                        <Badge tone={statusTone(request.status)}>
+                        <Badge className="shrink-0" tone={statusTone(request.status)}>
                           {statusLabel(request.status)}
                         </Badge>
                       </div>

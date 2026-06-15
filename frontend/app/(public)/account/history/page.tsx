@@ -109,7 +109,7 @@ export default function HistoryPage() {
                 </div>
                 {chapterHref ? (
                   <Link
-                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+                    className="inline-flex shrink-0 h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
                     href={chapterHref}
                   >
                     <BookOpen className="h-3.5 w-3.5" />
@@ -117,7 +117,7 @@ export default function HistoryPage() {
                   </Link>
                 ) : (
                   <Link
-                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+                    className="inline-flex shrink-0 h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
                     href={novelHref}
                   >
                     View novel
