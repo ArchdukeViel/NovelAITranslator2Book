@@ -53,8 +53,9 @@ def test_frontend_api_client_exposes_error_and_progress_contracts() -> None:
     assert "provider_model?: string | null" in types_text
     assert "export function activityProgress" in text
     assert "export function activityProgressLabel" in text
-    assert "/novels/activity" in text
-    assert "/novels/admin/worker" in text
+    assert "/admin/activity" in text
+    assert "/admin/worker" in text
+    assert "/novels/admin/worker" not in text
 
 
 def test_provider_credential_routes_are_not_bolted_onto_frontend_without_auth_boundary() -> None:

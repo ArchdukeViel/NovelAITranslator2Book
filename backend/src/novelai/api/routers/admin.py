@@ -40,6 +40,27 @@ class ProviderApiKeyValidationRequest(BaseModel):
     provider_model: str | None = None
 
 
+def _provider_credential_response(status: dict[str, Any]) -> dict[str, Any]:
+    provider = str(status.get("provider_key") or status.get("provider") or "gemini")
+    validation_status = {
+        "working": "Working",
+        "failed": "Failed",
+        "checking": "Checking",
+        "unchecked": "Unchecked",
+    }.get(str(status.get("validation_status") or "unchecked").lower(), "Unchecked")
+    configured = bool(status.get("configured"))
+    return {
+        "id": provider,
+        "provider": provider,
+        "masked_token": "Configured" if configured else "",
+        "configured": configured,
+        "is_active": configured and status.get("preferred_provider_key", status.get("preferred_provider")) == provider,
+        "validation_status": validation_status,
+        "validation_message": status.get("validation_message"),
+        "model": status.get("provider_model") or status.get("model"),
+    }
+
+
 def get_admin_service(
     preferences: PreferencesService = Depends(get_preferences),
     translation_cache: TranslationCache = Depends(get_translation_cache),
@@ -84,6 +105,19 @@ async def get_provider_api_key_status(
         raise AssertionError("unreachable")
 
 
+@router.get("/admin/providers/{provider}")
+async def get_provider_credential(
+    provider: str,
+    service: AdminService = Depends(get_admin_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    try:
+        return _provider_credential_response(service.provider_api_key_status(provider))
+    except (KeyError, ValueError) as exc:
+        _raise_admin_error(exc)
+        raise AssertionError("unreachable")
+
+
 @router.post("/admin/provider-api-key")
 async def set_provider_api_key(
     body: ProviderApiKeyRequest,
@@ -108,6 +142,30 @@ async def set_provider_api_key(
         raise AssertionError("unreachable")
 
 
+@router.post("/admin/providers")
+async def set_provider_credential(
+    body: ProviderApiKeyRequest,
+    service: AdminService = Depends(get_admin_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    try:
+        status = service.set_provider_api_key(
+            provider=body.provider_key or body.provider,
+            api_key=body.api_key,
+            model=body.provider_model or body.model,
+            apply_globally=body.apply_globally,
+        )
+        if body.validate_connection:
+            status = await service.validate_provider_api_key(
+                provider=body.provider_key or body.provider,
+                model=status.get("provider_model"),
+            )
+        return _provider_credential_response(status)
+    except (KeyError, ValueError) as exc:
+        _raise_admin_error(exc)
+        raise AssertionError("unreachable")
+
+
 @router.post("/admin/provider-api-key/validate")
 async def validate_provider_api_key(
     body: ProviderApiKeyValidationRequest,
@@ -125,6 +183,25 @@ async def validate_provider_api_key(
         raise AssertionError("unreachable")
 
 
+@router.post("/admin/providers/{provider}/validate")
+async def validate_provider_credential(
+    provider: str,
+    body: ProviderApiKeyValidationRequest | None = None,
+    service: AdminService = Depends(get_admin_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    try:
+        status = await service.validate_provider_api_key(
+            provider=body.provider_key if body and body.provider_key else provider,
+            api_key=body.api_key if body else None,
+            model=(body.provider_model or body.model) if body else None,
+        )
+        return _provider_credential_response(status)
+    except (KeyError, ValueError) as exc:
+        _raise_admin_error(exc)
+        raise AssertionError("unreachable")
+
+
 @router.delete("/admin/provider-api-key/{provider}")
 async def clear_provider_api_key(
     provider: str,
@@ -133,6 +210,19 @@ async def clear_provider_api_key(
 ) -> dict[str, Any]:
     try:
         return service.clear_provider_api_key(provider)
+    except (KeyError, ValueError) as exc:
+        _raise_admin_error(exc)
+        raise AssertionError("unreachable")
+
+
+@router.delete("/admin/providers/{provider}")
+async def clear_provider_credential(
+    provider: str,
+    service: AdminService = Depends(get_admin_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    try:
+        return _provider_credential_response(service.clear_provider_api_key(provider))
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
         raise AssertionError("unreachable")

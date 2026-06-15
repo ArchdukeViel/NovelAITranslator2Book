@@ -10,7 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from novelai.config.settings import settings
 from novelai.api.error_handlers import add_error_handlers
 from novelai.api.routers.library import NovelSummary, list_novels
-from novelai.api.routers import novels
+from novelai.api.routers import activity, admin, editor, library, novels, operations, requests, sources
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.public import router as public_router
 from novelai.api.routers.user_data import router as user_data_router
@@ -67,6 +67,21 @@ def create_app() -> FastAPI:
 
     # User data routes (authenticated users: library, progress, history, reviews, requests)
     app.include_router(user_data_router)
+
+    app.include_router(admin.router, prefix="/api", tags=["admin-api"])
+    app.include_router(sources.router, prefix="/api/admin", tags=["admin-api"])
+    app.include_router(activity.router, prefix="/api/admin", tags=["admin-api"])
+    app.include_router(requests.router, prefix="/api/admin", tags=["admin-api"])
+    app.include_router(editor.router, prefix="/api/admin/novels", tags=["admin-api"])
+    app.include_router(operations.router, prefix="/api/admin/novels", tags=["admin-api"])
+    app.include_router(library.router, prefix="/api/admin/novels", tags=["admin-api"])
+    app.add_api_route(
+        "/api/admin/novels",
+        list_novels,
+        methods=["GET"],
+        response_model=list[NovelSummary],
+        include_in_schema=False,
+    )
 
     app.include_router(novels.router, prefix="/novels", tags=["novels"])
     app.include_router(novels.router, prefix="/api/novels", tags=["novels-api"])
