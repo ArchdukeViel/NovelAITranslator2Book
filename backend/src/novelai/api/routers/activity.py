@@ -5,11 +5,12 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from novelai.api.auth.roles import require_role
 from novelai.api.response_helpers import activity_list_response, activity_record_response
 from novelai.api.models import ActivityListResponse, ActivityRecordResponse
 from novelai.activity.queue import ActivityQueueService
 from novelai.activity.worker import ActivityWorkerService
-from novelai.api.routers.dependencies import get_activity_log, get_activity_worker, verify_api_key
+from novelai.api.routers.dependencies import get_activity_log, get_activity_worker
 
 router = APIRouter()
 
@@ -55,7 +56,7 @@ async def list_activity(
     novel_id: str | None = None,
     limit: int | None = None,
     activity_log: ActivityQueueService = Depends(get_activity_log),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> ActivityListResponse:
     try:
         items = activity_log.list_activity(
@@ -73,7 +74,7 @@ async def list_activity(
 @router.get("/jobs/source-health", include_in_schema=False)
 async def list_source_health(
     activity_log: ActivityQueueService = Depends(get_activity_log),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     return {"sources": activity_log.list_source_health()}
 
@@ -83,7 +84,7 @@ async def list_source_health(
 async def get_source_health(
     source_key: str,
     activity_log: ActivityQueueService = Depends(get_activity_log),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     source = activity_log.get_source_health(source_key)
     if source is None:
@@ -96,7 +97,7 @@ async def get_source_health(
 async def get_activity(
     activity_id: str,
     activity_log: ActivityQueueService = Depends(get_activity_log),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> ActivityRecordResponse:
     activity = activity_log.get_activity(activity_id)
     if activity is None:
@@ -109,7 +110,7 @@ async def get_activity(
 async def delete_activity(
     activity_id: str,
     activity_log: ActivityQueueService = Depends(get_activity_log),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> None:
     if not activity_log.delete_activity(activity_id):
         raise HTTPException(status_code=404, detail="Activity not found")
@@ -120,7 +121,7 @@ async def delete_activity(
 async def create_crawl_activity(
     body: CrawlActivityRequest,
     activity_log: ActivityQueueService = Depends(get_activity_log),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> ActivityRecordResponse:
     try:
         return activity_record_response(activity_log.create_crawl_activity(
@@ -140,7 +141,7 @@ async def create_crawl_activity(
 async def create_translation_activity(
     body: TranslationActivityRequest,
     activity_log: ActivityQueueService = Depends(get_activity_log),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> ActivityRecordResponse:
     try:
         return activity_record_response(activity_log.create_translation_activity(
@@ -162,7 +163,7 @@ async def run_next_activity(
     activity_type: str | None = None,
     job_type: str | None = None,
     worker: ActivityWorkerService = Depends(get_activity_worker),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> ActivityRecordResponse:
     try:
         activity = await worker.run_next(activity_type=activity_type or job_type)
@@ -178,7 +179,7 @@ async def run_next_activity(
 async def run_activity(
     activity_id: str,
     worker: ActivityWorkerService = Depends(get_activity_worker),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> ActivityRecordResponse:
     try:
         activity = await worker.run_activity(activity_id)
@@ -196,7 +197,7 @@ async def update_activity_status(
     activity_id: str,
     body: ActivityStatusUpdateRequest,
     activity_log: ActivityQueueService = Depends(get_activity_log),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> ActivityRecordResponse:
     try:
         activity = activity_log.update_activity_status(

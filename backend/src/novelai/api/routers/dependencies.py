@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette import status
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.activity.runner import BackgroundActivityRunner
@@ -29,12 +30,20 @@ async def verify_api_key(
     """Reject requests when WEB_API_KEY is set and no valid token is provided."""
     expected = settings.WEB_API_KEY
     if expected is None:
-        return
+        logging.getLogger(__name__).warning("Legacy API-key auth attempted but WEB_API_KEY is unset")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Legacy API-key authentication is not configured.",
+        )
 
     expected_value = expected.get_secret_value()
     allowed = [value.strip() for value in expected_value.split(",") if value.strip()]
     if not allowed:
-        return
+        logging.getLogger(__name__).warning("Legacy API-key auth attempted but WEB_API_KEY has no allowed values")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Legacy API-key authentication is not configured.",
+        )
 
     supplied = credentials.credentials if credentials is not None else None
     if supplied is None or supplied not in allowed:

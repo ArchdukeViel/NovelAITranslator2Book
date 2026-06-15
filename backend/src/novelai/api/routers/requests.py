@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from novelai.api.response_helpers import request_list_response, request_response, source_candidate_response
-from novelai.api.routers.dependencies import get_requests, verify_api_key
+from novelai.api.auth.roles import require_role
+from novelai.api.routers.dependencies import get_requests
 from novelai.services.novel_request_service import NovelRequestService
 
 router = APIRouter()
@@ -42,7 +43,7 @@ async def list_novel_requests(
     status: str | None = None,
     limit: int | None = None,
     requests: NovelRequestService = Depends(get_requests),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     try:
         items = requests.list_requests(status=status, limit=limit)
@@ -55,7 +56,7 @@ async def list_novel_requests(
 async def create_novel_request(
     body: NovelRequestCreateRequest,
     requests: NovelRequestService = Depends(get_requests),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     try:
         return request_response(
@@ -75,7 +76,7 @@ async def create_novel_request(
 async def get_novel_request(
     request_id: str,
     requests: NovelRequestService = Depends(get_requests),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     item = requests.get_request(request_id)
     if item is None:
@@ -88,7 +89,7 @@ async def vote_novel_request(
     request_id: str,
     body: NovelRequestVoteRequest,
     requests: NovelRequestService = Depends(get_requests),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     item = requests.vote_request(request_id, voter=body.voter)
     if item is None:
@@ -101,7 +102,7 @@ async def update_novel_request_status(
     request_id: str,
     body: NovelRequestStatusRequest,
     requests: NovelRequestService = Depends(get_requests),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     try:
         item = requests.update_request_status(
@@ -122,7 +123,7 @@ async def add_source_candidate(
     request_id: str,
     body: SourceCandidateCreateRequest,
     requests: NovelRequestService = Depends(get_requests),
-    _auth: None = Depends(verify_api_key),
+    _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     try:
         item = requests.add_source_candidate(

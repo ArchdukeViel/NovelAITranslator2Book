@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from novelai.api import error_handlers as error_handler_module
+from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.app import create_app
 from novelai.api.routers import novels
 from novelai.api.routers.novels import (
@@ -74,6 +75,10 @@ def _assert_provider_mirrors(payload: dict[str, object]) -> None:
     assert payload["provider_model"] == payload["model"]
 
 
+OWNER_USER = SessionUser(user_id=1, email="owner@local", role="owner")
+REGULAR_USER = SessionUser(user_id=2, email="reader@example.com", role="user")
+
+
 def _make_app(
     storage: StorageService,
     activity_log: ActivityQueueService | None = None,
@@ -84,9 +89,12 @@ def _make_app(
     preferences: PreferencesService | None = None,
     translation_cache: TranslationCache | None = None,
     usage: UsageService | None = None,
+    session_user: SessionUser | None = OWNER_USER,
 ) -> TestClient:
     """Create a TestClient with storage dependency overridden."""
     app = create_app()
+    if session_user is not None:
+        app.dependency_overrides[get_current_user] = lambda: session_user
     app.dependency_overrides[get_storage] = lambda: storage
     if activity_log is not None:
         app.dependency_overrides[get_activity_log] = lambda: activity_log
@@ -753,7 +761,7 @@ def _with_api_key(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.fixture()
 def client(_no_api_key: None) -> TestClient:
-    """Unauthenticated client (auth disabled)."""
+    """Owner-authenticated client."""
     bootstrap()
     return _make_app(_fresh_storage())
 
@@ -773,27 +781,87 @@ def seeded_client(_no_api_key: None) -> TestClient:
 
 
 class TestAuth:
-    def test_no_key_configured_allows_access(self, seeded_client: TestClient) -> None:
+    def test_owner_session_allows_dangerous_access(self, seeded_client: TestClient) -> None:
         resp = seeded_client.get("/novels/")
         assert resp.status_code == 200
 
-    def test_key_required_rejects_without_token(self, _with_api_key: None) -> None:
+    def test_unauthenticated_rejects_dangerous_access_when_web_api_key_unset(self, _no_api_key: None) -> None:
         bootstrap()
-        c = _make_app(_fresh_storage())
+        c = _make_app(_fresh_storage(), session_user=None)
+        resp = c.get("/novels/")
+        assert resp.status_code == 401
+
+    def test_non_owner_rejects_dangerous_access(self, _no_api_key: None) -> None:
+        bootstrap()
+        c = _make_app(_fresh_storage(), session_user=REGULAR_USER)
         resp = c.get("/novels/")
         assert resp.status_code == 403
 
-    def test_key_required_accepts_valid_token(self, _with_api_key: None) -> None:
+    def test_valid_legacy_api_key_does_not_grant_owner_access(self, _with_api_key: None) -> None:
         bootstrap()
-        c = _make_app(_fresh_storage())
+        c = _make_app(_fresh_storage(), session_user=None)
         resp = c.get("/novels/", headers={"Authorization": "Bearer test-secret"})
-        assert resp.status_code == 200
+        assert resp.status_code == 401
 
-    def test_key_required_rejects_bad_token(self, _with_api_key: None) -> None:
+    def test_bad_legacy_api_key_does_not_change_session_auth_result(self, _with_api_key: None) -> None:
         bootstrap()
-        c = _make_app(_fresh_storage())
+        c = _make_app(_fresh_storage(), session_user=REGULAR_USER)
         resp = c.get("/novels/", headers={"Authorization": "Bearer wrong"})
         assert resp.status_code == 403
+
+    @pytest.mark.parametrize(
+        ("method", "path", "json_body"),
+        [
+            ("GET", "/novels/", None),
+            ("GET", "/novels/sources", None),
+            ("GET", "/novels/admin/worker", None),
+            ("GET", "/novels/activity", None),
+            ("POST", "/novels/activity/crawl", {"novel_id": "test-n1", "source_key": "dummy", "kind": "chapters"}),
+            ("PATCH", "/novels/activity/activity-1", {"status": "failed"}),
+            ("DELETE", "/novels/activity/activity-1", None),
+            ("POST", "/novels/test-n1/scrape", {"source_key": "dummy", "url": "https://example.com/n1"}),
+            ("PUT", "/novels/test-n1/chapters/1/translated", {"text": "edited"}),
+            ("POST", "/novels/test-n1/chapters/1/translated/rollback", {"version_id": "v1"}),
+            ("PATCH", "/novels/requests/request-1", {"status": "approved"}),
+            ("POST", "/novels/test-n1/export", {"format": "epub"}),
+        ],
+    )
+    def test_dangerous_routes_reject_guest_and_non_owner(
+        self,
+        _no_api_key: None,
+        method: str,
+        path: str,
+        json_body: dict[str, object] | None,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_novel(storage)
+        guest = _make_app(storage, session_user=None)
+        user = _make_app(storage, session_user=REGULAR_USER)
+
+        guest_resp = guest.request(method, path, json=json_body)
+        user_resp = user.request(method, path, json=json_body)
+
+        assert guest_resp.status_code == 401
+        assert user_resp.status_code == 403
+
+    def test_public_guest_route_still_works(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_novel(storage)
+        c = _make_app(storage, session_user=None)
+
+        resp = c.get("/api/public/catalog")
+
+        assert resp.status_code == 200
+
+    def test_user_route_still_requires_user_session(self, _no_api_key: None) -> None:
+        bootstrap()
+        guest = _make_app(_fresh_storage(), session_user=None)
+
+        resp = guest.get("/api/user/library")
+
+        assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -1745,6 +1813,7 @@ class TestRateLimit:
         storage = _fresh_storage()
         _seed_novel(storage)
         app = create_app()
+        app.dependency_overrides[get_current_user] = lambda: OWNER_USER
         app.dependency_overrides[get_storage] = lambda: storage
 
         mock_orch = AsyncMock()
