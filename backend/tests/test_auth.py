@@ -8,11 +8,26 @@ from __future__ import annotations
 import pytest
 from fastapi import FastAPI, Depends
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
 
+from novelai.api.auth.google_oauth import GoogleOAuthProfile, get_google_oauth_client
 from novelai.api.auth.session import GUEST, SessionUser, get_current_user
 from novelai.api.auth.roles import require_role
+from novelai.api.routers.dependencies import get_db_session
 from novelai.api.routers.auth import router as auth_router
+from novelai.api.routers.user_data import router as user_data_router
+from novelai.db.base import Base
+from novelai.db.models.novel import Novel
+from novelai.db.models.users import User
+
+# Import all models so Base.metadata has every FK target before create_all.
+import novelai.db.models.chapter  # noqa: F401
+import novelai.db.models.jobs  # noqa: F401
+import novelai.db.models.system  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +70,74 @@ def owner_client(app, monkeypatch):
     resp = c.post("/api/auth/login", json={"secret": "test-owner-secret"})
     assert resp.status_code == 200
     return c
+
+
+@pytest.fixture()
+def db_session():
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, autocommit=False, autoflush=True)
+    sess = Session()
+    yield sess
+    sess.close()
+    Base.metadata.drop_all(engine)
+
+
+class FakeGoogleOAuthClient:
+    def __init__(self, profile: GoogleOAuthProfile | None = None):
+        self.profile = profile or GoogleOAuthProfile(
+            subject="google-sub-1",
+            email="Reader@Example.COM",
+            email_verified=True,
+            display_name="Reader One",
+        )
+
+    def authorization_url(self, *, state: str, redirect_uri: str) -> str:
+        return f"https://accounts.google.com/o/oauth2/v2/auth?state={state}&redirect_uri={redirect_uri}"
+
+    async def exchange_code(self, *, code: str, redirect_uri: str) -> GoogleOAuthProfile:
+        return self.profile
+
+
+@pytest.fixture()
+def oauth_app(db_session, monkeypatch):
+    from novelai.config.settings import settings
+
+    monkeypatch.setattr(settings, "GOOGLE_OAUTH_CLIENT_ID", "google-client-id")
+    monkeypatch.setattr(settings, "GOOGLE_OAUTH_CLIENT_SECRET", SecretStr("google-client-secret"))
+    monkeypatch.setattr(settings, "GOOGLE_OAUTH_REDIRECT_URI", "http://testserver/api/auth/google/callback")
+    monkeypatch.setattr(settings, "PUBLIC_FRONTEND_URL", "http://frontend.test")
+
+    _app = FastAPI()
+    _app.add_middleware(SessionMiddleware, secret_key="test-secret-key", https_only=False)
+    _app.include_router(auth_router)
+    _app.include_router(user_data_router)
+
+    def _db_override():
+        yield db_session
+        db_session.commit()
+
+    _app.dependency_overrides[get_db_session] = _db_override
+    _app.dependency_overrides[get_google_oauth_client] = lambda: FakeGoogleOAuthClient()
+    return _app
+
+
+@pytest.fixture()
+def oauth_client(oauth_app):
+    return TestClient(oauth_app, raise_server_exceptions=True)
+
+
+def _start_oauth(client: TestClient, next_path: str = "/account/history") -> str:
+    response = client.get(f"/api/auth/google/start?next={next_path}", follow_redirects=False)
+    assert response.status_code == 302
+    location = response.headers["location"]
+    assert "accounts.google.com" in location
+    marker = "state="
+    return location.split(marker, 1)[1].split("&", 1)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -217,3 +300,141 @@ class TestOwnerBoundaryContracts:
         routes = {r.path for r in router.routes}  # type: ignore[attr-defined]
         assert "/api/auth/token" not in routes
         assert "/api/auth/jwt" not in routes
+
+
+class TestGoogleOAuth:
+    def test_start_returns_503_when_google_oauth_is_not_configured(self, client, monkeypatch):
+        from novelai.config.settings import settings
+
+        monkeypatch.setattr(settings, "GOOGLE_OAUTH_CLIENT_ID", None)
+        monkeypatch.setattr(settings, "GOOGLE_OAUTH_CLIENT_SECRET", None)
+        monkeypatch.setattr(settings, "GOOGLE_OAUTH_REDIRECT_URI", None)
+        resp = client.get("/api/auth/google/start", follow_redirects=False)
+        assert resp.status_code == 503
+
+    def test_start_redirects_to_google_when_configured(self, oauth_client):
+        resp = oauth_client.get("/api/auth/google/start?next=/novel/example", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "accounts.google.com" in resp.headers["location"]
+        assert "state=" in resp.headers["location"]
+
+    def test_callback_rejects_missing_state(self, oauth_client):
+        resp = oauth_client.get("/api/auth/google/callback?code=abc", follow_redirects=False)
+        assert resp.status_code == 400
+
+    def test_callback_rejects_invalid_state(self, oauth_client):
+        _start_oauth(oauth_client)
+        resp = oauth_client.get("/api/auth/google/callback?state=bad&code=abc", follow_redirects=False)
+        assert resp.status_code == 400
+
+    def test_callback_rejects_missing_code(self, oauth_client):
+        state = _start_oauth(oauth_client)
+        resp = oauth_client.get(f"/api/auth/google/callback?state={state}", follow_redirects=False)
+        assert resp.status_code == 400
+
+    def test_callback_rejects_unverified_email(self, oauth_app, oauth_client):
+        oauth_app.dependency_overrides[get_google_oauth_client] = lambda: FakeGoogleOAuthClient(
+            GoogleOAuthProfile(
+                subject="sub-unverified",
+                email="reader@example.com",
+                email_verified=False,
+            )
+        )
+        state = _start_oauth(oauth_client)
+        resp = oauth_client.get(f"/api/auth/google/callback?state={state}&code=abc", follow_redirects=False)
+        assert resp.status_code == 403
+
+    def test_callback_creates_user_session_and_normalizes_email(self, oauth_client, db_session):
+        state = _start_oauth(oauth_client, "/account/history")
+        resp = oauth_client.get(f"/api/auth/google/callback?state={state}&code=abc", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "http://frontend.test/account/history"
+
+        me = oauth_client.get("/api/auth/me")
+        assert me.status_code == 200
+        assert me.json()["role"] == "user"
+        assert me.json()["email"] == "reader@example.com"
+        assert me.json()["is_owner"] is False
+
+        user = db_session.query(User).filter_by(auth_provider="google", auth_provider_subject="google-sub-1").one()
+        assert user.email == "reader@example.com"
+        assert user.role == "user"
+
+    def test_callback_resumes_existing_google_user(self, oauth_client, db_session):
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="google",
+            auth_provider_subject="google-sub-1",
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        state = _start_oauth(oauth_client)
+        resp = oauth_client.get(f"/api/auth/google/callback?state={state}&code=abc", follow_redirects=False)
+        assert resp.status_code == 302
+        assert oauth_client.get("/api/auth/me").json()["user_id"] == user.id
+        assert db_session.query(User).count() == 1
+
+    def test_callback_links_existing_non_owner_email(self, oauth_client, db_session):
+        user = User(email="reader@example.com", role="user", is_active=True)
+        db_session.add(user)
+        db_session.commit()
+
+        state = _start_oauth(oauth_client)
+        resp = oauth_client.get(f"/api/auth/google/callback?state={state}&code=abc", follow_redirects=False)
+        assert resp.status_code == 302
+        db_session.refresh(user)
+        assert user.auth_provider == "google"
+        assert user.auth_provider_subject == "google-sub-1"
+
+    def test_callback_rejects_owner_email_link(self, oauth_client, db_session):
+        db_session.add(User(email="reader@example.com", role="owner", is_active=True))
+        db_session.commit()
+
+        state = _start_oauth(oauth_client)
+        resp = oauth_client.get(f"/api/auth/google/callback?state={state}&code=abc", follow_redirects=False)
+        assert resp.status_code == 403
+
+    def test_callback_rejects_inactive_user(self, oauth_client, db_session):
+        db_session.add(
+            User(
+                email="reader@example.com",
+                role="user",
+                auth_provider="google",
+                auth_provider_subject="google-sub-1",
+                is_active=False,
+            )
+        )
+        db_session.commit()
+
+        state = _start_oauth(oauth_client)
+        resp = oauth_client.get(f"/api/auth/google/callback?state={state}&code=abc", follow_redirects=False)
+        assert resp.status_code == 403
+
+    def test_callback_uses_safe_relative_return_path_only(self, oauth_client):
+        state = _start_oauth(oauth_client, "https://evil.example/phish")
+        resp = oauth_client.get(f"/api/auth/google/callback?state={state}&code=abc", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "http://frontend.test/"
+
+    def test_state_replay_fails(self, oauth_client):
+        state = _start_oauth(oauth_client)
+        first = oauth_client.get(f"/api/auth/google/callback?state={state}&code=abc", follow_redirects=False)
+        assert first.status_code == 302
+        replay = oauth_client.get(f"/api/auth/google/callback?state={state}&code=abc", follow_redirects=False)
+        assert replay.status_code == 400
+
+    def test_oauth_user_session_can_access_user_endpoint(self, oauth_client):
+        state = _start_oauth(oauth_client)
+        resp = oauth_client.get(f"/api/auth/google/callback?state={state}&code=abc", follow_redirects=False)
+        assert resp.status_code == 302
+
+        library = oauth_client.get("/api/user/library")
+        assert library.status_code == 200
+        assert library.json() == []
+
+    def test_unauthenticated_user_endpoint_still_fails(self, oauth_client):
+        resp = oauth_client.get("/api/user/library")
+        assert resp.status_code == 401
