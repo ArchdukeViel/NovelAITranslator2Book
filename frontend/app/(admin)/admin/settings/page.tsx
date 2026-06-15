@@ -1,22 +1,33 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Trash2 } from "lucide-react";
+import * as React from "react";
 
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { ErrorBanner } from "@/components/admin/error-banner";
 import { PageHeading } from "@/components/admin/page-heading";
+import { Button } from "@/components/ui/button";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { api } from "@/lib/api";
 import type { RuntimeStateItem } from "@/lib/api";
 import { formatBytes } from "@/lib/format";
 
-// Note: Client-side API token management removed in Task 4
-// Provider credential config will be reimplemented in Task 14 using Admin_API
-// Runtime state management is still available
-
 export default function SettingsPage() {
+  const queryClient = useQueryClient();
   const runtimeState = useQuery({
     queryKey: ["runtime-state"],
     queryFn: () => api.runtimeState()
+  });
+
+  const [clearKey, setClearKey] = React.useState<string | null>(null);
+
+  const clearRuntimeState = useMutation({
+    mutationFn: (key: string) => api.clearRuntimeState(key),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["runtime-state"] });
+      setClearKey(null);
+    }
   });
 
   const runtimeStorageError = runtimeState.error;
@@ -42,7 +53,7 @@ export default function SettingsPage() {
           </PanelBody>
         </Panel>
 
-        {/* Runtime State - still functional */}
+        {/* Runtime State */}
         <Panel>
           <PanelHeader>
             <PanelTitle>Runtime State</PanelTitle>
@@ -57,12 +68,13 @@ export default function SettingsPage() {
                     <th className="px-4 py-3 font-medium">Type</th>
                     <th className="px-4 py-3 font-medium">Size</th>
                     <th className="px-4 py-3 font-medium">Last Updated</th>
+                    <th className="px-4 py-3 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {runtimeState.isLoading ? (
                     <tr>
-                      <td className="px-4 py-3" colSpan={4}>
+                      <td className="px-4 py-3" colSpan={5}>
                         Loading runtime state...
                       </td>
                     </tr>
@@ -75,11 +87,23 @@ export default function SettingsPage() {
                         <td className="px-4 py-3">
                           {item.updated_at ? new Date(item.updated_at).toLocaleString() : "unknown"}
                         </td>
+                        <td className="px-4 py-3 text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setClearKey(item.key)}
+                            disabled={clearRuntimeState.isPending && clearKey === item.key}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Clear {item.key}</span>
+                          </Button>
+                        </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td className="px-4 py-3" colSpan={4}>
+                      <td className="px-4 py-3" colSpan={5}>
                         No runtime state items.
                       </td>
                     </tr>
@@ -90,6 +114,22 @@ export default function SettingsPage() {
           </PanelBody>
         </Panel>
       </div>
+
+      <ConfirmDialog
+        open={!!clearKey}
+        title="Clear Runtime State"
+        description={`Are you sure you want to clear the runtime state for "${clearKey}"? This action cannot be undone and may require the system to rebuild this state.`}
+        confirmLabel="Clear State"
+        cancelLabel="Cancel"
+        destructive
+        pending={clearRuntimeState.isPending}
+        onConfirm={() => {
+          if (clearKey) {
+            clearRuntimeState.mutate(clearKey);
+          }
+        }}
+        onCancel={() => setClearKey(null)}
+      />
     </>
   );
 }
