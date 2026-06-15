@@ -9,12 +9,6 @@ export function PublicFooter() {
           <Link href="/" className="hover:text-foreground transition-colors">
             Browse
           </Link>
-          <Link href="/account/history" className="hover:text-foreground transition-colors">
-            History
-          </Link>
-          <Link href="/account/requests" className="hover:text-foreground transition-colors">
-            Requests
-          </Link>
         </nav>
       </div>
     </footer>

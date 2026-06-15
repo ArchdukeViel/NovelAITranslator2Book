@@ -15,7 +15,6 @@ import type {
   CatalogParams,
   HistoryEntry,
   LibraryMembership,
-  LoginInput,
   NovelRequest,
   NovelRequestInput,
   PublicCatalogResponse,
@@ -212,10 +211,6 @@ export const publicApi = {
 export const authApi = {
   me(): Promise<AuthUser> {
     return publicGet<AuthUser>("/api/auth/me");
-  },
-
-  login(input: LoginInput): Promise<AuthUser> {
-    return publicPost<AuthUser>("/api/auth/login", input);
   },
 
   logout(): Promise<void> {

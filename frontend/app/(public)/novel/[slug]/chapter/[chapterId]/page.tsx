@@ -1,14 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { ReaderControls } from "@/components/public/reader-controls";
 import { useChapter } from "@/hooks/public";
-import { useAuthMe } from "@/hooks/public/use-auth";
-import { useRecordHistory } from "@/hooks/public/use-history";
-import { usePutProgress } from "@/hooks/public/use-progress";
 import { ApiError } from "@/lib/api";
 import { toReaderError, widthClass } from "@/lib/public-format";
 import { useReaderPrefsStore } from "@/lib/reader-prefs";
@@ -28,25 +24,6 @@ export default function ChapterPage() {
 
   const { data, isPending, isError, error } = useChapter(slug, chapterId);
   const { theme, fontSize, width } = useReaderPrefsStore();
-  const { data: authUser } = useAuthMe();
-  const putProgress = usePutProgress();
-  const recordHistory = useRecordHistory();
-
-  // Record reading progress when chapter changes (authenticated users only)
-  useEffect(() => {
-    if (authUser?.role === "user" && slug && chapterId) {
-      putProgress.mutate({ slug, chapterId });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapterId, authUser?.role, slug]);
-
-  // Record reading history when chapter is first displayed (authenticated users only)
-  useEffect(() => {
-    if (authUser?.role === "user" && slug && chapterId) {
-      recordHistory.mutate({ slug, chapterId });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapterId, authUser?.role, slug]);
 
   // 404: chapter-unavailable message
   if (

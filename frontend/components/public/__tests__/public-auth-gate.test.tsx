@@ -1,0 +1,54 @@
+import { readFileSync } from "node:fs";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+
+import { ContinueReading } from "@/components/public/continue-reading";
+import { LoginView } from "@/components/public/login-view";
+import { RatingReview } from "@/components/public/rating-review";
+import { RequestControl } from "@/components/public/request-control";
+import { SaveToLibrary } from "@/components/public/save-to-library";
+
+describe("public auth gate", () => {
+  it("renders public login as unavailable without credential fields", () => {
+    const html = renderToStaticMarkup(<LoginView onClose={() => undefined} />);
+
+    expect(html).toContain("Public accounts are not available yet.");
+    expect(html).toContain("Google login/email login will be added in a later phase.");
+    expect(html).toContain("Guest reading is still available.");
+    expect(html).not.toContain("type=\"email\"");
+    expect(html).not.toContain("type=\"password\"");
+    expect(html).not.toContain("Password / Token");
+    expect(html).not.toContain("Sign In");
+  });
+
+  it("renders user-gated actions as disabled unavailable controls", () => {
+    const html = renderToStaticMarkup(
+      <div>
+        <SaveToLibrary slug="demo" />
+        <ContinueReading slug="demo" />
+        <RatingReview slug="demo" />
+        <RequestControl />
+      </div>
+    );
+
+    expect(html).toContain("Save to Library Unavailable");
+    expect(html).toContain("Continue Reading Unavailable");
+    expect(html).toContain("Submit Review Unavailable");
+    expect(html).toContain("Submit Request Unavailable");
+    expect(html).toContain("Public accounts are not available yet.");
+    expect(html).not.toContain("textarea");
+    expect(html).not.toContain("type=\"url\"");
+    expect(html).not.toContain("Submit Review</button>");
+    expect(html).not.toContain("Submit Request</button>");
+  });
+
+  it("does not expose owner bootstrap login through the public API client", () => {
+    const publicApi = readFileSync("lib/public-api.ts", "utf8");
+    const publicHooks = readFileSync("hooks/public/index.ts", "utf8");
+
+    expect(publicApi).not.toContain("/api/auth/login");
+    expect(publicApi).not.toContain("authApi.login");
+    expect(publicHooks).not.toContain("useLogin");
+    expect(publicHooks).not.toContain("useAuthMe");
+  });
+});

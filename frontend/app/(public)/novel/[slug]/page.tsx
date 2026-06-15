@@ -6,7 +6,6 @@ import { ArrowLeft, BookOpen, Clock } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
-import { AuthGate } from "@/components/public/auth-gate";
 import { ContinueReading } from "@/components/public/continue-reading";
 import { RatingReview } from "@/components/public/rating-review";
 import { SaveToLibrary } from "@/components/public/save-to-library";
@@ -112,25 +111,19 @@ export default function NovelDetailPage() {
         </div>
       </header>
 
-      {/* Save to library — user-only, gated by AuthGate */}
+      {/* Save to library — disabled until public accounts exist */}
       <div className="my-4">
-        <AuthGate fallback={null}>
-          <SaveToLibrary slug={slug} />
-        </AuthGate>
+        <SaveToLibrary slug={slug} />
       </div>
 
-      {/* Continue reading — user-only, gated by AuthGate */}
+      {/* Continue reading — disabled until public accounts exist */}
       <div className="my-4">
-        <AuthGate fallback={null}>
-          <ContinueReading slug={slug} />
-        </AuthGate>
+        <ContinueReading slug={slug} />
       </div>
 
-      {/* Rating/review — user-only, gated by AuthGate */}
+      {/* Rating/review — disabled until public accounts exist */}
       <div className="my-4">
-        <AuthGate>
-          <RatingReview slug={slug} />
-        </AuthGate>
+        <RatingReview slug={slug} />
       </div>
 
       <Panel>

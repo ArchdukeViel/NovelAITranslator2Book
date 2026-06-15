@@ -4,7 +4,6 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Panel, PanelBody } from "@/components/ui/panel";
-import { AuthGate } from "@/components/public/auth-gate";
 import { SaveToLibrary } from "@/components/public/save-to-library";
 import { authorOrFallback } from "@/lib/public-format";
 import type { PublicNovelSummary } from "@/lib/public-types";
@@ -35,9 +34,7 @@ export function NovelCard({ novel }: NovelCardProps) {
           onClick={(e) => e.preventDefault()}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); }}
         >
-          <AuthGate fallback={null}>
-            <SaveToLibrary slug={novel.slug} />
-          </AuthGate>
+          <SaveToLibrary slug={novel.slug} />
         </div>
       </PanelBody>
     </Panel>
