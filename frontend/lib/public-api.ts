@@ -13,7 +13,6 @@ import type { ApiErrorPayload } from "@/lib/api-types";
 import type {
   AuthUser,
   CatalogParams,
-  ContributionStatusResponse,
   HistoryEntry,
   LibraryMembership,
   LoginInput,
@@ -286,17 +285,4 @@ export const userApi = {
     return publicPost<NovelRequest>("/api/user/requests", input);
   },
 
-  getContribution(): Promise<ContributionStatusResponse> {
-    return publicGet<ContributionStatusResponse>("/api/user/contributions");
-  },
-
-  submitContribution(rawKey: string): Promise<ContributionStatusResponse> {
-    return publicPost<ContributionStatusResponse>("/api/user/contributions", {
-      api_key: rawKey,
-    });
-  },
-
-  removeContribution(): Promise<void> {
-    return publicDelete<void>("/api/user/contributions");
-  },
 };
