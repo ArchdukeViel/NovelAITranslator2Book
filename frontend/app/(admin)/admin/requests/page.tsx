@@ -228,6 +228,7 @@ export default function RequestsPage() {
         pending={processRequest.isPending}
         onConfirm={confirmPendingAction}
         onCancel={() => setPendingAction(null)}
+        auditNotice="This action is recorded in the audit log."
       />
     </>
   );

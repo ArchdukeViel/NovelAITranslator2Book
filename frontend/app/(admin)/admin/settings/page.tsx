@@ -1,367 +1,92 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 
-import { EmptyState } from "@/components/admin/empty-state";
 import { ErrorBanner } from "@/components/admin/error-banner";
-import { LoadingRows } from "@/components/admin/loading-rows";
 import { PageHeading } from "@/components/admin/page-heading";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { api } from "@/lib/api";
-import type { ProviderApiKeyStatus, RuntimeStateItem } from "@/lib/api";
-import { formatAdminError } from "@/lib/admin-errors";
-import { formatBytes, formatDate, formatDateTime } from "@/lib/format";
-import { useUiStore, type ApiTokenRecord } from "@/lib/store";
+import type { RuntimeStateItem } from "@/lib/api";
+import { formatBytes } from "@/lib/format";
 
-function maskToken(token: string) {
-  const trimmed = token.trim();
-  if (trimmed.length <= 8) {
-    return `${trimmed.slice(0, 2)}****`;
-  }
-  return `${trimmed.slice(0, 4)}****${trimmed.slice(-4)}`;
-}
-
-function tokenValidation(status: ProviderApiKeyStatus): Partial<ApiTokenRecord> {
-  return {
-    validationStatus:
-      status.validation_status === "working"
-        ? "Working"
-        : status.validation_status === "failed"
-          ? "Failed"
-          : "Unchecked",
-    validationMessage: status.validation_message ?? null,
-    validatedOn: new Date().toISOString(),
-    model: status.model
-  };
-}
-
-function validationTone(status: ApiTokenRecord["validationStatus"] | ProviderApiKeyStatus["validation_status"] | undefined) {
-  if (status === "Working" || status === "working") {
-    return "green" as const;
-  }
-  if (status === "Failed" || status === "failed") {
-    return "red" as const;
-  }
-  if (status === "Checking") {
-    return "amber" as const;
-  }
-  return "neutral" as const;
-}
+// Note: Client-side API token management removed in Task 4
+// Provider credential config will be reimplemented in Task 14 using Admin_API
+// Runtime state management is still available
 
 export default function SettingsPage() {
-  const [draftToken, setDraftToken] = useState("");
-  const queryClient = useQueryClient();
-  const geminiStatus = useQuery({
-    queryKey: ["provider-api-key", "gemini"],
-    queryFn: () => api.providerApiKeyStatus("gemini")
-  });
   const runtimeState = useQuery({
     queryKey: ["runtime-state"],
     queryFn: () => api.runtimeState()
   });
-  const {
-    addApiToken,
-    apiTokens,
-    applyDummyApiToken,
-    removeApiToken,
-    setActiveApiToken,
-    updateApiTokenValidation
-  } = useUiStore();
-  const addToken = useMutation({
-    mutationFn: (token: string) =>
-      api.setProviderApiKey({
-        provider: "gemini",
-        api_key: token,
-        apply_globally: true
-      }),
-    onSuccess: (status, token) => {
-      addApiToken(token, tokenValidation(status));
-      setDraftToken("");
-      queryClient.setQueryData(["provider-api-key", "gemini"], status);
-    }
-  });
-  const checkToken = useMutation({
-    mutationFn: (entry: ApiTokenRecord) =>
-      api.validateProviderApiKey({
-        provider: "gemini",
-        api_key: entry.token
-      }),
-    onMutate: (entry) => {
-      updateApiTokenValidation(entry.id, {
-        validationStatus: "Checking",
-        validationMessage: null
-      });
-    },
-    onSuccess: (status, entry) => {
-      updateApiTokenValidation(entry.id, tokenValidation(status));
-    },
-    onError: (error, entry) => {
-      updateApiTokenValidation(entry.id, {
-        validationStatus: "Failed",
-        validationMessage: formatAdminError(error, "Validation failed."),
-        validatedOn: new Date().toISOString()
-      });
-    }
-  });
-  const useToken = useMutation({
-    mutationFn: (entry: ApiTokenRecord) =>
-      api.setProviderApiKey({
-        provider: "gemini",
-        api_key: entry.token,
-        apply_globally: true,
-        validate_connection: true
-      }),
-    onMutate: (entry) => {
-      updateApiTokenValidation(entry.id, {
-        validationStatus: "Checking",
-        validationMessage: null
-      });
-    },
-    onSuccess: (status, entry) => {
-      setActiveApiToken(entry.id);
-      updateApiTokenValidation(entry.id, tokenValidation(status));
-      queryClient.setQueryData(["provider-api-key", "gemini"], status);
-    },
-    onError: (error, entry) => {
-      updateApiTokenValidation(entry.id, {
-        validationStatus: "Failed",
-        validationMessage: formatAdminError(error, "Failed to sync token."),
-        validatedOn: new Date().toISOString()
-      });
-    }
-  });
-  const refreshState = useMutation({
-    mutationFn: (item: RuntimeStateItem) => api.refreshRuntimeState(item.key),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["runtime-state"] });
-    }
-  });
-  const clearState = useMutation({
-    mutationFn: (item: RuntimeStateItem) => api.clearRuntimeState(item.key),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["runtime-state"] });
-      void queryClient.invalidateQueries({ queryKey: ["provider-api-key"] });
-    }
-  });
-  const activeToken = useMemo(
-    () => apiTokens.find((entry) => entry.status === "Active" && entry.token.trim()),
-    [apiTokens]
-  );
-  const runtimeStorageError = runtimeState.error ?? refreshState.error ?? clearState.error;
 
-  useEffect(() => {
-    if (!geminiStatus.isSuccess || geminiStatus.data.configured || !activeToken || useToken.isPending) {
-      return;
-    }
-    useToken.mutate(activeToken);
-  }, [activeToken, geminiStatus.data?.configured, geminiStatus.isSuccess, useToken]);
-
-  function handleAddToken(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const token = draftToken.trim();
-    if (!token) {
-      return;
-    }
-    addToken.mutate(token);
-  }
+  const runtimeStorageError = runtimeState.error;
 
   return (
     <>
-      <PageHeading title="Settings" description="Manage API token access for the admin workspace." />
+      <PageHeading
+        title="Settings"
+        description="Configure workspace settings and runtime state."
+      />
 
       <div className="space-y-5">
+        {/* Provider Credential Config - Task 14 */}
         <Panel>
           <PanelHeader>
-            <PanelTitle>API Token</PanelTitle>
+            <PanelTitle>Provider Credential</PanelTitle>
           </PanelHeader>
           <PanelBody>
-            <form className="space-y-4" onSubmit={handleAddToken}>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium" htmlFor="api-token">
-                  Add API Token
-                </label>
-                <Input
-                  id="api-token"
-                  type="password"
-                  value={draftToken}
-                  onChange={(event) => setDraftToken(event.target.value)}
-                  placeholder="Enter your API token here..."
-                />
-                <p className="text-sm text-muted-foreground">
-                  Stored in this browser and sent to the backend Gemini provider for translation activity.
-                </p>
-              </div>
-
-              <ErrorBanner error={addToken.error} fallback="Failed to sync API key." />
-
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button className="flex-1" type="submit" disabled={!draftToken.trim() || addToken.isPending}>
-                  {addToken.isPending ? "Adding..." : "Add API Key"}
-                </Button>
-                <Button className="sm:w-48" type="button" variant="secondary" onClick={applyDummyApiToken}>
-                  Apply Dummy API
-                </Button>
-              </div>
-            </form>
+            <p className="text-sm text-muted-foreground">
+              Provider credential configuration will be available in Task 14.
+              The credential will be managed server-side via the Admin_API and masked for display.
+            </p>
           </PanelBody>
         </Panel>
 
+        {/* Runtime State - still functional */}
         <Panel>
           <PanelHeader>
-            <PanelTitle>Your API Tokens</PanelTitle>
+            <PanelTitle>Runtime State</PanelTitle>
           </PanelHeader>
-          <PanelBody className="p-0">
+          <PanelBody>
+            <ErrorBanner error={runtimeStorageError} fallback="Failed to load runtime state." />
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="border-b bg-muted/40">
                   <tr>
+                    <th className="px-4 py-3 font-medium">Key</th>
                     <th className="px-4 py-3 font-medium">Type</th>
-                    <th className="px-4 py-3 font-medium">Token</th>
-                    <th className="px-4 py-3 font-medium">Added On</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Key Check</th>
-                    <th className="px-4 py-3 font-medium">Action</th>
+                    <th className="px-4 py-3 font-medium">Size</th>
+                    <th className="px-4 py-3 font-medium">Last Updated</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {apiTokens.length ? (
-                    apiTokens.map((entry) => (
-                      <tr className="border-b last:border-0" key={entry.id}>
-                        <td className="px-4 py-3">{entry.type}</td>
-                        <td className="px-4 py-3 font-mono text-xs">{maskToken(entry.token)}</td>
-                        <td className="px-4 py-3">{formatDate(entry.addedOn)}</td>
+                  {runtimeState.isLoading ? (
+                    <tr>
+                      <td className="px-4 py-3" colSpan={4}>
+                        Loading runtime state...
+                      </td>
+                    </tr>
+                  ) : runtimeState.data?.items.length ? (
+                    runtimeState.data.items.map((item: RuntimeStateItem) => (
+                      <tr className="border-b last:border-0" key={item.key}>
+                        <td className="px-4 py-3 font-mono text-xs">{item.key}</td>
+                        <td className="px-4 py-3">{item.label}</td>
+                        <td className="px-4 py-3">{formatBytes(item.size_bytes)}</td>
                         <td className="px-4 py-3">
-                          <Badge tone={entry.status === "Active" ? "green" : "neutral"}>{entry.status}</Badge>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="space-y-1">
-                            <Badge tone={validationTone(entry.validationStatus)}>
-                              {entry.validationStatus ?? "Unchecked"}
-                            </Badge>
-                            {entry.validationMessage ? (
-                              <div className="max-w-[340px] truncate text-xs text-muted-foreground" title={entry.validationMessage}>
-                                {entry.validationMessage}
-                              </div>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => useToken.mutate(entry)}
-                              disabled={useToken.isPending && useToken.variables?.id === entry.id}
-                            >
-                              Use
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => checkToken.mutate(entry)}
-                              disabled={checkToken.isPending && checkToken.variables?.id === entry.id}
-                            >
-                              Check
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => removeApiToken(entry.id)}
-                            >
-                              Remove
-                            </Button>
-                          </div>
+                          {item.updated_at ? new Date(item.updated_at).toLocaleString() : "unknown"}
                         </td>
                       </tr>
                     ))
                   ) : (
-                    <EmptyState title="No API tokens added." colSpan={6} className="text-center" />
+                    <tr>
+                      <td className="px-4 py-3" colSpan={4}>
+                        No runtime state items.
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>
             </div>
-          </PanelBody>
-        </Panel>
-
-        <Panel>
-          <PanelHeader>
-            <PanelTitle>Runtime Storage</PanelTitle>
-          </PanelHeader>
-          <PanelBody className="p-0">
-            <div className="seamless-scrollbar overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b bg-muted/40">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">File</th>
-                    <th className="px-4 py-3 font-medium">Used For</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Updated</th>
-                    <th className="px-4 py-3 font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(runtimeState.data?.items ?? []).map((item) => (
-                    <tr className="border-b last:border-0" key={item.key}>
-                      <td className="px-4 py-3">
-                        <div className="font-medium">{item.label}</div>
-                        <div className="mt-1 font-mono text-xs text-muted-foreground">{item.filename}</div>
-                      </td>
-                      <td className="max-w-[460px] px-4 py-3 text-muted-foreground">
-                        {item.description}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          <Badge tone={item.exists ? "green" : "neutral"}>{item.exists ? formatBytes(item.size_bytes) : "Missing"}</Badge>
-                          <Badge tone={item.affects_process ? "amber" : "neutral"}>
-                            {item.affects_process ? "Affects process" : "Report only"}
-                          </Badge>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{formatDateTime(item.updated_at)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => refreshState.mutate(item)}
-                            disabled={refreshState.isPending && refreshState.variables?.key === item.key}
-                          >
-                            <RefreshCw className="h-4 w-4" />
-                            Refresh
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => clearState.mutate(item)}
-                            disabled={clearState.isPending && clearState.variables?.key === item.key}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Delete
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {runtimeState.isLoading ? (
-                    <LoadingRows colSpan={5} label="Loading runtime storage..." rows={1} />
-                  ) : null}
-                  {!runtimeState.isLoading && (runtimeState.data?.items ?? []).length === 0 ? (
-                    <EmptyState title="No runtime state files found." colSpan={5} className="text-center" />
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-            <ErrorBanner error={runtimeStorageError} fallback="Failed to update runtime storage." />
           </PanelBody>
         </Panel>
       </div>

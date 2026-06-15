@@ -1,0 +1,38 @@
+/* Public reader theme styles.
+ * Applied via the data-reader-theme attribute on the reader container.
+ * NEVER toggles html.dark or document.documentElement.classList.
+ * Requirements: 6.4, 15.1, 15.4
+ */
+
+[data-reader-theme="light"] {
+  background: #ffffff;
+  color: #1a1a1a;
+}
+
+[data-reader-theme="dark"] {
+  background: #1a1a2e;
+  color: #e0e0e0;
+}
+
+[data-reader-theme="sepia"] {
+  background: #f4ecd8;
+  color: #5b4636;
+}
+
+/* Ensure nested elements inherit the theme colors */
+[data-reader-theme="dark"] a {
+  color: #90cdf4;
+}
+
+[data-reader-theme="sepia"] a {
+  color: #7c4a1f;
+}
+
+/* Reader container base styles */
+.reader-container {
+  min-height: 100vh;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 2rem 1.25rem;
+  transition: background-color 0.2s, color 0.2s;
+}

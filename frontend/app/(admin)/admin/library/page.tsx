@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { compareSortableValues, useSortableTable } from "@/hooks/use-sortable-table";
 import { api, type ActivityRecord, type ChapterSummary, type NovelMetadata, type NovelSummary } from "@/lib/api";
-import { useUiStore } from "@/lib/store";
 
 type LibrarySortKey = "novel" | "source" | "listed" | "raw" | "translated" | "status";
 type LibraryAction = "translate" | "recrawl" | "delete";
@@ -67,18 +66,6 @@ function sortValue(novel: NovelSummary, key: LibrarySortKey) {
   return translationState(novel);
 }
 
-async function syncGeminiToken(apiToken: string | undefined) {
-  if (!apiToken?.trim()) {
-    return;
-  }
-  await api.setProviderApiKey({
-    provider: "gemini",
-    api_key: apiToken,
-    apply_globally: true,
-    validate_connection: false
-  });
-}
-
 function metadataText(metadata: NovelMetadata | undefined, key: string) {
   const value = metadata?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -97,7 +84,7 @@ export default function LibraryPage() {
   const [translationNovel, setTranslationNovel] = React.useState<NovelSummary | null>(null);
   const [translationLanguage, setTranslationLanguage] = React.useState<(typeof TRANSLATION_LANGUAGES)[number]>("English");
   const [selectedTranslationChapterIds, setSelectedTranslationChapterIds] = React.useState<Set<string>>(new Set());
-  const activeGeminiToken = useUiStore((state) => state.apiTokens.find((entry) => entry.status === "Active")?.token);
+  // Note: activeGeminiToken removed - provider credential now comes from Admin_API, server-managed (Task 4)
   const translationNovelId = translationNovel?.novel_id;
 
   const novels = useQuery({
@@ -199,7 +186,7 @@ export default function LibraryPage() {
           continue;
         }
 
-        await syncGeminiToken(activeGeminiToken);
+        // Provider credential now managed server-side via Admin_API
         const activity = await api.createTranslationActivity({
           novel_id: novel.novel_id,
           source_key: novel.source,
@@ -234,7 +221,7 @@ export default function LibraryPage() {
         throw new Error("Select at least one chapter to translate.");
       }
 
-      await syncGeminiToken(activeGeminiToken);
+      // Provider credential now managed server-side via Admin_API - no client-side token sync needed
       const activity = await api.createTranslationActivity({
         novel_id: translationNovel.novel_id,
         source_key: translationNovel.source,
@@ -528,6 +515,7 @@ export default function LibraryPage() {
           }
         }}
         onCancel={() => setPendingDeleteRows(null)}
+        auditNotice="This action is recorded in the audit log."
       />
     </>
   );

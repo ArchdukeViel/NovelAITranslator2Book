@@ -1,119 +1,156 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { Minus, Moon, Plus, Sun, Type } from "lucide-react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { api } from "@/lib/api";
-import { useUiStore } from "@/lib/store";
-import { cn } from "@/lib/utils";
+import { ReaderControls } from "@/components/public/reader-controls";
+import { useChapter } from "@/hooks/public";
+import { useAuthMe } from "@/hooks/public/use-auth";
+import { useRecordHistory } from "@/hooks/public/use-history";
+import { usePutProgress } from "@/hooks/public/use-progress";
+import { ApiError } from "@/lib/api";
+import { toReaderError, widthClass } from "@/lib/public-format";
+import { useReaderPrefsStore } from "@/lib/reader-prefs";
 
-const widthClass = {
-  compact: "max-w-2xl",
-  comfortable: "max-w-3xl",
-  wide: "max-w-5xl"
-};
+import "../../../../reader.css";
 
+/**
+ * Reader_View — chapter reading page with theme, font-size, and width controls.
+ * Uses the public-scoped useChapter hook (no owner credential).
+ * Theme applied via data-reader-theme attribute; NEVER toggles html.dark.
+ * Requirements: 5.1–5.8, 6.1–6.8, 15.1, 15.4
+ */
 export default function ChapterPage() {
   const params = useParams<{ slug: string; chapterId: string }>();
-  const novelId = decodeURIComponent(params.slug);
+  const slug = decodeURIComponent(params.slug);
   const chapterId = decodeURIComponent(params.chapterId);
-  const {
-    readerFontSize,
-    readerTheme,
-    readerWidth,
-    setReaderFontSize,
-    setReaderTheme,
-    setReaderWidth
-  } = useUiStore();
-  const chapter = useQuery({
-    queryKey: ["reader-chapter", novelId, chapterId],
-    queryFn: () => api.readerChapter(novelId, chapterId)
-  });
-  const data = chapter.data;
-  const dark = readerTheme === "dark";
-  const sepia = readerTheme === "sepia";
+
+  const { data, isPending, isError, error } = useChapter(slug, chapterId);
+  const { theme, fontSize, width } = useReaderPrefsStore();
+  const { data: authUser } = useAuthMe();
+  const putProgress = usePutProgress();
+  const recordHistory = useRecordHistory();
+
+  // Record reading progress when chapter changes (authenticated users only)
+  useEffect(() => {
+    if (authUser?.role === "user" && slug && chapterId) {
+      putProgress.mutate({ slug, chapterId });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chapterId, authUser?.role, slug]);
+
+  // Record reading history when chapter is first displayed (authenticated users only)
+  useEffect(() => {
+    if (authUser?.role === "user" && slug && chapterId) {
+      recordHistory.mutate({ slug, chapterId });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chapterId, authUser?.role, slug]);
+
+  // 404: chapter-unavailable message
+  if (
+    isError &&
+    error instanceof ApiError &&
+    error.status === 404
+  ) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-8">
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold">Chapter Unavailable</h1>
+          <p className="mt-2 text-sm opacity-70">
+            This chapter could not be found or is not available.
+          </p>
+          <Link
+            href={`/novel/${encodeURIComponent(slug)}`}
+            className="mt-4 inline-block text-sm underline hover:opacity-80"
+          >
+            Back to Novel
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Other errors: sanitized error message via toReaderError
+  if (isError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-8">
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold">Error</h1>
+          <p className="mt-2 text-sm opacity-70">{toReaderError(error)}</p>
+          <Link
+            href={`/novel/${encodeURIComponent(slug)}`}
+            className="mt-4 inline-block text-sm underline hover:opacity-80"
+          >
+            Back to Novel
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading indicator while pending
+  if (isPending) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-8">
+        <p className="text-sm opacity-70">Loading chapter…</p>
+      </div>
+    );
+  }
 
   return (
-    <main
-      className={cn(
-        "min-h-screen transition-colors",
-        dark && "bg-[#101418] text-slate-100",
-        sepia && "bg-[#f4ecd8] text-[#251b12]",
-        !dark && !sepia && "bg-background text-foreground"
-      )}
+    <div
+      data-reader-theme={theme}
+      className={`reader-container ${widthClass(width)}`}
+      style={{ fontSize: `${fontSize}px` }}
     >
-      <div className={cn("mx-auto px-5 py-8", widthClass[readerWidth])}>
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <Link className="text-sm opacity-75 hover:opacity-100" href={`/novel/${encodeURIComponent(novelId)}`}>
-            Back to chapters
-          </Link>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="icon" onClick={() => setReaderTheme(readerTheme === "dark" ? "light" : "dark")} aria-label="Toggle reader theme">
-              {dark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-            </Button>
-            <Button variant="outline" size="icon" onClick={() => setReaderFontSize(readerFontSize - 1)} aria-label="Decrease reader font size">
-              <Minus className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="icon" onClick={() => setReaderFontSize(readerFontSize + 1)} aria-label="Increase reader font size">
-              <Plus className="h-4 w-4" />
-            </Button>
-            <select
-              className="h-9 rounded-md border bg-background px-3 text-sm text-foreground"
-              value={readerWidth}
-              onChange={(event) => setReaderWidth(event.target.value as typeof readerWidth)}
-              aria-label="Reader width"
-            >
-              <option value="compact">compact</option>
-              <option value="comfortable">comfortable</option>
-              <option value="wide">wide</option>
-            </select>
-            <Button variant="outline" size="icon" onClick={() => setReaderTheme("sepia")} aria-label="Sepia reader theme">
-              <Type className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        <header className="my-6">
-          <div className="mb-3 flex flex-wrap gap-2">
-            <Badge tone="blue">Chapter {chapterId}</Badge>
-            {data?.version_kind ? <Badge tone="violet">{data.version_kind}</Badge> : null}
-          </div>
-          <h1 className="text-3xl font-semibold tracking-normal">{data?.title || `Chapter ${chapterId}`}</h1>
-          <p className="mt-2 text-sm opacity-70">{data?.novel_title || novelId}</p>
-        </header>
-
-        <article
-          className="whitespace-pre-wrap font-serif leading-[1.9]"
-          style={{ fontSize: `${readerFontSize}px` }}
+      {/* Controls bar */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <Link
+          href={`/novel/${encodeURIComponent(slug)}`}
+          className="text-sm opacity-75 hover:opacity-100"
         >
-          {data?.text || "Loading..."}
-        </article>
-
-        <nav className="mt-10 flex justify-between gap-3 border-t pt-5">
-          {data?.previous_chapter_id ? (
-            <Link
-              className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-muted"
-              href={`/novel/${encodeURIComponent(novelId)}/chapter/${encodeURIComponent(data.previous_chapter_id)}`}
-            >
-              Previous
-            </Link>
-          ) : (
-            <span />
-          )}
-          {data?.next_chapter_id ? (
-            <Link
-              className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-muted"
-              href={`/novel/${encodeURIComponent(novelId)}/chapter/${encodeURIComponent(data.next_chapter_id)}`}
-            >
-              Next
-            </Link>
-          ) : null}
-        </nav>
+          ← Back to Novel
+        </Link>
+        <ReaderControls />
       </div>
-    </main>
+
+      {/* Chapter header */}
+      <header className="mb-8">
+        <h1 className="text-3xl font-semibold tracking-normal">
+          {data.title || `Chapter ${chapterId}`}
+        </h1>
+      </header>
+
+      {/* Chapter text */}
+      <article className="whitespace-pre-wrap font-serif leading-[1.9]">
+        {data.text}
+      </article>
+
+      {/* Chapter navigation */}
+      <nav className="mt-10 flex justify-between gap-3 border-t pt-5">
+        {data.previous_chapter_id ? (
+          <Link
+            className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:opacity-80"
+            href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(data.previous_chapter_id)}`}
+          >
+            ← Previous
+          </Link>
+        ) : (
+          <span />
+        )}
+        {data.next_chapter_id ? (
+          <Link
+            className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:opacity-80"
+            href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(data.next_chapter_id)}`}
+          >
+            Next →
+          </Link>
+        ) : (
+          <span />
+        )}
+      </nav>
+    </div>
   );
 }
