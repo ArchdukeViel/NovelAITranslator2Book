@@ -435,60 +435,7 @@ export const adminAuth = {
 // Sends session cookie, never a bearer key
 // ===========================================
 export const adminApi = {
-  // Users (Req 10)
-  users: () => request<{ users: import("./api-types").UserRecord[] }>("/admin/users"),
-  updateUser: (id: number, patch: import("./api-types").UserMutation) =>
-    request<import("./api-types").UserRecord>(`/admin/users/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(patch)
-    }),
-
-  // Requests (Req 11)
-  requests: () => request<{ requests: import("./api-types").NovelRequestRecordAdmin[] }>("/admin/requests"),
-  reviewRequest: (id: string, patch: { status: import("./api-types").RequestStatus; notes?: string }) =>
-    request<import("./api-types").NovelRequestRecordAdmin>(`/admin/requests/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(patch)
-    }),
-  runRequest: (id: string) =>
-    request<import("./api-types").NovelRequestRecordAdmin>(`/admin/requests/${id}/run`, { method: "POST" }),
-
-  // Provider credential as CONFIG (Req 9)
-  // Note: API key sent ONLY as request body field, never as auth header
+  // Active provider credential status used by the admin shell.
   providerCredential: (provider?: string) =>
-    request<import("./api-types").ProviderCredential>(`/admin/providers/${provider ?? "gemini"}`),
-  setProviderCredential: (body: { provider?: string; api_key: string }) =>
-    request<import("./api-types").ProviderCredential>("/admin/providers", {
-      method: "POST",
-      body: JSON.stringify(body)
-    }),
-  validateProviderCredential: (provider?: string) =>
-    request<import("./api-types").ProviderCredential>(`/admin/providers/${provider ?? "gemini"}/validate`, {
-      method: "POST"
-    }),
-  activateProviderCredential: (id: string) =>
-    request<import("./api-types").ProviderCredential>(`/admin/providers/${id}/activate`, { method: "POST" }),
-  deleteProviderCredential: (id: string) =>
-    request<void>(`/admin/providers/${id}`, { method: "DELETE" }),
-
-  // Scheduler / QA / Provider policy (Req 16)
-  controlConfig: () => request<import("./api-types").ControlConfig>("/admin/controls"),
-  updateControlConfig: (patch: Partial<import("./api-types").ControlConfig>) =>
-    request<import("./api-types").ControlConfig>("/admin/controls", {
-      method: "PUT",
-      body: JSON.stringify(patch)
-    }),
-
-  // Contributed credentials oversight (Req 17)
-  contributedCredentials: () =>
-    request<{ credentials: import("./api-types").ContributedCredential[] }>("/admin/contributed-credentials"),
-  setContributedCredentialState: (id: string, enabled: boolean) =>
-    request<import("./api-types").ContributedCredential>(`/admin/contributed-credentials/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ enabled })
-    }),
-  validateContributedCredential: (id: string) =>
-    request<import("./api-types").ContributedCredential>(`/admin/contributed-credentials/${id}/validate`, {
-      method: "POST"
-    })
+    request<import("./api-types").ProviderCredential>(`/admin/providers/${provider ?? "gemini"}`)
 };
