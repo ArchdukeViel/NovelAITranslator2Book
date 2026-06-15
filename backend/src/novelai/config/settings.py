@@ -116,6 +116,12 @@ class AppSettings(BaseSettings):
     OWNER_BOOTSTRAP_SECRET: str | None = None
     # Session cookie max age in seconds (default: 8 hours).
     SESSION_MAX_AGE: int = 28_800
+    # Google OAuth for public user login. Missing values disable OAuth endpoints
+    # without breaking app startup.
+    GOOGLE_OAUTH_CLIENT_ID: str | None = None
+    GOOGLE_OAUTH_CLIENT_SECRET: SecretStr | None = None
+    GOOGLE_OAUTH_REDIRECT_URI: str | None = None
+    PUBLIC_FRONTEND_URL: str = "http://127.0.0.1:3000"
 
     # --- Cache
     TRANSLATION_CACHE_MAX_ENTRIES: int = 50_000
