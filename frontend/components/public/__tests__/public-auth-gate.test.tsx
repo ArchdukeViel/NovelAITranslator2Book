@@ -9,16 +9,18 @@ import { RequestControl } from "@/components/public/request-control";
 import { SaveToLibrary } from "@/components/public/save-to-library";
 
 describe("public auth gate", () => {
-  it("renders public login as unavailable without credential fields", () => {
+  it("renders public login with Google OAuth and without credential fields", () => {
     const html = renderToStaticMarkup(<LoginView onClose={() => undefined} />);
 
-    expect(html).toContain("Public accounts are not available yet.");
-    expect(html).toContain("Google login/email login will be added in a later phase.");
+    expect(html).toContain("Continue with Google");
     expect(html).toContain("Guest reading is still available.");
+    expect(html).toContain("User library, progress, reviews, and requests will return in a later phase.");
     expect(html).not.toContain("type=\"email\"");
     expect(html).not.toContain("type=\"password\"");
+    expect(html).not.toContain("token");
+    expect(html).not.toContain("secret");
     expect(html).not.toContain("Password / Token");
-    expect(html).not.toContain("Sign In");
+    expect(html).not.toContain("/api/auth/login");
   });
 
   it("renders user-gated actions as disabled unavailable controls", () => {
@@ -49,6 +51,8 @@ describe("public auth gate", () => {
     expect(publicApi).not.toContain("/api/auth/login");
     expect(publicApi).not.toContain("authApi.login");
     expect(publicHooks).not.toContain("useLogin");
-    expect(publicHooks).not.toContain("useAuthMe");
+    expect(publicHooks).toContain("useAuthMe");
+    expect(publicHooks).toContain("useLogout");
+    expect(publicHooks).toContain("useStartGoogleOAuth");
   });
 });

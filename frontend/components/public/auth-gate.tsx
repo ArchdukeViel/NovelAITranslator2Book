@@ -10,7 +10,7 @@ interface AuthGateProps {
 }
 
 /**
- * Public user accounts are not available yet, so user-only content stays inert.
+ * Public auth is available, but user-owned features stay inert until B4/B5.
  */
 export function AuthGate({ children: _children, fallback }: AuthGateProps) {
   return <>{fallback ?? <LoginPrompt />}</>;
