@@ -10,7 +10,7 @@ RUN python -m pip install --upgrade pip
 COPY pyproject.toml readme.md ./
 COPY backend ./backend
 
-RUN python -m pip install --no-cache-dir ".[documents,openai,gemini]"
+RUN python -m pip install --no-cache-dir ".[documents,openai,gemini,db,worker,auth]"
 
 ENV WEB_HOST=0.0.0.0
 ENV WEB_PORT=8000
