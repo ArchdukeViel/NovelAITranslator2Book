@@ -1,15 +1,34 @@
-yourdomain.com {
+# Production Caddyfile template for HTTPS via Let's Encrypt.
+#
+# Usage:
+#   1. Copy this file to deploy/Caddyfile (or mount it directly).
+#   2. Replace {$SITE_DOMAIN} with your actual domain, or set the
+#      SITE_DOMAIN environment variable in your .env / compose env_file.
+#   3. Ensure DNS A/AAAA records point to this server.
+#   4. Caddy automatically provisions and renews TLS certificates.
+#
+# For local development, use deploy/Caddyfile instead (HTTP-only on :80).
+
+{$SITE_DOMAIN:yourdomain.com} {
   encode zstd gzip
 
+  # Set HTTPS headers
+  header {
+    Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+
   handle /api/* {
-    reverse_proxy 127.0.0.1:8000
+    reverse_proxy backend:8000
   }
 
   handle {
-    reverse_proxy 127.0.0.1:3000
+    reverse_proxy frontend:3000
   }
 }
 
-# For Docker Compose, use deploy/Caddyfile instead. It proxies to:
+# For Docker Compose, this file proxies to:
 # - backend:8000 for /api/*
 # - frontend:3000 for everything else
