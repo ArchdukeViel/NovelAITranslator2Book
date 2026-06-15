@@ -9,8 +9,10 @@ describe("public auth gate", () => {
     const html = renderToStaticMarkup(<LoginView onClose={() => undefined} />);
 
     expect(html).toContain("Continue with Google");
-    expect(html).toContain("Guest reading is still available.");
-    expect(html).toContain("Library, progress, reviews, and requests are available after sign-in.");
+    expect(html).toContain("Guest reading");
+    expect(html).toContain("Save novels");
+    expect(html).toContain("Continue reading where");
+    expect(html).toContain("Leave reviews");
     expect(html).not.toContain("type=\"email\"");
     expect(html).not.toContain("type=\"password\"");
     expect(html).not.toContain("token");

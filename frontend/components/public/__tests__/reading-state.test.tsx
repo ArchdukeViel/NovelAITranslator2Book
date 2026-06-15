@@ -61,7 +61,7 @@ describe("public reading-state UI", () => {
     );
 
     expect(
-      await screen.findAllByText("User features will return in a later phase.")
+      await screen.findAllByText("Sign in to save novels, continue reading, and leave reviews.")
     ).toHaveLength(2);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/auth/me",
