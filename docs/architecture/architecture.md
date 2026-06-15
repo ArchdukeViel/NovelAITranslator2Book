@@ -444,6 +444,7 @@ cookies, or frontend-only flags.
 - Define object ownership rules for user-owned data.
 - Define `/api/user/*` request/response contracts.
 - Add backend/frontend contract tests before re-enabling UI.
+- Contract source: `docs/architecture/public-auth-contract.md`.
 
 **Phase C - Public user features**
 
