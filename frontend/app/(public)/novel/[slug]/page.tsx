@@ -10,7 +10,7 @@ import { ContinueReading } from "@/components/public/continue-reading";
 import { RatingReview } from "@/components/public/rating-review";
 import { RequestControl } from "@/components/public/request-control";
 import { SaveToLibrary } from "@/components/public/save-to-library";
-import { useNovel, useChapters } from "@/hooks/public";
+import { useNovel, useChapters, usePublicAuth } from "@/hooks/public";
 import { ApiError } from "@/lib/api";
 import {
   authorOrFallback,
@@ -21,6 +21,7 @@ import {
 export default function NovelDetailPage() {
   const params = useParams<{ slug: string }>();
   const slug = decodeURIComponent(params.slug);
+  const { isAuthenticated, isPending: authPending } = usePublicAuth();
 
   const novel = useNovel(slug);
   const chapters = useChapters(slug);
@@ -89,6 +90,10 @@ export default function NovelDetailPage() {
     ? sortChaptersAscending(chapters.data)
     : [];
 
+  // Find first translated chapter for "Start Reading" affordance
+  const firstTranslatedChapter = sortedChapters.find((ch) => ch.translated);
+  const firstChapterId = firstTranslatedChapter?.chapter_id ?? null;
+
   return (
     <main className="mx-auto max-w-5xl px-5 py-8">
       <Link
@@ -99,6 +104,7 @@ export default function NovelDetailPage() {
         Back to Browse
       </Link>
 
+      {/* Novel header */}
       <header className="my-6">
         <h1 className="text-3xl font-semibold tracking-normal">
           {data.title || slug}
@@ -109,31 +115,66 @@ export default function NovelDetailPage() {
         <div className="mt-4 flex flex-wrap gap-2">
           <Badge tone="blue">{data.translated_count} translated</Badge>
           <Badge tone="neutral">{data.chapter_count} listed</Badge>
+          {data.language && <Badge tone="neutral">{data.language}</Badge>}
+          {data.status && <Badge tone="amber">{data.status}</Badge>}
         </div>
       </header>
 
-      {/* Save to library — disabled until public accounts exist */}
-      <div className="my-4">
-        <SaveToLibrary slug={slug} />
-      </div>
+      {/* Reader actions panel — groups all user-facing controls together */}
+      <Panel className="my-6">
+        <PanelHeader>
+          <PanelTitle>Reader Actions</PanelTitle>
+        </PanelHeader>
+        <PanelBody className="flex flex-col gap-4 p-4">
+          {/* Authenticated: save + continue reading side-by-side */}
+          {!authPending && isAuthenticated && (
+            <div className="flex flex-wrap items-center gap-3">
+              <SaveToLibrary slug={slug} />
+              <ContinueReading slug={slug} firstChapterId={firstChapterId} />
+            </div>
+          )}
 
-      {/* Continue reading — disabled until public accounts exist */}
-      <div className="my-4">
-        <ContinueReading slug={slug} />
-      </div>
+          {/* Guest: single sign-in CTA instead of repeated login prompts */}
+          {!authPending && !isAuthenticated && (
+            <div className="flex flex-wrap items-center gap-3">
+              {firstChapterId && (
+                <Link
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
+                  href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(firstChapterId)}`}
+                >
+                  <BookOpen className="h-4 w-4" />
+                  Start Reading
+                </Link>
+              )}
+              {!firstChapterId && (
+                <span className="text-sm text-muted-foreground">
+                  No translated chapters available yet.
+                </span>
+              )}
+              <SaveToLibrary slug={slug} />
+            </div>
+          )}
 
-      {/* Rating/review — disabled until public accounts exist */}
-      <div className="my-4">
-        <RatingReview slug={slug} />
-      </div>
+          {/* Auth pending: loading state */}
+          {authPending && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+              Checking session…
+            </div>
+          )}
 
-      <div className="my-4">
-        <RequestControl slug={slug} />
-      </div>
+          {/* Review and request controls */}
+          <RatingReview slug={slug} />
+          <RequestControl slug={slug} />
+        </PanelBody>
+      </Panel>
 
+      {/* Chapter list */}
       <Panel>
         <PanelHeader>
-          <PanelTitle>Chapters</PanelTitle>
+          <PanelTitle>
+            Chapters ({sortedChapters.length})
+          </PanelTitle>
         </PanelHeader>
         <PanelBody className="p-0">
           {chapters.isPending ? (
