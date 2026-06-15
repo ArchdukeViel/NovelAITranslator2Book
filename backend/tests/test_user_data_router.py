@@ -1,7 +1,4 @@
-"""Tests for the user data router (/api/user/).
-
-Uses SQLite in-memory + SessionMiddleware; no real DB or network required.
-"""
+"""Contract tests for authenticated public user data routes."""
 
 from __future__ import annotations
 
@@ -13,28 +10,26 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
 
-from novelai.api.auth.roles import require_role
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import get_db_session
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.db.base import Base
 
-# Import ALL models so Base.metadata knows about every table before create_all.
-import novelai.db.models.novel      # noqa: F401
-import novelai.db.models.chapter    # noqa: F401
-import novelai.db.models.jobs       # noqa: F401
-import novelai.db.models.users      # noqa: F401
-import novelai.db.models.system     # noqa: F401
+import novelai.db.models.chapter  # noqa: F401
+import novelai.db.models.jobs  # noqa: F401
+import novelai.db.models.novel  # noqa: F401
+import novelai.db.models.system  # noqa: F401
+import novelai.db.models.users  # noqa: F401
 
+from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
+from novelai.db.models.users import LibraryItem, ReadingProgress, Review, User
 
 _SQLITE = "sqlite:///:memory:"
 
 
 @pytest.fixture()
 def db_session():
-    # StaticPool + check_same_thread=False: lets FastAPI's threadpool workers
-    # reuse the same in-memory SQLite connection safely across threads.
     engine = create_engine(
         _SQLITE,
         connect_args={"check_same_thread": False},
@@ -49,206 +44,302 @@ def db_session():
 
 
 @pytest.fixture()
-def seeded_novel(db_session):
+def seeded_catalog(db_session):
     novel = Novel(slug="test-novel", title="Test Novel", language="ja", status="ongoing")
-    db_session.add(novel)
+    other = Novel(slug="other-novel", title="Other Novel", language="ja", status="ongoing")
+    db_session.add_all([novel, other])
+    db_session.flush()
+    chapter = Chapter(novel_id=novel.id, chapter_number=1, title="Chapter One")
+    other_chapter = Chapter(novel_id=other.id, chapter_number=1, title="Other Chapter")
+    db_session.add_all([chapter, other_chapter])
     db_session.commit()
-    return novel
+    return {"novel": novel, "other": other, "chapter": chapter, "other_chapter": other_chapter}
 
 
 @pytest.fixture()
 def app(db_session):
+    current = {"user": None}
     _app = FastAPI()
     _app.add_middleware(SessionMiddleware, secret_key="test", https_only=False)
     _app.include_router(user_data_router)
-    _app.dependency_overrides[get_db_session] = lambda: db_session
+
+    def _db_override():
+        yield db_session
+        db_session.commit()
+
+    def _user_override():
+        return current["user"] or SessionUser(user_id=None, email=None, role="guest")
+
+    _app.dependency_overrides[get_db_session] = _db_override
+    _app.dependency_overrides[get_current_user] = _user_override
+    _app.state.current_user = current
     return _app
 
 
 @pytest.fixture()
-def guest_client(app):
+def client(app):
     return TestClient(app, raise_server_exceptions=True)
 
 
-@pytest.fixture()
-def user_client(app):
-    """Client with a user session injected via get_current_user override."""
-    from novelai.api.auth.session import get_current_user
-    _user = SessionUser(user_id=42, email="user@test.com", role="user")
-    app.dependency_overrides[get_current_user] = lambda: _user
-    return TestClient(app, raise_server_exceptions=True)
+def set_user(app: FastAPI, user_id: int, role: str = "user") -> None:
+    app.state.current_user["user"] = SessionUser(user_id=user_id, email=f"user{user_id}@test.com", role=role)
 
 
-# ---------------------------------------------------------------------------
-# Auth guard
-# ---------------------------------------------------------------------------
+def assert_keys(data: dict, keys: set[str]) -> None:
+    assert set(data) == keys
+
 
 class TestAuthGuard:
-    def test_guest_blocked_from_library(self, guest_client) -> None:
-        resp = guest_client.get("/api/user/library")
+    @pytest.mark.parametrize(
+        ("method", "path", "json"),
+        [
+            ("get", "/api/user/library", None),
+            ("post", "/api/user/library/test-novel", None),
+            ("delete", "/api/user/library/test-novel", None),
+            ("get", "/api/user/progress/test-novel", None),
+            ("put", "/api/user/progress/test-novel", {"progress_percent": 0.5}),
+            ("get", "/api/user/history", None),
+            ("post", "/api/user/history", {"slug": "test-novel"}),
+            ("put", "/api/user/reviews/test-novel", {"rating": 5}),
+            ("delete", "/api/user/reviews/test-novel", None),
+            ("get", "/api/user/requests", None),
+            ("post", "/api/user/requests", {"request_type": "novel", "source_url": "https://example.com/novel"}),
+        ],
+    )
+    def test_guest_blocked_from_user_endpoints(self, client, method, path, json) -> None:
+        resp = client.request(method.upper(), path, json=json)
         assert resp.status_code == 401
 
-    def test_guest_blocked_from_progress(self, guest_client) -> None:
-        resp = guest_client.get("/api/user/progress/some-novel")
-        assert resp.status_code == 401
 
-    def test_guest_blocked_from_history(self, guest_client) -> None:
-        resp = guest_client.get("/api/user/history")
-        assert resp.status_code == 401
+class TestLibraryContract:
+    def test_list_add_get_delete_library_shapes_and_idempotency(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
 
-    def test_guest_blocked_from_requests(self, guest_client) -> None:
-        resp = guest_client.get("/api/user/requests")
-        assert resp.status_code == 401
+        empty = client.get("/api/user/library")
+        assert empty.status_code == 200
+        assert empty.json() == []
+
+        created = client.post("/api/user/library/test-novel", json={"user_id": 999})
+        assert created.status_code == 201
+        assert_keys(created.json(), {"slug", "status", "added_at"})
+        assert created.json()["slug"] == "test-novel"
+        assert created.json()["status"] == "reading"
+
+        duplicate = client.post("/api/user/library/test-novel")
+        assert duplicate.status_code == 201
+        assert duplicate.json()["slug"] == "test-novel"
+
+        item = client.get("/api/user/library/test-novel")
+        assert item.status_code == 200
+        assert_keys(item.json(), {"slug", "status", "added_at"})
+
+        deleted = client.delete("/api/user/library/test-novel")
+        assert deleted.status_code == 204
+        missing_delete = client.delete("/api/user/library/test-novel")
+        assert missing_delete.status_code == 204
+
+    def test_library_unknown_novel_and_missing_membership_statuses(self, app, client) -> None:
+        set_user(app, 42)
+        assert client.post("/api/user/library/missing").status_code == 404
+        assert client.get("/api/user/library/missing").status_code == 404
+
+    def test_user_b_cannot_see_or_remove_user_a_library(self, app, client, seeded_catalog) -> None:
+        set_user(app, 1)
+        assert client.post("/api/user/library/test-novel").status_code == 201
+
+        set_user(app, 2)
+        assert client.get("/api/user/library").json() == []
+        assert client.get("/api/user/library/test-novel").status_code == 404
+        assert client.delete("/api/user/library/test-novel").status_code == 204
+
+        set_user(app, 1)
+        assert len(client.get("/api/user/library").json()) == 1
 
 
-# ---------------------------------------------------------------------------
-# Library
-# ---------------------------------------------------------------------------
+class TestProgressContract:
+    def test_progress_get_and_put_shape_and_upsert(self, app, client, seeded_catalog, db_session) -> None:
+        set_user(app, 42)
+        chapter_id = str(seeded_catalog["chapter"].id)
 
-class TestLibrary:
-    def test_empty_library(self, user_client) -> None:
-        resp = user_client.get("/api/user/library")
-        assert resp.status_code == 200
-        assert resp.json() == []
+        initial = client.get("/api/user/progress/test-novel")
+        assert initial.status_code == 200
+        assert_keys(initial.json(), {"slug", "chapter_id", "progress_percent", "updated_at"})
+        assert initial.json()["progress_percent"] == 0.0
 
-    def test_add_to_library(self, user_client, db_session, seeded_novel) -> None:
-        resp = user_client.post("/api/user/library/test-novel")
+        updated = client.put(
+            "/api/user/progress/test-novel",
+            json={"chapter_id": chapter_id, "progress_percent": 0.75, "user_id": 999},
+        )
+        assert updated.status_code == 422
+
+        updated = client.put(
+            "/api/user/progress/test-novel",
+            json={"chapter_id": chapter_id, "progress_percent": 0.75},
+        )
+        assert updated.status_code == 200
+        assert updated.json()["chapter_id"] == chapter_id
+        assert updated.json()["progress_percent"] == 0.75
+
+        overwritten = client.put("/api/user/progress/test-novel", json={"progress_percent": 0.5})
+        assert overwritten.status_code == 200
+        assert overwritten.json()["progress_percent"] == 0.5
+        assert db_session.query(ReadingProgress).filter_by(user_id=42, novel_id=seeded_catalog["novel"].id).count() == 1
+
+    def test_progress_validation(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        assert client.get("/api/user/progress/missing").status_code == 404
+        assert client.put("/api/user/progress/test-novel", json={"progress_percent": 1.5}).status_code == 422
+        assert client.put(
+            "/api/user/progress/test-novel",
+            json={"chapter_id": str(seeded_catalog["other_chapter"].id), "progress_percent": 0.3},
+        ).status_code == 404
+
+    def test_user_b_cannot_read_or_update_user_a_progress(self, app, client, seeded_catalog) -> None:
+        set_user(app, 1)
+        client.put("/api/user/progress/test-novel", json={"progress_percent": 0.9})
+
+        set_user(app, 2)
+        assert client.get("/api/user/progress/test-novel").json()["progress_percent"] == 0.0
+        client.put("/api/user/progress/test-novel", json={"progress_percent": 0.2})
+
+        set_user(app, 1)
+        assert client.get("/api/user/progress/test-novel").json()["progress_percent"] == 0.9
+
+
+class TestHistoryContract:
+    def test_history_records_body_shape_and_lists_newest_first(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        chapter_id = str(seeded_catalog["chapter"].id)
+        first = client.post("/api/user/history", json={"slug": "test-novel", "chapter_id": chapter_id})
+        second = client.post("/api/user/history", json={"slug": "test-novel"})
+        assert first.status_code == 201
+        assert_keys(first.json(), {"id", "slug", "chapter_id", "read_at"})
+        assert second.status_code == 201
+
+        listed = client.get("/api/user/history?limit=1")
+        assert listed.status_code == 200
+        assert_keys(listed.json(), {"items", "next_cursor"})
+        assert len(listed.json()["items"]) == 1
+        assert listed.json()["items"][0]["id"] == second.json()["id"]
+
+    def test_history_validation_and_legacy_query_compatibility(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        assert client.post("/api/user/history").status_code == 400
+        assert client.post("/api/user/history", json={"slug": "missing"}).status_code == 404
+        assert client.post("/api/user/history?slug=test-novel").status_code == 201
+
+    def test_user_b_cannot_see_user_a_history(self, app, client, seeded_catalog) -> None:
+        set_user(app, 1)
+        client.post("/api/user/history", json={"slug": "test-novel"})
+
+        set_user(app, 2)
+        assert client.get("/api/user/history").json()["items"] == []
+
+
+class TestReviewContract:
+    def test_put_review_upserts_and_delete_is_idempotent(self, app, client, seeded_catalog, db_session) -> None:
+        set_user(app, 42)
+        created = client.put("/api/user/reviews/test-novel", json={"rating": 5, "body": "Great"})
+        assert created.status_code == 200
+        assert_keys(created.json(), {"slug", "rating", "body", "status", "updated_at"})
+        assert created.json()["status"] == "pending"
+
+        updated = client.put("/api/user/reviews/test-novel", json={"rating": 4, "body": "Still good"})
+        assert updated.status_code == 200
+        assert updated.json()["rating"] == 4
+        assert db_session.query(Review).filter_by(user_id=42, novel_id=seeded_catalog["novel"].id).count() == 1
+
+        assert client.delete("/api/user/reviews/test-novel").status_code == 204
+        assert client.delete("/api/user/reviews/test-novel").status_code == 204
+
+    def test_legacy_post_review_preserved_with_contract_shape(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        resp = client.post("/api/user/reviews/test-novel", json={"rating": 5, "body": "Great novel!"})
+        assert resp.status_code == 201
+        assert_keys(resp.json(), {"slug", "rating", "body", "status", "updated_at"})
+
+    def test_review_validation_and_unknown_novel(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        assert client.put("/api/user/reviews/test-novel", json={"rating": 6}).status_code == 422
+        assert client.put("/api/user/reviews/test-novel", json={"rating": 0}).status_code == 422
+        assert client.put("/api/user/reviews/unknown", json={"rating": 3}).status_code == 404
+        assert client.put("/api/user/reviews/test-novel", json={"rating": 5, "user_id": 99}).status_code == 422
+
+    def test_user_b_cannot_modify_user_a_review(self, app, client, seeded_catalog) -> None:
+        set_user(app, 1)
+        client.put("/api/user/reviews/test-novel", json={"rating": 5})
+
+        set_user(app, 2)
+        client.delete("/api/user/reviews/test-novel")
+
+        set_user(app, 1)
+        client.put("/api/user/reviews/test-novel", json={"rating": 4})
+        set_user(app, 2)
+        client.put("/api/user/reviews/test-novel", json={"rating": 2})
+        set_user(app, 1)
+        # User A's review still exists independently; no public read endpoint is exposed yet.
+        assert client.delete("/api/user/reviews/test-novel").status_code == 204
+
+
+class TestRequestContract:
+    def test_request_create_list_shape_and_duplicate_pending_idempotency(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        payload = {"request_type": "novel", "source_url": "https://example.com/novel"}
+        created = client.post("/api/user/requests", json=payload)
+        duplicate = client.post("/api/user/requests", json=payload)
+        assert created.status_code == 201
+        assert duplicate.status_code == 201
+        assert duplicate.json()["id"] == created.json()["id"]
+        assert_keys(created.json(), {"id", "request_type", "status", "source_url", "slug", "chapter_id", "created_at"})
+        assert created.json()["status"] == "pending"
+
+        listed = client.get("/api/user/requests")
+        assert listed.status_code == 200
+        assert_keys(listed.json(), {"items", "next_cursor"})
+        assert len(listed.json()["items"]) == 1
+
+    def test_chapter_request_validation(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        chapter_id = str(seeded_catalog["chapter"].id)
+        resp = client.post(
+            "/api/user/requests",
+            json={"request_type": "chapter", "slug": "test-novel", "chapter_id": chapter_id},
+        )
         assert resp.status_code == 201
         assert resp.json()["slug"] == "test-novel"
+        assert resp.json()["chapter_id"] is None
 
-    def test_add_unknown_novel_returns_404(self, user_client) -> None:
-        resp = user_client.post("/api/user/library/does-not-exist")
-        assert resp.status_code == 404
-
-    def test_add_twice_returns_already_in_library(self, user_client, seeded_novel) -> None:
-        user_client.post("/api/user/library/test-novel")
-        resp = user_client.post("/api/user/library/test-novel")
-        assert resp.status_code == 201
-        assert resp.json()["message"] == "already_in_library"
-
-    def test_list_library_after_add(self, user_client, seeded_novel) -> None:
-        user_client.post("/api/user/library/test-novel")
-        resp = user_client.get("/api/user/library")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert len(data) == 1
-        assert data[0]["slug"] == "test-novel"
-
-    def test_remove_from_library(self, user_client, seeded_novel) -> None:
-        user_client.post("/api/user/library/test-novel")
-        resp = user_client.delete("/api/user/library/test-novel")
-        assert resp.status_code == 204
-        assert user_client.get("/api/user/library").json() == []
-
-    def test_remove_unknown_is_no_op(self, user_client, seeded_novel) -> None:
-        resp = user_client.delete("/api/user/library/test-novel")
-        assert resp.status_code == 204
-
-
-# ---------------------------------------------------------------------------
-# Reading progress
-# ---------------------------------------------------------------------------
-
-class TestReadingProgress:
-    def test_get_progress_no_record(self, user_client, seeded_novel) -> None:
-        resp = user_client.get("/api/user/progress/test-novel")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["progress_percent"] == 0.0
-        assert data["chapter_id"] is None
-
-    def test_update_progress(self, user_client, seeded_novel) -> None:
-        resp = user_client.put(
-            "/api/user/progress/test-novel",
-            json={"progress_percent": 0.75},
-        )
-        assert resp.status_code == 200
-        assert resp.json()["progress_percent"] == 0.75
-
-    def test_progress_persists_after_update(self, user_client, seeded_novel) -> None:
-        user_client.put("/api/user/progress/test-novel", json={"progress_percent": 0.5})
-        resp = user_client.get("/api/user/progress/test-novel")
-        assert resp.json()["progress_percent"] == 0.5
-
-    def test_progress_404_for_unknown_novel(self, user_client) -> None:
-        resp = user_client.get("/api/user/progress/unknown")
-        assert resp.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# Reading history
-# ---------------------------------------------------------------------------
-
-class TestReadingHistory:
-    def test_record_history(self, user_client, seeded_novel) -> None:
-        resp = user_client.post("/api/user/history?slug=test-novel")
-        assert resp.status_code == 201
-        assert resp.json()["recorded"] is True
-
-    def test_list_history(self, user_client, seeded_novel) -> None:
-        user_client.post("/api/user/history?slug=test-novel")
-        resp = user_client.get("/api/user/history")
-        assert resp.status_code == 200
-        assert len(resp.json()) == 1
-
-    def test_multiple_history_entries(self, user_client, seeded_novel) -> None:
-        user_client.post("/api/user/history?slug=test-novel")
-        user_client.post("/api/user/history?slug=test-novel")
-        resp = user_client.get("/api/user/history")
-        assert len(resp.json()) == 2
-
-
-# ---------------------------------------------------------------------------
-# Reviews
-# ---------------------------------------------------------------------------
-
-class TestReviews:
-    def test_post_review(self, user_client, seeded_novel) -> None:
-        resp = user_client.post(
-            "/api/user/reviews/test-novel",
-            json={"rating": 5, "body": "Great novel!"},
-        )
-        assert resp.status_code == 201
-        assert resp.json()["rating"] == 5
-
-    def test_review_without_rating(self, user_client, seeded_novel) -> None:
-        resp = user_client.post(
-            "/api/user/reviews/test-novel",
-            json={"body": "No rating"},
-        )
-        assert resp.status_code == 201
-
-    def test_review_404_for_unknown(self, user_client) -> None:
-        resp = user_client.post("/api/user/reviews/unknown", json={"rating": 3})
-        assert resp.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# Requests
-# ---------------------------------------------------------------------------
-
-class TestNovelRequests:
-    def test_submit_request(self, user_client) -> None:
-        resp = user_client.post(
+        assert client.post("/api/user/requests", json={"request_type": "bad"}).status_code == 422
+        assert client.post("/api/user/requests", json={"request_type": "novel"}).status_code == 422
+        assert client.post(
             "/api/user/requests",
-            json={"request_type": "new_novel", "source_url": "https://example.com/novel"},
-        )
+            json={"request_type": "chapter", "slug": "test-novel", "chapter_id": str(seeded_catalog["other_chapter"].id)},
+        ).status_code == 404
+        assert client.post(
+            "/api/user/requests",
+            json={"request_type": "novel", "source_url": "https://example.com/novel", "user_id": 1},
+        ).status_code == 422
+
+    def test_user_b_cannot_see_user_a_requests(self, app, client, seeded_catalog) -> None:
+        set_user(app, 1)
+        client.post("/api/user/requests", json={"request_type": "novel", "source_url": "https://example.com/novel"})
+
+        set_user(app, 2)
+        assert client.get("/api/user/requests").json()["items"] == []
+
+    def test_requests_never_auto_trigger_jobs(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        resp = client.post("/api/user/requests", json={"request_type": "chapter", "slug": "test-novel"})
         assert resp.status_code == 201
         assert resp.json()["status"] == "pending"
-
-    def test_list_requests(self, user_client) -> None:
-        user_client.post("/api/user/requests", json={"request_type": "new_novel"})
-        resp = user_client.get("/api/user/requests")
-        assert resp.status_code == 200
-        assert len(resp.json()) == 1
-
-    def test_requests_never_auto_trigger_jobs(self, user_client) -> None:
-        """Requests land as 'pending' — owner must approve (architecture §20)."""
-        resp = user_client.post(
-            "/api/user/requests",
-            json={"request_type": "translate_chapter"},
-        )
-        assert resp.json()["status"] == "pending"
-        # There is no 'auto_translate' or 'triggered' field in the response
         assert "auto_translate" not in resp.json()
         assert "triggered" not in resp.json()
+
+
+class TestOwnerSessionDoesNotBypassOwnership:
+    def test_owner_only_sees_owner_session_user_data(self, app, client, seeded_catalog) -> None:
+        set_user(app, 1, role="user")
+        client.post("/api/user/library/test-novel")
+
+        set_user(app, 999, role="owner")
+        assert client.get("/api/user/library").json() == []

@@ -183,6 +183,11 @@ behavior for user features.
 | Future frontend | `userApi.listRequests`, `userApi.createRequest`; hooks `useRequests`, `useCreateRequest` |
 | Required tests | Guest blocked; user A/B isolation; requests never auto-trigger jobs; duplicate/rate-limit behavior; URL validation; status not client-controlled |
 
+Current backend schema note: `NovelRequest` stores `request_type`, `novel_id`,
+`source_url`, `status`, and timestamps. `chapter_id` and `details` may be
+validated at request time, but persistence for those fields requires a later
+schema migration and must not be faked.
+
 ## 5. Frontend Re-enable Plan
 
 Do not re-enable UI until backend contract tests pass.
