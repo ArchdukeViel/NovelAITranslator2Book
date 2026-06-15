@@ -110,6 +110,48 @@ export interface HistoryRecordInput {
   chapter_id?: string | null;
 }
 
+// ---- Engagement (reviews/ratings and public requests) ----
+
+export interface ReviewInput {
+  rating?: number | null;
+  body?: string | null;
+}
+
+export interface ReviewResponse {
+  slug: string;
+  rating: number | null;
+  body: string | null;
+  status: "pending" | "published" | "rejected" | string;
+  updated_at: string;
+}
+
+export interface PublicRequestInput {
+  request_type: "novel" | "chapter";
+  source_url?: string | null;
+  slug?: string | null;
+  chapter_id?: string | null;
+  details?: string | null;
+}
+
+export interface PublicRequest {
+  id: number;
+  request_type: string;
+  status: "pending" | "approved" | "rejected" | "completed" | string;
+  source_url: string | null;
+  slug: string | null;
+  chapter_id: string | null;
+  created_at: string;
+}
+
+export interface RequestListParams {
+  limit?: number;
+}
+
+export interface RequestListResponse {
+  items: PublicRequest[];
+  next_cursor: string | null;
+}
+
 // ---- Contribution (frontend-designed; backend dependency) ----
 
 export type ContributionStatus = "Unchecked" | "Checking" | "Working" | "Failed";
