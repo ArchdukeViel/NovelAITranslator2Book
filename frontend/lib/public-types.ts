@@ -60,11 +60,6 @@ export interface AuthUser {
   is_owner: boolean;
 }
 
-export interface LoginInput {
-  email?: string;
-  secret: string;
-}
-
 // ---- User data (from routers/user_data.py) ----
 
 export interface LibraryMembership {

@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuthMe } from "@/hooks/public/use-auth";
 import { LoginPrompt } from "@/components/public/login-prompt";
 
 interface AuthGateProps {
@@ -11,18 +10,8 @@ interface AuthGateProps {
 }
 
 /**
- * Role-based gating component.
- * Renders children when the current user has role "user" (authenticated),
- * otherwise renders the LoginPrompt (or a custom fallback).
- *
- * Requirements: 9.1, 9.2, 9.3, 9.4
+ * Public user accounts are not available yet, so user-only content stays inert.
  */
-export function AuthGate({ children, fallback }: AuthGateProps) {
-  const { data: authUser } = useAuthMe();
-
-  if (authUser?.role === "user") {
-    return <>{children}</>;
-  }
-
+export function AuthGate({ children: _children, fallback }: AuthGateProps) {
   return <>{fallback ?? <LoginPrompt />}</>;
 }
