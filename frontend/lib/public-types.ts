@@ -60,53 +60,6 @@ export interface AuthUser {
   is_owner: boolean;
 }
 
-// ---- User data (from routers/user_data.py) ----
-
-export interface LibraryMembership {
-  slug: string;
-  inLibrary: boolean;
-  status?: string;
-}
-
-export interface ReadingProgress {
-  slug: string;
-  chapter_id: string | null;
-  progress_percent: number;
-}
-
-export interface HistoryEntry {
-  slug: string;
-  read_at: string;
-  chapter_id?: string | null;
-}
-
-export interface ReviewInput {
-  rating: number;
-  body?: string;
-}
-
-export interface ReviewResult {
-  slug: string;
-  rating: number | null;
-  message: string;
-}
-
-export type NovelRequestType = "novel" | "chapter";
-
-export interface NovelRequestInput {
-  request_type: NovelRequestType;
-  source_url?: string;
-  novel_id?: number | null;
-  details?: string;
-}
-
-export interface NovelRequest {
-  id: number;
-  request_type: string;
-  status: string;
-  source_url: string | null;
-}
-
 // ---- Contribution (frontend-designed; backend dependency) ----
 
 export type ContributionStatus = "Unchecked" | "Checking" | "Working" | "Failed";

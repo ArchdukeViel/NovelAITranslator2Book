@@ -13,17 +13,10 @@ import type { ApiErrorPayload } from "@/lib/api-types";
 import type {
   AuthUser,
   CatalogParams,
-  HistoryEntry,
-  LibraryMembership,
-  NovelRequest,
-  NovelRequestInput,
   PublicCatalogResponse,
   PublicChapterDetail,
   PublicChapterSummary,
   PublicNovelSummary,
-  ReadingProgress,
-  ReviewInput,
-  ReviewResult,
 } from "@/lib/public-types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
@@ -143,29 +136,6 @@ async function publicPost<T>(path: string, body?: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function publicPut<T>(path: string, body?: unknown): Promise<T> {
-  const response = await publicFetch(path, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (response.status === 204) {
-    return undefined as T;
-  }
-  return response.json() as Promise<T>;
-}
-
-async function publicDelete<T>(path: string): Promise<T> {
-  const response = await publicFetch(path, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-  });
-  if (response.status === 204) {
-    return undefined as T;
-  }
-  return response.json() as Promise<T>;
-}
-
 // ---------------------------------------------------------------------------
 // Public API client — /api/public/*
 // ---------------------------------------------------------------------------
@@ -216,68 +186,4 @@ export const authApi = {
   logout(): Promise<void> {
     return publicPost<void>("/api/auth/logout");
   },
-};
-
-// ---------------------------------------------------------------------------
-// User API client — /api/user/*
-// ---------------------------------------------------------------------------
-
-export const userApi = {
-  getLibraryItem(slug: string): Promise<LibraryMembership> {
-    return publicGet<LibraryMembership>(
-      `/api/user/library/${encodeURIComponent(slug)}`
-    );
-  },
-
-  addToLibrary(slug: string): Promise<LibraryMembership> {
-    return publicPost<LibraryMembership>(
-      `/api/user/library/${encodeURIComponent(slug)}`
-    );
-  },
-
-  removeFromLibrary(slug: string): Promise<void> {
-    return publicDelete<void>(
-      `/api/user/library/${encodeURIComponent(slug)}`
-    );
-  },
-
-  getProgress(slug: string): Promise<ReadingProgress> {
-    return publicGet<ReadingProgress>(
-      `/api/user/progress/${encodeURIComponent(slug)}`
-    );
-  },
-
-  putProgress(slug: string, chapterId: string): Promise<ReadingProgress> {
-    return publicPut<ReadingProgress>(
-      `/api/user/progress/${encodeURIComponent(slug)}`,
-      { chapter_id: chapterId }
-    );
-  },
-
-  recordHistory(slug: string, chapterId: string): Promise<void> {
-    return publicPost<void>("/api/user/history", {
-      slug,
-      chapter_id: chapterId,
-    });
-  },
-
-  listHistory(): Promise<HistoryEntry[]> {
-    return publicGet<HistoryEntry[]>("/api/user/history");
-  },
-
-  postReview(slug: string, review: ReviewInput): Promise<ReviewResult> {
-    return publicPost<ReviewResult>(
-      `/api/user/reviews/${encodeURIComponent(slug)}`,
-      review
-    );
-  },
-
-  listRequests(): Promise<NovelRequest[]> {
-    return publicGet<NovelRequest[]>("/api/user/requests");
-  },
-
-  createRequest(input: NovelRequestInput): Promise<NovelRequest> {
-    return publicPost<NovelRequest>("/api/user/requests", input);
-  },
-
 };
