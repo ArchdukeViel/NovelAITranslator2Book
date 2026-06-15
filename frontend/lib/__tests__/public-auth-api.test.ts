@@ -19,13 +19,15 @@ describe("public auth API", () => {
     expect(googleOAuthStartUrl("relative/path")).toContain("next=%2F");
   });
 
-  it("does not restore owner bootstrap login or public user APIs", () => {
+  it("does not restore owner bootstrap login or non-reading public user APIs", () => {
     const source = readFileSync("lib/public-api.ts", "utf8");
 
     expect(source).not.toContain("/api/auth/login");
     expect(source).not.toContain("authApi.login");
     expect(source).not.toContain("LoginInput");
-    expect(source).not.toContain("/api/user/");
     expect(source).not.toContain("userApi");
+    expect(source).not.toContain("/api/user/reviews");
+    expect(source).not.toContain("/api/user/requests");
+    expect(source).not.toContain("/api/user/contributions");
   });
 });

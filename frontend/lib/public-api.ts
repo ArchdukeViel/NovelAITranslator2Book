@@ -13,6 +13,13 @@ import type { ApiErrorPayload } from "@/lib/api-types";
 import type {
   AuthUser,
   CatalogParams,
+  HistoryListParams,
+  HistoryListResponse,
+  HistoryRecordInput,
+  HistoryEntry,
+  LibraryItem,
+  ProgressInput,
+  ProgressResponse,
   PublicCatalogResponse,
   PublicChapterDetail,
   PublicChapterSummary,
@@ -137,6 +144,22 @@ async function publicPost<T>(path: string, body?: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function publicPut<T>(path: string, body: unknown): Promise<T> {
+  const response = await publicFetch(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  return response.json() as Promise<T>;
+}
+
+async function publicDelete(path: string): Promise<void> {
+  await publicFetch(path, { method: "DELETE" });
+}
+
 function safeRelativeReturnPath(returnTo?: string): string {
   if (!returnTo || !returnTo.startsWith("/") || returnTo.startsWith("//")) {
     return DEFAULT_PUBLIC_RETURN_TO;
@@ -211,5 +234,59 @@ export const authApi = {
 
   googleStart(returnTo?: string): string {
     return googleOAuthStartUrl(returnTo);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Reading-state API client - /api/user/library, /progress, /history only
+// ---------------------------------------------------------------------------
+
+export const userReadingApi = {
+  getLibrary(): Promise<LibraryItem[]> {
+    return publicGet<LibraryItem[]>("/api/user/library");
+  },
+
+  getLibraryItem(slug: string): Promise<LibraryItem> {
+    return publicGet<LibraryItem>(
+      `/api/user/library/${encodeURIComponent(slug)}`
+    );
+  },
+
+  addToLibrary(slug: string): Promise<LibraryItem> {
+    return publicPost<LibraryItem>(
+      `/api/user/library/${encodeURIComponent(slug)}`
+    );
+  },
+
+  removeFromLibrary(slug: string): Promise<void> {
+    return publicDelete(`/api/user/library/${encodeURIComponent(slug)}`);
+  },
+
+  getProgress(slug: string): Promise<ProgressResponse> {
+    return publicGet<ProgressResponse>(
+      `/api/user/progress/${encodeURIComponent(slug)}`
+    );
+  },
+
+  putProgress(slug: string, input: ProgressInput): Promise<ProgressResponse> {
+    return publicPut<ProgressResponse>(
+      `/api/user/progress/${encodeURIComponent(slug)}`,
+      input
+    );
+  },
+
+  listHistory(params: HistoryListParams = {}): Promise<HistoryListResponse> {
+    const search = new URLSearchParams();
+    if (params.limit !== undefined) {
+      search.set("limit", String(params.limit));
+    }
+    const qs = search.toString();
+    return publicGet<HistoryListResponse>(
+      `/api/user/history${qs ? `?${qs}` : ""}`
+    );
+  },
+
+  recordHistory(input: HistoryRecordInput): Promise<HistoryEntry> {
+    return publicPost<HistoryEntry>("/api/user/history", input);
   },
 };

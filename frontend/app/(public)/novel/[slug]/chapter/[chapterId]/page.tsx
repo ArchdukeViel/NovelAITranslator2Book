@@ -1,10 +1,16 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { ReaderControls } from "@/components/public/reader-controls";
-import { useChapter } from "@/hooks/public";
+import {
+  useChapter,
+  usePublicAuth,
+  useRecordHistory,
+  useUpdateProgress,
+} from "@/hooks/public";
 import { ApiError } from "@/lib/api";
 import { toReaderError, widthClass } from "@/lib/public-format";
 import { useReaderPrefsStore } from "@/lib/reader-prefs";
@@ -23,7 +29,26 @@ export default function ChapterPage() {
   const chapterId = decodeURIComponent(params.chapterId);
 
   const { data, isPending, isError, error } = useChapter(slug, chapterId);
+  const { isAuthenticated } = usePublicAuth();
+  const updateProgress = useUpdateProgress(slug);
+  const recordHistory = useRecordHistory();
+  const trackedChapterRef = useRef<string | null>(null);
   const { theme, fontSize, width } = useReaderPrefsStore();
+
+  useEffect(() => {
+    if (!isAuthenticated || !data || trackedChapterRef.current === chapterId) {
+      return;
+    }
+    trackedChapterRef.current = chapterId;
+    updateProgress.mutate({
+      chapter_id: chapterId,
+      progress_percent: 0,
+    });
+    recordHistory.mutate({
+      slug,
+      chapter_id: chapterId,
+    });
+  }, [chapterId, data, isAuthenticated, recordHistory, slug, updateProgress]);
 
   // 404: chapter-unavailable message
   if (
