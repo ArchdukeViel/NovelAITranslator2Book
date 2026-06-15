@@ -1,11 +1,11 @@
 # NovelAI Current State
 
-**Last updated**: 2026-06-09
+**Last updated**: 2026-06-15 (doc audit refresh)
 **Source of truth**: `docs/architecture/architecture.md`
 
 ## Verdict
 
-**PASS** — Core platform operational. 713 tests passing. Database migrated to Supabase (PostgreSQL 16). RLS policies applied. Data migration complete.
+**PASS** — Core platform operational. Database migrated to PostgreSQL 16. Google OAuth public login implemented. Public user features (library, progress, history, reviews, requests) re-enabled with CSRF and rate-limit hardening.
 
 ---
 
@@ -38,7 +38,9 @@
 || Alembic migrations | ✅ | Applied — `bb48b53baff5_initial_schema` on Supabase |
 || Data migration script | ✅ | `backend/src/novelai/scripts/migrate_file_to_db.py` — 1 novel, 12 chapters migrated |
 || Object storage boundary | ⚠️ | Authorized for v1, not yet implemented |
-|| Google OAuth | ⚠️ | Schema supports it (`auth_provider`, `auth_provider_subject`), not wired |
+|| Google OAuth | ✅ | Backend routes (`/api/auth/google/start`, `/api/auth/google/callback`), frontend login view, and auth hooks implemented |
+| Public user features | ✅ | Library, progress, history, reviews/ratings, requests frontend hooks re-enabled |
+| Security hardening | ✅ | CSRF enforcement, public rate limits, production session secret fail-closed |
 
 ### Not Implemented (Blocked / Later Phase)
 
@@ -126,6 +128,8 @@
 
 ### Auth
 - `POST /api/auth/login` — owner login (secret-based bootstrap)
+- `GET /api/auth/google/start` — start public Google OAuth login
+- `GET /api/auth/google/callback` — complete public Google OAuth login
 - `POST /api/auth/logout` — clear session
 - `GET /api/auth/me` — current user info
 
@@ -200,9 +204,12 @@ backend/src/novelai/
 
 1. ~~Create Alembic migrations folder and initial migration~~ ✅ Done
 2. ~~Run data migration (file-backed → Postgres)~~ ✅ Done (1 novel, 12 chapters)
-3. Wire Google OAuth for public user login
-4. Implement object storage boundary (S3/R2/B2)
-5. Scheduler resume hardening
+3. ~~Wire Google OAuth for public user login~~ ✅ Done
+4. ~~Public user features re-enable (library, progress, history, reviews, requests)~~ ✅ Done
+5. ~~CSRF, rate-limit, and security hardening~~ ✅ Done
+6. Implement object storage boundary (S3/R2/B2)
+7. Scheduler resume hardening
+8. Production deployment (DEP1)
 
 ---
 
@@ -234,5 +241,9 @@ cd frontend && npm run dev                           # Admin UI
 - [x] Role-based authorization (`require_role()`)
 - [x] Object-level authorization on user-owned endpoints
 - [x] Row Level Security (Supabase RLS policies applied)
+- [x] CSRF token enforcement for cookie-auth mutations
+- [x] Basic public rate limits (auth, user data, engagement)
+- [x] Production session secret fail-closed
+- [x] Google OAuth public login (separate from owner bootstrap)
 - [ ] Encrypted credential storage (later phase)
 - [ ] Security audit logging (schema ready, not wired)

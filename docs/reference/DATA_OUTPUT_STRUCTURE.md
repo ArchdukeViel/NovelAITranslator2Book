@@ -887,28 +887,35 @@ Typical web workflow:
 
 ## API Integration
 
-The web backend reads and writes this storage through service classes. Common API shapes include:
+The web backend reads and writes this storage through service classes. Current canonical API routes:
 
 ```text
 GET  /api/health
-GET  /api/novels
-GET  /api/novels/{novel_id}/metadata
-GET  /api/novels/{novel_id}/chapters/{chapter_id}
-GET  /api/novels/activity
-GET  /api/novels/activity/{activity_id}
-POST /api/novels/activity/crawl
-POST /api/novels/activity/translation
+GET  /api/public/catalog                        — paginated novel list
+GET  /api/public/novels/{slug}                   — novel detail
+GET  /api/public/novels/{slug}/chapters          — chapter list
+GET  /api/public/novels/{slug}/chapters/{id}     — chapter reader
+GET/POST/DELETE /api/user/library/{slug}         — user library
+GET/PUT /api/user/progress/{slug}                — reading progress
+GET/POST /api/user/history                       — reading history
+POST /api/user/reviews/{slug}                    — reviews/ratings
+GET/POST /api/user/requests                      — novel/chapter requests
+POST /api/auth/login                             — owner bootstrap login
+GET  /api/auth/google/start                      — Google OAuth start
+GET  /api/auth/google/callback                   — Google OAuth callback
+POST /api/auth/logout                            — clear session
+GET  /api/auth/me                                — current session
+/api/admin/*                                     — admin operations (crawl, translate, settings, activity, editor, requests)
 ```
 
-Legacy `/api/novels/jobs*` compatibility routes may exist for older callers, but new code should use the activity routes and canonical `activity_id` / `job_id` fields.
+Legacy `/api/novels/*` compatibility routes may remain for older callers, but new code should use the routes above and canonical `activity_id` / `job_id` fields.
 
 ## Scaling Notes
 
-The JSON-backed store is good for local-first development, small deployments, and early production testing.
+The JSON-backed store under `storage/novel_library` remains the chapter content store. PostgreSQL 16 (via SQLAlchemy + Alembic) is already the system of record for metadata, user data, jobs, and settings. Redis/RQ is available for background workers.
 
 Recommended future upgrades:
 
-- PostgreSQL for novel metadata, chapter versions, activity/jobs, requests, and usage.
-- Object storage for images and exports.
-- Redis/RQ, Celery, Dramatiq, or another queue backend for activity/jobs.
+- Object storage (S3/R2/B2) for images, covers, and exports at production scale.
 - CDN in front of reader assets.
+- Redis-backed rate limiting (current rate limiter is in-memory).
