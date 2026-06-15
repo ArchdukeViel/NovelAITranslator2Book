@@ -2,8 +2,11 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RotateCw, Square } from "lucide-react";
+import * as React from "react";
 
 import { ActivityTable } from "@/components/admin/activity-table";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+import { ErrorBanner } from "@/components/admin/error-banner";
 import { Metric } from "@/components/admin/metric";
 import { PageHeading } from "@/components/admin/page-heading";
 import { StatusBadge } from "@/components/admin/status-badge";
@@ -25,6 +28,8 @@ export default function DashboardPage() {
   const stop = useMutation({ mutationFn: api.workerStop, onSuccess: invalidate });
   const runOnce = useMutation({ mutationFn: api.workerRunOnce, onSuccess: invalidate });
 
+  const [showStopConfirm, setShowStopConfirm] = React.useState(false);
+
   const activityRows = activity.data?.activity ?? [];
   const requestRows = requests.data?.requests ?? [];
   const workerStatus = worker.data;
@@ -36,6 +41,13 @@ export default function DashboardPage() {
         title="Home"
         description="Operational overview for crawler activity, translation activity, source health, and reader request intake."
       />
+
+      {worker.isError && (
+        <ErrorBanner error={worker.error} fallback="Could not load worker status." className="mb-4 rounded-md border" />
+      )}
+      {sources.isError && (
+        <ErrorBanner error={sources.error} fallback="Could not load source health." className="mb-4 rounded-md border" />
+      )}
 
       <div className="grid gap-4 md:grid-cols-4">
         <Metric label="Queued activity" value={activityRows.filter((activityItem) => activityItem.status === "pending").length} />
@@ -59,13 +71,23 @@ export default function DashboardPage() {
                 <Play className="h-4 w-4" />
                 Start
               </Button>
-              <Button variant="outline" onClick={() => stop.mutate()} disabled={stop.isPending}>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowStopConfirm(true)} 
+                disabled={stop.isPending}
+              >
                 <Square className="h-4 w-4" />
                 Stop
               </Button>
-              <Button variant="secondary" onClick={() => runOnce.mutate()} disabled={runOnce.isPending}>
+              <Button 
+                variant="secondary" 
+                onClick={() => runOnce.mutate()} 
+                disabled={runOnce.isPending}
+                title="Processes one pending batch/activity without starting the continuous worker."
+                aria-label="Run worker once to process a single pending batch"
+              >
                 <RotateCw className="h-4 w-4" />
-                Once
+                Run Once
               </Button>
             </div>
             <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -87,6 +109,21 @@ export default function DashboardPage() {
 
         <ActivityTable activity={activityRows.slice(0, 8)} />
       </div>
+
+      <ConfirmDialog
+        open={showStopConfirm}
+        title="Stop Worker"
+        description="Are you sure you want to stop the background worker? This will pause all pending translation and crawl jobs until it is started again."
+        confirmLabel="Stop Worker"
+        cancelLabel="Cancel"
+        destructive
+        pending={stop.isPending}
+        onConfirm={() => {
+          stop.mutate();
+          setShowStopConfirm(false);
+        }}
+        onCancel={() => setShowStopConfirm(false)}
+      />
     </>
   );
 }
