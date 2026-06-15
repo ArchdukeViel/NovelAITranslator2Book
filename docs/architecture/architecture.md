@@ -3,35 +3,50 @@
 ## 0. Document Status
 
 **Status**: canonical project architecture
-**Last reviewed**: 2026-06-09
+**Last reviewed**: 2026-06-15
 
-This is the single active architecture reasoning file for NovelAI. Historical notes are archived under `docs/archive/architecture/`.
+This is the single active architecture reasoning file for NovelAI. Historical
+notes are archived under `docs/archive/architecture/`. If another document
+disagrees with this one, this document wins and the conflict should be reported
+before implementation.
 
 ## 1. Current Mode
 
 ```text
-single-owner / controlled-admin public platform
-Postgres-backed metadata (12 models), file-backed chapter content
-Redis/RQ background workers for crawl and translation jobs
-guest/user/owner authentication (backend-enforced)
-public reader + user library/progress/ratings/requests
-scheduler-enabled for admin-owned provider/model routing
-baseline owner/admin security hardened
+single-owner / controlled-admin public reading platform
+FastAPI backend under /api
+Next.js public reader + owner/admin UI
+Postgres-backed metadata, file-backed chapter content
+background crawl/translation activity worker
+owner session auth implemented for dangerous admin operations
+guest public catalog / novel detail / chapter reader implemented
+public login and public user actions intentionally gated
+public contribution credentials intentionally gated
+future admin API methods quarantined until backend routes exist
 ```
+
+NovelAI is currently a web-based Japanese novel ingestion, translation, editing,
+export, and public reader system. It is being shaped toward a WTR-LAB-style
+machine-translated novel platform in product shape, not branding.
 
 ## 2. Product Boundary
 
-NovelAI is a web-based Japanese novel ingestion, translation, editing, library, and export system.
-
 **Surfaces**:
-1. **Owner/admin surface**: crawl/import sources, manage jobs, translate chapters, edit output, configure providers, inspect activity/scheduler state, export.
-2. **Public reader surface**: browse published translated novels and read published chapters.
-3. **Registered user surface**: sign up, log in, save novels to library, track reading progress, rate/review, request novels/chapters.
-4. **Contribution surface** (later gated phase): registered users contribute Gemini/OpenAI provider quota. Blocked pending §12.
+
+| Surface | Current state |
+|---|---|
+| Owner/admin | Active. Single owner operates crawling, imports, translation jobs, editing, exports, provider config, activity, runtime state, requests, and worker controls. |
+| Guest public reader | Active. Guests can browse the public catalog, view novel detail, list chapters, and read chapters. |
+| Registered public users | Deferred. Backend user-data routes exist, but real public OAuth/login and active frontend user actions are not enabled. |
+| Public contribution credentials | Deferred and gated. Public credential UI/API must remain disabled until the contribution readiness gate is satisfied. |
+| Community features | Deferred. Folders/lists/rankings/community surfaces require public auth, moderation, and abuse controls first. |
+
+The owner does dangerous operations. Users request or save personal state only
+after public auth is implemented. Guests read published content.
 
 ## 3. Backend Architecture
 
-```
+```text
 backend/src/novelai/
   activity/          Background activity queue, runner, worker, progress, events
   api/               FastAPI app, routers, dependencies, error handlers, schemas
@@ -39,7 +54,7 @@ backend/src/novelai/
   config/            Settings and workflow profiles
   core/              Shared domain errors and primitive types
   db/                SQLAlchemy engine, session, models
-  db/models/         ORM models: User, Novel, Chapter, CrawlJob, TranslationJob, etc.
+  db/models/         ORM models for users, catalog, jobs, settings, audit data
   export/            Exporter interfaces and concrete output formats
   glossary/          Glossary and term memory logic
   infrastructure/    HTTP fetching, throttle, cache
@@ -52,31 +67,37 @@ backend/src/novelai/
   sources/           Web source parsers/adapters and source registry
   storage/           File-backed persistence boundary
   translation/       Translation stages, QA, scheduler, post-processing
-  worker/            RQ worker tasks and queue management
+  worker/            Background worker tasks and queue management
 ```
 
 **Layer rules**:
-- API routers stay thin. Use-case logic belongs in `services/`.
+
+- API routers stay thin. Use-case logic belongs in `services/` or
+  `services/orchestration/`.
 - Source-specific parsing belongs in `sources/*`.
-- HTTP fetching/throttling/cache belongs in `infrastructure/http/*`.
+- HTTP fetching, throttling, SSRF checks, and fetch cache belong in
+  `infrastructure/http/*`.
 - Provider-specific API details belong in `providers/*`.
 - Prompt construction belongs in `prompts/*`.
-- Persistence belongs behind `storage/*`.
-- Frontend calls backend only through `frontend/lib/api.ts`.
+- Persistence belongs behind `storage/*` and `db/*` boundaries.
+- Scheduler policy belongs in backend translation/service/job layers, not React.
 
 **Dependency direction**:
-```
-api -> services -> domain modules -> storage/providers/sources/export
+
+```text
+api -> services -> domain modules -> storage/db/providers/sources/export
 translation -> prompts -> providers
 scheduler -> providers through provider registry
-frontend -> backend API only
+frontend -> backend API clients only
 ```
 
 **Forbidden direction**:
-```
+
+```text
 storage -> api
+db -> api
 providers -> api
-providers -> storage
+providers -> storage/db
 sources -> services
 frontend -> storage files
 translation stages -> FastAPI request objects
@@ -86,7 +107,8 @@ React -> scheduler/provider/storage/QA policy
 ## 4. Translation Pipeline Architecture
 
 **Canonical flow**:
-```
+
+```text
 chapter-based storage
 -> paragraph IDs
 -> temporary chunks/bundles
@@ -99,39 +121,46 @@ chapter-based storage
 ```
 
 **Core contracts**:
+
 - `Paragraph`: `paragraph_id`, `chapter_id`, `text`, `char_count`
-- `TranslationChunk`: `chunk_id`, `novel_id`, `chapter_ids`, `paragraph_ids`, `source_text`, `char_count`, `previous_context`, `paragraph_refs`
+- `TranslationChunk`: `chunk_id`, `novel_id`, `chapter_ids`,
+  `paragraph_ids`, `source_text`, `char_count`, `previous_context`,
+  `paragraph_refs`
 
 **Rules**:
+
 - `SmartSegmentStage` owns segmentation.
-- Paragraph IDs are deterministic within a chapter (e.g., `p0001`).
-- Chunk IDs are deterministic (e.g., `c0001`).
-- Every translated unit must preserve `novel_id`, `chapter_id`, `paragraph_id`, `chunk_id`.
-- `TranslationQAStage` must run after provider output and before final save.
-- QA checks: empty output, source-identical output, suspicious length ratios, placeholders, provider refusal/error text, paragraph/chapter mapping integrity.
+- Paragraph IDs are deterministic within a chapter, for example `p0001`.
+- Chunk IDs are deterministic, for example `c0001`.
+- Every translated unit must preserve `novel_id`, `chapter_id`,
+  `paragraph_id`, and `chunk_id`.
+- `TranslationQAStage` runs after provider output and before final save.
+- QA checks include empty output, source-identical output, suspicious length
+  ratios, placeholders, provider refusal/error text, and mapping integrity.
 
 ## 5. Multi-Model Scheduler Architecture
 
 **Status**: implemented for admin-owned provider/model routing.
 
 **Responsibilities**:
+
 - Select `provider_key` and `provider_model`.
-- Track per-model RPM/RPD state, cooldown, daily quota exhaustion.
+- Track per-model RPM/RPD state, cooldown, and daily quota exhaustion.
 - Pause jobs when every eligible model is cooling down or exhausted.
-- Expose `paused_reason`, `resume_after`, `model_states` through activity/job progress.
+- Expose `paused_reason`, `resume_after`, and `model_states` through
+  activity/job progress.
 - Record provider/model per chunk attempt.
 
-**Model statuses**: `available`, `cooling_down`, `daily_exhausted`, `disabled`, `failed`
+**Model statuses**: `available`, `cooling_down`, `daily_exhausted`,
+`disabled`, `failed`.
 
-**The scheduler must not**:
-- Bypass prompt construction, glossary handling, cache-key rules, provider request recording, chunk status tracking, or QA.
-- Leak provider credentials or request headers.
-- Randomly rotate models when consistency matters.
-- Retranslate successful chunks after pause/resume unless explicitly forced.
+The scheduler must not bypass prompt construction, glossary handling, cache-key
+rules, provider request recording, chunk status tracking, or QA. It must not
+leak provider credentials or request headers.
 
 ## 6. Source Ingestion Architecture
 
-```
+```text
 SourceRegistry
 -> SourceAdapter.detect / normalize
 -> FetchService (shared HTTP client, SSRF-safe URL validation, per-domain throttle, fetch cache)
@@ -141,40 +170,52 @@ SourceRegistry
 ```
 
 **Rules**:
+
 - Source registry is the only source lookup mechanism.
 - Source-specific selectors stay in `sources/*`.
-- Source adapters do not write storage files directly or call translation providers.
+- Source adapters do not write storage files directly or call translation
+  providers.
 - Generic source is fallback and must carry confidence/warnings.
-- Source tests use offline fixtures; they must not require live websites.
+- Source tests use offline fixtures and must not require live websites.
 
-**Implemented**: FetchService foundation, URL safety/SSRF protection, per-domain throttle, fetch cache, source quality gates, Generic confidence scoring, offline fixtures for Syosetu/Novel18, Kakuyomu, Generic.
+## 7. Storage and Database Boundary
 
-## 7. Storage and Runtime Data Architecture
+**Current storage model**:
 
-Storage is file-backed under `storage/novel_library` (private, gitignored).
+- Metadata and user/job records are Postgres-backed.
+- Heavy chapter content remains file-backed under `storage/novel_library`
+  locally and must stay private.
+- Future deployed content may move behind an object-storage boundary, but API
+  responses still return keys/identifiers, not raw filesystem paths.
 
-**Canonical storage remains chapter-based**:
-- chapter raw snapshot
-- parsed chapter
-- final translated chapter
-- translation versions / edits
-- chapter state
-
-**Runtime records**: novel metadata, raw scraped chapters, parsed data, translated output, translation cache, usage data, activity log, pipeline events, chunk states, provider request records, scheduler state, fetch cache, export artifacts.
+**Runtime records include** novel metadata, raw scraped chapters, parsed data,
+translated output, translation cache, activity log, pipeline events, chunk
+states, provider request records, scheduler state, fetch cache, export
+artifacts, users, saved data, requests, settings, and audit data.
 
 **Rules**:
+
 - Raw scraped chapter files should not be silently deleted after translation.
-- Provider request records must not store API keys, authorization headers, cookies, raw secrets, or raw tracebacks.
+- Provider request records must not store API keys, authorization headers,
+  cookies, raw secrets, or raw tracebacks.
 - Frontend must never receive raw filesystem paths.
 - `storage/novel_library` must never be served as static files.
+- Routers must not directly own database session logic.
 
 ## 8. API and Frontend Contract Architecture
 
-**Canonical names**: `source_key`, `source_novel_id`, `source_url`, `novel_id`, `chapter_id`, `paragraph_id`, `chunk_id`, `bundle_id`, `provider_key`, `provider_model`, `activity_id`, `job_id`, `request_id`, `credential_id`, `requesting_user_id`, `credential_owner_user_id`, `prompt_version`, `glossary_hash`
+**Canonical names**: `source_key`, `source_novel_id`, `source_url`,
+`novel_id`, `chapter_id`, `paragraph_id`, `chunk_id`, `bundle_id`,
+`provider_key`, `provider_model`, `activity_id`, `job_id`, `request_id`,
+`credential_id`, `requesting_user_id`, `credential_owner_user_id`,
+`prompt_version`, `glossary_hash`.
 
-**Compatibility aliases** (debt, tolerated): `id`, `source`, `provider`, `model`, `slug`
+**Compatibility aliases**: `id`, `source`, `provider`, `model`, and `slug`
+are tolerated compatibility debt. Do not introduce new aliases without a
+contract migration.
 
 **Error envelope**:
+
 ```json
 {
   "code": "PROVIDER_ERROR",
@@ -185,192 +226,281 @@ Storage is file-backed under `storage/novel_library` (private, gitignored).
 }
 ```
 
-**Rules**:
-- Public/frontend-facing errors must not include raw tracebacks, API keys, authorization headers, cookies, provider secrets, or unsafe filesystem internals.
-- Frontend API calls go through `frontend/lib/api.ts`.
-- Progress payloads: `status`, `current_stage`, `current_label`, `completed`, `total`, `errors`, `warnings`, `paused_reason`, `resume_after`, `model_states`.
+**Current API contract status**:
+
+| Area | Current contract |
+|---|---|
+| Admin namespace | `/api/admin/*` is canonical for implemented owner/admin behavior. Legacy `/api/novels/*` compatibility routes may remain temporarily. |
+| Dangerous admin routes | Protected by owner-session authorization through `require_role("owner")`. |
+| Legacy API-key auth | Fail-closed; do not rely on it for dangerous routes. |
+| Public reader | `frontend/lib/public-api.ts` calls `/api/public/*` catalog, novel, chapter list, and chapter endpoints. |
+| Public auth | `/api/auth/login` is owner bootstrap login only. Public login UI is unavailable until public auth is implemented. |
+| Public user data | Backend `/api/user/*` routes exist for user-owned data, but active public frontend API methods/hooks are quarantined until auth and contracts are designed. |
+| Admin future APIs | Exported future admin methods for missing endpoints are quarantined. Do not advertise `/api/admin/users`, `/api/admin/controls`, contributed credentials, or provider activation until backend routes exist. |
+
+Public/frontend-facing errors must not include raw tracebacks, API keys,
+authorization headers, cookies, provider secrets, or unsafe filesystem internals.
 
 ## 9. Frontend Architecture
 
-```
+```text
 frontend/app/               Next.js App Router pages and route groups
 frontend/components/        Reusable UI, admin, and public components
-frontend/lib/               API client, shared types, client utilities
+frontend/hooks/public/      Public reader hooks
+frontend/lib/               API clients, shared types, client utilities
 ```
 
-**Admin routes**: `frontend/app/(admin)/admin/*` (dashboard, crawler, translation, library, editor, activity, requests, settings)
+**Admin routes**: `frontend/app/(admin)/admin/*`.
 
-**Public routes**: `frontend/app/(public)/*` (novel catalog, chapter reader)
+**Public routes**: `frontend/app/(public)/*`.
 
 **Contract layer**:
-- `frontend/lib/api.ts` is the only browser/backend API client.
-- Admin pages render workflows and call typed API functions.
-- React displays scheduler state, QA state, provider state and provides admin controls that trigger backend-owned operations.
-- Scheduler/QA/provider policy logic stays in the backend; React surfaces UI controls that call backend endpoints.
-- No public contribution credential UI exists until §13 opens.
+
+- `frontend/lib/api.ts` owns admin/shared backend calls.
+- `frontend/lib/public-api.ts` owns the public reader API client.
+- Direct `fetch(...)` and `axios(...)` calls are allowed only in approved API
+  client files.
+- Public hooks currently export guest-safe reader hooks only:
+  `useCatalog`, `useNovel`, `useChapters`, and `useChapter`.
+- Public login, library/progress/history/reviews/requests, and contribution
+  credential actions must remain unavailable until their backend contracts and
+  tests are ready.
 
 ## 10. Security Architecture
 
 **Protected data classification**:
 
-**Critical**: Provider API keys, admin/session tokens, encryption keys, `.env` and deployment secrets, backups containing runtime state.
+| Class | Data |
+|---|---|
+| Critical | Provider API keys, admin/session tokens, encryption keys, `.env` and deployment secrets, backups containing runtime state. |
+| High | Raw scraped chapters, parsed chapters, translation chunks, provider request/response records, unpublished translations, job events/logs. |
+| Medium | Published translated chapters, public metadata, public assets. |
 
-**High**: Raw scraped chapters, parsed chapters, translation chunks, provider request/response records, unpublished translations, job events/logs.
+**Baseline protections implemented/stabilized**:
 
-**Medium**: Published translated chapters, public metadata, public assets.
-
-**Baseline protections implemented**:
+- Owner-session authorization for dangerous backend routes.
+- Fail-closed legacy API-key behavior.
+- HTTP-only same-site session cookies.
 - Path traversal protection for storage-backed identifiers.
-- Runtime storage isolation; `storage/novel_library` is private.
-- API/log secret redaction for API keys, bearer tokens, cookies, authorization headers, passwords.
+- Runtime storage isolation.
+- API/log secret redaction.
 - Structured error envelopes; unknown 500s do not expose tracebacks.
 - FetchService SSRF protection.
 - Git ignore policy for runtime storage, secrets, logs.
 
-**URL safety rejects**: private/internal targets, non-http schemes, embedded URL credentials, localhost, metadata hostnames, loopback, private ranges, link-local, reserved, multicast, unspecified addresses.
-
 ## 11. Authentication and Session Architecture
 
-**Status**: implemented for v1.
+**Current status**: owner/admin session auth is implemented; real public user
+login is not yet implemented.
 
 **Single owner-admin rule**:
+
 - Exactly one owner. The owner is the only admin.
-- No admin-invitation flow, no staff/team permissions in v1.
-- Owner is seeded via secure backend bootstrap (env/CLI), never via public signup.
+- No admin-invitation flow, staff teams, or multi-admin permissions in v1.
+- Owner is seeded via secure backend bootstrap, not public signup.
 
-**Role model** (backend-enforced):
+**Role model**:
+
+```text
+guest  - unauthenticated; read public catalog/chapters
+user   - authenticated future public user; library, progress, history, ratings/reviews, requests
+owner  - authenticated single owner; dangerous operations
 ```
-guest  - unauthenticated; read public catalog/chapters, search only
-user   - authenticated; library, reading progress, history, ratings/reviews, requests
-owner  - authenticated; all dangerous operations (crawl, translate, providers, usage, logs, edit/delete, settings, user management)
-```
 
-**Enforcement**:
-- Authorization is enforced in the backend API, not by hiding frontend routes.
-- Every dangerous router requires `require_role("owner")` dependency.
-- Object-level authorization: user may only read/write their own saved data.
-- Ownership is established only by backend session/authorization layer.
+**Current auth endpoints**:
 
-**Session strategy**:
-- HTTP-only, same-site session cookies with server-side session state.
-- JWT is NOT the v1 default.
-- Google OAuth is the first/primary intended login method for public users.
+- `POST /api/auth/login`: owner bootstrap login only.
+- `POST /api/auth/logout`: clears current session.
+- `GET /api/auth/me`: returns the current session user or guest.
 
-## 12. Database Boundary
+**Public auth gate**:
 
-**Status**: implemented. Supabase PostgreSQL 16 with SQLAlchemy 2.x ORM.
+- Public login UI must not submit to `/api/auth/login`.
+- Public accounts should display an unavailable/coming-later state until real
+  public auth exists.
+- Google OAuth is the intended first public login direction, but it must be
+  designed and tested before UI is re-enabled.
 
-**Database owns**:
-- Users and roles, auth-provider identities.
-- Sessions and ownership links.
-- Saved data: library items, reading progress, ratings/reviews, requests.
-- Catalog metadata: novels, chapters (with storage keys + checksums), tags.
-- Job/usage records: crawl jobs, translation jobs, provider requests.
-- Audit logs and system settings.
+## 12. Implemented and Deferred State
 
-**Database does NOT own**:
-- Raw chapter text, translated chapter text, covers, exports, logs — those live in file/object storage; database stores keys/paths/checksums.
+| Area | Status |
+|---|---|
+| Owner-session auth boundary | Implemented and tested. |
+| Dangerous route owner protection | Implemented and tested. |
+| Fail-closed legacy API-key behavior | Implemented and tested. |
+| Canonical `/api/admin/*` aliases for existing admin behavior | Implemented and tested. |
+| Public contribution UI gate | Implemented and tested. |
+| Public auth UX gate | Implemented and tested. |
+| Public user API frontend quarantine | Implemented and tested. |
+| Admin future API frontend quarantine | Implemented and tested. |
+| Guest public catalog/novel/chapter reader | Implemented. |
+| Real public OAuth/login | Deferred. |
+| Public user library/progress/history/reviews/requests frontend contract | Deferred. |
+| Public contribution credential backend lifecycle | Deferred. |
+| Server-side encryption/revocation/validation/usage ledger for contributed credentials | Deferred. |
+| Admin user-management backend/UI | Deferred. |
+| Admin controls config backend | Deferred. |
+| Contributed credential oversight backend | Deferred. |
+| WTR-style community folders/lists | Deferred. |
+| Rankings/leaderboards/trending pages | Deferred. |
+| Rich finder/tags/discovery | Partially present only as basic catalog parameters; richer UX deferred. |
 
-**ORM models** (12 total):
-- `User`, `LibraryItem`, `ReadingProgress`, `ReadingHistory`, `Review`, `NovelRequest`
-- `Novel`, `Chapter`
-- `CrawlJob`, `TranslationJob`, `ProviderRequest`
-- `AuditLog`, `SystemSetting`
+## 13. Public Contribution Credentials - Later Gated Phase
 
-**Rules**:
-- All database access lives behind `db/` boundary consumed by `services/*`.
-- Routers never touch the session directly.
-- Storage-path knowledge stays in storage boundary; database stores keys, not absolute filesystem paths.
-- Supabase RLS policies enforce guest/user/owner access at the database level (see `docs/sql/rls_policies.sql`).
+**Verdict**: later gated phase, not in the current safe product surface.
 
-## 13. Public Contribution Credentials — Later Gated Phase
+Public API contribution, where registered users donate Gemini/OpenAI provider
+quota, opens only after all of the following exist and are tested:
 
-**Verdict**: Later gated phase (NOT in v1, NOT blocked indefinitely).
-
-Public API contribution (registered users donating Gemini/OpenAI provider quota) opens only after ALL of the following exist and are tested:
-
-- Encrypted contributed-credential storage (encryption at rest; raw keys never returned, logged, or exposed).
-- Explicit contribution consent capture per credential.
+- Real public authentication/account boundary.
+- Strict object-level authorization.
+- Encrypted contributed-credential storage; raw keys never returned, logged, or
+  exposed.
+- Explicit contribution consent capture.
 - Credential revocation/deletion lifecycle.
-- Per-credential usage limits and scheduler enforcement of contributed credential scope.
-- Security audit records for credential create/use/revoke/delete.
-- Strict object-level authorization (user A cannot access user B's credentials, requests, jobs, activities, novels, or exports).
-- Per-user ownership of each contributed credential.
 - Credential validation before activation.
+- Per-credential usage limits and scheduler enforcement of contributed scope.
 - Usage ledger recording every contributed-credential request.
-- Provider isolation so a contributed credential is used only for its own provider and scope.
+- Security audit records for create/use/revoke/delete.
+- Provider isolation so a contributed credential is used only for its own scope.
 - Abuse and rate-limit controls.
-- Owner disable controls to globally suspend contribution or disable a specific credential.
+- Owner approval/disable controls.
 
-**Gate prerequisites** (build order):
-1. Real authentication/account boundary (§11).
-2. Backend role/permission boundary (guest/user/owner).
-3. Object-level authorization.
-4. Request approval semantics tied to authenticated requester/reviewer identities.
-5. Encrypted credential storage.
-6. Credential revoke/delete lifecycle.
-7. Security audit logging.
-8. Contribution consent capture.
-9. Usage limits and scheduler scope enforcement.
-10. Tests proving user A cannot access user B's objects and raw keys are never returned.
+Do not fake users with localStorage IDs, request-provided names, unsigned
+cookies, or frontend-only flags.
 
-Do not fake users with localStorage, request-provided user IDs, unsigned cookies, or frontend-only flags.
+## 14. WTR-LAB-Inspired Product Gap Matrix
 
-## 14. Current Debt Register
+| Product area | WTR-LAB-style target | Current project state | Gap | Dependency | Priority |
+|---|---|---|---|---|---|
+| Public catalog | Browse translated novels publicly | Implemented basic guest catalog via `/api/public/catalog` | Needs stronger UX, pagination polish, status/sort clarity | Guest reader contract | High |
+| Novel finder/search/filter | Finder with title/author/status/source filters | Basic catalog params exist | Rich finder UI and backend semantics incomplete | Catalog contract, metadata quality | High |
+| Tags/genres | Tag and genre browsing | Architecture references tags, but active UX not proven | Tag data model/API/UI needs design | Metadata model, admin tagging | Medium |
+| Ranking/leaderboard/trending | Popular/trending/ranking pages | Not implemented | Needs metrics, jobs, anti-gaming rules | Public analytics, user events | Medium |
+| Novel detail metadata | Cover, synopsis, source, chapter list, status | Basic novel detail/chapter list exists | Rich metadata, cover/assets, recommendations missing | Metadata ingestion, public UI | High |
+| Chapter reader | Clean mobile reader with navigation | Implemented guest chapter reader | Reader preferences and polish deferred | Reader UX pass | High |
+| Reading preferences | Font/theme/layout controls | Not established as complete | Preferences persistence and UX missing | Public auth for saved prefs; local guest prefs optional | Medium |
+| Public login | Google/email login for users | Intentionally disabled; `/api/auth/login` is owner-only | Public OAuth/session flow not implemented | Auth design and tests | P0 |
+| User library | Save novels to library | Backend routes exist; frontend surface quarantined | Contract and UI disabled | Public auth, `/api/user/*` contract tests | P0 |
+| Reading progress/history | Continue reading/history | Backend routes exist; frontend surface quarantined | Contract and UI disabled | Public auth, ownership tests | P0 |
+| Ratings/reviews | User ratings and reviews | Backend route exists; frontend surface quarantined | Contract, moderation, UI disabled | Public auth, moderation policy | High |
+| Requests/requesters | Users request novels/chapters | Admin request workflow exists; public user request UI disabled | Public request contract and moderation flow incomplete | Public auth, request ownership | High |
+| Community folders/lists | User-created lists/folders/community discovery | Not implemented | Full feature missing | Public auth, moderation, abuse controls | Low |
+| Admin import/crawl | Owner imports/crawls sources | Implemented active admin workflows | Needs ongoing source hardening | FetchService/source fixtures | High |
+| Admin translation/job operations | Owner queues/translates/monitors jobs | Implemented active workflows | Needs operational polish and resume hardening | Worker/scheduler hardening | High |
+| Admin moderation/approval | Owner reviews requests/content | Admin request review exists | Public request approval semantics and audit depth need work | Public user request contract | Medium |
+| Contributed API credentials | Users donate provider quota safely | Intentionally gated and unavailable | Entire secure lifecycle missing | Auth, encryption, ledger, owner approval, abuse controls | Do not build yet |
 
-**P0 — correctness/security risk**:
-- Public contribution credentials are a later gated phase (§13); do not implement before gate conditions are met.
-- Runtime provider request records and chunk output records must remain complete for scheduler-managed paths.
-- Successful chunk reuse after pause/resume needs continued hardening.
-- Private runtime storage must stay isolated from frontend/static serving.
+## 15. Current Debt Register
 
-**P1 — maintainability/reliability risk**:
-- Temporary bundle lifecycle needs hardening around retry, debug retention, cleanup.
-- Kakuyomu/Generic FetchService migration if legacy direct HTTP behavior remains.
-- `operations.py` and `admin.py` remain thicker than ideal; thin through service extraction.
-- Legacy aliases (`id`, `source`, `provider`, `model`) need planned migration.
+**P0 - correctness/security risk**:
+
+- Public auth must not be faked or routed through owner bootstrap login.
+- Public user frontend actions must remain disabled until `/api/user/*`
+  contracts and ownership tests are designed.
+- Public contribution credentials must remain gated until Section 13 is met.
+- Runtime storage must stay isolated from frontend/static serving.
+- Future admin endpoints must not be advertised as exported frontend methods
+  before backend routes exist.
+
+**P1 - maintainability/reliability risk**:
+
+- Temporary bundle lifecycle needs hardening around retry, debug retention, and
+  cleanup.
+- Remaining source adapters should continue moving toward FetchService where
+  legacy direct HTTP behavior remains.
+- `operations.py` and `admin.py` remain thicker than ideal; thin through
+  service extraction in dedicated phases.
+- Legacy aliases need planned migration.
 - Storage backward compatibility needs continued discipline.
-- Source parser fixtures are representative, not exhaustive against live-site drift.
+- Source parser fixtures are representative, not exhaustive against live-site
+  drift.
 
-**P2 — cleanup/cosmetic**:
-- Frontend lint not configured non-interactively.
-- Backend package flattening deferred.
-- More examples for provider request records, chunk outputs, bundle lifecycle may help future maintainers.
+**P2 - cleanup/cosmetic**:
 
-## 15. Non-Goals and Blocked Phases
+- Frontend lint is not configured non-interactively.
+- Backend package flattening remains deferred.
+- More examples for provider request records, chunk outputs, and bundle
+  lifecycle may help future maintainers.
 
-**Still blocked/gated** (do NOT implement):
-- Public contribution credentials (later gated phase, §13).
-- Public credential UI.
-- Credential pooling or marketplace behavior.
-- Batch mode.
-- Billing, organizations, multi-admin teams.
-- Broad folder migrations or package flattening.
+## 16. Dependency-Aware Roadmap
 
-## 16. Future Roadmap
+**Phase A - Safety/contract stabilization: complete**
 
-**Recommended order**:
-1. Scheduler runtime persistence and resume hardening.
-2. Migrate remaining source adapters to FetchService.
-3. Thin routers by moving remaining orchestration into services.
-4. Optional backend package flattening as a dedicated mechanical migration.
-5. Object storage boundary for deployed content/assets/exports (S3/R2/B2).
-6. Data migration script from file-backed storage to Postgres (parallel-run).
-7. Open the contribution-credentials gated phase only after §13's conditions are met and tested.
+- Owner-session auth boundary stabilized.
+- Dangerous backend routes protected by `require_role("owner")`.
+- Legacy API-key behavior fails closed.
+- Canonical `/api/admin/*` aliases added for implemented admin behavior.
+- Public contribution credential UI gated.
+- Public auth UX gated.
+- Public `/api/user/*` frontend API/hooks quarantined.
+- Future admin API surface quarantined.
+- Tests protect these gates.
 
-Do not add new source sites before FetchService, source quality gates, and parser fixtures are stable.
+**Phase B - Public auth contract design**
 
-Do not add batch mode before synchronous translation, scheduler, provider errors, storage contracts, and QA are reliable.
+- Choose and document Google OAuth-first public auth flow.
+- Define user session semantics separately from owner bootstrap login.
+- Define object ownership rules for user-owned data.
+- Define `/api/user/*` request/response contracts.
+- Add backend/frontend contract tests before re-enabling UI.
 
-## 17. Validation Commands
+**Phase C - Public user features**
+
+- Re-enable library only after auth and ownership tests pass.
+- Re-enable progress/history only after request/response contract tests pass.
+- Re-enable ratings/reviews with moderation and abuse rules.
+- Re-enable public requests with requester identity, rate limits, and owner
+  approval semantics.
+
+**Phase D - Guest reader/catalog UX**
+
+- Improve catalog/discovery, novel detail metadata, chapter navigation, and
+  reader polish.
+- Add tags/filtering/finder only against stable metadata contracts.
+- Add rankings/trending only after event metrics and anti-abuse rules exist.
+
+**Phase E - Admin operations polish**
+
+- Improve import/crawl/translation workflows.
+- Improve request moderation and job monitoring.
+- Add destructive-action safety and audit coverage.
+- Do not add fake `/api/admin/*` endpoints; implement backend first, then export
+  frontend methods.
+
+**Phase F - Community/contribution features**
+
+- Community folders/lists after public auth and moderation are real.
+- Rankings/leaderboards after metrics are trustworthy.
+- Public contributed credentials only after Section 13's lifecycle,
+  encryption, ledger, owner approval, and abuse controls exist.
+
+## 17. Do Not Build Yet
+
+- Do not re-enable public login until a real public auth backend exists.
+- Do not route public login through owner bootstrap `/api/auth/login`.
+- Do not re-enable library/progress/history/reviews/requests until contracts
+  and ownership tests exist.
+- Do not re-enable contribution credentials until encryption, revocation,
+  validation, usage ledger, owner approval, and abuse controls exist.
+- Do not add fake `/api/admin/*` endpoints to satisfy future frontend methods.
+- Do not add WTR-style community features before user auth, moderation, and
+  abuse controls exist.
+- Do not polish around broken contracts; stabilize the contract first.
+- Do not implement batch mode, billing, organizations, multi-admin teams, or
+  broad package flattening without a dedicated architecture update.
+
+## 18. Validation Commands
 
 **Backend**:
+
 ```bash
 ./.venv/Scripts/python -m pytest backend/tests -q
 ./.venv/Scripts/python -m pyright
 ```
 
 **Frontend**:
+
 ```bash
 cd frontend
 npm run typecheck
@@ -379,17 +509,18 @@ cd ..
 ```
 
 **Docs and git hygiene**:
+
 ```bash
 git status --short
 git diff --stat
 git diff --check
 ```
 
-## 18. Agent Prompting Rules
+## 19. Agent Prompting Rules
 
 Use this header in future agent prompts:
 
-```
+```text
 You are working inside the NovelAI project. Follow docs/architecture/architecture.md as the highest project-level design authority.
 
 Non-negotiable rules:
@@ -397,48 +528,45 @@ Non-negotiable rules:
 - Put use-case logic in services/orchestration.
 - Put source parsing only in source adapters/parsers.
 - Put HTTP fetching, throttling, and fetch cache in infrastructure/http.
-- Put persistence only behind storage services.
+- Put persistence only behind storage and db services.
 - Put prompt construction only in prompts.
 - Put provider-specific API logic only in providers.
-- Put scheduler policy in translation/service/job layer. React may surface admin UI controls that trigger backend endpoints, but policy logic stays backend-owned.
-- Frontend must call backend only through frontend/lib/api.ts.
+- Put scheduler policy in translation/service/job layers. React may surface admin UI controls that trigger backend endpoints, but policy logic stays backend-owned.
+- Frontend must call backend only through approved frontend API clients.
 - Preserve canonical names: source_key, novel_id, chapter_id, paragraph_id, chunk_id, provider_key, provider_model, activity_id, job_id, request_id.
 - Add/update tests for every changed contract.
-- Do not implement public contribution credentials until §13 gate conditions are met.
+- Do not implement public contribution credentials until the contribution gate conditions are met.
 - Raw API keys must never be returned, logged, or exposed after creation.
 - Storage runtime data must not be served directly.
 - Before editing, identify which architectural boundary owns the change.
 ```
 
-When asked for a review, prioritize architecture violations, bugs, behavioral regressions, missing tests, and contract drift.
+When asked for a review, prioritize architecture violations, bugs, behavioral
+regressions, missing tests, and contract drift.
 
-When asked for cleanup, avoid package flattening, broad migrations, and unrelated refactors unless explicitly requested.
+## 20. Permission Matrix
 
----
+Single-owner platform with guest/user/owner roles. Enforced in the backend, not
+by hiding frontend routes.
 
-## 18. Permission Matrix
-
-Single-owner platform with guest/user/owner roles. Enforced in the backend, never the frontend.
-
-| Capability | Guest | User | Owner |
+| Capability | Guest | Future User | Owner |
 |---|---|---|---|
 | View public catalog | Yes | Yes | Yes |
 | Read public chapters | Yes | Yes | Yes |
-| Search/filter novels | Yes | Yes | Yes |
-| Save to library | No | Yes | Yes |
-| Track reading progress | No | Yes | Yes |
-| Rate/review | No | Yes | Yes |
-| Request novel/chapter | Limited | Yes (rate-limited) | Yes |
+| Search/filter novels | Basic | Yes | Yes |
+| Save to library | No | Planned | Yes |
+| Track reading progress | No | Planned | Yes |
+| Rate/review | No | Planned | Yes |
+| Request novel/chapter | No active public UI | Planned, rate-limited | Yes |
 | Start crawler | No | No | Yes |
-| Start translation | No | Request only | Yes |
-| Edit metadata | No | No | Yes |
+| Start translation | No | No | Yes |
+| Edit metadata/content | No | No | Yes |
 | Delete/unpublish content | No | No | Yes |
 | View logs/errors | No | No | Yes |
 | Configure providers | No | No | Yes |
 | View provider/API usage | No | No | Yes |
-| Manage users | No | No | Yes |
-| Change system settings | No | No | Yes |
+| Manage users | No | Deferred | Deferred owner feature |
+| Change system settings | No | No | Deferred owner feature |
 
-**Core rule**: Owner does dangerous operations. Users request things. Guests read public content.
-
-RLS policies at `docs/sql/rls_policies.sql` enforce this at the database level.
+**Core rule**: owner does dangerous operations. Future users save personal
+state and request things after public auth exists. Guests read public content.
