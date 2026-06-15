@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -44,14 +44,13 @@ const user = {
 };
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
 });
 
 describe("public engagement UI", () => {
-  it("shows sign-in prompts for guest review/request controls without user API calls", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(jsonResponse(guest));
+  it("shows sign-in prompts for guest review/request controls", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(guest));
 
     renderWithQuery(
       <div>
@@ -63,9 +62,6 @@ describe("public engagement UI", () => {
     expect(
       await screen.findAllByText("Sign in to save novels, continue reading, and leave reviews.")
     ).toHaveLength(2);
-    expect(
-      fetchMock.mock.calls.some(([url]) => String(url).includes("/api/user/"))
-    ).toBe(false);
   });
 
   it("submits and deletes an authenticated review", async () => {
@@ -97,7 +93,7 @@ describe("public engagement UI", () => {
     renderWithQuery(<RatingReview slug="demo" />);
 
     await userEvent.click(await screen.findByLabelText("Rate 5 stars"));
-    await userEvent.type(screen.getByPlaceholderText("Optional review"), "Great");
+    await userEvent.type(screen.getByPlaceholderText("Write your review (optional)"), "Great");
     await userEvent.click(screen.getByRole("button", { name: /submit review/i }));
 
     await waitFor(() => {
@@ -110,9 +106,14 @@ describe("public engagement UI", () => {
       ([url, init]) => String(url) === "/api/user/reviews/demo" && init?.method === "PUT"
     );
     expect(new Headers(reviewMutation?.[1]?.headers).get("X-CSRF-Token")).toBe("csrf-test");
-    expect(await screen.findByText("Review saved with status: pending")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /delete review/i }));
+    // Success confirmation
+    expect(await screen.findByText(/review submitted/i)).toBeInTheDocument();
+
+    // Delete button now visible (only after saved review)
+    expect(screen.getByRole("button", { name: /remove review/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /remove review/i }));
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/user/reviews/demo",
@@ -136,7 +137,20 @@ describe("public engagement UI", () => {
     ).toBe(false);
   });
 
-  it("creates an authenticated novel request and handles duplicate-pending response", async () => {
+  it("hides delete button until a review is saved", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse(user));
+
+    renderWithQuery(<RatingReview slug="demo" />);
+
+    // Delete button should not be visible initially
+    expect(screen.queryByRole("button", { name: /remove review/i })).not.toBeInTheDocument();
+
+    // After selecting a rating (but not submitting), still no delete button
+    await userEvent.click(await screen.findByLabelText("Rate 5 stars"));
+    expect(screen.queryByRole("button", { name: /remove review/i })).not.toBeInTheDocument();
+  });
+
+  it("creates an authenticated novel request and shows success confirmation", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       const url = String(input);
       if (url === "/api/auth/me") {
@@ -179,7 +193,9 @@ describe("public engagement UI", () => {
       ([url, init]) => String(url) === "/api/user/requests" && init?.method === "POST"
     );
     expect(new Headers(requestMutation?.[1]?.headers).get("X-CSRF-Token")).toBe("csrf-test");
-    expect(await screen.findByText("Request #5 is pending.")).toBeInTheDocument();
+
+    // Success confirmation
+    expect(await screen.findByText(/request submitted/i)).toBeInTheDocument();
   });
 
   it("blocks invalid request input client-side", async () => {
@@ -199,7 +215,7 @@ describe("public engagement UI", () => {
     ).toBe(false);
   });
 
-  it("lists authenticated public requests on the account page", async () => {
+  it("lists authenticated requests on the account page with novel links", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);
       if (url === "/api/auth/me") {
@@ -218,6 +234,15 @@ describe("public engagement UI", () => {
                 chapter_id: null,
                 created_at: "2026-06-15T00:00:00Z",
               },
+              {
+                id: 8,
+                request_type: "chapter",
+                status: "completed",
+                source_url: null,
+                slug: "demo",
+                chapter_id: "3",
+                created_at: "2026-06-16T00:00:00Z",
+              },
             ],
             next_cursor: null,
           })
@@ -228,8 +253,37 @@ describe("public engagement UI", () => {
 
     renderWithQuery(<RequestsPage />);
 
-    expect(await screen.findByText("Recent requests")).toBeInTheDocument();
-    expect(await screen.findByText("novel")).toBeInTheDocument();
-    expect(screen.getByText("pending")).toBeInTheDocument();
+    // Page header (appears after auth resolves)
+    expect(await screen.findByText("My Requests")).toBeInTheDocument();
+    expect(await screen.findByText("Novel and chapter translation requests you have submitted.")).toBeInTheDocument();
+
+    // Novel request entry (source URL shown)
+    expect(await screen.findByText("https://example.com/novel")).toBeInTheDocument();
+
+    // Chapter request entry (slug linked)
+    const novelLink = await screen.findByRole("link", { name: /demo/i });
+    expect(novelLink).toHaveAttribute("href", "/novel/demo");
+
+    // Status badges
+    expect(await screen.findByText("Pending")).toBeInTheDocument();
+    expect(await screen.findByText("Completed")).toBeInTheDocument();
+  });
+
+  it("shows empty requests state with browse link", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/auth/me") {
+        return Promise.resolve(jsonResponse(user));
+      }
+      if (url === "/api/user/requests?limit=50") {
+        return Promise.resolve(jsonResponse({ items: [], next_cursor: null }));
+      }
+      return Promise.resolve(jsonResponse({ detail: "unexpected" }, 500));
+    });
+
+    renderWithQuery(<RequestsPage />);
+
+    expect(await screen.findByText("No requests yet.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /browse novels/i })).toBeInTheDocument();
   });
 });

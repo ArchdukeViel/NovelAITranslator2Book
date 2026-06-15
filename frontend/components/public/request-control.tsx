@@ -39,6 +39,21 @@ function validateRequest(
   return null;
 }
 
+function statusLabel(status: string): string {
+  switch (status) {
+    case "pending":
+      return "Pending";
+    case "approved":
+      return "Approved";
+    case "rejected":
+      return "Rejected";
+    case "completed":
+      return "Completed";
+    default:
+      return status;
+  }
+}
+
 export function RequestControl({ slug, chapterId }: RequestControlProps) {
   const { isAuthenticated, isPending: authPending } = usePublicAuth();
   const [requestType, setRequestType] = useState<RequestType>(
@@ -48,11 +63,12 @@ export function RequestControl({ slug, chapterId }: RequestControlProps) {
   const [details, setDetails] = useState("");
   const [clientError, setClientError] = useState<string | null>(null);
   const [createdRequest, setCreatedRequest] = useState<PublicRequest | null>(null);
+  const [justSubmitted, setJustSubmitted] = useState(false);
   const createRequest = useCreateRequest();
 
   if (authPending) {
     return (
-      <section className="rounded-md border border-border bg-muted/40 p-4">
+      <section className="space-y-3 rounded-md border border-border bg-muted/40 p-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           Checking session
@@ -64,7 +80,10 @@ export function RequestControl({ slug, chapterId }: RequestControlProps) {
   if (!isAuthenticated) {
     return (
       <section className="space-y-3 rounded-md border border-border bg-muted/40 p-4">
-        <h3 className="text-sm font-medium">Request a novel or chapter</h3>
+        <h3 className="text-sm font-medium">Request a Novel or Chapter</h3>
+        <p className="text-xs text-muted-foreground">
+          Sign in to request translations or new novels.
+        </p>
         <LoginPrompt />
       </section>
     );
@@ -73,6 +92,7 @@ export function RequestControl({ slug, chapterId }: RequestControlProps) {
   const submitRequest = () => {
     const validation = validateRequest(requestType, sourceUrl, slug);
     setClientError(validation);
+    setJustSubmitted(false);
     if (validation) {
       return;
     }
@@ -93,24 +113,41 @@ export function RequestControl({ slug, chapterId }: RequestControlProps) {
       onSuccess: (request) => {
         setCreatedRequest(request);
         setDetails("");
+        setSourceUrl("");
+        setJustSubmitted(true);
       },
     });
   };
 
   return (
     <section className="space-y-3 rounded-md border border-border bg-muted/40 p-4">
-      <h3 className="text-sm font-medium">Request a novel or chapter</h3>
+      <div>
+        <h3 className="text-sm font-medium">Request a Novel or Chapter</h3>
+        <p className="text-xs text-muted-foreground">
+          {slug
+            ? "Request a missing or untranslated chapter for this novel."
+            : "Request a new novel to be added to the catalog."}
+        </p>
+      </div>
+
+      {/* Request type toggle */}
       <div className="flex flex-wrap gap-2">
         <Button
-          onClick={() => setRequestType("novel")}
+          onClick={() => {
+            setRequestType("novel");
+            setJustSubmitted(false);
+          }}
           size="sm"
           type="button"
           variant={requestType === "novel" ? "secondary" : "outline"}
         >
-          Novel
+          New Novel
         </Button>
         <Button
-          onClick={() => setRequestType("chapter")}
+          onClick={() => {
+            setRequestType("chapter");
+            setJustSubmitted(false);
+          }}
           size="sm"
           type="button"
           variant={requestType === "chapter" ? "secondary" : "outline"}
@@ -118,36 +155,69 @@ export function RequestControl({ slug, chapterId }: RequestControlProps) {
           Chapter
         </Button>
       </div>
+
+      {/* Source URL (novel requests only) */}
       {requestType === "novel" && (
-        <input
-          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
-          onChange={(event) => setSourceUrl(event.target.value)}
-          placeholder="https://example.com/novel"
-          type="url"
-          value={sourceUrl}
-        />
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">
+            Source URL <span className="text-destructive">*</span>
+          </label>
+          <input
+            className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+            onChange={(event) => {
+              setSourceUrl(event.target.value);
+              setJustSubmitted(false);
+            }}
+            placeholder="https://example.com/novel"
+            type="url"
+            value={sourceUrl}
+          />
+          <p className="text-xs text-muted-foreground">
+            Link to the original novel page you want translated.
+          </p>
+        </div>
       )}
+
+      {/* Contextual message (chapter requests) */}
       {requestType === "chapter" && (
-        <p className="text-sm text-muted-foreground">
-          This will create a pending chapter request for {slug ?? "this novel"}.
+        <p className="rounded-md border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+          This will create a pending chapter request for{" "}
+          <span className="font-medium text-foreground">{slug ?? "this novel"}</span>.
         </p>
       )}
-      <textarea
-        className="min-h-20 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-        maxLength={2000}
-        onChange={(event) => setDetails(event.target.value)}
-        placeholder="Optional details"
-        value={details}
-      />
+
+      {/* Details textarea */}
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-foreground">
+          Details <span className="text-xs font-normal">(optional)</span>
+        </label>
+        <textarea
+          className="min-h-20 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          maxLength={2000}
+          onChange={(event) => {
+            setDetails(event.target.value);
+            setJustSubmitted(false);
+          }}
+          placeholder="Add any additional context or notes"
+          value={details}
+        />
+      </div>
+
+      {/* Error messages */}
       {clientError && <p className="text-sm text-destructive">{clientError}</p>}
       {createRequest.error && (
-        <p className="text-sm text-destructive">Request could not be submitted.</p>
-      )}
-      {createdRequest && (
-        <p className="text-sm text-muted-foreground">
-          Request #{createdRequest.id} is {createdRequest.status}.
+        <p className="text-sm text-destructive">
+          Could not submit your request. Try again later.
         </p>
       )}
+
+      {/* Success confirmation */}
+      {justSubmitted && createdRequest && (
+        <p className="text-sm text-green-600 dark:text-green-400">
+          ✓ Request submitted — {statusLabel(createdRequest.status)}.
+        </p>
+      )}
+
       <Button
         disabled={createRequest.isPending}
         onClick={submitRequest}
