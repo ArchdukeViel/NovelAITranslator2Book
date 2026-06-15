@@ -15,6 +15,7 @@ import {
   Search,
   Settings,
   Sun,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -23,29 +24,52 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/lib/store";
+import { OwnerSessionIndicator } from "@/components/admin/owner-session-indicator";
+import { LogoutControl } from "@/components/admin/logout-control";
+import { CredentialStatusIndicator } from "@/components/admin/credential-status-indicator";
 
-const items = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+const navItems: NavItem[] = [
   { href: "/admin/dashboard", label: "Home", icon: Gauge },
   { href: "/admin/crawler", label: "Add Novel", icon: Search },
   { href: "/admin/library", label: "Library", icon: Library },
   { href: "/admin/activity", label: "Activity Log", icon: ListChecks },
   { href: "/admin/requests", label: "Requests", icon: ListPlus },
+  { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/editor", label: "Editor", icon: FileEdit },
-  { href: "/admin/settings", label: "Settings", icon: Settings }
+  { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
-function currentSection(pathname: string) {
-  const match = items
-    .slice()
-    .reverse()
-    .find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
-  return match?.label ?? "Dashboard";
+/**
+ * Select the active nav item using most-specific (longest prefix) matching.
+ * Returns at most one active item.
+ */
+function selectActiveNav(pathname: string, items: NavItem[]): NavItem | undefined {
+  let bestMatch: NavItem | undefined;
+  let bestMatchLength = -1;
+
+  for (const item of items) {
+    if (pathname === item.href || pathname.startsWith(`${item.href}/`)) {
+      const matchLength = item.href.length;
+      if (matchLength > bestMatchLength) {
+        bestMatchLength = matchLength;
+        bestMatch = item;
+      }
+    }
+  }
+
+  return bestMatch;
 }
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { apiToken, apiTokenLabel, darkMode, sidebarCollapsed, toggleDarkMode, toggleSidebar } = useUiStore();
-  const apiTokenStatus = apiTokenLabel?.trim() || (apiToken.trim() ? "Gemini AI" : "None");
+  const { darkMode, sidebarCollapsed, toggleDarkMode, toggleSidebar } = useUiStore();
+  const activeItem = selectActiveNav(pathname, navItems);
 
   React.useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
@@ -70,8 +94,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 space-y-1 px-2 py-3">
-          {items.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          {navItems.map((item) => {
+            const active = activeItem?.href === item.href;
             const Icon = item.icon;
             return (
               <Link
@@ -102,9 +126,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-10 flex min-h-14 items-center justify-between gap-3 border-b bg-background/95 px-5 backdrop-blur">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Activity className="h-4 w-4 text-primary" />
-            <span>{currentSection(pathname)}</span>
+            <span>{activeItem?.label ?? "Dashboard"}</span>
           </div>
           <div className="flex items-center gap-2">
+            <CredentialStatusIndicator />
             <Button
               variant="outline"
               size="icon"
@@ -114,10 +139,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             >
               {darkMode ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
             </Button>
-            <div className="flex min-w-fit items-center rounded-md border bg-card px-3 py-1.5 text-sm">
-              <span className="text-muted-foreground">API Token:</span>
-              <span className="ml-2 font-medium">{apiTokenStatus}</span>
-            </div>
+            <OwnerSessionIndicator />
+            <LogoutControl />
           </div>
         </header>
         <main className="mx-auto w-full max-w-7xl px-5 py-5">{children}</main>

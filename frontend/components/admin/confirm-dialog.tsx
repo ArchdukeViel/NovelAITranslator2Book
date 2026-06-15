@@ -2,6 +2,7 @@
 
 import * as React from "react";
 
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DialogShell } from "@/components/admin/dialog-shell";
 
@@ -14,7 +15,8 @@ export function ConfirmDialog({
   destructive = false,
   pending = false,
   onConfirm,
-  onCancel
+  onCancel,
+  auditNotice,
 }: {
   open: boolean;
   title: string;
@@ -25,6 +27,7 @@ export function ConfirmDialog({
   pending?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  auditNotice?: string;
 }) {
   return (
     <DialogShell
@@ -43,7 +46,15 @@ export function ConfirmDialog({
         </div>
       }
     >
-      <div className="p-4 text-sm text-muted-foreground">{description || "Confirm this action."}</div>
+      <div className="p-4 text-sm text-muted-foreground">
+        {description || "Confirm this action."}
+        {auditNotice && (
+          <div className="mt-3 flex items-start gap-2 rounded-md bg-amber-50 p-3 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <p className="text-xs">{auditNotice}</p>
+          </div>
+        )}
+      </div>
     </DialogShell>
   );
 }

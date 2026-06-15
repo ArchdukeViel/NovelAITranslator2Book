@@ -225,6 +225,7 @@ export default function ActivityPage() {
         pending={deleteActivities.isPending}
         onConfirm={() => deleteActivities.mutate(Array.from(selectedActivityIds))}
         onCancel={() => setDeleteDialogOpen(false)}
+        auditNotice="This action is recorded in the audit log."
       />
     </>
   );

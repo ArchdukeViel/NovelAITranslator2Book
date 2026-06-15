@@ -28,6 +28,31 @@ export type * from "@/lib/api-types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
+// ===========================================
+// Shared low-level request helper (Task 3.1)
+// Uses credentials: "include" to send HTTP-only Session_Cookie
+// Does NOT read apiToken from store, does NOT set Authorization header
+// ===========================================
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set("Content-Type", "application/json");
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers,
+    credentials: "include", // Send HTTP-only Session_Cookie
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw await responseError(response);
+  }
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  return response.json() as Promise<T>;
+}
+
 export class ApiError extends Error {
   status: number;
   code: string;
@@ -201,40 +226,19 @@ export function activityProgressLabel(activity: ActivityRecord) {
   return parts.join(" · ");
 }
 
+// Legacy fetch wrapper - now uses session cookie via request()
+// Previously used Bearer token from store (apiToken), which is now decommissioned
+// All endpoints now use credentials: "include" to send HTTP-only Session_Cookie
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = useUiStore.getState().apiToken;
-  const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json");
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers,
-    cache: "no-store"
-  });
-  if (!response.ok) {
-    throw await responseError(response);
-  }
-  if (response.status === 204) {
-    return undefined as T;
-  }
-  return response.json() as Promise<T>;
+  return request<T>(path, { ...init, cache: init.cache ?? "no-store" });
 }
 
 async function apiDownload(path: string, body: unknown): Promise<Blob> {
-  const token = useUiStore.getState().apiToken;
-  const headers = new Headers();
-  headers.set("Content-Type", "application/json");
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    credentials: "include", // Send HTTP-only Session_Cookie
     cache: "no-store"
   });
   if (!response.ok) {
@@ -245,7 +249,6 @@ async function apiDownload(path: string, body: unknown): Promise<Blob> {
 
 export const api = {
   health: () => apiFetch<{ status: string }>("/health"),
-  sources: () => apiFetch<string[]>("/novels/sources"),
   inputAdapters: () => apiFetch<string[]>("/novels/input-adapters"),
   novels: () => apiFetch<NovelSummary[]>("/novels"),
   novel: (novelId: string) => apiFetch<NovelMetadata>(`/novels/${encodeURIComponent(novelId)}`),
@@ -411,4 +414,81 @@ export const api = {
     }),
   exportNovel: (novelId: string, payload: { format: string; chapters?: string | null }) =>
     apiDownload(`/novels/${encodeURIComponent(novelId)}/export`, payload)
+};
+// ===========================================
+// Admin Auth namespace (Task 3.2)
+// Uses the shared request() helper with session cookie
+// ===========================================
+export const adminAuth = {
+  me: () => request<import("./api-types").AuthUser>("/auth/me"),
+  login: (secret: string) =>
+    request<import("./api-types").AuthUser>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ secret })
+    }),
+  logout: () => request<{ status: string }>("/auth/logout", { method: "POST" })
+};
+
+// ===========================================
+// Admin API namespace (Task 3.3)
+// All admin endpoints targeting /api/admin/*
+// Sends session cookie, never a bearer key
+// ===========================================
+export const adminApi = {
+  // Users (Req 10)
+  users: () => request<{ users: import("./api-types").UserRecord[] }>("/admin/users"),
+  updateUser: (id: number, patch: import("./api-types").UserMutation) =>
+    request<import("./api-types").UserRecord>(`/admin/users/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch)
+    }),
+
+  // Requests (Req 11)
+  requests: () => request<{ requests: import("./api-types").NovelRequestRecordAdmin[] }>("/admin/requests"),
+  reviewRequest: (id: string, patch: { status: import("./api-types").RequestStatus; notes?: string }) =>
+    request<import("./api-types").NovelRequestRecordAdmin>(`/admin/requests/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch)
+    }),
+  runRequest: (id: string) =>
+    request<import("./api-types").NovelRequestRecordAdmin>(`/admin/requests/${id}/run`, { method: "POST" }),
+
+  // Provider credential as CONFIG (Req 9)
+  // Note: API key sent ONLY as request body field, never as auth header
+  providerCredential: (provider?: string) =>
+    request<import("./api-types").ProviderCredential>(`/admin/providers/${provider ?? "gemini"}`),
+  setProviderCredential: (body: { provider?: string; api_key: string }) =>
+    request<import("./api-types").ProviderCredential>("/admin/providers", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  validateProviderCredential: (provider?: string) =>
+    request<import("./api-types").ProviderCredential>(`/admin/providers/${provider ?? "gemini"}/validate`, {
+      method: "POST"
+    }),
+  activateProviderCredential: (id: string) =>
+    request<import("./api-types").ProviderCredential>(`/admin/providers/${id}/activate`, { method: "POST" }),
+  deleteProviderCredential: (id: string) =>
+    request<void>(`/admin/providers/${id}`, { method: "DELETE" }),
+
+  // Scheduler / QA / Provider policy (Req 16)
+  controlConfig: () => request<import("./api-types").ControlConfig>("/admin/controls"),
+  updateControlConfig: (patch: Partial<import("./api-types").ControlConfig>) =>
+    request<import("./api-types").ControlConfig>("/admin/controls", {
+      method: "PUT",
+      body: JSON.stringify(patch)
+    }),
+
+  // Contributed credentials oversight (Req 17)
+  contributedCredentials: () =>
+    request<{ credentials: import("./api-types").ContributedCredential[] }>("/admin/contributed-credentials"),
+  setContributedCredentialState: (id: string, enabled: boolean) =>
+    request<import("./api-types").ContributedCredential>(`/admin/contributed-credentials/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled })
+    }),
+  validateContributedCredential: (id: string) =>
+    request<import("./api-types").ContributedCredential>(`/admin/contributed-credentials/${id}/validate`, {
+      method: "POST"
+    })
 };

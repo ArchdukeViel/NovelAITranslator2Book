@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { ApiError, api, apiErrorKey, describeApiError } from "@/lib/api";
 import type { ActivityRecord } from "@/lib/api";
 import { cleanNovelInput, deriveNovelId, detectSourceOrigin } from "@/lib/novel-input";
-import { useUiStore } from "@/lib/store";
 
 const ADD_NOVEL_JOB_POLL_INTERVAL_MS = 2000;
 const ADD_NOVEL_JOB_POLL_ATTEMPTS = 180;
@@ -111,7 +110,7 @@ export default function CrawlerPage() {
   const [addNovelRunState, setAddNovelRunState] = React.useState<AddNovelRunState>("idle");
   const [addNovelRunProgress, setAddNovelRunProgress] = React.useState(0);
   const [addedChapterCount, setAddedChapterCount] = React.useState(0);
-  const activeGeminiToken = useUiStore((state) => state.apiTokens.find((entry) => entry.status === "Active")?.token);
+  // Note: activeGeminiToken removed - provider credential now comes from Admin_API, server-managed (Task 4)
 
   const activity = useQuery({ queryKey: ["activity", "crawl"], queryFn: () => api.activity({ activity_type: "crawl", limit: 50 }) });
   const sourceHealth = useQuery({ queryKey: ["source-health"], queryFn: () => api.sourceHealth() });
@@ -131,14 +130,7 @@ export default function CrawlerPage() {
 
   const addNovel = useMutation({
     mutationFn: async () => {
-      if (activeGeminiToken?.trim()) {
-        await api.setProviderApiKey({
-          provider: "gemini",
-          api_key: activeGeminiToken,
-          apply_globally: true,
-          validate_connection: false
-        });
-      }
+      // Provider credential now managed server-side via Admin_API - no client-side token sync needed
       return api.preliminaryCrawl(derivedNovelId, {
         source_key: detectedSource === "none" ? undefined : detectedSource,
         identifier: cleanNovelInput(novelInput),
