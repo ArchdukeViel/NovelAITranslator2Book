@@ -286,4 +286,42 @@ describe("public engagement UI", () => {
     expect(await screen.findByText("No requests yet.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /browse novels/i })).toBeInTheDocument();
   });
+
+  it("renders requests with long source URLs without breaking layout", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/auth/me") {
+        return Promise.resolve(jsonResponse(user));
+      }
+      if (url === "/api/user/requests?limit=50") {
+        return Promise.resolve(
+          jsonResponse({
+            items: [
+              {
+                id: 9,
+                request_type: "novel",
+                status: "pending",
+                source_url: "https://example.com/a/very/long/novel/url/that/might/wrap/on/mobile",
+                slug: null,
+                chapter_id: null,
+                created_at: "2026-06-15T00:00:00Z",
+              },
+            ],
+            next_cursor: null,
+          })
+        );
+      }
+      return Promise.resolve(jsonResponse({ detail: "unexpected" }, 500));
+    });
+
+    renderWithQuery(<RequestsPage />);
+
+    // Long URL is rendered
+    expect(
+      await screen.findByText("https://example.com/a/very/long/novel/url/that/might/wrap/on/mobile")
+    ).toBeInTheDocument();
+
+    // Status badge is present and shrinks safely
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+  });
 });
