@@ -13,23 +13,22 @@ describe("public API quarantine", () => {
     expect(publicApi).toContain("/api/public/novels/");
   });
 
-  it("exposes only B4 reading-state public user API methods", () => {
+  it("exposes only reading-state and B5 engagement public user API methods", () => {
     const publicApi = readFileSync("lib/public-api.ts", "utf8");
 
     expect(publicApi).toContain("userReadingApi");
+    expect(publicApi).toContain("userEngagementApi");
     expect(publicApi).toContain("/api/user/library");
     expect(publicApi).toContain("/api/user/progress/");
     expect(publicApi).toContain("/api/user/history");
+    expect(publicApi).toContain("/api/user/reviews");
+    expect(publicApi).toContain("/api/user/requests");
     expect(publicApi).not.toContain("userApi");
-    expect(publicApi).not.toContain("/api/user/reviews");
-    expect(publicApi).not.toContain("/api/user/requests");
     expect(publicApi).not.toContain("/api/user/contributions");
-    expect(publicApi).not.toContain("postReview");
-    expect(publicApi).not.toContain("createRequest");
     expect(publicApi).not.toContain("submitContribution");
   });
 
-  it("exports only B4 reading-state hooks from the hook barrel", () => {
+  it("exports only safe reading-state and engagement hooks from the hook barrel", () => {
     const publicHooks = readFileSync("hooks/public/index.ts", "utf8");
 
     expect(publicHooks).toContain("useCatalog");
@@ -40,9 +39,10 @@ describe("public API quarantine", () => {
     expect(publicHooks).toContain("useProgress");
     expect(publicHooks).toContain("useHistory");
     expect(publicHooks).toContain("useRecordHistory");
-    expect(publicHooks).not.toContain("useRequests");
-    expect(publicHooks).not.toContain("usePostReview");
-    expect(publicHooks).not.toContain("useReviews");
+    expect(publicHooks).toContain("useRequests");
+    expect(publicHooks).toContain("useCreateRequest");
+    expect(publicHooks).toContain("useUpsertReview");
+    expect(publicHooks).toContain("useDeleteReview");
     expect(publicHooks).not.toContain("useContribution");
   });
 });

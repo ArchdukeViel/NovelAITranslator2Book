@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { ContinueReading } from "@/components/public/continue-reading";
 import { RatingReview } from "@/components/public/rating-review";
+import { RequestControl } from "@/components/public/request-control";
 import { SaveToLibrary } from "@/components/public/save-to-library";
 import { useNovel, useChapters } from "@/hooks/public";
 import { ApiError } from "@/lib/api";
@@ -124,6 +125,10 @@ export default function NovelDetailPage() {
       {/* Rating/review — disabled until public accounts exist */}
       <div className="my-4">
         <RatingReview slug={slug} />
+      </div>
+
+      <div className="my-4">
+        <RequestControl slug={slug} />
       </div>
 
       <Panel>

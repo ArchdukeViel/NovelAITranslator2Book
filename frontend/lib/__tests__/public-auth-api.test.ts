@@ -26,8 +26,6 @@ describe("public auth API", () => {
     expect(source).not.toContain("authApi.login");
     expect(source).not.toContain("LoginInput");
     expect(source).not.toContain("userApi");
-    expect(source).not.toContain("/api/user/reviews");
-    expect(source).not.toContain("/api/user/requests");
     expect(source).not.toContain("/api/user/contributions");
   });
 });

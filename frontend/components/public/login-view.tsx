@@ -30,7 +30,7 @@ export function LoginView({ onClose }: LoginViewProps) {
       <div className="space-y-2 text-sm text-muted-foreground">
         <p>Continue with Google to use the public reader account session.</p>
         <p>Guest reading is still available.</p>
-        <p>User library, progress, reviews, and requests will return in a later phase.</p>
+        <p>Library, progress, reviews, and requests are available after sign-in.</p>
       </div>
 
       <div className="mt-5 flex flex-col gap-2">

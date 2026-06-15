@@ -20,10 +20,16 @@ import type {
   LibraryItem,
   ProgressInput,
   ProgressResponse,
+  PublicRequestInput,
+  PublicRequest,
   PublicCatalogResponse,
   PublicChapterDetail,
   PublicChapterSummary,
   PublicNovelSummary,
+  RequestListParams,
+  RequestListResponse,
+  ReviewInput,
+  ReviewResponse,
 } from "@/lib/public-types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
@@ -288,5 +294,37 @@ export const userReadingApi = {
 
   recordHistory(input: HistoryRecordInput): Promise<HistoryEntry> {
     return publicPost<HistoryEntry>("/api/user/history", input);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Engagement API client - reviews/ratings and public requests only
+// ---------------------------------------------------------------------------
+
+export const userEngagementApi = {
+  putReview(slug: string, input: ReviewInput): Promise<ReviewResponse> {
+    return publicPut<ReviewResponse>(
+      `/api/user/reviews/${encodeURIComponent(slug)}`,
+      input
+    );
+  },
+
+  deleteReview(slug: string): Promise<void> {
+    return publicDelete(`/api/user/reviews/${encodeURIComponent(slug)}`);
+  },
+
+  listRequests(params: RequestListParams = {}): Promise<RequestListResponse> {
+    const search = new URLSearchParams();
+    if (params.limit !== undefined) {
+      search.set("limit", String(params.limit));
+    }
+    const qs = search.toString();
+    return publicGet<RequestListResponse>(
+      `/api/user/requests${qs ? `?${qs}` : ""}`
+    );
+  },
+
+  createRequest(input: PublicRequestInput): Promise<PublicRequest> {
+    return publicPost<PublicRequest>("/api/user/requests", input);
   },
 };
