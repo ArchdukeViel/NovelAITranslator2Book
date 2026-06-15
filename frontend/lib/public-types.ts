@@ -60,6 +60,13 @@ export interface AuthUser {
   is_owner: boolean;
 }
 
+export type PublicAuthStatus = "guest" | "authenticated";
+
+export interface PublicAuthState {
+  status: PublicAuthStatus;
+  user: AuthUser;
+}
+
 // ---- Contribution (frontend-designed; backend dependency) ----
 
 export type ContributionStatus = "Unchecked" | "Checking" | "Working" | "Failed";

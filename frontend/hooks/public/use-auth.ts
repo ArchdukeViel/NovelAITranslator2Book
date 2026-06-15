@@ -1,7 +1,9 @@
 "use client";
 
+import { useCallback, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authApi } from "@/lib/public-api";
+import type { PublicAuthState } from "@/lib/public-types";
 
 const AUTH_ME_KEY = ["auth", "me"] as const;
 
@@ -12,6 +14,39 @@ export function useAuthMe() {
   });
 }
 
+export function usePublicAuthState(): PublicAuthState | null {
+  const { data } = useAuthMe();
+  if (!data) {
+    return null;
+  }
+  return {
+    status: data.is_authenticated ? "authenticated" : "guest",
+    user: data,
+  };
+}
+
+export function usePublicAuth() {
+  const query = useAuthMe();
+  const authState = useMemo<PublicAuthState | null>(() => {
+    if (!query.data) {
+      return null;
+    }
+    return {
+      status: query.data.is_authenticated ? "authenticated" : "guest",
+      user: query.data,
+    };
+  }, [query.data]);
+
+  return {
+    ...query,
+    authState,
+    user: query.data ?? null,
+    isAuthenticated: query.data?.is_authenticated === true,
+    isPublicUser: query.data?.role === "user",
+    isOwner: query.data?.role === "owner",
+  };
+}
+
 export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -20,4 +55,18 @@ export function useLogout() {
       queryClient.invalidateQueries({ queryKey: AUTH_ME_KEY });
     },
   });
+}
+
+export function useStartGoogleOAuth() {
+  return useCallback((returnTo?: string) => {
+    const currentPath =
+      typeof window !== "undefined"
+        ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+        : "/";
+    const url = authApi.googleStart(returnTo ?? currentPath);
+    if (typeof window !== "undefined") {
+      window.location.assign(url);
+    }
+    return url;
+  }, []);
 }

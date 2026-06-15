@@ -20,6 +20,7 @@ import type {
 } from "@/lib/public-types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const DEFAULT_PUBLIC_RETURN_TO = "/";
 
 // ---------------------------------------------------------------------------
 // Error parsing (mirrors lib/api.ts responseError logic, reuses ApiError class)
@@ -136,6 +137,27 @@ async function publicPost<T>(path: string, body?: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+function safeRelativeReturnPath(returnTo?: string): string {
+  if (!returnTo || !returnTo.startsWith("/") || returnTo.startsWith("//")) {
+    return DEFAULT_PUBLIC_RETURN_TO;
+  }
+  try {
+    const parsed = new URL(returnTo, "http://novelai.local");
+    if (parsed.origin !== "http://novelai.local") {
+      return DEFAULT_PUBLIC_RETURN_TO;
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return DEFAULT_PUBLIC_RETURN_TO;
+  }
+}
+
+export function googleOAuthStartUrl(returnTo?: string): string {
+  const safeReturnTo = safeRelativeReturnPath(returnTo);
+  const search = new URLSearchParams({ next: safeReturnTo });
+  return `${API_BASE_URL}/api/auth/google/start?${search.toString()}`;
+}
+
 // ---------------------------------------------------------------------------
 // Public API client — /api/public/*
 // ---------------------------------------------------------------------------
@@ -185,5 +207,9 @@ export const authApi = {
 
   logout(): Promise<void> {
     return publicPost<void>("/api/auth/logout");
+  },
+
+  googleStart(returnTo?: string): string {
+    return googleOAuthStartUrl(returnTo);
   },
 };
