@@ -1,4 +1,14 @@
-# Public Platform Expansion Implementation Plan
+# Public Platform Expansion Implementation Plan (Historical)
+
+> **Status (doc audit 2026-06-15)**: This is a historical planning document.
+> Phases 1–4 (architecture expansion, database foundation, background workers,
+> auth) have been completed. Phases 5–6 (public reader features, user library/
+> progress/ratings/requests) and the security hardening phase have also been
+> implemented. The current project state is documented in
+> `docs/architecture/architecture.md` and `docs/current_state.md`.
+>
+> This file is retained for historical context. Do not derive new implementation
+> tasks from it without verifying against the canonical architecture.
 
 > **For Hermes:** This is a multi-phase platform-evolution plan derived from
 > `novelai_wtr_lab_single_owner_platform_notes.txt`. Phases 1–2 are broken into
@@ -56,12 +66,12 @@ explicitly out of scope (still blocked).
 | 2 | Database foundation (SQLAlchemy + Alembic + Postgres) | Code (detailed) | ✅ Complete (Supabase) |
 | 3 | Background workers (Redis + RQ) | Code (outline) | ✅ Complete |
 | 4 | Auth: guest / user / owner | Code (outline) | ✅ Complete |
-| 5 | Public reader features | Code (outline) | Phase 2 + 4 |
-| 6 | User library / progress / ratings / requests | Code (outline) | Phase 4 + 5 |
-| 7 | Owner dashboard hardening | Code (outline) | Phase 3 + 4 |
-| 8 | Hosting / deployment | Infra (outline) | Phase 2–4 stable |
-| 9 | Monitoring / backups / rate limiting | Infra (outline) | Phase 8 |
-| 10 | Search / recommendation upgrades | Code (outline) | Phase 5 stable |
+| 5 | Public reader features | Code (outline) | ✅ Complete |
+| 6 | User library / progress / ratings / requests | Code (outline) | ✅ Complete |
+| 7 | Owner dashboard hardening | Code (outline) | ✅ Partial (admin guard + owner login) |
+| 8 | Hosting / deployment | Infra (outline) | 🔜 Next (DEP1) |
+| 9 | Monitoring / backups / rate limiting | Infra (outline) | ✅ Partial (rate limits done) |
+| 10 | Search / recommendation upgrades | Code (outline) | Deferred |
 
 **Hard sequencing rule (from notes §5):** architecture → DB → migrations →
 workers → auth → public read → user features → owner dashboard → hosting →

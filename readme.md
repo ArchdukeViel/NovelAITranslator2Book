@@ -188,5 +188,7 @@ npm run build
 - [AGENTS.md](AGENTS.md): agent-neutral onboarding and operating rules for AI assistants
 - [docs/guides/GETTING_STARTED.md](docs/guides/GETTING_STARTED.md): comprehensive setup, workflow, and troubleshooting guide
 - [docs/architecture/architecture.md](docs/architecture/architecture.md): canonical architecture, current status, runtime flow, blocked phases, debt register, and roadmap
+- [docs/architecture/public-auth-contract.md](docs/architecture/public-auth-contract.md): public auth and user data contract design
 - [docs/reference/DATA_OUTPUT_STRUCTURE.md](docs/reference/DATA_OUTPUT_STRUCTURE.md): storage and output layout
 - [docs/reference/PYTHON_COMMANDS.md](docs/reference/PYTHON_COMMANDS.md): backend launcher and Python API reference
+- [docs/current_state.md](docs/current_state.md): implementation status snapshot and test baseline

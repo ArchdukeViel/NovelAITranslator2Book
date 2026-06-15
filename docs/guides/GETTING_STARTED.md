@@ -58,7 +58,7 @@ cd "C:\Akmal\Novel AI"
 
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -e ".[documents,openai,gemini,dev]"
+.\.venv\Scripts\python.exe -m pip install -e ".[documents,openai,gemini,dev,db,worker]"
 ```
 
 Activate the virtual environment when working manually:
@@ -102,6 +102,29 @@ PROVIDER_OPENAI_API_KEY=your_openai_key_here
 TRANSLATION_TARGET_LANGUAGE=English
 LOG_LEVEL=INFO
 WEB_RATE_LIMITER_BACKEND=memory
+DATABASE_URL=postgresql+psycopg://novelai:novelai@localhost:5432/novelai
+REDIS_URL=redis://localhost:6379/0
+```
+
+Start PostgreSQL and Redis via Docker (required for the `db` extra):
+
+```powershell
+docker compose -f deploy/compose.yml up -d postgres redis
+```
+
+Run database migrations:
+
+```powershell
+.\.venv\Scripts\alembic -c backend/alembic.ini upgrade head
+```
+
+Optional Google OAuth for public login (disabled unless all three are set):
+
+```env
+GOOGLE_OAUTH_CLIENT_ID=your-google-client-id
+GOOGLE_OAUTH_CLIENT_SECRET=your-google-client-secret
+GOOGLE_OAUTH_REDIRECT_URI=http://127.0.0.1:8000/api/auth/google/callback
+PUBLIC_FRONTEND_URL=http://127.0.0.1:3000
 ```
 
 Admin API protection is controlled by `WEB_API_KEY`.
@@ -174,9 +197,15 @@ Use the web UI for daily work:
 Public reader routes:
 
 ```text
-/novel/[slug]
-/novel/[slug]/chapter/[chapterId]
+/                              — public catalog home
+/novel/[slug]                  — novel detail
+/novel/[slug]/chapter/[chapterId] — chapter reader
+/account/history               — reading history (authenticated)
+/account/requests              — novel/chapter requests (authenticated)
+/account/contribute            — contribution (gated/unavailable)
 ```
+
+Public users can log in with Google OAuth, save novels to their library, track reading progress, view reading history, rate/review novels, and submit novel/chapter requests. Contribution credentials remain gated and unavailable.
 
 The reader stores theme, font size, and width preferences in the frontend state.
 

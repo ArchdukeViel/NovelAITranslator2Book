@@ -12,6 +12,11 @@ Current mode is single-owner / controlled-admin with Supabase PostgreSQL 16 for 
 ## Architecture
 
 - [architecture/architecture.md](architecture/architecture.md): canonical architecture, current status, runtime flow, security posture, blocked phases, debt register, and roadmap
+- [architecture/public-auth-contract.md](architecture/public-auth-contract.md): public auth and user data contract design (Google OAuth, `/api/user/*` contracts, implementation phases)
+
+## Roadmap
+
+- [roadmap/public-platform-expansion.md](roadmap/public-platform-expansion.md): historical multi-phase platform expansion plan (phases 1–6 complete, retained for context)
 
 ## Reference
 
@@ -20,11 +25,14 @@ Current mode is single-owner / controlled-admin with Supabase PostgreSQL 16 for 
 
 ## Current Direction
 
-Novel AI is being shaped as a production-style web novel platform:
+Novel AI is a production-style web novel platform:
 
 - Next.js owns public reader and admin UI.
 - FastAPI serves `/api/*`.
 - The worker process handles queued crawler and translation activity.
 - The translation scheduler handles admin-owned provider/model routing and exposes model state through activity progress.
-- `storage/novel_library` is the local durable data store.
+- `storage/novel_library` is the local durable data store for chapter content; PostgreSQL 16 is the system of record for metadata, users, and jobs.
+- Google OAuth provides public user login; public users can save library, track progress, view history, rate/review, and request novels/chapters.
+- CSRF enforcement and basic rate limits protect cookie-authenticated mutations.
+- Production session secret fails closed when left at default value.
 - Public contribution credentials remain blocked until the architecture readiness gate says they are safe.

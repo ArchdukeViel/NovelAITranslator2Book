@@ -129,6 +129,13 @@ When changing public contracts:
 
 Treat auth as backend-owned security infrastructure.
 
+Current state:
+- Cookie/session auth remains the primary auth model.
+- Google OAuth backend/frontend plumbing is implemented for public users.
+- Public-user surfaces now include library, progress, history, reviews/ratings, and requests.
+- CSRF protection and basic public rate limits exist for cookie-authenticated mutations.
+- Public contribution credentials remain gated and unavailable for future phases.
+
 Hard rules:
 
 - Do not fake users with localStorage IDs, request-provided usernames, unsigned
@@ -272,7 +279,7 @@ this file. At the time this guide was written, useful commands included:
 Backend, from repository root:
 
 ```bash
-pip install -e ".[documents,openai,gemini,dev]"
+pip install -e ".[documents,openai,gemini,dev,db,worker]"
 pytest --tb=short -q
 pyright
 ruff check .

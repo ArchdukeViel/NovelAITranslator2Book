@@ -2,14 +2,15 @@
 
 ## 0. Status
 
-**Status**: design contract, not implemented
-**Last reviewed**: 2026-06-15
+**Status**: design contract, largely implemented
+**Last reviewed**: 2026-06-15 (doc audit refresh)
 **Authority**: subordinate to `docs/architecture/architecture.md`
 
 This document defines the target contract for public user authentication and
-user-owned public reader features. It does not authorize implementation by
-itself. Future implementation prompts must keep the current public login/user
-UI disabled until the backend contract and ownership tests pass.
+user-owned public reader features. The Google OAuth backend, public auth
+frontend plumbing, `/api/user/*` contract alignment, library/progress/history
+UI, reviews/ratings and requests UI, CSRF enforcement, and rate limiting have
+been implemented. Contribution credentials remain gated and unavailable.
 
 ## 1. Current Repository State
 
@@ -19,12 +20,12 @@ UI disabled until the backend contract and ownership tests pass.
 | Session cookie behavior | `backend/src/novelai/api/app.py`, `backend/src/novelai/api/auth/session.py` | `SessionMiddleware` stores `novelai_session` with `same_site="lax"` and `https_only` in production. Session stores `user_id`, `email`, and `role`. |
 | Role support | `backend/src/novelai/api/auth/roles.py` | `guest < user < owner`; `require_role("user")` allows users and owner, guests receive 401. |
 | User DB model | `backend/src/novelai/db/models/users.py` | `User` has `email`, `display_name`, `role`, `auth_provider`, `auth_provider_subject`, `is_active`, timestamps. |
-| OAuth model support | `backend/src/novelai/db/models/users.py` | Provider and subject fields exist, but there are no OAuth routes yet. |
+| OAuth model support | `backend/src/novelai/db/models/users.py`, `backend/src/novelai/api/auth/google_oauth.py` | Provider and subject fields exist. Google OAuth client and routes (`/api/auth/google/start`, `/api/auth/google/callback`) are implemented. |
 | User data endpoints | `backend/src/novelai/api/routers/user_data.py` | `/api/user/library`, `/progress`, `/history`, `/reviews`, and `/requests` exist behind `require_role("user")`. |
 | Backend tests | `backend/tests/test_auth.py`, `backend/tests/test_user_data_router.py` | Owner session, role guards, no public signup/JWT route, and basic user-data endpoint behavior are tested. |
-| Public auth frontend | `frontend/lib/public-api.ts`, `frontend/hooks/public/use-auth.ts` | Public client keeps `me` and `logout`; no `authApi.login` and no `/api/auth/login` call. |
-| Public user frontend | `frontend/hooks/public/index.ts`, `frontend/lib/public-api.ts` | Guest reader hooks remain; `/api/user/*` public client methods are quarantined. |
-| Public UI gates | `frontend/components/public/*`, `frontend/app/(public)/account/*` | Login, library, rating/review, history, requests, and contribution UI show unavailable states. |
+| Public auth frontend | `frontend/lib/public-api.ts`, `frontend/hooks/public/use-auth.ts` | Public client exposes `authApi.me`, `authApi.logout`, and `authApi.startGoogleLogin`. No `/api/auth/login` call from public UI. |
+| Public user frontend | `frontend/hooks/public/index.ts`, `frontend/lib/public-api.ts` | Guest reader hooks and `/api/user/*` public client methods for library, progress, history, reviews, and requests are re-exported and active. |
+| Public UI gates | `frontend/components/public/*`, `frontend/app/(public)/account/*` | Login uses Google OAuth. Library, progress, history, reviews, and requests UI are active for authenticated users. Contribution UI remains gated/unavailable. |
 
 ## 2. Public Auth Model
 
@@ -190,7 +191,8 @@ schema migration and must not be faked.
 
 ## 5. Frontend Re-enable Plan
 
-Do not re-enable UI until backend contract tests pass.
+The following plan has been largely followed through phases B1–B6. Remaining
+items are noted inline.
 
 1. Add public auth methods to `frontend/lib/public-api.ts` only after OAuth
    endpoints exist: `authApi.startGoogleLogin`, `authApi.me`, `authApi.logout`.
@@ -235,7 +237,12 @@ Do not re-enable UI until backend contract tests pass.
 
 ## 7. Implementation Phases
 
-### Phase B1 - Backend OAuth Foundation
+> **Status update (doc audit 2026-06-15)**: Phases B1–B6 have been implemented.
+> Google OAuth backend, public auth frontend, `/api/user/*` contract alignment,
+> library/progress/history/reviews/requests UI re-enable, and security
+> hardening (CSRF, rate limits, session secret fail-closed) are complete.
+
+### Phase B1 - Backend OAuth Foundation ✅
 
 Scope:
 
@@ -257,7 +264,7 @@ Validation:
 git diff --check
 ```
 
-### Phase B2 - Backend Public-User Contract Tests
+### Phase B2 - Backend Public-User Contract Tests ✅
 
 Scope:
 
@@ -278,7 +285,7 @@ Validation:
 git diff --check
 ```
 
-### Phase B3 - Frontend Public Auth API/Hook Reintroduction
+### Phase B3 - Frontend Public Auth API/Hook Reintroduction ✅
 
 Scope:
 
@@ -301,7 +308,7 @@ python -m pytest backend/tests/test_frontend_api_contract.py -q
 git diff --check
 ```
 
-### Phase B4 - Library, Progress, and History UI Re-enable
+### Phase B4 - Library, Progress, and History UI Re-enable ✅
 
 Scope:
 
@@ -323,7 +330,7 @@ cd frontend && npm test -- --run
 git diff --check
 ```
 
-### Phase B5 - Reviews and Requests UI Re-enable
+### Phase B5 - Reviews and Requests UI Re-enable ✅
 
 Scope:
 
@@ -346,7 +353,7 @@ cd frontend && npm test -- --run
 git diff --check
 ```
 
-### Phase B6 - Security and Rate-Limit Hardening
+### Phase B6 - Security and Rate-Limit Hardening ✅
 
 Scope:
 
@@ -368,10 +375,10 @@ cd frontend && npm run build
 git diff --check
 ```
 
-## 8. Do Not Build Yet
+## 8. Remaining Guardrails
 
-- Do not route public login through owner bootstrap `/api/auth/login`.
-- Do not re-enable user actions before backend ownership tests exist.
+- Do not route public login through owner bootstrap `/api/auth/login`. Public
+  login must use Google OAuth only.
 - Do not implement contributed credentials in the public-auth phase.
 - Do not build community features before moderation exists.
 - Do not add fake endpoints to satisfy UI.
