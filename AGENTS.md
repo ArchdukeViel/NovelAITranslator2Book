@@ -197,7 +197,74 @@ Avoid:
 - New environment variables without documenting them
 - Generated files or build artifacts committed to source control
 
-## 8. Build, Test, and Verification
+## 8. Context-Wasting Work and Scout Subagents
+
+Some work is necessary but toxic to the main context: wide `rg` searches, grep
+sweeps, directory trees, dependency spelunking, repeated file reads, test
+inventory, route inventory, and architecture reconnaissance.
+
+For these tasks, prefer a bounded scout/subagent workflow when the tool supports
+it. The main agent remains responsible for decisions. The scout only explores
+and reports.
+
+Use a scout/subagent for:
+
+- broad repository exploration
+- locating definitions, call sites, routes, schemas, migrations, tests, or docs
+- comparing docs against implementation
+- finding security-sensitive patterns
+- identifying files affected by a planned change
+- summarizing noisy command output
+
+Do not use a scout/subagent for:
+
+- editing files
+- committing changes
+- making product or architecture decisions
+- changing dependencies
+- running migrations
+- touching secrets, credentials, or production data
+- recursively spawning more subagents
+
+Scout/subagent limits:
+
+- Read-only commands only.
+- No source edits.
+- No commits or pushes.
+- No installs or dependency changes.
+- No destructive shell commands.
+- Summarize findings; do not paste raw command floods into the main context.
+- Preserve raw output only in an ignored temporary artifact when useful.
+
+A scout/subagent report must use this format:
+
+```markdown
+# Scout Report
+
+## Objective
+
+## Verdict
+FOUND / NOT FOUND / PARTIAL / BLOCKED
+
+## Files Inspected
+| File | Why inspected | Relevant finding |
+|---|---|---|
+
+## Findings
+
+## Evidence
+- `path/to/file.ext:line-line` — why it matters
+
+## Unknowns / Limits
+
+## Recommended Next Action
+```
+
+If no real subagent tool is available, emulate the same workflow manually: run
+the noisy exploration separately, compress it into the report above, and only
+bring the distilled report back into the main reasoning context.
+
+## 9. Build, Test, and Verification
 
 Verify the current commands from the repository before assuming they still match
 this file. At the time this guide was written, useful commands included:
@@ -236,7 +303,7 @@ Verification rules:
 - Do not claim success from inspection alone when tests/builds were available
   but not run.
 
-## 9. Documentation Discipline
+## 10. Documentation Discipline
 
 Keep documentation useful and current.
 
@@ -250,7 +317,7 @@ Keep documentation useful and current.
 
 Documentation should reduce future confusion, not become a museum of old plans.
 
-## 10. Agent Behavior in This Repository
+## 11. Agent Behavior in This Repository
 
 When asked to review:
 
@@ -274,13 +341,20 @@ When asked for a prompt:
 - Include allowed files, forbidden files, task steps, validation, and required
   final report format.
 
+When asked to explore:
+
+- Use the scout/subagent workflow for broad or noisy reconnaissance.
+- Return compact findings with evidence.
+- Do not dump raw `rg`, `grep`, `tree`, or full-file output unless explicitly
+  requested.
+
 When unsure:
 
 - Prefer inspecting the repository over guessing.
 - Ask only when the ambiguity blocks safe progress.
 - Otherwise make the smallest safe assumption and state it.
 
-## 11. Required Final Report for Implementation Work
+## 12. Required Final Report for Implementation Work
 
 Use this format after modifying files:
 
