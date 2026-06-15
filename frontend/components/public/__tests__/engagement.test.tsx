@@ -61,7 +61,7 @@ describe("public engagement UI", () => {
     );
 
     expect(
-      await screen.findAllByText("User features will return in a later phase.")
+      await screen.findAllByText("Sign in to save novels, continue reading, and leave reviews.")
     ).toHaveLength(2);
     expect(
       fetchMock.mock.calls.some(([url]) => String(url).includes("/api/user/"))
