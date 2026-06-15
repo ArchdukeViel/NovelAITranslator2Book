@@ -302,7 +302,7 @@ export type CreateTranslationActivityPayload = {
 };
 
 // ===========================================
-// Admin UI Rework - Data Models (Req 4, 9, 10, 11, 16, 17)
+// Admin UI Rework - Active Data Models
 // ===========================================
 
 // Auth (Req 4) — mirrors backend UserResponse
@@ -314,39 +314,10 @@ export type AuthUser = {
   is_owner: boolean;
 };
 
-// User management (Req 10)
-export type UserRole = "guest" | "user" | "owner";
-export type UserRecord = {
-  id: number;
-  email: string;
-  display_name?: string | null;
-  role: UserRole;
-  is_active: boolean;
-  created_at?: string | null;
-  last_login_at?: string | null;
-};
-export type UserMutation = { is_active?: boolean };
-
-// Requests review (Req 11)
-export type RequestStatus = "pending" | "approved" | "rejected" | "completed";
-
-// Admin NovelRequestRecord (Req 11) — for admin review workflow
-export type NovelRequestRecordAdmin = {
-  id: string;
-  title: string;
-  status: RequestStatus;
-  requested_by?: string | null;
-  request_type?: string | null;
-  source_url?: string | null;
-  created_at?: string | null;
-  resolved_at?: string | null;
-};
-
-// Masking + validation (Req 9, 17)
+// Masking and validation for active owner provider credential status.
 export type TokenValidationStatus = "Unchecked" | "Checking" | "Working" | "Failed";
 export type MaskedToken = string;
 
-// Owner provider credential as CONFIG (Req 9)
 export type ProviderCredential = {
   id: string;
   provider: string;
@@ -357,25 +328,3 @@ export type ProviderCredential = {
   validation_message?: string | null;
   model?: string | null;
 };
-
-// Contributed credential oversight (Req 17)
-export type ContributedCredential = {
-  id: string;
-  contributor_email: string;
-  contributor_user_id?: number | null;
-  masked_token: MaskedToken;
-  validation_status: TokenValidationStatus;
-  enabled: boolean;
-  validation_message?: string | null;
-  created_at?: string | null;
-};
-
-// Scheduler / QA / Provider policy config (Req 16)
-export type SchedulerConfig = { enabled: boolean; poll_seconds: number; max_concurrent: number };
-export type QaConfig = { enabled: boolean; min_confidence: number; auto_polish: boolean };
-export type ProviderPolicyConfig = {
-  use_owner_credential: boolean;
-  use_contributed_credentials: boolean;
-  ordering: "round_robin" | "priority" | "fallback";
-};
-export type ControlConfig = { scheduler: SchedulerConfig; qa: QaConfig; provider_policy: ProviderPolicyConfig };
