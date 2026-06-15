@@ -67,6 +67,49 @@ export interface PublicAuthState {
   user: AuthUser;
 }
 
+// ---- Reading State (from routers/user_data.py) ----
+
+export type LibraryStatus = "reading" | "completed" | "paused";
+
+export interface LibraryItem {
+  slug: string;
+  status: LibraryStatus;
+  added_at: string;
+}
+
+export interface ProgressInput {
+  chapter_id?: string | null;
+  progress_percent: number;
+}
+
+export interface ProgressResponse {
+  slug: string;
+  chapter_id: string | null;
+  progress_percent: number;
+  updated_at: string;
+}
+
+export interface HistoryEntry {
+  id: number;
+  slug: string;
+  chapter_id: string | null;
+  read_at: string;
+}
+
+export interface HistoryListParams {
+  limit?: number;
+}
+
+export interface HistoryListResponse {
+  items: HistoryEntry[];
+  next_cursor: string | null;
+}
+
+export interface HistoryRecordInput {
+  slug: string;
+  chapter_id?: string | null;
+}
+
 // ---- Contribution (frontend-designed; backend dependency) ----
 
 export type ContributionStatus = "Unchecked" | "Checking" | "Working" | "Failed";

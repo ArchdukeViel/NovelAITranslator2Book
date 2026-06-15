@@ -9,3 +9,13 @@ export { useCatalog } from "./use-catalog";
 export { useChapter } from "./use-chapter";
 export { useChapters } from "./use-chapters";
 export { useNovel } from "./use-novel";
+export {
+  useAddToLibrary,
+  useHistory,
+  useLibrary,
+  useLibraryItem,
+  useProgress,
+  useRecordHistory,
+  useRemoveFromLibrary,
+  useUpdateProgress,
+} from "./use-reading-state";

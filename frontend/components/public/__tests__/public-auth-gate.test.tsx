@@ -2,11 +2,9 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ContinueReading } from "@/components/public/continue-reading";
 import { LoginView } from "@/components/public/login-view";
 import { RatingReview } from "@/components/public/rating-review";
 import { RequestControl } from "@/components/public/request-control";
-import { SaveToLibrary } from "@/components/public/save-to-library";
 
 describe("public auth gate", () => {
   it("renders public login with Google OAuth and without credential fields", () => {
@@ -23,18 +21,14 @@ describe("public auth gate", () => {
     expect(html).not.toContain("/api/auth/login");
   });
 
-  it("renders user-gated actions as disabled unavailable controls", () => {
+  it("keeps reviews and requests as disabled unavailable controls", () => {
     const html = renderToStaticMarkup(
       <div>
-        <SaveToLibrary slug="demo" />
-        <ContinueReading slug="demo" />
         <RatingReview slug="demo" />
         <RequestControl />
       </div>
     );
 
-    expect(html).toContain("Save to Library Unavailable");
-    expect(html).toContain("Continue Reading Unavailable");
     expect(html).toContain("Submit Review Unavailable");
     expect(html).toContain("Submit Request Unavailable");
     expect(html).toContain("Public accounts are not available yet.");
