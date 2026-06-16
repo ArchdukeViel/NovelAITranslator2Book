@@ -113,3 +113,7 @@ SESSION_EXPORT_*.json
 # Note: All .md files are tracked in git for documentation history
 # docs/history/ contains archived phase completion and review docs
 # These are intentionally committed for project memory and version history
+
+# Node dependencies
+node_modules/
+frontend/node_modules/
