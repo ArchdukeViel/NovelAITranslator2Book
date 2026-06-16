@@ -118,6 +118,7 @@ alembic current  # Verify current revision
 
 - [ ] Redis 7 running and accessible
 - [ ] `REDIS_URL` set (e.g., `redis://redis:6379/0`)
+- [ ] `WEB_RATE_LIMITER_BACKEND=redis` set for multi-instance production deployments
 
 ### Background Worker
 
