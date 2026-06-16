@@ -16,6 +16,11 @@ from novelai.sources._helpers import (
 )
 from novelai.sources.base import SourceAdapter
 from novelai.sources.html_parsers import HTMLParserMixin
+from novelai.sources.taxonomy import (
+    KAKUYOMU_GENRE_MAP,
+    map_genre,
+    normalize_keywords,
+)
 from novelai.utils.text_normalization import normalize_text
 
 
@@ -271,6 +276,58 @@ class KakuyomuSource(SourceAdapter):
         updated_at = timestamps[-1] if timestamps else None
         return published_at, updated_at
 
+    # ------------------------------------------------------------------
+    # Taxonomy extraction — genre and tags
+    # ------------------------------------------------------------------
+
+    def _extract_source_genre(self, soup: BeautifulSoup) -> tuple[str | None, str | None]:
+        """Extract genre/category text and mapped slug from the Kakuyomu work page.
+
+        Returns (source_genre_name, genre_slug) where genre_slug may be None
+        if the source text doesn't map to a known internal genre.
+        """
+        genre_selectors = (
+            ".widget-workGenre",
+            ".widget-work-genre",
+            ".work-genre",
+            "[class*='genre'] a",
+            "[class*='Genre'] a",
+            "[class*='category'] a",
+        )
+        for selector in genre_selectors:
+            node = soup.select_one(selector)
+            if isinstance(node, Tag):
+                text = node.get_text(strip=True)
+                if text:
+                    slug = map_genre(text, KAKUYOMU_GENRE_MAP)
+                    return text, slug
+
+        return None, None
+
+    def _extract_source_tags(self, soup: BeautifulSoup) -> list[str]:
+        """Extract author-set tags from the Kakuyomu work page."""
+        tag_selectors = (
+            ".widget-workTag a",
+            ".widget-work-tag a",
+            ".work-tag a",
+            "[class*='workTag'] a",
+            "[class*='work-tag'] a",
+            ".tag a",
+        )
+        tags: list[str] = []
+        for selector in tag_selectors:
+            nodes = soup.select(selector)
+            if nodes:
+                for node in nodes:
+                    if isinstance(node, Tag):
+                        text = node.get_text(strip=True)
+                        if text:
+                            tags.append(text)
+                if tags:
+                    break
+
+        return normalize_keywords(tags)
+
     def _find_story_body(self, soup: BeautifulSoup) -> Tag | None:
         for selector in self.BODY_SELECTORS:
             candidate = soup.select_one(selector)
@@ -336,6 +393,8 @@ class KakuyomuSource(SourceAdapter):
         synopsis = self._extract_synopsis(soup)
         chapters = self._extract_chapters(soup, url, title)
         published_at, updated_at = self._extract_dates(soup)
+        source_genre_name, genre_slug = self._extract_source_genre(soup)
+        source_tags = self._extract_source_tags(soup)
 
         return {
             "source": self.key,
@@ -346,6 +405,9 @@ class KakuyomuSource(SourceAdapter):
             "published_at": published_at,
             "updated_at": updated_at,
             "chapters": chapters,
+            "source_genre_name": source_genre_name,
+            "genre_slug": genre_slug,
+            "source_tags": source_tags,
         }
 
     def _parse_chapter_payload(self, html: str, url: str) -> dict[str, Any]:

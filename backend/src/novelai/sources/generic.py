@@ -303,6 +303,10 @@ class GenericSource(SourceAdapter):
             "chapters": chapters,
             "generic_confidence": confidence.to_dict(),
             "source_quality_status": "needs_review" if confidence.score < 0.75 else "passed",
+            "source_genre_name": None,
+            "genre_slug": None,
+            "source_keywords": [],
+            "source_tags": [],
         }
 
     async def fetch_chapter(self, url: str) -> str:
