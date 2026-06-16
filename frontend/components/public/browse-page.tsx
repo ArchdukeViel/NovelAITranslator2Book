@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, Suspense, useMemo, useState } from "react";
+import { useEffect, useState, FormEvent, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownAZ,
   ArrowUpAZ,
@@ -18,6 +19,7 @@ import { NovelCard } from "@/components/public/novel-card";
 import { SectionHeader } from "@/components/public/section-header";
 import { StatusBadge } from "@/components/public/status-badge";
 import { useCatalog, useGenres } from "@/hooks/public";
+import { publicApi } from "@/lib/public-api";
 import { hasNextPage, toReaderError } from "@/lib/public-format";
 import type {
   CatalogOrder,
@@ -50,6 +52,179 @@ interface BrowsePageProps {
   description: string;
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Parse comma-separated param from URL into a Set. */
+function parseCsvParam(raw: string | null): Set<string> {
+  if (!raw) return new Set();
+  return new Set(
+    raw.split(",").map((s) => s.trim()).filter(Boolean)
+  );
+}
+
+/** Serialize a Set to a comma-separated string (or undefined if empty). */
+function serializeSet(set: Set<string>): string | undefined {
+  if (set.size === 0) return undefined;
+  return Array.from(set).sort().join(",");
+}
+
+/** Debounce a value by delay ms. */
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
+// ---------------------------------------------------------------------------
+// Tag typeahead internal sub-component
+// ---------------------------------------------------------------------------
+
+interface TagFilterSectionProps {
+  label: string;
+  icon: React.ReactNode;
+  query: string;
+  onQueryChange: (v: string) => void;
+  selectedSet: Set<string>;
+  onAdd: (name: string) => void;
+  onRemove: (name: string) => void;
+  /** Tags already selected on either side — hide from results. */
+  allSelected: Set<string>;
+}
+
+function TagFilterSection({
+  label,
+  icon,
+  query,
+  onQueryChange,
+  selectedSet,
+  onAdd,
+  onRemove,
+  allSelected,
+}: TagFilterSectionProps) {
+  const debouncedQuery = useDebounce(query.trim(), 300);
+
+  const { data, isFetching, isError } = useQuery({
+    queryKey: ["public", "tag-search", debouncedQuery.toLowerCase()],
+    queryFn: () =>
+      publicApi.searchTags({
+        q: debouncedQuery,
+        include_adult: false,
+        limit: 10,
+      }),
+    enabled: debouncedQuery.length >= 2,
+    staleTime: 30_000,
+  });
+
+  // Filter out already-selected tags from results
+  const filteredResults = useMemo(() => {
+    if (!data) return [];
+    return data.filter((t) => !allSelected.has(t.name));
+  }, [data, allSelected]);
+
+  const showDropdown = query.trim().length >= 2;
+  const hasResults = filteredResults.length > 0;
+  const isDoneFetching = !isFetching && !isError;
+
+  return (
+    <div className="mb-3 last:mb-0">
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        {icon}
+        {label}
+      </p>
+
+      {/* Selected tag chips */}
+      {selectedSet.size > 0 && (
+        <div className="mb-1.5 flex flex-wrap gap-1.5">
+          {Array.from(selectedSet).sort().map((tag) => (
+            <span
+              key={tag}
+              className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-foreground"
+            >
+              {tag}
+              <button
+                type="button"
+                onClick={() => onRemove(tag)}
+                className="inline-flex items-center text-muted-foreground transition-colors hover:text-destructive"
+                aria-label={`Remove tag ${tag}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Search input */}
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          placeholder="Type to search tags…"
+          className="h-8 w-full rounded-md border border-border/60 bg-background px-2.5 text-xs text-foreground outline-none transition-colors focus:border-accent placeholder:text-muted-foreground/60"
+        />
+
+        {/* Dropdown */}
+        {showDropdown && (
+          <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-md border border-border/60 bg-card shadow-sm">
+            {/* Loading */}
+            {isFetching && (
+              <p className="px-2.5 py-2 text-xs italic text-muted-foreground">
+                Searching…
+              </p>
+            )}
+
+            {/* Error */}
+            {isError && (
+              <p className="px-2.5 py-2 text-xs text-muted-foreground">
+                Search unavailable.
+              </p>
+            )}
+
+            {/* Results */}
+            {isDoneFetching && hasResults && (
+              <ul role="listbox" aria-label={`${label} tag suggestions`}>
+                {filteredResults.map((tag) => (
+                  <li key={tag.name} role="option">
+                    <button
+                      type="button"
+                      onClick={() => onAdd(tag.name)}
+                      className="w-full px-2.5 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted"
+                    >
+                      {tag.name}
+                      {tag.name_ja && (
+                        <span className="ml-1.5 text-muted-foreground">
+                          ({tag.name_ja})
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {/* No results */}
+            {isDoneFetching && !hasResults && (
+              <p className="px-2.5 py-2 text-xs text-muted-foreground">
+                No matching tags.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Loading state
+// ---------------------------------------------------------------------------
+
 function LoadingState() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -70,19 +245,9 @@ function LoadingState() {
   );
 }
 
-/** Parse comma-separated genre param from URL into a Set. */
-function parseGenreParam(raw: string | null): Set<string> {
-  if (!raw) return new Set();
-  return new Set(
-    raw.split(",").map((s) => s.trim()).filter(Boolean)
-  );
-}
-
-/** Serialize a Set of genre slugs to a comma-separated string (or undefined). */
-function serializeGenreSet(set: Set<string>): string | undefined {
-  if (set.size === 0) return undefined;
-  return Array.from(set).sort().join(",");
-}
+// ---------------------------------------------------------------------------
+// BrowseContent
+// ---------------------------------------------------------------------------
 
 function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) {
   const searchParams = useSearchParams();
@@ -99,12 +264,23 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
   const page = Number(searchParams.get("page") ?? "1") || 1;
   const pageSize = 20;
 
-  const genreIncludeSet = useMemo(() => parseGenreParam(searchParams.get("genre_include")), [searchParams]);
-  const genreExcludeSet = useMemo(() => parseGenreParam(searchParams.get("genre_exclude")), [searchParams]);
+  const genreIncludeSet = useMemo(() => parseCsvParam(searchParams.get("genre_include")), [searchParams]);
+  const genreExcludeSet = useMemo(() => parseCsvParam(searchParams.get("genre_exclude")), [searchParams]);
+  const tagIncludeSet = useMemo(() => parseCsvParam(searchParams.get("tag_include")), [searchParams]);
+  const tagExcludeSet = useMemo(() => parseCsvParam(searchParams.get("tag_exclude")), [searchParams]);
+
+  const allTagSet = useMemo(() => new Set([...tagIncludeSet, ...tagExcludeSet]), [tagIncludeSet, tagExcludeSet]);
+
+  const hasGenreFilters = genreIncludeSet.size > 0 || genreExcludeSet.size > 0;
+  const hasTagFilters = tagIncludeSet.size > 0 || tagExcludeSet.size > 0;
 
   const [advancedOpen, setAdvancedOpen] = useState(
-    Boolean(min_chapters !== undefined || max_chapters !== undefined || genreIncludeSet.size > 0 || genreExcludeSet.size > 0)
+    Boolean(min_chapters !== undefined || max_chapters !== undefined || hasGenreFilters || hasTagFilters)
   );
+
+  // Tag search query state
+  const [includeTagQuery, setIncludeTagQuery] = useState("");
+  const [excludeTagQuery, setExcludeTagQuery] = useState("");
 
   // Fetch genres for the filter UI
   const { data: genresData, isPending: genresPending, isError: genresError } = useGenres();
@@ -116,8 +292,10 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
     order: order ?? "desc",
     min_chapters,
     max_chapters,
-    genre_include: serializeGenreSet(genreIncludeSet),
-    genre_exclude: serializeGenreSet(genreExcludeSet),
+    genre_include: serializeSet(genreIncludeSet),
+    genre_exclude: serializeSet(genreExcludeSet),
+    tag_include: serializeSet(tagIncludeSet),
+    tag_exclude: serializeSet(tagExcludeSet),
     page,
     page_size: pageSize,
   };
@@ -126,7 +304,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
   const hasActiveFilters = Boolean(
     q || status ||
     min_chapters !== undefined || max_chapters !== undefined ||
-    genreIncludeSet.size > 0 || genreExcludeSet.size > 0
+    hasGenreFilters || hasTagFilters
   );
 
   function pushParams(next: CatalogParams) {
@@ -139,6 +317,8 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
     if (next.max_chapters !== undefined) sp.set("max_chapters", String(next.max_chapters));
     if (next.genre_include) sp.set("genre_include", next.genre_include);
     if (next.genre_exclude) sp.set("genre_exclude", next.genre_exclude);
+    if (next.tag_include) sp.set("tag_include", next.tag_include);
+    if (next.tag_exclude) sp.set("tag_exclude", next.tag_exclude);
     if (next.page && next.page > 1) sp.set("page", String(next.page));
     const query = sp.toString();
     router.push(`${basePath}${query ? `?${query}` : ""}`);
@@ -182,6 +362,8 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
     });
   }
 
+  // ---- Genre handlers ----
+
   function handleGenreInclude(slug: string) {
     const nextInclude = new Set(genreIncludeSet);
     const nextExclude = new Set(genreExcludeSet);
@@ -193,8 +375,8 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
     }
     pushParams({
       ...params,
-      genre_include: serializeGenreSet(nextInclude),
-      genre_exclude: serializeGenreSet(nextExclude),
+      genre_include: serializeSet(nextInclude),
+      genre_exclude: serializeSet(nextExclude),
       page: 1,
     });
   }
@@ -210,8 +392,60 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
     }
     pushParams({
       ...params,
-      genre_include: serializeGenreSet(nextInclude),
-      genre_exclude: serializeGenreSet(nextExclude),
+      genre_include: serializeSet(nextInclude),
+      genre_exclude: serializeSet(nextExclude),
+      page: 1,
+    });
+  }
+
+  // ---- Tag handlers ----
+
+  function handleTagIncludeAdd(name: string) {
+    const nextInclude = new Set(tagIncludeSet);
+    const nextExclude = new Set(tagExcludeSet);
+    nextInclude.add(name);
+    nextExclude.delete(name); // mutually exclusive
+    setIncludeTagQuery("");
+    pushParams({
+      ...params,
+      tag_include: serializeSet(nextInclude),
+      tag_exclude: serializeSet(nextExclude),
+      page: 1,
+    });
+  }
+
+  function handleTagIncludeRemove(name: string) {
+    const nextInclude = new Set(tagIncludeSet);
+    nextInclude.delete(name);
+    pushParams({
+      ...params,
+      tag_include: serializeSet(nextInclude),
+      tag_exclude: serializeSet(tagExcludeSet),
+      page: 1,
+    });
+  }
+
+  function handleTagExcludeAdd(name: string) {
+    const nextInclude = new Set(tagIncludeSet);
+    const nextExclude = new Set(tagExcludeSet);
+    nextExclude.add(name);
+    nextInclude.delete(name); // mutually exclusive
+    setExcludeTagQuery("");
+    pushParams({
+      ...params,
+      tag_include: serializeSet(nextInclude),
+      tag_exclude: serializeSet(nextExclude),
+      page: 1,
+    });
+  }
+
+  function handleTagExcludeRemove(name: string) {
+    const nextExclude = new Set(tagExcludeSet);
+    nextExclude.delete(name);
+    pushParams({
+      ...params,
+      tag_include: serializeSet(tagIncludeSet),
+      tag_exclude: serializeSet(nextExclude),
       page: 1,
     });
   }
@@ -342,7 +576,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
           </button>
         </div>
 
-        {/* Advanced search: chapter count + genre filters */}
+        {/* Advanced search: chapter count + genre + tag filters */}
         {advancedOpen && (
           <form onSubmit={handleAdvancedSubmit} className="mt-4 rounded-md border border-border/60 bg-muted/40 p-4">
             <p className="mb-3 font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground">
@@ -466,11 +700,40 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
                         >
                           {genre.name_en ?? genre.slug}
                         </button>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
-                </div>
               )}
+            </div>
+
+            {/* Tag filters */}
+            <div className="mt-5 border-t border-border/40 pt-4">
+              <p className="mb-3 font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                Tag filters
+              </p>
+
+              <TagFilterSection
+                label="Must include"
+                icon={<PlusCircle className="h-3.5 w-3.5" />}
+                query={includeTagQuery}
+                onQueryChange={setIncludeTagQuery}
+                selectedSet={tagIncludeSet}
+                onAdd={handleTagIncludeAdd}
+                onRemove={handleTagIncludeRemove}
+                allSelected={allTagSet}
+              />
+
+              <TagFilterSection
+                label="Exclude"
+                icon={<MinusCircle className="h-3.5 w-3.5" />}
+                query={excludeTagQuery}
+                onQueryChange={setExcludeTagQuery}
+                selectedSet={tagExcludeSet}
+                onAdd={handleTagExcludeAdd}
+                onRemove={handleTagExcludeRemove}
+                allSelected={allTagSet}
+              />
             </div>
           </form>
         )}
@@ -506,6 +769,18 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
               <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs">
                 <MinusCircle className="h-3.5 w-3.5" />
                 {genreExcludeSet.size} genre{genreExcludeSet.size > 1 ? "s" : ""} excl.
+              </span>
+            )}
+            {tagIncludeSet.size > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs">
+                <PlusCircle className="h-3.5 w-3.5" />
+                {tagIncludeSet.size} tag{tagIncludeSet.size > 1 ? "s" : ""} incl.
+              </span>
+            )}
+            {tagExcludeSet.size > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs">
+                <MinusCircle className="h-3.5 w-3.5" />
+                {tagExcludeSet.size} tag{tagExcludeSet.size > 1 ? "s" : ""} excl.
               </span>
             )}
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/70">
@@ -596,6 +871,10 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Public export
+// ---------------------------------------------------------------------------
 
 export function BrowsePage({ basePath, description, title }: BrowsePageProps) {
   return (
