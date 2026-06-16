@@ -23,6 +23,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from novelai.api.routers.dependencies import (
@@ -33,6 +34,7 @@ from novelai.api.routers.dependencies import (
 )
 from novelai.db.models.genre import Genre
 from novelai.db.models.novel import Novel
+from novelai.db.models.tag import Tag
 from novelai.storage.service import StorageService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -84,6 +86,12 @@ class PublicGenreResponse(BaseModel):
     slug: str
     name_ja: str
     name_en: str | None = None
+    is_adult: bool = False
+
+
+class PublicTagSearchResult(BaseModel):
+    name: str
+    name_ja: str | None = None
     is_adult: bool = False
 
 
@@ -351,4 +359,46 @@ async def list_genres(
             is_adult=g.is_adult,
         )
         for g in query.all()
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Tags
+# ---------------------------------------------------------------------------
+
+
+@router.get("/tags/search", response_model=list[PublicTagSearchResult])
+async def search_tags(
+    q: str = Query(min_length=1, description="Search query — at least 2 non-whitespace characters"),
+    include_adult: bool = Query(default=True, description="Include adult tags"),
+    limit: int = Query(default=10, ge=1, le=50, description="Max results"),
+    db: Session = Depends(get_db_session),
+) -> list[PublicTagSearchResult]:
+    """Search tags by name (case-insensitive). No tags are created."""
+    query_str = q.strip()
+    if len(query_str) < 2:
+        return []
+
+    pattern = f"%{query_str}%"
+    base = db.query(Tag).filter(
+        Tag.name.ilike(pattern) | Tag.name_ja.ilike(pattern)
+    )
+    if not include_adult:
+        base = base.filter(Tag.is_adult.is_(False))
+
+    # Prefix matches first (on name or name_ja), then alphabetical by name
+    prefix_case = case(
+        (Tag.name.ilike(f"{query_str}%"), 0),
+        (Tag.name_ja.ilike(f"{query_str}%"), 0),
+        else_=1,
+    )
+    results = base.order_by(prefix_case, Tag.name).limit(limit).all()
+
+    return [
+        PublicTagSearchResult(
+            name=t.name,
+            name_ja=t.name_ja,
+            is_adult=t.is_adult,
+        )
+        for t in results
     ]

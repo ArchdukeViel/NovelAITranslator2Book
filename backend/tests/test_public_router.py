@@ -989,3 +989,154 @@ class TestCatalogGenreTagFilter:
         resp = client.get("/api/public/catalog")
         assert resp.status_code == 200
         assert resp.json()["total"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Tag search
+# ---------------------------------------------------------------------------
+
+
+def _seed_tag_for_tests(db_session, name: str, name_ja: str | None = None, is_adult: bool = False) -> None:
+    """Create a tag row directly in the DB (no novel association)."""
+    from novelai.db.models.tag import Tag
+    tag = Tag(name=name, name_ja=name_ja, is_adult=is_adult)
+    db_session.add(tag)
+    db_session.commit()
+
+
+class TestTagSearch:
+    """Tag search endpoint — GET /api/public/tags/search."""
+
+    def test_search_returns_matching_tags(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        _seed_tag_for_tests(db_session, "dragon", "ドラゴン")
+        _seed_tag_for_tests(db_session, "elf", "エルフ")
+        resp = client.get("/api/public/tags/search?q=dr")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "dragon"
+        assert data[0]["name_ja"] == "ドラゴン"
+        assert data[0]["is_adult"] is False
+
+    def test_search_matches_name_ja(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        _seed_tag_for_tests(db_session, "dragon", "ドラゴン")
+        resp = client.get("/api/public/tags/search?q=ドラ")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "dragon"
+
+    def test_search_returns_empty_for_no_match(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        _seed_tag_for_tests(db_session, "dragon", "ドラゴン")
+        resp = client.get("/api/public/tags/search?q=zzzzz")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    def test_too_short_query_returns_empty(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        _seed_tag_for_tests(db_session, "dragon", "ドラゴン")
+        resp = client.get("/api/public/tags/search?q=d")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    def test_too_short_query_after_strip(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        _seed_tag_for_tests(db_session, "dragon", "ドラゴン")
+        resp = client.get("/api/public/tags/search?q=%20%20")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    def test_adult_tags_excluded_when_include_adult_false(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        _seed_tag_for_tests(db_session, "dragon", "ドラゴン")
+        _seed_tag_for_tests(db_session, "adult_tag", "アダルト", is_adult=True)
+        resp = client.get("/api/public/tags/search?q=ad&include_adult=false")
+        assert resp.status_code == 200
+        data = resp.json()
+        names = [t["name"] for t in data]
+        assert "dragon" not in names  # doesn't match "ad"
+        assert "adult_tag" not in names  # excluded
+
+    def test_adult_tags_included_by_default(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        _seed_tag_for_tests(db_session, "adult_tag", is_adult=True)
+        _seed_tag_for_tests(db_session, "adventure", "冒険")
+        resp = client.get("/api/public/tags/search?q=adult")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "adult_tag"
+        assert data[0]["is_adult"] is True
+
+    def test_result_limit_works(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        for name in ["apple", "apricot", "application", "appetizer", "appliance"]:
+            _seed_tag_for_tests(db_session, name)
+        resp = client.get("/api/public/tags/search?q=ap&limit=3")
+        assert resp.status_code == 200
+        assert len(resp.json()) == 3
+
+    def test_prefix_matches_first(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        # "dr" appears in all these, but only some start with "dr"
+        _seed_tag_for_tests(db_session, "sundress")   # contains "dr", not a prefix
+        _seed_tag_for_tests(db_session, "dragon")      # prefix match
+        _seed_tag_for_tests(db_session, "drift")       # prefix match
+        _seed_tag_for_tests(db_session, "dramatic")    # prefix match
+        _seed_tag_for_tests(db_session, "padre")       # contains "dr", not a prefix
+        resp = client.get("/api/public/tags/search?q=dr")
+        assert resp.status_code == 200
+        data = resp.json()
+        names = [t["name"] for t in data]
+        # Prefix matches (dramatic, drift, dragon) come before non-prefix (padre, sundress)
+        # Within prefix group: alphabetical: dramatic, drift, dragon
+        # Within non-prefix group: alphabetical: padre, sundress
+        for prefix_name in ["dramatic", "drift", "dragon"]:
+            for non_prefix_name in ["padre", "sundress"]:
+                assert names.index(prefix_name) < names.index(non_prefix_name), (
+                    f"{prefix_name} should come before {non_prefix_name}"
+                )
+        # Verify alphabetical within prefix group
+        assert names[:3] == sorted(names[:3])
+        # Verify alphabetical within non-prefix group
+        assert names[3:] == sorted(names[3:])
+
+    def test_stable_alphabetical_ordering(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        _seed_tag_for_tests(db_session, "sword")
+        _seed_tag_for_tests(db_session, "shield")
+        _seed_tag_for_tests(db_session, "staff")
+        resp = client.get("/api/public/tags/search?q=sw")
+        assert resp.status_code == 200
+        data = resp.json()
+        names = [t["name"] for t in data]
+        assert names == sorted(names)
+
+    def test_no_tags_created_during_search(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        from novelai.db.models.tag import Tag
+        count_before = db_session.query(Tag).count()
+        client.get("/api/public/tags/search?q=nonexistent")
+        count_after = db_session.query(Tag).count()
+        assert count_before == count_after
+
+    def test_search_requires_authentication(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        """Tag search is a public endpoint — no auth required."""
+        resp = client.get("/api/public/tags/search?q=dr")
+        assert resp.status_code == 200

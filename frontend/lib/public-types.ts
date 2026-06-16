@@ -177,3 +177,24 @@ export interface ContributionStatusResponse {
   updated_at?: string | null;
 }
 // NOTE: raw credential is request-only input; never stored client-side (Req 17.6).
+
+// ---- Taxonomy (from routers/public.py) ----
+
+export interface PublicGenreResponse {
+  slug: string;
+  name_ja: string;
+  name_en: string | null;
+  is_adult: boolean;
+}
+
+export interface PublicTagSearchResult {
+  name: string;
+  name_ja: string | null;
+  is_adult: boolean;
+}
+
+export interface TagSearchParams {
+  q: string;
+  include_adult?: boolean;
+  limit?: number;
+}
