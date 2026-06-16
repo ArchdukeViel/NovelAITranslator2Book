@@ -25,11 +25,14 @@ import type {
   PublicCatalogResponse,
   PublicChapterDetail,
   PublicChapterSummary,
+  PublicGenreResponse,
   PublicNovelSummary,
+  PublicTagSearchResult,
   RequestListParams,
   RequestListResponse,
   ReviewInput,
   ReviewResponse,
+  TagSearchParams,
 } from "@/lib/public-types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
@@ -249,6 +252,22 @@ export const publicApi = {
   chapter(slug: string, chapterId: string): Promise<PublicChapterDetail> {
     return publicGet<PublicChapterDetail>(
       `/api/public/novels/${encodeURIComponent(slug)}/chapters/${encodeURIComponent(chapterId)}`
+    );
+  },
+
+  genres(): Promise<PublicGenreResponse[]> {
+    return publicGet<PublicGenreResponse[]>("/api/public/genres");
+  },
+
+  searchTags(params: TagSearchParams): Promise<PublicTagSearchResult[]> {
+    const search = new URLSearchParams();
+    search.set("q", params.q);
+    if (params.include_adult !== undefined)
+      search.set("include_adult", String(params.include_adult));
+    if (params.limit !== undefined)
+      search.set("limit", String(params.limit));
+    return publicGet<PublicTagSearchResult[]>(
+      `/api/public/tags/search?${search.toString()}`
     );
   },
 };
