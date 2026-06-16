@@ -23,13 +23,13 @@ export function SearchEntry() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-center gap-2">
+    <form onSubmit={handleSubmit} className="flex w-full items-center gap-2 md:max-w-md">
       <Input
         type="search"
         placeholder="Search novels…"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        className="w-40 sm:w-56"
+        className="min-w-0 flex-1 bg-muted/70"
         aria-label="Search novels"
       />
       <Button type="submit" variant="ghost" size="icon" aria-label="Submit search">

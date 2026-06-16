@@ -8,55 +8,57 @@ export function PublicFooter() {
   const { isAuthenticated } = usePublicAuth();
 
   return (
-    <footer className="border-t border-border bg-background">
-      <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-4 py-6 text-sm text-muted-foreground sm:flex-row sm:justify-between">
-        <div className="flex flex-col items-center gap-2 sm:items-start">
+    <footer className="border-t border-border/60 bg-background">
+      <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 text-sm text-muted-foreground sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:px-8">
+        <div className="flex flex-col gap-3">
           <PublicBrand showPoweredBy markClassName="h-8 w-8" />
           <p>&copy; {new Date().getFullYear()} Dokushodo</p>
         </div>
-        <nav className="flex flex-wrap justify-center gap-4">
-          <Link href="/browse-novels" className="hover:text-foreground transition-colors">
-            Browse
+
+        <nav className="grid gap-2" aria-label="Footer navigation">
+          <p className="font-metadata text-xs uppercase tracking-wide text-foreground">
+            Read
+          </p>
+          <Link href="/browse-novels" className="transition-colors hover:text-foreground">
+            Browse Novels
           </Link>
-          <Link href="/ranking" className="hover:text-foreground transition-colors">
+          <Link href="/ranking" className="transition-colors hover:text-foreground">
             Ranking
           </Link>
-          <Link href="/request-novel" className="hover:text-foreground transition-colors">
-            Request
+          <Link href="/request-novel" className="transition-colors hover:text-foreground">
+            Request Novel
           </Link>
-          <Link href="/contribute" className="hover:text-foreground transition-colors">
+          <Link href="/contribute" className="transition-colors hover:text-foreground">
             Contribute
           </Link>
           {isAuthenticated && (
-            <>
-              <Link href="/account/library" className="hover:text-foreground transition-colors">
-                Library
-              </Link>
-              <Link href="/account/requests" className="hover:text-foreground transition-colors">
-                Requests
-              </Link>
-              <Link href="/account/contributions" className="hover:text-foreground transition-colors">
-                Contributions
-              </Link>
-            </>
+            <Link href="/account/library" className="transition-colors hover:text-foreground">
+              Library
+            </Link>
           )}
-          <Link href="/about" className="hover:text-foreground transition-colors">
+        </nav>
+
+        <nav className="grid gap-2" aria-label="Legal navigation">
+          <p className="font-metadata text-xs uppercase tracking-wide text-foreground">
+            Trust
+          </p>
+          <Link href="/about" className="transition-colors hover:text-foreground">
             About
           </Link>
-          <Link href="/privacy" className="hover:text-foreground transition-colors">
+          <Link href="/privacy" className="transition-colors hover:text-foreground">
             Privacy
           </Link>
-          <Link href="/terms" className="hover:text-foreground transition-colors">
+          <Link href="/terms" className="transition-colors hover:text-foreground">
             Terms
           </Link>
-          <Link href="/dmca" className="hover:text-foreground transition-colors">
+          <Link href="/dmca" className="transition-colors hover:text-foreground">
             DMCA
           </Link>
-          <Link href="/contact" className="hover:text-foreground transition-colors">
+          <Link href="/contact" className="transition-colors hover:text-foreground">
             Contact
           </Link>
-          <Link href="/cookie-policy" className="hover:text-foreground transition-colors">
-            Cookies
+          <Link href="/cookie-policy" className="transition-colors hover:text-foreground">
+            Cookie Policy
           </Link>
         </nav>
       </div>
