@@ -194,7 +194,9 @@ def test_storage_fetch_cache_adapter_uses_storage_service(storage: StorageServic
 
 
 def test_storage_contracts_are_documented() -> None:
-    doc = Path("docs/reference/DATA_OUTPUT_STRUCTURE.md").read_text(encoding="utf-8")
+    # Resolve repository root robustly regardless of current working directory
+    repo_root = Path(__file__).resolve().parents[2]
+    doc = (repo_root / "docs" / "reference" / "DATA_OUTPUT_STRUCTURE.md").read_text(encoding="utf-8")
     required_fragments = [
         "runtime/translation/chunks.json",
         "runtime/translation/chunk_attempts.json",
