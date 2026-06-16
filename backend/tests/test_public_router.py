@@ -1,6 +1,6 @@
 """Tests for the public catalog router (/api/public/).
 
-Uses FastAPI TestClient + temp dir StorageService; no DB or auth required.
+Uses FastAPI TestClient + temp dir StorageService; DB session via SQLAlchemy.
 """
 
 from __future__ import annotations
@@ -11,10 +11,15 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from starlette.middleware.sessions import SessionMiddleware
 
+from novelai.api.routers.dependencies import get_db_session, get_storage
 from novelai.api.routers.public import router as public_router
-from novelai.api.routers.dependencies import get_storage
+from novelai.db.base import Base
+from novelai.db.models.genre import Genre
+from novelai.db.models.novel import Novel
 from novelai.storage.service import StorageService
 
 
@@ -22,17 +27,42 @@ from novelai.storage.service import StorageService
 # Fixtures
 # ---------------------------------------------------------------------------
 
+_SQLITE = "sqlite:///:memory:"
+
+
+@pytest.fixture()
+def db_engine():
+    from sqlalchemy.pool import StaticPool
+    eng = create_engine(
+        _SQLITE,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(eng)
+    yield eng
+    Base.metadata.drop_all(eng)
+
+
+@pytest.fixture()
+def db_session(db_engine):
+    Session = sessionmaker(bind=db_engine)
+    sess = Session()
+    yield sess
+    sess.close()
+
+
 @pytest.fixture()
 def storage(tmp_path: Path) -> StorageService:
     return StorageService(tmp_path)
 
 
 @pytest.fixture()
-def app(storage: StorageService) -> FastAPI:
+def app(storage: StorageService, db_session):
     _app = FastAPI()
     _app.add_middleware(SessionMiddleware, secret_key="test", https_only=False)
     _app.include_router(public_router)
     _app.dependency_overrides[get_storage] = lambda: storage
+    _app.dependency_overrides[get_db_session] = lambda: db_session
     return _app
 
 
@@ -545,3 +575,131 @@ class TestCatalogChapterFilter:
         assert data["total"] == 2
         titles = [n["title"] for n in data["novels"]]
         assert titles == ["Big Alpha", "Big Zeta"]
+
+
+# ---------------------------------------------------------------------------
+# Catalog taxonomy (genres/tags in response)
+# ---------------------------------------------------------------------------
+
+class TestCatalogTaxonomy:
+    def _seed_genre(self, db_session, slug: str, name_ja: str, display_order: int = 0) -> None:
+        from novelai.db.models.genre import Genre
+        genre = Genre(slug=slug, name_ja=name_ja, name_en=slug, display_order=display_order, is_active=True)
+        db_session.add(genre)
+        db_session.commit()
+
+    def _assign_genre(self, db_session, novel_slug: str, genre_slug: str) -> None:
+        from sqlalchemy import text
+        novel = db_session.query(Novel).filter_by(slug=novel_slug).one_or_none()
+        if novel is None:
+            novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing")
+            db_session.add(novel)
+            db_session.flush()
+        genre = db_session.query(Genre).filter_by(slug=genre_slug).one()
+        db_session.execute(text(
+            "INSERT OR IGNORE INTO novel_genres (novel_id, genre_id, assigned_by) "
+            "VALUES (:nid, :gid, 'scraper')"
+        ), {"nid": novel.id, "gid": genre.id})
+        db_session.commit()
+
+    def _assign_tag(self, db_session, novel_slug: str, tag_name: str) -> None:
+        from sqlalchemy import text
+        from novelai.db.models.tag import Tag
+        tag = db_session.query(Tag).filter_by(name=tag_name).one_or_none()
+        if tag is None:
+            tag = Tag(name=tag_name)
+            db_session.add(tag)
+            db_session.flush()
+        novel = db_session.query(Novel).filter_by(slug=novel_slug).one_or_none()
+        if novel is None:
+            novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing")
+            db_session.add(novel)
+            db_session.flush()
+        db_session.execute(text(
+            "INSERT OR IGNORE INTO novel_tags (novel_id, tag_id, origin, assigned_by) "
+            "VALUES (:nid, :tid, 'test', 'scraper')"
+        ), {"nid": novel.id, "tid": tag.id})
+        db_session.commit()
+
+    def test_catalog_returns_empty_genres_and_tags_when_no_assignments(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        _seed_novel(storage, "n001")
+        resp = client.get("/api/public/catalog")
+        assert resp.status_code == 200
+        novel = resp.json()["novels"][0]
+        assert novel["genres"] == []
+        assert novel["tags"] == []
+
+    def test_catalog_returns_assigned_genre_slugs(
+        self, client: TestClient, storage: StorageService, db_session
+    ) -> None:
+        _seed_novel(storage, "n002")
+        self._seed_genre(db_session, "fantasy", "ファンタジー")
+        self._assign_genre(db_session, "n002", "fantasy")
+
+        resp = client.get("/api/public/catalog")
+        assert resp.status_code == 200
+        novel = resp.json()["novels"][0]
+        assert novel["genres"] == ["fantasy"]
+        assert novel["tags"] == []
+
+    def test_catalog_returns_assigned_tag_names(
+        self, client: TestClient, storage: StorageService, db_session
+    ) -> None:
+        _seed_novel(storage, "n003")
+        self._assign_tag(db_session, "n003", "魔法")
+        self._assign_tag(db_session, "n003", "勇者")
+
+        resp = client.get("/api/public/catalog")
+        assert resp.status_code == 200
+        novel = resp.json()["novels"][0]
+        assert set(novel["tags"]) == {"魔法", "勇者"}
+        # Tags should be alphabetically sorted
+        assert novel["tags"] == sorted(novel["tags"])
+
+    def test_inactive_genre_excluded_from_response(
+        self, client: TestClient, storage: StorageService, db_session
+    ) -> None:
+        _seed_novel(storage, "n004")
+        from novelai.db.models.genre import Genre
+        self._seed_genre(db_session, "horror", "ホラー")
+        self._assign_genre(db_session, "n004", "horror")
+        # Deactivate the genre
+        genre = db_session.query(Genre).filter_by(slug="horror").one()
+        genre.is_active = False
+        db_session.commit()
+
+        resp = client.get("/api/public/catalog")
+        assert resp.status_code == 200
+        novel = resp.json()["novels"][0]
+        assert novel["genres"] == []
+
+    def test_genre_order_by_display_order(
+        self, client: TestClient, storage: StorageService, db_session
+    ) -> None:
+        _seed_novel(storage, "n005")
+        self._seed_genre(db_session, "sf", "SF", display_order=5)
+        self._seed_genre(db_session, "isekai-tensei", "異世界転生", display_order=1)
+        self._assign_genre(db_session, "n005", "sf")
+        self._assign_genre(db_session, "n005", "isekai-tensei")
+
+        resp = client.get("/api/public/catalog")
+        assert resp.status_code == 200
+        novel = resp.json()["novels"][0]
+        # Should be ordered by display_order: isekai-tensei (1) before sf (5)
+        assert novel["genres"] == ["isekai-tensei", "sf"]
+
+    def test_novel_detail_also_has_genres_and_tags(
+        self, client: TestClient, storage: StorageService, db_session
+    ) -> None:
+        _seed_novel(storage, "n006")
+        self._seed_genre(db_session, "romance", "恋愛", display_order=6)
+        self._assign_genre(db_session, "n006", "romance")
+        self._assign_tag(db_session, "n006", "転生")
+
+        resp = client.get("/api/public/novels/n006")
+        assert resp.status_code == 200
+        novel = resp.json()
+        assert novel["genres"] == ["romance"]
+        assert novel["tags"] == ["転生"]

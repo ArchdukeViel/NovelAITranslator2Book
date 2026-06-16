@@ -32,6 +32,7 @@ from novelai.api.routers.dependencies import (
     reader_title,
 )
 from novelai.db.models.genre import Genre
+from novelai.db.models.novel import Novel
 from novelai.storage.service import StorageService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -61,6 +62,8 @@ class PublicNovelSummary(BaseModel):
     chapter_count: int = 0
     translated_count: int = 0
     added_at: str | None = None
+    genres: list[str] = []
+    tags: list[str] = []
 
 
 class PublicChapterSummary(BaseModel):
@@ -109,7 +112,14 @@ def _novel_added_at(meta: dict[str, Any]) -> str | None:
     return None
 
 
-def _novel_summary(novel_id: str, meta: dict[str, Any], storage: StorageService) -> PublicNovelSummary:
+def _novel_summary(
+    novel_id: str,
+    meta: dict[str, Any],
+    storage: StorageService,
+    *,
+    genres: list[str] | None = None,
+    tags: list[str] | None = None,
+) -> PublicNovelSummary:
     translated_count = storage.count_translated_chapters(novel_id)
     chapter_count = len(meta.get("chapters", [])) or max(
         storage.count_stored_chapters(novel_id), translated_count
@@ -124,7 +134,34 @@ def _novel_summary(novel_id: str, meta: dict[str, Any], storage: StorageService)
         chapter_count=chapter_count,
         translated_count=translated_count,
         added_at=_novel_added_at(meta),
+        genres=genres or [],
+        tags=tags or [],
     )
+
+
+def _load_taxonomy_for_novel(session: Session, slug: str) -> tuple[list[str], list[str]]:
+    """Load assigned genres and tags for a novel from the DB.
+
+    Returns (genre_slugs, tag_names) ordered stably.
+    - genres: by Genre.display_order then Genre.slug
+    - tags: alphabetical by Tag.name
+    """
+    novel = session.query(Novel).filter_by(slug=slug).one_or_none()
+    if novel is None:
+        return [], []
+
+    genre_slugs = [
+        g.slug
+        for g in novel.genres
+        if g.is_active
+    ]
+    # Stable order: display_order then slug
+    genre_slugs.sort(key=lambda s: next(
+        (g.display_order for g in novel.genres if g.slug == s), 999
+    ))
+
+    tag_names = sorted({t.name for t in novel.tags})
+    return genre_slugs, tag_names
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +180,7 @@ async def catalog(
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(default=24, ge=1, le=100, description="Items per page"),
     storage: StorageService = Depends(get_storage),
+    db: Session = Depends(get_db_session),
 ) -> PublicCatalogResponse:
     """Paginated public novel catalog with optional search, filter, and sort."""
     # Normalize sort parameters with safe fallbacks
@@ -159,7 +197,8 @@ async def catalog(
             continue
         if language and _optional_str(meta.get("language")) != language:
             continue
-        summary = _novel_summary(novel_id, meta, storage)
+        genres, tags = _load_taxonomy_for_novel(db, novel_id)
+        summary = _novel_summary(novel_id, meta, storage, genres=genres, tags=tags)
         # Filter by chapter count range
         if min_chapters is not None and summary.chapter_count < min_chapters:
             continue
@@ -197,12 +236,14 @@ async def catalog(
 async def get_novel(
     slug: str,
     storage: StorageService = Depends(get_storage),
+    db: Session = Depends(get_db_session),
 ) -> PublicNovelSummary:
     """Public novel detail."""
     meta = storage.load_metadata(slug)
     if meta is None:
         raise HTTPException(status_code=404, detail="Novel not found.")
-    return _novel_summary(slug, meta, storage)
+    genres, tags = _load_taxonomy_for_novel(db, slug)
+    return _novel_summary(slug, meta, storage, genres=genres, tags=tags)
 
 
 @router.get("/novels/{slug}/chapters", response_model=list[PublicChapterSummary])

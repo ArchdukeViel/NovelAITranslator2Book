@@ -15,6 +15,8 @@ export interface PublicNovelSummary {
   chapter_count: number;
   translated_count: number;
   added_at?: string | null;
+  genres?: string[];
+  tags?: string[];
 }
 
 export interface PublicCatalogResponse {
