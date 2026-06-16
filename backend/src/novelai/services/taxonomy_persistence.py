@@ -10,11 +10,9 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from novelai.db.models.genre import Genre
+from novelai.db.models.genre import Genre, novel_genres
 from novelai.db.models.novel import Novel
-from novelai.db.models.tag import Tag
-from novelai.db.models.genre import novel_genres
-from novelai.db.models.tag import novel_tags
+from novelai.db.models.tag import Tag, novel_tags
 from novelai.sources.taxonomy import normalize_keywords
 
 logger = logging.getLogger(__name__)
@@ -100,17 +98,35 @@ def persist_taxonomy_assignments(
     """Persist taxonomy assignments from scraped metadata to the DB.
 
     This function:
-    - Assigns genre if metadata has genre_slug that matches a seeded genre
-    - Creates/assigns tags from source_keywords (Syosetu) or source_tags (Kakuyomu)
-    - Is idempotent: running twice does not create duplicates
-    - Does not delete existing assignments (admin/manual assignments preserved)
+    - Removes previous scraper-managed taxonomy rows for this novel.
+    - Assigns genre if metadata has genre_slug that matches a seeded genre.
+    - Creates/assigns tags from source_keywords (Syosetu) or source_tags (Kakuyomu).
+    - Preserves admin-managed rows (assigned_by="admin") — they survive cleanup
+      because only assigned_by="scraper" rows are removed.
+    - Skips insert when an admin row already exists for the same novel+genre/tag
+      (composite PK prevents dual rows).
+    - Is idempotent: running twice does not create duplicates.
 
     Args:
-        session: Active SQLAlchemy session (caller manages lifecycle)
-        novel_id: The DB novel ID (not the slug)
-        metadata: Scraped metadata dict from source adapter
-        source_key: Optional source key for origin tracking (e.g., "syosetu_ncode")
+        session: Active SQLAlchemy session (caller manages lifecycle).
+        novel_id: The DB novel ID (not the slug).
+        metadata: Scraped metadata dict from source adapter.
+        source_key: Optional source key for origin tracking (e.g., "syosetu_ncode").
     """
+    # --- Remove previous scraper-managed rows ---
+    session.execute(
+        novel_genres.delete().where(
+            novel_genres.c.novel_id == novel_id,
+            novel_genres.c.assigned_by == "scraper",
+        )
+    )
+    session.execute(
+        novel_tags.delete().where(
+            novel_tags.c.novel_id == novel_id,
+            novel_tags.c.assigned_by == "scraper",
+        )
+    )
+
     # Determine origin for tags
     if source_key:
         origin = source_key
