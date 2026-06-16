@@ -115,6 +115,17 @@ def _make_app(
     return TestClient(app)
 
 
+def _get_routes_from_router(router) -> set:
+    """Recursively extract routes from a FastAPI router, including included routers."""
+    routes = set()
+    for route in router.routes:
+        if hasattr(route, "methods") and hasattr(route, "path"):
+            routes.add((tuple(sorted(route.methods)), route.path))
+        elif hasattr(route, "original_router"):  # _IncludedRouter
+            routes.update(_get_routes_from_router(route.original_router))
+    return routes
+
+
 def test_router_path_method_snapshot() -> None:
     expected_routes = {
         (("DELETE",), "/{novel_id}"),
@@ -180,11 +191,7 @@ def test_router_path_method_snapshot() -> None:
         (("DELETE",), "/admin/provider-api-key/{provider}"),
         (("DELETE",), "/admin/runtime-state/{state_key}"),
     }
-    current_routes = {
-        (tuple(sorted(route.methods)), route.path)
-        for route in novels.router.routes
-        if hasattr(route, "methods")
-    }
+    current_routes = _get_routes_from_router(novels.router)
 
     assert current_routes == expected_routes
 
