@@ -17,6 +17,11 @@ from novelai.sources._helpers import (
 )
 from novelai.sources.base import SourceAdapter
 from novelai.sources.html_parsers import HTMLParserMixin
+from novelai.sources.taxonomy import (
+    SYOSETU_GENRE_MAP,
+    map_genre,
+    normalize_keywords,
+)
 from novelai.utils.text_normalization import normalize_text
 
 
@@ -472,6 +477,87 @@ class SyosetuNcodeSource(SourceAdapter):
         updated_at = dates[-1] if dates else None
         return published_at, updated_at
 
+    # ------------------------------------------------------------------
+    # Taxonomy extraction — genre and keywords
+    # ------------------------------------------------------------------
+
+    @property
+    def _genre_map(self) -> dict[str, str]:
+        """Genre text → slug mapping. Subclasses may override."""
+        return SYOSETU_GENRE_MAP
+
+    def _extract_source_genre(self, soup: BeautifulSoup) -> tuple[str | None, str | None]:
+        """Extract genre/category text and mapped slug from the novel info page.
+
+        Returns (source_genre_name, genre_slug) where genre_slug may be None
+        if the source text doesn't map to a known internal genre.
+        """
+        # Try modern Syosetu selectors first, then legacy patterns
+        genre_selectors = (
+            ".p-novel__meta .p-novel__meta--genre a",
+            ".p-novel__meta--genre a",
+            "#novel_genre a",
+            "#novelgenre a",
+        )
+        for selector in genre_selectors:
+            node = soup.select_one(selector)
+            if isinstance(node, Tag):
+                text = node.get_text(strip=True)
+                if text:
+                    slug = map_genre(text, self._genre_map)
+                    return text, slug
+
+        # Fallback: look for genre links by href pattern
+        for anchor in soup.find_all("a", href=True):
+            if not isinstance(anchor, Tag):
+                continue
+            href = attribute_to_str(anchor.get("href")) or ""
+            if "/genre/" in href and "syosetu.com" in href:
+                text = anchor.get_text(strip=True)
+                if text:
+                    slug = map_genre(text, self._genre_map)
+                    return text, slug
+
+        return None, None
+
+    def _extract_source_keywords(self, soup: BeautifulSoup) -> list[str]:
+        """Extract author-set keywords from the novel info page.
+
+        Syosetu keywords are typically rendered as linked elements
+        with specific class patterns or inside a keyword section.
+        """
+        # Try keyword-specific selectors
+        keyword_selectors = (
+            ".p-novel__meta--keyword a",
+            "#novel_keyword a",
+            "#novelkeyword a",
+            ".novelkeyword_logs",
+        )
+        keywords: list[str] = []
+        for selector in keyword_selectors:
+            nodes = soup.select(selector)
+            if nodes:
+                for node in nodes:
+                    if isinstance(node, Tag):
+                        text = node.get_text(strip=True)
+                        if text:
+                            keywords.append(text)
+                if keywords:
+                    break
+
+        # Fallback: look for links with keyword-like href patterns
+        if not keywords:
+            for anchor in soup.find_all("a", href=True):
+                if not isinstance(anchor, Tag):
+                    continue
+                href = attribute_to_str(anchor.get("href")) or ""
+                if "/tag/" in href and "syosetu.com" in href:
+                    text = anchor.get_text(strip=True)
+                    if text:
+                        keywords.append(text)
+
+        return normalize_keywords(keywords)
+
     def _parse_metadata_html(self, html: str, url: str) -> dict[str, Any]:
         soup = BeautifulSoup(html, "lxml")
         title = self._extract_title(soup)
@@ -479,6 +565,8 @@ class SyosetuNcodeSource(SourceAdapter):
         synopsis = self._extract_synopsis(soup)
         chapters = self._extract_chapters(soup, url, title)
         published_at, updated_at = self._extract_dates(soup)
+        source_genre_name, genre_slug = self._extract_source_genre(soup)
+        source_keywords = self._extract_source_keywords(soup)
 
         return {
             "source": self.key,
@@ -489,6 +577,9 @@ class SyosetuNcodeSource(SourceAdapter):
             "published_at": published_at,
             "updated_at": updated_at,
             "chapters": chapters,
+            "source_genre_name": source_genre_name,
+            "genre_slug": genre_slug,
+            "source_keywords": source_keywords,
         }
 
     def _parse_chapter_payload(self, html: str, url: str) -> dict[str, Any]:
