@@ -29,13 +29,13 @@ export function BrowseNav() {
   }
 
   return (
-    <nav aria-label="Browse by language" className="flex items-center gap-1">
+    <nav aria-label="Browse by language" className="flex flex-wrap items-center gap-1">
       {LANGUAGES.map(({ value, label }) => (
         <button
           key={value}
           type="button"
           onClick={() => handleChange(value)}
-          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+          className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
             current === value
               ? "bg-primary text-primary-foreground"
               : "text-muted-foreground hover:bg-muted hover:text-foreground"
