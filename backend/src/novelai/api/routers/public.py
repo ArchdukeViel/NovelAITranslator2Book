@@ -23,12 +23,15 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from novelai.api.routers.dependencies import (
+    get_db_session,
     get_storage,
     metadata_chapters,
     reader_title,
 )
+from novelai.db.models.genre import Genre
 from novelai.storage.service import StorageService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -72,6 +75,13 @@ class PublicCatalogResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class PublicGenreResponse(BaseModel):
+    slug: str
+    name_ja: str
+    name_en: str | None = None
+    is_adult: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -248,3 +258,28 @@ async def get_chapter(
         "previous_chapter_id": chapter_ids[index - 1] if index > 0 else None,
         "next_chapter_id": chapter_ids[index + 1] if index + 1 < len(chapter_ids) else None,
     }
+
+
+# ---------------------------------------------------------------------------
+# Genres
+# ---------------------------------------------------------------------------
+
+@router.get("/genres", response_model=list[PublicGenreResponse])
+async def list_genres(
+    include_adult: bool = Query(default=True, description="Include adult genres"),
+    db: Session = Depends(get_db_session),
+) -> list[PublicGenreResponse]:
+    """Return active genres ordered by display_order then name."""
+    query = db.query(Genre).filter(Genre.is_active.is_(True))
+    if not include_adult:
+        query = query.filter(Genre.is_adult.is_(False))
+    query = query.order_by(Genre.display_order, Genre.name_ja)
+    return [
+        PublicGenreResponse(
+            slug=g.slug,
+            name_ja=g.name_ja,
+            name_en=g.name_en,
+            is_adult=g.is_adult,
+        )
+        for g in query.all()
+    ]

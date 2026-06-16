@@ -8,9 +8,11 @@ to the imports and ``__all__`` below.
 from __future__ import annotations
 
 from novelai.db.models.chapter import Chapter
+from novelai.db.models.genre import Genre, novel_genres
 from novelai.db.models.jobs import CrawlJob, ProviderRequest, TranslationJob
 from novelai.db.models.novel import Novel
 from novelai.db.models.system import AuditLog, SystemSetting
+from novelai.db.models.tag import Tag, novel_tags
 from novelai.db.models.users import (
     LibraryItem,
     NovelRequest,
@@ -24,6 +26,7 @@ __all__ = [
     "AuditLog",
     "Chapter",
     "CrawlJob",
+    "Genre",
     "LibraryItem",
     "Novel",
     "NovelRequest",
@@ -32,6 +35,9 @@ __all__ = [
     "ReadingProgress",
     "Review",
     "SystemSetting",
+    "Tag",
     "TranslationJob",
     "User",
+    "novel_genres",
+    "novel_tags",
 ]
