@@ -34,7 +34,7 @@ export default function NovelDetailPage() {
         <main className="mx-auto max-w-5xl px-5 py-8">
           <Link
             className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-            href="/"
+            href="/browse-novels"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to Browse
@@ -54,7 +54,7 @@ export default function NovelDetailPage() {
       <main className="mx-auto max-w-5xl px-5 py-8">
         <Link
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          href="/"
+          href="/browse-novels"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Browse
@@ -73,7 +73,7 @@ export default function NovelDetailPage() {
       <main className="mx-auto max-w-5xl px-5 py-8">
         <Link
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          href="/"
+          href="/browse-novels"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Browse
@@ -140,7 +140,7 @@ export default function NovelDetailPage() {
               {firstChapterId && (
                 <Link
                   className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
-                  href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(firstChapterId)}`}
+                  href={`/novels/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(firstChapterId)}`}
                 >
                   <BookOpen className="h-4 w-4" />
                   Start Reading
@@ -164,6 +164,17 @@ export default function NovelDetailPage() {
           )}
 
           {/* Review and request controls */}
+          <section className="rounded-md border border-border bg-background p-3">
+            <div className="flex items-start gap-2">
+              <BookOpen className="mt-0.5 h-4 w-4 text-muted-foreground" />
+              <div>
+                <h3 className="text-sm font-medium">Report novel issue</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Reporting for this novel will be connected in a later backend phase.
+                </p>
+              </div>
+            </div>
+          </section>
           <RatingReview slug={slug} />
           <RequestControl slug={slug} />
         </PanelBody>
@@ -210,7 +221,7 @@ export default function NovelDetailPage() {
                   {chapter.translated ? (
                     <Link
                       className="inline-flex shrink-0 h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium hover:bg-muted"
-                      href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapter.chapter_id)}`}
+                      href={`/novels/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapter.chapter_id)}`}
                     >
                       <BookOpen className="h-3.5 w-3.5" />
                       Read

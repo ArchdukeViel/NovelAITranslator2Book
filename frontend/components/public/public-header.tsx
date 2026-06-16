@@ -26,18 +26,25 @@ function AccountNav({ onNavigate }: { onNavigate?: () => void }) {
         Library
       </Link>
       <Link
-        href="/account/history"
-        onClick={onNavigate}
-        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        History
-      </Link>
-      <Link
         href="/account/requests"
         onClick={onNavigate}
         className="text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         Requests
+      </Link>
+      <Link
+        href="/account/contributions"
+        onClick={onNavigate}
+        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Contributions
+      </Link>
+      <Link
+        href="/account/settings"
+        onClick={onNavigate}
+        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Settings
       </Link>
     </div>
   );
@@ -55,7 +62,7 @@ export function PublicHeader() {
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4">
         {/* Brand link */}
         <Link
-          href="/"
+          href="/home"
           className="shrink-0 text-lg font-semibold tracking-tight"
         >
           Novel AI
@@ -64,6 +71,30 @@ export function PublicHeader() {
         {/* Desktop nav (hidden at ≤ 768px) */}
         <div className="hidden flex-1 items-center gap-4 md:flex">
           <SearchEntry />
+          <Link
+            href="/browse-novels"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Browse
+          </Link>
+          <Link
+            href="/ranking"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Ranking
+          </Link>
+          <Link
+            href="/request-novel"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Request Novel
+          </Link>
+          <Link
+            href="/contribute"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Contribute
+          </Link>
           <BrowseNav />
           <AccountNav />
           <div className="ml-auto">
@@ -89,6 +120,18 @@ export function PublicHeader() {
         <div className="border-t border-border px-4 pb-4 pt-3 md:hidden">
           <div className="flex flex-col gap-3">
             <SearchEntry />
+            <Link href="/browse-novels" onClick={closeMobile} className="text-sm text-muted-foreground hover:text-foreground">
+              Browse
+            </Link>
+            <Link href="/ranking" onClick={closeMobile} className="text-sm text-muted-foreground hover:text-foreground">
+              Ranking
+            </Link>
+            <Link href="/request-novel" onClick={closeMobile} className="text-sm text-muted-foreground hover:text-foreground">
+              Request Novel
+            </Link>
+            <Link href="/contribute" onClick={closeMobile} className="text-sm text-muted-foreground hover:text-foreground">
+              Contribute
+            </Link>
             <BrowseNav />
             <AccountNav onNavigate={closeMobile} />
             <CurrentUserIndicator onNavigate={closeMobile} />

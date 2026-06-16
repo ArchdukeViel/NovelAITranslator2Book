@@ -16,9 +16,9 @@ export function SearchEntry() {
     e.preventDefault();
     const trimmed = query.trim();
     if (trimmed) {
-      router.push(`/?q=${encodeURIComponent(trimmed)}`);
+      router.push(`/browse-novels?q=${encodeURIComponent(trimmed)}`);
     } else {
-      router.push("/");
+      router.push("/browse-novels");
     }
   }
 

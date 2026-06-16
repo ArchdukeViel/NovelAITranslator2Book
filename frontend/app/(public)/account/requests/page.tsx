@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Loader2, MessageSquare } from "lucide-react";
 
@@ -53,12 +54,13 @@ function statusTone(status: string): "amber" | "green" | "red" | "neutral" {
 export default function RequestsPage() {
   const { isAuthenticated, isPending: authPending } = usePublicAuth();
   const requests = useRequests({ limit: 50 });
+  const [statusFilter, setStatusFilter] = useState("all");
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
       <Link
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        href="/"
+        href="/browse-novels"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to Browse
@@ -85,7 +87,25 @@ export default function RequestsPage() {
           <RequestControl />
 
           <section className="space-y-3">
-            <h2 className="text-sm font-medium">Recent requests</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-medium">Full request history</h2>
+              <div className="flex flex-wrap gap-2">
+                {["all", "pending", "approved", "rejected", "completed"].map((status) => (
+                  <button
+                    className={`rounded-md border px-2.5 py-1 text-xs capitalize transition-colors ${
+                      statusFilter === status
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-background text-muted-foreground hover:bg-muted"
+                    }`}
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    type="button"
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
             {requests.isPending ? (
               <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -100,15 +120,15 @@ export default function RequestsPage() {
                   Try refreshing the page, or return to browse.
                 </p>
               </div>
-            ) : requests.data.items.length === 0 ? (
+            ) : requests.data.items.filter((request) => statusFilter === "all" || request.status === statusFilter).length === 0 ? (
               <section className="rounded-md border border-border bg-muted/40 p-6 text-center">
                 <MessageSquare className="mx-auto h-8 w-8 text-muted-foreground" />
-                <p className="mt-3 text-sm font-medium">No requests yet.</p>
+                <p className="mt-3 text-sm font-medium">No matching requests.</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Use the form above to request a novel or chapter translation.
+                  Use the form above to request a novel or chapter translation, or change the status filter.
                 </p>
                 <Link
-                  href="/"
+                  href="/browse-novels"
                   className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium underline hover:opacity-80"
                 >
                   Browse novels
@@ -116,9 +136,9 @@ export default function RequestsPage() {
               </section>
             ) : (
               <div className="divide-y rounded-md border border-border">
-                {requests.data.items.map((request) => {
+                {requests.data.items.filter((request) => statusFilter === "all" || request.status === statusFilter).map((request) => {
                   const novelHref = request.slug
-                    ? `/novel/${encodeURIComponent(request.slug)}`
+                    ? `/novels/${encodeURIComponent(request.slug)}`
                     : null;
                   return (
                     <div className="px-4 py-3" key={request.id}>
@@ -148,6 +168,9 @@ export default function RequestsPage() {
                         <span className="mx-1">·</span>
                         <span>{formatCreatedAt(request.created_at)}</span>
                       </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Rejection reason: Not provided by current API
+                      </p>
                     </div>
                   );
                 })}

@@ -26,7 +26,7 @@ export default function HistoryPage() {
     <main className="mx-auto max-w-2xl px-4 py-8">
       <Link
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        href="/"
+        href="/browse-novels"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to Browse
@@ -72,7 +72,7 @@ export default function HistoryPage() {
             Open a chapter while signed in and it will appear here.
           </p>
           <Link
-            href="/"
+            href="/browse-novels"
             className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium underline hover:opacity-80"
           >
             Browse novels
@@ -82,9 +82,9 @@ export default function HistoryPage() {
         <section className="divide-y rounded-md border border-border">
           {history.data.items.map((entry) => {
             const chapterHref = entry.chapter_id
-              ? `/novel/${encodeURIComponent(entry.slug)}/chapter/${encodeURIComponent(entry.chapter_id)}`
+              ? `/novels/${encodeURIComponent(entry.slug)}/chapter/${encodeURIComponent(entry.chapter_id)}`
               : null;
-            const novelHref = `/novel/${encodeURIComponent(entry.slug)}`;
+            const novelHref = `/novels/${encodeURIComponent(entry.slug)}`;
 
             return (
               <div

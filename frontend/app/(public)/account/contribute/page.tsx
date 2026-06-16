@@ -1,12 +1,5 @@
-import { ContributionView } from "@/components/public/contribution-view";
+import { redirect } from "next/navigation";
 
-/**
- * Contribution credentials are disabled until the gated backend phase exists.
- */
-export default function ContributePage() {
-  return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <ContributionView />
-    </div>
-  );
+export default function LegacyAccountContributePage() {
+  redirect("/contribute");
 }

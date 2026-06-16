@@ -42,7 +42,7 @@ function ChapterNav({
         {previousChapterId ? (
           <Link
             className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors hover:bg-muted"
-            href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(previousChapterId)}`}
+            href={`/novels/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(previousChapterId)}`}
           >
             ← Previous
           </Link>
@@ -62,7 +62,7 @@ function ChapterNav({
       {nextChapterId ? (
         <Link
           className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors hover:bg-muted"
-          href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(nextChapterId)}`}
+          href={`/novels/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(nextChapterId)}`}
         >
           Next →
         </Link>
@@ -85,7 +85,7 @@ export default function ChapterPage() {
   const params = useParams<{ slug: string; chapterId: string }>();
   const slug = decodeURIComponent(params.slug);
   const chapterId = decodeURIComponent(params.chapterId);
-  const novelHref = `/novel/${encodeURIComponent(slug)}`;
+  const novelHref = `/novels/${encodeURIComponent(slug)}`;
 
   const { data, isPending, isError, error } = useChapter(slug, chapterId);
   const { isAuthenticated } = usePublicAuth();
@@ -190,6 +190,14 @@ export default function ChapterPage() {
           <span className="opacity-75">{chapterTitle}</span>
         </div>
         <ReaderControls />
+      </div>
+      <div className="mb-4 rounded-md border px-3 py-2 text-sm opacity-80">
+        <div className="flex items-start gap-2">
+          <BookOpen className="mt-0.5 h-4 w-4" />
+          <p>
+            Report chapter issue for this chapter will be connected in a later backend phase.
+          </p>
+        </div>
       </div>
 
       {/* Top chapter navigation */}
