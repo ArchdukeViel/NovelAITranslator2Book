@@ -1,17 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BookOpen, Clock, Star } from "lucide-react";
+import { ArrowRight, BookOpen } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { GenreChip } from "@/components/public/genre-chip";
+import { LatestUpdateRow } from "@/components/public/latest-update-row";
+import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { NovelCard } from "@/components/public/novel-card";
+import { RankingRow } from "@/components/public/ranking-row";
+import { SectionHeader } from "@/components/public/section-header";
 
 // Preview data - clearly labeled as such per design contract
 const PREVIEW_NOVELS = [
   {
     novel_id: "preview-1",
     slug: "preview-novel-1",
-    source_title: "転生賢者の静かな暮らし",
+    source_title: "è»¢ç”Ÿè³¢è€…ã®é™ã‹ãªæš®ã‚‰ã—",
     title: "The Reincarnated Sage's Quiet Life",
     author: "Tanaka Yuki",
     language: "Japanese",
@@ -85,7 +90,7 @@ export default function HomePage() {
                 Preview Feature
               </Badge>
               <span className="font-metadata text-xs uppercase tracking-[0.2em] text-accent">
-                Featured — Editor&apos;s Pick
+                Featured - Editor&apos;s Pick
               </span>
             </div>
 
@@ -96,24 +101,17 @@ export default function HomePage() {
               {featuredNovel.title}
             </p>
 
-            <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-              <span className="font-metadata">{featuredNovel.status}</span>
-              <span aria-hidden="true">/</span>
-              <span className="font-metadata">
-                {featuredNovel.translated_count}/{featuredNovel.chapter_count} translated
-              </span>
-              <span aria-hidden="true">/</span>
-              <span>{featuredNovel.language}</span>
-            </div>
+            <NovelMetadataRow
+              className="mt-5"
+              chapterCount={featuredNovel.chapter_count}
+              translatedCount={featuredNovel.translated_count}
+              source={featuredNovel.language}
+              status={featuredNovel.status}
+            />
 
             <div className="mt-5 flex flex-wrap gap-2">
               {featuredNovel.genres.map((genre) => (
-                <span
-                  key={genre}
-                  className="rounded-md bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground"
-                >
-                  {genre}
-                </span>
+                <GenreChip key={genre} label={genre} />
               ))}
             </div>
 
@@ -143,93 +141,64 @@ export default function HomePage() {
             className="pointer-events-none absolute right-10 top-1/2 hidden -translate-y-1/2 font-literary text-6xl text-foreground/10 [writing-mode:vertical-rl] xl:block"
             aria-hidden="true"
           >
-            異世界の物語
+            ç•°ä¸–ç•Œã®ç‰©èªž
           </div>
         </div>
       </section>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <section className="py-14">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold font-literary">Latest Updates</h2>
-            <Link href="/browse-novels" className="text-sm text-accent hover:underline">
-              View all <ArrowRight className="ml-1 inline h-3 w-3" />
-            </Link>
-          </div>
+          <SectionHeader
+            title="Latest Updates"
+            actionHref="/browse-novels"
+            actionLabel="View all"
+          />
           <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {PREVIEW_NOVELS.map((novel) => (
-              <Link
+              <LatestUpdateRow
                 key={novel.novel_id}
                 href={`/novel/${novel.slug}`}
-                className="group flex items-center gap-3 rounded-lg bg-card/70 p-3 transition-colors hover:bg-card"
-              >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
-                  <BookOpen className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium group-hover:text-accent">
-                    {novel.title}
-                  </p>
-                  <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                    <Clock className="h-3 w-3" />
-                    <span>Chapter {novel.translated_count} translated</span>
-                  </div>
-                </div>
-              </Link>
+                title={novel.title}
+                sourceTitle={novel.source_title}
+                chapterLabel={`Chapter ${novel.translated_count} translated`}
+              />
             ))}
           </div>
         </section>
 
-      <section className="mb-12">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold font-literary">Featured Novels</h2>
-          <Badge tone="neutral" className="text-xs">Preview Data</Badge>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          A preview selection of translated novel concepts. Backend trending metrics are pending.
-        </p>
-        <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {PREVIEW_NOVELS.map((novel) => (
-            <NovelCard key={novel.novel_id} novel={novel} />
-          ))}
-        </div>
-      </section>
-
-      <section className="mb-16">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold font-literary">Ranking Preview</h2>
-          <Link href="/ranking" className="text-sm text-accent hover:underline">
-            View full ranking <ArrowRight className="ml-1 inline h-3 w-3" />
-          </Link>
-        </div>
-        <div className="mt-4 rounded-lg bg-card/70">
-          <div className="divide-y">
-            {PREVIEW_NOVELS.map((novel, index) => (
-              <Link
-                key={novel.novel_id}
-                href={`/novel/${novel.slug}`}
-                className="group flex items-center gap-4 p-4 transition-colors hover:bg-muted/50"
-              >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/10 font-metadata text-sm font-medium text-accent">
-                  {index + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium group-hover:text-accent">
-                    {novel.title}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {novel.author} • {novel.language}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Star className="h-3 w-3" />
-                  <span>Preview</span>
-                </div>
-              </Link>
+        <section className="mb-12">
+          <SectionHeader
+            eyebrow="Preview Data"
+            title="Featured Novels"
+            description="A preview selection of translated novel concepts. Backend trending metrics are pending."
+          />
+          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {PREVIEW_NOVELS.map((novel) => (
+              <NovelCard key={novel.novel_id} novel={novel} />
             ))}
           </div>
-        </div>
-      </section>
+        </section>
+
+        <section className="mb-16">
+          <SectionHeader
+            title="Ranking Preview"
+            actionHref="/ranking"
+            actionLabel="View full ranking"
+          />
+          <div className="mt-4 rounded-lg bg-card/70">
+            <div className="divide-y">
+              {PREVIEW_NOVELS.map((novel, index) => (
+                <RankingRow
+                  key={novel.novel_id}
+                  href={`/novel/${novel.slug}`}
+                  rank={index + 1}
+                  title={novel.title}
+                  meta={`${novel.author} / ${novel.language}`}
+                />
+              ))}
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   );
