@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, Suspense, useState } from "react";
+import { FormEvent, Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowDownAZ,
@@ -8,6 +8,8 @@ import {
   BookOpen,
   ChevronDown,
   Filter,
+  MinusCircle,
+  PlusCircle,
   Search,
   X,
 } from "lucide-react";
@@ -15,7 +17,7 @@ import {
 import { NovelCard } from "@/components/public/novel-card";
 import { SectionHeader } from "@/components/public/section-header";
 import { StatusBadge } from "@/components/public/status-badge";
-import { useCatalog } from "@/hooks/public";
+import { useCatalog, useGenres } from "@/hooks/public";
 import { hasNextPage, toReaderError } from "@/lib/public-format";
 import type {
   CatalogOrder,
@@ -68,6 +70,20 @@ function LoadingState() {
   );
 }
 
+/** Parse comma-separated genre param from URL into a Set. */
+function parseGenreParam(raw: string | null): Set<string> {
+  if (!raw) return new Set();
+  return new Set(
+    raw.split(",").map((s) => s.trim()).filter(Boolean)
+  );
+}
+
+/** Serialize a Set of genre slugs to a comma-separated string (or undefined). */
+function serializeGenreSet(set: Set<string>): string | undefined {
+  if (set.size === 0) return undefined;
+  return Array.from(set).sort().join(",");
+}
+
 function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -83,9 +99,15 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
   const page = Number(searchParams.get("page") ?? "1") || 1;
   const pageSize = 20;
 
+  const genreIncludeSet = useMemo(() => parseGenreParam(searchParams.get("genre_include")), [searchParams]);
+  const genreExcludeSet = useMemo(() => parseGenreParam(searchParams.get("genre_exclude")), [searchParams]);
+
   const [advancedOpen, setAdvancedOpen] = useState(
-    Boolean(min_chapters !== undefined || max_chapters !== undefined)
+    Boolean(min_chapters !== undefined || max_chapters !== undefined || genreIncludeSet.size > 0 || genreExcludeSet.size > 0)
   );
+
+  // Fetch genres for the filter UI
+  const { data: genresData, isPending: genresPending, isError: genresError } = useGenres();
 
   const params: CatalogParams = {
     q,
@@ -94,12 +116,18 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
     order: order ?? "desc",
     min_chapters,
     max_chapters,
+    genre_include: serializeGenreSet(genreIncludeSet),
+    genre_exclude: serializeGenreSet(genreExcludeSet),
     page,
     page_size: pageSize,
   };
   const { data, isPending, isError, error } = useCatalog(params);
 
-  const hasActiveFilters = Boolean(q || status || min_chapters !== undefined || max_chapters !== undefined);
+  const hasActiveFilters = Boolean(
+    q || status ||
+    min_chapters !== undefined || max_chapters !== undefined ||
+    genreIncludeSet.size > 0 || genreExcludeSet.size > 0
+  );
 
   function pushParams(next: CatalogParams) {
     const sp = new URLSearchParams();
@@ -109,6 +137,8 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
     if (next.order && next.order !== "desc") sp.set("order", next.order);
     if (next.min_chapters !== undefined) sp.set("min_chapters", String(next.min_chapters));
     if (next.max_chapters !== undefined) sp.set("max_chapters", String(next.max_chapters));
+    if (next.genre_include) sp.set("genre_include", next.genre_include);
+    if (next.genre_exclude) sp.set("genre_exclude", next.genre_exclude);
     if (next.page && next.page > 1) sp.set("page", String(next.page));
     const query = sp.toString();
     router.push(`${basePath}${query ? `?${query}` : ""}`);
@@ -148,6 +178,40 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
       ...params,
       min_chapters: Number.isFinite(minVal) ? minVal : undefined,
       max_chapters: Number.isFinite(maxVal) ? maxVal : undefined,
+      page: 1,
+    });
+  }
+
+  function handleGenreInclude(slug: string) {
+    const nextInclude = new Set(genreIncludeSet);
+    const nextExclude = new Set(genreExcludeSet);
+    if (nextInclude.has(slug)) {
+      nextInclude.delete(slug);
+    } else {
+      nextInclude.add(slug);
+      nextExclude.delete(slug); // mutually exclusive
+    }
+    pushParams({
+      ...params,
+      genre_include: serializeGenreSet(nextInclude),
+      genre_exclude: serializeGenreSet(nextExclude),
+      page: 1,
+    });
+  }
+
+  function handleGenreExclude(slug: string) {
+    const nextInclude = new Set(genreIncludeSet);
+    const nextExclude = new Set(genreExcludeSet);
+    if (nextExclude.has(slug)) {
+      nextExclude.delete(slug);
+    } else {
+      nextExclude.add(slug);
+      nextInclude.delete(slug); // mutually exclusive
+    }
+    pushParams({
+      ...params,
+      genre_include: serializeGenreSet(nextInclude),
+      genre_exclude: serializeGenreSet(nextExclude),
       page: 1,
     });
   }
@@ -278,7 +342,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
           </button>
         </div>
 
-        {/* Advanced search: min/max chapter count */}
+        {/* Advanced search: chapter count + genre filters */}
         {advancedOpen && (
           <form onSubmit={handleAdvancedSubmit} className="mt-4 rounded-md border border-border/60 bg-muted/40 p-4">
             <p className="mb-3 font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground">
@@ -329,6 +393,85 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
                 Apply
               </button>
             </div>
+
+            {/* Genre filters */}
+            <div className="mt-5 border-t border-border/40 pt-4">
+              <p className="mb-3 font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                Genre filters
+              </p>
+
+              {genresPending && (
+                <p className="text-xs italic text-muted-foreground">
+                  Loading genres…
+                </p>
+              )}
+
+              {genresError && (
+                <p className="text-xs italic text-muted-foreground">
+                  Genres temporarily unavailable.
+                </p>
+              )}
+
+              {genresData && genresData.length === 0 && (
+                <p className="text-xs italic text-muted-foreground">
+                  No genres available.
+                </p>
+              )}
+
+              {genresData && genresData.length > 0 && (
+                <div className="space-y-3">
+                  {/* Include */}
+                  <div>
+                    <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <PlusCircle className="h-3.5 w-3.5" />
+                      Must include
+                    </p>
+                    <div className="flex flex-wrap gap-1.5" role="group" aria-label="Include genres">
+                      {genresData.map((genre) => (
+                        <button
+                          key={genre.slug}
+                          type="button"
+                          onClick={() => handleGenreInclude(genre.slug)}
+                          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                            genreIncludeSet.has(genre.slug)
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-secondary text-secondary-foreground hover:bg-muted"
+                          }`}
+                          aria-pressed={genreIncludeSet.has(genre.slug)}
+                        >
+                          {genre.name_en ?? genre.slug}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Exclude */}
+                  <div>
+                    <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <MinusCircle className="h-3.5 w-3.5" />
+                      Exclude
+                    </p>
+                    <div className="flex flex-wrap gap-1.5" role="group" aria-label="Exclude genres">
+                      {genresData.map((genre) => (
+                        <button
+                          key={genre.slug}
+                          type="button"
+                          onClick={() => handleGenreExclude(genre.slug)}
+                          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                            genreExcludeSet.has(genre.slug)
+                              ? "bg-destructive/80 text-destructive-foreground"
+                              : "bg-secondary text-secondary-foreground hover:bg-muted"
+                          }`}
+                          aria-pressed={genreExcludeSet.has(genre.slug)}
+                        >
+                          {genre.name_en ?? genre.slug}
+                        </button>
+                    ))}
+                  </div>
+                </div>
+                </div>
+              )}
+            </div>
           </form>
         )}
       </section>
@@ -351,6 +494,18 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
               <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs">
                 <BookOpen className="h-3.5 w-3.5" />
                 {min_chapters ?? 0}–{max_chapters ?? "∞"} ch.
+              </span>
+            )}
+            {genreIncludeSet.size > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs">
+                <PlusCircle className="h-3.5 w-3.5" />
+                {genreIncludeSet.size} genre{genreIncludeSet.size > 1 ? "s" : ""} incl.
+              </span>
+            )}
+            {genreExcludeSet.size > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs">
+                <MinusCircle className="h-3.5 w-3.5" />
+                {genreExcludeSet.size} genre{genreExcludeSet.size > 1 ? "s" : ""} excl.
               </span>
             )}
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/70">
