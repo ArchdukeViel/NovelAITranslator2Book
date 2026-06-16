@@ -2,14 +2,18 @@
 
 import Link from "next/link";
 import { usePublicAuth } from "@/hooks/public/use-auth";
+import { PublicBrand } from "@/components/public/public-brand";
 
 export function PublicFooter() {
   const { isAuthenticated } = usePublicAuth();
 
   return (
     <footer className="border-t border-border bg-background">
-      <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 py-6 text-sm text-muted-foreground sm:flex-row sm:justify-between">
-        <p>&copy; {new Date().getFullYear()} Novel AI</p>
+      <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-4 py-6 text-sm text-muted-foreground sm:flex-row sm:justify-between">
+        <div className="flex flex-col items-center gap-2 sm:items-start">
+          <PublicBrand showPoweredBy markClassName="h-8 w-8" />
+          <p>&copy; {new Date().getFullYear()} Dokushodo</p>
+        </div>
         <nav className="flex flex-wrap justify-center gap-4">
           <Link href="/browse-novels" className="hover:text-foreground transition-colors">
             Browse

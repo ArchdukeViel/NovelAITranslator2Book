@@ -106,39 +106,46 @@ Do not create duplicate routes that do the same thing under different names.
 
 ## 3. Brand Direction
 
-### 3.1 Current visible brand
+### 3.1 Final public reader brand
 
-The uploaded prototype design used the name:
+The public reader brand is:
 
 ```text
-読書堂 Dokushodo
+読書道 Dokushodo
 ```
 
-This name means roughly “reading hall/book hall.” It fits the desired design mood: quiet, Japanese-inspired, literary, and reader-first.
+This name means roughly "reading hall/book hall." It fits the desired design mood: quiet, Japanese-inspired, literary, and reader-first.
 
-### 3.2 Future product naming
+### 3.2 Platform/project name
 
-For this repository, the active product brand may remain `Novel AI`. If the public frontend is later renamed to `読書堂 Dokushodo`, rename deliberately in one pass.
+`Novel AI` remains the backend, platform, and repository/project name.
 
-Do not mix brand names casually across pages.
-
-Allowed states:
+Approved relationship wording:
 
 ```text
-All Novel AI public frontend
+Dokushodo is powered by Novel AI.
 ```
 
-or:
+Do not mix `Novel AI` and `Dokushodo` as competing public site names.
+
+Allowed public-facing state:
 
 ```text
-All Dokushodo
+All Dokushodo public reader UI
+```
+
+Allowed platform/backend references:
+
+```text
+Dokushodo is powered by Novel AI.
+Novel AI admin/platform/backend context
 ```
 
 Avoid:
 
 ```text
 Dokushodo in the header
-Novel AI in footer
+Novel AI in footer as a competing public site name
 WTR-style copy in page body
 ```
 
@@ -166,6 +173,45 @@ Example bad copy:
 ```text
 THE ULTIMATE INSANE AI NOVEL POWER PLATFORM!!!
 ```
+
+---
+
+## 3A. Figma Reference Alignment
+
+Figma Make reference:
+
+```text
+https://www.figma.com/make/EHzPgAm02lWvByCG5u5Ydm/Modern-Japanese-Webnovel-Website?t=K9EFQXjPrjTaV4at-1
+```
+
+The Figma Make file is a visual/prototype reference. This document remains the binding source of truth for frontend design decisions.
+
+MCP access for this Make file provides source-resource and prototype context, such as resource listings for React pages, route files, layout files, theme/CSS files, shadcn UI components, and image assets. It does not provide normal Figma design-file canvas metadata, screenshots, or variable extraction for this Make file.
+
+Because individual `file://figma/make/source/...` resources may not be dereferenceable in Codex, implementation should rely on this document plus the accepted patterns listed below. Do not spend implementation time troubleshooting Make resource dereferencing unless a later phase explicitly asks for it.
+
+### 3A.1 Accepted Figma-inspired patterns
+
+- red square brand mark with book icon
+- Japanese/English stacked wordmark
+- cover-forward novel cards
+- cinematic home hero as target polish
+- browse filter panel
+- global light/dark toggle
+- reader light/dark/sepia theme enforcement
+- restrained ranking treatment
+- overlay sidebar allowed but not mandatory
+
+### 3A.2 Rejected Figma/prototype patterns
+
+- fake global stats unless clearly labeled preview/mock data
+- community CTA
+- tag voting/suggestion UI
+- emoji medals
+- separate `/latest` route
+- separate `/bookmarks` route
+- route drift back to `/novel`, `/browse`, `/rankings`, or `/library`
+- bookmark/community leaderboard categories
 
 ---
 
@@ -832,6 +878,8 @@ Reader theme values:
 | Light | `#ffffff` | `#1a1a1a` | `#6b7280` | `rgba(0,0,0,0.1)` | `rgba(255,255,255,0.95)` |
 | Dark | `#0e0c12` | `#e4ddd0` | `#8a8298` | `rgba(228,221,208,0.08)` | `rgba(14,12,18,0.95)` |
 | Sepia | `#f8f1e4` | `#3c2a1a` | `#8a7060` | `rgba(60,42,26,0.12)` | `rgba(248,241,228,0.95)` |
+
+`reader.css` and any reader-theme implementation must match these documented reader theme hex and rgba values exactly unless this section is intentionally updated first.
 
 Reader font sizes:
 
