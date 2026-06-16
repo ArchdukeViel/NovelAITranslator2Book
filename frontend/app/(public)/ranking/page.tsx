@@ -92,7 +92,7 @@ export default function RankingPage() {
           {PREVIEW_RANKINGS.map((novel, index) => (
             <Link
               key={novel.slug}
-              href={`/novels/${novel.slug}`}
+              href={`/novel/${novel.slug}`}
               className="group flex items-center gap-4 p-4 transition-colors hover:bg-muted/50"
             >
               {/* Ranking Number */}

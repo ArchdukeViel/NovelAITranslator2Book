@@ -16,7 +16,7 @@ export function NovelCard({ novel }: NovelCardProps) {
   return (
     <div className="group flex h-full flex-col rounded-lg border border-border bg-card p-4 transition-all duration-200 hover:border-accent/30">
       {/* Title and metadata — primary click target */}
-      <Link href={`/novels/${encodeURIComponent(novel.slug)}`} className="flex-1">
+      <Link href={`/novel/${encodeURIComponent(novel.slug)}`} className="flex-1">
         <h2 className="text-base font-semibold font-literary leading-snug group-hover:text-accent">
           {novel.title || novel.slug}
         </h2>

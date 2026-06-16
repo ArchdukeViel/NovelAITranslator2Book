@@ -42,7 +42,7 @@ function ChapterNav({
         {previousChapterId ? (
           <Link
             className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
-            href={`/novels/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(previousChapterId)}`}
+            href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(previousChapterId)}`}
           >
             ← Previous
           </Link>
@@ -62,7 +62,7 @@ function ChapterNav({
       {nextChapterId ? (
         <Link
           className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
-          href={`/novels/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(nextChapterId)}`}
+          href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(nextChapterId)}`}
         >
           Next →
         </Link>
@@ -85,7 +85,7 @@ export default function ChapterPage() {
   const params = useParams<{ slug: string; chapterId: string }>();
   const slug = decodeURIComponent(params.slug);
   const chapterId = decodeURIComponent(params.chapterId);
-  const novelHref = `/novels/${encodeURIComponent(slug)}`;
+  const novelHref = `/novel/${encodeURIComponent(slug)}`;
 
   const { data, isPending, isError, error } = useChapter(slug, chapterId);
   const { isAuthenticated } = usePublicAuth();

@@ -130,7 +130,7 @@ describe("reader navigation", () => {
     expect(nextLinks.length).toBeGreaterThanOrEqual(1);
 
     // All chapters link
-    const allChaptersLinks = container.querySelectorAll("a[href='/novels/demo']");
+    const allChaptersLinks = container.querySelectorAll("a[href='/novel/demo']");
     expect(allChaptersLinks.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -193,7 +193,7 @@ describe("reader controls and layout", () => {
     const { container } = render(<ChapterPage />);
 
     // Novel title appears in breadcrumb link
-    const breadcrumbLinks = container.querySelectorAll("a[href='/novels/demo']");
+    const breadcrumbLinks = container.querySelectorAll("a[href='/novel/demo']");
     const hasNovelTitle = Array.from(breadcrumbLinks).some(
       (el) => el.textContent?.includes("Demo Novel")
     );

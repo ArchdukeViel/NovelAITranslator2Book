@@ -139,7 +139,7 @@ export default function RequestsPage() {
               <div className="divide-y rounded-md border border-border bg-card">
                 {requests.data.items.filter((request) => statusFilter === "all" || request.status === statusFilter).map((request) => {
                   const novelHref = request.slug
-                    ? `/novels/${encodeURIComponent(request.slug)}`
+                    ? `/novel/${encodeURIComponent(request.slug)}`
                     : null;
                   return (
                     <div className="px-4 py-4" key={request.id}>

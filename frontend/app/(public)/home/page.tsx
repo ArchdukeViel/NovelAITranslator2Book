@@ -86,7 +86,7 @@ export default function HomePage() {
           {PREVIEW_NOVELS.map((novel) => (
             <Link
               key={novel.novel_id}
-              href={`/novels/${novel.slug}`}
+              href={`/novel/${novel.slug}`}
               className="group flex items-center gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:border-accent/30"
             >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
@@ -135,7 +135,7 @@ export default function HomePage() {
             {PREVIEW_NOVELS.map((novel, index) => (
               <Link
                 key={novel.novel_id}
-                href={`/novels/${novel.slug}`}
+                href={`/novel/${novel.slug}`}
                 className="group flex items-center gap-4 p-4 transition-colors hover:bg-muted/50"
               >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/10 font-metadata text-sm font-medium text-accent">
