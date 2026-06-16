@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
+from novelai.services.taxonomy_persistence import persist_taxonomy_assignments
 from novelai.storage.service import StorageService
 
 
@@ -70,6 +71,16 @@ class CatalogService:
                 synopsis=metadata.get("description"),
             )
             self._session.add(novel)
+            self._session.flush()  # Ensure novel.id is available
+
+        # Persist taxonomy assignments from scraped metadata
+        source_key = metadata.get("source_key") or metadata.get("source")
+        persist_taxonomy_assignments(
+            self._session,
+            novel.id,
+            metadata,
+            source_key=str(source_key) if source_key else None,
+        )
         return novel
 
     # ------------------------------------------------------------------
