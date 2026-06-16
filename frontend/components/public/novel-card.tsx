@@ -14,10 +14,11 @@ type DiscoveryNovel = PublicNovelSummary & {
   source?: string | null;
   source_title?: string | null;
   synopsis?: string | null;
-  genres?: readonly string[] | null;
-  tags?: readonly string[] | null;
   updated_at?: string | null;
 };
+
+const MAX_VISIBLE_GENRES = 3;
+const MAX_VISIBLE_TAGS = 2;
 
 interface NovelCardProps {
   novel: DiscoveryNovel;
@@ -84,13 +85,23 @@ export function NovelCard({ novel }: NovelCardProps) {
           )}
 
           {(genres.length > 0 || tags.length > 0) && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {genres.slice(0, 3).map((genre) => (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              {genres.slice(0, MAX_VISIBLE_GENRES).map((genre) => (
                 <GenreChip key={genre} label={genre} />
               ))}
-              {tags.slice(0, 2).map((tag) => (
+              {genres.length > MAX_VISIBLE_GENRES && (
+                <span className="text-xs text-muted-foreground">
+                  +{genres.length - MAX_VISIBLE_GENRES}
+                </span>
+              )}
+              {tags.slice(0, MAX_VISIBLE_TAGS).map((tag) => (
                 <TagChip key={tag} label={tag} />
               ))}
+              {tags.length > MAX_VISIBLE_TAGS && (
+                <span className="text-xs text-muted-foreground">
+                  +{tags.length - MAX_VISIBLE_TAGS}
+                </span>
+              )}
             </div>
           )}
 
