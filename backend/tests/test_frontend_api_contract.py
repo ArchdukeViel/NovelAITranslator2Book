@@ -3,8 +3,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
-FRONTEND_DIR = Path("frontend")
+# Resolve repository root robustly regardless of current working directory
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FRONTEND_DIR = REPO_ROOT / "frontend"
 API_CLIENT = FRONTEND_DIR / "lib" / "api.ts"
 PUBLIC_API_CLIENT = FRONTEND_DIR / "lib" / "public-api.ts"
 APPROVED_API_CLIENTS = {
