@@ -37,7 +37,7 @@ export default function LibraryPage() {
   const history = useHistory({ limit: 50 });
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-8">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <Link
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         href="/browse-novels"
@@ -46,9 +46,9 @@ export default function LibraryPage() {
         Back to Browse
       </Link>
 
-      <header className="mt-6 mb-4">
-        <h1 className="text-2xl font-semibold">My Library</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+      <header className="mt-6 mb-8">
+        <h1 className="text-3xl font-semibold tracking-normal font-literary">My Library</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Novels you have saved for later.
         </p>
       </header>
@@ -79,7 +79,7 @@ export default function LibraryPage() {
           </p>
         </section>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-8">
           <LibrarySection
             emptyDescription="Save a novel from its detail page and it will appear here."
             emptyTitle="No currently reading novels yet."
@@ -88,7 +88,7 @@ export default function LibraryPage() {
           />
 
           <section>
-            <h2 className="mb-2 text-sm font-medium">Reading History</h2>
+            <h2 className="mb-3 text-xl font-semibold font-literary">Reading History</h2>
             {history.isPending ? (
               <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -106,7 +106,7 @@ export default function LibraryPage() {
                 title="No reading history yet."
               />
             ) : (
-              <div className="divide-y rounded-md border border-border">
+              <div className="divide-y rounded-md border border-border bg-card">
                 {history.data.items.map((entry) => {
                   const chapterHref = entry.chapter_id
                     ? `/novels/${encodeURIComponent(entry.slug)}/chapter/${encodeURIComponent(entry.chapter_id)}`
@@ -114,16 +114,16 @@ export default function LibraryPage() {
                   const novelHref = `/novels/${encodeURIComponent(entry.slug)}`;
                   return (
                     <div className="flex items-center justify-between gap-3 px-4 py-3" key={entry.id}>
-                      <div className="min-w-0">
-                        <Link href={chapterHref ?? novelHref} className="truncate text-sm font-medium hover:underline">
+                      <div className="min-w-0 flex-1">
+                        <Link href={chapterHref ?? novelHref} className="truncate text-sm font-medium hover:text-accent">
                           {entry.chapter_id ? `${entry.slug} - Ch. ${entry.chapter_id}` : entry.slug}
                         </Link>
-                        <div className="mt-0.5 text-xs text-muted-foreground">
+                        <div className="mt-0.5 text-xs font-metadata text-muted-foreground">
                           {formatAddedAt(entry.read_at)}
                         </div>
                       </div>
                       <Link
-                        className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+                        className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
                         href={chapterHref ?? novelHref}
                       >
                         <BookOpen className="h-3.5 w-3.5" />
@@ -144,7 +144,7 @@ export default function LibraryPage() {
           />
 
           <section>
-            <h2 className="mb-2 text-sm font-medium">Updates</h2>
+            <h2 className="mb-3 text-xl font-semibold font-literary">Updates</h2>
             <EmptyLibraryState
               description="Update alerts are not connected to a public backend feed yet."
               title="No update feed available yet."
@@ -170,7 +170,7 @@ function EmptyLibraryState({
       <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       <Link
         href="/browse-novels"
-        className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium underline hover:opacity-80"
+        className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-accent underline hover:text-foreground"
       >
         Browse novels
       </Link>
@@ -191,11 +191,11 @@ function LibrarySection({
 }) {
   return (
     <section>
-      <h2 className="mb-2 text-sm font-medium">{title}</h2>
+      <h2 className="mb-3 text-xl font-semibold font-literary">{title}</h2>
       {items.length === 0 ? (
         <EmptyLibraryState description={emptyDescription} title={emptyTitle} />
       ) : (
-        <div className="divide-y rounded-md border border-border">
+        <div className="divide-y rounded-md border border-border bg-card">
           {items.map((item) => (
             <LibraryRow key={item.slug} item={item} />
           ))}
@@ -211,20 +211,20 @@ function LibraryRow({ item }: { item: { slug: string; status: string; added_at: 
 
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
-      <div className="min-w-0">
-        <Link href={novelHref} className="truncate text-sm font-medium hover:underline">
+      <div className="min-w-0 flex-1">
+        <Link href={novelHref} className="truncate text-sm font-medium hover:text-accent">
           {item.slug}
         </Link>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium">
+          <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-metadata font-medium">
             {statusLabel(item.status)}
           </span>
-          <span>{formatAddedAt(item.added_at)}</span>
+          <span className="font-metadata">{formatAddedAt(item.added_at)}</span>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <Link
-          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
           href={novelHref}
         >
           <BookOpen className="h-3.5 w-3.5" />
@@ -235,6 +235,7 @@ function LibraryRow({ item }: { item: { slug: string; status: string; added_at: 
           disabled={removeFromLibrary.isPending}
           onClick={() => removeFromLibrary.mutate()}
           type="button"
+          aria-label={`Remove ${item.slug} from library`}
         >
           {removeFromLibrary.isPending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />

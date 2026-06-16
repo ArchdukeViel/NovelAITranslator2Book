@@ -57,7 +57,7 @@ export default function RequestsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-8">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <Link
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         href="/browse-novels"
@@ -66,9 +66,9 @@ export default function RequestsPage() {
         Back to Browse
       </Link>
 
-      <header className="mt-6 mb-4">
-        <h1 className="text-2xl font-semibold">My Requests</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+      <header className="mt-6 mb-8">
+        <h1 className="text-3xl font-semibold tracking-normal font-literary">My Requests</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Novel and chapter translation requests you have submitted.
         </p>
       </header>
@@ -83,16 +83,16 @@ export default function RequestsPage() {
       ) : !isAuthenticated ? (
         <LoginPrompt />
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-8">
           <RequestControl />
 
-          <section className="space-y-3">
+          <section className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-medium">Full request history</h2>
-              <div className="flex flex-wrap gap-2">
+              <h2 className="text-xl font-semibold font-literary">Full request history</h2>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Filter requests by status">
                 {["all", "pending", "approved", "rejected", "completed"].map((status) => (
                   <button
-                    className={`rounded-md border px-2.5 py-1 text-xs capitalize transition-colors ${
+                    className={`rounded-md border px-3 py-1.5 text-xs font-metadata capitalize transition-colors ${
                       statusFilter === status
                         ? "bg-primary text-primary-foreground"
                         : "bg-background text-muted-foreground hover:bg-muted"
@@ -100,6 +100,7 @@ export default function RequestsPage() {
                     key={status}
                     onClick={() => setStatusFilter(status)}
                     type="button"
+                    aria-pressed={statusFilter === status}
                   >
                     {status}
                   </button>
@@ -129,32 +130,32 @@ export default function RequestsPage() {
                 </p>
                 <Link
                   href="/browse-novels"
-                  className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium underline hover:opacity-80"
+                  className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-accent underline hover:text-foreground"
                 >
                   Browse novels
                 </Link>
               </section>
             ) : (
-              <div className="divide-y rounded-md border border-border">
+              <div className="divide-y rounded-md border border-border bg-card">
                 {requests.data.items.filter((request) => statusFilter === "all" || request.status === statusFilter).map((request) => {
                   const novelHref = request.slug
                     ? `/novels/${encodeURIComponent(request.slug)}`
                     : null;
                   return (
-                    <div className="px-4 py-3" key={request.id}>
+                    <div className="px-4 py-4" key={request.id}>
                       <div className="flex items-center justify-between gap-3">
                         <span className="min-w-0 flex-1 text-sm font-medium capitalize">
                           {request.request_type} request
                         </span>
-                        <Badge className="shrink-0" tone={statusTone(request.status)}>
+                        <Badge className="shrink-0 font-metadata" tone={statusTone(request.status)}>
                           {statusLabel(request.status)}
                         </Badge>
                       </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
+                      <div className="mt-2 text-xs text-muted-foreground">
                         {request.slug ? (
                           <Link
                             href={novelHref!}
-                            className="font-medium text-foreground hover:underline"
+                            className="font-medium text-foreground hover:text-accent hover:underline"
                           >
                             {request.slug}
                           </Link>
@@ -166,10 +167,10 @@ export default function RequestsPage() {
                           <span>Request</span>
                         )}
                         <span className="mx-1">·</span>
-                        <span>{formatCreatedAt(request.created_at)}</span>
+                        <span className="font-metadata">{formatCreatedAt(request.created_at)}</span>
                       </div>
                       <p className="mt-2 text-xs text-muted-foreground">
-                        Rejection reason: Not provided by current API
+                        Rejection reason: <span className="italic">Not provided by current API</span>
                       </p>
                     </div>
                   );
