@@ -19,6 +19,7 @@ export {
   useRemoveFromLibrary,
   useUpdateProgress,
 } from "./use-reading-state";
+export { useGenres } from "./use-genres";
 export {
   useCreateRequest,
   useDeleteReview,
