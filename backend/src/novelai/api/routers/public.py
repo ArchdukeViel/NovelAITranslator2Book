@@ -95,6 +95,13 @@ def _optional_str(value: Any) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
+def _parse_csv_filter(value: str | None) -> list[str]:
+    """Parse comma-separated filter value, trim whitespace, drop empties."""
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 def _novel_matches_search(meta: dict[str, Any], query: str) -> bool:
     """Simple case-insensitive substring search across title and author."""
     q = query.lower()
@@ -177,6 +184,10 @@ async def catalog(
     order: str | None = Query(default=None, description="Sort order: asc or desc"),
     min_chapters: int | None = Query(default=None, ge=0, description="Minimum chapter count"),
     max_chapters: int | None = Query(default=None, ge=0, description="Maximum chapter count"),
+    genre_include: str | None = Query(default=None, description="Comma-separated genre slugs — novel must have all"),
+    genre_exclude: str | None = Query(default=None, description="Comma-separated genre slugs — novel must have none"),
+    tag_include: str | None = Query(default=None, description="Comma-separated tag names — novel must have all"),
+    tag_exclude: str | None = Query(default=None, description="Comma-separated tag names — novel must have none"),
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(default=24, ge=1, le=100, description="Items per page"),
     storage: StorageService = Depends(get_storage),
@@ -188,6 +199,12 @@ async def catalog(
     effective_order = order if order and order in VALID_ORDER_VALUES else DEFAULT_ORDER
     reverse = effective_order == "desc"
 
+    # Pre-parse taxonomy filters outside the loop
+    genre_include_set = set(_parse_csv_filter(genre_include))
+    genre_exclude_set = set(_parse_csv_filter(genre_exclude))
+    tag_include_set = set(_parse_csv_filter(tag_include))
+    tag_exclude_set = set(_parse_csv_filter(tag_exclude))
+
     novels: list[PublicNovelSummary] = []
     for novel_id in storage.list_novels():
         meta = storage.load_metadata(novel_id) or {}
@@ -198,6 +215,17 @@ async def catalog(
         if language and _optional_str(meta.get("language")) != language:
             continue
         genres, tags = _load_taxonomy_for_novel(db, novel_id)
+        # Taxonomy include/exclude filters
+        novel_genre_set = set(genres)
+        novel_tag_set = set(tags)
+        if genre_include_set and not genre_include_set.issubset(novel_genre_set):
+            continue
+        if genre_exclude_set and novel_genre_set.intersection(genre_exclude_set):
+            continue
+        if tag_include_set and not set(tag_include_set).issubset(novel_tag_set):
+            continue
+        if tag_exclude_set and novel_tag_set.intersection(tag_exclude_set):
+            continue
         summary = _novel_summary(novel_id, meta, storage, genres=genres, tags=tags)
         # Filter by chapter count range
         if min_chapters is not None and summary.chapter_count < min_chapters:

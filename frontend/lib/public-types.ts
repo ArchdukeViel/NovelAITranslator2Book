@@ -36,6 +36,10 @@ export interface CatalogParams {
   order?: CatalogOrder;
   min_chapters?: number;
   max_chapters?: number;
+  genre_include?: string;
+  genre_exclude?: string;
+  tag_include?: string;
+  tag_exclude?: string;
   page?: number;
   page_size?: number;
 }

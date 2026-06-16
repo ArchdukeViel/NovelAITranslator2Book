@@ -221,6 +221,10 @@ export const publicApi = {
       search.set("min_chapters", String(params.min_chapters));
     if (params.max_chapters !== undefined)
       search.set("max_chapters", String(params.max_chapters));
+    if (params.genre_include) search.set("genre_include", params.genre_include);
+    if (params.genre_exclude) search.set("genre_exclude", params.genre_exclude);
+    if (params.tag_include) search.set("tag_include", params.tag_include);
+    if (params.tag_exclude) search.set("tag_exclude", params.tag_exclude);
     if (params.page !== undefined) search.set("page", String(params.page));
     if (params.page_size !== undefined)
       search.set("page_size", String(params.page_size));
