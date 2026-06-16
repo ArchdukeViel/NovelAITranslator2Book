@@ -5,7 +5,7 @@ export default function BrowseNovelsPage() {
     <BrowsePage
       basePath="/browse-novels"
       title="Browse Novels"
-      description="Search the public catalog, filter by language, and find the latest translated releases available to read."
+      description="Discover translated Japanese web novels and source-aware stories with clean metadata, reading progress, and calm catalog filters."
     />
   );
 }
