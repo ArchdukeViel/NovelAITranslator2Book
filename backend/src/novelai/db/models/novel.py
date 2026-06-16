@@ -17,6 +17,8 @@ from novelai.db.base import Base
 
 if TYPE_CHECKING:
     from novelai.db.models.chapter import Chapter
+    from novelai.db.models.genre import Genre
+    from novelai.db.models.tag import Tag
 
 
 def _utcnow() -> datetime:
@@ -57,6 +59,16 @@ class Novel(Base):
     # Relationships
     chapters: Mapped[list[Chapter]] = relationship(
         "Chapter", back_populates="novel", cascade="all, delete-orphan"
+    )
+    genres: Mapped[list[Genre]] = relationship(
+        "Genre",
+        secondary="novel_genres",
+        lazy="selectin",
+    )
+    tags: Mapped[list[Tag]] = relationship(
+        "Tag",
+        secondary="novel_tags",
+        lazy="selectin",
     )
 
     def __repr__(self) -> str:

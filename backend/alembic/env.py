@@ -26,6 +26,8 @@ if str(_BACKEND_SRC) not in sys.path:
 from novelai.db.base import Base  # noqa: E402
 import novelai.db.models.novel     # noqa: E402, F401
 import novelai.db.models.chapter   # noqa: E402, F401
+import novelai.db.models.genre     # noqa: E402, F401
+import novelai.db.models.tag       # noqa: E402, F401
 import novelai.db.models.jobs      # noqa: E402, F401
 import novelai.db.models.users     # noqa: E402, F401
 import novelai.db.models.system    # noqa: E402, F401
