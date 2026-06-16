@@ -33,6 +33,7 @@ vi.mock("lucide-react", () => ({
   Minus: () => <span data-testid="icon-minus" />,
   Plus: () => <span data-testid="icon-plus" />,
   RotateCcw: () => <span data-testid="icon-reset" />,
+  Flag: () => <span data-testid="icon-flag" />,
 }));
 
 vi.mock("@/hooks/public", () => ({

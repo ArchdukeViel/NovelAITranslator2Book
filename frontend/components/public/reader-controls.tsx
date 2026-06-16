@@ -22,7 +22,7 @@ export function ReaderControls() {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {/* Font size controls */}
-      <span className="text-xs opacity-60 select-none">Font size</span>
+      <span className="text-xs font-metadata text-muted-foreground select-none">Font size</span>
       <Button
         variant="outline"
         size="icon"
@@ -32,7 +32,7 @@ export function ReaderControls() {
       >
         <Minus className="h-4 w-4" />
       </Button>
-      <span className="min-w-[3ch] text-center text-sm tabular-nums">
+      <span className="min-w-[3ch] text-center text-sm font-metadata tabular-nums">
         {fontSize}
       </span>
       <Button
@@ -47,7 +47,7 @@ export function ReaderControls() {
 
       {/* Theme selector */}
       <select
-        className="h-9 rounded-md border bg-transparent px-3 text-sm"
+        className="h-9 rounded-md border border-border bg-background px-3 text-sm"
         value={theme}
         onChange={(e) =>
           setTheme(e.target.value as "light" | "dark" | "sepia")
@@ -61,7 +61,7 @@ export function ReaderControls() {
 
       {/* Width selector */}
       <select
-        className="h-9 rounded-md border bg-transparent px-3 text-sm"
+        className="h-9 rounded-md border border-border bg-background px-3 text-sm"
         value={width}
         onChange={(e) =>
           setWidth(e.target.value as "compact" | "comfortable" | "wide")
