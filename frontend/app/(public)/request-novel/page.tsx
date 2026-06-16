@@ -24,9 +24,9 @@ function sourceFromUrl(value: string | null): string {
 
 export default function RequestNovelPage() {
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8">
-      <header className="mb-6">
-        <h1 className="text-3xl font-semibold tracking-normal">Request Novel</h1>
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <header className="mb-8">
+        <h1 className="text-3xl font-semibold tracking-normal font-literary">Request Novel</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
           Sign in to request a supported source URL. Submission enforcement and review happen through the existing user request backend.
         </p>
@@ -40,12 +40,12 @@ export default function RequestNovelPage() {
         <aside className="space-y-4">
           <Panel>
             <PanelHeader>
-              <PanelTitle>Supported Sources</PanelTitle>
+              <PanelTitle className="font-literary">Supported Sources</PanelTitle>
             </PanelHeader>
             <PanelBody>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 {SUPPORTED_SOURCES.map((source) => (
-                  <li key={source}>{source}</li>
+                  <li key={source} className="font-metadata">{source}</li>
                 ))}
               </ul>
             </PanelBody>
@@ -53,17 +53,18 @@ export default function RequestNovelPage() {
 
           <Panel>
             <PanelHeader>
-              <PanelTitle>Request URL</PanelTitle>
+              <PanelTitle className="font-literary">Request URL</PanelTitle>
             </PanelHeader>
             <PanelBody className="space-y-3">
               <label className="block text-xs font-medium text-muted-foreground">
                 Supported source URL
               </label>
               <input
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm disabled:opacity-50"
                 disabled
                 placeholder="https://kakuyomu.jp/..."
                 type="url"
+                aria-label="Supported source URL (disabled pending backend support)"
               />
               <p className="text-xs text-muted-foreground">
                 URL validation and submission controls will be enabled against the existing request API in a dedicated behavior phase.
@@ -105,7 +106,7 @@ function RequestHistory() {
   return (
     <Panel>
       <PanelHeader>
-        <PanelTitle>Request History</PanelTitle>
+        <PanelTitle className="font-literary">Request History</PanelTitle>
       </PanelHeader>
       <PanelBody className="overflow-x-auto p-0">
         <table className="w-full min-w-[760px] text-left text-sm">
@@ -120,7 +121,7 @@ function RequestHistory() {
                 "Updated At",
                 "Action",
               ].map((heading) => (
-                <th className="px-4 py-3 font-medium" key={heading}>
+                <th className="px-4 py-3 font-medium font-metadata" key={heading}>
                   {heading}
                 </th>
               ))}
@@ -139,14 +140,14 @@ function RequestHistory() {
                   <td className="px-4 py-3">
                     {request.slug ?? request.source_url ?? "Request"}
                   </td>
-                  <td className="px-4 py-3">{sourceFromUrl(request.source_url)}</td>
-                  <td className="px-4 py-3 capitalize">{request.status}</td>
+                  <td className="px-4 py-3 font-metadata">{sourceFromUrl(request.source_url)}</td>
+                  <td className="px-4 py-3 font-metadata capitalize">{request.status}</td>
                   <td className="px-4 py-3 text-muted-foreground">Not provided by current API</td>
-                  <td className="px-4 py-3">{request.created_at}</td>
+                  <td className="px-4 py-3 font-metadata">{request.created_at}</td>
                   <td className="px-4 py-3 text-muted-foreground">Not provided by current API</td>
                   <td className="px-4 py-3">
                     {request.slug ? (
-                      <Link className="underline" href={`/novels/${encodeURIComponent(request.slug)}`}>
+                      <Link className="text-accent underline hover:text-foreground" href={`/novels/${encodeURIComponent(request.slug)}`}>
                         Open
                       </Link>
                     ) : (
