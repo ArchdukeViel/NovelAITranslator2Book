@@ -59,7 +59,7 @@ export function ContinueReading({ slug, firstChapterId }: ContinueReadingProps) 
 
   // Has saved progress → Continue Reading (show chapter ID if available)
   if (chapterId) {
-    const href = `/novels/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapterId)}`;
+    const href = `/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapterId)}`;
     return (
       <Link
         className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
@@ -73,7 +73,7 @@ export function ContinueReading({ slug, firstChapterId }: ContinueReadingProps) 
 
   // No saved progress but chapters exist → Start Reading
   if (firstChapterId) {
-    const href = `/novels/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(firstChapterId)}`;
+    const href = `/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(firstChapterId)}`;
     return (
       <Link
         className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"

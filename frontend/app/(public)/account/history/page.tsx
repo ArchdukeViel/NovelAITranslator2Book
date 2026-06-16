@@ -82,9 +82,9 @@ export default function HistoryPage() {
         <section className="divide-y rounded-md border border-border">
           {history.data.items.map((entry) => {
             const chapterHref = entry.chapter_id
-              ? `/novels/${encodeURIComponent(entry.slug)}/chapter/${encodeURIComponent(entry.chapter_id)}`
+              ? `/novel/${encodeURIComponent(entry.slug)}/chapter/${encodeURIComponent(entry.chapter_id)}`
               : null;
-            const novelHref = `/novels/${encodeURIComponent(entry.slug)}`;
+            const novelHref = `/novel/${encodeURIComponent(entry.slug)}`;
 
             return (
               <div

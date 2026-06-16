@@ -152,7 +152,7 @@ export default function NovelDetailPage() {
               {firstChapterId && (
                 <Link
                   className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
-                  href={`/novels/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(firstChapterId)}`}
+                  href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(firstChapterId)}`}
                 >
                   <BookOpen className="h-4 w-4" />
                   Start Reading
@@ -234,7 +234,7 @@ export default function NovelDetailPage() {
                   {chapter.translated ? (
                     <Link
                       className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
-                      href={`/novels/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapter.chapter_id)}`}
+                      href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapter.chapter_id)}`}
                     >
                       <BookOpen className="h-3.5 w-3.5" />
                       Read

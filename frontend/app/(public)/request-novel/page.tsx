@@ -147,7 +147,7 @@ function RequestHistory() {
                   <td className="px-4 py-3 text-muted-foreground">Not provided by current API</td>
                   <td className="px-4 py-3">
                     {request.slug ? (
-                      <Link className="text-accent underline hover:text-foreground" href={`/novels/${encodeURIComponent(request.slug)}`}>
+                      <Link className="text-accent underline hover:text-foreground" href={`/novel/${encodeURIComponent(request.slug)}`}>
                         Open
                       </Link>
                     ) : (

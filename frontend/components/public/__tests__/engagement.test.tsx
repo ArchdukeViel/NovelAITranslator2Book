@@ -262,7 +262,7 @@ describe("public engagement UI", () => {
 
     // Chapter request entry (slug linked)
     const novelLink = await screen.findByRole("link", { name: /demo/i });
-    expect(novelLink).toHaveAttribute("href", "/novels/demo");
+    expect(novelLink).toHaveAttribute("href", "/novel/demo");
 
     // Status badges
     expect(await screen.findByText("Pending")).toBeInTheDocument();
