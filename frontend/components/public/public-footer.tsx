@@ -1,12 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePublicAuth } from "@/hooks/public/use-auth";
 import { PublicBrand } from "@/components/public/public-brand";
 
 export function PublicFooter() {
-  const { isAuthenticated } = usePublicAuth();
-
   return (
     <footer className="border-t border-border/60 bg-background">
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 text-sm text-muted-foreground sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:px-8">
@@ -31,11 +28,6 @@ export function PublicFooter() {
           <Link href="/contribute" className="transition-colors hover:text-foreground">
             Contribute
           </Link>
-          {isAuthenticated && (
-            <Link href="/account/library" className="transition-colors hover:text-foreground">
-              Library
-            </Link>
-          )}
         </nav>
 
         <nav className="grid gap-2" aria-label="Legal navigation">

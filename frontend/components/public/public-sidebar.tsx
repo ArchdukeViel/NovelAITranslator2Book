@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { BookOpen, FileText, Heart, Home, Library, Trophy, X } from "lucide-react";
+import { BookOpen, Clock, FileText, Heart, History, Home, Library, Settings, Trophy, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { CurrentUserIndicator } from "@/components/public/current-user-indicator";
@@ -16,13 +16,14 @@ const mainNavItems = [
   { href: "/ranking", label: "Ranking", icon: Trophy },
   { href: "/request-novel", label: "Request Novel", icon: FileText },
   { href: "/contribute", label: "Contribute", icon: Heart },
-  { href: "/account/library", label: "Library", icon: Library },
 ];
 
 const accountNavItems = [
-  { href: "/account/requests", label: "Requests" },
-  { href: "/account/contributions", label: "Contributions" },
-  { href: "/account/settings", label: "Settings" },
+  { href: "/account/library", label: "Library", icon: Library },
+  { href: "/account/history", label: "History", icon: History },
+  { href: "/account/requests", label: "Requests", icon: Clock },
+  { href: "/account/contributions", label: "Contributions", icon: Heart },
+  { href: "/account/settings", label: "Settings", icon: Settings },
 ];
 
 export function PublicSidebar({
@@ -34,9 +35,6 @@ export function PublicSidebar({
 }) {
   const pathname = usePathname();
   const { isAuthenticated } = usePublicAuth();
-  const visibleMainNavItems = isAuthenticated
-    ? mainNavItems
-    : mainNavItems.filter((item) => item.href !== "/account/library");
 
   useEffect(() => {
     if (!isOpen) return;
@@ -98,7 +96,7 @@ export function PublicSidebar({
                 Public
               </p>
               <div className="mt-2 space-y-1">
-                {visibleMainNavItems.map((item) => {
+                {mainNavItems.map((item) => {
                   const isActive =
                     pathname === item.href ||
                     (item.href !== "/home" && pathname.startsWith(item.href));
@@ -131,18 +129,20 @@ export function PublicSidebar({
                 <div className="mt-2 space-y-1">
                   {accountNavItems.map((item) => {
                     const isActive = pathname === item.href;
+                    const Icon = item.icon;
                     return (
                       <Link
                         key={item.href}
                         href={item.href}
                         onClick={onClose}
                         className={cn(
-                          "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors",
+                          "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
                           isActive
                             ? "bg-secondary text-accent"
                             : "text-muted-foreground hover:bg-muted hover:text-foreground"
                         )}
                       >
+                        <Icon className="h-4 w-4" />
                         {item.label}
                       </Link>
                     );
