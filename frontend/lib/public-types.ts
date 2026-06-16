@@ -14,6 +14,7 @@ export interface PublicNovelSummary {
   status: string | null;
   chapter_count: number;
   translated_count: number;
+  added_at?: string | null;
 }
 
 export interface PublicCatalogResponse {
@@ -23,10 +24,16 @@ export interface PublicCatalogResponse {
   page_size: number;
 }
 
+export type CatalogSortField = "added_at" | "title" | "chapter_count";
+export type CatalogOrder = "asc" | "desc";
+
 export interface CatalogParams {
   q?: string;
   status?: string;
-  language?: string; // genre/facet mapped here
+  sort_by?: CatalogSortField;
+  order?: CatalogOrder;
+  min_chapters?: number;
+  max_chapters?: number;
   page?: number;
   page_size?: number;
 }

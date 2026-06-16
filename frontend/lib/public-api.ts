@@ -215,7 +215,12 @@ export const publicApi = {
     const search = new URLSearchParams();
     if (params.q) search.set("q", params.q);
     if (params.status) search.set("status", params.status);
-    if (params.language) search.set("language", params.language);
+    if (params.sort_by) search.set("sort_by", params.sort_by);
+    if (params.order) search.set("order", params.order);
+    if (params.min_chapters !== undefined)
+      search.set("min_chapters", String(params.min_chapters));
+    if (params.max_chapters !== undefined)
+      search.set("max_chapters", String(params.max_chapters));
     if (params.page !== undefined) search.set("page", String(params.page));
     if (params.page_size !== undefined)
       search.set("page_size", String(params.page_size));

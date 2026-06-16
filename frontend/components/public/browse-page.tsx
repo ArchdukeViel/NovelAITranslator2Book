@@ -1,30 +1,46 @@
 "use client";
 
-import { FormEvent, Suspense } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { BookOpen, Filter, LibraryBig, Search, X } from "lucide-react";
+import {
+  ArrowDownAZ,
+  ArrowUpAZ,
+  BookOpen,
+  ChevronDown,
+  Filter,
+  Search,
+  X,
+} from "lucide-react";
 
 import { NovelCard } from "@/components/public/novel-card";
 import { SectionHeader } from "@/components/public/section-header";
 import { StatusBadge } from "@/components/public/status-badge";
 import { useCatalog } from "@/hooks/public";
 import { hasNextPage, toReaderError } from "@/lib/public-format";
-import type { CatalogParams } from "@/lib/public-types";
-
-const LANGUAGE_FILTERS = [
-  { value: "", label: "All sources" },
-  { value: "Japanese", label: "Japanese" },
-  { value: "Korean", label: "Korean" },
-  { value: "Chinese", label: "Chinese" },
-  { value: "English", label: "English" },
-] as const;
+import type {
+  CatalogOrder,
+  CatalogParams,
+  CatalogSortField,
+} from "@/lib/public-types";
 
 const STATUS_FILTERS = [
   { value: "", label: "Any status" },
   { value: "Ongoing", label: "Ongoing" },
   { value: "Completed", label: "Completed" },
   { value: "Hiatus", label: "Hiatus" },
+  { value: "Dropped", label: "Dropped" },
 ] as const;
+
+const SORT_OPTIONS: { value: CatalogSortField; label: string }[] = [
+  { value: "added_at", label: "Addition date" },
+  { value: "title", label: "Title" },
+  { value: "chapter_count", label: "Chapter count" },
+];
+
+const ORDER_OPTIONS: { value: CatalogOrder; label: string }[] = [
+  { value: "desc", label: "Descending" },
+  { value: "asc", label: "Ascending" },
+];
 
 interface BrowsePageProps {
   basePath: "/home" | "/browse-novels";
@@ -57,27 +73,42 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
   const router = useRouter();
 
   const q = searchParams.get("q") ?? undefined;
-  const language = searchParams.get("language") ?? undefined;
   const status = searchParams.get("status") ?? undefined;
+  const sort_by = (searchParams.get("sort_by") ?? undefined) as CatalogSortField | undefined;
+  const order = (searchParams.get("order") ?? undefined) as CatalogOrder | undefined;
+  const min_chapters_raw = searchParams.get("min_chapters");
+  const max_chapters_raw = searchParams.get("max_chapters");
+  const min_chapters = min_chapters_raw ? Number(min_chapters_raw) : undefined;
+  const max_chapters = max_chapters_raw ? Number(max_chapters_raw) : undefined;
   const page = Number(searchParams.get("page") ?? "1") || 1;
   const pageSize = 20;
 
+  const [advancedOpen, setAdvancedOpen] = useState(
+    Boolean(min_chapters !== undefined || max_chapters !== undefined)
+  );
+
   const params: CatalogParams = {
     q,
-    language,
     status,
+    sort_by: sort_by ?? "added_at",
+    order: order ?? "desc",
+    min_chapters,
+    max_chapters,
     page,
     page_size: pageSize,
   };
   const { data, isPending, isError, error } = useCatalog(params);
 
-  const hasActiveFilters = Boolean(q || language || status);
+  const hasActiveFilters = Boolean(q || status || min_chapters !== undefined || max_chapters !== undefined);
 
   function pushParams(next: CatalogParams) {
     const sp = new URLSearchParams();
     if (next.q) sp.set("q", next.q);
-    if (next.language) sp.set("language", next.language);
     if (next.status) sp.set("status", next.status);
+    if (next.sort_by && next.sort_by !== "added_at") sp.set("sort_by", next.sort_by);
+    if (next.order && next.order !== "desc") sp.set("order", next.order);
+    if (next.min_chapters !== undefined) sp.set("min_chapters", String(next.min_chapters));
+    if (next.max_chapters !== undefined) sp.set("max_chapters", String(next.max_chapters));
     if (next.page && next.page > 1) sp.set("page", String(next.page));
     const query = sp.toString();
     router.push(`${basePath}${query ? `?${query}` : ""}`);
@@ -90,18 +121,33 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
     pushParams({ ...params, q: nextQuery || undefined, page: 1 });
   }
 
-  function handleLanguageChange(nextLanguage: string) {
-    pushParams({
-      ...params,
-      language: nextLanguage || undefined,
-      page: 1,
-    });
-  }
-
   function handleStatusChange(nextStatus: string) {
     pushParams({
       ...params,
       status: nextStatus || undefined,
+      page: 1,
+    });
+  }
+
+  function handleSortChange(nextSortBy: CatalogSortField) {
+    pushParams({ ...params, sort_by: nextSortBy, page: 1 });
+  }
+
+  function handleOrderChange(nextOrder: CatalogOrder) {
+    pushParams({ ...params, order: nextOrder, page: 1 });
+  }
+
+  function handleAdvancedSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const minRaw = String(formData.get("min_chapters") ?? "").trim();
+    const maxRaw = String(formData.get("max_chapters") ?? "").trim();
+    const minVal = minRaw ? Math.max(0, Number(minRaw)) : undefined;
+    const maxVal = maxRaw ? Math.max(0, Number(maxRaw)) : undefined;
+    pushParams({
+      ...params,
+      min_chapters: Number.isFinite(minVal) ? minVal : undefined,
+      max_chapters: Number.isFinite(maxVal) ? maxVal : undefined,
       page: 1,
     });
   }
@@ -111,11 +157,13 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
   }
 
   function handleClearFilters() {
-    router.push(basePath);
+    pushParams({ sort_by: params.sort_by, order: params.order, page: 1 });
   }
 
   const novels = data?.novels ?? [];
   const total = data?.total ?? 0;
+  const effectiveSort = sort_by ?? "added_at";
+  const effectiveOrder = order ?? "desc";
 
   return (
     <div className="space-y-10">
@@ -152,55 +200,137 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
           </div>
         </form>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-              <LibraryBig className="h-4 w-4 text-accent" />
-              Source language
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {LANGUAGE_FILTERS.map(({ value, label }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => handleLanguageChange(value)}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                    (language ?? "") === value
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-secondary text-secondary-foreground hover:bg-muted"
-                  }`}
-                  aria-pressed={(language ?? "") === value}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+        <div className="mt-5">
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+            <Filter className="h-4 w-4 text-accent" />
+            Status
           </div>
-
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-              <Filter className="h-4 w-4 text-accent" />
-              Translation status
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {STATUS_FILTERS.map(({ value, label }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => handleStatusChange(value)}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                    (status ?? "") === value
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-secondary text-secondary-foreground hover:bg-muted"
-                  }`}
-                  aria-pressed={(status ?? "") === value}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+          <div className="flex flex-wrap gap-2">
+            {STATUS_FILTERS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => handleStatusChange(value)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  (status ?? "") === value
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-secondary-foreground hover:bg-muted"
+                }`}
+                aria-pressed={(status ?? "") === value}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
+
+        {/* Sort and order controls */}
+        <div className="mt-5 flex flex-wrap items-end gap-4">
+          <div>
+            <label
+              htmlFor="sort-select"
+              className="mb-1.5 block font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground"
+            >
+              Sort by
+            </label>
+            <select
+              id="sort-select"
+              value={effectiveSort}
+              onChange={(e) => handleSortChange(e.target.value as CatalogSortField)}
+              className="h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:bg-card"
+            >
+              {SORT_OPTIONS.map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label
+              htmlFor="order-select"
+              className="mb-1.5 block font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground"
+            >
+              Direction
+            </label>
+            <select
+              id="order-select"
+              value={effectiveOrder}
+              onChange={(e) => handleOrderChange(e.target.value as CatalogOrder)}
+              className="h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:bg-card"
+            >
+              {ORDER_OPTIONS.map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen((prev) => !prev)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-xs font-medium text-secondary-foreground transition-colors hover:bg-muted"
+          >
+            Advanced search
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+        </div>
+
+        {/* Advanced search: min/max chapter count */}
+        {advancedOpen && (
+          <form onSubmit={handleAdvancedSubmit} className="mt-4 rounded-md border border-border/60 bg-muted/40 p-4">
+            <p className="mb-3 font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground">
+              Chapter count range
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label
+                  htmlFor="min-chapters"
+                  className="mb-1 block text-xs text-muted-foreground"
+                >
+                  Minimum
+                </label>
+                <input
+                  id="min-chapters"
+                  name="min_chapters"
+                  type="number"
+                  min={0}
+                  step={1}
+                  defaultValue={min_chapters ?? ""}
+                  placeholder="0"
+                  className="h-9 w-24 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-accent"
+                />
+              </div>
+              <span className="pb-2 text-muted-foreground">–</span>
+              <div>
+                <label
+                  htmlFor="max-chapters"
+                  className="mb-1 block text-xs text-muted-foreground"
+                >
+                  Maximum
+                </label>
+                <input
+                  id="max-chapters"
+                  name="max_chapters"
+                  type="number"
+                  min={0}
+                  step={1}
+                  defaultValue={max_chapters ?? ""}
+                  placeholder="∞"
+                  className="h-9 w-24 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-accent"
+                />
+              </div>
+              <button
+                type="submit"
+                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                Apply
+              </button>
+            </div>
+          </form>
+        )}
       </section>
 
       <section aria-label="Catalog results">
@@ -216,13 +346,21 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
                 &ldquo;{q}&rdquo;
               </span>
             )}
-            {language && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1">
-                <LibraryBig className="h-3.5 w-3.5" />
-                {language}
+            {status && <StatusBadge status={status} />}
+            {(min_chapters !== undefined || max_chapters !== undefined) && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs">
+                <BookOpen className="h-3.5 w-3.5" />
+                {min_chapters ?? 0}–{max_chapters ?? "∞"} ch.
               </span>
             )}
-            {status && <StatusBadge status={status} />}
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/70">
+              {effectiveOrder === "asc" ? (
+                <ArrowDownAZ className="h-3.5 w-3.5" />
+              ) : (
+                <ArrowUpAZ className="h-3.5 w-3.5" />
+              )}
+              {SORT_OPTIONS.find((o) => o.value === effectiveSort)?.label}
+            </span>
           </div>
           {hasActiveFilters && (
             <button
@@ -262,8 +400,8 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
             </h2>
             <p className="max-w-md text-sm leading-6 text-muted-foreground">
               {hasActiveFilters
-                ? "No translated novels matched this search. Clear filters or try a broader title, author, source language, or status."
-                : "The public catalog is empty right now. Check back after translated novels are published."}
+                ? "No novels matched this search. Clear filters or try a broader title, author, or status."
+                : "The catalog is empty right now. Check back after novels are published."}
             </p>
             {hasActiveFilters && (
               <button
@@ -321,8 +459,8 @@ export function BrowsePage({ basePath, description, title }: BrowsePageProps) {
 
       <SectionHeader
         eyebrow="Discovery"
-        title="Find your next translation"
-        description="Search by title or author, then narrow the catalog by source language and translation status."
+        title="Find your next read"
+        description="Search by title or author, then narrow the catalog by status and chapter count."
       />
 
       <div className="mt-6">
