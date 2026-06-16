@@ -53,6 +53,18 @@ services:
       BACKEND_API_URL: http://backend:8000
     restart: unless-stopped
 
+  migrate:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-novelai}@postgres:5432/${POSTGRES_DB:-novelai}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   backend:
     build:
       context: ..
@@ -84,35 +96,8 @@ services:
     volumes:
       - ../storage/novel_library:/app/storage/novel_library
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-
-  worker:
-    build:
-      context: ..
-      dockerfile: deploy/backend.Dockerfile
-    command: ["novelaibook", "worker"]
-    environment:
-      - ENV=${ENV:-production}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - WEB_API_KEY
-      - WEB_CORS_ORIGINS=${WEB_CORS_ORIGINS:-[]}
-      - WEB_RATE_LIMITER_BACKEND=${WEB_RATE_LIMITER_BACKEND:-memory}
-      - WEB_REQUEST_TIMEOUT_SECONDS=${WEB_REQUEST_TIMEOUT_SECONDS:-120}
-      - JOB_WORKER_POLL_SECONDS=${JOB_WORKER_POLL_SECONDS:-3}
-      - NOVEL_LIBRARY_DIR=/app/storage/novel_library
-      - PROVIDER_DEFAULT=${PROVIDER_DEFAULT:-gemini}
-      - PROVIDER_GEMINI_API_KEY
-      - PROVIDER_OPENAI_API_KEY
-      - TRANSLATION_TARGET_LANGUAGE=${TRANSLATION_TARGET_LANGUAGE:-English}
-      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-novelai}@postgres:5432/${POSTGRES_DB:-novelai}
-      - REDIS_URL=redis://redis:6379/0
-    volumes:
-      - ../storage/novel_library:/app/storage/novel_library
-    depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
