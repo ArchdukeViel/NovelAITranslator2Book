@@ -2,21 +2,155 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, BookOpen, Clock, Flag } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  Clock,
+  Flag,
+  Library,
+} from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
-import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { ContinueReading } from "@/components/public/continue-reading";
+import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { RatingReview } from "@/components/public/rating-review";
 import { RequestControl } from "@/components/public/request-control";
 import { SaveToLibrary } from "@/components/public/save-to-library";
-import { useNovel, useChapters, usePublicAuth } from "@/hooks/public";
+import { SectionHeader } from "@/components/public/section-header";
+import { StatusBadge } from "@/components/public/status-badge";
 import { ApiError } from "@/lib/api";
 import {
   authorOrFallback,
   sortChaptersAscending,
   toReaderError,
 } from "@/lib/public-format";
+import type { PublicChapterSummary } from "@/lib/public-types";
+import { useChapters, useNovel, usePublicAuth } from "@/hooks/public";
+
+function chapterDisplayTitle(chapter: PublicChapterSummary): string {
+  return (
+    chapter.title ||
+    `Chapter ${chapter.chapter_number ?? chapter.chapter_id}`
+  );
+}
+
+function chapterHref(slug: string, chapterId: string): string {
+  return `/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapterId)}`;
+}
+
+function CoverFallback({ title }: { title: string }) {
+  return (
+    <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-secondary shadow-sm ring-1 ring-border">
+      <div className="absolute inset-x-0 top-0 h-1 bg-primary" />
+      <div className="flex h-full flex-col items-center justify-center gap-5 px-7 text-center">
+        <span className="flex h-16 w-16 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
+          <BookOpen className="h-8 w-8" />
+        </span>
+        <div>
+          <p className="font-metadata text-xs uppercase tracking-[0.18em] text-accent">
+            Dokushodo
+          </p>
+          <p className="mt-3 line-clamp-5 font-literary text-lg leading-snug text-secondary-foreground">
+            {title}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+      <BackToBrowse />
+      <div className="mt-10 grid gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="aspect-[2/3] animate-pulse rounded-lg bg-muted" />
+        <div className="space-y-5">
+          <div className="h-5 w-32 animate-pulse rounded bg-muted" />
+          <div className="h-12 w-3/4 animate-pulse rounded bg-muted" />
+          <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
+          <div className="h-24 w-full animate-pulse rounded bg-muted" />
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function BackToBrowse() {
+  return (
+    <Link
+      className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      href="/browse-novels"
+    >
+      <ArrowLeft className="h-4 w-4" />
+      Back to Browse
+    </Link>
+  );
+}
+
+function ErrorState({
+  description,
+  title,
+}: {
+  description: string;
+  title: string;
+}) {
+  return (
+    <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+      <BackToBrowse />
+      <div className="mt-12 max-w-xl">
+        <h1 className="font-literary text-3xl font-medium tracking-normal">
+          {title}
+        </h1>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          {description}
+        </p>
+      </div>
+    </main>
+  );
+}
+
+function ChapterRow({
+  chapter,
+  slug,
+}: {
+  chapter: PublicChapterSummary;
+  slug: string;
+}) {
+  return (
+    <div className="group flex flex-col gap-3 border-b border-border/70 py-4 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <h3 className="truncate font-literary text-base font-medium transition-colors group-hover:text-accent">
+          {chapterDisplayTitle(chapter)}
+        </h3>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          {chapter.chapter_number !== null && (
+            <span className="font-metadata">Chapter {chapter.chapter_number}</span>
+          )}
+          {chapter.translated ? (
+            <span className="font-metadata text-accent">Translated</span>
+          ) : (
+            <StatusBadge status="Pending" />
+          )}
+        </div>
+      </div>
+      {chapter.translated ? (
+        <Link
+          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted"
+          href={chapterHref(slug, chapter.chapter_id)}
+        >
+          <BookOpen className="h-4 w-4" />
+          Read
+        </Link>
+      ) : (
+        <span className="inline-flex h-9 shrink-0 items-center gap-2 text-sm text-muted-foreground">
+          <Clock className="h-4 w-4" />
+          Not translated
+        </span>
+      )}
+    </div>
+  );
+}
 
 export default function NovelDetailPage() {
   const params = useParams<{ slug: string }>();
@@ -26,163 +160,178 @@ export default function NovelDetailPage() {
   const novel = useNovel(slug);
   const chapters = useChapters(slug);
 
-  // 404 from novel endpoint → not-found message
   if (novel.isError) {
     const err = novel.error;
     if (err instanceof ApiError && err.status === 404) {
       return (
-        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <Link
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-            href="/browse-novels"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Browse
-          </Link>
-          <div className="mt-12 text-center">
-            <h1 className="text-2xl font-semibold font-literary">Novel not found</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              The novel you&apos;re looking for doesn&apos;t exist or has been removed.
-            </p>
-          </div>
-        </main>
+        <ErrorState
+          title="Novel not found"
+          description="The novel you're looking for doesn't exist or has been removed."
+        />
       );
     }
 
-    // Other errors → sanitized error message
     return (
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <Link
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          href="/browse-novels"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Browse
-        </Link>
-        <div className="mt-12 text-center">
-          <h1 className="text-2xl font-semibold font-literary">Something went wrong</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{toReaderError(err)}</p>
-        </div>
-      </main>
+      <ErrorState
+        title="Something went wrong"
+        description={toReaderError(err)}
+      />
     );
   }
 
-  // Loading state
   if (novel.isPending) {
-    return (
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <Link
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          href="/browse-novels"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Browse
-        </Link>
-        <div className="mt-12 flex justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-muted border-t-foreground" />
-        </div>
-      </main>
-    );
+    return <LoadingState />;
   }
 
   const data = novel.data;
+  const title = data.title || slug;
   const sortedChapters = chapters.data
     ? sortChaptersAscending(chapters.data)
     : [];
-
-  // Find first translated chapter for "Start Reading" affordance
-  const firstTranslatedChapter = sortedChapters.find((ch) => ch.translated);
+  const translatedChapters = sortedChapters.filter((chapter) => chapter.translated);
+  const firstTranslatedChapter = translatedChapters[0] ?? null;
+  const latestTranslatedChapter =
+    translatedChapters[translatedChapters.length - 1] ?? null;
   const firstChapterId = firstTranslatedChapter?.chapter_id ?? null;
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <Link
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        href="/browse-novels"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Browse
-      </Link>
+    <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+      <BackToBrowse />
 
-      {/* Novel header */}
-      <header className="my-8">
-        <h1 className="text-3xl font-semibold tracking-normal font-literary md:text-4xl">
-          {data.title || slug}
-        </h1>
-        <p className="mt-2 text-base text-muted-foreground">
-          {authorOrFallback(data.author)}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Badge tone="neutral" className="font-metadata">
-            {data.translated_count} translated
-          </Badge>
-          <Badge tone="neutral" className="font-metadata">
-            {data.chapter_count} listed
-          </Badge>
-          {data.language && (
-            <Badge tone="neutral" className="font-metadata">
-              {data.language}
-            </Badge>
-          )}
-          {data.status && (
-            <Badge tone="amber" className="font-metadata">
-              {data.status}
-            </Badge>
-          )}
-        </div>
-      </header>
+      <section className="relative mt-8 overflow-hidden rounded-lg bg-card/60 p-5 shadow-sm ring-1 ring-border sm:p-6 lg:p-8">
+        <div
+          className="absolute inset-x-0 top-0 -z-10 h-40 bg-gradient-to-b from-secondary to-transparent"
+          aria-hidden="true"
+        />
+        <div className="grid gap-8 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
+          <div className="mx-auto w-full max-w-[260px] lg:mx-0">
+            <CoverFallback title={title} />
+          </div>
 
-      {/* Reader actions panel — groups all user-facing controls together */}
-      <Panel className="mb-8">
-        <PanelHeader>
-          <PanelTitle>Reader Actions</PanelTitle>
-        </PanelHeader>
-        <PanelBody className="flex flex-col gap-4 p-4">
-          {/* Authenticated: save + continue reading side-by-side */}
-          {!authPending && isAuthenticated && (
-            <div className="flex flex-wrap items-center gap-3">
-              <SaveToLibrary slug={slug} />
-              <ContinueReading slug={slug} firstChapterId={firstChapterId} />
-            </div>
-          )}
+          <div className="min-w-0">
+            <p className="font-metadata text-xs uppercase tracking-[0.22em] text-accent">
+              Story Detail
+            </p>
+            <h1 className="mt-3 max-w-4xl font-literary text-4xl font-medium leading-tight tracking-normal text-foreground md:text-5xl">
+              {title}
+            </h1>
+            <p className="mt-3 text-base text-muted-foreground">
+              {authorOrFallback(data.author)}
+            </p>
 
-          {/* Guest: single sign-in CTA instead of repeated login prompts */}
-          {!authPending && !isAuthenticated && (
-            <div className="flex flex-wrap items-center gap-3">
-              {firstChapterId && (
+            <NovelMetadataRow
+              className="mt-5"
+              chapterCount={data.chapter_count}
+              translatedCount={data.translated_count}
+              source={data.language}
+              status={data.status}
+            />
+
+            <div className="mt-7 flex flex-wrap gap-3">
+              {firstTranslatedChapter && (
                 <Link
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
-                  href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(firstChapterId)}`}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  href={chapterHref(slug, firstTranslatedChapter.chapter_id)}
                 >
                   <BookOpen className="h-4 w-4" />
                   Start Reading
                 </Link>
               )}
-              {!firstChapterId && (
-                <span className="text-sm text-muted-foreground">
+              {latestTranslatedChapter &&
+                latestTranslatedChapter.chapter_id !== firstChapterId && (
+                  <Link
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-accent/40 bg-background/70 px-5 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
+                    href={chapterHref(slug, latestTranslatedChapter.chapter_id)}
+                  >
+                    Latest Chapter
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                )}
+              {!firstTranslatedChapter && (
+                <span className="inline-flex h-11 items-center text-sm text-muted-foreground">
                   No translated chapters available yet.
                 </span>
               )}
-              <SaveToLibrary slug={slug} />
             </div>
-          )}
 
-          {/* Auth pending: loading state */}
-          {authPending && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-              Checking session…
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              {!authPending && isAuthenticated && (
+                <>
+                  <SaveToLibrary slug={slug} />
+                  <ContinueReading slug={slug} firstChapterId={firstChapterId} />
+                </>
+              )}
+              {!authPending && !isAuthenticated && <SaveToLibrary slug={slug} />}
+              {authPending && (
+                <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-foreground" />
+                  Checking session
+                </span>
+              )}
             </div>
-          )}
+          </div>
+        </div>
+      </section>
 
-          {/* Report novel issue placeholder */}
-          <section className="rounded-md border border-border bg-muted/30 p-4">
+      <div className="mt-12 grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-12">
+          <section>
+            <SectionHeader
+              eyebrow="Synopsis"
+              title="About this story"
+              description="A source synopsis is not available in the current public catalog data."
+            />
+            <p className="mt-5 max-w-3xl font-literary text-lg leading-8 text-muted-foreground">
+              This title is available for reading, but its public metadata does
+              not yet include a synopsis. Chapter availability and translation
+              status below are loaded from the current catalog.
+            </p>
+          </section>
+
+          <section>
+            <SectionHeader
+              eyebrow="Chapters"
+              title={`Chapter List (${sortedChapters.length})`}
+              description="Translated chapters are linked directly. Pending chapters stay visible without pretending they are ready."
+            />
+            <div className="mt-5 rounded-lg bg-card/70 px-4 ring-1 ring-border sm:px-5">
+              {chapters.isPending ? (
+                <div className="flex justify-center py-10">
+                  <div className="h-6 w-6 animate-spin rounded-full border-4 border-muted border-t-foreground" />
+                </div>
+              ) : chapters.isError ? (
+                <div className="py-10 text-center text-sm text-muted-foreground">
+                  {toReaderError(chapters.error)}
+                </div>
+              ) : sortedChapters.length === 0 ? (
+                <div className="py-10 text-center">
+                  <Library className="mx-auto h-10 w-10 text-muted-foreground/50" />
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    No chapters available yet.
+                  </p>
+                </div>
+              ) : (
+                sortedChapters.map((chapter) => (
+                  <ChapterRow
+                    chapter={chapter}
+                    key={chapter.chapter_id}
+                    slug={slug}
+                  />
+                ))
+              )}
+            </div>
+          </section>
+        </div>
+
+        <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
+          <section className="rounded-lg bg-card/70 p-4 ring-1 ring-border">
             <div className="flex items-start gap-3">
               <Flag className="mt-0.5 h-4 w-4 text-muted-foreground" />
               <div>
-                <h3 className="text-sm font-medium">Report novel issue</h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Reporting for this novel will be connected in a later backend phase.
+                <h2 className="text-sm font-medium">Report novel issue</h2>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Reporting for this novel will be connected in a later backend
+                  phase.
                 </p>
               </div>
             </div>
@@ -190,69 +339,8 @@ export default function NovelDetailPage() {
 
           <RatingReview slug={slug} />
           <RequestControl slug={slug} />
-        </PanelBody>
-      </Panel>
-
-      {/* Chapter list */}
-      <Panel>
-        <PanelHeader>
-          <PanelTitle className="font-metadata">
-            Chapters ({sortedChapters.length})
-          </PanelTitle>
-        </PanelHeader>
-        <PanelBody className="p-0">
-          {chapters.isPending ? (
-            <div className="flex justify-center py-8">
-              <div className="h-6 w-6 animate-spin rounded-full border-4 border-muted border-t-foreground" />
-            </div>
-          ) : chapters.isError ? (
-            <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-              {toReaderError(chapters.error)}
-            </div>
-          ) : sortedChapters.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-              No chapters available yet.
-            </div>
-          ) : (
-            <div className="divide-y">
-              {sortedChapters.map((chapter) => (
-                <div
-                  className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-muted/30"
-                  key={chapter.chapter_id}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">
-                      {chapter.title ||
-                        `Chapter ${chapter.chapter_number ?? chapter.chapter_id}`}
-                    </div>
-                    {chapter.chapter_number !== null && (
-                      <div className="mt-0.5 text-xs font-metadata text-muted-foreground">
-                        Chapter {chapter.chapter_number}
-                      </div>
-                    )}
-                  </div>
-                  {chapter.translated ? (
-                    <Link
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
-                      href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapter.chapter_id)}`}
-                    >
-                      <BookOpen className="h-3.5 w-3.5" />
-                      Read
-                    </Link>
-                  ) : (
-                    <span className="inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground">
-                      <Clock className="h-3.5 w-3.5" />
-                      <Badge tone="amber" className="font-metadata text-xs">
-                        Pending
-                      </Badge>
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </PanelBody>
-      </Panel>
+        </aside>
+      </div>
     </main>
   );
 }
