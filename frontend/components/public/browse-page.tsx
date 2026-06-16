@@ -113,20 +113,20 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+      <div className="mb-6 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
         {q && (
-          <span className="inline-flex items-center gap-1">
+          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1">
             <Search className="h-3.5 w-3.5" />
             Search: &ldquo;{q}&rdquo;
           </span>
         )}
         {language && (
-          <span className="inline-flex items-center gap-1">
+          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1">
             <Filter className="h-3.5 w-3.5" />
             Language: {language}
           </span>
         )}
-        <span>
+        <span className="font-metadata">
           {total} novel{total !== 1 ? "s" : ""}
         </span>
         {hasActiveFilters && (
@@ -141,16 +141,16 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
         )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {novels.map((novel) => (
           <NovelCard key={novel.novel_id} novel={novel} />
         ))}
       </div>
 
       {hasNextPage(total, page, pageSize) && (
-        <div className="mt-6 flex justify-center">
+        <div className="mt-8 flex justify-center">
           <button
-            className="inline-flex h-9 items-center justify-center rounded-md border px-4 text-sm font-medium hover:bg-muted"
+            className="inline-flex h-10 items-center justify-center rounded-md border border-border bg-card px-6 text-sm font-medium transition-colors hover:bg-muted"
             onClick={handleNextPage}
             type="button"
           >
@@ -164,9 +164,9 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
 
 export function BrowsePage({ basePath, description, title }: BrowsePageProps) {
   return (
-    <main className="mx-auto max-w-6xl px-5 py-8">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <header className="mb-8">
-        <h1 className="text-3xl font-semibold tracking-normal">{title}</h1>
+        <h1 className="text-3xl font-semibold tracking-normal font-literary">{title}</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
           {description}
         </p>

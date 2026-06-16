@@ -1,13 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { Menu } from "lucide-react";
+import { Menu, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { SearchEntry } from "@/components/public/search-entry";
 import { CurrentUserIndicator } from "@/components/public/current-user-indicator";
 
 export function PublicHeader({ onMenuClick }: { onMenuClick: () => void }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  function toggleMobile() {
+    setMobileOpen((prev) => !prev);
+    onMenuClick();
+  }
+
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background">
       <div className="mx-auto flex h-14 items-center gap-4 px-4">
@@ -16,10 +24,10 @@ export function PublicHeader({ onMenuClick }: { onMenuClick: () => void }) {
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Open navigation menu"
-            onClick={onMenuClick}
+            aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
+            onClick={toggleMobile}
           >
-            <Menu className="h-5 w-5" />
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
         </div>
 
