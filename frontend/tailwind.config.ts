@@ -38,7 +38,23 @@ const config: Config = {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))"
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))"
+        },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar))",
+          accent: "hsl(var(--sidebar-accent))"
         }
+      },
+      fontFamily: {
+        sans: ["var(--font-dm-sans)", "sans-serif"],
+        serif: ["var(--font-noto-serif-jp)", "serif"],
+        mono: ["var(--font-dm-mono)", "monospace"],
+        literary: ["var(--font-noto-serif-jp)", "serif"],
+        ui: ["var(--font-dm-sans)", "sans-serif"],
+        metadata: ["var(--font-dm-mono)", "monospace"]
       },
       borderRadius: {
         lg: "var(--radius)",

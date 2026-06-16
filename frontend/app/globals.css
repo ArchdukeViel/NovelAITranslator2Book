@@ -3,44 +3,52 @@
 @tailwind utilities;
 
 :root {
-  --background: 0 0% 99%;
-  --foreground: 220 15% 12%;
+  --background: 40 43% 94%;
+  --foreground: 23 17% 9%;
   --card: 0 0% 100%;
-  --card-foreground: 220 15% 12%;
-  --primary: 187 84% 30%;
+  --card-foreground: 23 17% 9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 23 17% 9%;
+  --primary: 6 63% 46%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 42 90% 55%;
-  --secondary-foreground: 26 30% 12%;
-  --muted: 210 16% 94%;
-  --muted-foreground: 216 9% 40%;
-  --accent: 252 42% 56%;
+  --secondary: 37 29% 90%;
+  --secondary-foreground: 23 17% 9%;
+  --muted: 37 25% 87%;
+  --muted-foreground: 33 8% 44%;
+  --accent: 41 52% 48%;
   --accent-foreground: 0 0% 100%;
-  --destructive: 0 72% 45%;
+  --destructive: 1 75% 55%;
   --destructive-foreground: 0 0% 100%;
-  --border: 214 14% 88%;
-  --input: 214 14% 88%;
-  --ring: 187 84% 30%;
-  --radius: 8px;
+  --border: 0 0% 0% / 0.09;
+  --input: 37 29% 90%;
+  --ring: 41 52% 48%;
+  --radius: 0.375rem;
+  --sidebar: 37 29% 90%;
+  --sidebar-accent: 37 25% 87%;
 }
 
 .dark {
-  --background: 220 16% 9%;
-  --foreground: 210 20% 96%;
-  --card: 220 15% 12%;
-  --card-foreground: 210 20% 96%;
-  --primary: 185 78% 42%;
-  --primary-foreground: 220 16% 9%;
-  --secondary: 43 88% 58%;
-  --secondary-foreground: 26 30% 12%;
-  --muted: 220 14% 17%;
-  --muted-foreground: 214 11% 70%;
-  --accent: 252 48% 66%;
-  --accent-foreground: 220 16% 9%;
-  --destructive: 0 68% 52%;
+  --background: 260 20% 6%;
+  --foreground: 39 33% 85%;
+  --card: 256 23% 10%;
+  --card-foreground: 39 33% 85%;
+  --popover: 257 23% 12%;
+  --popover-foreground: 39 33% 85%;
+  --primary: 6 63% 46%;
+  --primary-foreground: 33 53% 92%;
+  --secondary: 254 19% 13%;
+  --secondary-foreground: 39 33% 85%;
+  --muted: 254 22% 11%;
+  --muted-foreground: 262 9% 55%;
+  --accent: 37 48% 59%;
+  --accent-foreground: 260 20% 6%;
+  --destructive: 1 75% 55%;
   --destructive-foreground: 0 0% 100%;
-  --border: 220 13% 22%;
-  --input: 220 13% 22%;
-  --ring: 185 78% 42%;
+  --border: 39 33% 85% / 0.08;
+  --input: 254 22% 11%;
+  --ring: 37 48% 59%;
+  --sidebar: 253 21% 8%;
+  --sidebar-accent: 254 19% 13%;
 }
 
 * {
@@ -52,6 +60,7 @@ body {
   min-height: 100vh;
   background: hsl(var(--background));
   color: hsl(var(--foreground));
+  font-family: var(--font-dm-sans), sans-serif;
   font-feature-settings: "rlig" 1, "calt" 1;
 }
 
