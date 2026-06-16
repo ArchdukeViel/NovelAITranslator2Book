@@ -885,9 +885,9 @@ export function BrowsePage({ basePath, description, title }: BrowsePageProps) {
       </header>
 
       <SectionHeader
-        eyebrow="Discovery"
-        title="Find your next read"
-        description="Search by title or author, then narrow the catalog by status and chapter count."
+        eyebrow="探索"
+        title="Browse the library"
+        description="Search by title or author, then narrow by status, genre, or chapter count."
       />
 
       <div className="mt-6">

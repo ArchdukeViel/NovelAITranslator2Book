@@ -5,7 +5,7 @@ export default function BrowseNovelsPage() {
     <BrowsePage
       basePath="/browse-novels"
       title="Browse Novels"
-      description="Discover Japanese web novels with clean metadata, reading progress, and calm catalog filters."
+      description="Browse the catalog by title, author, status, or chapter count."
     />
   );
 }

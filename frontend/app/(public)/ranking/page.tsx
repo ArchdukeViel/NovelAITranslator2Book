@@ -18,13 +18,13 @@ export default function RankingPage() {
             Ranking
           </h1>
           <Badge tone="neutral" className="font-metadata">
-            Metrics pending
+            Ranking is not live yet
           </Badge>
         </div>
         <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">
-          Dokushodo rankings will surface popular translated novels once the
-          backend aggregation and anti-abuse rules are connected. Until then,
-          this page stays quiet instead of pretending preview numbers are real.
+          Dokushodo does not display ranking data until real aggregated
+          metrics are available. This page stays quiet instead of showing
+          fake numbers.
         </p>
       </header>
 
@@ -75,10 +75,10 @@ export default function RankingPage() {
               <div className="flex items-start gap-3">
                 <Clock className="mt-0.5 h-4 w-4 text-accent" />
                 <div>
-                  <h3 className="text-sm font-medium">Data contract pending</h3>
+                  <h3 className="text-sm font-medium">Not available yet</h3>
                   <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                    Ranking composition is ready for real aggregated data, but
-                    this phase does not add endpoints or ranking logic.
+                    Ranking requires real aggregated data that is not
+                    currently exposed by the public API.
                   </p>
                 </div>
               </div>
