@@ -11,6 +11,8 @@ import type {
   NovelProgress,
   NovelRequestRecord,
   NovelSummary,
+  NovelTaxonomyRequest,
+  NovelTaxonomyResponse,
   PreliminaryCrawlResult,
   ProviderApiKeyStatus,
   ProviderApiKeyValidationPayload,
@@ -413,7 +415,14 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   exportNovel: (novelId: string, payload: { format: string; chapters?: string | null }) =>
-    apiDownload(`/admin/novels/${encodeURIComponent(novelId)}/export`, payload)
+    apiDownload(`/admin/novels/${encodeURIComponent(novelId)}/export`, payload),
+  getTaxonomy: (novelId: string) =>
+    apiFetch<NovelTaxonomyResponse>(`/admin/novels/${encodeURIComponent(novelId)}/taxonomy`),
+  setTaxonomy: (novelId: string, payload: NovelTaxonomyRequest) =>
+    apiFetch<NovelTaxonomyResponse>(`/admin/novels/${encodeURIComponent(novelId)}/taxonomy`, {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    })
 };
 // ===========================================
 // Admin Auth namespace (Task 3.2)

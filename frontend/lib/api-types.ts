@@ -318,6 +318,17 @@ export type AuthUser = {
 export type TokenValidationStatus = "Unchecked" | "Checking" | "Working" | "Failed";
 export type MaskedToken = string;
 
+export type NovelTaxonomyResponse = {
+  novel_id: string;
+  genres: string[];
+  tags: string[];
+};
+
+export type NovelTaxonomyRequest = {
+  genre_slugs: string[];
+  tags: string[];
+};
+
 export type ProviderCredential = {
   id: string;
   provider: string;

@@ -8,6 +8,7 @@ import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { EmptyState } from "@/components/admin/empty-state";
 import { ErrorBanner } from "@/components/admin/error-banner";
 import { LibraryRowActions } from "@/components/admin/library/library-row-actions";
+import { TaxonomyDialog } from "@/components/admin/library/taxonomy-dialog";
 import { TranslationModal } from "@/components/admin/library/translation-modal";
 import { LoadingRows } from "@/components/admin/loading-rows";
 import { PageHeading } from "@/components/admin/page-heading";
@@ -82,6 +83,7 @@ export default function LibraryPage() {
   const { sortKey, sortDirection, handleSort } = useSortableTable<LibrarySortKey>("novel", "asc");
   const [pendingDeleteRows, setPendingDeleteRows] = React.useState<NovelSummary[] | null>(null);
   const [translationNovel, setTranslationNovel] = React.useState<NovelSummary | null>(null);
+  const [taxonomyNovel, setTaxonomyNovel] = React.useState<NovelSummary | null>(null);
   const [translationLanguage, setTranslationLanguage] = React.useState<(typeof TRANSLATION_LANGUAGES)[number]>("English");
   const [selectedTranslationChapterIds, setSelectedTranslationChapterIds] = React.useState<Set<string>>(new Set());
   // Note: activeGeminiToken removed - provider credential now comes from Admin_API, server-managed (Task 4)
@@ -293,6 +295,14 @@ export default function LibraryPage() {
     );
   };
 
+  const openTaxonomyDialog = (novel: NovelSummary) => {
+    setTaxonomyNovel(novel);
+  };
+
+  const closeTaxonomyDialog = () => {
+    setTaxonomyNovel(null);
+  };
+
   const runAction = (action: LibraryAction, actionRows: NovelSummary[]) => {
     if (actionRows.length === 0 || runLibraryAction.isPending) {
       return;
@@ -465,6 +475,7 @@ export default function LibraryPage() {
                             onTranslate={(row) => runAction("translate", [row])}
                             onRecrawl={(row) => runAction("recrawl", [row])}
                             onDelete={(row) => runAction("delete", [row])}
+                            onEditTaxonomy={openTaxonomyDialog}
                           />
                         </td>
                       </tr>
@@ -516,6 +527,12 @@ export default function LibraryPage() {
         }}
         onCancel={() => setPendingDeleteRows(null)}
         auditNotice="This action is recorded in the audit log."
+      />
+
+      <TaxonomyDialog
+        open={Boolean(taxonomyNovel)}
+        novel={taxonomyNovel}
+        onClose={closeTaxonomyDialog}
       />
     </>
   );
