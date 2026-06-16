@@ -3,12 +3,10 @@
 import Link from "next/link";
 import { ArrowRight, BookOpen } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { GenreChip } from "@/components/public/genre-chip";
 import { LatestUpdateRow } from "@/components/public/latest-update-row";
 import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { NovelCard } from "@/components/public/novel-card";
-import { RankingRow } from "@/components/public/ranking-row";
 import { SectionHeader } from "@/components/public/section-header";
 
 // Preview data - clearly labeled as such per design contract
@@ -85,14 +83,9 @@ export default function HomePage() {
 
         <div className="mx-auto flex min-h-[85vh] max-w-7xl items-end px-4 pb-14 pt-24 sm:px-6 lg:px-8 lg:pb-20">
           <div className="max-w-3xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="neutral" className="font-metadata text-xs">
-                Preview Feature
-              </Badge>
-              <span className="font-metadata text-xs uppercase tracking-[0.2em] text-accent">
-                Featured - Editor&apos;s Pick
-              </span>
-            </div>
+            <span className="font-metadata text-xs uppercase tracking-[0.2em] text-accent">
+              Editor's Pick
+            </span>
 
             <h1 className="mt-5 max-w-2xl font-literary text-5xl font-medium leading-tight tracking-normal text-foreground md:text-7xl">
               {featuredNovel.source_title}
@@ -168,9 +161,9 @@ export default function HomePage() {
 
         <section className="mb-12">
           <SectionHeader
-            eyebrow="Preview Data"
+            eyebrow="Preview"
             title="Featured Novels"
-            description="A preview selection of translated novel concepts. Backend trending metrics are pending."
+            description="A preview selection of translated novel concepts."
           />
           <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {PREVIEW_NOVELS.map((novel) => (
@@ -181,22 +174,17 @@ export default function HomePage() {
 
         <section className="mb-16">
           <SectionHeader
-            title="Ranking Preview"
-            actionHref="/ranking"
-            actionLabel="View full ranking"
+            title="Browse the library"
+            description="The full catalog is available with search, filter, and sort."
+            actionHref="/browse-novels"
+            actionLabel="Browse novels"
           />
-          <div className="mt-4 rounded-lg bg-card/70">
-            <div className="divide-y">
-              {PREVIEW_NOVELS.map((novel, index) => (
-                <RankingRow
-                  key={novel.novel_id}
-                  href={`/novel/${novel.slug}`}
-                  rank={index + 1}
-                  title={novel.title}
-                  meta={`${novel.author} / ${novel.language}`}
-                />
-              ))}
-            </div>
+          <div className="mt-6 flex flex-col items-center justify-center rounded-lg bg-card/70 px-4 py-14 text-center ring-1 ring-border">
+            <BookOpen className="mb-4 h-10 w-10 text-muted-foreground/50" />
+            <p className="max-w-md text-sm leading-6 text-muted-foreground">
+              Ranking data is not live yet. All available novels can be
+              found in the catalog — no fabricated numbers.
+            </p>
           </div>
         </section>
       </div>
