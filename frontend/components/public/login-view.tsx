@@ -19,7 +19,7 @@ export function LoginView({ onClose }: LoginViewProps) {
   return (
     <div className="w-full max-w-sm rounded-lg border border-border bg-background p-6 shadow-lg">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Sign in to Novel AI</h2>
+        <h2 className="text-lg font-semibold">Sign in to Dokushodo</h2>
         <Button
           variant="ghost"
           size="icon"

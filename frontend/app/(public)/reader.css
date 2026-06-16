@@ -5,27 +5,40 @@
  */
 
 [data-reader-theme="light"] {
+  --reader-secondary: #6b7280;
+  --reader-border: rgba(0,0,0,0.1);
+  --reader-nav-background: rgba(255,255,255,0.95);
   background: #ffffff;
   color: #1a1a1a;
 }
 
 [data-reader-theme="dark"] {
-  background: #1a1a2e;
-  color: #e0e0e0;
+  --reader-secondary: #8a8298;
+  --reader-border: rgba(228,221,208,0.08);
+  --reader-nav-background: rgba(14,12,18,0.95);
+  background: #0e0c12;
+  color: #e4ddd0;
 }
 
 [data-reader-theme="sepia"] {
-  background: #f4ecd8;
-  color: #5b4636;
+  --reader-secondary: #8a7060;
+  --reader-border: rgba(60,42,26,0.12);
+  --reader-nav-background: rgba(248,241,228,0.95);
+  background: #f8f1e4;
+  color: #3c2a1a;
 }
 
-/* Ensure nested elements inherit the theme colors */
-[data-reader-theme="dark"] a {
-  color: #90cdf4;
+/* Ensure nested elements inherit reader-specific theme colors. */
+.reader-container .text-muted-foreground {
+  color: var(--reader-secondary);
 }
 
-[data-reader-theme="sepia"] a {
-  color: #7c4a1f;
+.reader-container .border-border {
+  border-color: var(--reader-border);
+}
+
+.reader-container .bg-background {
+  background: var(--reader-nav-background);
 }
 
 /* Reader container base styles */
