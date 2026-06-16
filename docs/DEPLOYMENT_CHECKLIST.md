@@ -141,8 +141,8 @@ novelaibook worker
 
 1. `postgres` — PostgreSQL (health check required)
 2. `redis` — Redis (health check required)
-3. **Run migrations manually**: `docker-compose exec backend alembic upgrade head`
-4. `backend` — FastAPI (depends on postgres, redis)
+3. `migrate` — Runs `alembic upgrade head` automatically (depends on `postgres` health)
+4. `backend` — FastAPI (depends on `migrate` completion, `postgres`, and `redis`)
 5. `frontend` — Next.js
 6. `caddy` — Reverse proxy (depends on backend, frontend)
 
@@ -158,15 +158,17 @@ cp frontend/.env.example frontend/.env
 cp deploy/Caddyfile.example deploy/Caddyfile
 # Edit with your domain
 
-# 3. Start services
-docker-compose up -d
+# 3. Start services (migrations run automatically via the `migrate` service)
+docker compose -f deploy/compose.yml up -d
 
-# 4. Run migrations
-docker-compose exec backend alembic upgrade head
-
-# 5. Verify
+# 4. Verify
 curl http://localhost/api/health
 # Should return: {"status":"ok"}
+```
+
+If you need to run migrations manually (e.g., for troubleshooting):
+```bash
+docker compose -f deploy/compose.yml run --rm migrate
 ```
 
 ---
@@ -243,15 +245,13 @@ cd backend && alembic downgrade -1
 
 ## 11. Known Limitations
 
-### Current State (DEP1B)
+### Current State
 
-- **No automated migration runner** — migrations must be run manually after starting backend
 - **No separate worker service in Compose** — use in-process worker or run manually
 - **No worker health endpoint** — worker runs without dedicated health check
 
 ### Future Improvements
 
-- Add init container or entrypoint script for automatic migrations
 - Add separate `worker` service to `deploy/compose.yml`
 - Add `/api/worker/health` endpoint
 - Add monitoring/alerting for worker failures
