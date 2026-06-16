@@ -70,7 +70,7 @@ export function ImportNowPanel({
               {result.chapters} unit(s) imported through {result.adapter_key}
             </div>
           ) : null}
-          <ErrorBanner error={error} fallback="Import failed." />
+          <ErrorBanner error={error} fallback="Import failed. Verify the adapter, source, and novel ID, then try again." />
         </div>
       </PanelBody>
     </Panel>
