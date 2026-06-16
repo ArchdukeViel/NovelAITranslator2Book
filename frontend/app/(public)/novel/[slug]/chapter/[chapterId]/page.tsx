@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, BookOpen } from "lucide-react";
+import { ArrowLeft, BookOpen, Flag } from "lucide-react";
 
 import { ReaderControls } from "@/components/public/reader-controls";
 import {
@@ -41,18 +41,18 @@ function ChapterNav({
       <div className="flex items-center gap-3">
         {previousChapterId ? (
           <Link
-            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors hover:bg-muted"
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
             href={`/novels/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(previousChapterId)}`}
           >
             ← Previous
           </Link>
         ) : (
-          <span className="inline-flex h-9 items-center rounded-md border px-3 text-sm opacity-40 select-none">
+          <span className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm opacity-40 select-none">
             ← First chapter
           </span>
         )}
         <Link
-          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors hover:bg-muted"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
           href={novelHref}
         >
           <BookOpen className="h-3.5 w-3.5" />
@@ -61,13 +61,13 @@ function ChapterNav({
       </div>
       {nextChapterId ? (
         <Link
-          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors hover:bg-muted"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
           href={`/novels/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(nextChapterId)}`}
         >
           Next →
         </Link>
       ) : (
-        <span className="inline-flex h-9 items-center rounded-md border px-3 text-sm opacity-40 select-none">
+        <span className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm opacity-40 select-none">
           Latest chapter →
         </span>
       )}
@@ -119,13 +119,13 @@ export default function ChapterPage() {
     return (
       <div className="flex min-h-screen items-center justify-center p-8">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold">Chapter Unavailable</h1>
-          <p className="mt-2 text-sm opacity-70">
+          <h1 className="text-2xl font-semibold font-literary">Chapter Unavailable</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
             This chapter could not be found or is not available.
           </p>
           <Link
             href={novelHref}
-            className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium underline hover:opacity-80"
+            className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary underline hover:text-accent"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to Novel
@@ -140,11 +140,11 @@ export default function ChapterPage() {
     return (
       <div className="flex min-h-screen items-center justify-center p-8">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold">Something went wrong</h1>
-          <p className="mt-2 text-sm opacity-70">{toReaderError(error)}</p>
+          <h1 className="text-2xl font-semibold font-literary">Something went wrong</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{toReaderError(error)}</p>
           <Link
             href={novelHref}
-            className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium underline hover:opacity-80"
+            className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary underline hover:text-accent"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to Novel
@@ -160,7 +160,7 @@ export default function ChapterPage() {
       <div className="flex min-h-screen items-center justify-center p-8">
         <div className="text-center">
           <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-muted border-t-foreground" />
-          <p className="text-sm opacity-70">Loading chapter…</p>
+          <p className="text-sm text-muted-foreground">Loading chapter…</p>
         </div>
       </div>
     );
@@ -177,24 +177,26 @@ export default function ChapterPage() {
       style={{ fontSize: `${fontSize}px` }}
     >
       {/* Breadcrumb / header bar */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 text-sm">
           <Link
             href={novelHref}
-            className="inline-flex items-center gap-1.5 opacity-75 hover:opacity-100"
+            className="inline-flex items-center gap-1.5 opacity-75 transition-colors hover:opacity-100"
           >
             <ArrowLeft className="h-4 w-4" />
-            {novelTitle}
+            <span className="font-literary">{novelTitle}</span>
           </Link>
           <span className="opacity-40 select-none">/</span>
-          <span className="opacity-75">{chapterTitle}</span>
+          <span className="opacity-75 font-literary">{chapterTitle}</span>
         </div>
         <ReaderControls />
       </div>
-      <div className="mb-4 rounded-md border px-3 py-2 text-sm opacity-80">
-        <div className="flex items-start gap-2">
-          <BookOpen className="mt-0.5 h-4 w-4" />
-          <p>
+
+      {/* Report chapter issue placeholder */}
+      <div className="mb-6 rounded-md border border-border bg-muted/30 px-4 py-3 text-sm">
+        <div className="flex items-start gap-3">
+          <Flag className="mt-0.5 h-4 w-4 text-muted-foreground" />
+          <p className="text-muted-foreground">
             Report chapter issue for this chapter will be connected in a later backend phase.
           </p>
         </div>
@@ -210,12 +212,12 @@ export default function ChapterPage() {
 
       {/* Chapter header */}
       <header className="mt-8 mb-8">
-        <h1 className="text-3xl font-semibold tracking-normal">
+        <h1 className="text-3xl font-semibold tracking-normal font-literary md:text-4xl">
           {chapterTitle}
         </h1>
         {data.novel_title && (
-          <p className="mt-1 text-sm opacity-60">
-            from {novelTitle}
+          <p className="mt-2 text-sm text-muted-foreground">
+            from <span className="font-literary">{novelTitle}</span>
           </p>
         )}
       </header>
@@ -226,7 +228,7 @@ export default function ChapterPage() {
       </article>
 
       {/* Bottom chapter navigation */}
-      <div className="mt-10 border-t pt-5">
+      <div className="mt-12 border-t border-border pt-6">
         <ChapterNav
           slug={slug}
           previousChapterId={data.previous_chapter_id}

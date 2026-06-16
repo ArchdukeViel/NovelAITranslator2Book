@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, BookOpen, Clock } from "lucide-react";
+import { ArrowLeft, BookOpen, Clock, Flag } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
@@ -31,7 +31,7 @@ export default function NovelDetailPage() {
     const err = novel.error;
     if (err instanceof ApiError && err.status === 404) {
       return (
-        <main className="mx-auto max-w-5xl px-5 py-8">
+        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <Link
             className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
             href="/browse-novels"
@@ -40,8 +40,8 @@ export default function NovelDetailPage() {
             Back to Browse
           </Link>
           <div className="mt-12 text-center">
-            <h1 className="text-2xl font-semibold">Novel not found</h1>
-            <p className="mt-2 text-muted-foreground">
+            <h1 className="text-2xl font-semibold font-literary">Novel not found</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
               The novel you&apos;re looking for doesn&apos;t exist or has been removed.
             </p>
           </div>
@@ -51,7 +51,7 @@ export default function NovelDetailPage() {
 
     // Other errors → sanitized error message
     return (
-      <main className="mx-auto max-w-5xl px-5 py-8">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <Link
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           href="/browse-novels"
@@ -60,8 +60,8 @@ export default function NovelDetailPage() {
           Back to Browse
         </Link>
         <div className="mt-12 text-center">
-          <h1 className="text-2xl font-semibold">Something went wrong</h1>
-          <p className="mt-2 text-muted-foreground">{toReaderError(err)}</p>
+          <h1 className="text-2xl font-semibold font-literary">Something went wrong</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{toReaderError(err)}</p>
         </div>
       </main>
     );
@@ -70,7 +70,7 @@ export default function NovelDetailPage() {
   // Loading state
   if (novel.isPending) {
     return (
-      <main className="mx-auto max-w-5xl px-5 py-8">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <Link
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           href="/browse-novels"
@@ -95,33 +95,45 @@ export default function NovelDetailPage() {
   const firstChapterId = firstTranslatedChapter?.chapter_id ?? null;
 
   return (
-    <main className="mx-auto max-w-5xl px-5 py-8">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <Link
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        href="/"
+        href="/browse-novels"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to Browse
       </Link>
 
       {/* Novel header */}
-      <header className="my-6">
-        <h1 className="text-3xl font-semibold tracking-normal">
+      <header className="my-8">
+        <h1 className="text-3xl font-semibold tracking-normal font-literary md:text-4xl">
           {data.title || slug}
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="mt-2 text-base text-muted-foreground">
           {authorOrFallback(data.author)}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Badge tone="blue">{data.translated_count} translated</Badge>
-          <Badge tone="neutral">{data.chapter_count} listed</Badge>
-          {data.language && <Badge tone="neutral">{data.language}</Badge>}
-          {data.status && <Badge tone="amber">{data.status}</Badge>}
+          <Badge tone="neutral" className="font-metadata">
+            {data.translated_count} translated
+          </Badge>
+          <Badge tone="neutral" className="font-metadata">
+            {data.chapter_count} listed
+          </Badge>
+          {data.language && (
+            <Badge tone="neutral" className="font-metadata">
+              {data.language}
+            </Badge>
+          )}
+          {data.status && (
+            <Badge tone="amber" className="font-metadata">
+              {data.status}
+            </Badge>
+          )}
         </div>
       </header>
 
       {/* Reader actions panel — groups all user-facing controls together */}
-      <Panel className="my-6">
+      <Panel className="mb-8">
         <PanelHeader>
           <PanelTitle>Reader Actions</PanelTitle>
         </PanelHeader>
@@ -163,10 +175,10 @@ export default function NovelDetailPage() {
             </div>
           )}
 
-          {/* Review and request controls */}
-          <section className="rounded-md border border-border bg-background p-3">
-            <div className="flex items-start gap-2">
-              <BookOpen className="mt-0.5 h-4 w-4 text-muted-foreground" />
+          {/* Report novel issue placeholder */}
+          <section className="rounded-md border border-border bg-muted/30 p-4">
+            <div className="flex items-start gap-3">
+              <Flag className="mt-0.5 h-4 w-4 text-muted-foreground" />
               <div>
                 <h3 className="text-sm font-medium">Report novel issue</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -175,6 +187,7 @@ export default function NovelDetailPage() {
               </div>
             </div>
           </section>
+
           <RatingReview slug={slug} />
           <RequestControl slug={slug} />
         </PanelBody>
@@ -183,7 +196,7 @@ export default function NovelDetailPage() {
       {/* Chapter list */}
       <Panel>
         <PanelHeader>
-          <PanelTitle>
+          <PanelTitle className="font-metadata">
             Chapters ({sortedChapters.length})
           </PanelTitle>
         </PanelHeader>
@@ -204,23 +217,23 @@ export default function NovelDetailPage() {
             <div className="divide-y">
               {sortedChapters.map((chapter) => (
                 <div
-                  className="flex items-center justify-between gap-3 px-4 py-3"
+                  className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-muted/30"
                   key={chapter.chapter_id}
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">
                       {chapter.title ||
                         `Chapter ${chapter.chapter_number ?? chapter.chapter_id}`}
                     </div>
                     {chapter.chapter_number !== null && (
-                      <div className="text-xs text-muted-foreground">
+                      <div className="mt-0.5 text-xs font-metadata text-muted-foreground">
                         Chapter {chapter.chapter_number}
                       </div>
                     )}
                   </div>
                   {chapter.translated ? (
                     <Link
-                      className="inline-flex shrink-0 h-9 items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium hover:bg-muted"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
                       href={`/novels/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapter.chapter_id)}`}
                     >
                       <BookOpen className="h-3.5 w-3.5" />
@@ -229,7 +242,9 @@ export default function NovelDetailPage() {
                   ) : (
                     <span className="inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground">
                       <Clock className="h-3.5 w-3.5" />
-                      <Badge tone="amber">Pending</Badge>
+                      <Badge tone="amber" className="font-metadata text-xs">
+                        Pending
+                      </Badge>
                     </span>
                   )}
                 </div>
