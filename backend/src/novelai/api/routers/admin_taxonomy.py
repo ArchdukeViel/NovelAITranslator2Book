@@ -3,14 +3,15 @@
 Only accessible to owner role. Operates on the DB taxonomy tables
 (novel_genres, novel_tags), NOT file-backed storage metadata.
 
-Admin save replaces only admin-assigned rows (assigned_by="admin").
-Scraper-assigned rows (assigned_by="scraper") are preserved.
+Admin save replaces admin-managed assignments and promotes any
+selected scraper rows to admin ownership. This ensures selections
+survive re-scrape.
 
 The composite PK (novel_id, genre_id) / (novel_id, tag_id) prevents
-dual rows for the same assignment. If a genre/tag is already assigned
-by the scraper, the admin request to include it is a no-op (already
-present). Admin cannot remove scraper-only assignments through this
-endpoint.
+dual rows for the same assignment. When a genre/tag is already assigned
+by the scraper and the admin selects it, the row is promoted to
+assigned_by="admin". Admin cannot remove scraper-only assignments
+through this endpoint — only admin-owned rows are deleted during save.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from novelai.api.auth.roles import require_role
 from novelai.api.routers.dependencies import get_db_session
@@ -135,12 +136,17 @@ async def set_novel_taxonomy(
       assigned_by="admin".
     - Delete existing novel_tags rows for this novel where
       assigned_by="admin".
-    - Insert requested genre assignments with assigned_by="admin".
-    - Insert requested tag assignments with assigned_by="admin"
-      and origin="admin".
-    - Skip insert if a row already exists (scraper or admin) — the
-      composite PK prevents dual rows for the same novel+genre/tag.
-    - Preserve scraper-assigned rows entirely.
+    - For each selected genre:
+      - If a scraper row already exists for this novel+genre,
+        promote it: UPDATE assigned_by to "admin" (durable intent).
+      - Else INSERT with assigned_by="admin".
+    - For each selected tag:
+      - If a scraper row already exists for this novel+tag,
+        promote it: UPDATE assigned_by to "admin" and origin to "admin".
+      - Else INSERT with assigned_by="admin" and origin="admin".
+    - Scraper-only rows not selected by admin remain untouched.
+    - Promoted rows survive re-scrape (scraper deletes only
+      assigned_by="scraper" rows).
     - Idempotent: repeat calls with same body produce same result.
     - Returns combined scraper + admin assignments after the change.
     """
@@ -202,26 +208,43 @@ async def set_novel_taxonomy(
 
     # Re-query existing IDs after admin row deletion so we don't
     # skip inserts for genres/tags that were only in the admin layer.
-    existing_genre_ids = {
-        row.genre_id
+    # Also collect current assigned_by values so we can distinguish
+    # scraper rows (promote) from admin rows (already deleted above).
+    existing_genre_rows = {
+        row.genre_id: row.assigned_by
         for row in db_session.execute(
-            select(novel_genres.c.genre_id).where(novel_genres.c.novel_id == novel.id)
+            select(novel_genres.c.genre_id, novel_genres.c.assigned_by).where(
+                novel_genres.c.novel_id == novel.id
+            )
         )
     }
-    existing_tag_ids = {
-        row.tag_id
+    existing_tag_rows = {
+        row.tag_id: row.assigned_by
         for row in db_session.execute(
-            select(novel_tags.c.tag_id).where(novel_tags.c.novel_id == novel.id)
+            select(novel_tags.c.tag_id, novel_tags.c.assigned_by).where(
+                novel_tags.c.novel_id == novel.id
+            )
         )
     }
 
-    # --- Insert genre assignments ---
+    # --- Apply genre assignments (insert or promote) ---
     now = _utcnow()
     for genre in validated_genres:
-        if genre.id in existing_genre_ids:
-            # Already assigned (by scraper or prior admin) — skip.
-            # After deleting admin rows above, the remaining ones
-            # are scraper-assigned. The PK prevents dual rows.
+        if genre.id in existing_genre_rows:
+            if existing_genre_rows[genre.id] == "scraper":
+                # Promote scraper row to admin ownership so it survives
+                # re-scrape even if the source stops listing this genre.
+                db_session.execute(
+                    update(novel_genres)
+                    .where(
+                        novel_genres.c.novel_id == novel.id,
+                        novel_genres.c.genre_id == genre.id,
+                    )
+                    .values(assigned_by="admin", assigned_at=now)
+                )
+            # Already admin (post-delete: impossible since we deleted
+            # admin rows above; but safe for idempotency: if called
+            # twice without commit, the row is already promoted).
             continue
         db_session.execute(
             novel_genres.insert().values(
@@ -232,9 +255,25 @@ async def set_novel_taxonomy(
             )
         )
 
-    # --- Insert tag assignments ---
+    # --- Apply tag assignments (insert or promote) ---
     for tag in validated_tags:
-        if tag.id in existing_tag_ids:
+        if tag.id in existing_tag_rows:
+            if existing_tag_rows[tag.id] == "scraper":
+                # Promote scraper row: admin now claims ownership.
+                # Also set origin="admin" — the admin is the new
+                # authoritative source for this tag assignment.
+                db_session.execute(
+                    update(novel_tags)
+                    .where(
+                        novel_tags.c.novel_id == novel.id,
+                        novel_tags.c.tag_id == tag.id,
+                    )
+                    .values(
+                        assigned_by="admin",
+                        origin="admin",
+                        assigned_at=now,
+                    )
+                )
             continue
         db_session.execute(
             novel_tags.insert().values(

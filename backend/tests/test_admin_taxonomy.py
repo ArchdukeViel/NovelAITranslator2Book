@@ -372,31 +372,81 @@ class TestAdminTaxonomyPut:
         assert "scraper-genre" in data["genres"]
         assert "scraper-tag" in data["tags"]
 
-    def test_put_skips_duplicate_when_scraper_already_assigned(
-        self, owner_client: TestClient, db_session,
-    ) -> None:
-        """PUT does not insert duplicate when genre already assigned by scraper.
-
-        The composite PK prevents dual rows for the same novel+genre.
-        Admin includes a genre already assigned by scraper; it should be
-        a no-op (no error, no duplicate row).
-        """
+    def test_put_promotes_scraper_genre_to_admin(self, owner_client: TestClient, db_session) -> None:
+        """When admin selects a genre already assigned by scraper,
+        the row is promoted to assigned_by='admin' rather than skipped."""
         novel = _seed_novel(db_session, "n001")
         genre = _seed_genre(db_session, "fantasy", "ファンタジー")
         _assign_genre_as(db_session, novel.id, genre.id, assigned_by="scraper")
 
-        # Admin PUT includes the same genre — should succeed silently
+        # Verify initial state
+        row = db_session.execute(
+            text("SELECT assigned_by FROM novel_genres WHERE novel_id = :nid"),
+            {"nid": novel.id},
+        ).one_or_none()
+        assert row is not None
+        assert row[0] == "scraper"
+
+        # Admin PUT includes the same genre — should promote it
         resp = owner_client.put(
             "/api/admin/novels/n001/taxonomy",
             json={"genre_slugs": ["fantasy"], "tags": []},
         )
         assert resp.status_code == 200
         assert "fantasy" in resp.json()["genres"]
+
         # Only one row exists for this novel+genre
         count = db_session.query(novel_genres).filter_by(
             novel_id=novel.id, genre_id=genre.id,
         ).count()
         assert count == 1
+
+        # Row should now be assigned_by="admin" (promoted)
+        assigned_by = db_session.execute(
+            text("SELECT assigned_by FROM novel_genres WHERE novel_id = :nid"),
+            {"nid": novel.id},
+        ).scalar()
+        assert assigned_by == "admin"
+
+    def test_put_promotes_scraper_tag_to_admin(self, owner_client: TestClient, db_session) -> None:
+        """When admin selects a tag already assigned by scraper,
+        the row is promoted to assigned_by='admin' and origin='admin'."""
+        novel = _seed_novel(db_session, "n001")
+        tag = _seed_tag(db_session, "isekai")
+        _assign_tag_as(db_session, novel.id, tag.id, assigned_by="scraper", origin="unknown")
+
+        # Verify initial state
+        row = db_session.execute(
+            text("SELECT assigned_by, origin FROM novel_tags WHERE novel_id = :nid"),
+            {"nid": novel.id},
+        ).one_or_none()
+        assert row is not None
+        assert row[0] == "scraper"
+        assert row[1] == "unknown"
+
+        # Admin PUT includes the same tag — should promote it
+        resp = owner_client.put(
+            "/api/admin/novels/n001/taxonomy",
+            json={"genre_slugs": [], "tags": ["isekai"]},
+        )
+        assert resp.status_code == 200
+        assert "isekai" in resp.json()["tags"]
+
+        # Only one row exists
+        count = db_session.execute(
+            text("SELECT COUNT(*) FROM novel_tags WHERE novel_id = :nid"),
+            {"nid": novel.id},
+        ).scalar()
+        assert count == 1
+
+        # Row should now be assigned_by="admin" and origin="admin"
+        row2 = db_session.execute(
+            text("SELECT assigned_by, origin FROM novel_tags WHERE novel_id = :nid"),
+            {"nid": novel.id},
+        ).one_or_none()
+        assert row2 is not None
+        assert row2[0] == "admin"
+        assert row2[1] == "admin"
 
     def test_put_is_idempotent(
         self, owner_client: TestClient, db_session,
@@ -499,3 +549,107 @@ class TestAdminTaxonomyPut:
         data = resp.json()
         assert set(data["genres"]) == {"action", "fantasy"}
         assert set(data["tags"]) == {"adventure", "admin-tag"}
+
+
+class TestPromotionDurability:
+    """Promoted taxonomy items must survive scraper re-scrape."""
+
+    def test_promoted_genre_survives_rescrape(
+        self, owner_client: TestClient, db_session,
+    ) -> None:
+        """Admin promotes a scraper genre, then scraper re-scrape drops that genre.
+        The promoted row (assigned_by='admin') must survive."""
+        from novelai.services.taxonomy_persistence import persist_taxonomy_assignments
+
+        novel = _seed_novel(db_session, "n001")
+        genre = _seed_genre(db_session, "fantasy", "ファンタジー")
+
+        # Scraper initially assigns fantasy
+        _assign_genre_as(db_session, novel.id, genre.id, assigned_by="scraper")
+        db_session.commit()
+
+        # Admin promotes it
+        resp = owner_client.put(
+            "/api/admin/novels/n001/taxonomy",
+            json={"genre_slugs": ["fantasy"], "tags": []},
+        )
+        assert resp.status_code == 200
+
+        # Verify promotion
+        assigned_by = db_session.execute(
+            text("SELECT assigned_by FROM novel_genres WHERE novel_id = :nid"),
+            {"nid": novel.id},
+        ).scalar()
+        assert assigned_by == "admin"
+
+        # Scraper re-scrape: source no longer lists fantasy (empty genre)
+        persist_taxonomy_assignments(
+            db_session, novel.id,
+            {"genre_slug": None, "source_keywords": [], "source_tags": []},
+        )
+        db_session.commit()
+
+        # Fantasy must still exist (admin row survives)
+        count = db_session.execute(
+            text("SELECT COUNT(*) FROM novel_genres WHERE novel_id = :nid"),
+            {"nid": novel.id},
+        ).scalar()
+        assert count == 1
+
+        assigned_by_after = db_session.execute(
+            text("SELECT assigned_by FROM novel_genres WHERE novel_id = :nid"),
+            {"nid": novel.id},
+        ).scalar()
+        assert assigned_by_after == "admin"
+
+    def test_promoted_tag_survives_rescrape(
+        self, owner_client: TestClient, db_session,
+    ) -> None:
+        """Admin promotes a scraper tag, then scraper re-scrape drops that tag.
+        The promoted row must survive."""
+        from novelai.services.taxonomy_persistence import persist_taxonomy_assignments
+
+        novel = _seed_novel(db_session, "n001")
+        tag = _seed_tag(db_session, "isekai")
+
+        # Scraper initially assigns the tag
+        _assign_tag_as(db_session, novel.id, tag.id, assigned_by="scraper", origin="unknown")
+        db_session.commit()
+
+        # Admin promotes it
+        resp = owner_client.put(
+            "/api/admin/novels/n001/taxonomy",
+            json={"genre_slugs": [], "tags": ["isekai"]},
+        )
+        assert resp.status_code == 200
+
+        # Verify promotion
+        row = db_session.execute(
+            text("SELECT assigned_by, origin FROM novel_tags WHERE novel_id = :nid"),
+            {"nid": novel.id},
+        ).one_or_none()
+        assert row is not None
+        assert row[0] == "admin"
+        assert row[1] == "admin"
+
+        # Scraper re-scrape: source no longer lists the tag
+        persist_taxonomy_assignments(
+            db_session, novel.id,
+            {"genre_slug": None, "source_keywords": [], "source_tags": []},
+        )
+        db_session.commit()
+
+        # Tag must still exist (admin row survives)
+        count = db_session.execute(
+            text("SELECT COUNT(*) FROM novel_tags WHERE novel_id = :nid"),
+            {"nid": novel.id},
+        ).scalar()
+        assert count == 1
+
+        row2 = db_session.execute(
+            text("SELECT assigned_by, origin FROM novel_tags WHERE novel_id = :nid"),
+            {"nid": novel.id},
+        ).one_or_none()
+        assert row2 is not None
+        assert row2[0] == "admin"
+        assert row2[1] == "admin"
