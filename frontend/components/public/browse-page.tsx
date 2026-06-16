@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, FormEvent, Suspense, useMemo } from "react";
+import { useState, FormEvent, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -18,7 +18,7 @@ import {
 import { NovelCard } from "@/components/public/novel-card";
 import { SectionHeader } from "@/components/public/section-header";
 import { StatusBadge } from "@/components/public/status-badge";
-import { useCatalog, useGenres } from "@/hooks/public";
+import { useCatalog, useDebounce, useGenres } from "@/hooks/public";
 import { publicApi } from "@/lib/public-api";
 import { hasNextPage, toReaderError } from "@/lib/public-format";
 import type {
@@ -68,16 +68,6 @@ function parseCsvParam(raw: string | null): Set<string> {
 function serializeSet(set: Set<string>): string | undefined {
   if (set.size === 0) return undefined;
   return Array.from(set).sort().join(",");
-}
-
-/** Debounce a value by delay ms. */
-function useDebounce<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debounced;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,13 +155,16 @@ function TagFilterSection({
           type="text"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape") onQueryChange(""); }}
           placeholder="Type to search tags…"
+          autoComplete="off"
+          aria-label={`${label} tag search`}
           className="h-8 w-full rounded-md border border-border/60 bg-background px-2.5 text-xs text-foreground outline-none transition-colors focus:border-accent placeholder:text-muted-foreground/60"
         />
 
         {/* Dropdown */}
         {showDropdown && (
-          <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-md border border-border/60 bg-card shadow-sm">
+          <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-md border border-border/60 bg-card shadow-sm" aria-live="polite">
             {/* Loading */}
             {isFetching && (
               <p className="px-2.5 py-2 text-xs italic text-muted-foreground">
