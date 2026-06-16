@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, FileEdit, Languages, RefreshCw, Trash2 } from "lucide-react";
+import { BookOpen, FileEdit, Languages, RefreshCw, Tags, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ export type LibraryRowActionsProps = {
   onTranslate: (novel: NovelSummary) => void;
   onRecrawl: (novel: NovelSummary) => void;
   onDelete: (novel: NovelSummary) => void;
+  onEditTaxonomy: (novel: NovelSummary) => void;
 };
 
 export function LibraryRowActions({
@@ -24,7 +25,8 @@ export function LibraryRowActions({
   translationPending,
   onTranslate,
   onRecrawl,
-  onDelete
+  onDelete,
+  onEditTaxonomy
 }: LibraryRowActionsProps) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -69,6 +71,10 @@ export function LibraryRowActions({
         <FileEdit className="h-4 w-4" />
         Editor
       </Link>
+      <Button size="sm" variant="outline" onClick={() => onEditTaxonomy(novel)}>
+        <Tags className="h-4 w-4" />
+        Taxonomy
+      </Button>
     </div>
   );
 }
