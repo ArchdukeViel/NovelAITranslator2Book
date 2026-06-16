@@ -4,6 +4,13 @@ import time
 from collections.abc import Mapping
 from collections.abc import Callable
 
+try:
+    import redis
+except ImportError:
+    redis = None  # type: ignore
+
+from novelai.config.settings import settings
+
 
 class RateLimiter:
     """Protocol for rate limiter implementations."""
@@ -56,6 +63,44 @@ class DisabledRateLimiter(RateLimiter):
         return True
 
 
+class RedisRateLimiter(RateLimiter):
+    """Redis-backed fixed-window rate limiter suitable for multi-instance deployments."""
+
+    def __init__(
+        self,
+        limits: Mapping[str, int] | None = None,
+        window_seconds: int = 60,
+        hits_storage: dict[str, list[float]] | None = None,
+    ) -> None:
+        if redis is None:
+            raise ImportError("The 'redis' package is required for the redis rate limiter backend.")
+        
+        redis_url = settings.REDIS_URL
+        if not redis_url:
+            raise ValueError("REDIS_URL environment variable is required when WEB_RATE_LIMITER_BACKEND=redis")
+            
+        self.window = int(window_seconds)
+        self.limits = dict(limits or {})
+        self._redis = redis.from_url(redis_url)
+
+    def hit(self, client_id: str, action: str) -> bool:
+        limit = int(self.limits.get(action, 0))
+        if limit <= 0:
+            return True
+        
+        window_id = int(time.time() // self.window)
+        key = f"rate_limit:{client_id}:{action}:{window_id}"
+        
+        try:
+            count = self._redis.incr(key)
+            if count == 1:
+                self._redis.expire(key, self.window + 1)
+            return count <= limit
+        except Exception as exc:  # noqa: BLE001
+            # Fail closed: if Redis is unreachable, deny the request to protect the service
+            raise RuntimeError(f"Redis rate limiter unavailable: {exc}") from exc
+
+
 _BACKENDS: dict[str, RateLimiterFactory] = {}
 
 
@@ -92,6 +137,14 @@ register_rate_limiter_backend(
 register_rate_limiter_backend(
     "disabled",
     lambda limits, window_seconds, hits_storage: DisabledRateLimiter(),
+)
+register_rate_limiter_backend(
+    "redis",
+    lambda limits, window_seconds, hits_storage: RedisRateLimiter(
+        limits=limits,
+        window_seconds=window_seconds,
+        hits_storage=hits_storage,
+    ),
 )
 
 
