@@ -18,7 +18,7 @@ export function NovelCard({ novel }: NovelCardProps) {
     <Panel className="h-full transition-colors hover:border-primary">
       <PanelBody>
         {/* Title and metadata — primary click target */}
-        <Link href={`/novel/${encodeURIComponent(novel.slug)}`}>
+        <Link href={`/novels/${encodeURIComponent(novel.slug)}`}>
           <h2 className="text-base font-semibold">
             {novel.title || novel.slug}
           </h2>

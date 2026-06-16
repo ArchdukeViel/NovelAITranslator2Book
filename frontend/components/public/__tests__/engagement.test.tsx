@@ -262,7 +262,7 @@ describe("public engagement UI", () => {
 
     // Chapter request entry (slug linked)
     const novelLink = await screen.findByRole("link", { name: /demo/i });
-    expect(novelLink).toHaveAttribute("href", "/novel/demo");
+    expect(novelLink).toHaveAttribute("href", "/novels/demo");
 
     // Status badges
     expect(await screen.findByText("Pending")).toBeInTheDocument();
@@ -283,7 +283,7 @@ describe("public engagement UI", () => {
 
     renderWithQuery(<RequestsPage />);
 
-    expect(await screen.findByText("No requests yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No matching requests.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /browse novels/i })).toBeInTheDocument();
   });
 

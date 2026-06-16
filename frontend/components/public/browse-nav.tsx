@@ -24,7 +24,8 @@ export function BrowseNav() {
     }
     // Reset to page 1 when changing language filter
     params.delete("page");
-    router.push(`/?${params.toString()}`);
+    const query = params.toString();
+    router.push(`/browse-novels${query ? `?${query}` : ""}`);
   }
 
   return (
