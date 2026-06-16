@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 
@@ -433,20 +434,27 @@ export default function CrawlerPage() {
           description={activeErrorDescription.explanation}
           className="z-[60] max-w-xl"
           footer={
-            <div className="flex justify-end">
-              <Button variant="outline" onClick={() => setDismissedErrorKey(activeErrorKey)}>
+            <div className="flex items-center justify-end gap-3">
+              {(activeErrorKey.includes("SCRAPE_ACTIVITY_STILL_RUNNING") || activeErrorKey.includes("SCRAPE_ACTIVITY_FAILED")) && (
+                <Button variant="outline" onClick={() => window.location.href = "/admin/activity"}>
+                  View Activity Log
+                </Button>
+              )}
+              <Button variant="default" onClick={() => setDismissedErrorKey(activeErrorKey)}>
                 Close
               </Button>
             </div>
           }
         >
           {activeErrorDescription.details !== undefined ? (
-            <div>
-              <div className="text-xs uppercase text-muted-foreground">Details</div>
-              <pre className="seamless-scrollbar mt-2 max-h-56 overflow-auto rounded-md border bg-muted/35 p-3 text-xs leading-5 text-muted-foreground">
+            <details className="mt-4 rounded-md border bg-muted/25">
+              <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted/50">
+                Show technical details
+              </summary>
+              <pre className="seamless-scrollbar max-h-56 overflow-auto border-t bg-muted/35 p-3 text-xs leading-5 text-muted-foreground">
                 {JSON.stringify(activeErrorDescription.details, null, 2)}
               </pre>
-            </div>
+            </details>
           ) : null}
         </DialogShell>
       ) : null}

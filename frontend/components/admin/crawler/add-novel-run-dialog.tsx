@@ -34,7 +34,7 @@ export function AddNovelRunDialog({
 }: AddNovelRunDialogProps) {
   if (preliminaryPending) {
     return (
-      <DialogShell open title="Preliminary Crawl" description="Detecting metadata, translated title, author, and chapter list.">
+      <DialogShell open title="Detecting chapters" description="Detecting metadata, translated title, author, and chapter list.">
         <ProgressBar value={crawlProgress} label={sourceLabel(detectedSource)} />
       </DialogShell>
     );
@@ -44,7 +44,7 @@ export function AddNovelRunDialog({
     return (
       <DialogShell
         open
-        title="Adding Novel"
+        title="Scraping selected chapters"
         description={`Scraping ${addedChapterCount || selectedChapterCount} selected chapter(s) and saving them into the library.`}
       >
         <ProgressBar value={runProgress} label={runLabel} />

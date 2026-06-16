@@ -108,8 +108,14 @@ export function PreliminaryCrawlResultModal({
 
         <ErrorBanner error={error} fallback="Failed to queue selected chapters." />
 
+        {Boolean(error) && (
+          <div className="border-t bg-muted/25 p-4 text-sm text-muted-foreground">
+            An error occurred while queueing the chapters. Please cancel and restart the process to try again.
+          </div>
+        )}
+
         <div className="flex items-center justify-end gap-3 border-t p-4">
-          <Button className="min-w-32" onClick={onConfirm} disabled={selectedCount === 0 || pending}>
+          <Button className="min-w-32" onClick={onConfirm} disabled={selectedCount === 0 || pending || !!error}>
             Add novel
           </Button>
           <Button className="min-w-28" variant="destructive" onClick={onCancel} disabled={pending}>

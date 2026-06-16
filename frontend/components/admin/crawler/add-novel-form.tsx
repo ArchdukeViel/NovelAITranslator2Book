@@ -33,7 +33,7 @@ export function AddNovelForm({ value, detectedSource, canSubmit, pending, error,
             <span className="ml-2 font-medium">{sourceLabel(detectedSource)}</span>
           </div>
 
-          <ErrorBanner error={error} fallback="Failed to add novel." />
+          <ErrorBanner error={error} fallback="Failed to discover chapters. Verify the source URL or novel ID, then try again." />
         </div>
 
         <Button className="w-full" onClick={onSubmit} disabled={!canSubmit || pending}>
