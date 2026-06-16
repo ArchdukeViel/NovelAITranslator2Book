@@ -280,7 +280,7 @@ class TestIdempotency:
         ).scalar()
         assert count == 1
 
-    def test_existing_genre_not_destroyed(self, session) -> None:
+    def test_existing_genre_replaced_when_scraper_reruns_without_genre(self, session) -> None:
         _seed_genres(session)
         novel = _make_novel(session, "id03")
 
@@ -289,19 +289,19 @@ class TestIdempotency:
         persist_taxonomy_assignments(session, novel.id, metadata)
         session.commit()
 
-        # Second pass: no genre_slug (simulating a re-scrape without genre info)
+        # Second pass: no genre_slug (simulating a re-scrape that dropped genre info)
         metadata2 = {"genre_slug": None, "source_keywords": [], "source_tags": []}
         persist_taxonomy_assignments(session, novel.id, metadata2)
         session.commit()
 
-        # Fantasy assignment should still exist
+        # Fantasy should be gone — old scraper rows are cleaned on re-scrape
         count = session.execute(
             text("SELECT COUNT(*) FROM novel_genres WHERE novel_id = :id"),
             {"id": novel.id},
         ).scalar()
-        assert count == 1
+        assert count == 0
 
-    def test_existing_tag_not_destroyed(self, session) -> None:
+    def test_existing_tags_replaced_when_scraper_reruns_with_new_tags(self, session) -> None:
         _seed_genres(session)
         novel = _make_novel(session, "id04")
 
@@ -310,15 +310,15 @@ class TestIdempotency:
         persist_taxonomy_assignments(session, novel.id, metadata)
         session.commit()
 
-        # Second pass: different tags
+        # Second pass: different tags — re-scrape replaces, not accumulates
         metadata2 = {"genre_slug": None, "source_keywords": ["勇者"], "source_tags": []}
         persist_taxonomy_assignments(session, novel.id, metadata2)
         session.commit()
 
         session.refresh(novel)
         tag_names = {t.name for t in novel.tags}
-        # Both tags should exist (additive, not destructive)
-        assert "魔法" in tag_names
+        # Old tag "魔法" should be gone; only "勇者" should remain
+        assert "魔法" not in tag_names
         assert "勇者" in tag_names
 
 
@@ -377,7 +377,7 @@ class TestCatalogServiceIntegration:
         tag_names = {t.name for t in novel.tags}
         assert "魔法" in tag_names
 
-    def test_get_or_create_existing_novel_preserves_assignments(self, session) -> None:
+    def test_get_or_create_existing_novel_replaces_scraper_assignments(self, session) -> None:
         _seed_genres(session)
         from pathlib import Path
         from novelai.services.catalog_service import CatalogService
@@ -385,7 +385,7 @@ class TestCatalogServiceIntegration:
 
         catalog = CatalogService(StorageService(Path.cwd()), session)
 
-        # First call: creates novel + assigns genre
+        # First call: creates novel + assigns genre + tag
         metadata1 = {
             "title": "Reuse Test",
             "genre_slug": "fantasy",
@@ -397,7 +397,7 @@ class TestCatalogServiceIntegration:
         catalog.get_or_create_novel("reuse-test", metadata1)
         session.commit()
 
-        # Second call: reuses existing novel, adds new tag
+        # Second call: reuses existing novel, replaces scraper tags with new ones
         metadata2 = {
             "title": "Reuse Test",
             "genre_slug": "fantasy",
@@ -410,11 +410,11 @@ class TestCatalogServiceIntegration:
         session.commit()
 
         session.refresh(novel)
-        # Should still have exactly one genre (fantasy)
+        # Still has exactly one genre (fantasy was re-inserted)
         assert len(novel.genres) == 1
-        # Should have both tags (additive)
+        # Old scraper tag "魔法" replaced by "勇者"
         tag_names = {t.name for t in novel.tags}
-        assert "魔法" in tag_names
+        assert "魔法" not in tag_names
         assert "勇者" in tag_names
 
 
@@ -469,3 +469,141 @@ class TestDataHonesty:
         ).scalar()
         assert genre_count == 0
         assert tag_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Admin preservation during re-scrape (TAXONOMY-4D)
+# ---------------------------------------------------------------------------
+
+class TestAdminPersistenceDuringReScrape:
+    """Admin-managed assignments must survive scraper persistence."""
+
+    def test_admin_genre_survives_re_scrape(self, session) -> None:
+        _seed_genres(session)
+        novel = _make_novel(session, "ad01")
+
+        # Admin assigns genre "fantasy"
+        genre = session.query(Genre).filter_by(slug="fantasy").one()
+        session.execute(
+            novel_genres.insert().values(
+                novel_id=novel.id, genre_id=genre.id,
+                assigned_by="admin",
+            )
+        )
+        session.commit()
+
+        # Scraper re-scrape assigns different genre "romance"
+        metadata = {"genre_slug": "romance", "source_keywords": [], "source_tags": []}
+        persist_taxonomy_assignments(session, novel.id, metadata)
+        session.commit()
+
+        session.refresh(novel)
+        genre_slugs = {g.slug for g in novel.genres}
+        # Admin-assigned "fantasy" must survive
+        assert "fantasy" in genre_slugs
+        # Scraper "romance" also present
+        assert "romance" in genre_slugs
+
+    def test_admin_tag_survives_re_scrape(self, session) -> None:
+        _seed_genres(session)
+        novel = _make_novel(session, "ad02")
+
+        # Admin assigns tag "admin-tag"
+        tag = Tag(name="admin-tag")
+        session.add(tag)
+        session.flush()
+        session.execute(
+            novel_tags.insert().values(
+                novel_id=novel.id, tag_id=tag.id,
+                origin="admin", assigned_by="admin",
+            )
+        )
+        session.commit()
+
+        # Scraper re-scrape assigns tag "scraper-tag"
+        metadata = {"genre_slug": None, "source_keywords": [], "source_tags": ["scraper-tag"]}
+        persist_taxonomy_assignments(session, novel.id, metadata)
+        session.commit()
+
+        session.refresh(novel)
+        tag_names = {t.name for t in novel.tags}
+        # Admin-assigned "admin-tag" must survive
+        assert "admin-tag" in tag_names
+        # Scraper "scraper-tag" also present
+        assert "scraper-tag" in tag_names
+
+    def test_admin_genre_not_overwritten_by_scraper_duplicate(self, session) -> None:
+        """When admin already assigned a genre, scraper trying to assign the
+        same genre skips the insert (composite PK prevents dual rows)."""
+        _seed_genres(session)
+        novel = _make_novel(session, "ad03")
+
+        # Admin assigns "fantasy"
+        genre = session.query(Genre).filter_by(slug="fantasy").one()
+        session.execute(
+            novel_genres.insert().values(
+                novel_id=novel.id, genre_id=genre.id,
+                assigned_by="admin",
+            )
+        )
+        session.commit()
+
+        # Scraper re-scrape also lists "fantasy"
+        metadata = {"genre_slug": "fantasy", "source_keywords": [], "source_tags": []}
+        persist_taxonomy_assignments(session, novel.id, metadata)
+        session.commit()
+
+        session.refresh(novel)
+        genre_slugs = {g.slug for g in novel.genres}
+        assert "fantasy" in genre_slugs
+        # Only one row — composite PK prevented duplicate
+        count = session.execute(
+            text("SELECT COUNT(*) FROM novel_genres WHERE novel_id = :id AND genre_id = :gid"),
+            {"id": novel.id, "gid": genre.id},
+        ).scalar()
+        assert count == 1
+        # Row should still be assigned_by="admin" (scraper skip preserves original)
+        assigned_by = session.execute(
+            text("SELECT assigned_by FROM novel_genres WHERE novel_id = :id AND genre_id = :gid"),
+            {"id": novel.id, "gid": genre.id},
+        ).scalar()
+        assert assigned_by == "admin"
+
+    def test_admin_tag_not_overwritten_by_scraper_duplicate(self, session) -> None:
+        """When admin already assigned a tag, scraper trying to assign the
+        same tag skips the insert (composite PK prevents dual rows)."""
+        _seed_genres(session)
+        novel = _make_novel(session, "ad04")
+
+        # Admin assigns "shared-tag"
+        tag = Tag(name="shared-tag")
+        session.add(tag)
+        session.flush()
+        session.execute(
+            novel_tags.insert().values(
+                novel_id=novel.id, tag_id=tag.id,
+                origin="admin", assigned_by="admin",
+            )
+        )
+        session.commit()
+
+        # Scraper re-scrape also lists "shared-tag"
+        metadata = {"genre_slug": None, "source_keywords": [], "source_tags": ["shared-tag"]}
+        persist_taxonomy_assignments(session, novel.id, metadata)
+        session.commit()
+
+        session.refresh(novel)
+        tag_names = {t.name for t in novel.tags}
+        assert "shared-tag" in tag_names
+        # Only one row
+        count = session.execute(
+            text("SELECT COUNT(*) FROM novel_tags WHERE novel_id = :id"),
+            {"id": novel.id},
+        ).scalar()
+        assert count == 1
+        # Row should still be assigned_by="admin"
+        assigned_by = session.execute(
+            text("SELECT assigned_by FROM novel_tags WHERE novel_id = :id"),
+            {"id": novel.id},
+        ).scalar()
+        assert assigned_by == "admin"
