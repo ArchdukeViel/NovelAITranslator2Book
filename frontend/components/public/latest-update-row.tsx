@@ -1,11 +1,16 @@
+"use client";
+
 import Link from "next/link";
-import { BookOpen, Clock } from "lucide-react";
+import { BookOpen } from "lucide-react";
+
+import { groupDateLabel } from "@/lib/date-group";
 
 interface LatestUpdateRowProps {
   chapterLabel?: string;
   href: string;
   sourceTitle?: string | null;
   title: string;
+  updatedAt?: string | null;
 }
 
 export function LatestUpdateRow({
@@ -13,7 +18,10 @@ export function LatestUpdateRow({
   href,
   sourceTitle,
   title,
+  updatedAt,
 }: LatestUpdateRowProps) {
+  const timeLabel = groupDateLabel(updatedAt);
+
   return (
     <Link
       href={href}
@@ -31,12 +39,14 @@ export function LatestUpdateRow({
             {sourceTitle}
           </p>
         )}
-        {chapterLabel && (
-          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-            <Clock className="h-3 w-3" />
-            <span>{chapterLabel}</span>
-          </div>
-        )}
+        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+          {chapterLabel && <span>{chapterLabel}</span>}
+          {timeLabel && (
+            <span className="font-metadata tracking-wide text-muted-foreground/60">
+              {timeLabel}
+            </span>
+          )}
+        </div>
       </div>
     </Link>
   );
