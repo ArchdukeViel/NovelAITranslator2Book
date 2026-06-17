@@ -98,6 +98,35 @@ async function typeTagQuery(index: 0 | 1, text: string) {
 // Genre filter tests (regression)
 // ---------------------------------------------------------------------------
 
+describe("BrowsePage visual honesty", () => {
+  it("does not render fake metric labels", () => {
+    renderPage();
+    expect(screen.queryByText(/^popular$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^trending$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Top Rated")).not.toBeInTheDocument();
+    expect(screen.queryByText("Library Stats")).not.toBeInTheDocument();
+    expect(screen.queryByText("Metrics")).not.toBeInTheDocument();
+    // "view" in "View details" is legitimate — check word-level
+    expect(screen.queryByText(/ratings?/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/reviews?/i)).not.toBeInTheDocument();
+  });
+
+  it("renders honest catalog header with Japanese eyebrow", () => {
+    renderPage();
+    expect(screen.getByText("探索")).toBeInTheDocument();
+    // h1 renders title prop; renderPage passes title="Browse"
+    expect(screen.getByRole("heading", { level: 1, name: "Browse" })).toBeInTheDocument();
+  });
+
+  it("does not display unsupported metric filter controls", () => {
+    renderPage();
+    // Rating/views/reviews filter buttons should not exist
+    expect(screen.queryByRole("button", { name: /rating/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /popular/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /trending/i })).not.toBeInTheDocument();
+  });
+});
+
 describe("BrowsePage genre filter UI", () => {
   it("renders genre list from API", () => {
     renderPage();

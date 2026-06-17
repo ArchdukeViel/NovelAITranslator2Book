@@ -4,8 +4,8 @@ export default function BrowseNovelsPage() {
   return (
     <BrowsePage
       basePath="/browse-novels"
-      title="Browse Novels"
-      description="Browse the catalog by title, author, status, or chapter count."
+      title="Browse the library"
+      description="Search by title or author, then narrow by status, genre, or chapter count."
     />
   );
 }
