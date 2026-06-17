@@ -1,0 +1,267 @@
+import { describe, it, expect } from "vitest";
+import type { Metadata } from "next";
+
+// ---------------------------------------------------------------------------
+// Server-component pages that export static metadata
+// ---------------------------------------------------------------------------
+
+import { metadata as aboutMeta } from "@/app/(public)/about/page";
+import { metadata as privacyMeta } from "@/app/(public)/privacy/page";
+import { metadata as termsMeta } from "@/app/(public)/terms/page";
+import { metadata as dmcaMeta } from "@/app/(public)/dmca/page";
+import { metadata as contactMeta } from "@/app/(public)/contact/page";
+import { metadata as cookiePolicyMeta } from "@/app/(public)/cookie-policy/page";
+import { metadata as rankingMeta } from "@/app/(public)/ranking/page";
+import { metadata as authCallbackMeta } from "@/app/(public)/auth/callback/page";
+import { metadata as errorMeta } from "@/app/(public)/error/page";
+import { metadata as maintenanceMeta } from "@/app/(public)/maintenance/page";
+import { metadata as notFoundMeta } from "@/app/not-found";
+import { metadata as redirectIndexMeta } from "@/app/(public)/page";
+import { metadata as accountContributeMeta } from "@/app/(public)/account/contribute/page";
+
+// ---------------------------------------------------------------------------
+// Layout metadata
+// ---------------------------------------------------------------------------
+
+import { metadata as rootLayoutMeta } from "@/app/layout";
+import { metadata as publicLayoutMeta } from "@/app/(public)/layout";
+import { metadata as accountLayoutMeta } from "@/app/(public)/account/layout";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function getRobots(m: Metadata): { index?: boolean | null; follow?: boolean | null } | null {
+  if (!m.robots) return null;
+  if (typeof m.robots === "string") return null;
+  // m.robots is Robots object
+  return m.robots as { index?: boolean | null; follow?: boolean | null };
+}
+
+// ---------------------------------------------------------------------------
+// generateMetadata
+// ---------------------------------------------------------------------------
+
+import { generateMetadata as browseGenerateMeta } from "@/app/(public)/browse-novels/page";
+
+describe("metadata — site-wide", () => {
+  it("root layout has site-wide description and OpenGraph", () => {
+    const m = rootLayoutMeta;
+    expect(typeof m.description).toBe("string");
+    expect(m.description?.toString().length).toBeGreaterThan(10);
+    expect(m.openGraph).toBeDefined();
+    expect(m.openGraph?.siteName).toBe("Novel AI");
+    expect(m.twitter).toBeDefined();
+    if (typeof m.twitter === "object" && m.twitter && "card" in m.twitter) {
+      expect((m.twitter as { card?: string }).card).toBe("summary");
+    }
+  });
+
+  it("root layout uses title template for child overrides", () => {
+    const m = rootLayoutMeta as Metadata & { title: { template: string } };
+    expect(typeof m.title).toBe("object");
+    if (m.title && typeof m.title === "object" && "template" in m.title) {
+      expect(m.title.template).toContain("Novel AI");
+    }
+  });
+});
+
+describe("metadata — public layout", () => {
+  it("public layout has default title and template", () => {
+    const m = publicLayoutMeta as Metadata & { title: { default: string; template: string } };
+    expect(typeof m.title).toBe("object");
+    if (m.title && typeof m.title === "object" && "default" in m.title && "template" in m.title) {
+      expect(m.title.default).toBe("Dokushodo");
+      expect(m.title.template).toBe("%s | Dokushodo");
+    }
+  });
+
+  it("public layout has OpenGraph site name", () => {
+    expect(publicLayoutMeta.openGraph?.siteName).toBe("Dokushodo");
+  });
+
+  it("public layout defaults to index,follow", () => {
+    const r = getRobots(publicLayoutMeta);
+    expect(r?.index).toBe(true);
+    expect(r?.follow).toBe(true);
+  });
+});
+
+describe("metadata — page titles use correct patterns", () => {
+  interface TitleMetadata {
+    title?: string | { default?: string; template?: string; absolute?: string };
+  }
+
+  const cases: { label: string; meta: Metadata; expectedTitle?: string }[] = [
+    { label: "about", meta: aboutMeta, expectedTitle: "About" },
+    { label: "privacy", meta: privacyMeta, expectedTitle: "Privacy" },
+    { label: "terms", meta: termsMeta, expectedTitle: "Terms" },
+    { label: "dmca", meta: dmcaMeta, expectedTitle: "DMCA" },
+    { label: "contact", meta: contactMeta, expectedTitle: "Contact" },
+    { label: "cookie-policy", meta: cookiePolicyMeta, expectedTitle: "Cookie Policy" },
+    { label: "ranking", meta: rankingMeta, expectedTitle: "Ranking" },
+    { label: "auth/callback", meta: authCallbackMeta, expectedTitle: "Signing In" },
+    { label: "error", meta: errorMeta, expectedTitle: "Error" },
+    { label: "maintenance", meta: maintenanceMeta, expectedTitle: "Maintenance" },
+  ];
+
+  for (const c of cases) {
+    it(`${c.label} has correct title`, () => {
+      const m = c.meta as TitleMetadata;
+      expect(m.title).toBe(c.expectedTitle);
+    });
+  }
+
+  it("redirect pages have appropriate titles", () => {
+    const redirectIndex = redirectIndexMeta as TitleMetadata;
+    expect(redirectIndex.title).toBe("Home");
+
+    const acctContribute = accountContributeMeta as TitleMetadata;
+    expect(acctContribute.title).toBe("Contribute");
+  });
+
+  it("page descriptions are non-empty and specific", () => {
+    const checks = [
+      { label: "about", meta: aboutMeta },
+      { label: "privacy", meta: privacyMeta },
+      { label: "terms", meta: termsMeta },
+      { label: "dmca", meta: dmcaMeta },
+      { label: "contact", meta: contactMeta },
+      { label: "cookie-policy", meta: cookiePolicyMeta },
+      { label: "ranking", meta: rankingMeta },
+      { label: "auth/callback", meta: authCallbackMeta },
+      { label: "maintenance", meta: maintenanceMeta },
+    ];
+    for (const c of checks) {
+      expect(typeof c.meta.description).toBe("string");
+      expect((c.meta.description as string).length).toBeGreaterThan(5);
+    }
+  });
+});
+
+describe("metadata — robots / noindex", () => {
+  it("auth callback is noindex", () => {
+    const r = getRobots(authCallbackMeta);
+    expect(r?.index).toBe(false);
+    expect(r?.follow).toBe(false);
+  });
+
+  it("error page is noindex", () => {
+    const r = getRobots(errorMeta);
+    expect(r?.index).toBe(false);
+    expect(r?.follow).toBe(false);
+  });
+
+  it("maintenance page is noindex", () => {
+    const r = getRobots(maintenanceMeta);
+    expect(r?.index).toBe(false);
+    expect(r?.follow).toBe(false);
+  });
+
+  it("not-found is noindex at root and (public) route", () => {
+    const r = getRobots(notFoundMeta);
+    expect(r?.index).toBe(false);
+    expect(r?.follow).toBe(false);
+  });
+
+  it("account layout is noindex (scoped to /account)", () => {
+    const r = getRobots(accountLayoutMeta);
+    expect(r?.index).toBe(false);
+    expect(r?.follow).toBe(false);
+  });
+
+  it("account/contribute redirect is noindex", () => {
+    const r = getRobots(accountContributeMeta);
+    expect(r?.index).toBe(false);
+    expect(r?.follow).toBe(false);
+  });
+});
+
+describe("metadata — browse-novels", () => {
+  it("generateMetadata returns browse title when no query", async () => {
+    const result = await browseGenerateMeta({ searchParams: Promise.resolve({}) });
+    expect(result.title).toBe("Browse Novels");
+    expect(result.description).toContain("Dokushodo");
+  });
+
+  it("generateMetadata returns search title when query present", async () => {
+    const result = await browseGenerateMeta({
+      searchParams: Promise.resolve({ q: "isekai" }),
+    });
+    expect(result.title).toBe('Search results for "isekai"');
+    expect(result.description).toContain("isekai");
+  });
+
+  it("generateMetadata trims whitespace from query", async () => {
+    const result = await browseGenerateMeta({
+      searchParams: Promise.resolve({ q: "  tensei  " }),
+    });
+    expect(result.title).toBe('Search results for "tensei"');
+  });
+
+  it("generateMetadata returns browse title for empty query", async () => {
+    const result = await browseGenerateMeta({
+      searchParams: Promise.resolve({ q: "" }),
+    });
+    expect(result.title).toBe("Browse Novels");
+  });
+
+  it("generateMetadata returns browse title for whitespace-only query", async () => {
+    const result = await browseGenerateMeta({
+      searchParams: Promise.resolve({ q: "   " }),
+    });
+    expect(result.title).toBe("Browse Novels");
+  });
+});
+
+describe("metadata — safety and honesty", () => {
+  it("no metadata mentions fake ranking availability", () => {
+    const metas = [
+      rankingMeta,
+      aboutMeta,
+    ];
+    for (const m of metas) {
+      const desc = (m.description as string)?.toLowerCase() || "";
+      expect(desc).not.toContain("daily ranking");
+      expect(desc).not.toContain("weekly ranking");
+      expect(desc).not.toContain("monthly ranking");
+    }
+  });
+
+  it("no metadata mentions fake update frequency", () => {
+    const metas = [
+      aboutMeta,
+      publicLayoutMeta,
+    ];
+    for (const m of metas) {
+      const desc = (m.description as string)?.toLowerCase() || "";
+      // Should not claim regular updates or daily content
+      expect(desc).not.toContain("daily updates");
+      expect(desc).not.toContain("daily chapter");
+    }
+  });
+
+  it("no metadata contains old placeholder language", () => {
+    const metas = [
+      aboutMeta,
+      privacyMeta,
+      termsMeta,
+      dmcaMeta,
+      contactMeta,
+      cookiePolicyMeta,
+      rankingMeta,
+      authCallbackMeta,
+      errorMeta,
+      maintenanceMeta,
+    ];
+    for (const m of metas) {
+      const title = (m.title as string)?.toLowerCase() || "";
+      const desc = (m.description as string)?.toLowerCase() || "";
+      expect(title).not.toContain("preview");
+      expect(title).not.toContain("under construction");
+      expect(desc).not.toContain("preview");
+      expect(desc).not.toContain("under construction");
+      expect(desc).not.toContain("data is not live yet");
+    }
+  });
+});

@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, BarChart3, BookOpen, Clock } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/public/section-header";
+
+export const metadata: Metadata = {
+  title: "Ranking",
+  description: "Browse translation rankings on Dokushodo.",
+};
 
 const PLANNED_PERIODS = ["Daily", "Weekly", "Monthly", "All Time"] as const;
 

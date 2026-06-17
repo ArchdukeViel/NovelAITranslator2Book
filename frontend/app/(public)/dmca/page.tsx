@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
 import { StaticPage } from "@/components/public/static-page";
+
+export const metadata: Metadata = {
+  title: "DMCA",
+  description: "DMCA and takedown instructions for Dokushodo.",
+};
 
 export default function DmcaPage() {
   return (

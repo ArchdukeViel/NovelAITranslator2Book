@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
 import { StaticPage } from "@/components/public/static-page";
+
+export const metadata: Metadata = {
+  title: "Contact",
+  description: "Contact information for Dokushodo.",
+};
 
 export default function ContactPage() {
   return (

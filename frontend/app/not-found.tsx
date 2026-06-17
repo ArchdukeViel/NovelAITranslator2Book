@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "404",
+  description: "Page not found on Dokushodo.",
+  robots: { index: false, follow: false },
+};
 
 export default function NotFoundPage() {
   return (

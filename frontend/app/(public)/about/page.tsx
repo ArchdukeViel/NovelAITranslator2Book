@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
 import { StaticPage } from "@/components/public/static-page";
+
+export const metadata: Metadata = {
+  title: "About",
+  description: "Dokushodo is a public reader for translated web novels with owner-controlled ingestion and translation workflows.",
+};
 
 export default function AboutPage() {
   return (
