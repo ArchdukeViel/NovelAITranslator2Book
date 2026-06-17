@@ -166,7 +166,7 @@ export default function ChapterPage() {
   }
 
   const novelTitle = data.novel_title || slug;
-  const chapterTitle = data.title || `Chapter ${chapterId}`;
+  const chapterTitle = data.title || (data.chapter_number != null ? `Chapter ${data.chapter_number}` : "Untitled chapter");
 
   return (
     <div data-reader-theme={theme} className="reader-container">
@@ -178,7 +178,7 @@ export default function ChapterPage() {
               <span className="font-literary">{novelTitle}</span>
             </Link>
             <p className="mt-2 truncate text-xs font-metadata reader-muted">
-              Chapter {chapterId}
+              {data.chapter_number != null ? `Chapter ${data.chapter_number}` : "\u00a0"}
             </p>
           </div>
           <ReaderControls />
