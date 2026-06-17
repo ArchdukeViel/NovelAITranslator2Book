@@ -397,21 +397,25 @@ class TestPublicGenreEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 16
-        assert all(not g["is_adult"] for g in data)
+        slugs = {g["slug"] for g in data}
+        adult_slugs = {"adult-romance", "adult-fantasy", "adult-sf", "adult-other"}
+        assert adult_slugs.isdisjoint(slugs)
 
     def test_exclude_adult_by_default(self, client) -> None:
         c, _ = client
         resp = c.get("/api/public/genres")
         data = resp.json()
-        adult_genres = [g for g in data if g["is_adult"]]
-        assert len(adult_genres) == 0
+        slugs = {g["slug"] for g in data}
+        adult_slugs = {"adult-romance", "adult-fantasy", "adult-sf", "adult-other"}
+        assert adult_slugs.isdisjoint(slugs)
 
     def test_adult_genres_included_when_include_adult_true(self, client) -> None:
         c, _ = client
         resp = c.get("/api/public/genres?include_adult=true")
         data = resp.json()
-        adult_genres = [g for g in data if g["is_adult"]]
-        assert len(adult_genres) == 4
+        slugs = {g["slug"] for g in data}
+        adult_slugs = {"adult-romance", "adult-fantasy", "adult-sf", "adult-other"}
+        assert adult_slugs.issubset(slugs)
 
     def test_ordered_by_display_order(self, client) -> None:
         c, _ = client
