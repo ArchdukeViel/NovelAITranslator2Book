@@ -21,6 +21,7 @@ export {
 } from "./use-reading-state";
 export { useDebounce } from "./use-debounce";
 export { useGenres } from "./use-genres";
+export { useGenreLabelMap } from "./use-genre-labels";
 export {
   useCreateRequest,
   useDeleteReview,

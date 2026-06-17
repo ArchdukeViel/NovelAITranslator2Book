@@ -8,7 +8,7 @@ import { LatestUpdateRow } from "@/components/public/latest-update-row";
 import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { NovelCard } from "@/components/public/novel-card";
 import { SectionHeader } from "@/components/public/section-header";
-import { useCatalog } from "@/hooks/public";
+import { useCatalog, useGenreLabelMap } from "@/hooks/public";
 
 export default function HomePage() {
   const { data, isPending, isError } = useCatalog({
@@ -19,6 +19,7 @@ export default function HomePage() {
 
   const novels = data?.novels ?? [];
   const featuredNovel = novels[0];
+  const genreLabels = useGenreLabelMap();
 
   // ── Loading ──
   if (isPending) {
@@ -174,7 +175,7 @@ export default function HomePage() {
                 {featuredNovel.genres && featuredNovel.genres.length > 0 && (
                   <div className="mt-5 flex flex-wrap gap-2">
                     {featuredNovel.genres.map((genre) => (
-                      <GenreChip key={genre} label={genre} />
+                      <GenreChip key={genre} label={genreLabels?.get(genre) ?? genre} />
                     ))}
                   </div>
                 )}
