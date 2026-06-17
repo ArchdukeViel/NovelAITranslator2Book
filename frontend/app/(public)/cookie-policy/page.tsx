@@ -30,7 +30,7 @@ export default function CookiePolicyPage() {
         },
         {
           title: "Analytics and ads",
-          body: "The current public app does not implement third-party advertising or analytics cookies. If that changes, this page should be updated before those cookies are described as part of normal use.",
+          body: "The current public app does not implement third-party advertising or analytics cookies. If that changes, the policy will be updated before those features are active.",
         },
         {
           title: "Blocking cookies",

@@ -43,11 +43,11 @@ export default function ContributePage() {
                 <Shield className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
                 <div className="space-y-2 text-sm text-muted-foreground">
                   <p>
-                    We take credential security seriously. When the backend contribution lifecycle is implemented,
+                    The platform takes credential security seriously. When the backend contribution lifecycle is implemented,
                     keys will be encrypted at rest and masked in all UI displays.
                   </p>
                   <p>
-                    You will retain full control to pause or remove your contributed keys at any time through your account dashboard.
+                    The goal is for you to retain full control to pause or remove contributed keys at any time from your account dashboard.
                   </p>
                 </div>
               </div>

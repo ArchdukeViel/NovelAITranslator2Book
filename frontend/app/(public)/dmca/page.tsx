@@ -3,15 +3,15 @@ import { StaticPage } from "@/components/public/static-page";
 
 export const metadata: Metadata = {
   title: "DMCA",
-  description: "DMCA and takedown instructions for Dokushodo.",
+  description: "DMCA and takedown policy for Dokushodo.",
+  robots: { index: false, follow: false },
 };
 
 export default function DmcaPage() {
   return (
     <StaticPage
       title="DMCA"
-      description="DMCA and takedown instructions are pending final policy copy."
-      sections={[{ title: "Contact", body: "Use the contact page until a dedicated takedown workflow is connected." }]}
+      description="A formal DMCA takedown policy and contact workflow are pending. In the meantime, the owner/admin reviews takedown requests manually. Use the Contact page to submit a notice, and include enough detail for the owner to identify the material in question."
     />
   );
 }
