@@ -14,7 +14,11 @@ from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
 from novelai.infrastructure.http.fetch_service import FetchService, get_default_fetch_service
-from novelai.sources.quality import QualityGateResult
+from novelai.sources.quality import (
+    QualityGateResult,
+    detect_age_gate_text,
+    detect_block_page_text,
+)
 from novelai.sources._helpers import (
     extract_image_references,
     image_placeholder,
@@ -113,6 +117,35 @@ class GenericSource(SourceAdapter):
         for selector in _REMOVE_SELECTORS:
             for tag in soup.select(selector):
                 tag.decompose()
+
+    @staticmethod
+    def _strip_ruby_annotations(section: Tag) -> None:
+        """Remove ruby/furigana annotations in-place, keeping base text.
+
+        Mirrors the pattern used by SyosetuNcodeSource:
+        - Remove <rt> (ruby text) and <rp> (ruby parenthesis) tags.
+        - Unwrap <ruby> so only the base kanji/text remains.
+        """
+        for tag_name in ("rt", "rp"):
+            for tag in section.find_all(tag_name):
+                tag.decompose()
+        for ruby in section.find_all("ruby"):
+            ruby.unwrap()
+
+    @staticmethod
+    def _preflight_check(html: str, url: str) -> None:
+        """Reject obvious blocked, age-gated, or bot-challenge pages.
+
+        Raises SourceError if the raw HTML matches known block/age-gate patterns.
+        """
+        if detect_block_page_text(html):
+            raise SourceError(
+                f"Page at {url} appears to be blocked (Cloudflare, CAPTCHA, or bot challenge)."
+            )
+        if detect_age_gate_text(html):
+            raise SourceError(
+                f"Page at {url} appears to require age verification or adult confirmation."
+            )
 
     @staticmethod
     def _find_body(soup: BeautifulSoup) -> Tag | None:
@@ -239,11 +272,13 @@ class GenericSource(SourceAdapter):
         raw_score -= min(0.25, negative / max(1, len(chapter_urls)) * 0.25)
         raw_score -= min(0.15, duplicate_paths / max(1, len(chapter_urls)) * 0.15)
         score = max(0.0, min(1.0, round(raw_score, 3)))
-        if score < 0.60:
+        if score < 0.40 and negative > positive:
+            errors.append("generic_very_low_confidence_with_negative_signals")
+        elif score < 0.60:
             warnings.append("generic_low_confidence")
         elif score < 0.75:
             warnings.append("generic_needs_review")
-        return QualityGateResult(passed=True, score=score, warnings=list(dict.fromkeys(warnings)), errors=errors)
+        return QualityGateResult(passed=len(errors) == 0, score=score, warnings=list(dict.fromkeys(warnings)), errors=errors)
 
     @staticmethod
     def _normalize_text(text: str) -> str:
@@ -278,6 +313,7 @@ class GenericSource(SourceAdapter):
         self, url: str, *, max_chapter: int | None = None
     ) -> dict[str, Any]:
         html = await self._fetch_page(url)
+        self._preflight_check(html, url)
         soup = BeautifulSoup(html, "lxml")
         self._clean_soup(soup)
 
@@ -311,6 +347,7 @@ class GenericSource(SourceAdapter):
 
     async def fetch_chapter(self, url: str) -> str:
         html = await self._fetch_page(url)
+        self._preflight_check(html, url)
         soup = BeautifulSoup(html, "lxml")
         self._clean_soup(soup)
 
@@ -318,6 +355,7 @@ class GenericSource(SourceAdapter):
         if body is None:
             raise SourceError("Unable to locate story content on the page.")
 
+        self._strip_ruby_annotations(body)
         text = self._render_body(body)
         if not text:
             raise SourceError("Extracted chapter text was empty.")
@@ -325,6 +363,7 @@ class GenericSource(SourceAdapter):
 
     async def fetch_chapter_payload(self, url: str) -> dict[str, Any]:
         html = await self._fetch_page(url)
+        self._preflight_check(html, url)
         soup = BeautifulSoup(html, "lxml")
         self._clean_soup(soup)
 
@@ -333,6 +372,7 @@ class GenericSource(SourceAdapter):
             raise SourceError("Unable to locate story content on the page.")
 
         images = extract_image_references(body, base_url=url)
+        self._strip_ruby_annotations(body)
         text = self._render_body(body)
         if not text:
             raise SourceError("Extracted chapter text was empty.")
