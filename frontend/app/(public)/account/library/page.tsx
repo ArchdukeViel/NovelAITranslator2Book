@@ -116,7 +116,9 @@ export default function LibraryPage() {
                     <div className="flex items-center justify-between gap-3 px-4 py-3" key={entry.id}>
                       <div className="min-w-0 flex-1">
                         <Link href={chapterHref ?? novelHref} className="truncate text-sm font-medium hover:text-accent">
-                          {entry.chapter_id ? `${entry.slug} - Ch. ${entry.chapter_id}` : entry.slug}
+                          {entry.chapter_id
+                            ? `${entry.slug} - ${entry.chapter_number != null ? `Ch. ${entry.chapter_number}` : "Chapter"}`
+                            : entry.slug}
                         </Link>
                         <div className="mt-0.5 text-xs font-metadata text-muted-foreground">
                           {formatAddedAt(entry.read_at)}

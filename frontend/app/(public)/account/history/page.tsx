@@ -95,7 +95,9 @@ export default function HistoryPage() {
                   <div className="truncate text-sm font-medium">
                     {chapterHref ? (
                       <Link href={chapterHref} className="hover:underline">
-                        {entry.slug} — Ch. {entry.chapter_id}
+                        {entry.chapter_number != null
+                          ? `${entry.slug} — Ch. ${entry.chapter_number}`
+                          : `${entry.slug} — Chapter`}
                       </Link>
                     ) : (
                       <Link href={novelHref} className="hover:underline">
