@@ -12,10 +12,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from novelai.api import error_handlers as error_handler_module
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.app import create_app
+from novelai.api.routers.dependencies import get_db_session
 from novelai.api.routers import novels
 from novelai.api.routers.novels import (
     get_activity_log,
@@ -33,6 +37,8 @@ from novelai.core.errors import ConfigError, ExportError, NovelAIError, Pipeline
 from novelai.activity.queue import ActivityQueueService
 from novelai.activity.runner import BackgroundActivityRunner
 from novelai.activity.worker import ActivityWorkerService
+from novelai.db.base import Base
+import novelai.db.models  # noqa: F401
 from novelai.providers.gemini_provider import GeminiProvider
 from novelai.runtime.bootstrap import bootstrap
 from novelai.services.novel_request_service import NovelRequestService
@@ -90,12 +96,19 @@ def _make_app(
     translation_cache: TranslationCache | None = None,
     usage: UsageService | None = None,
     session_user: SessionUser | None = OWNER_USER,
+    db_session: Session | None = None,
 ) -> TestClient:
     """Create a TestClient with storage dependency overridden."""
     app = create_app()
     if session_user is not None:
         app.dependency_overrides[get_current_user] = lambda: session_user
     app.dependency_overrides[get_storage] = lambda: storage
+    if db_session is not None:
+        def _db_override():
+            yield db_session
+            db_session.commit()
+
+        app.dependency_overrides[get_db_session] = _db_override
     if activity_log is not None:
         app.dependency_overrides[get_activity_log] = lambda: activity_log
     if worker is not None:
@@ -771,6 +784,22 @@ def _with_api_key(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture()
+def isolated_db_session():
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=True)
+    session = SessionLocal()
+    yield session
+    session.close()
+    Base.metadata.drop_all(engine)
+    engine.dispose()
+
+
+@pytest.fixture()
 def client(_no_api_key: None) -> TestClient:
     """Owner-authenticated client."""
     bootstrap()
@@ -869,11 +898,11 @@ class TestAuth:
         assert guest_resp.status_code == 401
         assert user_resp.status_code == 403
 
-    def test_public_guest_route_still_works(self, _no_api_key: None) -> None:
+    def test_public_guest_route_still_works(self, _no_api_key: None, isolated_db_session: Session) -> None:
         bootstrap()
         storage = _fresh_storage()
         _seed_novel(storage)
-        c = _make_app(storage, session_user=None)
+        c = _make_app(storage, session_user=None, db_session=isolated_db_session)
 
         resp = c.get("/api/public/catalog")
 
