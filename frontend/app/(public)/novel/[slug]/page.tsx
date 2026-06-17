@@ -6,12 +6,14 @@ import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
+  CalendarDays,
   Clock,
   Flag,
   Library,
 } from "lucide-react";
 
 import { ContinueReading } from "@/components/public/continue-reading";
+import { GenreChip, TagChip } from "@/components/public/genre-chip";
 import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { RatingReview } from "@/components/public/rating-review";
 import { RequestControl } from "@/components/public/request-control";
@@ -32,6 +34,18 @@ function chapterDisplayTitle(chapter: PublicChapterSummary): string {
     chapter.title ||
     `Chapter ${chapter.chapter_number ?? chapter.chapter_id}`
   );
+}
+
+function formatAddedDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function chapterHref(slug: string, chapterId: string): string {
@@ -227,6 +241,39 @@ export default function NovelDetailPage() {
               status={data.status}
             />
 
+            {data.added_at && (
+              <p className="mt-3 flex items-center gap-1.5 font-metadata text-xs text-muted-foreground">
+                <CalendarDays className="h-3.5 w-3.5" />
+                Added {formatAddedDate(data.added_at)}
+              </p>
+            )}
+
+            {(data.genres?.length ?? 0) > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {(data.genres ?? []).map((genre) => (
+                  <Link
+                    key={genre}
+                    href={`/browse-novels?genre_include=${encodeURIComponent(genre)}`}
+                  >
+                    <GenreChip label={genre} className="hover:bg-accent/15 transition-colors" />
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {(data.tags?.length ?? 0) > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {(data.tags ?? []).map((tag) => (
+                  <Link
+                    key={tag}
+                    href={`/browse-novels?tag_include=${encodeURIComponent(tag)}`}
+                  >
+                    <TagChip label={tag} className="hover:bg-accent/15 transition-colors" />
+                  </Link>
+                ))}
+              </div>
+            )}
+
             <div className="mt-7 flex flex-wrap gap-3">
               {firstTranslatedChapter && (
                 <Link
@@ -281,11 +328,6 @@ export default function NovelDetailPage() {
               title="About this story"
               description="A source synopsis is not available in the current public catalog data."
             />
-            <p className="mt-5 max-w-3xl font-literary text-lg leading-8 text-muted-foreground">
-              This title is available for reading, but its public metadata does
-              not yet include a synopsis. Chapter availability and translation
-              status below are loaded from the current catalog.
-            </p>
           </section>
 
           <section>
@@ -328,10 +370,16 @@ export default function NovelDetailPage() {
             <div className="flex items-start gap-3">
               <Flag className="mt-0.5 h-4 w-4 text-muted-foreground" />
               <div>
-                <h2 className="text-sm font-medium">Report novel issue</h2>
+                <h2 className="text-sm font-medium">Report an issue</h2>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Reporting for this novel will be connected in a later backend
-                  phase.
+                  Found a problem with this novel?{" "}
+                  <Link
+                    href="/contact"
+                    className="text-accent underline transition-colors hover:text-foreground"
+                  >
+                    Contact us
+                  </Link>{" "}
+                  to report it.
                 </p>
               </div>
             </div>
