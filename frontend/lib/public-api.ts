@@ -255,8 +255,14 @@ export const publicApi = {
     );
   },
 
-  genres(): Promise<PublicGenreResponse[]> {
-    return publicGet<PublicGenreResponse[]>("/api/public/genres");
+  genres(params?: { include_adult?: boolean }): Promise<PublicGenreResponse[]> {
+    const search = new URLSearchParams();
+    if (params?.include_adult !== undefined)
+      search.set("include_adult", String(params.include_adult));
+    const qs = search.toString();
+    return publicGet<PublicGenreResponse[]>(
+      `/api/public/genres${qs ? `?${qs}` : ""}`
+    );
   },
 
   searchTags(params: TagSearchParams): Promise<PublicTagSearchResult[]> {

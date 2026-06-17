@@ -376,7 +376,7 @@ class TestPublicGenreEndpoint:
 
     def test_returns_all_active_genres(self, client) -> None:
         c, _ = client
-        resp = c.get("/api/public/genres")
+        resp = c.get("/api/public/genres?include_adult=true")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 20
@@ -399,16 +399,23 @@ class TestPublicGenreEndpoint:
         assert len(data) == 16
         assert all(not g["is_adult"] for g in data)
 
-    def test_include_adult_by_default(self, client) -> None:
+    def test_exclude_adult_by_default(self, client) -> None:
         c, _ = client
         resp = c.get("/api/public/genres")
+        data = resp.json()
+        adult_genres = [g for g in data if g["is_adult"]]
+        assert len(adult_genres) == 0
+
+    def test_adult_genres_included_when_include_adult_true(self, client) -> None:
+        c, _ = client
+        resp = c.get("/api/public/genres?include_adult=true")
         data = resp.json()
         adult_genres = [g for g in data if g["is_adult"]]
         assert len(adult_genres) == 4
 
     def test_ordered_by_display_order(self, client) -> None:
         c, _ = client
-        resp = c.get("/api/public/genres")
+        resp = c.get("/api/public/genres?include_adult=true")
         data = resp.json()
         slugs = [g["slug"] for g in data]
         assert slugs.index("isekai-tensei") < slugs.index("adult-romance")
@@ -420,7 +427,7 @@ class TestPublicGenreEndpoint:
         genre.is_active = False
         sess.commit()
 
-        resp = c.get("/api/public/genres")
+        resp = c.get("/api/public/genres?include_adult=true")
         data = resp.json()
         slugs = [g["slug"] for g in data]
         assert "poetry" not in slugs
