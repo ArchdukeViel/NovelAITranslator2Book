@@ -610,3 +610,113 @@ describe("BrowsePage genre/tag pass-through", () => {
     expect(screen.queryByText("Romance")).not.toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Catalog search (q param) tests
+// ---------------------------------------------------------------------------
+
+describe("BrowsePage catalog search", () => {
+  it("initializes search input from URL q param", () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams("q=test+query"));
+
+    renderPage();
+
+    const input = screen.getByPlaceholderText("Search by title or author") as HTMLInputElement;
+    expect(input.value).toBe("test query");
+  });
+
+  it("search input is empty when no q param", () => {
+    renderPage();
+
+    const input = screen.getByPlaceholderText("Search by title or author") as HTMLInputElement;
+    expect(input.value).toBe("");
+  });
+
+  it("shows active search indicator with quoted query", () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams("q=test+query"));
+
+    renderPage();
+
+    expect(screen.getByText(/“test query”/)).toBeInTheDocument();
+  });
+
+  it("does not show active search indicator when q param absent", () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams(""));
+
+    renderPage();
+
+    expect(screen.queryByText(/“/)).not.toBeInTheDocument();
+  });
+
+  it("submitting search form pushes q param with page=1", () => {
+    renderPage();
+
+    const input = screen.getByPlaceholderText("Search by title or author");
+    fireEvent.change(input, { target: { value: "novel" } });
+    fireEvent.click(screen.getByRole("button", { name: /search/i }));
+
+    const lastCall = mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0] as string;
+    expect(lastCall).toContain("q=novel");
+    expect(lastCall).not.toContain("page=");
+  });
+
+  it("submitting empty search removes q param", () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams("q=old"));
+
+    renderPage();
+
+    const input = screen.getByPlaceholderText("Search by title or author");
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: /search/i }));
+
+    const lastCall = mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0] as string;
+    expect(lastCall).not.toContain("q=");
+  });
+
+  it("clear filters removes q param", () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams("q=test&status=Ongoing"));
+
+    renderPage();
+
+    const clearBtns = screen.getAllByText("Clear filters");
+    act(() => { clearBtns[0].click(); });
+
+    const url = mocks.pushFn.mock.calls[0][0] as string;
+    expect(url).not.toContain("q=");
+    expect(url).not.toContain("status=");
+  });
+
+  it("renders honest no-match message when catalog empty with active filters", () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams("q=xyz"));
+
+    renderPage();
+
+    expect(
+      screen.getByText(/No novels matched this search/)
+    ).toBeInTheDocument();
+    // Multiple "Clear filters" elements appear (filter bar + empty state)
+    const clearButtons = screen.getAllByText("Clear filters");
+    expect(clearButtons.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders honest empty catalog message when no filters active", () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams(""));
+
+    renderPage();
+
+    expect(
+      screen.getByText(/catalog is empty right now/)
+    ).toBeInTheDocument();
+  });
+
+  it("does not pass include_adult=true in URL on search", () => {
+    renderPage();
+
+    const input = screen.getByPlaceholderText("Search by title or author");
+    fireEvent.change(input, { target: { value: "test" } });
+    fireEvent.click(screen.getByRole("button", { name: /search/i }));
+
+    const lastCall = mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0] as string;
+    expect(lastCall).not.toContain("include_adult");
+  });
+});
