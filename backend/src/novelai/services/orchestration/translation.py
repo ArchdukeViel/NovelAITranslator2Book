@@ -21,7 +21,11 @@ from novelai.services.orchestration.common import PreflightIssue, _make_state_da
 from novelai.sources.base import SourceAdapter
 from novelai.translation.pipeline.context import TranslationChunk
 from novelai.translation.pipeline.stages.segment import SmartSegmentStage
-from novelai.translation.qa import evaluate_translation_quality, normalize_translation_output
+from novelai.translation.qa import (
+    evaluate_translation_quality,
+    extract_unambiguous_json_object,
+    normalize_translation_output,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -689,11 +693,7 @@ def _metadata_cache_text(source_text: str, field: str) -> str:
 
 
 def _parse_metadata_batch_response(raw_text: str) -> dict[str, str]:
-    text = raw_text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", text)
-        text = re.sub(r"\s*```$", "", text).strip()
-    payload = json.loads(text)
+    payload = json.loads(extract_unambiguous_json_object(raw_text))
     if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
         raise ValueError("Metadata batch response must be a JSON object with an items array.")
     translations: dict[str, str] = {}
@@ -704,7 +704,10 @@ def _parse_metadata_batch_response(raw_text: str) -> dict[str, str]:
         translation = item.get("translation", item.get("translated_text"))
         if item_id is None or translation is None:
             continue
-        translations[str(item_id)] = str(translation)
+        normalized_id = str(item_id)
+        if normalized_id in translations:
+            raise ValueError(f"Metadata batch response duplicated item id {normalized_id!r}.")
+        translations[normalized_id] = str(translation)
     return translations
 
 

@@ -67,12 +67,14 @@ def test_build_json_translation_request_sets_json_mode_and_payload_schema() -> N
     payload = build_translation_responses_payload("gpt-5.4", request)
 
     assert request.json_output is True
-    assert "Return valid JSON only." in request.system_prompt
-    assert "paragraphs" in request.system_prompt
+    assert "Return one valid JSON object only." in request.system_prompt
+    assert "paragraph_map" in request.system_prompt
+    assert "Include every source paragraph id exactly once" in request.system_prompt
     assert payload["input"][0]["role"] == "system"
     assert payload["input"][1]["role"] == "user"
     assert payload["input"][1]["content"][0]["type"] == "input_text"
     assert payload["text"]["format"]["type"] == "json_schema"
+    assert "paragraph_map" in payload["text"]["format"]["schema"]["properties"]
 
 
 def test_format_glossary_block_is_deterministic_and_last_duplicate_wins() -> None:

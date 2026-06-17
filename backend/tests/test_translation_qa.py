@@ -136,6 +136,58 @@ def test_translation_qa_accepts_complete_paragraph_map():
     assert result.errors == []
 
 
+def test_translation_qa_extracts_fenced_structured_json():
+    chunk = _chunk()
+    result = evaluate_translation_quality(
+        source_text=chunk.source_text,
+        translated_text=(
+            '```json\n{"translated_text":"One.\\n\\nTwo.","paragraph_map":['
+            '{"chapter_id":"chapter_001","paragraph_id":"p0001","translated_text":"One."},'
+            '{"chapter_id":"chapter_001","paragraph_id":"p0002","translated_text":"Two."}'
+            "]}\n```"
+        ),
+        chunk=chunk,
+        structured_output=True,
+    )
+
+    assert result.passed
+    assert result.errors == []
+
+
+def test_translation_qa_extracts_commentary_with_single_structured_json_object():
+    chunk = _chunk()
+    result = evaluate_translation_quality(
+        source_text=chunk.source_text,
+        translated_text=(
+            'Here is the JSON:\n{"translated_text":"One.\\n\\nTwo.","paragraph_map":['
+            '{"chapter_id":"chapter_001","paragraph_id":"p0001","translated_text":"One."},'
+            '{"chapter_id":"chapter_001","paragraph_id":"p0002","translated_text":"Two."}'
+            "]}\nDone."
+        ),
+        chunk=chunk,
+        structured_output=True,
+    )
+
+    assert result.passed
+    assert result.errors == []
+
+
+def test_translation_qa_rejects_ambiguous_multiple_structured_json_objects():
+    chunk = _chunk()
+    result = evaluate_translation_quality(
+        source_text=chunk.source_text,
+        translated_text=(
+            '{"translated_text":"One.","paragraph_map":[]}\n'
+            '{"translated_text":"Two.","paragraph_map":[]}'
+        ),
+        chunk=chunk,
+        structured_output=True,
+    )
+
+    assert not result.passed
+    assert "paragraph_missing" in result.errors
+
+
 def test_translation_qa_missing_paragraph_id_fails():
     chunk = _chunk()
     result = evaluate_translation_quality(
@@ -190,7 +242,7 @@ def test_translation_qa_unexpected_paragraph_id_fails():
     assert "paragraph_unexpected" in result.errors
 
 
-def test_translation_qa_paragraph_order_mismatch_warns():
+def test_translation_qa_structured_paragraph_order_mismatch_fails():
     chunk = _chunk()
     result = evaluate_translation_quality(
         source_text=chunk.source_text,
@@ -204,8 +256,8 @@ def test_translation_qa_paragraph_order_mismatch_warns():
         structured_output=True,
     )
 
-    assert result.passed
-    assert "paragraph_order_mismatch" in result.warnings
+    assert not result.passed
+    assert "paragraph_order_mismatch" in result.errors
 
 
 def test_translation_qa_accepts_multi_chapter_mapping():
