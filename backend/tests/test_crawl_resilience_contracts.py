@@ -360,14 +360,17 @@ class TestChangedChapterUpdate:
 
 
 class TestSingleChapterFailure:
-    """Document what happens when one chapter fetch fails mid-scrape."""
+    """Document what happens when one chapter fetch fails mid-scrape.
+
+    After SOURCE-PIPELINE-FIX-2B: per-chapter failures are non-fatal.
+    The scrape continues with remaining chapters and returns a summary.
+    """
 
     @pytest.mark.asyncio
-    async def test_chapter_fetch_error_aborts_scrape(self, crawl_env) -> None:
-        """Current behavior: a SourceError from fetch_chapter_payload halts the loop.
+    async def test_chapter_fetch_error_does_not_abort_scrape(self, crawl_env) -> None:
+        """A SourceError from fetch_chapter_payload is caught and recorded.
 
-        Chapters processed before the failure ARE saved.
-        Chapters after the failure are NOT processed.
+        Remaining chapters continue processing.
         """
         storage = crawl_env["storage"]
         source = TwoChapterSource()
@@ -377,52 +380,80 @@ class TestSingleChapterFailure:
 
         service = NovelOrchestrationService(
             storage=storage,
+            translation=_NoopTranslationService(),
+            source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
             usage_service=crawl_env["usage"],
-            source_factory=lambda k: source,
-            translation=_NoopTranslationService(),
         )
 
-        # Scrape should raise
-        with pytest.raises(SourceError, match="Network timeout"):
-            await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        # Scrape should NOT raise — it returns a summary
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+
+        # Chapter 1 failed, chapter 2 succeeded
+        assert result["failed"] == 1
+        assert result["succeeded"] == 1
+        assert len(result["failures"]) == 1
+        assert result["failures"][0]["chapter_id"] == "1"
+        assert "Network timeout" in result["failures"][0]["error_message"]
 
     @pytest.mark.asyncio
-    async def test_chapter_fetch_error_leaves_partial_state(self, crawl_env) -> None:
-        """When chapter 2 fails, chapter 1 is already saved (partial success).
-
-        This documents current all-or-nothing semantics at the loop level,
-        but previously-saved chapters survive on disk.
-        """
+    async def test_chapters_after_failure_still_processed(self, crawl_env) -> None:
+        """When chapter 1 fails, chapter 2 is still fetched and saved."""
         storage = crawl_env["storage"]
         source = TwoChapterSource()
 
-        # Make chapter 2 fail (chapter 1 succeeds)
-        source.fetch_errors["novel-1/ch2"] = SourceError("Server error")
+        # Make chapter 1 fail
+        source.fetch_errors["novel-1/ch1"] = SourceError("Server error")
 
         service = NovelOrchestrationService(
             storage=storage,
+            translation=_NoopTranslationService(),
+            source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
             usage_service=crawl_env["usage"],
-            source_factory=lambda k: source,
-            translation=_NoopTranslationService(),
         )
 
-        with pytest.raises(SourceError, match="Server error"):
-            await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
 
-        # Chapter 1 was saved before chapter 2 failed
-        stored = storage.list_stored_chapters("novel-1")
-        assert len(stored) >= 1
-        ch1 = storage.load_chapter("novel-1", "1")
-        assert ch1 is not None
-        assert ch1["text"].strip()
+        # Chapter 2 was saved
+        ch2 = storage.load_chapter("novel-1", "2")
+        assert ch2 is not None
+        assert ch2["text"].strip()
+        assert result["succeeded"] == 1
 
     @pytest.mark.asyncio
-    async def test_runtime_error_from_invalid_text_aborts(self, crawl_env) -> None:
-        """When chapter payload has non-string text, RuntimeError halts scrape."""
+    async def test_failed_chapter_recorded_in_summary(self, crawl_env) -> None:
+        """Failed chapter details are recorded in the failures list."""
+        storage = crawl_env["storage"]
+        source = TwoChapterSource()
+
+        source.fetch_errors["novel-1/ch1"] = SourceError("Connection refused")
+
+        service = NovelOrchestrationService(
+            storage=storage,
+            translation=_NoopTranslationService(),
+            source_factory=lambda k: source,
+            settings_service=crawl_env["settings"],
+            translation_cache=crawl_env["cache"],
+            usage_service=crawl_env["usage"],
+        )
+
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+
+        assert len(result["failures"]) == 1
+        failure = result["failures"][0]
+        assert failure["chapter_id"] == "1"
+        assert failure["chapter_number"] == 1
+        assert failure["title"] == "Chapter 1"
+        assert failure["source_url"] == "novel-1/ch1"
+        assert failure["error_type"] == "SourceError"
+        assert "Connection refused" in failure["error_message"]
+
+    @pytest.mark.asyncio
+    async def test_invalid_text_records_failure_and_continues(self, crawl_env) -> None:
+        """Non-string text in chapter payload records failure, continues to next chapter."""
         storage = crawl_env["storage"]
         source = TwoChapterSource()
 
@@ -431,15 +462,99 @@ class TestSingleChapterFailure:
 
         service = NovelOrchestrationService(
             storage=storage,
+            translation=_NoopTranslationService(),
+            source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
             usage_service=crawl_env["usage"],
-            source_factory=lambda k: source,
-            translation=_NoopTranslationService(),
         )
 
-        with pytest.raises((RuntimeError, SourceError)):
-            await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+
+        # Chapter 1 failed (invalid text), chapter 2 succeeded
+        assert result["failed"] == 1
+        assert result["succeeded"] == 1
+        assert result["failures"][0]["error_type"] == "RuntimeError"
+
+    @pytest.mark.asyncio
+    async def test_failed_chapter_does_not_create_fake_content(self, crawl_env) -> None:
+        """A failed chapter does not produce a saved chapter file."""
+        storage = crawl_env["storage"]
+        source = TwoChapterSource()
+
+        source.fetch_errors["novel-1/ch1"] = SourceError("Timeout")
+
+        service = NovelOrchestrationService(
+            storage=storage,
+            translation=_NoopTranslationService(),
+            source_factory=lambda k: source,
+            settings_service=crawl_env["settings"],
+            translation_cache=crawl_env["cache"],
+            usage_service=crawl_env["usage"],
+        )
+
+        await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+
+        # Chapter 1 was NOT saved
+        ch1 = storage.load_chapter("novel-1", "1")
+        assert ch1 is None
+
+        # Chapter 2 WAS saved
+        ch2 = storage.load_chapter("novel-1", "2")
+        assert ch2 is not None
+
+    @pytest.mark.asyncio
+    async def test_progress_callback_receives_failure_events(self, crawl_env) -> None:
+        """Progress callback receives warning messages for failed chapters."""
+        storage = crawl_env["storage"]
+        source = TwoChapterSource()
+
+        source.fetch_errors["novel-1/ch1"] = SourceError("Timeout")
+
+        events: list[str] = []
+
+        service = NovelOrchestrationService(
+            storage=storage,
+            translation=_NoopTranslationService(),
+            source_factory=lambda k: source,
+            settings_service=crawl_env["settings"],
+            translation_cache=crawl_env["cache"],
+            usage_service=crawl_env["usage"],
+        )
+
+        result = await service.scrape_chapters(
+            "test_source", "novel-1", "all", mode="full",
+            progress_callback=events.append,
+        )
+
+        # Should contain failure message
+        failure_events = [e for e in events if "failed" in e.lower()]
+        assert len(failure_events) >= 1
+
+        # Should contain partial success summary
+        summary_events = [e for e in events if "partial success" in e.lower()]
+        assert len(summary_events) == 1
+
+    @pytest.mark.asyncio
+    async def test_all_chapters_succeed_returns_zero_failures(self, crawl_env) -> None:
+        """When all chapters succeed, failures list is empty."""
+        storage = crawl_env["storage"]
+        source = TwoChapterSource()
+
+        service = NovelOrchestrationService(
+            storage=storage,
+            translation=_NoopTranslationService(),
+            source_factory=lambda k: source,
+            settings_service=crawl_env["settings"],
+            translation_cache=crawl_env["cache"],
+            usage_service=crawl_env["usage"],
+        )
+
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+
+        assert result["failed"] == 0
+        assert result["succeeded"] == 2
+        assert result["failures"] == []
 
 
 # ---------------------------------------------------------------------------

@@ -163,13 +163,18 @@ async def test_crawler_quality_gate_prevents_empty_chapter_save():
             source_identifier="https://example.test/novel",
         )
 
-        with pytest.raises(SourceError, match="chapter_text_empty"):
-            await orchestrator.scrape_chapters(
-                source_key=source.key,
-                novel_id="empty_source_novel",
-                chapters="1",
-            )
+        result = await orchestrator.scrape_chapters(
+            source_key=source.key,
+            novel_id="empty_source_novel",
+            chapters="1",
+        )
 
+        # Empty chapter is recorded as a failure, not a raised exception
+        assert result["failed"] == 1
+        assert result["failures"][0]["error_type"] == "SourceError"
+        assert "chapter_text_empty" in result["failures"][0]["error_message"]
+
+        # No chapter content saved
         assert fixture.storage.load_chapter("empty_source_novel", "1") is None
     finally:
         fixture.cleanup()
