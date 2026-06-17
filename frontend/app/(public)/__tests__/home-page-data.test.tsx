@@ -126,7 +126,7 @@ describe("HomePage real data rendering", () => {
     // Hero title appears at least once (h1 + possibly in LatestUpdateRow/NovelCard)
     const heroTitles = screen.getAllByText("Hero Novel");
     expect(heroTitles.length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Latest Release")).toBeInTheDocument();
+    expect(screen.getByText("Featured")).toBeInTheDocument();
   });
 
   it("renders Recently Added section with catalog novels", () => {

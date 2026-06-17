@@ -199,9 +199,9 @@ describe("Home page visual honesty", () => {
     expect(screen.queryByText(/library stats/i)).not.toBeInTheDocument();
   });
 
-  it("displays Latest Release eyebrow on hero section", () => {
+  it("displays Featured eyebrow on hero section", () => {
     renderHome();
-    expect(screen.getByText("Latest Release")).toBeInTheDocument();
+    expect(screen.getByText("Featured")).toBeInTheDocument();
   });
 
   it("renders Recently Added section (renamed from Latest Updates)", () => {

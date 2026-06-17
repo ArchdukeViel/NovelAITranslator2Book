@@ -7,7 +7,7 @@ import { SectionHeader } from "@/components/public/section-header";
 
 export const metadata: Metadata = {
   title: "Ranking",
-  description: "Browse translation rankings on Dokushodo.",
+  description: "Dokushodo ranking page — ranking data is not yet available.",
 };
 
 const PLANNED_PERIODS = ["Daily", "Weekly", "Monthly", "All Time"] as const;

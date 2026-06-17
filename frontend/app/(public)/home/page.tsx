@@ -156,7 +156,7 @@ export default function HomePage() {
             <div className="mx-auto flex min-h-[85vh] max-w-7xl items-end px-4 pb-14 pt-24 sm:px-6 lg:px-8 lg:pb-20">
               <div className="max-w-3xl">
                 <span className="font-metadata text-xs uppercase tracking-[0.2em] text-accent">
-                  Latest Release
+                  Featured
                 </span>
 
                 <h1 className="mt-5 max-w-2xl font-literary text-5xl font-medium leading-tight tracking-normal text-foreground md:text-7xl">
