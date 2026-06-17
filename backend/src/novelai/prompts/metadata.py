@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from novelai.config.settings import settings
 
 METADATA_TRANSLATION_PROMPT_VERSION = "metadata-literal-v2"
@@ -31,4 +34,32 @@ def build_metadata_translation_prompt(source_text: str, field: str) -> str:
         "<source_text>\n"
         f"{source_text}\n"
         "</source_text>"
+    )
+
+
+def build_metadata_batch_translation_prompt(items: list[dict[str, Any]]) -> str:
+    target_language = settings.TRANSLATION_TARGET_LANGUAGE or "English"
+    payload = [
+        {
+            "id": str(item["id"]),
+            "field": str(item.get("field") or "text"),
+            "source_text": str(item["source_text"]),
+        }
+        for item in items
+    ]
+    return (
+        f"Translate these Japanese web novel metadata items into {target_language}.\n"
+        "Rules:\n"
+        "- Return strict JSON only. Do not include markdown or explanation.\n"
+        "- The response must be an object with an items array.\n"
+        "- Each response item must contain exactly the same id as the input item and a translation string.\n"
+        "- Preserve names, numbers, episode markers, and honorifics unless a standard English rendering exists.\n"
+        "- For author names, return only the name; omit labels such as Author or Writer.\n"
+        "- For titles and chapter titles, keep the result short and title-like; do not expand it into a summary.\n"
+        "- If an input is already in the target language, return it unchanged.\n"
+        "Expected response shape:\n"
+        '{"items":[{"id":"novel_title","translation":"..."},{"id":"chapter:123","translation":"..."}]}\n'
+        "<metadata_items>\n"
+        f"{json.dumps({'items': payload}, ensure_ascii=False, sort_keys=True)}\n"
+        "</metadata_items>"
     )
