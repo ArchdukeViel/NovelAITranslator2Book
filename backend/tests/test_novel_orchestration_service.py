@@ -408,6 +408,146 @@ async def test_scrape_metadata_logs_missing_openai_key_only_once(orchestration_e
     assert "translated_title" not in metadata
 
 
+def test_estimate_translation_requests_counts_metadata_and_body_chunks(orchestration_env) -> None:
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-1",
+        {
+            "source": "syosetu_ncode",
+            "title": "Original Novel",
+            "author": "Original Author",
+            "synopsis": "Original Synopsis",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "Chapter One"},
+                {"id": "2", "num": 2, "title": "Chapter Two"},
+            ],
+        },
+    )
+    storage.save_chapter("novel-1", "1", "a" * 3000)
+    storage.save_chapter("novel-1", "2", "\n\n".join(["b" * 3000, "c" * 3000]))
+    provider = MockTranslationProvider(key="mock", model="mock-1.0")
+    translation = StubTranslationService()
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=translation,
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    estimate = orchestrator.estimate_translation_requests(
+        source_key="syosetu_ncode",
+        novel_id="novel-1",
+        chapters="all",
+    )
+
+    assert estimate["metadata_requests"] == {
+        "title": 1,
+        "author": 1,
+        "synopsis": 1,
+        "chapter_titles": 2,
+        "total": 5,
+    }
+    assert estimate["body_requests"]["estimated_chunks"] == 3
+    assert estimate["body_requests"]["chapters_with_text"] == 2
+    assert estimate["body_requests"]["chapters_missing_text"] == []
+    assert estimate["body_requests"]["per_chapter"] == [
+        {"chapter_id": "1", "source_chars": 3000, "paragraphs": 1, "chunks": 1},
+        {"chapter_id": "2", "source_chars": 6002, "paragraphs": 2, "chunks": 2},
+    ]
+    assert estimate["total_estimated_requests"] == 8
+    assert estimate["assumptions"]["provider_calls"] is False
+    assert provider.call_count == 0
+    assert translation.calls == []
+
+
+def test_estimate_translation_requests_reports_missing_raw_chapter_text(orchestration_env) -> None:
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-1",
+        {
+            "source": "kakuyomu",
+            "title": "Original Novel",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "Chapter One"},
+                {"id": "2", "num": 2, "title": "Chapter Two"},
+            ],
+        },
+    )
+    storage.save_chapter("novel-1", "1", "available text")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=StubTranslationService(),
+        source_factory=lambda key: StubSource(),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    estimate = orchestrator.estimate_translation_requests(
+        source_key="kakuyomu",
+        novel_id="novel-1",
+        chapters="all",
+    )
+
+    assert estimate["body_requests"]["estimated_chunks"] == 1
+    assert estimate["body_requests"]["chapters_with_text"] == 1
+    assert estimate["body_requests"]["chapters_missing_text"] == ["2"]
+    assert estimate["body_requests"]["per_chapter"][0]["chapter_id"] == "1"
+
+
+def test_estimate_translation_requests_can_exclude_or_include_translated_chapters(orchestration_env) -> None:
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-1",
+        {
+            "source": "syosetu_ncode",
+            "title": "Original Novel",
+            "metadata_translation_prompt_version": "metadata-literal-v2",
+            "translated_title": "Translated Novel",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "Chapter One", "translated_title": "Translated One"},
+                {"id": "2", "num": 2, "title": "Chapter Two", "translated_title": "Translated Two"},
+            ],
+        },
+    )
+    storage.save_chapter("novel-1", "1", "already translated text")
+    storage.save_chapter("novel-1", "2", "pending text")
+    storage.save_translated_chapter("novel-1", "1", "Translated body", provider="mock", model="mock-1.0")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=StubTranslationService(),
+        source_factory=lambda key: StubSource(),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    excluded = orchestrator.estimate_translation_requests(
+        source_key="syosetu_ncode",
+        novel_id="novel-1",
+        chapters="all",
+    )
+    included = orchestrator.estimate_translation_requests(
+        source_key="syosetu_ncode",
+        novel_id="novel-1",
+        chapters="all",
+        include_already_translated=True,
+    )
+
+    assert excluded["chapters_selected"] == 2
+    assert excluded["chapters_included"] == 1
+    assert excluded["body_requests"]["chapters_skipped_translated"] == ["1"]
+    assert excluded["body_requests"]["per_chapter"] == [
+        {"chapter_id": "2", "source_chars": len("pending text"), "paragraphs": 1, "chunks": 1}
+    ]
+    assert included["chapters_included"] == 2
+    assert included["body_requests"]["chapters_skipped_translated"] == []
+    assert [item["chapter_id"] for item in included["body_requests"]["per_chapter"]] == ["1", "2"]
+
+
 @pytest.mark.asyncio
 async def test_scrape_chapters_downloads_and_stores_image_assets(orchestration_env) -> None:
     source = StubSource()

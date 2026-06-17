@@ -374,6 +374,20 @@ class SmartSegmentStage(PipelineStage):
         )
         return chunks, warnings
 
+    def estimate_chapter_chunks(
+        self,
+        *,
+        novel_id: str,
+        chapter_id: str,
+        text: str,
+    ) -> tuple[list[Paragraph], list[TranslationChunk], list[str]]:
+        """Return the current single-chapter chunking result without mutating pipeline state."""
+        paragraphs = self.split_paragraphs(text, chapter_id=chapter_id)
+        chunks, warnings = self._pack_chunks(
+            [_ChapterParagraphs(novel_id=novel_id, chapter_id=chapter_id, paragraphs=paragraphs)]
+        )
+        return paragraphs, chunks, warnings
+
     async def run(self, context: PipelineContext) -> PipelineContext:
         chapters = self._chapter_inputs(context)
         paragraphs = [paragraph for chapter in chapters for paragraph in chapter.paragraphs]

@@ -25,6 +25,7 @@ from novelai.services.orchestration.translation import (
     _translate_metadata_fields,
     _translate_text,
     polish_low_confidence_chapters,
+    estimate_translation_requests,
     retranslate_chapter,
     run_phased_translation_pipeline,
     translate_chapters,
@@ -329,6 +330,7 @@ class NovelOrchestrationService:
     run_phased_translation_pipeline = run_phased_translation_pipeline
     _translate_text = _translate_text
     _translate_metadata_fields = _translate_metadata_fields
+    estimate_translation_requests = estimate_translation_requests
     translate_chapters = translate_chapters
     retranslate_chapter = retranslate_chapter
 

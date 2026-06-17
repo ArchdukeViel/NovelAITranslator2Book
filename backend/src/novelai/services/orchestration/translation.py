@@ -12,6 +12,7 @@ from novelai.prompts import METADATA_TRANSLATION_PROMPT_VERSION, build_metadata_
 from novelai.providers.model_fallbacks import model_candidates
 from novelai.services.orchestration.common import PreflightIssue, _make_state_data
 from novelai.sources.base import SourceAdapter
+from novelai.translation.pipeline.stages.segment import SmartSegmentStage
 
 logger = logging.getLogger(__name__)
 
@@ -676,6 +677,164 @@ def _can_reuse_metadata_translation(source_text: str, previous_source: Any, prev
     if not isinstance(previous_translation, str) or not previous_translation.strip():
         return False
     return _metadata_translation_is_usable(source_text, previous_translation, field)
+
+
+def _metadata_request_needed(metadata: dict[str, Any], source_key: str, translated_key: str, field: str) -> int:
+    source_text = metadata.get(source_key)
+    if not isinstance(source_text, str) or not source_text.strip():
+        return 0
+    if metadata.get("metadata_translation_prompt_version") != METADATA_TRANSLATION_PROMPT_VERSION:
+        return 1
+    return 0 if _can_reuse_metadata_translation(source_text, source_text, metadata.get(translated_key), field) else 1
+
+
+def _chapter_title_request_needed(chapter: dict[str, Any], previous_chapter: dict[str, Any], *, can_reuse: bool) -> int:
+    chapter_title = chapter.get("title")
+    if not isinstance(chapter_title, str) or not chapter_title.strip():
+        return 0
+    if can_reuse and _can_reuse_metadata_translation(
+        chapter_title,
+        previous_chapter.get("title"),
+        previous_chapter.get("translated_title"),
+        "chapter_title",
+    ):
+        return 0
+    return 1
+
+
+def _metadata_request_estimate(
+    metadata: dict[str, Any],
+    *,
+    included_chapter_ids: set[str],
+) -> dict[str, int]:
+    title = _metadata_request_needed(metadata, "title", "translated_title", "title")
+    author = _metadata_request_needed(metadata, "author", "translated_author", "author")
+    synopsis_source_key = next(
+        (
+            key
+            for key in ("synopsis", "description", "summary")
+            if isinstance(metadata.get(key), str) and str(metadata.get(key)).strip()
+        ),
+        None,
+    )
+    synopsis = (
+        _metadata_request_needed(metadata, synopsis_source_key, "translated_synopsis", "synopsis")
+        if synopsis_source_key is not None
+        else 0
+    )
+
+    can_reuse_previous = metadata.get("metadata_translation_prompt_version") == METADATA_TRANSLATION_PROMPT_VERSION
+    chapters = metadata.get("chapters", [])
+    chapter_titles = 0
+    if isinstance(chapters, list):
+        for chapter in chapters:
+            if not isinstance(chapter, dict):
+                continue
+            chapter_id = str(chapter.get("id"))
+            if chapter_id not in included_chapter_ids:
+                continue
+            chapter_titles += _chapter_title_request_needed(chapter, chapter, can_reuse=can_reuse_previous)
+
+    total = title + author + synopsis + chapter_titles
+    return {
+        "title": title,
+        "author": author,
+        "synopsis": synopsis,
+        "chapter_titles": chapter_titles,
+        "total": total,
+    }
+
+
+def estimate_translation_requests(
+    self: Any,
+    *,
+    source_key: str,
+    novel_id: str,
+    chapters: str = "all",
+    include_already_translated: bool = False,
+) -> dict[str, Any]:
+    """Estimate current-baseline translation requests without provider calls or writes."""
+    metadata = self.storage.load_metadata(novel_id)
+    if not metadata:
+        raise RuntimeError("Metadata not found; import or scrape a novel first.")
+
+    chapter_map = {
+        int(chapter["id"]): chapter
+        for chapter in metadata.get("chapters", [])
+        if isinstance(chapter, dict) and str(chapter.get("id", "")).isdigit()
+    }
+    selected_numbers = self._selected_chapter_numbers(metadata, chapters)
+    included_numbers: list[int] = []
+    skipped_translated: list[str] = []
+    for number in selected_numbers:
+        if number not in chapter_map:
+            continue
+        chapter_id = str(number)
+        if not include_already_translated and self.storage.load_translated_chapter(novel_id, chapter_id) is not None:
+            skipped_translated.append(chapter_id)
+            continue
+        included_numbers.append(number)
+
+    included_chapter_ids = {str(number) for number in included_numbers}
+    metadata_requests = _metadata_request_estimate(metadata, included_chapter_ids=included_chapter_ids)
+
+    segment = SmartSegmentStage()
+    per_chapter: list[dict[str, Any]] = []
+    missing_text: list[str] = []
+    estimated_chunks = 0
+    for number in included_numbers:
+        chapter_id = str(number)
+        raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
+        raw_text = raw_chapter.get("text") if isinstance(raw_chapter, dict) else None
+        if not isinstance(raw_text, str):
+            missing_text.append(chapter_id)
+            continue
+
+        paragraphs, chunks_for_chapter, warnings = segment.estimate_chapter_chunks(
+            novel_id=novel_id,
+            chapter_id=chapter_id,
+            text=raw_text,
+        )
+        chapter_estimate: dict[str, Any] = {
+            "chapter_id": chapter_id,
+            "source_chars": len(raw_text),
+            "paragraphs": len(paragraphs),
+            "chunks": len(chunks_for_chapter),
+        }
+        if warnings:
+            chapter_estimate["warnings"] = warnings
+        per_chapter.append(chapter_estimate)
+        estimated_chunks += len(chunks_for_chapter)
+
+    body_requests = {
+        "estimated_chunks": estimated_chunks,
+        "chapters_with_text": len(per_chapter),
+        "chapters_missing_text": missing_text,
+        "chapters_skipped_translated": skipped_translated,
+        "per_chapter": per_chapter,
+    }
+
+    return {
+        "novel_id": novel_id,
+        "source_key": source_key,
+        "chapters_selected": len(selected_numbers),
+        "chapters_included": len(included_numbers),
+        "include_already_translated": bool(include_already_translated),
+        "metadata_requests": metadata_requests,
+        "body_requests": body_requests,
+        "total_estimated_requests": metadata_requests["total"] + estimated_chunks,
+        "assumptions": {
+            "chunk_target_chars": segment.target_chars,
+            "chunk_hard_max_chars": segment.hard_max_chars,
+            "chunk_overlap_paragraphs": segment.overlap_paragraphs,
+            "allow_multi_chapter_bundles": segment.allow_multi_chapter_bundles,
+            "max_chapters_per_bundle": segment.max_chapters_per_bundle,
+            "metadata_batching": False,
+            "adaptive_chunking": False,
+            "provider_calls": False,
+            "already_translated_chapters": "included" if include_already_translated else "excluded",
+        },
+    }
 
 
 async def _translate_metadata_fields(
