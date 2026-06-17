@@ -6,12 +6,11 @@ import { ArrowRight, BookOpen, Compass } from "lucide-react";
 import { GenreChip } from "@/components/public/genre-chip";
 import { LatestUpdateRow } from "@/components/public/latest-update-row";
 import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
-import { NovelCard } from "@/components/public/novel-card";
 import { SectionHeader } from "@/components/public/section-header";
 import { useCatalog, useGenreLabelMap } from "@/hooks/public";
 
 export default function HomePage() {
-  const { data, isPending, isError } = useCatalog({
+  const { data, isPending, isError, refetch } = useCatalog({
     sort_by: "added_at",
     order: "desc",
     page_size: 8,
@@ -27,7 +26,7 @@ export default function HomePage() {
       <main>
         <section
           className="relative isolate min-h-[85vh] overflow-hidden"
-          aria-label="Featured Dokushodo novel"
+          aria-label="Loading featured novel"
         >
           <div className="mx-auto flex min-h-[85vh] max-w-7xl items-end px-4 pb-14 pt-24 sm:px-6 lg:px-8 lg:pb-20">
             <div className="max-w-3xl">
@@ -42,7 +41,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Section skeletons matching final layout */}
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <section className="py-14">
             <div className="h-6 w-40 animate-pulse rounded bg-muted" />
@@ -50,23 +48,30 @@ export default function HomePage() {
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-16 animate-pulse rounded-lg bg-muted/60"
-                />
+                  className="flex items-center gap-3 rounded-lg bg-muted/60 p-3"
+                >
+                  <div className="h-10 w-10 shrink-0 animate-pulse rounded bg-muted" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
+                    <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+                  </div>
+                </div>
               ))}
             </div>
           </section>
-          <section className="mb-12">
-            <div className="h-6 w-36 animate-pulse rounded bg-muted" />
-            <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-64 animate-pulse rounded-lg bg-muted/60"
-                />
-              ))}
+
+          <section className="mb-16">
+            <div className="flex flex-col items-center justify-center rounded-lg bg-card/70 px-4 py-14 text-center ring-1 ring-border">
+              <div className="h-10 w-10 animate-pulse rounded-full bg-muted" />
+              <div className="mt-4 h-4 w-64 animate-pulse rounded bg-muted" />
+              <div className="mt-5 h-10 w-40 animate-pulse rounded-md bg-muted" />
             </div>
           </section>
         </div>
+
+        <span className="sr-only" role="status">
+          Loading catalog…
+        </span>
       </main>
     );
   }
@@ -83,13 +88,22 @@ export default function HomePage() {
           <p className="mt-2 text-sm text-muted-foreground">
             Something went wrong fetching novels. This is usually temporary.
           </p>
-          <Link
-            href="/browse-novels"
-            className="mt-6 inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            <Compass className="h-4 w-4" />
-            Browse the catalog
-          </Link>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              Try again
+            </button>
+            <Link
+              href="/browse-novels"
+              className="inline-flex h-11 items-center gap-2 rounded-md border border-accent/40 px-5 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
+            >
+              <Compass className="h-4 w-4" />
+              Browse the catalog
+            </Link>
+          </div>
         </div>
       </main>
     );
@@ -111,13 +125,13 @@ export default function HomePage() {
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/request-novel"
-              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              className="inline-flex h-11 items-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             >
               Request a novel
             </Link>
             <Link
               href="/browse-novels"
-              className="inline-flex items-center gap-2 rounded-md border border-accent/40 px-4 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
+              className="inline-flex h-11 items-center gap-2 rounded-md border border-accent/40 px-5 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
             >
               <Compass className="h-4 w-4" />
               Browse the catalog
@@ -238,26 +252,12 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── Latest Novels (card grid) ── */}
-        <section className="mb-12">
-          <SectionHeader
-            title="Latest Novels"
-            actionHref="/browse-novels"
-            actionLabel="Browse all"
-          />
-          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {novels.map((novel) => (
-              <NovelCard key={novel.novel_id} novel={novel} />
-            ))}
-          </div>
-        </section>
-
-        {/* ── Explore the catalog CTA ── */}
+        {/* ── Browse the catalog CTA ── */}
         <section className="mb-16">
           <div className="flex flex-col items-center justify-center rounded-lg bg-card/70 px-4 py-14 text-center ring-1 ring-border">
             <Compass className="mb-4 h-10 w-10 text-muted-foreground/50" />
             <p className="max-w-md text-sm leading-6 text-muted-foreground">
-              Search, filter, and sort the full catalog of translated novels.
+              Browse the full catalog of translated novels.
             </p>
             <Link
               href="/browse-novels"
