@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 
 import { NovelCard } from "@/components/public/novel-card";
-import { SectionHeader } from "@/components/public/section-header";
 import { StatusBadge } from "@/components/public/status-badge";
 import { useCatalog, useDebounce, useGenres } from "@/hooks/public";
 import { publicApi } from "@/lib/public-api";
@@ -874,7 +873,7 @@ export function BrowsePage({ basePath, description, title }: BrowsePageProps) {
     <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <header className="mb-10 max-w-4xl">
         <p className="font-metadata text-xs uppercase tracking-[0.22em] text-accent">
-          物語を探す
+          探索
         </p>
         <h1 className="mt-3 font-literary text-4xl font-medium tracking-normal text-foreground md:text-5xl">
           {title}
@@ -884,11 +883,7 @@ export function BrowsePage({ basePath, description, title }: BrowsePageProps) {
         </p>
       </header>
 
-      <SectionHeader
-        eyebrow="探索"
-        title="Browse the library"
-        description="Search by title or author, then narrow by status, genre, or chapter count."
-      />
+
 
       <div className="mt-6">
         <Suspense fallback={<LoadingState />}>
