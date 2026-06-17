@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 
+from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState
 from novelai.translation.pipeline.context import PipelineResult, paragraph_source_hash
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
@@ -68,15 +69,42 @@ class UnusedTranslationService(TranslationService):
 
 
 class StubTranslationService(TranslationService):
-    def __init__(self, *, final_text: str = "translated", fail: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        final_text: str = "translated",
+        fail: bool = False,
+        paragraph_prefix: str | None = None,
+    ) -> None:
         self.final_text = final_text
         self.fail = fail
+        self.paragraph_prefix = paragraph_prefix
         self.calls: list[dict[str, Any]] = []
 
     async def translate_chapter(self, **kwargs: Any) -> PipelineResult:
         self.calls.append(kwargs)
         if self.fail:
             raise RuntimeError("provider failure")
+        if self.paragraph_prefix is not None:
+            raw_text = str(kwargs.get("raw_text") or "")
+            paragraphs = [part.strip() for part in raw_text.split("\n\n") if part.strip()]
+            paragraph_map = [
+                {
+                    "chapter_id": str(kwargs.get("chapter_id") or "1"),
+                    "paragraph_id": f"p{index:04d}",
+                    "translated_text": f"{self.paragraph_prefix}{part}",
+                }
+                for index, part in enumerate(paragraphs, start=1)
+            ]
+            raw = json.dumps({"translated_text": "\n\n".join(item["translated_text"] for item in paragraph_map), "paragraph_map": paragraph_map})
+            return PipelineResult(
+                final_text="\n\n".join(item["translated_text"] for item in paragraph_map),
+                chapter_url=str(kwargs.get("chapter_url") or ""),
+                provider_key="mock",
+                provider_model="mock-1.0",
+                translations=[raw],
+                metadata={"raw_provider_translations": [raw]},
+            )
         return PipelineResult(
             final_text=self.final_text,
             chapter_url=str(kwargs.get("chapter_url") or ""),
@@ -682,6 +710,9 @@ def test_estimate_translation_requests_counts_metadata_and_body_chunks(orchestra
     assert estimate["assumptions"]["unsafe_boundary_overlap_paragraphs"] == 1
     assert estimate["assumptions"]["boundary_context_chars"] == 160
     assert estimate["assumptions"]["paragraph_hash_lineage"] is True
+    assert estimate["assumptions"]["delta_retranslation_enabled"] is True
+    assert estimate["assumptions"]["delta_require_structured_paragraph_map"] is True
+    assert estimate["assumptions"]["delta_force_full_on_unsafe"] is True
     assert provider.call_count == 0
     assert translation.calls == []
 
@@ -922,6 +953,284 @@ def test_estimate_translation_requests_delta_uses_active_segmentation_for_window
 
     assert estimate["body_requests"]["estimated_chunks"] == 2
     assert estimate["delta"]["delta_body_requests"] == 2
+
+
+def _save_delta_execution_fixture(
+    storage: StorageService,
+    *,
+    old_paragraphs: list[str],
+    new_paragraphs: list[str],
+    old_translations: list[str] | None = None,
+    structured: bool = True,
+    translated_chapter_text: str | None = None,
+) -> None:
+    storage.save_metadata(
+        "novel-delta",
+        {
+            "source": "stub",
+            "source_language": "Japanese",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter One", "url": "https://example.com/novel-delta/1"}],
+        },
+    )
+    storage.save_chapter("novel-delta", "1", "\n\n".join(new_paragraphs))
+    old_lineage = [
+        {
+            "chapter_id": "1",
+            "paragraph_id": f"p{index:04d}",
+            "paragraph_index": index,
+            "source_hash": paragraph_source_hash(text),
+            "char_count": len(text),
+        }
+        for index, text in enumerate(old_paragraphs, start=1)
+    ]
+    storage.save_translation_chunks(
+        "novel-delta",
+        [
+            {
+                "chunk_id": "c0001",
+                "chapter_ids": ["1"],
+                "paragraph_ids": [item["paragraph_id"] for item in old_lineage],
+                "paragraph_hashes": [item["source_hash"] for item in old_lineage],
+                "paragraph_lineage": old_lineage,
+                "source_text": "\n\n".join(old_paragraphs),
+                "status": "translated",
+            }
+        ],
+    )
+    if structured:
+        translations = old_translations or [f"old:{text}" for text in old_paragraphs]
+        storage.save_translation_output(
+            {
+                "output_id": "old_c0001",
+                "chunk_id": "c0001",
+                "novel_id": "novel-delta",
+                "chapter_ids": ["1"],
+                "paragraph_ids": [item["paragraph_id"] for item in old_lineage],
+                "paragraph_hashes": [item["source_hash"] for item in old_lineage],
+                "paragraph_lineage": old_lineage,
+                "translated_text": "\n\n".join(translations),
+                "structured_paragraph_map": [
+                    {
+                        "chapter_id": "1",
+                        "paragraph_id": item["paragraph_id"],
+                        "translated_text": translations[index],
+                    }
+                    for index, item in enumerate(old_lineage)
+                ],
+            }
+        )
+    if translated_chapter_text is not None:
+        storage.save_translated_chapter("novel-delta", "1", translated_chapter_text, provider="mock", model="mock-1.0")
+
+
+async def _run_delta_translate(orchestration_env, translation: StubTranslationService) -> tuple[StorageService, StubTranslationService]:
+    storage = orchestration_env["storage"]
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=translation,
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+    return storage, translation
+
+
+@pytest.mark.asyncio
+async def test_delta_disabled_preserves_full_translation_behavior(orchestration_env, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+    _save_delta_execution_fixture(
+        orchestration_env["storage"],
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+    )
+
+    storage, translation = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="full translation"))
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved["text"] == "full translation"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "delta_disabled"
+
+
+@pytest.mark.asyncio
+async def test_delta_unchanged_chapter_reuses_whole_old_output(orchestration_env) -> None:
+    _save_delta_execution_fixture(
+        orchestration_env["storage"],
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old whole chapter",
+    )
+
+    storage, translation = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="full translation"))
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved["text"] == "old whole chapter"
+    assert translation.calls == []
+    assert saved["confidence_details"]["delta"]["mode"] == "whole_chapter_unchanged"
+
+
+@pytest.mark.asyncio
+async def test_delta_changed_paragraph_translates_window_and_reassembles(orchestration_env) -> None:
+    _save_delta_execution_fixture(
+        orchestration_env["storage"],
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+    )
+
+    storage, translation = await _run_delta_translate(orchestration_env, StubTranslationService(paragraph_prefix="new:"))
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved["text"] == "new:A.\n\nnew:Bee.\n\nnew:C."
+    assert len(translation.calls) == 1
+    assert translation.calls[0]["json_output"] is True
+    assert saved["confidence_details"]["delta"]["mode"] == "delta"
+    assert saved["confidence_details"]["delta"]["newly_translated_paragraph_ids"] == ["p0001", "p0002", "p0003"]
+
+
+@pytest.mark.asyncio
+async def test_delta_inserted_paragraph_reassembles_correctly(orchestration_env) -> None:
+    _save_delta_execution_fixture(
+        orchestration_env["storage"],
+        old_paragraphs=["A.", "C."],
+        new_paragraphs=["A.", "B.", "C."],
+        old_translations=["old:A.", "old:C."],
+    )
+
+    storage, _ = await _run_delta_translate(orchestration_env, StubTranslationService(paragraph_prefix="new:"))
+
+    assert storage.load_translated_chapter("novel-delta", "1")["text"] == "new:A.\n\nnew:B.\n\nnew:C."
+
+
+@pytest.mark.asyncio
+async def test_delta_deleted_paragraph_reassembles_without_stale_translation(orchestration_env) -> None:
+    _save_delta_execution_fixture(
+        orchestration_env["storage"],
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+    )
+
+    storage, _ = await _run_delta_translate(orchestration_env, StubTranslationService(paragraph_prefix="new:"))
+
+    text = storage.load_translated_chapter("novel-delta", "1")["text"]
+    assert "old:B." not in text
+    assert text == "new:A.\n\nnew:C."
+
+
+@pytest.mark.asyncio
+async def test_delta_ambiguous_region_falls_back_to_full_translation(orchestration_env) -> None:
+    _save_delta_execution_fixture(
+        orchestration_env["storage"],
+        old_paragraphs=["A.", "X.", "X.", "C."],
+        new_paragraphs=["A.", "X.", "X.", "C."],
+        old_translations=["old:A.", "old:X1", "old:X2", "old:C."],
+    )
+
+    storage, translation = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="full fallback"))
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved["text"] == "full fallback"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "ambiguous_or_moved_region"
+
+
+@pytest.mark.asyncio
+async def test_delta_missing_lineage_falls_back_to_full_translation(orchestration_env) -> None:
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-delta",
+        {
+            "source": "stub",
+            "source_language": "Japanese",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter One", "url": "https://example.com/novel-delta/1"}],
+        },
+    )
+    storage.save_chapter("novel-delta", "1", "A.\n\nB.")
+
+    storage, _ = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="full fallback"))
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved["text"] == "full fallback"
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "missing_lineage"
+
+
+@pytest.mark.asyncio
+async def test_delta_missing_structured_map_falls_back_for_changed_chapter(orchestration_env) -> None:
+    _save_delta_execution_fixture(
+        orchestration_env["storage"],
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        structured=False,
+    )
+
+    storage, _ = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="full fallback"))
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved["text"] == "full fallback"
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "missing_structured_paragraph_map"
+
+
+@pytest.mark.asyncio
+async def test_delta_window_missing_structured_output_falls_back(orchestration_env) -> None:
+    _save_delta_execution_fixture(
+        orchestration_env["storage"],
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "Bee.", "C."],
+        old_translations=["old:A.", "old:B.", "old:C."],
+    )
+
+    storage, _ = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="plain window"))
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved["text"] == "plain window"
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "changed_window_qa_failed"
+
+
+@pytest.mark.asyncio
+async def test_force_retranslate_bypasses_delta_reuse(orchestration_env) -> None:
+    _save_delta_execution_fixture(
+        orchestration_env["storage"],
+        old_paragraphs=["A.", "B."],
+        new_paragraphs=["A.", "B."],
+        translated_chapter_text="old whole chapter",
+    )
+    storage = orchestration_env["storage"]
+    translation = StubTranslationService(final_text="forced full")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=translation,
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.translate_chapters(
+        source_key="stub",
+        novel_id="novel-delta",
+        chapters="1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+        force=True,
+    )
+
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved["text"] == "forced full"
+    assert len(translation.calls) == 1
+    assert saved["confidence_details"]["delta"]["fallback_reason"] == "force_full_translation"
 
 
 def test_estimate_translation_requests_counts_batched_unique_chapter_titles(orchestration_env) -> None:
