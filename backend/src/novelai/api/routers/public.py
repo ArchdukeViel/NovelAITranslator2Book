@@ -154,29 +154,42 @@ def _novel_summary(
     )
 
 
-def _load_taxonomy_for_novel(session: Session, slug: str) -> tuple[list[str], list[str]]:
+def _load_taxonomy_for_novel(
+    session: Session,
+    slug: str,
+    *,
+    include_adult: bool = True,
+) -> tuple[list[str], list[str], bool]:
     """Load assigned genres and tags for a novel from the DB.
 
-    Returns (genre_slugs, tag_names) ordered stably.
+    Returns (genre_slugs, tag_names, has_adult_genre) ordered stably.
     - genres: by Genre.display_order then Genre.slug
     - tags: alphabetical by Tag.name
+    - has_adult_genre: True if the novel has any genre with is_adult=True
     """
     novel = session.query(Novel).filter_by(slug=slug).one_or_none()
     if novel is None:
-        return [], []
+        return [], [], False
 
-    genre_slugs = [
-        g.slug
-        for g in novel.genres
-        if g.is_active
-    ]
+    genre_slugs = []
+    has_adult_genre = False
+    for g in novel.genres:
+        if not g.is_active:
+            continue
+        if not include_adult and g.is_adult:
+            has_adult_genre = True
+            continue
+        genre_slugs.append(g.slug)
     # Stable order: display_order then slug
     genre_slugs.sort(key=lambda s: next(
         (g.display_order for g in novel.genres if g.slug == s), 999
     ))
 
-    tag_names = sorted({t.name for t in novel.tags})
-    return genre_slugs, tag_names
+    tag_names = sorted({
+        t.name for t in novel.tags
+        if include_adult or not t.is_adult
+    })
+    return genre_slugs, tag_names, has_adult_genre
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +209,7 @@ async def catalog(
     genre_exclude: str | None = Query(default=None, description="Comma-separated genre slugs — novel must have none"),
     tag_include: str | None = Query(default=None, description="Comma-separated tag names — novel must have all"),
     tag_exclude: str | None = Query(default=None, description="Comma-separated tag names — novel must have none"),
+    include_adult: bool = Query(default=False, description="Include novels with adult/R18 genres"),
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(default=24, ge=1, le=100, description="Items per page"),
     storage: StorageService = Depends(get_storage),
@@ -222,7 +236,10 @@ async def catalog(
             continue
         if language and _optional_str(meta.get("language")) != language:
             continue
-        genres, tags = _load_taxonomy_for_novel(db, novel_id)
+        genres, tags, is_adult = _load_taxonomy_for_novel(db, novel_id, include_adult=include_adult)
+        # Exclude adult novels from public discovery unless explicitly requested
+        if not include_adult and is_adult:
+            continue
         # Taxonomy include/exclude filters
         novel_genre_set = set(genres)
         novel_tag_set = set(tags)
@@ -271,6 +288,7 @@ async def catalog(
 @router.get("/novels/{slug}", response_model=PublicNovelSummary)
 async def get_novel(
     slug: str,
+    include_adult: bool = Query(default=False, description="Include adult/R18 taxonomy terms"),
     storage: StorageService = Depends(get_storage),
     db: Session = Depends(get_db_session),
 ) -> PublicNovelSummary:
@@ -278,7 +296,7 @@ async def get_novel(
     meta = storage.load_metadata(slug)
     if meta is None:
         raise HTTPException(status_code=404, detail="Novel not found.")
-    genres, tags = _load_taxonomy_for_novel(db, slug)
+    genres, tags, _ = _load_taxonomy_for_novel(db, slug, include_adult=include_adult)
     return _novel_summary(slug, meta, storage, genres=genres, tags=tags)
 
 
@@ -343,7 +361,7 @@ async def get_chapter(
 
 @router.get("/genres", response_model=list[PublicGenreResponse])
 async def list_genres(
-    include_adult: bool = Query(default=True, description="Include adult genres"),
+    include_adult: bool = Query(default=False, description="Include adult genres"),
     db: Session = Depends(get_db_session),
 ) -> list[PublicGenreResponse]:
     """Return active genres ordered by display_order then name."""
@@ -370,7 +388,7 @@ async def list_genres(
 @router.get("/tags/search", response_model=list[PublicTagSearchResult])
 async def search_tags(
     q: str = Query(min_length=1, description="Search query — at least 2 non-whitespace characters"),
-    include_adult: bool = Query(default=True, description="Include adult tags"),
+    include_adult: bool = Query(default=False, description="Include adult tags"),
     limit: int = Query(default=10, ge=1, le=50, description="Max results"),
     db: Session = Depends(get_db_session),
 ) -> list[PublicTagSearchResult]:

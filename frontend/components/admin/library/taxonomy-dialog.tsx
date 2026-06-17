@@ -46,7 +46,7 @@ export function TaxonomyDialog({ open, novel, onClose }: TaxonomyDialogProps) {
     enabled: open && Boolean(novelId)
   });
 
-  const genresQuery = useGenres();
+  const genresQuery = useGenres({ include_adult: true });
 
   const tagSearch = useQuery({
     queryKey: ["public", "tag-search", debouncedQuery],

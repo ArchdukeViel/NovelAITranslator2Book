@@ -582,9 +582,9 @@ class TestCatalogChapterFilter:
 # ---------------------------------------------------------------------------
 
 class TestCatalogTaxonomy:
-    def _seed_genre(self, db_session, slug: str, name_ja: str, display_order: int = 0) -> None:
+    def _seed_genre(self, db_session, slug: str, name_ja: str, display_order: int = 0, **kwargs) -> None:
         from novelai.db.models.genre import Genre
-        genre = Genre(slug=slug, name_ja=name_ja, name_en=slug, display_order=display_order, is_active=True)
+        genre = Genre(slug=slug, name_ja=name_ja, name_en=slug, display_order=display_order, is_active=True, **kwargs)
         db_session.add(genre)
         db_session.commit()
 
@@ -703,6 +703,69 @@ class TestCatalogTaxonomy:
         novel = resp.json()
         assert novel["genres"] == ["romance"]
         assert novel["tags"] == ["転生"]
+
+    def test_adult_genre_novel_excluded_by_default(
+        self, client: TestClient, storage: StorageService, db_session
+    ) -> None:
+        """Novel with adult genre excluded from catalog by default."""
+        _seed_novel(storage, "adult-novel")
+        self._seed_genre(db_session, "adult-romance", "大人向け恋愛", display_order=101, is_adult=True)
+        self._assign_genre(db_session, "adult-novel", "adult-romance")
+
+        resp = client.get("/api/public/catalog")
+        assert resp.status_code == 200
+        slugs = {n["slug"] for n in resp.json()["novels"]}
+        assert "adult-novel" not in slugs
+
+    def test_adult_genre_novel_included_when_include_adult_true(
+        self, client: TestClient, storage: StorageService, db_session
+    ) -> None:
+        """Novel with adult genre included when include_adult=true."""
+        _seed_novel(storage, "adult-novel")
+        self._seed_genre(db_session, "adult-romance", "大人向け恋愛", display_order=101, is_adult=True)
+        self._assign_genre(db_session, "adult-novel", "adult-romance")
+
+        resp = client.get("/api/public/catalog?include_adult=true")
+        assert resp.status_code == 200
+        slugs = {n["slug"] for n in resp.json()["novels"]}
+        assert "adult-novel" in slugs
+
+    def test_non_adult_genre_novel_visible_by_default(
+        self, client: TestClient, storage: StorageService, db_session
+    ) -> None:
+        """Novel with non-adult genre visible in catalog by default."""
+        _seed_novel(storage, "safe-novel")
+        self._seed_genre(db_session, "fantasy", "ファンタジー")
+        self._assign_genre(db_session, "safe-novel", "fantasy")
+
+        resp = client.get("/api/public/catalog")
+        assert resp.status_code == 200
+        slugs = {n["slug"] for n in resp.json()["novels"]}
+        assert "safe-novel" in slugs
+
+    def test_novel_detail_filters_adult_genres_by_default(
+        self, client: TestClient, storage: StorageService, db_session
+    ) -> None:
+        """Novel detail returns novel but without adult genre slugs by default."""
+        _seed_novel(storage, "adult-novel")
+        self._seed_genre(db_session, "adult-romance", "大人向け恋愛", display_order=101, is_adult=True)
+        self._assign_genre(db_session, "adult-novel", "adult-romance")
+
+        resp = client.get("/api/public/novels/adult-novel")
+        assert resp.status_code == 200
+        assert resp.json()["genres"] == []
+
+    def test_novel_detail_includes_adult_genres_when_requested(
+        self, client: TestClient, storage: StorageService, db_session
+    ) -> None:
+        """Novel detail includes adult genres when include_adult=true."""
+        _seed_novel(storage, "adult-novel")
+        self._seed_genre(db_session, "adult-romance", "大人向け恋愛", display_order=101, is_adult=True)
+        self._assign_genre(db_session, "adult-novel", "adult-romance")
+
+        resp = client.get("/api/public/novels/adult-novel?include_adult=true")
+        assert resp.status_code == 200
+        assert resp.json()["genres"] == ["adult-romance"]
 
 
 # ---------------------------------------------------------------------------
@@ -1066,15 +1129,14 @@ class TestTagSearch:
         assert "dragon" not in names  # doesn't match "ad"
         assert "adult_tag" not in names  # excluded
 
-    def test_adult_tags_included_by_default(
+    def test_adult_tags_included_when_include_adult_true(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
         _seed_tag_for_tests(db_session, "adult_tag", is_adult=True)
         _seed_tag_for_tests(db_session, "adventure", "冒険")
-        resp = client.get("/api/public/tags/search?q=adult")
+        resp = client.get("/api/public/tags/search?q=adult&include_adult=true")
         assert resp.status_code == 200
-        data = resp.json()
-        assert len(data) == 1
+        assert len(data := resp.json()) == 1
         assert data[0]["name"] == "adult_tag"
         assert data[0]["is_adult"] is True
 
