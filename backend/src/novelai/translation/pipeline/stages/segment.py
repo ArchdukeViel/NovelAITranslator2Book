@@ -41,6 +41,10 @@ class SmartSegmentStage(PipelineStage):
         adaptive_chunking_enabled: bool | None = None,
         adaptive_soft_target_chars: int | None = None,
         adaptive_hard_max_chars: int | None = None,
+        conditional_overlap_enabled: bool | None = None,
+        default_overlap_paragraphs: int | None = None,
+        unsafe_boundary_overlap_paragraphs: int | None = None,
+        boundary_context_chars: int | None = None,
     ) -> None:
         self.target_chars = self._positive_int(
             target_chars if target_chars is not None else settings.TRANSLATION_TARGET_CHARS_PER_CHUNK,
@@ -82,6 +86,37 @@ class SmartSegmentStage(PipelineStage):
                 default=1,
                 allow_zero=True,
             ),
+        )
+        self.conditional_overlap_enabled = (
+            bool(settings.TRANSLATION_CONDITIONAL_OVERLAP_ENABLED)
+            if conditional_overlap_enabled is None
+            else bool(conditional_overlap_enabled)
+        )
+        self.default_overlap_paragraphs = max(
+            0,
+            self._positive_int(
+                default_overlap_paragraphs
+                if default_overlap_paragraphs is not None
+                else settings.TRANSLATION_DEFAULT_OVERLAP_PARAGRAPHS,
+                default=0,
+                allow_zero=True,
+            ),
+        )
+        self.unsafe_boundary_overlap_paragraphs = max(
+            0,
+            self._positive_int(
+                unsafe_boundary_overlap_paragraphs
+                if unsafe_boundary_overlap_paragraphs is not None
+                else settings.TRANSLATION_UNSAFE_BOUNDARY_OVERLAP_PARAGRAPHS,
+                default=1,
+                allow_zero=True,
+            ),
+        )
+        self.boundary_context_chars = self._positive_int(
+            boundary_context_chars
+            if boundary_context_chars is not None
+            else settings.TRANSLATION_BOUNDARY_CONTEXT_CHARS,
+            default=160,
         )
         self.allow_multi_chapter_bundles = (
             settings.TRANSLATION_ALLOW_MULTI_CHAPTER_BUNDLES
@@ -189,8 +224,14 @@ class SmartSegmentStage(PipelineStage):
         return ordered
 
     @staticmethod
-    def _format_chunk_source(paragraphs: list[Paragraph]) -> str:
+    def _format_chunk_source(paragraphs: list[Paragraph], *, overlap_paragraphs: list[Paragraph] | None = None) -> str:
         lines: list[str] = []
+        if overlap_paragraphs:
+            lines.append("[CONTEXT OVERLAP]")
+            lines.extend(paragraph.text for paragraph in overlap_paragraphs)
+            lines.append("[END CONTEXT OVERLAP]")
+            lines.append("")
+
         current_chapter_id: str | None = None
         for paragraph in paragraphs:
             if paragraph.chapter_id != current_chapter_id:
@@ -208,11 +249,77 @@ class SmartSegmentStage(PipelineStage):
         text = paragraph.text.strip()
         return text in {"***", "* * *", "---", "- - -", "◇◇◇", "◆◆◆"}
 
+    @staticmethod
+    def _has_protected_marker(paragraph: Paragraph) -> bool:
+        text = paragraph.text
+        return any(marker in text for marker in ("[Image:", "<ruby", "</ruby>", "{{", "}}"))
+
+    @staticmethod
+    def _quote_balance(text: str) -> int:
+        pairs = {"「": "」", "『": "』", "（": "）", "(": ")", "[": "]", "【": "】", "《": "》"}
+        closers = set(pairs.values())
+        balance = 0
+        for char in text:
+            if char in pairs:
+                balance += 1
+            elif char in closers:
+                balance -= 1
+        return balance
+
+    @staticmethod
+    def _ends_with_sentence_punctuation(paragraph: Paragraph) -> bool:
+        return paragraph.text.rstrip().endswith(("。", "！", "？", ".", "!", "?", "」", "』", "）", ")"))
+
+    @staticmethod
+    def _is_short_dialogue(paragraph: Paragraph) -> bool:
+        text = paragraph.text.strip()
+        return len(text) <= 80 and (text.startswith(("「", "『", '"')) or text.endswith(("」", "』", '"')))
+
+    def _boundary_is_unsafe(self, previous_paragraph: Paragraph, next_paragraph: Paragraph) -> bool:
+        if self._is_scene_separator(previous_paragraph):
+            return False
+        previous_balance = self._quote_balance(previous_paragraph.text)
+        next_balance = self._quote_balance(next_paragraph.text)
+        if previous_balance > 0 or next_balance < 0:
+            return True
+        if self._is_short_dialogue(previous_paragraph) and self._is_short_dialogue(next_paragraph):
+            return True
+        if self._has_protected_marker(previous_paragraph) or self._has_protected_marker(next_paragraph):
+            return True
+        if not self._ends_with_sentence_punctuation(previous_paragraph) and (
+            previous_paragraph.char_count <= 160 or next_paragraph.char_count <= 160
+        ):
+            return True
+        return False
+
+    def _source_overlap_for_boundary(
+        self,
+        previous_paragraphs: list[Paragraph],
+        next_paragraphs: list[Paragraph],
+    ) -> list[Paragraph]:
+        if not self.conditional_overlap_enabled:
+            return []
+        if not previous_paragraphs or not next_paragraphs:
+            return []
+        overlap_count = self.default_overlap_paragraphs
+        if self._boundary_is_unsafe(previous_paragraphs[-1], next_paragraphs[0]):
+            overlap_count = max(overlap_count, self.unsafe_boundary_overlap_paragraphs)
+        if overlap_count <= 0:
+            return []
+        return previous_paragraphs[-overlap_count:]
+
     def _previous_context(self, previous_paragraphs: list[Paragraph]) -> str | None:
-        if self.overlap_paragraphs <= 0 or not previous_paragraphs:
+        if not previous_paragraphs:
             return None
-        selected = previous_paragraphs[-self.overlap_paragraphs :]
-        return "\n\n".join(paragraph.text for paragraph in selected) or None
+        if not self.conditional_overlap_enabled:
+            if self.overlap_paragraphs <= 0:
+                return None
+            selected = previous_paragraphs[-self.overlap_paragraphs :]
+            return "\n\n".join(paragraph.text for paragraph in selected) or None
+        tail = "\n\n".join(paragraph.text for paragraph in previous_paragraphs)
+        if len(tail) > self.boundary_context_chars:
+            tail = tail[-self.boundary_context_chars :]
+        return tail or None
 
     def _make_chunk(
         self,
@@ -222,12 +329,13 @@ class SmartSegmentStage(PipelineStage):
         paragraphs: list[Paragraph],
         previous_paragraphs: list[Paragraph],
     ) -> TranslationChunk:
+        overlap_paragraphs = self._source_overlap_for_boundary(previous_paragraphs, paragraphs)
         return TranslationChunk(
             chunk_id=f"c{index:04d}",
             novel_id=novel_id,
             chapter_ids=self._ordered_unique(paragraph.chapter_id for paragraph in paragraphs),
             paragraph_ids=[paragraph.paragraph_id for paragraph in paragraphs],
-            source_text=self._format_chunk_source(paragraphs),
+            source_text=self._format_chunk_source(paragraphs, overlap_paragraphs=overlap_paragraphs),
             char_count=sum(paragraph.char_count for paragraph in paragraphs),
             previous_context=self._previous_context(previous_paragraphs),
             paragraph_refs=[(paragraph.chapter_id, paragraph.paragraph_id) for paragraph in paragraphs],
@@ -606,6 +714,10 @@ class SmartSegmentStage(PipelineStage):
             "adaptive_chunking_enabled": self.adaptive_chunking_enabled,
             "adaptive_soft_target_chars": self.adaptive_soft_target_chars,
             "adaptive_hard_max_chars": self.adaptive_hard_max_chars,
+            "conditional_overlap_enabled": self.conditional_overlap_enabled,
+            "default_overlap_paragraphs": self.default_overlap_paragraphs,
+            "unsafe_boundary_overlap_paragraphs": self.unsafe_boundary_overlap_paragraphs,
+            "boundary_context_chars": self.boundary_context_chars,
             "paragraph_count": len(paragraphs),
             "chunk_count": len(chunks),
             "warnings": warnings,

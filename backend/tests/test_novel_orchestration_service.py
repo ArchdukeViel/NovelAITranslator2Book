@@ -677,6 +677,10 @@ def test_estimate_translation_requests_counts_metadata_and_body_chunks(orchestra
     assert estimate["assumptions"]["adaptive_chunking"] is True
     assert estimate["assumptions"]["adaptive_soft_target_chars"] == 5800
     assert estimate["assumptions"]["adaptive_hard_max_chars"] == 7000
+    assert estimate["assumptions"]["conditional_overlap"] is True
+    assert estimate["assumptions"]["default_overlap_paragraphs"] == 0
+    assert estimate["assumptions"]["unsafe_boundary_overlap_paragraphs"] == 1
+    assert estimate["assumptions"]["boundary_context_chars"] == 160
     assert provider.call_count == 0
     assert translation.calls == []
 

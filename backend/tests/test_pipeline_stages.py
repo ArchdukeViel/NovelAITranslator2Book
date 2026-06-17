@@ -161,7 +161,12 @@ async def test_smart_segment_stage_is_deterministic():
 @pytest.mark.asyncio
 async def test_smart_segment_stage_packs_normal_chapter_by_budget():
     """Paragraphs should be packed into budget-aware chunks instead of one call per paragraph."""
-    segment = SmartSegmentStage(target_chars=25, hard_max_chars=40, overlap_paragraphs=1)
+    segment = SmartSegmentStage(
+        target_chars=25,
+        hard_max_chars=40,
+        overlap_paragraphs=1,
+        conditional_overlap_enabled=False,
+    )
     context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
     context.normalized_text = "aaaaaaaaaa\n\nbbbbbbbbbb\n\ncccccccccc\n\ndddddddddd"
 
@@ -237,7 +242,7 @@ async def test_smart_segment_stage_adaptive_balances_twelve_thousand_chars_into_
 
 @pytest.mark.asyncio
 async def test_smart_segment_stage_adaptive_preserves_refs_and_previous_context():
-    segment = SmartSegmentStage(adaptive_chunking_enabled=True, overlap_paragraphs=1)
+    segment = SmartSegmentStage(adaptive_chunking_enabled=True, boundary_context_chars=160)
     context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
     paragraphs = ["a" * 3000, "b" * 3000, "c" * 3000, "d" * 3000]
     context.normalized_text = "\n\n".join(paragraphs)
@@ -252,7 +257,109 @@ async def test_smart_segment_stage_adaptive_preserves_refs_and_previous_context(
         ("chapter_001", "p0003"),
         ("chapter_001", "p0004"),
     ]
+    assert result.translation_chunks[1].previous_context == paragraphs[1][-160:]
+
+
+@pytest.mark.asyncio
+async def test_smart_segment_stage_conditional_overlap_uses_zero_overlap_for_safe_boundary():
+    segment = SmartSegmentStage(adaptive_chunking_enabled=True)
+    context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
+    context.normalized_text = "\n\n".join(
+        [
+            ("a" * 2999) + ".",
+            ("b" * 2999) + ".",
+            ("c" * 2999) + ".",
+            ("d" * 2999) + ".",
+        ]
+    )
+
+    result = await segment.run(context)
+
+    assert len(result.translation_chunks) == 2
+    assert "[CONTEXT OVERLAP]" not in result.translation_chunks[1].source_text
+    assert result.translation_chunks[1].paragraph_ids == ["p0003", "p0004"]
+
+
+@pytest.mark.asyncio
+async def test_smart_segment_stage_conditional_overlap_uses_overlap_for_unsafe_quote_boundary():
+    segment = SmartSegmentStage(adaptive_chunking_enabled=True)
+    context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
+    unsafe_previous = "「" + ("b" * 2999)
+    context.normalized_text = "\n\n".join(
+        [
+            ("a" * 2999) + ".",
+            unsafe_previous,
+            ("c" * 2999) + ".",
+            ("d" * 2999) + ".",
+        ]
+    )
+
+    result = await segment.run(context)
+
+    second_chunk = result.translation_chunks[1]
+    assert second_chunk.paragraph_ids == ["p0003", "p0004"]
+    assert second_chunk.paragraph_refs == [("chapter_001", "p0003"), ("chapter_001", "p0004")]
+    assert second_chunk.source_text.startswith("[CONTEXT OVERLAP]\n" + unsafe_previous)
+
+
+@pytest.mark.asyncio
+async def test_smart_segment_stage_conditional_overlap_uses_zero_overlap_after_scene_separator():
+    segment = SmartSegmentStage(adaptive_chunking_enabled=True)
+    context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
+    context.normalized_text = "\n\n".join(
+        [
+            "a" * 3000,
+            "***",
+            ("b" * 2999) + ".",
+            ("c" * 2999) + ".",
+        ]
+    )
+
+    result = await segment.run(context)
+
+    assert len(result.translation_chunks) == 2
+    assert result.translation_chunks[0].paragraph_ids == ["p0001", "p0002"]
+    assert result.translation_chunks[1].paragraph_ids == ["p0003", "p0004"]
+    assert "[CONTEXT OVERLAP]" not in result.translation_chunks[1].source_text
+
+
+@pytest.mark.asyncio
+async def test_smart_segment_stage_previous_context_is_capped_without_source_duplication():
+    segment = SmartSegmentStage(adaptive_chunking_enabled=True, boundary_context_chars=25)
+    context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
+    previous_tail = "b" * 30 + "."
+    context.normalized_text = "\n\n".join(
+        [
+            "a" * 3000,
+            previous_tail,
+            ("c" * 2999) + ".",
+            ("d" * 2999) + ".",
+        ]
+    )
+
+    result = await segment.run(context)
+
+    second_chunk = result.translation_chunks[1]
+    assert second_chunk.previous_context == previous_tail[-25:]
+    assert previous_tail not in second_chunk.source_text
+    assert "[CONTEXT OVERLAP]" not in second_chunk.source_text
+
+
+@pytest.mark.asyncio
+async def test_smart_segment_stage_conditional_overlap_disabled_preserves_legacy_context():
+    segment = SmartSegmentStage(
+        adaptive_chunking_enabled=True,
+        conditional_overlap_enabled=False,
+        overlap_paragraphs=1,
+    )
+    context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
+    paragraphs = ["a" * 3000, "b" * 3000, "c" * 3000, "d" * 3000]
+    context.normalized_text = "\n\n".join(paragraphs)
+
+    result = await segment.run(context)
+
     assert result.translation_chunks[1].previous_context == paragraphs[1]
+    assert "[CONTEXT OVERLAP]" not in result.translation_chunks[1].source_text
 
 
 @pytest.mark.asyncio
