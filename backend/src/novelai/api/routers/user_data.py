@@ -146,6 +146,7 @@ class ProgressUpdate(BaseModel):
 class ProgressResponse(BaseModel):
     slug: str
     chapter_id: str | None
+    chapter_number: int | None = None
     progress_percent: float
     updated_at: datetime
 
@@ -160,10 +161,16 @@ def get_progress(
     rp = session.query(ReadingProgress).filter_by(user_id=user.user_id, novel_id=novel.id).one_or_none()
     if rp is None:
         return ProgressResponse(slug=slug, progress_percent=0.0, chapter_id=None, updated_at=_utcnow())
+    chapter_number: int | None = None
+    if rp.chapter_id is not None:
+        ch = session.query(Chapter.chapter_number).filter_by(id=rp.chapter_id).one_or_none()
+        if ch:
+            chapter_number = ch[0]
     return ProgressResponse(
         slug=slug,
         progress_percent=rp.progress_percent,
         chapter_id=str(rp.chapter_id) if rp.chapter_id is not None else None,
+        chapter_number=chapter_number,
         updated_at=rp.updated_at,
     )
 
@@ -191,10 +198,16 @@ def update_progress(
     rp.chapter_id = chapter_db_id
     rp.updated_at = _utcnow()
     session.flush()
+    chapter_number: int | None = None
+    if rp.chapter_id is not None:
+        ch = session.query(Chapter.chapter_number).filter_by(id=rp.chapter_id).one_or_none()
+        if ch:
+            chapter_number = ch[0]
     return ProgressResponse(
         slug=slug,
         progress_percent=rp.progress_percent,
         chapter_id=str(rp.chapter_id) if rp.chapter_id is not None else None,
+        chapter_number=chapter_number,
         updated_at=rp.updated_at,
     )
 

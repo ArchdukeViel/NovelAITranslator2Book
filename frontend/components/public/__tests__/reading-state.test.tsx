@@ -130,6 +130,7 @@ describe("public reading-state UI", () => {
           jsonResponse({
             slug: "demo",
             chapter_id: "7",
+            chapter_number: 7,
             progress_percent: 0,
             updated_at: "2026-06-15T00:00:00Z",
           })
@@ -163,6 +164,66 @@ describe("public reading-state UI", () => {
 
     const link = await screen.findByRole("link", { name: /start reading/i });
     expect(link).toHaveAttribute("href", "/novel/demo/chapter/1");
+  });
+
+  it("shows 'Chapter' fallback when chapter_number is null/undefined in progress", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/auth/me") {
+        return Promise.resolve(jsonResponse(user));
+      }
+      if (url === "/api/user/progress/demo") {
+        return Promise.resolve(
+          jsonResponse({
+            slug: "demo",
+            chapter_id: "99",
+            chapter_number: null,
+            progress_percent: 0.5,
+            updated_at: "2026-06-15T00:00:00Z",
+          })
+        );
+      }
+      return Promise.resolve(jsonResponse({ detail: "unexpected" }, 500));
+    });
+
+    renderWithQuery(<ContinueReading slug="demo" />);
+
+    const link = await screen.findByRole("link", { name: /continue from chapter/i });
+    expect(link).toBeInTheDocument();
+    // Link href still uses chapter_id
+    expect(link).toHaveAttribute("href", "/novel/demo/chapter/99");
+    // Raw numeric ID not shown in label
+    expect(link?.textContent).not.toContain("Ch. 99");
+  });
+
+  it("continue-reading label uses chapter_number over chapter_id", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/auth/me") {
+        return Promise.resolve(jsonResponse(user));
+      }
+      if (url === "/api/user/progress/demo") {
+        return Promise.resolve(
+          jsonResponse({
+            slug: "demo",
+            chapter_id: "42",
+            chapter_number: 7,
+            progress_percent: 0.5,
+            updated_at: "2026-06-15T00:00:00Z",
+          })
+        );
+      }
+      return Promise.resolve(jsonResponse({ detail: "unexpected" }, 500));
+    });
+
+    renderWithQuery(<ContinueReading slug="demo" />);
+
+    const link = await screen.findByRole("link", { name: /continue from ch/i });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "/novel/demo/chapter/42");
+    // Label shows chapter_number=7, not chapter_id=42
+    expect(link?.textContent).toContain("Ch. 7");
+    expect(link?.textContent).not.toContain("Ch. 42");
   });
 
   it("renders authenticated reading history entries with links", async () => {
