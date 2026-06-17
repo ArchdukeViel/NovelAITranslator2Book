@@ -25,7 +25,7 @@ export default function AccountContributionsPage() {
                 <p className="font-medium">Backend Integration Pending</p>
                 <p>
                   Real credential handling, usage tracking, and key management require secure backend support.
-                  Do not attempt to submit real API keys through any placeholder forms.
+                  Do not submit real API keys on preview screens.
                 </p>
               </div>
             </div>

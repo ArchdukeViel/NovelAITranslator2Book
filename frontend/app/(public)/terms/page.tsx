@@ -5,7 +5,7 @@ export default function TermsPage() {
     <StaticPage
       title="Terms"
       description="Terms of service content is pending final legal copy."
-      sections={[{ title: "Current status", body: "This page is a public route placeholder only." }]}
+      sections={[{ title: "Current status", body: "Final terms are being prepared for this public reader." }]}
     />
   );
 }
