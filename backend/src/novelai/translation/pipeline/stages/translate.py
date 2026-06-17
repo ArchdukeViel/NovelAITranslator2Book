@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from novelai.config.settings import settings
-from novelai.core.errors import ProviderError, ProviderErrorCode
+from novelai.core.errors import PipelineStageError, ProviderError, ProviderErrorCode
 from novelai.glossary import (
     GlossaryTerm,
     extract_term_context,
@@ -38,6 +38,8 @@ from novelai.services.usage_service import UsageService
 from novelai.storage.service import StorageService
 
 logger = logging.getLogger(__name__)
+
+MAX_ATTEMPTS_EXCEEDED_ERROR_CODE = "max_attempts_exceeded"
 
 
 def _utc_now_iso() -> str:
@@ -81,6 +83,8 @@ class TranslateStage(PipelineStage):
         self._settings = settings_service or PreferencesService()
         self._usage = usage_service or UsageService()
         self._storage = storage or StorageService()
+        configured_max_attempts = settings.TRANSLATION_MAX_ATTEMPTS_PER_CHUNK
+        self._max_attempts_per_chunk = configured_max_attempts if configured_max_attempts > 0 else 3
 
     def _resolve_provider_and_model(self, provider_key: str, model: str) -> tuple[str, str]:
         if provider_key in {"openai", "gemini"} and not self._settings.get_api_key(provider_key):
@@ -189,6 +193,35 @@ class TranslateStage(PipelineStage):
             if isinstance(value, str) and value.strip():
                 return value.strip()
         return None
+
+    def _max_attempts_exceeded_error(
+        self,
+        context: PipelineContext,
+        *,
+        chunk_id: str,
+        attempt_count: int,
+        provider_key: str | None,
+        provider_model: str | None,
+        latest_error_code: str | None,
+        latest_error_message: str | None,
+    ) -> PipelineStageError:
+        details = {
+            "chunk_id": chunk_id,
+            "attempt_count": attempt_count,
+            "max_attempts": self._max_attempts_per_chunk,
+            "provider_key": provider_key,
+            "provider_model": provider_model,
+            "latest_error_code": latest_error_code,
+            "latest_error_message": latest_error_message,
+        }
+        error = PipelineStageError(
+            f"Translation max attempts exceeded for chunk {chunk_id}: "
+            f"{attempt_count}/{self._max_attempts_per_chunk} attempts."
+        )
+        setattr(error, "error_code", MAX_ATTEMPTS_EXCEEDED_ERROR_CODE)
+        setattr(error, "details", details)
+        setattr(error, "pipeline_context", context)
+        return error
 
     @staticmethod
     def _provider_request_record(
@@ -338,7 +371,10 @@ class TranslateStage(PipelineStage):
         for stored in self._storage.load_chunk_states(novel_id=novel_id):
             chunk_id = stored.get("chunk_id") if isinstance(stored, dict) else None
             if isinstance(chunk_id, str) and chunk_id.strip():
-                context.chunk_states.setdefault(chunk_id, dict(stored))
+                context.chunk_states[chunk_id] = {
+                    **context.chunk_states.get(chunk_id, {}),
+                    **dict(stored),
+                }
 
     def _load_existing_chunk_output(
         self,
@@ -728,6 +764,7 @@ class TranslateStage(PipelineStage):
                 attempted_models: set[tuple[str, str]] = set()
                 qa_failed = context.chunk_states.get(chunk_id, {}).get("status") == ChunkTranslationStatus.QA_FAILED.value
                 last_provider_error_code: str | None = None
+                last_provider_error_message: str | None = None
                 try:
                     while True:
                         async with scheduler_lock:
@@ -760,7 +797,6 @@ class TranslateStage(PipelineStage):
                             used_provider_model = str(selection.provider_model)
 
                         attempted_models.add((used_provider_key, used_provider_model))
-                        attempt_number = int(context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0) + 1
                         cached = self._cached_translation(
                             provider_key=used_provider_key,
                             provider_model=used_provider_model,
@@ -778,7 +814,7 @@ class TranslateStage(PipelineStage):
                                 "paragraph_ids": self._paragraph_ids(chunk),
                                 "provider_key": used_provider_key,
                                 "provider_model": used_provider_model,
-                                "attempt_number": attempt_number,
+                                "attempt_number": int(context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0),
                                 "policy": scheduler.policy.value,
                                 "selection_reason": selection.reason,
                                 "status": ChunkTranslationStatus.TRANSLATED.value,
@@ -791,7 +827,7 @@ class TranslateStage(PipelineStage):
                                 context,
                                 chunk=chunk,
                                 chunk_index=chunk_index,
-                                attempt_number=attempt_number,
+                                attempt_number=int(context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0),
                                 provider_key=used_provider_key,
                                 provider_model=used_provider_model,
                                 scheduler_policy=scheduler.policy.value,
@@ -806,12 +842,44 @@ class TranslateStage(PipelineStage):
                                 provider_key=used_provider_key,
                                 provider_model=used_provider_model,
                                 cache_hit=True,
-                                attempt_number=attempt_number,
+                                attempt_number=int(context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0),
                                 scheduler_policy=scheduler.policy.value,
                                 selection_reason=selection.reason,
                             )
                             break
 
+                        current_attempts = int(context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0)
+                        if current_attempts >= self._max_attempts_per_chunk:
+                            context.chunk_states[chunk_id] = {
+                                **context.chunk_states.get(chunk_id, {}),
+                                "chunk_id": chunk_id,
+                                "novel_id": context.novel_id or "unknown_novel",
+                                "chapter_ids": self._chapter_ids(context, chunk),
+                                "paragraph_ids": self._paragraph_ids(chunk),
+                                "provider_key": used_provider_key,
+                                "provider_model": used_provider_model,
+                                "attempt_number": current_attempts,
+                                "policy": scheduler.policy.value,
+                                "selection_reason": selection.reason,
+                                "status": ChunkTranslationStatus.FAILED.value,
+                                "error_code": MAX_ATTEMPTS_EXCEEDED_ERROR_CODE,
+                                "max_attempts": self._max_attempts_per_chunk,
+                                "latest_error_code": last_provider_error_code,
+                                "latest_error_message": last_provider_error_message,
+                                "updated_at": utc_now_iso(),
+                            }
+                            self._persist_chunk_state(context, chunk_id)
+                            raise self._max_attempts_exceeded_error(
+                                context,
+                                chunk_id=chunk_id,
+                                attempt_count=current_attempts,
+                                provider_key=used_provider_key,
+                                provider_model=used_provider_model,
+                                latest_error_code=last_provider_error_code,
+                                latest_error_message=last_provider_error_message,
+                            )
+
+                        attempt_number = current_attempts + 1
                         async with scheduler_lock:
                             scheduler.record_attempt_start(used_provider_key, used_provider_model, utc_now())
                             self._save_scheduler_state(context, scheduler)
@@ -857,6 +925,7 @@ class TranslateStage(PipelineStage):
                             )
                         except ProviderError as exc:
                             last_provider_error_code = exc.provider_error_code.value
+                            last_provider_error_message = exc.message
                             async with scheduler_lock:
                                 scheduler.record_provider_error(exc, utc_now())
                                 self._save_scheduler_state(context, scheduler)

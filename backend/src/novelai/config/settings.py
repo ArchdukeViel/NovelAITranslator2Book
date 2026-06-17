@@ -90,6 +90,7 @@ class AppSettings(BaseSettings):
     TRANSLATION_CHUNK_OVERLAP_PARAGRAPHS: int = 1
     TRANSLATION_ALLOW_MULTI_CHAPTER_BUNDLES: bool = True
     TRANSLATION_MAX_CHAPTERS_PER_BUNDLE: int = 3
+    TRANSLATION_MAX_ATTEMPTS_PER_CHUNK: int = 3
     TRANSLATION_SCHEDULER_POLICY: str = "volume_first"
     TRANSLATION_MODEL_POLICY: list[dict[str, object]] = Field(
         default_factory=list,

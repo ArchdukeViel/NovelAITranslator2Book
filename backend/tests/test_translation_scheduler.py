@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import pytest
 
-from novelai.core.errors import ProviderError, ProviderErrorCode
+from novelai.core.errors import PipelineStageError, ProviderError, ProviderErrorCode
 from novelai.providers.base import TranslationProvider
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
@@ -565,9 +565,122 @@ async def test_translate_stage_cache_hit_records_skipped_attempt_without_provide
     assert scheduler_storage.list_provider_request_records(novel_id="novel1") == []
     attempts = scheduler_storage.list_chunk_attempt_records(novel_id="novel1", chunk_id="c0001")
     assert [attempt["status"] for attempt in attempts] == [ChunkAttemptStatus.SKIPPED_CACHE_HIT.value]
+    assert attempts[0]["attempt_number"] == 0
+    assert context.chunk_states["c0001"]["attempt_number"] == 0
     outputs = scheduler_storage.read_translation_output("novel1", chunk_id="c0001")
     assert isinstance(outputs, list)
     assert outputs[-1]["cache_hit"] is True
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_stops_after_max_retriable_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+    scheduler_storage: StorageService,
+    scheduler_services: tuple[TranslationCache, PreferencesService, UsageService],
+) -> None:
+    monkeypatch.setattr("novelai.translation.pipeline.stages.translate.settings.TRANSLATION_MAX_ATTEMPTS_PER_CHUNK", 2)
+    cache, preferences, usage = scheduler_services
+    provider = ScheduledProvider(
+        models=["fast", "strong", "slow"],
+        failures={
+            "fast": ProviderError(
+                ProviderErrorCode.RATE_LIMITED,
+                provider_key="mock",
+                provider_model="fast",
+                message="rate limited",
+                retry_after_seconds=21,
+            ),
+            "strong": ProviderError(
+                ProviderErrorCode.RATE_LIMITED,
+                provider_key="mock",
+                provider_model="strong",
+                message="still rate limited",
+                retry_after_seconds=42,
+            ),
+            "slow": ProviderError(
+                ProviderErrorCode.RATE_LIMITED,
+                provider_key="mock",
+                provider_model="slow",
+                message="should not be called",
+                retry_after_seconds=84,
+            ),
+        },
+    )
+    stage = TranslateStage(
+        provider_factory=lambda key: provider,
+        cache=cache,
+        settings_service=preferences,
+        usage_service=usage,
+        storage=scheduler_storage,
+    )
+
+    with pytest.raises(PipelineStageError) as caught:
+        await stage.run(_context())
+
+    assert getattr(caught.value, "error_code") == "max_attempts_exceeded"
+    assert getattr(caught.value, "details") == {
+        "chunk_id": "c0001",
+        "attempt_count": 2,
+        "max_attempts": 2,
+        "provider_key": "mock",
+        "provider_model": "slow",
+        "latest_error_code": ProviderErrorCode.RATE_LIMITED.value,
+        "latest_error_message": "still rate limited",
+    }
+    assert provider.calls == ["fast", "strong"]
+    context = getattr(caught.value, "pipeline_context")
+    assert context is not None
+    assert context.chunk_states["c0001"]["status"] == ChunkTranslationStatus.FAILED.value
+    assert context.chunk_states["c0001"]["error_code"] == "max_attempts_exceeded"
+    assert context.chunk_states["c0001"]["attempt_number"] == 2
+    failed_attempts = scheduler_storage.list_chunk_attempt_records(novel_id="novel1", chunk_id="c0001")
+    assert [attempt["error_code"] for attempt in failed_attempts] == [
+        ProviderErrorCode.RATE_LIMITED.value,
+        ProviderErrorCode.RATE_LIMITED.value,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_resume_counts_persisted_failed_attempts_toward_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+    scheduler_storage: StorageService,
+    scheduler_services: tuple[TranslationCache, PreferencesService, UsageService],
+) -> None:
+    monkeypatch.setattr("novelai.translation.pipeline.stages.translate.settings.TRANSLATION_MAX_ATTEMPTS_PER_CHUNK", 3)
+    cache, preferences, usage = scheduler_services
+    provider = ScheduledProvider(models=["fast", "strong"])
+    scheduler_storage.upsert_chunk_state(
+        {
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "chapter_ids": ["chapter_001"],
+            "paragraph_ids": ["p0001"],
+            "status": ChunkTranslationStatus.NEEDS_RETRY.value,
+            "attempt_number": 3,
+            "provider_key": "mock",
+            "provider_model": "strong",
+            "error_code": ProviderErrorCode.RATE_LIMITED.value,
+        }
+    )
+    stage = TranslateStage(
+        provider_factory=lambda key: provider,
+        cache=cache,
+        settings_service=preferences,
+        usage_service=usage,
+        storage=scheduler_storage,
+    )
+
+    with pytest.raises(PipelineStageError) as caught:
+        await stage.run(_context())
+
+    assert provider.calls == []
+    assert getattr(caught.value, "error_code") == "max_attempts_exceeded"
+    details = getattr(caught.value, "details")
+    assert details["attempt_count"] == 3
+    assert details["max_attempts"] == 3
+    context = getattr(caught.value, "pipeline_context")
+    assert context.chunk_states["c0001"]["attempt_number"] == 3
+    assert context.chunk_states["c0001"]["error_code"] == "max_attempts_exceeded"
 
 
 @pytest.mark.asyncio
@@ -620,6 +733,80 @@ async def test_translate_stage_force_retranslate_ignores_successful_chunk_output
 
     assert provider.calls == ["fast"]
     assert result.translations != ["stored translated chunk"]
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_force_retranslate_obeys_max_attempt_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+    scheduler_storage: StorageService,
+    scheduler_services: tuple[TranslationCache, PreferencesService, UsageService],
+) -> None:
+    monkeypatch.setattr("novelai.translation.pipeline.stages.translate.settings.TRANSLATION_MAX_ATTEMPTS_PER_CHUNK", 1)
+    cache, preferences, usage = scheduler_services
+    provider = ScheduledProvider(
+        models=["fast", "strong"],
+        failures={
+            "fast": ProviderError(
+                ProviderErrorCode.RATE_LIMITED,
+                provider_key="mock",
+                provider_model="fast",
+                message="rate limited",
+                retry_after_seconds=21,
+            ),
+            "strong": ProviderError(
+                ProviderErrorCode.RATE_LIMITED,
+                provider_key="mock",
+                provider_model="strong",
+                message="should not be called",
+                retry_after_seconds=42,
+            ),
+        },
+    )
+    chunk = _chunk()
+    scheduler_storage.upsert_chunk_state(
+        {
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "chapter_ids": ["chapter_001"],
+            "paragraph_ids": ["p0001"],
+            "status": ChunkTranslationStatus.TRANSLATED.value,
+            "provider_key": "mock",
+            "provider_model": "fast",
+        }
+    )
+    scheduler_storage.save_translation_output(
+        {
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "chapter_ids": ["chapter_001"],
+            "paragraph_ids": ["p0001"],
+            "translated_text": "stored translated chunk",
+            "source_text_hash": _hash_text(chunk.source_text),
+            "provider_key": "mock",
+            "provider_model": "fast",
+            "prompt_version": "translation_request_v1",
+            "glossary_hash": _hash_text(""),
+            "style_preset": None,
+            "json_output": False,
+            "consistency_mode": False,
+        }
+    )
+    context = _context()
+    context.metadata["force_retranslate"] = True
+    stage = TranslateStage(
+        provider_factory=lambda key: provider,
+        cache=cache,
+        settings_service=preferences,
+        usage_service=usage,
+        storage=scheduler_storage,
+    )
+
+    with pytest.raises(PipelineStageError) as caught:
+        await stage.run(context)
+
+    assert provider.calls == ["fast"]
+    assert getattr(caught.value, "error_code") == "max_attempts_exceeded"
+    assert getattr(caught.value, "details")["attempt_count"] == 1
 
 
 @pytest.mark.asyncio
