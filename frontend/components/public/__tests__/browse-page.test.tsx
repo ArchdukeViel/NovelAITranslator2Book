@@ -53,7 +53,7 @@ beforeEach(() => {
   searchParamsMock.mockReturnValue(new URLSearchParams(""));
   mocks.genresQuery.mockReturnValue({
     data: [
-      { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy", is_adult: false },
+      { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" },
     ],
     isPending: false,
     isError: false,
@@ -245,7 +245,7 @@ describe("BrowsePage tag filter UI", () => {
 
   it("search fires for >= 2 character query", async () => {
     mocks.searchTags.mockResolvedValue([
-      { name: "isekai", name_ja: null, is_adult: false },
+      { name: "isekai", name_ja: null },
     ]);
 
     renderPage();
@@ -266,8 +266,8 @@ describe("BrowsePage tag filter UI", () => {
 
   it("matching tags appear in typeahead", async () => {
     mocks.searchTags.mockResolvedValue([
-      { name: "isekai", name_ja: null, is_adult: false },
-      { name: "magic", name_ja: "魔法", is_adult: false },
+      { name: "isekai", name_ja: null },
+      { name: "magic", name_ja: "魔法" },
     ]);
 
     renderPage();
@@ -284,7 +284,7 @@ describe("BrowsePage tag filter UI", () => {
 
   it("selecting include tag pushes tag_include param and resets page", async () => {
     mocks.searchTags.mockResolvedValue([
-      { name: "isekai", name_ja: null, is_adult: false },
+      { name: "isekai", name_ja: null },
     ]);
 
     renderPage();
@@ -306,7 +306,7 @@ describe("BrowsePage tag filter UI", () => {
 
   it("selecting exclude tag pushes tag_exclude param", async () => {
     mocks.searchTags.mockResolvedValue([
-      { name: "action", name_ja: null, is_adult: false },
+      { name: "action", name_ja: null },
     ]);
 
     renderPage();
@@ -338,8 +338,8 @@ describe("BrowsePage tag filter UI", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("tag_include=isekai"));
 
     mocks.searchTags.mockResolvedValue([
-      { name: "isekai", name_ja: null, is_adult: false },
-      { name: "isekai-romance", name_ja: null, is_adult: false },
+      { name: "isekai", name_ja: null },
+      { name: "isekai-romance", name_ja: null },
     ]);
 
     renderPage();
@@ -371,7 +371,7 @@ describe("BrowsePage tag filter UI", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("page=3"));
 
     mocks.searchTags.mockResolvedValue([
-      { name: "isekai", name_ja: null, is_adult: false },
+      { name: "isekai", name_ja: null },
     ]);
 
     renderPage();

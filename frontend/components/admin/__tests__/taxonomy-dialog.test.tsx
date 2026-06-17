@@ -88,8 +88,8 @@ describe("TaxonomyDialog", () => {
       tags: ["fantasy"],
     });
     mockGenres.mockResolvedValue([
-      { slug: "isekai", name_ja: "異世界", name_en: "Isekai", is_adult: false },
-      { slug: "romance", name_ja: "恋愛", name_en: "Romance", is_adult: false },
+      { slug: "isekai", name_ja: "異世界", name_en: "Isekai" },
+      { slug: "romance", name_ja: "恋愛", name_en: "Romance" },
     ]);
 
     renderWithQuery(
@@ -109,8 +109,8 @@ describe("TaxonomyDialog", () => {
       tags: [],
     });
     mockGenres.mockResolvedValue([
-      { slug: "isekai", name_ja: "異世界", name_en: "Isekai", is_adult: false },
-      { slug: "romance", name_ja: "恋愛", name_en: "Romance", is_adult: false },
+      { slug: "isekai", name_ja: "異世界", name_en: "Isekai" },
+      { slug: "romance", name_ja: "恋愛", name_en: "Romance" },
     ]);
 
     renderWithQuery(
@@ -132,7 +132,7 @@ describe("TaxonomyDialog", () => {
       tags: [],
     });
     mockGenres.mockResolvedValue([
-      { slug: "isekai", name_ja: "異世界", name_en: "Isekai", is_adult: false },
+      { slug: "isekai", name_ja: "異世界", name_en: "Isekai" },
     ]);
     mockSetTaxonomy.mockResolvedValue({
       novel_id: "test-novel",
@@ -170,8 +170,8 @@ describe("TaxonomyDialog", () => {
       tags: [],
     });
     mockGenres.mockResolvedValue([
-      { slug: "isekai", name_ja: "異世界", name_en: "Isekai", is_adult: false },
-      { slug: "romance", name_ja: "恋愛", name_en: "Romance", is_adult: false },
+      { slug: "isekai", name_ja: "異世界", name_en: "Isekai" },
+      { slug: "romance", name_ja: "恋愛", name_en: "Romance" },
     ]);
     mockSetTaxonomy.mockResolvedValue({
       novel_id: "test-novel",
@@ -210,7 +210,7 @@ describe("TaxonomyDialog", () => {
     });
     mockGenres.mockResolvedValue([]);
     mockSearchTags.mockResolvedValue([
-      { name: "comedy", name_ja: "コメディ", is_adult: false },
+      { name: "comedy", name_ja: "コメディ" },
     ]);
     mockSetTaxonomy.mockResolvedValue({
       novel_id: "test-novel",
