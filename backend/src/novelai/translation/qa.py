@@ -43,6 +43,65 @@ class NormalizedTranslationOutput:
     structured: bool
 
 
+def extract_unambiguous_json_object(raw_output: str) -> str:
+    """Return the only parseable top-level JSON object in provider output."""
+
+    text = (raw_output or "").strip()
+    if not text:
+        raise ValueError("JSON response is empty.")
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    else:
+        if isinstance(payload, dict):
+            return text
+        raise ValueError("JSON response must be an object.")
+
+    candidates: list[str] = []
+    start: int | None = None
+    depth = 0
+    in_string = False
+    escaped = False
+    for index, char in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+        elif char == "}" and depth:
+            depth -= 1
+            if depth == 0 and start is not None:
+                candidates.append(text[start : index + 1])
+                start = None
+
+    parseable: list[str] = []
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            parseable.append(candidate)
+
+    if len(parseable) == 1:
+        return parseable[0]
+    if len(parseable) > 1:
+        raise ValueError("JSON response contains multiple parseable objects.")
+    raise ValueError("JSON response does not contain a valid object.")
+
+
 _CHAPTER_MARKER_RE = re.compile(r"^\[CHAPTER\s+([^\]]+)\]\s*$", re.MULTILINE)
 _PARAGRAPH_MARKER_RE = re.compile(r"^\[P\s+([^\]]+)\]\s*$", re.MULTILINE)
 _MARKER_LINE_RE = re.compile(r"^\[(?:CHAPTER\s+[^\]]+|P\s+[^\]]+)\]\s*$", re.MULTILINE)
@@ -77,8 +136,8 @@ def normalize_translation_output(raw_output: str) -> NormalizedTranslationOutput
         return NormalizedTranslationOutput(text="", paragraph_map=[], structured=False)
 
     try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
+        payload = json.loads(extract_unambiguous_json_object(text))
+    except (json.JSONDecodeError, ValueError):
         return NormalizedTranslationOutput(text=text, paragraph_map=[], structured=False)
 
     if not isinstance(payload, dict):
@@ -327,7 +386,10 @@ def _check_paragraph_map(
     if len(set(normalized_refs)) != len(normalized_refs):
         errors.append("paragraph_duplicate")
     if [ref for ref in normalized_refs if ref in expected] != expected:
-        warnings.append("paragraph_order_mismatch")
+        if structured_output:
+            errors.append("paragraph_order_mismatch")
+        else:
+            warnings.append("paragraph_order_mismatch")
     missing = [ref for ref in expected if ref not in normalized_refs]
     unexpected = [ref for ref in normalized_refs if ref not in expected]
     if missing:

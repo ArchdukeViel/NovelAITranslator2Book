@@ -76,14 +76,20 @@ JSON_SYSTEM_PROMPT_TEMPLATE = dedent(
     - Keep paragraph boundaries aligned with the source.
     - Keep names and recurring terms consistent.
     - Do not add commentary.
-    - Return valid JSON only.
+    - Return one valid JSON object only. No markdown fences or prose outside JSON.
+    - Include every source paragraph id exactly once, in source order.
+    - Copy paragraph_id values exactly from [P ...] markers.
+    - Include chapter_id when [CHAPTER ...] markers are present.
+    - translated_text values must be non-empty translations.
 
     Return this schema:
     {{
-      "paragraphs": [
+      "translated_text": "...",
+      "paragraph_map": [
         {{
-          "index": 1,
-          "translation": "..."
+          "chapter_id": "...",
+          "paragraph_id": "...",
+          "translated_text": "..."
         }}
       ]
     }}

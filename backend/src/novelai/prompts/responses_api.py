@@ -8,20 +8,22 @@ JSON_TRANSLATION_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
-        "paragraphs": {
+        "translated_text": {"type": "string"},
+        "paragraph_map": {
             "type": "array",
             "items": {
                 "type": "object",
                 "additionalProperties": False,
                 "properties": {
-                    "index": {"type": "integer"},
-                    "translation": {"type": "string"},
+                    "chapter_id": {"type": "string"},
+                    "paragraph_id": {"type": "string"},
+                    "translated_text": {"type": "string"},
                 },
-                "required": ["index", "translation"],
+                "required": ["paragraph_id", "translated_text"],
             },
         }
     },
-    "required": ["paragraphs"],
+    "required": ["translated_text", "paragraph_map"],
 }
 
 

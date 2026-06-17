@@ -228,10 +228,21 @@ class SynopsisSource(StubSource):
 
 
 class BatchMetadataProvider(MockTranslationProvider):
-    def __init__(self, *, invalid_batch_json: bool = False, omit_ids: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        invalid_batch_json: bool = False,
+        omit_ids: set[str] | None = None,
+        duplicate_first_id: bool = False,
+        fenced_batch_json: bool = False,
+        commentary_batch_json: bool = False,
+    ) -> None:
         super().__init__(key="mock", model="mock-1.0")
         self.invalid_batch_json = invalid_batch_json
         self.omit_ids = omit_ids or set()
+        self.duplicate_first_id = duplicate_first_id
+        self.fenced_batch_json = fenced_batch_json
+        self.commentary_batch_json = commentary_batch_json
         self.prompts: list[str] = []
 
     async def translate(
@@ -253,7 +264,16 @@ class BatchMetadataProvider(MockTranslationProvider):
                 for item in payload["items"]
                 if item["id"] not in self.omit_ids
             ]
-            return {"text": json.dumps({"items": items}), "metadata": {"usage": {"total_tokens": 7}}}
+            if self.duplicate_first_id and items:
+                duplicate = dict(items[0])
+                duplicate["translation"] = f"{duplicate['translation']} duplicate"
+                items.append(duplicate)
+            text = json.dumps({"items": items})
+            if self.fenced_batch_json:
+                text = f"```json\n{text}\n```"
+            if self.commentary_batch_json:
+                text = f"Here is the JSON:\n{text}\nDone."
+            return {"text": text, "metadata": {"usage": {"total_tokens": 7}}}
 
         return {"text": f"[TRANSLATED] {prompt}", "metadata": {"usage": {"total_tokens": 3}}}
 
@@ -564,6 +584,81 @@ async def test_metadata_invalid_batch_json_falls_back_to_individual_translation(
     assert translated["translated_title"] == "[TRANSLATED] Original Novel"
     assert translated["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
     assert provider.call_count == 4
+
+
+@pytest.mark.asyncio
+async def test_metadata_batch_fenced_json_is_extracted(orchestration_env) -> None:
+    provider = BatchMetadataProvider(fenced_batch_json=True)
+    metadata = {
+        "source": "syosetu_ncode",
+        "title": "Original Novel",
+        "chapters": [{"id": "1", "num": 1, "title": "Chapter One"}],
+    }
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    translated = await orchestrator._translate_metadata_fields(metadata)
+
+    assert translated["translated_title"] == "[TRANSLATED] Original Novel"
+    assert translated["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
+    assert provider.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_metadata_batch_commentary_with_single_json_object_is_extracted(orchestration_env) -> None:
+    provider = BatchMetadataProvider(commentary_batch_json=True)
+    metadata = {
+        "source": "syosetu_ncode",
+        "chapters": [{"id": "1", "num": 1, "title": "Chapter One"}],
+    }
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    translated = await orchestrator._translate_metadata_fields(metadata)
+
+    assert translated["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
+    assert provider.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_metadata_duplicate_batch_item_id_falls_back_safely(orchestration_env) -> None:
+    provider = BatchMetadataProvider(duplicate_first_id=True)
+    metadata = {
+        "source": "syosetu_ncode",
+        "chapters": [
+            {"id": "1", "num": 1, "title": "Chapter One"},
+            {"id": "2", "num": 2, "title": "Chapter Two"},
+        ],
+    }
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    translated = await orchestrator._translate_metadata_fields(metadata)
+
+    assert translated["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
+    assert translated["chapters"][1]["translated_title"] == "[TRANSLATED] Chapter Two"
+    assert provider.call_count == 3
 
 
 @pytest.mark.asyncio

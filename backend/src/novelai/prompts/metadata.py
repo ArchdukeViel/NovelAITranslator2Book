@@ -50,13 +50,14 @@ def build_metadata_batch_translation_prompt(items: list[dict[str, Any]]) -> str:
     return (
         f"Translate these Japanese web novel metadata items into {target_language}.\n"
         "Rules:\n"
-        "- Return strict JSON only. Do not include markdown or explanation.\n"
-        "- The response must be an object with an items array.\n"
-        "- Each response item must contain exactly the same id as the input item and a translation string.\n"
+        "- Return one JSON object only. No markdown fences, prose, comments, or text outside JSON.\n"
+        "- The response object must contain one key: items.\n"
+        "- Include every requested id exactly once and preserve each id byte-for-byte.\n"
+        "- Each item must be {\"id\":\"...\",\"translation\":\"...\"}.\n"
         "- Preserve names, numbers, episode markers, and honorifics unless a standard English rendering exists.\n"
         "- For author names, return only the name; omit labels such as Author or Writer.\n"
         "- For titles and chapter titles, keep the result short and title-like; do not expand it into a summary.\n"
-        "- If an input is already in the target language, return it unchanged.\n"
+        "- If an input is already in the target language or cannot be translated safely, copy it unchanged.\n"
         "Expected response shape:\n"
         '{"items":[{"id":"novel_title","translation":"..."},{"id":"chapter:123","translation":"..."}]}\n'
         "<metadata_items>\n"
