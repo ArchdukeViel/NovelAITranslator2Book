@@ -1,9 +1,20 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from typing import Any, TypedDict
 
 from novelai.shared.pipeline import PipelineEvent
+
+
+def normalize_paragraph_source_for_hash(text: str) -> str:
+    """Normalize harmless line-ending differences before hashing source paragraphs."""
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def paragraph_source_hash(text: str) -> str:
+    normalized = normalize_paragraph_source_for_hash(text)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -14,6 +25,8 @@ class Paragraph:
     chapter_id: str
     text: str
     char_count: int
+    paragraph_index: int = 0
+    source_hash: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -21,15 +34,20 @@ class Paragraph:
             "chapter_id": self.chapter_id,
             "text": self.text,
             "char_count": self.char_count,
+            "paragraph_index": self.paragraph_index,
+            "source_hash": self.source_hash or paragraph_source_hash(self.text),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Paragraph:
+        text = str(data.get("text") or "")
         return cls(
             paragraph_id=str(data["paragraph_id"]),
             chapter_id=str(data["chapter_id"]),
-            text=str(data.get("text") or ""),
-            char_count=int(data.get("char_count") or len(str(data.get("text") or ""))),
+            text=text,
+            char_count=int(data.get("char_count") or len(text)),
+            paragraph_index=int(data.get("paragraph_index") or 0),
+            source_hash=str(data.get("source_hash") or paragraph_source_hash(text)),
         )
 
 
@@ -45,6 +63,8 @@ class TranslationChunk:
     char_count: int
     previous_context: str | None = None
     paragraph_refs: list[tuple[str, str]] = field(default_factory=list)
+    paragraph_hashes: list[str] = field(default_factory=list)
+    paragraph_lineage: list[dict[str, Any]] = field(default_factory=list)
 
     def __str__(self) -> str:
         return self.source_text
@@ -62,6 +82,8 @@ class TranslationChunk:
                 {"chapter_id": chapter_id, "paragraph_id": paragraph_id}
                 for chapter_id, paragraph_id in self.paragraph_refs
             ],
+            "paragraph_hashes": list(self.paragraph_hashes),
+            "paragraph_lineage": [dict(item) for item in self.paragraph_lineage],
         }
 
     @classmethod
@@ -77,6 +99,10 @@ class TranslationChunk:
                         paragraph_refs.append((str(chapter_id), str(paragraph_id)))
                 elif isinstance(ref, (list, tuple)) and len(ref) == 2:
                     paragraph_refs.append((str(ref[0]), str(ref[1])))
+        raw_hashes = data.get("paragraph_hashes")
+        paragraph_hashes = [str(value) for value in raw_hashes] if isinstance(raw_hashes, list) else []
+        raw_lineage = data.get("paragraph_lineage")
+        paragraph_lineage = [dict(item) for item in raw_lineage if isinstance(item, dict)] if isinstance(raw_lineage, list) else []
 
         return cls(
             chunk_id=str(data["chunk_id"]),
@@ -87,6 +113,8 @@ class TranslationChunk:
             char_count=int(data.get("char_count") or len(str(data.get("source_text") or ""))),
             previous_context=str(data["previous_context"]) if data.get("previous_context") is not None else None,
             paragraph_refs=paragraph_refs,
+            paragraph_hashes=paragraph_hashes,
+            paragraph_lineage=paragraph_lineage,
         )
 
 

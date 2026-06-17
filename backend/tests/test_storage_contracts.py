@@ -31,6 +31,23 @@ def test_translation_chunk_output_and_provider_request_persistence(storage: Stor
                 "chunk_id": "c0001",
                 "chapter_ids": ["chapter_001"],
                 "paragraph_ids": ["p0001", "p0002"],
+                "paragraph_hashes": ["hash_p0001", "hash_p0002"],
+                "paragraph_lineage": [
+                    {
+                        "chapter_id": "chapter_001",
+                        "paragraph_id": "p0001",
+                        "paragraph_index": 1,
+                        "source_hash": "hash_p0001",
+                        "char_count": 12,
+                    },
+                    {
+                        "chapter_id": "chapter_001",
+                        "paragraph_id": "p0002",
+                        "paragraph_index": 2,
+                        "source_hash": "hash_p0002",
+                        "char_count": 20,
+                    },
+                ],
                 "source_text": "[CHAPTER chapter_001]\n[P p0001]\n本文",
                 "char_count": 32,
                 "provider_key": "gemini",
@@ -39,6 +56,8 @@ def test_translation_chunk_output_and_provider_request_persistence(storage: Stor
         ],
     )
     assert chunks[0]["source_text_hash"]
+    assert chunks[0]["paragraph_hashes"] == ["hash_p0001", "hash_p0002"]
+    assert chunks[0]["paragraph_lineage"][0]["paragraph_id"] == "p0001"
     assert chunks[0]["status"] == "pending"
 
     updated = storage.update_translation_chunk_status(
@@ -115,6 +134,23 @@ def test_translation_chunk_output_and_provider_request_persistence(storage: Stor
     assert "api_key" not in request
     assert "headers" not in request
     assert storage.list_provider_request_records(novel_id="novel1", success=False) == [request]
+
+
+def test_translation_chunk_records_without_paragraph_hashes_load_safely(storage: StorageService) -> None:
+    chunks = storage.save_translation_chunks(
+        "novel1",
+        [
+            {
+                "chunk_id": "legacy_c0001",
+                "chapter_ids": ["chapter_001"],
+                "paragraph_ids": ["p0001"],
+                "source_text": "Legacy source",
+            }
+        ],
+    )
+
+    assert chunks[0]["paragraph_hashes"] == []
+    assert storage.read_translation_chunks("novel1")[0]["paragraph_hashes"] == []
 
 
 def test_temporary_bundle_delete_does_not_delete_canonical_chapter_data(storage: StorageService) -> None:

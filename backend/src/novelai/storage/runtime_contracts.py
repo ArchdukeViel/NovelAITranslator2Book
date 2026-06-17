@@ -163,6 +163,7 @@ def save_translation_chunks(self: Any, novel_id: str, chunks: list[dict[str, Any
             "novel_id": normalized_novel_id,
             "chapter_ids": _list_strings(payload.get("chapter_ids") or payload.get("chapter_id")),
             "paragraph_ids": _list_strings(payload.get("paragraph_ids")),
+            "paragraph_hashes": _list_strings(payload.get("paragraph_hashes")),
             "source_text_hash": source_text_hash,
             "char_count": int(payload.get("char_count") or (len(source_text) if isinstance(source_text, str) else 0)),
             "status": str(payload.get("status") or "pending"),

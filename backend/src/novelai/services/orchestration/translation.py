@@ -1026,6 +1026,7 @@ def estimate_translation_requests(
             "max_chapters_per_bundle": segment.max_chapters_per_bundle,
             "metadata_batching": True,
             "metadata_chapter_title_batch_size": settings.TRANSLATION_METADATA_CHAPTER_TITLE_BATCH_SIZE,
+            "paragraph_hash_lineage": True,
             "provider_calls": False,
             "already_translated_chapters": "included" if include_already_translated else "excluded",
         },
