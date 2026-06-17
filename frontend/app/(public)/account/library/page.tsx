@@ -137,7 +137,7 @@ export default function LibraryPage() {
           </section>
 
           <LibrarySection
-            emptyDescription="Paused or dropped novels will appear here when the backend marks them that way."
+            emptyDescription="Paused or dropped novels will appear here when marked as such."
             emptyTitle="No dropped novels yet."
             items={library.data.filter((item) => item.status === "paused")}
             title="Dropped"
@@ -146,7 +146,7 @@ export default function LibraryPage() {
           <section>
             <h2 className="mb-3 text-xl font-semibold font-literary">Updates</h2>
             <EmptyLibraryState
-              description="Update alerts are not connected to a public backend feed yet."
+              description="New chapter notifications are not available yet."
               title="No update feed available yet."
             />
           </section>

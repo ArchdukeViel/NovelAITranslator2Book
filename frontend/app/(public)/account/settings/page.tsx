@@ -13,7 +13,7 @@ export default function AccountSettingsPage() {
       <header className="mb-8">
         <h1 className="text-3xl font-semibold tracking-normal font-literary">Account Settings</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Manage your account preferences. Some controls are scaffolded while backend account-management contracts remain limited.
+          Manage your account preferences. Some settings are not yet connected to the backend.
         </p>
       </header>
 
@@ -27,7 +27,7 @@ export default function AccountSettingsPage() {
               </div>
             </PanelHeader>
             <PanelBody>
-              <p className="text-sm text-muted-foreground">Profile editing is not connected yet.</p>
+              <p className="text-sm text-muted-foreground">Profile editing is not available yet.</p>
             </PanelBody>
           </Panel>
 
@@ -36,7 +36,7 @@ export default function AccountSettingsPage() {
               <PanelTitle className="font-literary">Linked Login Methods</PanelTitle>
             </PanelHeader>
             <PanelBody>
-              <p className="text-sm text-muted-foreground">Google OAuth is the current public login path.</p>
+              <p className="text-sm text-muted-foreground">Google OAuth is the current login method for public accounts.</p>
             </PanelBody>
           </Panel>
 
@@ -63,7 +63,7 @@ export default function AccountSettingsPage() {
               <PanelTitle className="font-literary">Privacy</PanelTitle>
             </PanelHeader>
             <PanelBody>
-              <p className="text-sm text-muted-foreground">Privacy preferences are pending a public account contract.</p>
+              <p className="text-sm text-muted-foreground">Privacy preferences are not yet available.</p>
             </PanelBody>
           </Panel>
 

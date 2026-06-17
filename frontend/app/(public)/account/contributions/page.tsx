@@ -12,7 +12,7 @@ export default function AccountContributionsPage() {
       <header className="mb-8">
         <h1 className="text-3xl font-semibold tracking-normal font-literary">Contribution Dashboard</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Manage your provider key contributions. This dashboard is currently a preview shell while the secure backend lifecycle is being implemented.
+          Manage your provider key contributions. Credential handling features are not yet available.
         </p>
       </header>
 
@@ -22,10 +22,9 @@ export default function AccountContributionsPage() {
             <div className="flex items-start gap-3">
               <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
               <div className="space-y-1 text-sm text-amber-800 dark:text-amber-200">
-                <p className="font-medium">Backend Integration Pending</p>
+                <p className="font-medium">Coming Soon</p>
                 <p>
-                  Real credential handling, usage tracking, and key management require secure backend support.
-                  Do not submit real API keys on preview screens.
+                  API key contribution features require additional security infrastructure and are not yet available.
                 </p>
               </div>
             </div>
@@ -35,22 +34,22 @@ export default function AccountContributionsPage() {
             {[
               {
                 title: "Key Health",
-                body: "Unavailable until contributed credential validation is implemented.",
+                body: "Credential validation tracking is not yet available.",
                 icon: null,
               },
               {
                 title: "Usage Stats",
-                body: "No public usage ledger is connected yet. Preview only.",
+                body: "Usage tracking is not connected yet.",
                 icon: null,
               },
               {
                 title: "Pause Contributed Keys",
-                body: "Pause controls require real credential ownership and revocation APIs.",
+                body: "Pause controls require credential ownership support that is not yet available.",
                 icon: <Lock className="h-4 w-4 text-muted-foreground" />,
               },
               {
                 title: "Remove Contributed Keys",
-                body: "Removal controls are intentionally disabled in this phase.",
+                body: "Removal controls are not yet available.",
                 icon: <Lock className="h-4 w-4 text-muted-foreground" />,
               },
             ].map(({ title, body, icon }) => (
