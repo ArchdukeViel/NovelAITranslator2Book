@@ -376,3 +376,176 @@ describe("BrowsePage tag filter UI", () => {
     expect(lastCall).not.toContain("tag_include");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Genre/tag pass-through from API to NovelCard
+// ---------------------------------------------------------------------------
+
+describe("BrowsePage genre/tag pass-through", () => {
+  it("passes genres and tags from API response through to NovelCard", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          {
+            novel_id: "n1",
+            slug: "n1",
+            title: "Novel One",
+            author: "Author One",
+            language: "ja",
+            status: "Ongoing",
+            chapter_count: 10,
+            translated_count: 3,
+            added_at: null,
+            genres: ["fantasy", "isekai"],
+            tags: ["magic", "hero"],
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BrowsePage
+          basePath="/browse-novels"
+          title="Browse"
+          description="Find novels"
+        />
+      </QueryClientProvider>
+    );
+
+    expect(screen.getByText("fantasy")).toBeInTheDocument();
+    expect(screen.getByText("isekai")).toBeInTheDocument();
+    expect(screen.getByText("magic")).toBeInTheDocument();
+    expect(screen.getByText("hero")).toBeInTheDocument();
+  });
+
+  it("renders no genre/tag chips when API returns empty arrays", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          {
+            novel_id: "n1",
+            slug: "n1",
+            title: "Novel One",
+            author: "Author One",
+            language: "ja",
+            status: "Ongoing",
+            chapter_count: 10,
+            translated_count: 3,
+            added_at: null,
+            genres: [],
+            tags: [],
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BrowsePage
+          basePath="/browse-novels"
+          title="Browse"
+          description="Find novels"
+        />
+      </QueryClientProvider>
+    );
+
+    expect(screen.queryByText("fantasy")).not.toBeInTheDocument();
+    expect(screen.queryByText("magic")).not.toBeInTheDocument();
+  });
+
+  it("renders no genre/tag chips when API returns undefined fields", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          {
+            novel_id: "n1",
+            slug: "n1",
+            title: "Novel One",
+            author: "Author One",
+            language: "ja",
+            status: "Ongoing",
+            chapter_count: 10,
+            translated_count: 3,
+            added_at: null,
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BrowsePage
+          basePath="/browse-novels"
+          title="Browse"
+          description="Find novels"
+        />
+      </QueryClientProvider>
+    );
+
+    expect(screen.getAllByText("Novel One").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("fantasy")).not.toBeInTheDocument();
+  });
+
+  it("does not display hardcoded fallback genres", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          {
+            novel_id: "n1",
+            slug: "n1",
+            title: "Novel One",
+            author: "Author One",
+            language: "ja",
+            status: "Ongoing",
+            chapter_count: 10,
+            translated_count: 3,
+            added_at: null,
+            genres: undefined,
+            tags: undefined,
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BrowsePage
+          basePath="/browse-novels"
+          title="Browse"
+          description="Find novels"
+        />
+      </QueryClientProvider>
+    );
+
+    expect(screen.queryByText("Fantasy")).not.toBeInTheDocument();
+    expect(screen.queryByText("Isekai")).not.toBeInTheDocument();
+    expect(screen.queryByText("Popular")).not.toBeInTheDocument();
+    expect(screen.queryByText("Trending")).not.toBeInTheDocument();
+    expect(screen.queryByText("Romance")).not.toBeInTheDocument();
+  });
+});
