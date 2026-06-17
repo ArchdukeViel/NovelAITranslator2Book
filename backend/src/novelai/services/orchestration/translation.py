@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import logging
 import math
@@ -18,7 +19,9 @@ from novelai.prompts import (
 from novelai.providers.model_fallbacks import model_candidates
 from novelai.services.orchestration.common import PreflightIssue, _make_state_data
 from novelai.sources.base import SourceAdapter
+from novelai.translation.pipeline.context import TranslationChunk
 from novelai.translation.pipeline.stages.segment import SmartSegmentStage
+from novelai.translation.qa import evaluate_translation_quality, normalize_translation_output
 
 logger = logging.getLogger(__name__)
 
@@ -309,7 +312,11 @@ def _preflight_translation(
             if number not in chapter_map:
                 continue
             chapter_id = str(number)
-            if self.storage.load_translated_chapter(novel_id, chapter_id) is None:
+            raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
+            has_raw_text = isinstance(raw_chapter, dict) and isinstance(raw_chapter.get("text"), str)
+            if self.storage.load_translated_chapter(novel_id, chapter_id) is None or (
+                settings.TRANSLATION_DELTA_RETRANSLATION_ENABLED and has_raw_text
+            ):
                 translatable += 1
         if translatable == 0:
             issues.append(
@@ -1279,6 +1286,265 @@ def _estimate_delta_requests(
     return base
 
 
+def _lineage_signature(lineage: list[dict[str, Any]]) -> str:
+    payload = [
+        {
+            "chapter_id": item.get("chapter_id"),
+            "paragraph_id": item.get("paragraph_id"),
+            "paragraph_index": item.get("paragraph_index"),
+            "source_hash": item.get("source_hash"),
+        }
+        for item in lineage
+    ]
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _structured_paragraphs_from_outputs(storage: Any, novel_id: str, chapter_id: str) -> dict[tuple[str, str], dict[str, str]]:
+    outputs = storage.read_translation_output(novel_id)
+    if not isinstance(outputs, list):
+        return {}
+    translated_by_ref: dict[tuple[str, str], dict[str, str]] = {}
+    for output in outputs:
+        if not isinstance(output, dict):
+            continue
+        lineage = output.get("paragraph_lineage")
+        paragraph_hash_by_ref: dict[tuple[str, str], str] = {}
+        if isinstance(lineage, list):
+            for item in lineage:
+                if not isinstance(item, dict):
+                    continue
+                normalized = _normalize_lineage_item(item, fallback_index=0)
+                if normalized is not None and normalized["chapter_id"] == chapter_id:
+                    paragraph_hash_by_ref[(normalized["chapter_id"], normalized["paragraph_id"])] = normalized["source_hash"]
+        paragraph_map = output.get("structured_paragraph_map")
+        if not isinstance(paragraph_map, list):
+            continue
+        for item in paragraph_map:
+            if not isinstance(item, dict):
+                continue
+            paragraph_id = item.get("paragraph_id")
+            translated = item.get("translated_text")
+            if paragraph_id is None or not isinstance(translated, str):
+                continue
+            mapped_chapter_id = str(item.get("chapter_id") or chapter_id)
+            if mapped_chapter_id != chapter_id:
+                continue
+            key = (mapped_chapter_id, str(paragraph_id))
+            source_hash = paragraph_hash_by_ref.get(key)
+            if source_hash is None:
+                continue
+            translated_by_ref[key] = {"translated_text": translated, "source_hash": source_hash}
+    return translated_by_ref
+
+
+def _structured_map_from_result(result: Any, window_items: list[dict[str, Any]]) -> list[str] | None:
+    raw_outputs: list[str] = []
+    metadata = getattr(result, "metadata", None)
+    if isinstance(metadata, dict):
+        raw_values = metadata.get("raw_provider_translations")
+        if isinstance(raw_values, list):
+            raw_outputs.extend(str(value) for value in raw_values if isinstance(value, str))
+        raw_value = metadata.get("raw_provider_translation")
+        if isinstance(raw_value, str):
+            raw_outputs.append(raw_value)
+    raw_translations = getattr(result, "translations", None)
+    if isinstance(raw_translations, list):
+        raw_outputs.extend(str(value) for value in raw_translations if isinstance(value, str))
+    final_text = getattr(result, "final_text", None)
+    if isinstance(final_text, str):
+        raw_outputs.append(final_text)
+
+    mapped: list[str] = []
+    for raw in raw_outputs:
+        parsed = normalize_translation_output(raw)
+        if not parsed.paragraph_map:
+            continue
+        for item in parsed.paragraph_map:
+            translated = item.get("translated_text")
+            if isinstance(translated, str):
+                mapped.append(translated)
+    if len(mapped) < len(window_items):
+        return None
+    return mapped[: len(window_items)]
+
+
+def _qa_reassembled_chapter(*, source_text: str, translated_text: str, chapter_id: str, lineage: list[dict[str, Any]]) -> dict[str, Any]:
+    chunk = TranslationChunk(
+        chunk_id="delta_final",
+        novel_id="delta",
+        chapter_ids=[chapter_id],
+        paragraph_ids=[str(item["paragraph_id"]) for item in lineage],
+        source_text=source_text,
+        char_count=len(source_text),
+        paragraph_refs=[(chapter_id, str(item["paragraph_id"])) for item in lineage],
+        paragraph_hashes=[str(item["source_hash"]) for item in lineage],
+        paragraph_lineage=[dict(item) for item in lineage],
+    )
+    result = evaluate_translation_quality(source_text=source_text, translated_text=translated_text, chunk=chunk)
+    return result.to_dict()
+
+
+async def _try_delta_translate_chapter(
+    self: Any,
+    *,
+    source: SourceAdapter | None,
+    source_key: str,
+    novel_id: str,
+    chapter_id: str,
+    chapter_url: str,
+    raw_text: str,
+    provider_key: str,
+    provider_model: str,
+    source_language: str | None,
+    target_language: str | None,
+    glossary: Any | None,
+    style_preset: str | None,
+    consistency_mode: bool,
+    job_id: str | None,
+    activity_id: str | None,
+) -> dict[str, Any]:
+    if not settings.TRANSLATION_DELTA_RETRANSLATION_ENABLED:
+        return {"applied": False, "fallback_reason": "delta_disabled"}
+
+    segment = SmartSegmentStage()
+    paragraphs, _, _ = segment.estimate_chapter_chunks(novel_id=novel_id, chapter_id=chapter_id, text=raw_text)
+    new_lineage = _lineage_from_paragraphs(paragraphs)
+    old_by_chapter, notes = _old_lineage_by_chapter(self.storage, novel_id)
+    old_lineage = old_by_chapter.get(chapter_id)
+    if not old_lineage:
+        return {"applied": False, "fallback_reason": "missing_lineage", "notes": notes}
+
+    comparison = _compare_lineage(old_lineage, new_lineage)
+    if comparison["ambiguous_new_indexes"]:
+        return {"applied": False, "fallback_reason": "ambiguous_or_moved_region"}
+
+    windows = _changed_windows_for_chapter(
+        new_items=new_lineage,
+        comparison=comparison,
+        padding=_positive_padding(settings.TRANSLATION_DELTA_WINDOW_PADDING_PARAGRAPHS),
+    )
+    existing_translation = self.storage.load_translated_chapter(novel_id, chapter_id)
+    if not windows:
+        if existing_translation and isinstance(existing_translation.get("text"), str):
+            return {
+                "applied": True,
+                "mode": "whole_chapter_unchanged",
+                "text": existing_translation["text"],
+                "provider": existing_translation.get("provider"),
+                "model": existing_translation.get("model"),
+                "provenance": {
+                    "delta_retranslation": True,
+                    "mode": "whole_chapter_unchanged",
+                    "old_lineage_signature": _lineage_signature(old_lineage),
+                    "new_lineage_signature": _lineage_signature(new_lineage),
+                    "reused_paragraph_ids": [str(item["paragraph_id"]) for item in new_lineage],
+                    "newly_translated_paragraph_ids": [],
+                    "changed_windows": [],
+                    "qa_result": {"passed": True, "warnings": [], "errors": []},
+                },
+            }
+        return {"applied": False, "fallback_reason": "missing_previous_translation"}
+
+    old_translations = _structured_paragraphs_from_outputs(self.storage, novel_id, chapter_id)
+    if settings.TRANSLATION_DELTA_REQUIRE_STRUCTURED_PARAGRAPH_MAP and not old_translations:
+        return {"applied": False, "fallback_reason": "missing_structured_paragraph_map"}
+
+    changed_indexes: set[int] = set()
+    for window in windows:
+        changed_indexes.update(range(window["start"], window["end"] + 1))
+    reused: dict[int, str] = {}
+    for index, item in enumerate(new_lineage):
+        if index in changed_indexes:
+            continue
+        key = (chapter_id, str(item["paragraph_id"]))
+        old = old_translations.get(key)
+        if old is None or old.get("source_hash") != item.get("source_hash"):
+            return {"applied": False, "fallback_reason": "missing_structured_paragraph_map"}
+        reused[index] = old["translated_text"]
+
+    newly_translated: dict[int, str] = {}
+    changed_windows_payload: list[dict[str, Any]] = []
+    for window_number, window in enumerate(windows, start=1):
+        window_items = new_lineage[window["start"] : window["end"] + 1]
+        window_text = "\n\n".join(str(item.get("text") or "") for item in window_items)
+        try:
+            result = await self.translation.translate_chapter(
+                source_adapter=source,
+                chapter_url=f"{chapter_url}#delta-window-{window_number}",
+                job_id=job_id,
+                activity_id=activity_id,
+                novel_id=novel_id,
+                chapter_id=chapter_id,
+                source_key=source_key,
+                provider_key=provider_key,
+                provider_model=provider_model,
+                source_language=source_language,
+                target_language=target_language,
+                glossary=glossary,
+                style_preset=style_preset,
+                consistency_mode=consistency_mode,
+                json_output=True,
+                force_retranslate=True,
+                raw_text=window_text,
+            )
+        except Exception:
+            if settings.TRANSLATION_DELTA_FORCE_FULL_ON_UNSAFE:
+                return {"applied": False, "fallback_reason": "changed_window_qa_failed"}
+            raise
+        mapped = _structured_map_from_result(result, window_items)
+        if mapped is None:
+            return {"applied": False, "fallback_reason": "changed_window_qa_failed"}
+        for offset, translated in enumerate(mapped):
+            newly_translated[window["start"] + offset] = translated
+        changed_windows_payload.append(
+            {
+                "chapter_id": chapter_id,
+                "start_paragraph_index": int(window_items[0]["paragraph_index"]),
+                "end_paragraph_index": int(window_items[-1]["paragraph_index"]),
+                "paragraph_hashes": [str(item["source_hash"]) for item in window_items],
+            }
+        )
+
+    final_parts: list[str] = []
+    reused_ids: list[str] = []
+    translated_ids: list[str] = []
+    for index, item in enumerate(new_lineage):
+        if index in newly_translated:
+            final_parts.append(newly_translated[index])
+            translated_ids.append(str(item["paragraph_id"]))
+        elif index in reused:
+            final_parts.append(reused[index])
+            reused_ids.append(str(item["paragraph_id"]))
+        else:
+            return {"applied": False, "fallback_reason": "incomplete_reassembly"}
+    if len(final_parts) != len(new_lineage):
+        return {"applied": False, "fallback_reason": "incomplete_reassembly"}
+
+    final_text = "\n\n".join(final_parts)
+    qa_result = _qa_reassembled_chapter(source_text=raw_text, translated_text=final_text, chapter_id=chapter_id, lineage=new_lineage)
+    if not qa_result.get("passed"):
+        return {"applied": False, "fallback_reason": "final_qa_failed", "qa_result": qa_result}
+
+    return {
+        "applied": True,
+        "mode": "delta",
+        "text": final_text,
+        "provider": provider_key,
+        "model": provider_model,
+        "provenance": {
+            "delta_retranslation": True,
+            "mode": "delta",
+            "old_lineage_signature": _lineage_signature(old_lineage),
+            "new_lineage_signature": _lineage_signature(new_lineage),
+            "reused_paragraph_ids": reused_ids,
+            "newly_translated_paragraph_ids": translated_ids,
+            "changed_windows": changed_windows_payload,
+            "qa_result": qa_result,
+        },
+    }
+
+
 def estimate_translation_requests(
     self: Any,
     *,
@@ -1384,6 +1650,9 @@ def estimate_translation_requests(
             "metadata_chapter_title_batch_size": settings.TRANSLATION_METADATA_CHAPTER_TITLE_BATCH_SIZE,
             "paragraph_hash_lineage": True,
             "delta_window_padding_paragraphs": settings.TRANSLATION_DELTA_WINDOW_PADDING_PARAGRAPHS,
+            "delta_retranslation_enabled": settings.TRANSLATION_DELTA_RETRANSLATION_ENABLED,
+            "delta_require_structured_paragraph_map": settings.TRANSLATION_DELTA_REQUIRE_STRUCTURED_PARAGRAPH_MAP,
+            "delta_force_full_on_unsafe": settings.TRANSLATION_DELTA_FORCE_FULL_ON_UNSAFE,
             "provider_calls": False,
             "already_translated_chapters": "included" if include_already_translated else "excluded",
         },
@@ -1591,7 +1860,7 @@ async def translate_chapters(
         chapter_id = str(chapter_num)
 
         existing = self.storage.load_translated_chapter(novel_id, chapter_id)
-        if existing and not force:
+        if existing and not force and not settings.TRANSLATION_DELTA_RETRANSLATION_ENABLED:
             continue
 
         state_before = self.storage.load_chapter_state(novel_id, chapter_id)
@@ -1626,6 +1895,58 @@ async def translate_chapters(
                     raw_text = raw_chapter.get("text") if isinstance(raw_chapter.get("text"), str) else None
                 raw_images = raw_chapter.get("images") if isinstance(raw_chapter.get("images"), list) else None
             chapter_url = str(chapter.get("url") or (raw_chapter or {}).get("source_url") or f"import://{novel_id}/{chapter_id}")
+            delta_fallback_reason: str | None = None
+            delta_result: dict[str, Any] | None = None
+            if raw_text is not None and not force:
+                delta_result = await _try_delta_translate_chapter(
+                    self,
+                    source=source,
+                    source_key=source_key,
+                    novel_id=novel_id,
+                    chapter_id=chapter_id,
+                    chapter_url=chapter_url,
+                    raw_text=raw_text,
+                    provider_key=effective_provider_key,
+                    provider_model=effective_provider_model,
+                    source_language=effective_source_language,
+                    target_language=effective_target_language,
+                    glossary=glossary,
+                    style_preset=style_preset,
+                    consistency_mode=consistency_mode,
+                    job_id=job_id,
+                    activity_id=activity_id,
+                )
+                if delta_result.get("applied"):
+                    translated = str(delta_result.get("text") or "")
+                    confidence_score = self._score_translation_confidence(raw_text or "", translated)
+                    polish_needed = mark_polish_needed and confidence_score < normalized_threshold
+                    self.storage.save_translated_chapter(
+                        novel_id,
+                        chapter_id,
+                        translated,
+                        provider=delta_result.get("provider") if isinstance(delta_result.get("provider"), str) else effective_provider_key,
+                        model=delta_result.get("model") if isinstance(delta_result.get("model"), str) else effective_provider_model,
+                        confidence_score=confidence_score,
+                        polish_needed=polish_needed,
+                        confidence_details={
+                            "threshold": normalized_threshold,
+                            "source_length": len((raw_text or "").strip()),
+                            "translated_length": len(translated.strip()),
+                            "style_preset": style_preset,
+                            "delta": dict(delta_result.get("provenance") or {}),
+                        },
+                    )
+                    self.storage.save_chapter_state(
+                        novel_id,
+                        chapter_id,
+                        _make_state_data(ChapterState.TRANSLATED, previous=prev_state),
+                    )
+                    self.storage.create_checkpoint(novel_id, chapter_id, "translated")
+                    continue
+                delta_fallback_reason = str(delta_result.get("fallback_reason") or "unsafe_delta")
+            elif force:
+                delta_fallback_reason = "force_full_translation"
+
             result = await self.translation.translate_chapter(
                 source_adapter=source,
                 chapter_url=chapter_url,
@@ -1662,6 +1983,11 @@ async def translate_chapters(
                     "source_length": len((raw_text or "").strip()),
                     "translated_length": len(translated.strip()),
                     "style_preset": style_preset,
+                    "delta": {
+                        "delta_retranslation": False,
+                        "mode": "full",
+                        "fallback_reason": delta_fallback_reason,
+                    } if delta_fallback_reason else None,
                 },
             )
             self.storage.save_chapter_state(
