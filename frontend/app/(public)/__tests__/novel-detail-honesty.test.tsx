@@ -348,6 +348,41 @@ describe("Novel detail page — loading and error states", () => {
     renderPage();
     expect(screen.getByText("Novel not found")).toBeInTheDocument();
   });
+
+  it("shows user-friendly message for generic novel error", async () => {
+    const { ApiError } = await import("@/lib/api");
+    const genericError = new ApiError({
+      status: 500,
+      code: "HTTP_500",
+      message: "Internal server error with sensitive details",
+    });
+
+    mocks.novelQuery.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      error: genericError,
+    });
+    renderPage();
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    // Should not contain raw error message
+    expect(screen.queryByText(/Internal server error/)).not.toBeInTheDocument();
+    // Should contain user-friendly recovery text
+    expect(screen.getByText(/Try browsing the catalog/)).toBeInTheDocument();
+  });
+
+  it("shows user-friendly message for chapters error", () => {
+    const err = new Error("Raw chapter fetch failure");
+    mocks.chaptersQuery.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      error: err,
+    });
+    renderPage();
+    expect(screen.getByText("Could not load chapters.")).toBeInTheDocument();
+    expect(screen.queryByText(/Raw chapter fetch failure/)).not.toBeInTheDocument();
+  });
 });
 
 describe("Novel detail page — adult/R18 safety", () => {

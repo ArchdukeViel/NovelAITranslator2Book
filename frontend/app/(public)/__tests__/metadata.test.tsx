@@ -297,4 +297,53 @@ describe("metadata — safety and honesty", () => {
     expect(sourceText).not.toContain("pending final policy copy");
     expect(sourceText).toContain("owner/admin reviews");
   });
+
+  it("error page does not describe itself as documentation", () => {
+    const sourceText = readFileSync(
+      "app/(public)/error/page.tsx",
+      "utf8"
+    );
+    expect(sourceText).not.toContain("documents the generic error surface");
+    expect(sourceText).not.toContain("app-level error boundary");
+    expect(sourceText).toContain("Something went wrong");
+    expect(sourceText).toContain("Browse catalog");
+  });
+
+  it("not-found page has secondary CTA and icon", () => {
+    const sourceText = readFileSync(
+      "app/not-found.tsx",
+      "utf8"
+    );
+    expect(sourceText).toContain("Browse catalog");
+    expect(sourceText).toContain("BookOpen");
+    expect(sourceText).not.toContain("only /home link without icon");
+  });
+
+  it("settings page does not contain backend jargon", () => {
+    const sourceText = readFileSync(
+      "app/(public)/account/settings/page.tsx",
+      "utf8"
+    );
+    expect(sourceText.toLowerCase()).not.toContain("backend");
+    expect(sourceText).not.toContain("Google OAuth");
+  });
+
+  it("request-novel page does not contain backend or API jargon", () => {
+    const sourceText = readFileSync(
+      "app/(public)/request-novel/page.tsx",
+      "utf8"
+    );
+    expect(sourceText.toLowerCase()).not.toContain("backend");
+    expect(sourceText).not.toContain("behavior phase");
+  });
+
+  it("contribute page does not contain backend jargon", () => {
+    const sourceText = readFileSync(
+      "app/(public)/contribute/page.tsx",
+      "utf8"
+    );
+    expect(sourceText.toLowerCase()).not.toContain("backend");
+    expect(sourceText).not.toContain("lifecycle");
+    expect(sourceText).not.toContain("gated");
+  });
 });

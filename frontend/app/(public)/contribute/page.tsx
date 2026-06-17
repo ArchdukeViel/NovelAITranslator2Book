@@ -12,7 +12,7 @@ export default function ContributePage() {
         <h1 className="text-3xl font-semibold tracking-normal font-literary">Contribute</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
           Help support the translation capacity of this platform.
-          Public provider/API key contribution is intentionally gated until the secure backend lifecycle exists.
+          Public key contribution is not available yet.
         </p>
       </header>
 
@@ -28,8 +28,8 @@ export default function ContributePage() {
                 Your key will be used exclusively for translation tasks, respecting rate limits and usage quotas.
               </p>
               <p>
-                <strong className="text-foreground">Important:</strong> This feature requires a future gated backend.
-                Do not submit API keys here. Real credential handling must happen through secure backend support.
+                <strong className="text-foreground">Important:</strong> This feature is not available yet.
+                Do not submit API keys here.
               </p>
             </PanelBody>
           </Panel>
@@ -43,7 +43,7 @@ export default function ContributePage() {
                 <Shield className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
                 <div className="space-y-2 text-sm text-muted-foreground">
                   <p>
-                    The platform takes credential security seriously. When the backend contribution lifecycle is implemented,
+                    The platform takes credential security seriously. When key management is available,
                     keys will be encrypted at rest and masked in all UI displays.
                   </p>
                   <p>
@@ -64,14 +64,14 @@ export default function ContributePage() {
               <select
                 className="h-9 w-full rounded-md border border-border bg-muted px-3 text-sm disabled:opacity-50"
                 disabled
-                aria-label="Provider selection (disabled pending backend support)"
+                aria-label="Provider selection (disabled)"
               >
                 <option>Select a provider...</option>
                 <option>Gemini</option>
                 <option>OpenAI</option>
               </select>
               <p className="text-xs text-muted-foreground">
-                Provider selection and key submission are disabled until backend support is available.
+                Provider selection and key submission are not available yet.
               </p>
             </PanelBody>
           </Panel>

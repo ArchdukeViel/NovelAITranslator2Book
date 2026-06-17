@@ -24,7 +24,6 @@ import { ApiError } from "@/lib/api";
 import {
   authorOrFallback,
   sortChaptersAscending,
-  toReaderError,
 } from "@/lib/public-format";
 import type { PublicChapterSummary } from "@/lib/public-types";
 import { useChapters, useNovel, usePublicAuth } from "@/hooks/public";
@@ -188,7 +187,7 @@ export default function NovelDetailPage() {
     return (
       <ErrorState
         title="Something went wrong"
-        description={toReaderError(err)}
+        description="Could not load this novel. Try browsing the catalog or check back later."
       />
     );
   }
@@ -326,7 +325,7 @@ export default function NovelDetailPage() {
             <SectionHeader
               eyebrow="Synopsis"
               title="About this story"
-              description="A source synopsis is not available in the current public catalog data."
+              description="A source synopsis is not available for this novel."
             />
           </section>
 
@@ -334,7 +333,7 @@ export default function NovelDetailPage() {
             <SectionHeader
               eyebrow="Chapters"
               title={`Chapter List (${sortedChapters.length})`}
-              description="Translated chapters are linked directly. Pending chapters stay visible without pretending they are ready."
+              description={`${sortedChapters.length} chapter${sortedChapters.length !== 1 ? "s" : ""} total. Translated chapters link to the reader; pending chapters are listed for reference.`}
             />
             <div className="mt-5 rounded-lg bg-card/70 px-4 ring-1 ring-border sm:px-5">
               {chapters.isPending ? (
@@ -343,7 +342,7 @@ export default function NovelDetailPage() {
                 </div>
               ) : chapters.isError ? (
                 <div className="py-10 text-center text-sm text-muted-foreground">
-                  {toReaderError(chapters.error)}
+                  Could not load chapters.
                 </div>
               ) : sortedChapters.length === 0 ? (
                 <div className="py-10 text-center">

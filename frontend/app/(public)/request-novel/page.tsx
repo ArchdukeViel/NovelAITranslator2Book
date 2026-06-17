@@ -64,10 +64,10 @@ export default function RequestNovelPage() {
                 disabled
                 placeholder="https://kakuyomu.jp/..."
                 type="url"
-                aria-label="Supported source URL (disabled pending backend support)"
+                aria-label="Supported source URL (disabled)"
               />
               <p className="text-xs text-muted-foreground">
-                URL validation and submission controls will be enabled against the existing request API in a dedicated behavior phase.
+                URL submission is not available yet. It will be enabled in a future update.
               </p>
             </PanelBody>
           </Panel>
