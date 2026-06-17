@@ -18,7 +18,7 @@ export default function AboutPage() {
         },
         {
           title: "FAQ",
-          body: "Public catalog, reader, login, library, and request surfaces are being aligned first. Community and contribution features remain gated until their backend contracts are ready.",
+          body: "The public catalog, reader, sign-in, library, and request features are available now. Community and contribution features are not yet ready and will be announced when their backend support is in place.",
         },
         {
           title: "Reader accounts",

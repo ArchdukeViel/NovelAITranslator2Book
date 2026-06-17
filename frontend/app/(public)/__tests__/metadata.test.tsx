@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import type { Metadata } from "next";
 
 // ---------------------------------------------------------------------------
@@ -146,6 +147,18 @@ describe("metadata — robots / noindex", () => {
     expect(r?.follow).toBe(false);
   });
 
+  it("contact page is noindex (placeholder contact route)", () => {
+    const r = getRobots(contactMeta);
+    expect(r?.index).toBe(false);
+    expect(r?.follow).toBe(false);
+  });
+
+  it("dmca page is noindex (pending policy)", () => {
+    const r = getRobots(dmcaMeta);
+    expect(r?.index).toBe(false);
+    expect(r?.follow).toBe(false);
+  });
+
   it("error page is noindex", () => {
     const r = getRobots(errorMeta);
     expect(r?.index).toBe(false);
@@ -263,5 +276,25 @@ describe("metadata — safety and honesty", () => {
       expect(desc).not.toContain("under construction");
       expect(desc).not.toContain("data is not live yet");
     }
+  });
+
+  it("contact page copy does not sound like scaffold placeholder", () => {
+    const sourceText = readFileSync(
+      "app/(public)/contact/page.tsx",
+      "utf8"
+    );
+    expect(sourceText).not.toContain("confirms where contact information will live");
+    expect(sourceText).not.toContain("channels are pending");
+    expect(sourceText).toContain("single owner/admin");
+    expect(sourceText).toContain("takedown request");
+  });
+
+  it("dmca page copy does not sound like scaffold placeholder", () => {
+    const sourceText = readFileSync(
+      "app/(public)/dmca/page.tsx",
+      "utf8"
+    );
+    expect(sourceText).not.toContain("pending final policy copy");
+    expect(sourceText).toContain("owner/admin reviews");
   });
 });

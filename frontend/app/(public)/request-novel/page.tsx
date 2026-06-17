@@ -28,7 +28,7 @@ export default function RequestNovelPage() {
       <header className="mb-8">
         <h1 className="text-3xl font-semibold tracking-normal font-literary">Request Novel</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Sign in to request a supported source URL. Submission enforcement and review happen through the existing user request backend.
+          Sign in to request a novel from a supported source. Requests are reviewed by the owner and may be accepted, rejected, or queued based on catalog priorities.
         </p>
       </header>
 
