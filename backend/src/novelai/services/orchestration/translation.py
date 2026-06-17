@@ -933,6 +933,352 @@ def _metadata_request_estimate(
     }
 
 
+def _positive_padding(value: object) -> int:
+    if isinstance(value, bool):
+        return 1
+    if isinstance(value, int) and value >= 0:
+        return value
+    return 1
+
+
+def _lineage_key(item: dict[str, Any]) -> tuple[str, str]:
+    return str(item.get("chapter_id") or ""), str(item.get("paragraph_id") or "")
+
+
+def _normalize_lineage_item(item: dict[str, Any], *, fallback_index: int, text: str | None = None) -> dict[str, Any] | None:
+    source_hash = item.get("source_hash")
+    if not isinstance(source_hash, str) or not source_hash.strip():
+        source_hash = item.get("paragraph_hash")
+    if not isinstance(source_hash, str) or not source_hash.strip():
+        return None
+    chapter_id = item.get("chapter_id")
+    paragraph_id = item.get("paragraph_id")
+    if not isinstance(chapter_id, str) or not chapter_id.strip():
+        return None
+    if not isinstance(paragraph_id, str) or not paragraph_id.strip():
+        return None
+    try:
+        paragraph_index = int(item.get("paragraph_index") or fallback_index)
+    except (TypeError, ValueError):
+        paragraph_index = fallback_index
+    normalized = {
+        "chapter_id": chapter_id,
+        "paragraph_id": paragraph_id,
+        "paragraph_index": paragraph_index,
+        "source_hash": source_hash,
+        "char_count": int(item.get("char_count") or (len(text) if isinstance(text, str) else 0)),
+    }
+    if isinstance(text, str):
+        normalized["text"] = text
+    return normalized
+
+
+def _lineage_from_paragraphs(paragraphs: list[Any]) -> list[dict[str, Any]]:
+    lineage: list[dict[str, Any]] = []
+    for index, paragraph in enumerate(paragraphs, start=1):
+        item = _normalize_lineage_item(
+            {
+                "chapter_id": paragraph.chapter_id,
+                "paragraph_id": paragraph.paragraph_id,
+                "paragraph_index": paragraph.paragraph_index,
+                "source_hash": paragraph.source_hash,
+                "char_count": paragraph.char_count,
+            },
+            fallback_index=index,
+            text=paragraph.text,
+        )
+        if item is not None:
+            lineage.append(item)
+    return lineage
+
+
+def _old_lineage_by_chapter(storage: Any, novel_id: str) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
+    notes: list[str] = []
+    records = storage.read_translation_chunks(novel_id)
+    if not isinstance(records, list) or not records:
+        return {}, ["no previous paragraph hash lineage found"]
+
+    by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    saw_record_without_hashes = False
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        raw_lineage = record.get("paragraph_lineage")
+        if isinstance(raw_lineage, list) and raw_lineage:
+            for fallback_index, item in enumerate(raw_lineage, start=1):
+                if not isinstance(item, dict):
+                    continue
+                normalized = _normalize_lineage_item(item, fallback_index=fallback_index)
+                if normalized is not None:
+                    by_key.setdefault(_lineage_key(normalized), normalized)
+            continue
+
+        raw_hashes = record.get("paragraph_hashes")
+        raw_ids = record.get("paragraph_ids")
+        raw_chapters = record.get("chapter_ids")
+        if not isinstance(raw_hashes, list) or not raw_hashes:
+            saw_record_without_hashes = True
+            continue
+        if not isinstance(raw_ids, list) or not raw_ids:
+            saw_record_without_hashes = True
+            continue
+        chapter_id = str(raw_chapters[0]) if isinstance(raw_chapters, list) and len(raw_chapters) == 1 else None
+        if chapter_id is None:
+            saw_record_without_hashes = True
+            continue
+        for fallback_index, (paragraph_id, source_hash) in enumerate(zip(raw_ids, raw_hashes), start=1):
+            normalized = _normalize_lineage_item(
+                {
+                    "chapter_id": chapter_id,
+                    "paragraph_id": str(paragraph_id),
+                    "paragraph_index": fallback_index,
+                    "source_hash": str(source_hash),
+                },
+                fallback_index=fallback_index,
+            )
+            if normalized is not None:
+                by_key.setdefault(_lineage_key(normalized), normalized)
+
+    if saw_record_without_hashes:
+        notes.append("some previous chunk records lacked paragraph hash lineage")
+    by_chapter: dict[str, list[dict[str, Any]]] = {}
+    for item in by_key.values():
+        by_chapter.setdefault(str(item["chapter_id"]), []).append(item)
+    for items in by_chapter.values():
+        items.sort(key=lambda item: int(item.get("paragraph_index") or 0))
+    return by_chapter, notes
+
+
+def _hash_counts(items: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        source_hash = str(item.get("source_hash") or "")
+        counts[source_hash] = counts.get(source_hash, 0) + 1
+    return counts
+
+
+def _lcs_pairs(old_hashes: list[str], new_hashes: list[str]) -> list[tuple[int, int]]:
+    rows = len(old_hashes) + 1
+    cols = len(new_hashes) + 1
+    table = [[0 for _ in range(cols)] for _ in range(rows)]
+    for old_index, old_hash in enumerate(old_hashes, start=1):
+        for new_index, new_hash in enumerate(new_hashes, start=1):
+            if old_hash == new_hash:
+                table[old_index][new_index] = table[old_index - 1][new_index - 1] + 1
+            else:
+                table[old_index][new_index] = max(table[old_index - 1][new_index], table[old_index][new_index - 1])
+    pairs: list[tuple[int, int]] = []
+    old_index = len(old_hashes)
+    new_index = len(new_hashes)
+    while old_index > 0 and new_index > 0:
+        if old_hashes[old_index - 1] == new_hashes[new_index - 1]:
+            pairs.append((old_index - 1, new_index - 1))
+            old_index -= 1
+            new_index -= 1
+        elif table[old_index - 1][new_index] >= table[old_index][new_index - 1]:
+            old_index -= 1
+        else:
+            new_index -= 1
+    pairs.reverse()
+    return pairs
+
+
+def _stable_anchor_pairs(old_items: list[dict[str, Any]], new_items: list[dict[str, Any]]) -> list[tuple[int, int]]:
+    old_counts = _hash_counts(old_items)
+    new_counts = _hash_counts(new_items)
+    old_unique = [
+        str(item.get("source_hash") or "")
+        for item in old_items
+        if old_counts.get(str(item.get("source_hash") or ""), 0) == 1
+        and new_counts.get(str(item.get("source_hash") or ""), 0) == 1
+    ]
+    new_unique = [
+        str(item.get("source_hash") or "")
+        for item in new_items
+        if old_counts.get(str(item.get("source_hash") or ""), 0) == 1
+        and new_counts.get(str(item.get("source_hash") or ""), 0) == 1
+    ]
+    old_index_by_hash = {str(item.get("source_hash") or ""): index for index, item in enumerate(old_items)}
+    new_index_by_hash = {str(item.get("source_hash") or ""): index for index, item in enumerate(new_items)}
+    return [
+        (old_index_by_hash[old_unique[old_pos]], new_index_by_hash[new_unique[new_pos]])
+        for old_pos, new_pos in _lcs_pairs(old_unique, new_unique)
+    ]
+
+
+def _compare_lineage(old_items: list[dict[str, Any]], new_items: list[dict[str, Any]]) -> dict[str, Any]:
+    old_counts = _hash_counts(old_items)
+    new_counts = _hash_counts(new_items)
+    anchors = _stable_anchor_pairs(old_items, new_items)
+    unchanged_new_indexes = {new_index for _, new_index in anchors}
+    moved_hashes = {
+        source_hash
+        for source_hash, count in old_counts.items()
+        if count == 1 and new_counts.get(source_hash) == 1
+    } - {str(new_items[new_index].get("source_hash") or "") for _, new_index in anchors}
+
+    inserted: set[int] = set()
+    changed: set[int] = set()
+    ambiguous: set[int] = set()
+    deleted_old: set[int] = set()
+    boundaries = [(-1, -1), *anchors, (len(old_items), len(new_items))]
+    for (old_start, new_start), (old_end, new_end) in zip(boundaries, boundaries[1:]):
+        old_gap = list(range(old_start + 1, old_end))
+        new_gap = list(range(new_start + 1, new_end))
+        if not old_gap and not new_gap:
+            continue
+        if not old_gap:
+            for new_index in new_gap:
+                new_hash = str(new_items[new_index].get("source_hash") or "")
+                if new_hash in old_counts:
+                    ambiguous.add(new_index)
+                else:
+                    inserted.add(new_index)
+            continue
+        if not new_gap:
+            deleted_old.update(old_gap)
+            continue
+        if len(old_gap) == len(new_gap):
+            for old_index, new_index in zip(old_gap, new_gap):
+                old_hash = str(old_items[old_index].get("source_hash") or "")
+                new_hash = str(new_items[new_index].get("source_hash") or "")
+                if old_hash == new_hash:
+                    ambiguous.add(new_index)
+                elif new_hash in moved_hashes or old_counts.get(new_hash, 0) > 1 or new_counts.get(new_hash, 0) > 1:
+                    ambiguous.add(new_index)
+                    deleted_old.add(old_index)
+                else:
+                    changed.add(new_index)
+            continue
+        for old_index in old_gap:
+            deleted_old.add(old_index)
+        for new_index in new_gap:
+            new_hash = str(new_items[new_index].get("source_hash") or "")
+            if new_hash in old_counts:
+                ambiguous.add(new_index)
+            else:
+                inserted.add(new_index)
+
+    return {
+        "unchanged_new_indexes": unchanged_new_indexes,
+        "changed_new_indexes": changed,
+        "inserted_new_indexes": inserted,
+        "deleted_old_indexes": deleted_old,
+        "ambiguous_new_indexes": ambiguous,
+    }
+
+
+def _merge_windows(windows: list[dict[str, int]]) -> list[dict[str, int]]:
+    ordered = sorted(windows, key=lambda item: (item["start"], item["end"]))
+    merged: list[dict[str, int]] = []
+    for window in ordered:
+        if not merged or window["start"] > merged[-1]["end"] + 1:
+            merged.append(dict(window))
+            continue
+        merged[-1]["end"] = max(merged[-1]["end"], window["end"])
+    return merged
+
+
+def _changed_windows_for_chapter(
+    *,
+    new_items: list[dict[str, Any]],
+    comparison: dict[str, Any],
+    padding: int,
+) -> list[dict[str, int]]:
+    paragraph_count = len(new_items)
+    raw_indexes = (
+        set(comparison["changed_new_indexes"])
+        | set(comparison["inserted_new_indexes"])
+        | set(comparison["ambiguous_new_indexes"])
+    )
+    windows = [
+        {"start": max(0, index - padding), "end": min(paragraph_count - 1, index + padding)}
+        for index in raw_indexes
+        if paragraph_count > 0
+    ]
+    if comparison["deleted_old_indexes"] and paragraph_count > 0:
+        if raw_indexes:
+            for index in raw_indexes:
+                windows.append({"start": max(0, index - padding), "end": min(paragraph_count - 1, index + padding)})
+        else:
+            windows.append({"start": 0, "end": min(paragraph_count - 1, padding)})
+    return _merge_windows(windows)
+
+
+def _estimate_delta_requests(
+    self: Any,
+    *,
+    novel_id: str,
+    new_lineage_by_chapter: dict[str, list[dict[str, Any]]],
+    full_body_requests: int,
+    segment: SmartSegmentStage,
+) -> dict[str, Any]:
+    padding = _positive_padding(settings.TRANSLATION_DELTA_WINDOW_PADDING_PARAGRAPHS)
+    old_lineage_by_chapter, notes = _old_lineage_by_chapter(self.storage, novel_id)
+    base = {
+        "available": False,
+        "safe_for_reuse": False,
+        "mode": "estimate_only",
+        "padding_paragraphs": padding,
+        "full_body_requests": full_body_requests,
+        "delta_body_requests": full_body_requests,
+        "unchanged_paragraphs": 0,
+        "changed_paragraphs": 0,
+        "inserted_paragraphs": 0,
+        "deleted_paragraphs": 0,
+        "ambiguous_paragraphs": 0,
+        "changed_windows": [],
+        "notes": ["estimate only; actual delta retranslation not enabled"],
+    }
+    if notes:
+        base["notes"].extend(notes)
+    if not old_lineage_by_chapter:
+        base["notes"].append("delta unavailable; falling back to full body estimate")
+        return base
+
+    missing = sorted(chapter_id for chapter_id in new_lineage_by_chapter if chapter_id not in old_lineage_by_chapter)
+    if missing:
+        base["notes"].append(f"partial previous lineage missing chapters: {', '.join(missing)}")
+        base["notes"].append("delta unavailable; falling back to full body estimate")
+        return base
+
+    delta_chunks = 0
+    changed_windows: list[dict[str, Any]] = []
+    for chapter_id, new_items in new_lineage_by_chapter.items():
+        old_items = old_lineage_by_chapter.get(chapter_id, [])
+        comparison = _compare_lineage(old_items, new_items)
+        base["unchanged_paragraphs"] += len(comparison["unchanged_new_indexes"])
+        base["changed_paragraphs"] += len(comparison["changed_new_indexes"])
+        base["inserted_paragraphs"] += len(comparison["inserted_new_indexes"])
+        base["deleted_paragraphs"] += len(comparison["deleted_old_indexes"])
+        base["ambiguous_paragraphs"] += len(comparison["ambiguous_new_indexes"])
+        for window in _changed_windows_for_chapter(new_items=new_items, comparison=comparison, padding=padding):
+            window_items = new_items[window["start"] : window["end"] + 1]
+            window_text = "\n\n".join(str(item.get("text") or "") for item in window_items)
+            _, window_chunks, _ = segment.estimate_chapter_chunks(
+                novel_id=novel_id,
+                chapter_id=chapter_id,
+                text=window_text,
+            )
+            estimated_chunks = len(window_chunks)
+            delta_chunks += estimated_chunks
+            changed_windows.append(
+                {
+                    "chapter_id": chapter_id,
+                    "start_paragraph_index": int(window_items[0].get("paragraph_index") or 0),
+                    "end_paragraph_index": int(window_items[-1].get("paragraph_index") or 0),
+                    "paragraph_hashes": [str(item.get("source_hash") or "") for item in window_items],
+                    "estimated_chunks": estimated_chunks,
+                }
+            )
+
+    base["available"] = True
+    base["delta_body_requests"] = delta_chunks
+    base["changed_windows"] = changed_windows
+    base["notes"].append("chunk-boundary reuse remains unsafe until delta execution is implemented")
+    return base
+
+
 def estimate_translation_requests(
     self: Any,
     *,
@@ -970,6 +1316,7 @@ def estimate_translation_requests(
     per_chapter: list[dict[str, Any]] = []
     missing_text: list[str] = []
     estimated_chunks = 0
+    new_lineage_by_chapter: dict[str, list[dict[str, Any]]] = {}
     for number in included_numbers:
         chapter_id = str(number)
         raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
@@ -983,6 +1330,7 @@ def estimate_translation_requests(
             chapter_id=chapter_id,
             text=raw_text,
         )
+        new_lineage_by_chapter[chapter_id] = _lineage_from_paragraphs(paragraphs)
         chapter_estimate: dict[str, Any] = {
             "chapter_id": chapter_id,
             "source_chars": len(raw_text),
@@ -1001,6 +1349,13 @@ def estimate_translation_requests(
         "chapters_skipped_translated": skipped_translated,
         "per_chapter": per_chapter,
     }
+    delta = _estimate_delta_requests(
+        self,
+        novel_id=novel_id,
+        new_lineage_by_chapter=new_lineage_by_chapter,
+        full_body_requests=estimated_chunks,
+        segment=segment,
+    )
 
     return {
         "novel_id": novel_id,
@@ -1010,6 +1365,7 @@ def estimate_translation_requests(
         "include_already_translated": bool(include_already_translated),
         "metadata_requests": metadata_requests,
         "body_requests": body_requests,
+        "delta": delta,
         "total_estimated_requests": metadata_requests["total"] + estimated_chunks,
         "assumptions": {
             "chunk_target_chars": segment.target_chars,
@@ -1027,6 +1383,7 @@ def estimate_translation_requests(
             "metadata_batching": True,
             "metadata_chapter_title_batch_size": settings.TRANSLATION_METADATA_CHAPTER_TITLE_BATCH_SIZE,
             "paragraph_hash_lineage": True,
+            "delta_window_padding_paragraphs": settings.TRANSLATION_DELTA_WINDOW_PADDING_PARAGRAPHS,
             "provider_calls": False,
             "already_translated_chapters": "included" if include_already_translated else "excluded",
         },

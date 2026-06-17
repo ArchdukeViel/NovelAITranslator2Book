@@ -99,6 +99,7 @@ class AppSettings(BaseSettings):
     TRANSLATION_DEFAULT_OVERLAP_PARAGRAPHS: int = 0
     TRANSLATION_UNSAFE_BOUNDARY_OVERLAP_PARAGRAPHS: int = 1
     TRANSLATION_BOUNDARY_CONTEXT_CHARS: int = 160
+    TRANSLATION_DELTA_WINDOW_PADDING_PARAGRAPHS: int = 1
     TRANSLATION_SCHEDULER_POLICY: str = "volume_first"
     TRANSLATION_MODEL_POLICY: list[dict[str, object]] = Field(
         default_factory=list,
