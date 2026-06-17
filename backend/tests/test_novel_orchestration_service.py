@@ -664,18 +664,55 @@ def test_estimate_translation_requests_counts_metadata_and_body_chunks(orchestra
     assert estimate["metadata_requests"]["chapter_title_batch_size"] == 25
     assert estimate["metadata_requests"]["metadata_batching"] is True
     assert estimate["metadata_requests"]["total"] == 2
-    assert estimate["body_requests"]["estimated_chunks"] == 3
+    assert estimate["body_requests"]["estimated_chunks"] == 2
     assert estimate["body_requests"]["chapters_with_text"] == 2
     assert estimate["body_requests"]["chapters_missing_text"] == []
     assert estimate["body_requests"]["per_chapter"] == [
         {"chapter_id": "1", "source_chars": 3000, "paragraphs": 1, "chunks": 1},
-        {"chapter_id": "2", "source_chars": 6002, "paragraphs": 2, "chunks": 2},
+        {"chapter_id": "2", "source_chars": 6002, "paragraphs": 2, "chunks": 1},
     ]
-    assert estimate["total_estimated_requests"] == 5
+    assert estimate["total_estimated_requests"] == 4
     assert estimate["assumptions"]["provider_calls"] is False
     assert estimate["assumptions"]["metadata_batching"] is True
+    assert estimate["assumptions"]["adaptive_chunking"] is True
+    assert estimate["assumptions"]["adaptive_soft_target_chars"] == 5800
+    assert estimate["assumptions"]["adaptive_hard_max_chars"] == 7000
     assert provider.call_count == 0
     assert translation.calls == []
+
+
+def test_estimate_translation_requests_uses_adaptive_body_chunk_count(orchestration_env) -> None:
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-1",
+        {
+            "source": "syosetu_ncode",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "Chapter One"},
+            ],
+        },
+    )
+    storage.save_chapter("novel-1", "1", "\n\n".join(["a" * 3000, "b" * 3000, "c" * 3000, "d" * 3000]))
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=StubTranslationService(),
+        source_factory=lambda key: StubSource(),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    estimate = orchestrator.estimate_translation_requests(
+        source_key="syosetu_ncode",
+        novel_id="novel-1",
+        chapters="all",
+    )
+
+    assert estimate["body_requests"]["estimated_chunks"] == 2
+    assert estimate["body_requests"]["per_chapter"] == [
+        {"chapter_id": "1", "source_chars": 12006, "paragraphs": 4, "chunks": 2}
+    ]
+    assert estimate["assumptions"]["adaptive_chunking"] is True
 
 
 def test_estimate_translation_requests_counts_batched_unique_chapter_titles(orchestration_env) -> None:
