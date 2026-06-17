@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 
@@ -11,6 +11,12 @@ export function SearchEntry() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
+
+  // Sync internal state when URL q changes (e.g. browse page search)
+  useEffect(() => {
+    const urlQ = searchParams.get("q") ?? "";
+    setQuery((prev) => (prev !== urlQ ? urlQ : prev));
+  }, [searchParams]);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
