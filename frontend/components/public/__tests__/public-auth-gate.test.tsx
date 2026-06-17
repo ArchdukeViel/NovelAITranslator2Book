@@ -33,3 +33,73 @@ describe("public auth gate", () => {
     expect(publicHooks).toContain("useStartGoogleOAuth");
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Auth callback page (server component via StaticPage)               */
+/* ------------------------------------------------------------------ */
+
+describe("auth callback page", () => {
+  it("has human-readable title and description in source", () => {
+    const source = readFileSync("app/(public)/auth/callback/page.tsx", "utf8");
+    // Server component — verify the metadata and page copy contract
+    expect(source).toContain('title: "Signing In"');
+    expect(source).toContain("sign-in is being processed");
+    expect(source).not.toContain("Authentication Callback");
+    expect(source).not.toContain("Authentication callback handler");
+    expect(source).toContain("robots: { index: false, follow: false }");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Logout page                                                        */
+/* ------------------------------------------------------------------ */
+
+describe("logout page", () => {
+  it("renders human-readable description and return-home link in source", () => {
+    const source = readFileSync("app/(public)/logout/page.tsx", "utf8");
+    expect(source).toContain("Signing out");
+    expect(source).toContain("signed out");
+    expect(source).not.toContain("session is being cleared");
+    expect(source).toContain("Return home");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  LoginPrompt rendering                                              */
+/* ------------------------------------------------------------------ */
+
+describe("LoginPrompt component", () => {
+  it("renders benefit text and sign-in button without credential fields", () => {
+    // Re-use the existing LoginView render since LoginPrompt wraps it
+    const html = renderToStaticMarkup(<LoginView onClose={() => undefined} />);
+
+    expect(html).toContain("Continue with Google");
+    expect(html).toContain("Guest reading");
+    expect(html).toContain("Save novels");
+    expect(html).toContain("reading history");
+    expect(html).not.toContain("type=\"email\"");
+    expect(html).not.toContain("type=\"password\"");
+    expect(html).not.toContain("Password / Token");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  AuthGate loading/guest states                                      */
+/* ------------------------------------------------------------------ */
+
+describe("AuthGate component", () => {
+  it("shows loading state when auth is pending (checks exported component for spinner markup)", () => {
+    // Static render isn't ideal for a client component — verify via the
+    // source code contract: checking the component text.
+    const source = readFileSync("components/public/auth-gate.tsx", "utf8");
+    expect(source).toContain("Loader2");
+    expect(source).toContain("Checking session");
+    expect(source).not.toContain("return null"); // no longer returns null while loading
+  });
+
+  it("uses LoginPrompt as default fallback for guests", () => {
+    const source = readFileSync("components/public/auth-gate.tsx", "utf8");
+    expect(source).toContain("LoginPrompt");
+    expect(source).toContain("fallback ?? <LoginPrompt />");
+  });
+});
