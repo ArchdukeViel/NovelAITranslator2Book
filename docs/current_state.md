@@ -1,6 +1,6 @@
 # NovelAI Current State
 
-**Last updated**: 2026-06-15 (doc audit refresh)
+**Last updated**: 2026-06-17 (post-TR-OPT + TAXONOMY-5B)
 **Source of truth**: `docs/architecture/architecture.md`
 
 ## Verdict
@@ -16,6 +16,7 @@
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Translation pipeline | ✅ | Smart segmentation, deterministic IDs, QA stage, chunk traceability |
+| Translation optimization stack | ✅ | Request estimator, retry ceiling, metadata batching, adaptive chunking, conditional overlap, paragraph hash lineage, delta window estimator, conservative delta retranslation, structured provider JSON hardening |
 | Multi-model scheduler | ✅ | Admin-owned provider/model routing, RPM/RPD tracking, pause/resume |
 | Source ingestion | ✅ | FetchService, SSRF protection, per-domain throttle, fetch cache |
 | Source adapters | ✅ | Syosetu, Novel18, Kakuyomu, Generic with offline fixtures |
@@ -25,6 +26,8 @@
 || Redis/RQ workers | ✅ | Background crawl and translation jobs |
 | Authentication | ✅ | HTTP-only sessions, guest/user/owner roles, `require_role()` dependency |
 | Public catalog API | ✅ | `/api/public/*` — browse, search, read published chapters |
+| Public taxonomy contract | ✅ | Genre/tag display labels, adult filtering internal via ORM, `is_adult` stripped from public API responses |
+| Public frontend polish | ✅ | Loading/error/empty states, SEO, trust pages, auth UX, account honesty, de-AI copy |
 | User data API | ✅ | `/api/user/*` — library, progress, history, reviews, requests |
 | Admin frontend | ✅ | Dashboard, crawler, translation, library, editor, activity, requests, settings |
 | Public frontend | ✅ | Novel catalog, chapter reader |
@@ -56,7 +59,18 @@
 ## Test Baseline
 
 ```
-713 passed, 7 skipped (2026-06-09)
+Backend: 117+ tests pass (pytest, 2026-06-17)
+  - test_taxonomy.py: 37 passed
+  - test_public_router.py: 80 passed
+  - test_gemini_provider.py: 12 passed
+  - test_translation_qa.py: 21 passed
+  - test_novel_orchestration_service.py: 56 passed
+  - (full suite: 713+ total)
+
+Frontend: 411 tests pass (vitest, 2026-06-17)
+  - 40 test files
+  - taxonomy-contract.test.tsx: 9 passed
+  - browse-page.test.tsx: 42 passed
 ```
 
 **CI gates**: pytest + pyright on Python 3.13 only
@@ -69,21 +83,24 @@
 | Path | Purpose |
 |------|---------|
 | `docs/architecture/architecture.md` | Canonical architecture authority |
+| `docs/current_state.md` | This file — project state tracking |
 | `docs/sql/rls_policies.sql` | Supabase RLS policies (338 lines) |
 | `backend/src/novelai/api/` | FastAPI app, routers, auth |
-| `backend/src/novelai/db/models/` | 12 ORM models |
+| `backend/src/novelai/db/models/` | 14 ORM models (incl. Genre, Tag) |
 | `backend/src/novelai/scripts/migrate_file_to_db.py` | Data migration script |
 | `backend/src/novelai/storage/` | File-backed persistence |
-| `backend/src/novelai/translation/` | Pipeline stages, scheduler |
+| `backend/src/novelai/translation/` | Pipeline stages, QA, scheduler |
 | `backend/src/novelai/sources/` | Source adapters (Syosetu, Kakuyomu, etc.) |
 | `backend/alembic/versions/` | Alembic migrations |
 | `frontend/app/(admin)/admin/` | Admin UI pages |
 | `frontend/app/(public)/` | Public reader pages |
-| `frontend/lib/api.ts` | API client (only frontend/backend contract) |
+| `frontend/lib/api.ts` | Admin API client |
+| `frontend/lib/public-api.ts` | Public API client (guest/user) |
+| `frontend/lib/public-types.ts` | Public API TypeScript types |
 
 ---
 
-## ORM Models (12 total)
+## ORM Models (14 total)
 
 **User domain**:
 - `User` — email, role (guest/user/owner), auth_provider, auth_provider_subject
@@ -96,6 +113,10 @@
 **Catalog domain**:
 - `Novel` — slug, title, author, status, storage keys
 - `Chapter` — novel_id, chapter_number, storage keys, checksums
+- `Genre` — slug, name_ja, name_en, is_adult, display_order, is_active
+- `Tag` — name, name_ja, is_adult
+- `novel_genres` — novel/genre association table
+- `novel_tags` — novel/tag association table
 
 **Job domain**:
 - `CrawlJob` — source_url, status, progress
@@ -115,6 +136,8 @@
 - `GET /api/public/novels/{slug}` — novel detail
 - `GET /api/public/novels/{slug}/chapters` — chapter list
 - `GET /api/public/novels/{slug}/chapters/{chapter_id}` — translated chapter reader
+- `GET /api/public/genres` — genre list (no `is_adult` field)
+- `GET /api/public/tags/search` — tag search (no `is_adult` field)
 
 ### User (authenticated, role="user")
 - `GET/POST/DELETE /api/user/library/{slug}` — saved novels
@@ -142,11 +165,11 @@ backend/src/novelai/
 ├── activity/         Background activity queue, runner, worker
 ├── api/              FastAPI app, routers, dependencies
 │   ├── auth/         Session management, role enforcement
-│   └── routers/      public, user_data, auth, activity, requests
+│   └── routers/      public, user_data, auth, activity, requests, admin_taxonomy
 ├── config/           Settings and workflow profiles
 ├── core/             Shared domain errors, primitive types
 ├── db/               SQLAlchemy engine, session, models
-│   └── models/       12 ORM models
+│   └── models/       14 ORM models (incl. Genre, Tag, association tables)
 ├── export/           Exporter interfaces and output formats
 ├── glossary/         Glossary and term memory
 ├── infrastructure/   HTTP fetching, throttle, cache
@@ -158,7 +181,7 @@ backend/src/novelai/
 ├── shared/           Cross-domain protocols, pipeline contracts
 ├── sources/          Web source parsers (Syosetu, Kakuyomu, Generic)
 ├── storage/          File-backed persistence boundary
-├── translation/      Pipeline stages, QA, scheduler
+├── translation/      Pipeline stages, QA, scheduler, delta estimator
 ├── utils/            Pure utilities
 └── worker/           RQ tasks and queue management
 ```
@@ -177,39 +200,90 @@ backend/src/novelai/
 - `/admin/requests` — user requests
 - `/admin/settings` — provider/settings config
 
-**Public** (`/novel/*`):
+**Public** (`/*`):
+- `/home` — homepage with latest novels, updates
+- `/browse-novels` — catalog browse with genre/tag filters
 - `/novel/[slug]` — novel detail
 - `/novel/[slug]/chapter/[chapterId]` — chapter reader
+- `/ranking` — ranking page
+- `/request-novel` — novel request form
+- `/contribute` — contribution page
+- `/account/*` — account settings, contributions, library
+- `/login`, `/register`, `/logout` — auth flows
+- Static trust pages: `/about`, `/privacy`, `/terms`, `/dmca`, `/contact`, `/cookie-policy`
 
 ---
 
 ## Debt Summary
 
 **P0 (correctness/security)**:
-- Scheduler runtime persistence hardening
-- Private storage isolation verification
+- ~~Scheduler runtime persistence hardening~~ ✅ Done (TR-OPT stack)
+- ~~Private storage isolation verification~~ ✅ Done (public API contract tests)
+- Object storage boundary (S3/R2/B2) — not yet implemented
+- Broader real-provider smoke on slightly larger input — monitor Gemini metadata batch
 
 **P1 (maintainability)**:
 - Router thinning (operations.py, admin.py)
 - Kakuyomu/Generic FetchService migration verification
 - Legacy alias migration plan
+- Source pipeline audit / ingestion fixes
 
 **P2 (cosmetic)**:
 - Frontend lint configuration
 - Documentation examples
+- TAXONOMY-5C: tag `name_ja` display
+- TAXONOMY-5D: `PublicNovelSummary` genre enrichment
+- Admin provider credential UI (currently env-based only)
 
 ---
 
 ## Next Milestones
 
-1. ~~Create Alembic migrations folder and initial migration~~ ✅ Done
-2. ~~Run data migration (file-backed → Postgres)~~ ✅ Done (1 novel, 12 chapters)
-3. ~~Wire Google OAuth for public user login~~ ✅ Done
-4. ~~Public user features re-enable (library, progress, history, reviews, requests)~~ ✅ Done
-5. ~~CSRF, rate-limit, and security hardening~~ ✅ Done
-6. Implement object storage boundary (S3/R2/B2)
-7. Scheduler resume hardening
-8. Production deployment (DEP1)
+### Completed (2026-06-17)
+
+**Translation optimization stack (TR-OPT-1 through TR-OPT-6C)**:
+1. ✅ Request estimator / dry run
+2. ✅ Max attempts per chunk (retry ceiling)
+3. ✅ Metadata batching (title/author/synopsis/chapter titles)
+4. ✅ Adaptive balanced chunking
+5. ✅ Conditional chunk overlap
+6. ✅ Paragraph hash lineage
+7. ✅ Delta window estimator
+8. ✅ Conservative delta retranslation execution
+9. ✅ Backend full suite restored (dependency/test isolation fix)
+10. ✅ Tiny Gemini body smoke passed
+11. ✅ Structured provider JSON handling hardened
+
+**Taxonomy contract (TAXONOMY-2E, TAXONOMY-5B)**:
+1. ✅ Public taxonomy contract aligned (genre label display)
+2. ✅ `is_adult` removed from public `/api/public/genres` and `/api/public/tags/search` responses
+3. ✅ Frontend public taxonomy types updated (no `is_adult`)
+4. ✅ Admin taxonomy dialog still works via `include_adult=true` query parameter
+
+**Public frontend polish (PUBLIC-* phases)**:
+1. ✅ Public information architecture
+2. ✅ Real catalog data wiring
+3. ✅ Loading/error/empty states
+4. ✅ Section duplication reduction
+5. ✅ Copy polish (de-AI, de-scaffold)
+6. ✅ SEO metadata
+7. ✅ CTA consistency
+8. ✅ Novel detail audit
+9. ✅ Reader audit
+10. ✅ Account audit + honesty
+11. ✅ Auth UX flows
+12. ✅ Static trust pages (about, privacy, terms, DMCA, contact, cookie policy)
+
+### Next
+
+1. Implement object storage boundary (S3/R2/B2)
+2. Scheduler resume hardening
+3. Production deployment (DEP1)
+4. Monitor Gemini metadata batch structured output on broader real inputs
+5. TAXONOMY-5C: tag `name_ja` display (frontend-only)
+6. TAXONOMY-5D: `PublicNovelSummary` genre enrichment (backend contract change)
+7. Source pipeline audit / ingestion fixes
+8. Admin provider credential UI (currently env-based only)
 
 ---
 
@@ -245,5 +319,7 @@ cd frontend && npm run dev                           # Admin UI
 - [x] Basic public rate limits (auth, user data, engagement)
 - [x] Production session secret fail-closed
 - [x] Google OAuth public login (separate from owner bootstrap)
+- [x] Public taxonomy contract hardened (no `is_adult` leakage)
+- [x] Adult taxonomy filtering internal-only (ORM `Genre.is_adult`, `Tag.is_adult`)
 - [ ] Encrypted credential storage (later phase)
 - [ ] Security audit logging (schema ready, not wired)
