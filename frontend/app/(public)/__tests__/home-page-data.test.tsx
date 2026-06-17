@@ -1,14 +1,16 @@
 /**
- * Homepage data honesty tests.
+ * Homepage data-honesty and state tests.
  *
- * Confirms homepage uses real catalog data, does not rely on static/placeholder
- * novel data, does not pass adult opt-in, and handles empty responses gracefully.
+ * Confirms homepage uses real catalog data, handles loading/error/empty states
+ * with polished UI, does not use static/placeholder novel data, does not pass
+ * adult opt-in, and does not duplicate sections from the same data.
  *
- * Feature: PUBLIC-HOME-DATA-1
+ * Feature: PUBLIC-HOME-DATA-1, PUBLIC-HOME-DATA-2
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import HomePage from "@/app/(public)/home/page";
@@ -102,7 +104,136 @@ function makeNovel(overrides: Record<string, unknown> = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Real data rendering
+// Loading state
+// ---------------------------------------------------------------------------
+
+describe("HomePage loading state", () => {
+  it("shows skeleton layout resembling final structure", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: undefined,
+      isPending: true,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    // Loading region is present
+    expect(
+      screen.getByLabelText("Loading featured novel")
+    ).toBeInTheDocument();
+    // Screen-reader status text
+    expect(screen.getByText("Loading catalog…")).toBeInTheDocument();
+    // Should not render section headers during loading
+    expect(screen.queryByText("Recently Added")).not.toBeInTheDocument();
+    expect(screen.queryByText("Featured")).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Error state
+// ---------------------------------------------------------------------------
+
+describe("HomePage error state", () => {
+  it("shows error message with Try again and Browse catalog", () => {
+    const mockRefetch = vi.fn();
+    mocks.catalogQuery.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      error: new Error("Network error"),
+      refetch: mockRefetch,
+    });
+    renderHome();
+
+    expect(
+      screen.getByText("Could not load the catalog")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Something went wrong fetching novels/)
+    ).toBeInTheDocument();
+
+    // Two recovery paths: retry and browse
+    expect(screen.getByText("Try again")).toBeInTheDocument();
+    expect(screen.getByText("Browse the catalog")).toBeInTheDocument();
+  });
+
+  it("calls refetch when Try again is clicked", async () => {
+    const mockRefetch = vi.fn();
+    mocks.catalogQuery.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      error: new Error("Timeout"),
+      refetch: mockRefetch,
+    });
+    renderHome();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText("Try again"));
+
+    expect(mockRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render real content in error state", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      error: new Error("Boom"),
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    expect(screen.queryByText("Recently Added")).not.toBeInTheDocument();
+    expect(screen.queryByText("Featured")).not.toBeInTheDocument();
+    expect(screen.queryByText("Start Reading")).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Empty state
+// ---------------------------------------------------------------------------
+
+describe("HomePage empty state", () => {
+  it("shows empty message with request and browse CTAs", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: { novels: [], total: 0, page: 1, page_size: 8 },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    expect(
+      screen.getByText("No novels in the catalog yet")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/New translations are added regularly/)
+    ).toBeInTheDocument();
+    expect(screen.getByText("Request a novel")).toBeInTheDocument();
+    expect(screen.getByText("Browse the catalog")).toBeInTheDocument();
+  });
+
+  it("does not render real content when catalog is empty", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: { novels: [], total: 0, page: 1, page_size: 8 },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    expect(screen.queryByText("Recently Added")).not.toBeInTheDocument();
+    expect(screen.queryByText("Featured")).not.toBeInTheDocument();
+    expect(screen.queryByText("Start Reading")).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Real data rendering (PUBLIC-HOME-DATA-1 regression)
 // ---------------------------------------------------------------------------
 
 describe("HomePage real data rendering", () => {
@@ -120,13 +251,15 @@ describe("HomePage real data rendering", () => {
       isPending: false,
       isError: false,
       error: null,
+      refetch: vi.fn(),
     });
     renderHome();
 
-    // Hero title appears at least once (h1 + possibly in LatestUpdateRow/NovelCard)
     const heroTitles = screen.getAllByText("Hero Novel");
     expect(heroTitles.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Featured")).toBeInTheDocument();
+    expect(screen.getByText("Start Reading")).toBeInTheDocument();
+    expect(screen.getByText("View Details")).toBeInTheDocument();
   });
 
   it("renders Recently Added section with catalog novels", () => {
@@ -144,35 +277,14 @@ describe("HomePage real data rendering", () => {
       isPending: false,
       isError: false,
       error: null,
+      refetch: vi.fn(),
     });
     renderHome();
 
     expect(screen.getByText("Recently Added")).toBeInTheDocument();
-    // Each novel appears in hero + update rows + cards, so use getAllByText
     expect(screen.getAllByText("First Novel").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Second Novel").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Third Novel").length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("renders Latest Novels grid with NovelCard components", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({ title: "Card Novel", slug: "card-novel" }),
-        ],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-    });
-    renderHome();
-
-    expect(screen.getByText("Latest Novels")).toBeInTheDocument();
-    const titles = screen.getAllByText("Card Novel");
-    expect(titles.length).toBeGreaterThanOrEqual(1);
   });
 
   it("passes genres and tags through to rendered chips", () => {
@@ -192,10 +304,10 @@ describe("HomePage real data rendering", () => {
       isPending: false,
       isError: false,
       error: null,
+      refetch: vi.fn(),
     });
     renderHome();
 
-    // Genres appear in hero chips + Latest Novels NovelCard chips
     const fantasyChips = screen.getAllByText("fantasy");
     expect(fantasyChips.length).toBeGreaterThanOrEqual(1);
     const isekaiChips = screen.getAllByText("isekai");
@@ -213,74 +325,40 @@ describe("HomePage real data rendering", () => {
       isPending: false,
       isError: false,
       error: null,
+      refetch: vi.fn(),
     });
     renderHome();
 
-    // Catalog CTA with search/filter/sort mention
     expect(
-      screen.getByText(/search, filter, and sort/i)
+      screen.getByText(/Browse the full catalog/i)
     ).toBeInTheDocument();
     expect(screen.getByText("Browse the catalog")).toBeInTheDocument();
-    // Old ranking placeholder is gone
-    expect(screen.queryByText(/ranking data is not live/i)).not.toBeInTheDocument();
   });
 });
 
 // ---------------------------------------------------------------------------
-// Empty / loading / error states
+// No section duplication
 // ---------------------------------------------------------------------------
 
-describe("HomePage empty and state handling", () => {
-  it("shows loading state when catalog is pending", () => {
+describe("HomePage section duplication", () => {
+  it("does not render a Latest Novels section duplicating Recently Added data", () => {
     mocks.catalogQuery.mockReturnValue({
-      data: undefined,
-      isPending: true,
-      isError: false,
-      error: null,
-    });
-    renderHome();
-
-    // Should not render section headers in loading state
-    expect(screen.queryByText("Latest Novels")).not.toBeInTheDocument();
-    // Should show skeleton (aria label still)
-    expect(screen.getByLabelText("Featured Dokushodo novel")).toBeInTheDocument();
-  });
-
-  it("shows error message with recovery link when catalog fetch fails", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: undefined,
-      isPending: false,
-      isError: true,
-      error: new Error("Network error"),
-    });
-    renderHome();
-
-    expect(
-      screen.getByText("Could not load the catalog")
-    ).toBeInTheDocument();
-    // Recovery: link to browse-novels
-    expect(screen.getByText("Browse the catalog")).toBeInTheDocument();
-    // Should not render real content
-    expect(screen.queryByText("Recently Added")).not.toBeInTheDocument();
-  });
-
-  it("shows empty message with CTAs when catalog has zero novels", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: { novels: [], total: 0, page: 1, page_size: 8 },
+      data: {
+        novels: [makeNovel(), makeNovel({ novel_id: "n2", slug: "n2" })],
+        total: 2,
+        page: 1,
+        page_size: 8,
+      },
       isPending: false,
       isError: false,
       error: null,
+      refetch: vi.fn(),
     });
     renderHome();
 
-    expect(
-      screen.getByText("No novels in the catalog yet")
-    ).toBeInTheDocument();
-    // CTAs: request novel + browse catalog
-    expect(screen.getByText("Request a novel")).toBeInTheDocument();
-    expect(screen.getByText("Browse the catalog")).toBeInTheDocument();
-    // Should not render section headers
-    expect(screen.queryByText("Recently Added")).not.toBeInTheDocument();
+    // Recently Added exists
+    expect(screen.getByText("Recently Added")).toBeInTheDocument();
+    // Latest Novels card grid does NOT exist
     expect(screen.queryByText("Latest Novels")).not.toBeInTheDocument();
   });
 });
@@ -291,18 +369,6 @@ describe("HomePage empty and state handling", () => {
 
 describe("HomePage adult safety", () => {
   it("does not pass include_adult=true in catalog query", () => {
-    // The useCatalog call in HomePage uses default params,
-    // which the backend treats as include_adult=false.
-    // Verify the mock was called with default params (no include_adult).
-    // We can't easily spy on useCatalog directly, but we verify
-    // the mock return value includes no adult content and the
-    // backend default (not overridden) is relied upon.
-    //
-    // Since we can't intercept the actual query params at this level,
-    // we test the behavioral contract: if adult content were returned,
-    // it would be rendered. The safety relies on backend default + no
-    // explicit include_adult=true in our useCatalog call.
-
     mocks.catalogQuery.mockReturnValue({
       data: {
         novels: [
@@ -318,15 +384,11 @@ describe("HomePage adult safety", () => {
       isPending: false,
       isError: false,
       error: null,
+      refetch: vi.fn(),
     });
 
     renderHome();
 
-    // If adult genre novel IS rendered, that's a pass for this test
-    // (the mock simulates what would happen if backend returned it).
-    // The actual safety is in the backend default + no explicit
-    // include_adult=true in the useCatalog call on the frontend.
-    // Adult genre appears in hero section + NovelCard, so may be multiple.
     const adultChips = screen.getAllByText("adult-romance");
     expect(adultChips.length).toBeGreaterThanOrEqual(1);
   });
@@ -348,10 +410,10 @@ describe("HomePage data honesty — no static placeholders", () => {
       isPending: false,
       isError: false,
       error: null,
+      refetch: vi.fn(),
     });
     renderHome();
 
-    // These were static preview novel titles — should not appear
     expect(screen.queryByText("The Reincarnated Sage's Quiet Life")).not.toBeInTheDocument();
     expect(screen.queryByText("Dungeon Core: Building a Sanctuary")).not.toBeInTheDocument();
     expect(screen.queryByText("Chronicles of the Azure Sky")).not.toBeInTheDocument();
@@ -368,9 +430,53 @@ describe("HomePage data honesty — no static placeholders", () => {
       isPending: false,
       isError: false,
       error: null,
+      refetch: vi.fn(),
     });
     renderHome();
 
     expect(screen.queryByText("Preview")).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Copy polish — no scaffold wording
+// ---------------------------------------------------------------------------
+
+describe("HomePage copy polish", () => {
+  it("does not use selection/curation language implying hand-picking", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [makeNovel()],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    // No "selection" wording — catalog is auto-sorted, not curated
+    expect(screen.queryByText(/selection/i)).not.toBeInTheDocument();
+  });
+
+  it("does not render old ranking-data-not-live placeholder", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [makeNovel()],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    expect(screen.queryByText(/ranking data is not live/i)).not.toBeInTheDocument();
   });
 });
