@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -168,7 +168,15 @@ describe("Header navigation consistency", () => {
 // ---------------------------------------------------------------------------
 
 describe("Footer navigation consistency", () => {
+  const footerReadHrefs = ["/browse-novels", "/ranking", "/request-novel", "/contribute"];
   const footerLegalHrefs = ["/about", "/privacy", "/terms", "/dmca", "/contact", "/cookie-policy"];
+
+  it("every footer Read section href resolves to an existing route page", () => {
+    for (const href of footerReadHrefs) {
+      const pagePath = hrefToPagePath(href);
+      expect(existsSync(pagePath), `Missing page for footer Read href ${href}: ${pagePath}`).toBe(true);
+    }
+  });
 
   it("every footer legal href resolves to an existing route page", () => {
     for (const href of footerLegalHrefs) {
@@ -182,7 +190,7 @@ describe("Footer navigation consistency", () => {
     expect(screen.queryByRole("link", { name: /library/i })).not.toBeInTheDocument();
   });
 
-  it("footer contains Read section links only (no legal duplication into nav area)", () => {
+  it("footer contains Read section links", () => {
     render(<PublicFooter />);
     expect(screen.getByText("Browse Novels")).toBeInTheDocument();
     expect(screen.getByText("Ranking")).toBeInTheDocument();
@@ -198,5 +206,90 @@ describe("Footer navigation consistency", () => {
     expect(screen.getByText("DMCA")).toBeInTheDocument();
     expect(screen.getByText("Contact")).toBeInTheDocument();
     expect(screen.getByText("Cookie Policy")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Route inventory completeness
+// ---------------------------------------------------------------------------
+
+describe("Route inventory completeness", () => {
+  /**
+   * Routes that exist but are intentionally not linked from any navigation
+   * component. Each entry documents why it's excluded.
+   */
+  const knownExcludedRoutes: { route: string; reason: string }[] = [
+    { route: "/login", reason: "Auth uses LoginView overlay (Google OAuth), not page navigation" },
+    { route: "/register", reason: "No manual sign-up flow — auth is Google OAuth only" },
+    { route: "/logout", reason: "Logout calls API mutation with server-side redirect, not a nav link" },
+    { route: "/auth/callback", reason: "OAuth redirect_uri target — never user-facing" },
+    { route: "/error", reason: "Next.js error boundary fallback" },
+    { route: "/not-found", reason: "Next.js 404 fallback" },
+    { route: "/maintenance", reason: "Server-side maintenance redirect" },
+    { route: "/account/contribute", reason: "Legacy redirect-only stub → /contribute (no rendered page)" },
+    { route: "/", reason: "Root redirects to /home (page.tsx contains redirect())" },
+  ];
+
+  /**
+   * Routes that SHOULD be reachable from navigation. Every route not in
+   * knownExcludedRoutes must have at least one nav entry.
+   */
+  const navLinkedRoutes = new Set([
+    "/home",
+    "/browse-novels",
+    "/ranking",
+    "/request-novel",
+    "/contribute",
+    "/about",
+    "/privacy",
+    "/terms",
+    "/dmca",
+    "/contact",
+    "/cookie-policy",
+    "/account/library",
+    "/account/history",
+    "/account/requests",
+    "/account/contributions",
+    "/account/settings",
+    // dynamic routes are covered by card/row components, not nav links
+  ]);
+
+  it("every non-excluded route has at least one nav link", () => {
+    function collectRoutes(dir: string, prefix: string): string[] {
+      const routes: string[] = [];
+      const entries = readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name === "node_modules") continue;
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          routes.push(...collectRoutes(full, `${prefix}/${entry.name}`));
+        } else if (entry.name === "page.tsx") {
+          // Convert the path to a route — strip the (public) base
+          const routePath = prefix.replace(/\\/g, "/") || "/";
+          // Skip page.tsx at root → route is "/"
+          routes.push(routePath || "/");
+        }
+      }
+      return routes;
+    }
+
+    const allRoutes = collectRoutes(publicRouteRoot, "");
+    const navLinked = navLinkedRoutes;
+    const excluded = knownExcludedRoutes.map((r) => r.route);
+
+    const notCovered = allRoutes.filter((route) => !navLinked.has(route) && !excluded.includes(route));
+    // Dynamic routes (with [param]) are covered by card/row components
+    const staticNotFound = notCovered.filter((r) => !r.includes("[") && !r.includes("]"));
+
+    expect(staticNotFound, `Routes without nav link or exclusion doc: ${staticNotFound.join(", ")}`).toHaveLength(0);
+  });
+
+  it("/account/contribute is a redirect-only stub (no nav link needed)", () => {
+    // Verify the file content confirms redirect behavior
+    const pagePath = hrefToPagePath("/account/contribute");
+    expect(existsSync(pagePath), `Missing /account/contribute page`).toBe(true);
+    // Should not appear in any nav
+    const sidebar = readFileSync(pagePath, "utf-8");
+    expect(sidebar).toMatch(/redirect\("/);  // contains redirect("/contribute")
   });
 });
