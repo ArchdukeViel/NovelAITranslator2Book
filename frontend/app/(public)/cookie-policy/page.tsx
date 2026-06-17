@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
 import { StaticPage } from "@/components/public/static-page";
+
+export const metadata: Metadata = {
+  title: "Cookie Policy",
+  description: "Cookie and session token usage policy for Dokushodo public reader accounts.",
+};
 
 export default function CookiePolicyPage() {
   return (

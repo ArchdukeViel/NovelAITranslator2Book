@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import NotFoundPage from "@/app/not-found";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default NotFoundPage;
+export default function AccountLayout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}

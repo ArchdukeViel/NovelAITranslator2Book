@@ -21,8 +21,19 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Novel AI",
-  description: "Japanese web novel crawler, translation, reader, and admin workspace."
+  title: { default: "Novel AI", template: "%s | Novel AI" },
+  description: "Web novel translation, reading, and management platform.",
+  openGraph: {
+    type: "website",
+    siteName: "Novel AI",
+    title: "Novel AI",
+    description: "Web novel translation, reading, and management platform.",
+  },
+  twitter: {
+    card: "summary",
+    title: "Novel AI",
+    description: "Web novel translation, reading, and management platform.",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

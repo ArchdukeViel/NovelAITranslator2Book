@@ -59,3 +59,22 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
 });
+
+// ---------------------------------------------------------------------------
+// Mock next/font/google for test environments
+// Font functions (Noto_Serif_JP, DM_Sans, DM_Mono) are server-side constructs
+// that throw in jsdom. This shim replaces them with noop objects.
+// ---------------------------------------------------------------------------
+
+vi.mock("next/font/google", () => {
+  const mockFont = () => ({
+    className: "mock-font",
+    variable: "mock-font-variable",
+    style: { fontFamily: "mock" },
+  });
+  return {
+    Noto_Serif_JP: mockFont,
+    DM_Sans: mockFont,
+    DM_Mono: mockFont,
+  };
+});

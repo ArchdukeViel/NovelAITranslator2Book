@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
 import { StaticPage } from "@/components/public/static-page";
+
+export const metadata: Metadata = {
+  title: "Privacy",
+  description: "Privacy policy for Dokushodo public reader accounts and saved reading features.",
+};
 
 export default function PrivacyPage() {
   return (

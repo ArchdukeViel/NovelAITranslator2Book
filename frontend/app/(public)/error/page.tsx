@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
 import { StaticPage } from "@/components/public/static-page";
+
+export const metadata: Metadata = {
+  title: "Error",
+  description: "Dokushodo public error surface.",
+  robots: { index: false, follow: false },
+};
 
 export default function ErrorRoutePage() {
   return (

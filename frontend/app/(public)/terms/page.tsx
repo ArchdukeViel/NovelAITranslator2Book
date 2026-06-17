@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
 import { StaticPage } from "@/components/public/static-page";
+
+export const metadata: Metadata = {
+  title: "Terms",
+  description: "Terms of service for Dokushodo public reader.",
+};
 
 export default function TermsPage() {
   return (
