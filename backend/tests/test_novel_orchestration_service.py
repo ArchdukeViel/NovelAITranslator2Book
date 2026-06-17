@@ -192,6 +192,44 @@ class PartialTitleSource(StubSource):
         }
 
 
+class SynopsisSource(StubSource):
+    async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, object]:
+        metadata = await super().fetch_metadata(url, max_chapter=max_chapter)
+        metadata["synopsis"] = "Original Synopsis"
+        return metadata
+
+
+class BatchMetadataProvider(MockTranslationProvider):
+    def __init__(self, *, invalid_batch_json: bool = False, omit_ids: set[str] | None = None) -> None:
+        super().__init__(key="mock", model="mock-1.0")
+        self.invalid_batch_json = invalid_batch_json
+        self.omit_ids = omit_ids or set()
+        self.prompts: list[str] = []
+
+    async def translate(
+        self,
+        prompt: str,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        self.call_count += 1
+        self.prompts.append(prompt)
+        if self.invalid_batch_json and "<metadata_items>" in prompt:
+            return {"text": "NOT JSON", "metadata": {"usage": {"total_tokens": 5}}}
+
+        if "<metadata_items>" in prompt:
+            payload = json.loads(prompt.split("<metadata_items>", 1)[1].split("</metadata_items>", 1)[0].strip())
+            items = [
+                {"id": item["id"], "translation": f"[TRANSLATED] {item['source_text']}"}
+                for item in payload["items"]
+                if item["id"] not in self.omit_ids
+            ]
+            return {"text": json.dumps({"items": items}), "metadata": {"usage": {"total_tokens": 7}}}
+
+        return {"text": f"[TRANSLATED] {prompt}", "metadata": {"usage": {"total_tokens": 3}}}
+
+
 @pytest.fixture
 def orchestration_env():
     TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
@@ -218,7 +256,7 @@ def orchestration_env():
 
 @pytest.mark.asyncio
 async def test_scrape_metadata_translates_title_author_and_chapter_titles(orchestration_env) -> None:
-    provider = MockTranslationProvider(key="mock", model="mock-1.0")
+    provider = BatchMetadataProvider()
     source = StubSource()
     storage = orchestration_env["storage"]
 
@@ -246,12 +284,36 @@ async def test_scrape_metadata_translates_title_author_and_chapter_titles(orches
     assert stored["translated_author"] == "[TRANSLATED] Original Author"
     assert stored["metadata_translation_prompt_version"] == "metadata-literal-v2"
     assert stored["authors"]["translated"] == "[TRANSLATED] Original Author"
-    assert orchestration_env["usage"].summary(all_days=True)["total_requests"] == 4
+    assert provider.call_count == 2
+    assert orchestration_env["usage"].summary(all_days=True)["total_requests"] == 2
+
+
+@pytest.mark.asyncio
+async def test_scrape_metadata_batches_title_author_and_synopsis(orchestration_env) -> None:
+    provider = BatchMetadataProvider()
+    source = SynopsisSource()
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
+
+    assert metadata["translated_title"] == "[TRANSLATED] Original Novel"
+    assert metadata["translated_author"] == "[TRANSLATED] Original Author"
+    assert metadata["translated_synopsis"] == "[TRANSLATED] Original Synopsis"
+    first_batch = json.loads(provider.prompts[0].split("<metadata_items>", 1)[1].split("</metadata_items>", 1)[0])
+    assert [item["id"] for item in first_batch["items"]] == ["novel_title", "author", "synopsis"]
 
 
 @pytest.mark.asyncio
 async def test_scrape_metadata_retranslates_source_identical_previous_metadata(orchestration_env) -> None:
-    provider = MockTranslationProvider(key="mock", model="mock-1.0")
+    provider = BatchMetadataProvider()
     source = StubSource()
     storage = orchestration_env["storage"]
     storage.save_metadata(
@@ -288,7 +350,7 @@ async def test_scrape_metadata_retranslates_source_identical_previous_metadata(o
 
     metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
 
-    assert provider.call_count == 4
+    assert provider.call_count == 2
     assert metadata["translated_title"] == "[TRANSLATED] Original Novel"
     assert metadata["translated_author"] == "[TRANSLATED] Original Author"
     assert metadata["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
@@ -351,6 +413,156 @@ async def test_scrape_metadata_retries_incomplete_chapter_title_translation(orch
     assert metadata["metadata_translation_status"] == "completed"
     assert metadata["chapters"][0]["translated_title"] == "Episode 10: First Skirt Reveal"
     assert "gemini-2.5-flash-lite" in provider.models_seen
+
+
+@pytest.mark.asyncio
+async def test_metadata_chapter_titles_batch_by_default_size(orchestration_env) -> None:
+    provider = BatchMetadataProvider()
+    metadata = {
+        "source": "syosetu_ncode",
+        "chapters": [
+            {"id": str(index), "num": index, "title": f"Chapter {index}"}
+            for index in range(1, 31)
+        ],
+    }
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    translated = await orchestrator._translate_metadata_fields(metadata)
+
+    batch_prompts = [prompt for prompt in provider.prompts if "<metadata_items>" in prompt]
+    assert len(batch_prompts) == 2
+    first_batch = json.loads(batch_prompts[0].split("<metadata_items>", 1)[1].split("</metadata_items>", 1)[0])
+    second_batch = json.loads(batch_prompts[1].split("<metadata_items>", 1)[1].split("</metadata_items>", 1)[0])
+    assert len(first_batch["items"]) == 25
+    assert len(second_batch["items"]) == 5
+    assert translated["chapters"][29]["translated_title"] == "[TRANSLATED] Chapter 30"
+
+
+@pytest.mark.asyncio
+async def test_metadata_chapter_title_batch_deduplicates_exact_repeated_titles(orchestration_env) -> None:
+    provider = BatchMetadataProvider()
+    metadata = {
+        "source": "syosetu_ncode",
+        "chapters": [
+            {"id": "1", "num": 1, "title": "Interlude"},
+            {"id": "2", "num": 2, "title": "Interlude"},
+            {"id": "3", "num": 3, "title": "Finale"},
+        ],
+    }
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    translated = await orchestrator._translate_metadata_fields(metadata)
+
+    batch = json.loads(provider.prompts[0].split("<metadata_items>", 1)[1].split("</metadata_items>", 1)[0])
+    assert [item["source_text"] for item in batch["items"]] == ["Interlude", "Finale"]
+    assert [chapter["translated_title"] for chapter in translated["chapters"]] == [
+        "[TRANSLATED] Interlude",
+        "[TRANSLATED] Interlude",
+        "[TRANSLATED] Finale",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_metadata_batch_skips_reusable_and_cached_fields(orchestration_env) -> None:
+    provider = BatchMetadataProvider()
+    cache = orchestration_env["cache"]
+    cache.set("metadata:chapter_title:English:Cached Chapter", "mock", "mock-1.0", "Cached Translation")
+    metadata = {
+        "source": "syosetu_ncode",
+        "title": "Original Novel",
+        "translated_title": "Translated Novel",
+        "metadata_translation_prompt_version": "metadata-literal-v2",
+        "chapters": [
+            {"id": "1", "num": 1, "title": "Cached Chapter"},
+            {"id": "2", "num": 2, "title": "Needs Batch"},
+        ],
+    }
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=cache,
+        usage_service=orchestration_env["usage"],
+    )
+
+    translated = await orchestrator._translate_metadata_fields(metadata, existing_metadata=metadata)
+
+    assert provider.call_count == 1
+    batch = json.loads(provider.prompts[0].split("<metadata_items>", 1)[1].split("</metadata_items>", 1)[0])
+    assert [item["source_text"] for item in batch["items"]] == ["Needs Batch"]
+    assert translated["translated_title"] == "Translated Novel"
+    assert translated["chapters"][0]["translated_title"] == "Cached Translation"
+    assert translated["chapters"][1]["translated_title"] == "[TRANSLATED] Needs Batch"
+
+
+@pytest.mark.asyncio
+async def test_metadata_invalid_batch_json_falls_back_to_individual_translation(orchestration_env) -> None:
+    provider = BatchMetadataProvider(invalid_batch_json=True)
+    metadata = {
+        "source": "syosetu_ncode",
+        "title": "Original Novel",
+        "chapters": [{"id": "1", "num": 1, "title": "Chapter One"}],
+    }
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    translated = await orchestrator._translate_metadata_fields(metadata)
+
+    assert translated["translated_title"] == "[TRANSLATED] Original Novel"
+    assert translated["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
+    assert provider.call_count == 4
+
+
+@pytest.mark.asyncio
+async def test_metadata_missing_batch_item_id_falls_back_safely(orchestration_env) -> None:
+    provider = BatchMetadataProvider(omit_ids={"chapter:2"})
+    metadata = {
+        "source": "syosetu_ncode",
+        "chapters": [
+            {"id": "1", "num": 1, "title": "Chapter One"},
+            {"id": "2", "num": 2, "title": "Chapter Two"},
+        ],
+    }
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    translated = await orchestrator._translate_metadata_fields(metadata)
+
+    assert translated["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
+    assert translated["chapters"][1]["translated_title"] == "[TRANSLATED] Chapter Two"
+    assert provider.call_count == 3
 
 
 @pytest.mark.asyncio
@@ -443,13 +655,15 @@ def test_estimate_translation_requests_counts_metadata_and_body_chunks(orchestra
         chapters="all",
     )
 
-    assert estimate["metadata_requests"] == {
-        "title": 1,
-        "author": 1,
-        "synopsis": 1,
-        "chapter_titles": 2,
-        "total": 5,
-    }
+    assert estimate["metadata_requests"]["title"] == 1
+    assert estimate["metadata_requests"]["author"] == 1
+    assert estimate["metadata_requests"]["synopsis"] == 1
+    assert estimate["metadata_requests"]["novel_fields"] == 1
+    assert estimate["metadata_requests"]["chapter_titles"] == 1
+    assert estimate["metadata_requests"]["unique_chapter_titles"] == 2
+    assert estimate["metadata_requests"]["chapter_title_batch_size"] == 25
+    assert estimate["metadata_requests"]["metadata_batching"] is True
+    assert estimate["metadata_requests"]["total"] == 2
     assert estimate["body_requests"]["estimated_chunks"] == 3
     assert estimate["body_requests"]["chapters_with_text"] == 2
     assert estimate["body_requests"]["chapters_missing_text"] == []
@@ -457,10 +671,46 @@ def test_estimate_translation_requests_counts_metadata_and_body_chunks(orchestra
         {"chapter_id": "1", "source_chars": 3000, "paragraphs": 1, "chunks": 1},
         {"chapter_id": "2", "source_chars": 6002, "paragraphs": 2, "chunks": 2},
     ]
-    assert estimate["total_estimated_requests"] == 8
+    assert estimate["total_estimated_requests"] == 5
     assert estimate["assumptions"]["provider_calls"] is False
+    assert estimate["assumptions"]["metadata_batching"] is True
     assert provider.call_count == 0
     assert translation.calls == []
+
+
+def test_estimate_translation_requests_counts_batched_unique_chapter_titles(orchestration_env) -> None:
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-1",
+        {
+            "source": "syosetu_ncode",
+            "chapters": [
+                {"id": str(index), "num": index, "title": "Repeated" if index <= 10 else f"Chapter {index}"}
+                for index in range(1, 31)
+            ],
+        },
+    )
+    for index in range(1, 31):
+        storage.save_chapter("novel-1", str(index), "text")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=StubTranslationService(),
+        source_factory=lambda key: StubSource(),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    estimate = orchestrator.estimate_translation_requests(
+        source_key="syosetu_ncode",
+        novel_id="novel-1",
+        chapters="all",
+    )
+
+    assert estimate["metadata_requests"]["unique_chapter_titles"] == 21
+    assert estimate["metadata_requests"]["chapter_titles"] == 1
+    assert estimate["metadata_requests"]["total"] == 1
+    assert estimate["body_requests"]["estimated_chunks"] == 30
 
 
 def test_estimate_translation_requests_reports_missing_raw_chapter_text(orchestration_env) -> None:

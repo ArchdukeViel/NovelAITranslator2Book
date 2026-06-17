@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
+import math
 import re
 from typing import Any
 
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState
 from novelai.glossary import glossary_status_counts, normalize_glossary_entries
-from novelai.prompts import METADATA_TRANSLATION_PROMPT_VERSION, build_metadata_translation_prompt
+from novelai.prompts import (
+    METADATA_TRANSLATION_PROMPT_VERSION,
+    build_metadata_batch_translation_prompt,
+    build_metadata_translation_prompt,
+)
 from novelai.providers.model_fallbacks import model_candidates
 from novelai.services.orchestration.common import PreflightIssue, _make_state_data
 from novelai.sources.base import SourceAdapter
@@ -671,6 +677,149 @@ async def _translate_text(
     raise RuntimeError(f"No translation models available for provider {provider_key}.")
 
 
+def _metadata_cache_text(source_text: str, field: str) -> str:
+    return f"metadata:{field}:{settings.TRANSLATION_TARGET_LANGUAGE}:{source_text.strip()}"
+
+
+def _parse_metadata_batch_response(raw_text: str) -> dict[str, str]:
+    text = raw_text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", text)
+        text = re.sub(r"\s*```$", "", text).strip()
+    payload = json.loads(text)
+    if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+        raise ValueError("Metadata batch response must be a JSON object with an items array.")
+    translations: dict[str, str] = {}
+    for item in payload["items"]:
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get("id")
+        translation = item.get("translation", item.get("translated_text"))
+        if item_id is None or translation is None:
+            continue
+        translations[str(item_id)] = str(translation)
+    return translations
+
+
+def _metadata_batch_size(value: object) -> int:
+    if isinstance(value, bool):
+        return 25
+    if isinstance(value, int) and value > 0:
+        return value
+    return 25
+
+
+def _metadata_batch_max_tokens(items: list[dict[str, str]]) -> int:
+    total_source_chars = sum(len(item["source_text"]) for item in items)
+    return min(4096, max(256, total_source_chars // 2 + 128 * len(items)))
+
+
+async def _translate_metadata_batch(
+    self: Any,
+    items: list[dict[str, str]],
+    *,
+    provider_key: str | None = None,
+    provider_model: str | None = None,
+) -> dict[str, str]:
+    if not items:
+        return {}
+
+    resolved_provider_key, resolved_provider_model = self._resolve_provider_and_model(provider_key, provider_model)
+    provider_key = str(resolved_provider_key)
+    provider_model = str(resolved_provider_model)
+    if provider_key == "dummy":
+        raise RuntimeError(
+            "Metadata translation skipped because no active Gemini/OpenAI provider is configured. "
+            "Add and use a provider API token in Settings."
+        )
+
+    provider = self._provider_factory(provider_key)
+    try:
+        supported_models = provider.available_models() or []
+    except Exception:
+        supported_models = []
+
+    prompt = build_metadata_batch_translation_prompt(items)
+    provider_kwargs: dict[str, Any] = {}
+    if provider_key == "gemini":
+        provider_kwargs["temperature"] = 0.0
+
+    expected_by_id = {item["id"]: item for item in items}
+    last_error: Exception | None = None
+    for candidate_model in model_candidates(provider_key, provider_model, supported_models):
+        try:
+            result = await provider.translate(
+                prompt=prompt,
+                model=candidate_model,
+                max_tokens=_metadata_batch_max_tokens(items),
+                **provider_kwargs,
+            )
+            raw_translations = _parse_metadata_batch_response(str(result.get("text", "")))
+            translations: dict[str, str] = {}
+            for item_id, item in expected_by_id.items():
+                raw_translation = raw_translations.get(item_id)
+                if raw_translation is None:
+                    raise RuntimeError(f"Metadata batch response missing item id {item_id!r}.")
+                translated = _clean_metadata_translation(raw_translation, item["source_text"], item["field"])
+                if not _metadata_translation_is_usable(item["source_text"], translated, item["field"]):
+                    raise RuntimeError(f"Metadata batch translation for {item_id!r} looked incomplete.")
+                translations[item_id] = translated
+            self._record_usage(provider.key, candidate_model, result.get("metadata"))
+            for item in items:
+                self._cache.set(_metadata_cache_text(item["source_text"], item["field"]), provider.key, candidate_model, translations[item["id"]])
+            return translations
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "Metadata batch translation failed with %s/%s; trying fallback model if available: %s",
+                provider_key,
+                candidate_model,
+                exc,
+            )
+            continue
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"No translation models available for provider {provider_key}.")
+
+
+async def _translate_metadata_items(
+    self: Any,
+    items: list[dict[str, str]],
+) -> dict[str, str]:
+    if not items:
+        return {}
+    try:
+        return await _translate_metadata_batch(self, items)
+    except Exception as exc:
+        logger.warning("Metadata batch fell back to individual translation: %s", exc)
+
+    translations: dict[str, str] = {}
+    for item in items:
+        translations[item["id"]] = await self._translate_text(item["source_text"], field=item["field"])
+    return translations
+
+
+def _cached_metadata_translation(self: Any, source_text: str, field: str) -> str | None:
+    provider_key, provider_model = self._resolve_provider_and_model(None, None)
+    if provider_key == "dummy":
+        return None
+    try:
+        provider = self._provider_factory(provider_key)
+    except Exception:
+        return None
+    try:
+        supported_models = provider.available_models() or []
+    except Exception:
+        supported_models = []
+    cache_text = _metadata_cache_text(source_text, field)
+    for candidate_model in model_candidates(provider_key, provider_model, supported_models):
+        cached = self._cache.get(cache_text, provider.key, candidate_model)
+        if cached is not None and _metadata_translation_is_usable(source_text, cached, field):
+            return cached
+    return None
+
+
 def _can_reuse_metadata_translation(source_text: str, previous_source: Any, previous_translation: Any, field: str) -> bool:
     if previous_source != source_text:
         return False
@@ -679,36 +828,55 @@ def _can_reuse_metadata_translation(source_text: str, previous_source: Any, prev
     return _metadata_translation_is_usable(source_text, previous_translation, field)
 
 
-def _metadata_request_needed(metadata: dict[str, Any], source_key: str, translated_key: str, field: str) -> int:
+def _metadata_field_estimate(
+    self: Any,
+    metadata: dict[str, Any],
+    source_key: str,
+    translated_key: str,
+    field: str,
+) -> tuple[bool, str | None]:
     source_text = metadata.get(source_key)
     if not isinstance(source_text, str) or not source_text.strip():
-        return 0
-    if metadata.get("metadata_translation_prompt_version") != METADATA_TRANSLATION_PROMPT_VERSION:
-        return 1
-    return 0 if _can_reuse_metadata_translation(source_text, source_text, metadata.get(translated_key), field) else 1
+        return False, None
+    if metadata.get("metadata_translation_prompt_version") == METADATA_TRANSLATION_PROMPT_VERSION and _can_reuse_metadata_translation(
+        source_text,
+        source_text,
+        metadata.get(translated_key),
+        field,
+    ):
+        return False, "reused"
+    if _cached_metadata_translation(self, source_text, field) is not None:
+        return False, "cached"
+    return True, None
 
 
-def _chapter_title_request_needed(chapter: dict[str, Any], previous_chapter: dict[str, Any], *, can_reuse: bool) -> int:
+def _chapter_title_estimate(self: Any, chapter: dict[str, Any], *, can_reuse: bool) -> tuple[bool, str | None, str | None]:
     chapter_title = chapter.get("title")
     if not isinstance(chapter_title, str) or not chapter_title.strip():
-        return 0
+        return False, None, None
     if can_reuse and _can_reuse_metadata_translation(
         chapter_title,
-        previous_chapter.get("title"),
-        previous_chapter.get("translated_title"),
+        chapter.get("title"),
+        chapter.get("translated_title"),
         "chapter_title",
     ):
-        return 0
-    return 1
+        return False, "reused", chapter_title.strip()
+    if _cached_metadata_translation(self, chapter_title, "chapter_title") is not None:
+        return False, "cached", chapter_title.strip()
+    return True, None, chapter_title.strip()
 
 
 def _metadata_request_estimate(
+    self: Any,
     metadata: dict[str, Any],
     *,
     included_chapter_ids: set[str],
-) -> dict[str, int]:
-    title = _metadata_request_needed(metadata, "title", "translated_title", "title")
-    author = _metadata_request_needed(metadata, "author", "translated_author", "author")
+) -> dict[str, int | bool]:
+    reusable_fields = 0
+    cached_fields = 0
+
+    title_needed, title_skip = _metadata_field_estimate(self, metadata, "title", "translated_title", "title")
+    author_needed, author_skip = _metadata_field_estimate(self, metadata, "author", "translated_author", "author")
     synopsis_source_key = next(
         (
             key
@@ -717,15 +885,21 @@ def _metadata_request_estimate(
         ),
         None,
     )
-    synopsis = (
-        _metadata_request_needed(metadata, synopsis_source_key, "translated_synopsis", "synopsis")
+    synopsis_needed, synopsis_skip = (
+        _metadata_field_estimate(self, metadata, synopsis_source_key, "translated_synopsis", "synopsis")
         if synopsis_source_key is not None
-        else 0
+        else (False, None)
     )
+    for skip_reason in (title_skip, author_skip, synopsis_skip):
+        if skip_reason == "reused":
+            reusable_fields += 1
+        elif skip_reason == "cached":
+            cached_fields += 1
+    novel_fields = int(title_needed or author_needed or synopsis_needed)
 
     can_reuse_previous = metadata.get("metadata_translation_prompt_version") == METADATA_TRANSLATION_PROMPT_VERSION
     chapters = metadata.get("chapters", [])
-    chapter_titles = 0
+    unique_chapter_titles: set[str] = set()
     if isinstance(chapters, list):
         for chapter in chapters:
             if not isinstance(chapter, dict):
@@ -733,14 +907,28 @@ def _metadata_request_estimate(
             chapter_id = str(chapter.get("id"))
             if chapter_id not in included_chapter_ids:
                 continue
-            chapter_titles += _chapter_title_request_needed(chapter, chapter, can_reuse=can_reuse_previous)
+            needed, skip_reason, title_source = _chapter_title_estimate(self, chapter, can_reuse=can_reuse_previous)
+            if skip_reason == "reused":
+                reusable_fields += 1
+            elif skip_reason == "cached":
+                cached_fields += 1
+            if needed and title_source is not None:
+                unique_chapter_titles.add(title_source)
 
-    total = title + author + synopsis + chapter_titles
+    batch_size = _metadata_batch_size(settings.TRANSLATION_METADATA_CHAPTER_TITLE_BATCH_SIZE)
+    chapter_titles = math.ceil(len(unique_chapter_titles) / batch_size) if unique_chapter_titles else 0
+    total = novel_fields + chapter_titles
     return {
-        "title": title,
-        "author": author,
-        "synopsis": synopsis,
+        "title": int(title_needed),
+        "author": int(author_needed),
+        "synopsis": int(synopsis_needed),
+        "novel_fields": novel_fields,
         "chapter_titles": chapter_titles,
+        "chapter_title_batch_size": batch_size,
+        "unique_chapter_titles": len(unique_chapter_titles),
+        "reusable_fields": reusable_fields,
+        "cached_fields": cached_fields,
+        "metadata_batching": True,
         "total": total,
     }
 
@@ -776,7 +964,7 @@ def estimate_translation_requests(
         included_numbers.append(number)
 
     included_chapter_ids = {str(number) for number in included_numbers}
-    metadata_requests = _metadata_request_estimate(metadata, included_chapter_ids=included_chapter_ids)
+    metadata_requests = _metadata_request_estimate(self, metadata, included_chapter_ids=included_chapter_ids)
 
     segment = SmartSegmentStage()
     per_chapter: list[dict[str, Any]] = []
@@ -829,7 +1017,8 @@ def estimate_translation_requests(
             "chunk_overlap_paragraphs": segment.overlap_paragraphs,
             "allow_multi_chapter_bundles": segment.allow_multi_chapter_bundles,
             "max_chapters_per_bundle": segment.max_chapters_per_bundle,
-            "metadata_batching": False,
+            "metadata_batching": True,
+            "metadata_chapter_title_batch_size": settings.TRANSLATION_METADATA_CHAPTER_TITLE_BATCH_SIZE,
             "adaptive_chunking": False,
             "provider_calls": False,
             "already_translated_chapters": "included" if include_already_translated else "excluded",
@@ -842,7 +1031,7 @@ async def _translate_metadata_fields(
     metadata: dict[str, Any],
     existing_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Translate title, author, and per-chapter titles in *metadata*.
+    """Translate metadata fields in provider-agnostic batches.
 
     Reuses previously translated values from *existing_metadata* when the
     source text has not changed, avoiding redundant API calls.
@@ -851,6 +1040,7 @@ async def _translate_metadata_fields(
     previous = existing_metadata or {}
     can_reuse_previous = previous.get("metadata_translation_prompt_version") == METADATA_TRANSLATION_PROMPT_VERSION
 
+    novel_items: list[dict[str, str]] = []
     title = translated_metadata.get("title")
     if isinstance(title, str) and title:
         if can_reuse_previous and _can_reuse_metadata_translation(
@@ -860,8 +1050,10 @@ async def _translate_metadata_fields(
             "title",
         ):
             translated_metadata["translated_title"] = previous["translated_title"]
+        elif cached := _cached_metadata_translation(self, title, "title"):
+            translated_metadata["translated_title"] = cached
         else:
-            translated_metadata["translated_title"] = await self._translate_text(title, field="title")
+            novel_items.append({"id": "novel_title", "field": "title", "source_text": title.strip()})
 
     author = translated_metadata.get("author")
     if isinstance(author, str) and author:
@@ -872,8 +1064,10 @@ async def _translate_metadata_fields(
             "author",
         ):
             translated_metadata["translated_author"] = previous["translated_author"]
+        elif cached := _cached_metadata_translation(self, author, "author"):
+            translated_metadata["translated_author"] = cached
         else:
-            translated_metadata["translated_author"] = await self._translate_text(author, field="author")
+            novel_items.append({"id": "author", "field": "author", "source_text": author.strip()})
 
     synopsis = translated_metadata.get("synopsis") or translated_metadata.get("description") or translated_metadata.get("summary")
     if isinstance(synopsis, str) and synopsis:
@@ -884,8 +1078,19 @@ async def _translate_metadata_fields(
             "synopsis",
         ):
             translated_metadata["translated_synopsis"] = previous["translated_synopsis"]
+        elif cached := _cached_metadata_translation(self, synopsis, "synopsis"):
+            translated_metadata["translated_synopsis"] = cached
         else:
-            translated_metadata["translated_synopsis"] = await self._translate_text(synopsis, field="synopsis")
+            novel_items.append({"id": "synopsis", "field": "synopsis", "source_text": synopsis.strip()})
+
+    if novel_items:
+        novel_translations = await _translate_metadata_items(self, novel_items)
+        if "novel_title" in novel_translations:
+            translated_metadata["translated_title"] = novel_translations["novel_title"]
+        if "author" in novel_translations:
+            translated_metadata["translated_author"] = novel_translations["author"]
+        if "synopsis" in novel_translations:
+            translated_metadata["translated_synopsis"] = novel_translations["synopsis"]
 
     previous_chapters = previous.get("chapters", [])
     previous_by_id = {
@@ -899,6 +1104,9 @@ async def _translate_metadata_fields(
         return translated_metadata
 
     translated_chapters: list[dict[str, Any]] = []
+    title_to_item_id: dict[str, str] = {}
+    title_item_sources: dict[str, str] = {}
+    chapter_item_refs: dict[str, list[dict[str, Any]]] = {}
     for chapter in chapters:
         if not isinstance(chapter, dict):
             continue
@@ -915,10 +1123,33 @@ async def _translate_metadata_fields(
                 "chapter_title",
             ):
                 translated_chapter["translated_title"] = previous_chapter["translated_title"]
+            elif cached := _cached_metadata_translation(self, chapter_title, "chapter_title"):
+                translated_chapter["translated_title"] = cached
             else:
-                translated_chapter["translated_title"] = await self._translate_text(chapter_title, field="chapter_title")
+                normalized_title = chapter_title.strip()
+                item_id = title_to_item_id.get(normalized_title)
+                if item_id is None:
+                    item_id = f"chapter:{chapter_id}"
+                    title_to_item_id[normalized_title] = item_id
+                    title_item_sources[item_id] = normalized_title
+                chapter_item_refs.setdefault(item_id, []).append(translated_chapter)
 
         translated_chapters.append(translated_chapter)
+
+    batch_size = _metadata_batch_size(settings.TRANSLATION_METADATA_CHAPTER_TITLE_BATCH_SIZE)
+    chapter_items = [
+        {"id": item_id, "field": "chapter_title", "source_text": source_text}
+        for item_id, source_text in title_item_sources.items()
+    ]
+    for start in range(0, len(chapter_items), batch_size):
+        batch = chapter_items[start : start + batch_size]
+        translations = await _translate_metadata_items(self, batch)
+        for item in batch:
+            translated_title = translations.get(item["id"])
+            if translated_title is None:
+                translated_title = await self._translate_text(item["source_text"], field="chapter_title")
+            for translated_chapter in chapter_item_refs.get(item["id"], []):
+                translated_chapter["translated_title"] = translated_title
 
     translated_metadata["chapters"] = translated_chapters
     translated_metadata["metadata_translation_prompt_version"] = METADATA_TRANSLATION_PROMPT_VERSION
