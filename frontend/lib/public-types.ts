@@ -187,13 +187,11 @@ export interface PublicGenreResponse {
   slug: string;
   name_ja: string;
   name_en: string | null;
-  is_adult: boolean;
 }
 
 export interface PublicTagSearchResult {
   name: string;
   name_ja: string | null;
-  is_adult: boolean;
 }
 
 export interface TagSearchParams {

@@ -1098,7 +1098,7 @@ class TestTagSearch:
         assert len(data) == 1
         assert data[0]["name"] == "dragon"
         assert data[0]["name_ja"] == "ドラゴン"
-        assert data[0]["is_adult"] is False
+        assert "is_adult" not in data[0]
 
     def test_search_matches_name_ja(
         self, client: TestClient, storage: StorageService, db_session,
@@ -1155,7 +1155,7 @@ class TestTagSearch:
         assert resp.status_code == 200
         assert len(data := resp.json()) == 1
         assert data[0]["name"] == "adult_tag"
-        assert data[0]["is_adult"] is True
+        assert "is_adult" not in data[0]
 
     def test_result_limit_works(
         self, client: TestClient, storage: StorageService, db_session,

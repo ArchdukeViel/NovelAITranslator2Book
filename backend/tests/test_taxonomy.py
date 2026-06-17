@@ -389,7 +389,7 @@ class TestPublicGenreEndpoint:
         assert "slug" in first
         assert "name_ja" in first
         assert "name_en" in first
-        assert "is_adult" in first
+        assert "is_adult" not in first
 
     def test_exclude_adult_genres(self, client) -> None:
         c, _ = client

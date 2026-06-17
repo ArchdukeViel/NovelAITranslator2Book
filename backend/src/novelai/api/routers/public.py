@@ -86,13 +86,11 @@ class PublicGenreResponse(BaseModel):
     slug: str
     name_ja: str
     name_en: str | None = None
-    is_adult: bool = False
 
 
 class PublicTagSearchResult(BaseModel):
     name: str
     name_ja: str | None = None
-    is_adult: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -375,7 +373,6 @@ async def list_genres(
             slug=g.slug,
             name_ja=g.name_ja,
             name_en=g.name_en,
-            is_adult=g.is_adult,
         )
         for g in query.all()
     ]
@@ -417,7 +414,6 @@ async def search_tags(
         PublicTagSearchResult(
             name=t.name,
             name_ja=t.name_ja,
-            is_adult=t.is_adult,
         )
         for t in results
     ]
