@@ -35,7 +35,7 @@ const STATUS_FILTERS = [
 ] as const;
 
 const SORT_OPTIONS: { value: CatalogSortField; label: string }[] = [
-  { value: "added_at", label: "Addition date" },
+  { value: "added_at", label: "Recently added" },
   { value: "title", label: "Title" },
   { value: "chapter_count", label: "Chapter count" },
 ];
@@ -561,7 +561,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
             onClick={() => setAdvancedOpen((prev) => !prev)}
             className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-xs font-medium text-secondary-foreground transition-colors hover:bg-muted"
           >
-            Advanced search
+            Filters
             <ChevronDown
               className={`h-3.5 w-3.5 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
             />
