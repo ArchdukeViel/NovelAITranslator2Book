@@ -210,6 +210,7 @@ class HistoryEntryResponse(BaseModel):
     id: int
     slug: str
     chapter_id: str | None
+    chapter_number: int | None = None
     read_at: datetime
 
 
@@ -242,10 +243,16 @@ def record_history(
     entry = ReadingHistory(user_id=user.user_id, novel_id=novel.id, chapter_id=chapter_db_id)
     session.add(entry)
     session.flush()
+    chapter_number: int | None = None
+    if entry.chapter_id is not None:
+        ch = session.query(Chapter.chapter_number).filter_by(id=entry.chapter_id).one_or_none()
+        if ch:
+            chapter_number = ch[0]
     return HistoryEntryResponse(
         id=entry.id,
         slug=effective_slug,
         chapter_id=str(entry.chapter_id) if entry.chapter_id is not None else None,
+        chapter_number=chapter_number,
         read_at=entry.read_at,
     )
 
@@ -256,9 +263,10 @@ def list_history(
     user: SessionUser = Depends(require_role("user")),
     session: Session = Depends(get_db_session),
 ) -> HistoryListResponse:
-    entries = (
-        session.query(ReadingHistory)
-        .filter_by(user_id=user.user_id)
+    results = (
+        session.query(ReadingHistory, Chapter.chapter_number)
+        .outerjoin(Chapter, ReadingHistory.chapter_id == Chapter.id)
+        .filter(ReadingHistory.user_id == user.user_id)
         .order_by(ReadingHistory.read_at.desc())
         .limit(limit)
         .all()
@@ -269,9 +277,10 @@ def list_history(
                 id=entry.id,
                 slug=_novel_slug(entry.novel_id, session) or str(entry.novel_id),
                 chapter_id=str(entry.chapter_id) if entry.chapter_id is not None else None,
+                chapter_number=chapter_number,
                 read_at=entry.read_at,
             )
-            for entry in entries
+            for entry, chapter_number in results
         ]
     )
 

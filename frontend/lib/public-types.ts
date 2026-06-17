@@ -107,6 +107,7 @@ export interface HistoryEntry {
   id: number;
   slug: string;
   chapter_id: string | null;
+  chapter_number: number | null;
   read_at: string;
 }
 

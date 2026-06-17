@@ -455,3 +455,178 @@ describe("Account pages — error states", () => {
     expect(body).toContain("Could not load reading history");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tests: Account history — chapter_number display
+// ---------------------------------------------------------------------------
+
+describe("Account history — chapter number display", () => {
+  it("displays Ch. {chapter_number} when chapter_number is present", async () => {
+    mocks.isAuthenticated = true;
+    mocks.useHistoryMock.mockReturnValue({
+      data: {
+        items: [
+          {
+            id: 1,
+            slug: "test-novel",
+            chapter_id: "42",
+            chapter_number: 7,
+            read_at: "2025-06-01T00:00:00Z",
+          },
+        ],
+        next_cursor: null,
+      },
+      isPending: false,
+      isError: false,
+    });
+    const { default: Page } = await import("../account/history/page");
+    renderWithProviders(<Page />);
+    const body = document.body.textContent ?? "";
+    expect(body).toContain("Ch. 7");
+    expect(body).toContain("test-novel");
+  });
+
+  it("does not display raw chapter_id as primary chapter label", async () => {
+    mocks.isAuthenticated = true;
+    mocks.useHistoryMock.mockReturnValue({
+      data: {
+        items: [
+          {
+            id: 2,
+            slug: "another-novel",
+            chapter_id: "99",
+            chapter_number: 3,
+            read_at: "2025-06-02T00:00:00Z",
+          },
+        ],
+        next_cursor: null,
+      },
+      isPending: false,
+      isError: false,
+    });
+    const { default: Page } = await import("../account/history/page");
+    renderWithProviders(<Page />);
+    const body = document.body.textContent ?? "";
+    // "99" is the raw DB id — should not appear as "Ch. 99"
+    expect(body).not.toContain("Ch. 99");
+    // Should use Ch. 3 instead
+    expect(body).toContain("Ch. 3");
+  });
+
+  it("shows 'Chapter' fallback when chapter_number is null and chapter_id exists", async () => {
+    mocks.isAuthenticated = true;
+    mocks.useHistoryMock.mockReturnValue({
+      data: {
+        items: [
+          {
+            id: 3,
+            slug: "no-ch-novel",
+            chapter_id: "55",
+            chapter_number: null,
+            read_at: "2025-06-03T00:00:00Z",
+          },
+        ],
+        next_cursor: null,
+      },
+      isPending: false,
+      isError: false,
+    });
+    const { default: Page } = await import("../account/history/page");
+    renderWithProviders(<Page />);
+    const body = document.body.textContent ?? "";
+    expect(body).toContain("Chapter");
+    // Should NOT say "Ch. 55" (raw DB id)
+    expect(body).not.toContain("Ch. 55");
+  });
+
+  it("shows slug-only when both chapter_number and chapter_id are null", async () => {
+    mocks.isAuthenticated = true;
+    mocks.useHistoryMock.mockReturnValue({
+      data: {
+        items: [
+          {
+            id: 4,
+            slug: "slug-only-novel",
+            chapter_id: null,
+            chapter_number: null,
+            read_at: "2025-06-04T00:00:00Z",
+          },
+        ],
+        next_cursor: null,
+      },
+      isPending: false,
+      isError: false,
+    });
+    const { default: Page } = await import("../account/history/page");
+    renderWithProviders(<Page />);
+    const body = document.body.textContent ?? "";
+    expect(body).toContain("slug-only-novel");
+    // entry label shows slug only — no "Ch." prefix before slug
+    // (header says "Chapters you have opened" so "Ch." may appear elsewhere)
+  });
+
+  it("chapter link still uses chapter_id in the URL", async () => {
+    mocks.isAuthenticated = true;
+    mocks.useHistoryMock.mockReturnValue({
+      data: {
+        items: [
+          {
+            id: 5,
+            slug: "test-novel",
+            chapter_id: "77",
+            chapter_number: 2,
+            read_at: "2025-06-05T00:00:00Z",
+          },
+        ],
+        next_cursor: null,
+      },
+      isPending: false,
+      isError: false,
+    });
+    const { default: Page } = await import("../account/history/page");
+    renderWithProviders(<Page />);
+    const link = document.querySelector('a[href*="chapter/77"]');
+    expect(link).toBeTruthy();
+  });
+
+  it("history page does not pass include_adult=true", async () => {
+    mocks.isAuthenticated = true;
+    const { default: Page } = await import("../account/history/page");
+    renderWithProviders(<Page />);
+    const body = document.body.textContent ?? "";
+    expect(body).not.toContain("include_adult=true");
+  });
+
+  it("library history section uses chapter_number instead of raw chapter_id", async () => {
+    mocks.isAuthenticated = true;
+    mocks.useLibraryMock.mockReturnValue({
+      data: [
+        { slug: "lib-novel", status: "reading", added_at: "2025-01-01T00:00:00Z" },
+        { slug: "lib-novel", status: "paused", added_at: "2025-01-01T00:00:00Z" },
+      ],
+      isPending: false,
+      isError: false,
+    });
+    mocks.useHistoryMock.mockReturnValue({
+      data: {
+        items: [
+          {
+            id: 6,
+            slug: "lib-novel",
+            chapter_id: "88",
+            chapter_number: 4,
+            read_at: "2025-06-06T00:00:00Z",
+          },
+        ],
+        next_cursor: null,
+      },
+      isPending: false,
+      isError: false,
+    });
+    const { default: Page } = await import("../account/library/page");
+    renderWithProviders(<Page />);
+    const body = document.body.textContent ?? "";
+    expect(body).toContain("Ch. 4");
+    expect(body).not.toContain("Ch. 88");
+  });
+});

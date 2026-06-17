@@ -179,6 +179,7 @@ describe("public reading-state UI", () => {
                 id: 10,
                 slug: "demo",
                 chapter_id: "7",
+                chapter_number: 7,
                 read_at: "2026-06-15T00:00:00Z",
               },
             ],

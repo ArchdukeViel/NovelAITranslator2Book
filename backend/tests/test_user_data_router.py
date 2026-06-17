@@ -244,14 +244,17 @@ class TestHistoryContract:
         first = client.post("/api/user/history", json={"slug": "test-novel", "chapter_id": chapter_id}, headers=headers)
         second = client.post("/api/user/history", json={"slug": "test-novel"}, headers=headers)
         assert first.status_code == 201
-        assert_keys(first.json(), {"id", "slug", "chapter_id", "read_at"})
+        assert_keys(first.json(), {"id", "slug", "chapter_id", "chapter_number", "read_at"})
+        assert first.json()["chapter_number"] == 1
         assert second.status_code == 201
+        assert second.json()["chapter_number"] is None
 
         listed = client.get("/api/user/history?limit=1")
         assert listed.status_code == 200
         assert_keys(listed.json(), {"items", "next_cursor"})
         assert len(listed.json()["items"]) == 1
         assert listed.json()["items"][0]["id"] == second.json()["id"]
+        assert listed.json()["items"][0]["chapter_number"] is None
 
     def test_history_validation_and_legacy_query_compatibility(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
@@ -267,6 +270,18 @@ class TestHistoryContract:
 
         set_user(app, 2)
         assert client.get("/api/user/history").json()["items"] == []
+
+    def test_history_list_includes_chapter_number_when_chapter_linked(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        headers = csrf_headers(client)
+        chapter_id = str(seeded_catalog["chapter"].id)
+        client.post("/api/user/history", json={"slug": "test-novel", "chapter_id": chapter_id}, headers=headers)
+        listed = client.get("/api/user/history")
+        assert listed.status_code == 200
+        items = listed.json()["items"]
+        assert len(items) == 1
+        assert items[0]["chapter_number"] == 1
+        assert items[0]["chapter_id"] == chapter_id
 
 
 class TestReviewContract:
