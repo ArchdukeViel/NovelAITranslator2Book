@@ -78,7 +78,7 @@ function renderPage() {
 }
 
 function openAdvancedSearch() {
-  const btn = screen.getByRole("button", { name: /advanced search/i });
+  const btn = screen.getByRole("button", { name: /filters/i });
   act(() => { btn.click(); });
 }
 
@@ -124,6 +124,38 @@ describe("BrowsePage visual honesty", () => {
     expect(screen.queryByRole("button", { name: /rating/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /popular/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /trending/i })).not.toBeInTheDocument();
+  });
+
+  it("sort options do not include unsupported metric labels", () => {
+    renderPage();
+    const sortSelect = screen.getByLabelText("Sort by") as HTMLSelectElement;
+    const options = Array.from(sortSelect.options).map((o) => o.textContent?.trim() ?? "");
+    // Allowed: "Recently added", "Title", "Chapter count"
+    expect(options).not.toContain("Popular");
+    expect(options).not.toContain("Top Rated");
+    expect(options).not.toContain("Most Viewed");
+    expect(options).not.toContain("Trending");
+    expect(options).not.toContain("Addition date");
+  });
+
+  it("clear filters resets all visible filter indicators", () => {
+    searchParamsMock.mockReturnValue(
+      new URLSearchParams("q=test&status=Ongoing&min_chapters=5&max_chapters=50")
+    );
+    renderPage();
+    // Verify filter indicators are present
+    expect(screen.getByText(/“test”/)).toBeInTheDocument();
+    expect(screen.getAllByText("Ongoing").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/5[-–]50 ch\.?/)).toBeInTheDocument();
+    // Click clear
+    const clearBtns = screen.getAllByText("Clear filters");
+    act(() => { clearBtns[0].click(); });
+    // Verify pushParams cleared them (only sort/order/page survive)
+    const url = mocks.pushFn.mock.calls[0][0] as string;
+    expect(url).not.toContain("q=");
+    expect(url).not.toContain("status=");
+    expect(url).not.toContain("min_chapters");
+    expect(url).not.toContain("max_chapters");
   });
 });
 
