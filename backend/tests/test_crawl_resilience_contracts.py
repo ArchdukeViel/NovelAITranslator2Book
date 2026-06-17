@@ -562,54 +562,194 @@ class TestSingleChapterFailure:
 # ---------------------------------------------------------------------------
 
 
-class TestConcurrentCrawlRisk:
-    """Document that no crawl locking mechanism currently exists.
+class TestConcurrentCrawlLocking:
+    """Verify that concurrent scrapes of the same novel are protected by a lock.
 
-    If two scrapes of the same novel run concurrently, they may
-    corrupt each other's writes. This test documents the gap.
+    After SOURCE-PIPELINE-FIX-2C: in-process asyncio lock prevents two scrapes
+    of the same source_key + novel_id from running simultaneously.
     """
 
-    @pytest.mark.skip(
-        reason="No crawl locking exists. Concurrent scrapes of the same novel "
-        "may produce corrupted metadata or chapter files. "
-        "Fix planned for SOURCE-PIPELINE-FIX-2C."
-    )
     @pytest.mark.asyncio
-    async def test_concurrent_scrapes_do_not_corrupt(self, crawl_env) -> None:
-        """SKIPPED: No locking mechanism. Two simultaneous scrape_chapters() calls
-        for the same novel_id may interleave writes to the same metadata.json
-        and chapter files, producing corrupted state.
-
-        Expected future behavior: second concurrent scrape should be rejected
-        or queued, not allowed to run in parallel.
-        """
+    async def test_concurrent_same_novel_scrape_rejected(self, crawl_env) -> None:
+        """Second concurrent scrape of same novel raises RuntimeError."""
         import asyncio
 
         storage = crawl_env["storage"]
-        source_a = TwoChapterSource()
-        source_b = TwoChapterSource()
-        source_b.chapter_payloads["novel-1/ch1"] = {"text": "Source B content", "images": []}
+        source = TwoChapterSource()
+
+        # Add a delay to the source to ensure overlap
+        original_fetch = source.fetch_chapter_payload
+
+        async def slow_fetch(url: str) -> dict[str, Any]:
+            await asyncio.sleep(0.1)  # Ensure second scrape starts while first is running
+            return await original_fetch(url)
+
+        source.fetch_chapter_payload = slow_fetch  # type: ignore[method-assign]
 
         service = NovelOrchestrationService(
             storage=storage,
+            translation=_NoopTranslationService(),
+            source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
             usage_service=crawl_env["usage"],
-            source_factory=lambda k: source_a,
-            translation=_NoopTranslationService(),
         )
 
-        # Run two scrapes concurrently — this should NOT corrupt data
+        # Run two scrapes concurrently
         results = await asyncio.gather(
             service.scrape_chapters("test_source", "novel-1", "all", mode="full"),
             service.scrape_chapters("test_source", "novel-1", "all", mode="full"),
             return_exceptions=True,
         )
 
-        # Both should succeed or one should be rejected cleanly
-        ch = storage.load_chapter("novel-1", "1")
-        assert ch is not None
-        assert ch["text"].strip()
+        # One should succeed, one should be rejected
+        successes = [r for r in results if not isinstance(r, Exception)]
+        failures = [r for r in results if isinstance(r, RuntimeError)]
+        assert len(successes) == 1
+        assert len(failures) == 1
+        assert "already in progress" in str(failures[0])
+
+    @pytest.mark.asyncio
+    async def test_lock_released_after_success(self, crawl_env) -> None:
+        """Lock is released after successful scrape, allowing subsequent scrape."""
+        storage = crawl_env["storage"]
+        source = TwoChapterSource()
+
+        service = NovelOrchestrationService(
+            storage=storage,
+            translation=_NoopTranslationService(),
+            source_factory=lambda k: source,
+            settings_service=crawl_env["settings"],
+            translation_cache=crawl_env["cache"],
+            usage_service=crawl_env["usage"],
+        )
+
+        # First scrape succeeds
+        result1 = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        assert result1["succeeded"] == 2
+
+        # Second scrape should also succeed (lock released)
+        result2 = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        assert result2["succeeded"] == 2
+
+    @pytest.mark.asyncio
+    async def test_lock_released_after_partial_failure(self, crawl_env) -> None:
+        """Lock is released after per-chapter partial failure."""
+        storage = crawl_env["storage"]
+        source = TwoChapterSource()
+        source.fetch_errors["novel-1/ch1"] = SourceError("Timeout")
+
+        service = NovelOrchestrationService(
+            storage=storage,
+            translation=_NoopTranslationService(),
+            source_factory=lambda k: source,
+            settings_service=crawl_env["settings"],
+            translation_cache=crawl_env["cache"],
+            usage_service=crawl_env["usage"],
+        )
+
+        # First scrape has partial failure
+        result1 = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        assert result1["failed"] == 1
+        assert result1["succeeded"] == 1
+
+        # Second scrape should work (lock released)
+        source.fetch_errors.clear()  # Clear errors for second attempt
+        result2 = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        assert result2["succeeded"] == 2
+
+    @pytest.mark.asyncio
+    async def test_lock_released_after_metadata_failure(self, crawl_env) -> None:
+        """Lock is released after metadata/list-level failure."""
+        storage = crawl_env["storage"]
+        source = TwoChapterSource()
+
+        service = NovelOrchestrationService(
+            storage=storage,
+            translation=_NoopTranslationService(),
+            source_factory=lambda k: source,
+            settings_service=crawl_env["settings"],
+            translation_cache=crawl_env["cache"],
+            usage_service=crawl_env["usage"],
+        )
+
+        # Update mode without prior metadata should fail
+        with pytest.raises(RuntimeError, match="Metadata not found"):
+            await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
+
+        # Lock should be released — full scrape should work
+        result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+        assert result["succeeded"] == 2
+
+    @pytest.mark.asyncio
+    async def test_different_novels_can_scrape_concurrently(self, crawl_env) -> None:
+        """Concurrent scrapes of different novel IDs can proceed independently."""
+        import asyncio
+
+        storage = crawl_env["storage"]
+        source = TwoChapterSource()
+
+        service = NovelOrchestrationService(
+            storage=storage,
+            translation=_NoopTranslationService(),
+            source_factory=lambda k: source,
+            settings_service=crawl_env["settings"],
+            translation_cache=crawl_env["cache"],
+            usage_service=crawl_env["usage"],
+        )
+
+        # Scrape two different novels concurrently
+        results = await asyncio.gather(
+            service.scrape_chapters("test_source", "novel-A", "all", mode="full"),
+            service.scrape_chapters("test_source", "novel-B", "all", mode="full"),
+            return_exceptions=True,
+        )
+
+        # Both should succeed (different lock keys)
+        assert all(not isinstance(r, Exception) for r in results)
+        assert results[0]["succeeded"] == 2
+        assert results[1]["succeeded"] == 2
+
+    @pytest.mark.asyncio
+    async def test_update_mode_uses_same_lock(self, crawl_env) -> None:
+        """Update mode scrape also uses the per-novel lock."""
+        import asyncio
+
+        storage = crawl_env["storage"]
+        source = TwoChapterSource()
+
+        service = NovelOrchestrationService(
+            storage=storage,
+            translation=_NoopTranslationService(),
+            source_factory=lambda k: source,
+            settings_service=crawl_env["settings"],
+            translation_cache=crawl_env["cache"],
+            usage_service=crawl_env["usage"],
+        )
+
+        # First do a full scrape to populate metadata
+        await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
+
+        # Add delay to update scrape
+        original_fetch = source.fetch_chapter_payload
+
+        async def slow_fetch(url: str) -> dict[str, Any]:
+            await asyncio.sleep(0.1)
+            return await original_fetch(url)
+
+        source.fetch_chapter_payload = slow_fetch  # type: ignore[method-assign]
+
+        # Run full + update concurrently — one should be rejected
+        results = await asyncio.gather(
+            service.scrape_chapters("test_source", "novel-1", "all", mode="full"),
+            service.scrape_chapters("test_source", "novel-1", "all", mode="update"),
+            return_exceptions=True,
+        )
+
+        successes = [r for r in results if not isinstance(r, Exception)]
+        failures = [r for r in results if isinstance(r, RuntimeError)]
+        assert len(successes) == 1
+        assert len(failures) == 1
 
 
 # ---------------------------------------------------------------------------

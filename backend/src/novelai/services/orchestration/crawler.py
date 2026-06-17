@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -12,6 +13,19 @@ from novelai.sources.quality import (
 )
 
 logger = logging.getLogger(__name__)
+
+# In-process per-novel crawl lock registry.
+# Keys are "source_key:novel_id", values are asyncio.Lock instances.
+# This prevents concurrent scrapes of the same novel from corrupting storage.
+_crawl_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_crawl_lock(source_key: str, novel_id: str) -> asyncio.Lock:
+    """Get or create a per-novel crawl lock."""
+    lock_key = f"{source_key}:{novel_id}"
+    if lock_key not in _crawl_locks:
+        _crawl_locks[lock_key] = asyncio.Lock()
+    return _crawl_locks[lock_key]
 
 
 def _apply_metadata_quality_gate(meta: dict[str, Any], *, source_key: str, novel_id: str) -> dict[str, Any]:
@@ -114,7 +128,32 @@ async def scrape_chapters(
     Returns a summary dict with ``succeeded``, ``skipped``, ``failed`` counts
     and a ``failures`` list describing each failed chapter. Per-chapter
     failures are non-fatal; metadata/list-level failures still raise.
+
+    Raises ``RuntimeError`` if another scrape is already in progress for the
+    same source_key + novel_id combination.
     """
+    lock = _get_crawl_lock(source_key, novel_id)
+    if lock.locked():
+        raise RuntimeError(
+            f"A scrape is already in progress for {source_key}/{novel_id}. "
+            "Wait for it to finish before starting another."
+        )
+
+    async with lock:
+        return await _scrape_chapters_impl(
+            self, source_key, novel_id, chapters, mode, progress_callback
+        )
+
+
+async def _scrape_chapters_impl(
+    self: Any,
+    source_key: str,
+    novel_id: str,
+    chapters: str,
+    mode: str,
+    progress_callback: Callable[[str], None] | None,
+) -> dict[str, Any]:
+    """Internal implementation of scrape_chapters (called under lock)."""
     source = self._source_factory(source_key)
 
     if mode == "full":
