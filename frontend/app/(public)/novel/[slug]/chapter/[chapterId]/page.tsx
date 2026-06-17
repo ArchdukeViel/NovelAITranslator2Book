@@ -87,6 +87,13 @@ function ReaderMessage({
             {title}
           </h1>
           <div className="mt-3 text-sm reader-muted">{children}</div>
+          <Link
+            href="/browse-novels"
+            className="mt-6 inline-flex items-center gap-1 text-sm underline reader-muted transition-colors hover:text-foreground"
+          >
+            <BookOpen className="h-4 w-4" />
+            Browse the library
+          </Link>
         </section>
       </main>
     </div>
@@ -203,10 +210,16 @@ export default function ChapterPage() {
         </article>
 
         <section className="reader-report" aria-label="Report chapter issue">
-          <Flag className="mt-0.5 h-4 w-4" />
+          <Flag className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
-            Report chapter issue for this chapter will be connected in a later
-            backend phase.
+            Found a problem with this chapter?{" "}
+            <Link
+              href="/contact"
+              className="underline transition-colors hover:text-foreground"
+            >
+              Contact us
+            </Link>{" "}
+            to report it.
           </p>
         </section>
 
