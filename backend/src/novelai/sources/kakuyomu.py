@@ -16,6 +16,7 @@ from novelai.sources._helpers import (
 )
 from novelai.sources.base import SourceAdapter
 from novelai.sources.html_parsers import HTMLParserMixin
+from novelai.sources.quality import detect_age_gate_text, detect_block_page_text
 from novelai.sources.taxonomy import (
     KAKUYOMU_GENRE_MAP,
     map_genre,
@@ -73,6 +74,7 @@ class KakuyomuSource(SourceAdapter):
     )
     RUBY_REMOVE_SELECTORS = ("rt", "rp")
     SEPARATOR_LINE = "-" * 60
+    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 
     def __init__(self, fetch_service: FetchService | None = None) -> None:
         self._fetch_service = fetch_service or get_default_fetch_service()
@@ -124,12 +126,43 @@ class KakuyomuSource(SourceAdapter):
         work_id = self.normalize_novel_id(identifier_or_url)
         return f"https://kakuyomu.jp/works/{work_id.strip('/')}/"
 
+    @staticmethod
+    def _request_headers() -> dict[str, str]:
+        return {"User-Agent": KakuyomuSource.USER_AGENT}
+
+    @staticmethod
+    def _decode_page_body(body: bytes) -> str:
+        # Kakuyomu pages are UTF-8. Force-decode to avoid mojibake
+        # when the server omits a charset in the Content-Type header.
+        return body.decode("utf-8", errors="replace")
+
+    @staticmethod
+    def _preflight_check(html: str, url: str) -> None:
+        """Reject obvious blocked, age-gated, or bot-challenge pages.
+
+        Raises SourceError if the raw HTML matches known block/age-gate patterns.
+        """
+        if detect_block_page_text(html):
+            raise SourceError(
+                f"Kakuyomu page at {url} appears to be blocked (Cloudflare, CAPTCHA, or bot challenge)."
+            )
+        if detect_age_gate_text(html):
+            raise SourceError(
+                f"Kakuyomu page at {url} appears to require age verification or adult confirmation."
+            )
+
     async def _fetch_page(self, url: str) -> str:
         try:
-            result = await self._fetch_service.get_text(url, source_key=self.key)
+            result = await self._fetch_service.get_text(
+                url,
+                source_key=self.key,
+                headers=self._request_headers(),
+            )
         except SourceError as exc:
             raise SourceError(f"Failed to fetch Kakuyomu page from {url}: {exc}") from exc
-        return result.text
+        html = self._decode_page_body(result.body)
+        self._preflight_check(html, url)
+        return html
 
     async def fetch_asset(self, url: str, *, referer: str | None = None) -> dict[str, Any]:
         try:

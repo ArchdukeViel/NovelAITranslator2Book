@@ -183,3 +183,142 @@ async def test_fetch_metadata_normalizes_episode_url_to_work_root() -> None:
 
     assert metadata["source_url"] == work_url
     assert metadata["chapters"][0]["url"] == episode_url
+
+
+# ---------------------------------------------------------------------------
+# Preflight check tests
+# ---------------------------------------------------------------------------
+
+
+class TestKakuyomuPreflightChecks:
+    """KakuyomuSource must reject obvious blocked/age-gated pages."""
+
+    def test_rejects_cloudflare_block_page(self) -> None:
+        from novelai.core.errors import SourceError
+
+        html = """
+        <html><head><title>Attention Required</title></head>
+        <body>
+        <h1>Checking your browser before accessing the site</h1>
+        <p>This process is automatic. Your browser will redirect shortly.</p>
+        <p>Please enable JavaScript and cookies to continue.</p>
+        <p>cf-ray: 1234567890</p>
+        </body></html>
+        """
+        try:
+            KakuyomuSource._preflight_check(html, "https://kakuyomu.jp/works/123")
+            assert False, "Expected SourceError for Cloudflare block page"
+        except SourceError as e:
+            assert "blocked" in str(e).lower()
+
+    def test_rejects_access_denied_page(self) -> None:
+        from novelai.core.errors import SourceError
+
+        html = """
+        <html><head><title>Access Denied</title></head>
+        <body>
+        <h1>Access Denied</h1>
+        <p>You do not have permission to access this resource.</p>
+        </body></html>
+        """
+        try:
+            KakuyomuSource._preflight_check(html, "https://kakuyomu.jp/works/123")
+            assert False, "Expected SourceError for access denied page"
+        except SourceError as e:
+            assert "blocked" in str(e).lower()
+
+    def test_rejects_age_gate_page(self) -> None:
+        from novelai.core.errors import SourceError
+
+        html = """
+        <html><body>
+        <h1>年齢確認</h1>
+        <p>このページには成人向けコンテンツが含まれています。</p>
+        <p>あなたは18歳以上ですか？</p>
+        <button>はい</button>
+        </body></html>
+        """
+        try:
+            KakuyomuSource._preflight_check(html, "https://kakuyomu.jp/works/123")
+            assert False, "Expected SourceError for age gate page"
+        except SourceError as e:
+            assert "age" in str(e).lower() or "verification" in str(e).lower()
+
+    def test_accepts_normal_kakuyomu_metadata_page(self) -> None:
+        html = """
+        <html>
+          <body>
+            <main>
+              <h1 class="widget-workTitle">異世界転生物語</h1>
+              <div class="widget-authorName">作家A</div>
+              <section class="widget-toc">
+                <a href="/works/123/episodes/456">第1話</a>
+              </section>
+            </main>
+          </body>
+        </html>
+        """
+        # Should not raise
+        KakuyomuSource._preflight_check(html, "https://kakuyomu.jp/works/123")
+
+    def test_accepts_normal_kakuyomu_chapter_page(self) -> None:
+        html = """
+        <html>
+          <body>
+            <article>
+              <div class="widget-episodeBody">
+                <p>ある日、突然異世界に転生した。</p>
+                <p>目の前には美しい草原が広がっていた。</p>
+              </div>
+            </article>
+          </body>
+        </html>
+        """
+        # Should not raise
+        KakuyomuSource._preflight_check(html, "https://kakuyomu.jp/works/123/episodes/456")
+
+
+# ---------------------------------------------------------------------------
+# UTF-8 decoding tests
+# ---------------------------------------------------------------------------
+
+
+class TestKakuyomuDecoding:
+    """KakuyomuSource must force-decode responses as UTF-8."""
+
+    def test_decode_utf8_body(self) -> None:
+        body = "日本語テキスト".encode("utf-8")
+        result = KakuyomuSource._decode_page_body(body)
+        assert result == "日本語テキスト"
+
+    def test_decode_invalid_bytes_with_replace(self) -> None:
+        # Invalid UTF-8 byte sequence
+        body = b"\xff\xfe\xfd"
+        result = KakuyomuSource._decode_page_body(body)
+        # Should produce replacement characters, not crash
+        assert "\ufffd" in result
+
+    def test_decode_mixed_valid_invalid(self) -> None:
+        body = b"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\xff\xfe"  # "日本語" + invalid
+        result = KakuyomuSource._decode_page_body(body)
+        assert "日本語" in result
+
+
+# ---------------------------------------------------------------------------
+# Request headers tests
+# ---------------------------------------------------------------------------
+
+
+class TestKakuyomuHeaders:
+    """KakuyomuSource must send appropriate request headers."""
+
+    def test_request_headers_include_user_agent(self) -> None:
+        headers = KakuyomuSource._request_headers()
+        assert "User-Agent" in headers
+        assert "Mozilla" in headers["User-Agent"]
+
+    def test_user_agent_is_browser_like(self) -> None:
+        headers = KakuyomuSource._request_headers()
+        ua = headers["User-Agent"]
+        # Should look like a real browser, not a bot
+        assert "AppleWebKit" in ua or "Gecko" in ua
