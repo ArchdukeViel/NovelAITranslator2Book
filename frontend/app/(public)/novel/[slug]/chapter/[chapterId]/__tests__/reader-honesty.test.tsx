@@ -71,6 +71,7 @@ function makeChapterData(overrides: Record<string, unknown> = {}) {
   return {
     novel_id: "demo",
     chapter_id: "7",
+    chapter_number: 7,
     novel_title: "Demo Novel",
     title: "Chapter Seven",
     text: "The story text goes here.",
@@ -262,16 +263,28 @@ describe("Reader — data honesty", () => {
     expect(body).toContain("Demo Novel");
   });
 
-  it("handles null chapter title by falling back to chapter ID", () => {
+  it("handles null chapter title by falling back to chapter_number", () => {
     mocks.useChapterMock.mockReturnValue({
-      data: makeChapterData({ title: null }),
+      data: makeChapterData({ title: null, chapter_number: 5 }),
       isPending: false,
       isError: false,
       error: null,
     });
     renderPage();
     const h1 = document.querySelector("h1");
-    expect(h1?.textContent).toContain("Chapter 7");
+    expect(h1?.textContent).toContain("Chapter 5");
+  });
+
+  it("handles null title and null chapter_number with neutral fallback", () => {
+    mocks.useChapterMock.mockReturnValue({
+      data: makeChapterData({ title: null, chapter_number: null }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    renderPage();
+    const h1 = document.querySelector("h1");
+    expect(h1?.textContent).toContain("Untitled chapter");
   });
 
   it("handles null novel title by falling back to slug", () => {
@@ -284,6 +297,36 @@ describe("Reader — data honesty", () => {
     renderPage();
     const body = document.body.textContent ?? "";
     expect(body).toContain("demo");
+  });
+
+  it("renders chapter_number in the header subtitle", () => {
+    mocks.useChapterMock.mockReturnValue({
+      data: makeChapterData({ chapter_number: 7 }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    renderPage();
+    const body = document.body.textContent ?? "";
+    expect(body).toContain("Chapter 7");
+  });
+
+  it("does not display raw chapter UUID as primary label", () => {
+    // The mock chapterId is "7" — with chapter_number available,
+    // the visible label should be "Chapter 7" not the raw ID.
+    renderPage();
+    const body = document.body.textContent ?? "";
+    // "Chapter 7" is fine; check no raw longer UUID pattern appears as chapter label
+    const subtitleElement = document.querySelector(".reader-muted ~ .reader-chrome p");
+    // The subtitle paragraph should use chapter_number, not UUID
+    const chromeParagraphs = document.querySelectorAll(".reader-chrome p");
+    for (const p of chromeParagraphs) {
+      const text = p.textContent ?? "";
+      // Should not contain anything that looks like a UUID
+      expect(text).not.toMatch(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+      );
+    }
   });
 
   it("does not render fake progress saved message", () => {

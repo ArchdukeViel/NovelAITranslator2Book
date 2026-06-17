@@ -54,6 +54,7 @@ export interface PublicChapterSummary {
 export interface PublicChapterDetail {
   novel_id: string;
   chapter_id: string;
+  chapter_number: number | null;
   novel_title: string | null;
   title: string | null;
   text: string;

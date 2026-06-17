@@ -249,6 +249,23 @@ class TestGetChapter:
         assert data["text"] == "Hello translated world."
         assert data["chapter_id"] == "ch001"
         assert data["novel_id"] == "novel-001"
+        assert data["chapter_number"] == 1
+
+    def test_returns_chapter_number_matches_stored(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        _seed_novel(storage, "novel-001", chapters=[
+            {"id": "ch001", "title": "Ch 1", "num": 5},
+            {"id": "ch002", "title": "Ch 2", "num": 7},
+        ])
+        for ch in ["ch001", "ch002"]:
+            _seed_translated_chapter(storage, "novel-001", ch, f"Text {ch}")
+        resp = client.get("/api/public/novels/novel-001/chapters/ch001")
+        assert resp.status_code == 200
+        assert resp.json()["chapter_number"] == 5
+        resp = client.get("/api/public/novels/novel-001/chapters/ch002")
+        assert resp.status_code == 200
+        assert resp.json()["chapter_number"] == 7
 
     def test_returns_prev_next_links(
         self, client: TestClient, storage: StorageService

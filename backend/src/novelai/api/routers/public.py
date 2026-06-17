@@ -347,6 +347,7 @@ async def get_chapter(
     return {
         "novel_id": slug,
         "chapter_id": chapter_id,
+        "chapter_number": chapter.get("num") or (index + 1),
         "novel_title": reader_title(meta),
         "title": _optional_str(ch.get("translated_title") if (ch := chapter) else None) or _optional_str(chapter.get("title")),
         "text": translated.get("text"),
