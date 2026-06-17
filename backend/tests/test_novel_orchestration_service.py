@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 
 from novelai.core.chapter_state import ChapterState
-from novelai.translation.pipeline.context import PipelineResult
+from novelai.translation.pipeline.context import PipelineResult, paragraph_source_hash
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
 from novelai.storage.service import StorageService
@@ -718,6 +718,210 @@ def test_estimate_translation_requests_uses_adaptive_body_chunk_count(orchestrat
         {"chapter_id": "1", "source_chars": 12006, "paragraphs": 4, "chunks": 2}
     ]
     assert estimate["assumptions"]["adaptive_chunking"] is True
+
+
+def _save_delta_fixture(
+    storage: StorageService,
+    *,
+    old_paragraphs: list[str],
+    new_paragraphs: list[str],
+    novel_id: str = "novel-delta",
+) -> None:
+    storage.save_metadata(
+        novel_id,
+        {
+            "source": "syosetu_ncode",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter One"}],
+        },
+    )
+    storage.save_chapter(novel_id, "1", "\n\n".join(new_paragraphs))
+    old_lineage = [
+        {
+            "chapter_id": "1",
+            "paragraph_id": f"p{index:04d}",
+            "paragraph_index": index,
+            "source_hash": paragraph_source_hash(text),
+            "char_count": len(text),
+        }
+        for index, text in enumerate(old_paragraphs, start=1)
+    ]
+    storage.save_translation_chunks(
+        novel_id,
+        [
+            {
+                "chunk_id": "c0001",
+                "chapter_ids": ["1"],
+                "paragraph_ids": [item["paragraph_id"] for item in old_lineage],
+                "paragraph_hashes": [item["source_hash"] for item in old_lineage],
+                "paragraph_lineage": old_lineage,
+                "source_text": "\n\n".join(old_paragraphs),
+                "status": "translated",
+            }
+        ],
+    )
+
+
+def _delta_estimate(orchestration_env, *, old_paragraphs: list[str], new_paragraphs: list[str]) -> dict[str, Any]:
+    storage = orchestration_env["storage"]
+    _save_delta_fixture(storage, old_paragraphs=old_paragraphs, new_paragraphs=new_paragraphs)
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=StubTranslationService(),
+        source_factory=lambda key: StubSource(),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+    return orchestrator.estimate_translation_requests(
+        source_key="syosetu_ncode",
+        novel_id="novel-delta",
+        chapters="all",
+    )
+
+
+def test_estimate_translation_requests_delta_identical_has_no_windows(orchestration_env) -> None:
+    estimate = _delta_estimate(orchestration_env, old_paragraphs=["A.", "B.", "C."], new_paragraphs=["A.", "B.", "C."])
+
+    assert estimate["body_requests"]["estimated_chunks"] == 1
+    assert estimate["delta"]["available"] is True
+    assert estimate["delta"]["delta_body_requests"] == 0
+    assert estimate["delta"]["unchanged_paragraphs"] == 3
+    assert estimate["delta"]["changed_windows"] == []
+    assert estimate["total_estimated_requests"] == estimate["metadata_requests"]["total"] + 1
+
+
+def test_estimate_translation_requests_delta_changed_paragraph_has_padded_window(orchestration_env) -> None:
+    estimate = _delta_estimate(orchestration_env, old_paragraphs=["A.", "B.", "C."], new_paragraphs=["A.", "Bee.", "C."])
+
+    assert estimate["delta"]["changed_paragraphs"] == 1
+    assert estimate["delta"]["delta_body_requests"] == 1
+    assert estimate["delta"]["changed_windows"] == [
+        {
+            "chapter_id": "1",
+            "start_paragraph_index": 1,
+            "end_paragraph_index": 3,
+            "paragraph_hashes": [paragraph_source_hash("A."), paragraph_source_hash("Bee."), paragraph_source_hash("C.")],
+            "estimated_chunks": 1,
+        }
+    ]
+
+
+def test_estimate_translation_requests_delta_inserted_paragraph_has_window(orchestration_env) -> None:
+    estimate = _delta_estimate(orchestration_env, old_paragraphs=["A.", "C."], new_paragraphs=["A.", "B.", "C."])
+
+    assert estimate["delta"]["inserted_paragraphs"] == 1
+    assert estimate["delta"]["changed_windows"][0]["start_paragraph_index"] == 1
+    assert estimate["delta"]["changed_windows"][0]["end_paragraph_index"] == 3
+
+
+def test_estimate_translation_requests_delta_deleted_paragraph_has_conservative_window(orchestration_env) -> None:
+    estimate = _delta_estimate(orchestration_env, old_paragraphs=["A.", "B.", "C."], new_paragraphs=["A.", "C."])
+
+    assert estimate["delta"]["deleted_paragraphs"] == 1
+    assert estimate["delta"]["delta_body_requests"] == 1
+    assert estimate["delta"]["changed_windows"][0]["chapter_id"] == "1"
+
+
+def test_estimate_translation_requests_delta_repeated_hashes_are_ambiguous(orchestration_env) -> None:
+    estimate = _delta_estimate(orchestration_env, old_paragraphs=["A.", "X.", "X.", "C."], new_paragraphs=["A.", "X.", "X.", "C."])
+
+    assert estimate["delta"]["ambiguous_paragraphs"] == 2
+    assert estimate["delta"]["unchanged_paragraphs"] == 2
+    assert estimate["delta"]["delta_body_requests"] == 1
+
+
+def test_estimate_translation_requests_delta_moved_paragraph_is_ambiguous(orchestration_env) -> None:
+    estimate = _delta_estimate(orchestration_env, old_paragraphs=["A.", "B.", "C."], new_paragraphs=["B.", "A.", "C."])
+
+    assert estimate["delta"]["ambiguous_paragraphs"] >= 1
+    assert estimate["delta"]["unchanged_paragraphs"] < 3
+    assert estimate["delta"]["delta_body_requests"] == 1
+
+
+def test_estimate_translation_requests_delta_overlapping_windows_merge(orchestration_env) -> None:
+    estimate = _delta_estimate(
+        orchestration_env,
+        old_paragraphs=["A.", "B.", "C.", "D.", "E."],
+        new_paragraphs=["A.", "Bee.", "C.", "Dee.", "E."],
+    )
+
+    assert estimate["delta"]["changed_paragraphs"] == 2
+    assert len(estimate["delta"]["changed_windows"]) == 1
+    assert estimate["delta"]["changed_windows"][0]["start_paragraph_index"] == 1
+    assert estimate["delta"]["changed_windows"][0]["end_paragraph_index"] == 5
+
+
+def test_estimate_translation_requests_delta_missing_old_lineage_unavailable(orchestration_env) -> None:
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-delta",
+        {
+            "source": "syosetu_ncode",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter One"}],
+        },
+    )
+    storage.save_chapter("novel-delta", "1", "A.\n\nB.")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=StubTranslationService(),
+        source_factory=lambda key: StubSource(),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    estimate = orchestrator.estimate_translation_requests(
+        source_key="syosetu_ncode",
+        novel_id="novel-delta",
+        chapters="all",
+    )
+
+    assert estimate["delta"]["available"] is False
+    assert estimate["delta"]["delta_body_requests"] == estimate["body_requests"]["estimated_chunks"]
+
+
+def test_estimate_translation_requests_delta_older_records_without_hashes_unavailable(orchestration_env) -> None:
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "novel-delta",
+        {
+            "source": "syosetu_ncode",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter One"}],
+        },
+    )
+    storage.save_chapter("novel-delta", "1", "A.\n\nB.")
+    storage.save_translation_chunks(
+        "novel-delta",
+        [{"chunk_id": "legacy_c0001", "chapter_ids": ["1"], "paragraph_ids": ["p0001"], "source_text": "A."}],
+    )
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=StubTranslationService(),
+        source_factory=lambda key: StubSource(),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    estimate = orchestrator.estimate_translation_requests(
+        source_key="syosetu_ncode",
+        novel_id="novel-delta",
+        chapters="all",
+    )
+
+    assert estimate["delta"]["available"] is False
+    assert "falling back to full body estimate" in " ".join(estimate["delta"]["notes"])
+
+
+def test_estimate_translation_requests_delta_uses_active_segmentation_for_window_chunks(orchestration_env) -> None:
+    estimate = _delta_estimate(
+        orchestration_env,
+        old_paragraphs=["A.", "B.", "C."],
+        new_paragraphs=["A.", "b" * 3000, "c" * 3000, "d" * 3000, "C."],
+    )
+
+    assert estimate["body_requests"]["estimated_chunks"] == 2
+    assert estimate["delta"]["delta_body_requests"] == 2
 
 
 def test_estimate_translation_requests_counts_batched_unique_chapter_titles(orchestration_env) -> None:
