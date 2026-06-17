@@ -5,7 +5,7 @@ export default function PrivacyPage() {
     <StaticPage
       title="Privacy"
       description="Privacy policy content is pending final legal copy."
-      sections={[{ title: "Current status", body: "This placeholder does not collect new information or add new tracking behavior." }]}
+      sections={[{ title: "Current status", body: "Final privacy details are being prepared. This page does not introduce additional tracking." }]}
     />
   );
 }

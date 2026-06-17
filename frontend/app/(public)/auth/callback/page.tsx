@@ -4,7 +4,7 @@ export default function AuthCallbackPage() {
   return (
     <StaticPage
       title="Authentication Callback"
-      description="Google OAuth callbacks are handled by the backend auth endpoint. This frontend route is a safe placeholder for the approved public hierarchy."
+      description="Sign-in is completed by the backend. If you arrived here directly, return to login and try again."
     />
   );
 }

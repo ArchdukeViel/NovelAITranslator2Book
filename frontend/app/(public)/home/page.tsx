@@ -14,7 +14,7 @@ const PREVIEW_NOVELS = [
   {
     novel_id: "preview-1",
     slug: "preview-novel-1",
-    source_title: "è»¢ç”Ÿè³¢è€…ã®é™ã‹ãªæš®ã‚‰ã—",
+    source_title: "Quiet Life of the Reincarnated Sage",
     title: "The Reincarnated Sage's Quiet Life",
     author: "Tanaka Yuki",
     language: "Japanese",
@@ -137,7 +137,7 @@ export default function HomePage() {
             className="pointer-events-none absolute right-10 top-1/2 hidden -translate-y-1/2 font-literary text-6xl text-foreground/10 [writing-mode:vertical-rl] xl:block"
             aria-hidden="true"
           >
-            ç•°ä¸–ç•Œã®ç‰©èªž
+            Stories from another world
           </div>
         </div>
       </section>
