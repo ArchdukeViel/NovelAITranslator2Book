@@ -19,7 +19,7 @@ import { NovelCard } from "@/components/public/novel-card";
 import { StatusBadge } from "@/components/public/status-badge";
 import { useCatalog, useDebounce, useGenres } from "@/hooks/public";
 import { publicApi } from "@/lib/public-api";
-import { hasNextPage, toReaderError } from "@/lib/public-format";
+import { hasNextPage } from "@/lib/public-format";
 import type {
   CatalogOrder,
   CatalogParams,
@@ -801,8 +801,8 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
         {isError && (
           <div className="flex flex-col items-center justify-center gap-3 rounded-lg bg-card/75 px-4 py-16 text-center ring-1 ring-border">
             <BookOpen className="h-10 w-10 text-muted-foreground/50" />
-            <p className="max-w-md text-sm text-destructive">
-              {toReaderError(error)}
+            <p className="max-w-md text-sm text-muted-foreground">
+              Could not load novels right now. This is usually temporary.
             </p>
             <button
               className="text-sm text-primary transition-colors hover:text-accent"

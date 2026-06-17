@@ -13,7 +13,7 @@ export default function AccountSettingsPage() {
       <header className="mb-8">
         <h1 className="text-3xl font-semibold tracking-normal font-literary">Account Settings</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Manage your account preferences. Some settings are not yet connected to the backend.
+          Manage your account preferences. Some settings are not available yet.
         </p>
       </header>
 
@@ -36,7 +36,7 @@ export default function AccountSettingsPage() {
               <PanelTitle className="font-literary">Linked Login Methods</PanelTitle>
             </PanelHeader>
             <PanelBody>
-              <p className="text-sm text-muted-foreground">Google OAuth is the current login method for public accounts.</p>
+              <p className="text-sm text-muted-foreground">Google is the current login method for public accounts.</p>
             </PanelBody>
           </Panel>
 
@@ -76,10 +76,9 @@ export default function AccountSettingsPage() {
             </PanelHeader>
             <PanelBody className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                Account deletion requires backend support and confirmation flows before it can be enabled.
-                This action is permanent and cannot be undone.
+                Account deletion is not available yet. This action is permanent and cannot be undone.
               </p>
-              <Button variant="destructive" disabled aria-label="Delete account (disabled pending backend support)">
+              <Button variant="destructive" disabled aria-label="Delete account (disabled)">
                 <Lock className="mr-2 h-4 w-4" />
                 Delete Account (Unavailable)
               </Button>

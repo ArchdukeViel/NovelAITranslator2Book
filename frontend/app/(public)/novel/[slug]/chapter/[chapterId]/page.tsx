@@ -13,7 +13,7 @@ import {
   useUpdateProgress,
 } from "@/hooks/public";
 import { ApiError } from "@/lib/api";
-import { toReaderError, widthClass } from "@/lib/public-format";
+import { widthClass } from "@/lib/public-format";
 import { useReaderPrefsStore } from "@/lib/reader-prefs";
 
 import "../../../../reader.css";
@@ -147,7 +147,7 @@ export default function ChapterPage() {
         theme={theme}
         novelHref={novelHref}
       >
-        {toReaderError(error)}
+        Could not load this chapter. It may be unavailable or there may be a connection issue. Try the novel page to find available chapters.
       </ReaderMessage>
     );
   }

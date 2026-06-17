@@ -23,9 +23,7 @@ export default function AccountContributionsPage() {
               <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
               <div className="space-y-1 text-sm text-amber-800 dark:text-amber-200">
                 <p className="font-medium">Coming Soon</p>
-                <p>
-                  API key contribution features require additional security infrastructure and are not yet available.
-                </p>
+                <p>Key management is not available yet.</p>
               </div>
             </div>
           </div>
