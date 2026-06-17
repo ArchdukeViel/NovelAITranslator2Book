@@ -99,6 +99,7 @@ export interface ProgressInput {
 export interface ProgressResponse {
   slug: string;
   chapter_id: string | null;
+  chapter_number: number | null;
   progress_percent: number;
   updated_at: string;
 }

@@ -188,8 +188,9 @@ class TestProgressContract:
 
         initial = client.get("/api/user/progress/test-novel")
         assert initial.status_code == 200
-        assert_keys(initial.json(), {"slug", "chapter_id", "progress_percent", "updated_at"})
+        assert_keys(initial.json(), {"slug", "chapter_id", "chapter_number", "progress_percent", "updated_at"})
         assert initial.json()["progress_percent"] == 0.0
+        assert initial.json()["chapter_number"] is None
 
         updated = client.put(
             "/api/user/progress/test-novel",
@@ -204,12 +205,15 @@ class TestProgressContract:
             headers=headers,
         )
         assert updated.status_code == 200
+        assert_keys(updated.json(), {"slug", "chapter_id", "chapter_number", "progress_percent", "updated_at"})
         assert updated.json()["chapter_id"] == chapter_id
         assert updated.json()["progress_percent"] == 0.75
+        assert updated.json()["chapter_number"] == 1
 
         overwritten = client.put("/api/user/progress/test-novel", json={"progress_percent": 0.5}, headers=headers)
         assert overwritten.status_code == 200
         assert overwritten.json()["progress_percent"] == 0.5
+        assert overwritten.json()["chapter_number"] is None
         assert db_session.query(ReadingProgress).filter_by(user_id=42, novel_id=seeded_catalog["novel"].id).count() == 1
 
     def test_progress_validation(self, app, client, seeded_catalog) -> None:
@@ -234,6 +238,20 @@ class TestProgressContract:
 
         set_user(app, 1)
         assert client.get("/api/user/progress/test-novel").json()["progress_percent"] == 0.9
+
+    def test_progress_get_includes_chapter_number_when_chapter_linked(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        headers = csrf_headers(client)
+        chapter_id = str(seeded_catalog["chapter"].id)
+        client.put(
+            "/api/user/progress/test-novel",
+            json={"chapter_id": chapter_id, "progress_percent": 0.5},
+            headers=headers,
+        )
+        resp = client.get("/api/user/progress/test-novel")
+        assert resp.status_code == 200
+        assert resp.json()["chapter_number"] == 1
+        assert resp.json()["chapter_id"] == chapter_id
 
 
 class TestHistoryContract:

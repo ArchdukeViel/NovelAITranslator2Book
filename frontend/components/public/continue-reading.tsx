@@ -56,8 +56,9 @@ export function ContinueReading({ slug, firstChapterId }: ContinueReadingProps) 
   }
 
   const chapterId = progress.data?.chapter_id;
+  const chapterNumber = progress.data?.chapter_number;
 
-  // Has saved progress → Continue Reading (show chapter ID if available)
+  // Has saved progress → Continue Reading (show chapter number if available)
   if (chapterId) {
     const href = `/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapterId)}`;
     return (
@@ -66,7 +67,7 @@ export function ContinueReading({ slug, firstChapterId }: ContinueReadingProps) 
         href={href}
       >
         <BookOpen className="h-4 w-4" />
-        Continue from Ch. {chapterId}
+        Continue from {chapterNumber != null ? `Ch. ${chapterNumber}` : "Chapter"}
       </Link>
     );
   }
