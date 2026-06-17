@@ -160,6 +160,18 @@ class TranslateStage(PipelineStage):
         return []
 
     @staticmethod
+    def _paragraph_hashes(chunk: str | TranslationChunk) -> list[str]:
+        if isinstance(chunk, TranslationChunk):
+            return list(chunk.paragraph_hashes)
+        return []
+
+    @staticmethod
+    def _paragraph_lineage(chunk: str | TranslationChunk) -> list[dict[str, Any]]:
+        if isinstance(chunk, TranslationChunk):
+            return [dict(item) for item in chunk.paragraph_lineage]
+        return []
+
+    @staticmethod
     def _provider_error_metadata(
         exc: ProviderError,
         *,
@@ -355,6 +367,8 @@ class TranslateStage(PipelineStage):
                     "novel_id": novel_id,
                     "chapter_ids": self._chapter_ids(context, chunk),
                     "paragraph_ids": self._paragraph_ids(chunk),
+                    "paragraph_hashes": self._paragraph_hashes(chunk),
+                    "paragraph_lineage": self._paragraph_lineage(chunk),
                     "source_text": chunk_text,
                     "source_text_hash": _hash_text(chunk_text),
                     "char_count": len(chunk_text),
@@ -436,6 +450,8 @@ class TranslateStage(PipelineStage):
                 "novel_id": novel_id,
                 "chapter_ids": self._chapter_ids(context, chunk),
                 "paragraph_ids": self._paragraph_ids(chunk),
+                "paragraph_hashes": self._paragraph_hashes(chunk),
+                "paragraph_lineage": self._paragraph_lineage(chunk),
                 "source_text_hash": _hash_text(chunk_text),
                 "attempt_number": attempt_number,
                 "provider_key": provider_key,
@@ -475,6 +491,8 @@ class TranslateStage(PipelineStage):
                 "novel_id": novel_id,
                 "chapter_ids": self._chapter_ids(context, chunk),
                 "paragraph_ids": self._paragraph_ids(chunk),
+                "paragraph_hashes": self._paragraph_hashes(chunk),
+                "paragraph_lineage": self._paragraph_lineage(chunk),
                 "translated_text": translated_text,
                 "source_text_hash": _hash_text(chunk_text),
                 "output_hash": _hash_text(translated_text),

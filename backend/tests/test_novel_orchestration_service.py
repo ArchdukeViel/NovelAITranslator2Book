@@ -681,6 +681,7 @@ def test_estimate_translation_requests_counts_metadata_and_body_chunks(orchestra
     assert estimate["assumptions"]["default_overlap_paragraphs"] == 0
     assert estimate["assumptions"]["unsafe_boundary_overlap_paragraphs"] == 1
     assert estimate["assumptions"]["boundary_context_chars"] == 160
+    assert estimate["assumptions"]["paragraph_hash_lineage"] is True
     assert provider.call_count == 0
     assert translation.calls == []
 

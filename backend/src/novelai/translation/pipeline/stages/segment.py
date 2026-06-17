@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 from novelai.config.settings import settings
 from novelai.shared.pipeline import ChunkTranslationStatus
-from novelai.translation.pipeline.context import Paragraph, PipelineContext, TranslationChunk
+from novelai.translation.pipeline.context import Paragraph, PipelineContext, TranslationChunk, paragraph_source_hash
 from novelai.translation.pipeline.stages.base import PipelineStage
 
 logger = logging.getLogger(__name__)
@@ -182,6 +182,8 @@ class SmartSegmentStage(PipelineStage):
                 chapter_id=chapter_id,
                 text=part,
                 char_count=len(part),
+                paragraph_index=index,
+                source_hash=paragraph_source_hash(part),
             )
             for index, part in enumerate(parts, start=1)
         ]
@@ -330,6 +332,17 @@ class SmartSegmentStage(PipelineStage):
         previous_paragraphs: list[Paragraph],
     ) -> TranslationChunk:
         overlap_paragraphs = self._source_overlap_for_boundary(previous_paragraphs, paragraphs)
+        paragraph_hashes = [paragraph.source_hash for paragraph in paragraphs]
+        paragraph_lineage = [
+            {
+                "chapter_id": paragraph.chapter_id,
+                "paragraph_id": paragraph.paragraph_id,
+                "paragraph_index": paragraph.paragraph_index,
+                "source_hash": paragraph.source_hash,
+                "char_count": paragraph.char_count,
+            }
+            for paragraph in paragraphs
+        ]
         return TranslationChunk(
             chunk_id=f"c{index:04d}",
             novel_id=novel_id,
@@ -339,6 +352,8 @@ class SmartSegmentStage(PipelineStage):
             char_count=sum(paragraph.char_count for paragraph in paragraphs),
             previous_context=self._previous_context(previous_paragraphs),
             paragraph_refs=[(paragraph.chapter_id, paragraph.paragraph_id) for paragraph in paragraphs],
+            paragraph_hashes=paragraph_hashes,
+            paragraph_lineage=paragraph_lineage,
         )
 
     def _flush_chunk(
@@ -702,6 +717,7 @@ class SmartSegmentStage(PipelineStage):
                 "novel_id": chunk.novel_id,
                 "chapter_ids": list(chunk.chapter_ids),
                 "paragraph_ids": list(chunk.paragraph_ids),
+                "paragraph_hashes": list(chunk.paragraph_hashes),
                 "status": ChunkTranslationStatus.PENDING.value,
                 "attempt_number": 0,
             }

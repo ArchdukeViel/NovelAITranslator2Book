@@ -2,7 +2,7 @@
 
 import pytest
 
-from novelai.translation.pipeline.context import PipelineState, TranslationChunk
+from novelai.translation.pipeline.context import PipelineState, TranslationChunk, paragraph_source_hash
 from novelai.translation.pipeline.pipeline import TranslationPipeline
 from novelai.translation.pipeline.stages.base import PipelineStage
 from novelai.translation.pipeline.stages.fetch import FetchStage
@@ -156,6 +156,14 @@ async def test_smart_segment_stage_is_deterministic():
     assert [chunk.to_dict() for chunk in first_result.translation_chunks] == [
         chunk.to_dict() for chunk in second_result.translation_chunks
     ]
+    assert [paragraph.source_hash for paragraph in first_result.paragraphs] == [
+        paragraph.source_hash for paragraph in second_result.paragraphs
+    ]
+
+
+def test_paragraph_source_hash_is_stable_and_line_ending_normalized():
+    assert paragraph_source_hash("Alpha\r\nBeta") == paragraph_source_hash("Alpha\nBeta")
+    assert paragraph_source_hash("Alpha\nBeta") != paragraph_source_hash("Alpha\nGamma")
 
 
 @pytest.mark.asyncio
@@ -177,6 +185,10 @@ async def test_smart_segment_stage_packs_normal_chapter_by_budget():
     assert [chunk.chunk_id for chunk in result.translation_chunks] == ["c0001", "c0002"]
     assert result.translation_chunks[0].paragraph_ids == ["p0001", "p0002"]
     assert result.translation_chunks[1].paragraph_ids == ["p0003", "p0004"]
+    assert result.translation_chunks[1].paragraph_hashes == [
+        result.paragraphs[2].source_hash,
+        result.paragraphs[3].source_hash,
+    ]
     assert result.translation_chunks[1].previous_context == "bbbbbbbbbb"
 
 
@@ -299,6 +311,8 @@ async def test_smart_segment_stage_conditional_overlap_uses_overlap_for_unsafe_q
     second_chunk = result.translation_chunks[1]
     assert second_chunk.paragraph_ids == ["p0003", "p0004"]
     assert second_chunk.paragraph_refs == [("chapter_001", "p0003"), ("chapter_001", "p0004")]
+    assert second_chunk.paragraph_hashes == [result.paragraphs[2].source_hash, result.paragraphs[3].source_hash]
+    assert all(item["paragraph_id"] != "p0002" for item in second_chunk.paragraph_lineage)
     assert second_chunk.source_text.startswith("[CONTEXT OVERLAP]\n" + unsafe_previous)
 
 
@@ -416,6 +430,8 @@ async def test_smart_segment_stage_splits_long_chapter_without_paragraph_loss():
     refs = [ref for chunk in result.translation_chunks for ref in chunk.paragraph_refs]
     expected = [("chapter_001", f"p{index:04d}") for index in range(1, 8)]
     assert refs == expected
+    hashes = [source_hash for chunk in result.translation_chunks for source_hash in chunk.paragraph_hashes]
+    assert hashes == [paragraph.source_hash for paragraph in result.paragraphs]
     assert all(chunk.char_count <= 45 for chunk in result.translation_chunks)
 
 
@@ -481,11 +497,30 @@ async def test_translation_chunk_serialization_preserves_split_metadata():
 
     assert restored.chunk_id == "c0001"
     assert restored.chapter_ids == ["chapter_001", "chapter_002"]
+    assert restored.paragraph_hashes == result.translation_chunks[0].paragraph_hashes
+    assert restored.paragraph_lineage == result.translation_chunks[0].paragraph_lineage
     assert restored.paragraph_refs == [
         ("chapter_001", "p0001"),
         ("chapter_001", "p0002"),
         ("chapter_002", "p0001"),
     ]
+
+
+def test_translation_chunk_serialization_accepts_missing_paragraph_hashes():
+    restored = TranslationChunk.from_dict(
+        {
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "chapter_ids": ["chapter_001"],
+            "paragraph_ids": ["p0001"],
+            "source_text": "Legacy text",
+            "char_count": 11,
+            "paragraph_refs": [{"chapter_id": "chapter_001", "paragraph_id": "p0001"}],
+        }
+    )
+
+    assert restored.paragraph_hashes == []
+    assert restored.paragraph_lineage == []
 
 
 if __name__ == "__main__":
