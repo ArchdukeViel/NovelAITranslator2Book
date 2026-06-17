@@ -26,7 +26,7 @@ import {
   sortChaptersAscending,
 } from "@/lib/public-format";
 import type { PublicChapterSummary } from "@/lib/public-types";
-import { useChapters, useNovel, usePublicAuth } from "@/hooks/public";
+import { useChapters, useGenreLabelMap, useNovel, usePublicAuth } from "@/hooks/public";
 
 function chapterDisplayTitle(chapter: PublicChapterSummary): string {
   return (
@@ -172,6 +172,7 @@ export default function NovelDetailPage() {
 
   const novel = useNovel(slug);
   const chapters = useChapters(slug);
+  const genreLabels = useGenreLabelMap();
 
   if (novel.isError) {
     const err = novel.error;
@@ -254,7 +255,7 @@ export default function NovelDetailPage() {
                     key={genre}
                     href={`/browse-novels?genre_include=${encodeURIComponent(genre)}`}
                   >
-                    <GenreChip label={genre} className="hover:bg-accent/15 transition-colors" />
+                    <GenreChip label={genreLabels?.get(genre) ?? genre} className="hover:bg-accent/15 transition-colors" />
                   </Link>
                 ))}
               </div>

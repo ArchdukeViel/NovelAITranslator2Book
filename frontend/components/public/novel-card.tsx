@@ -6,6 +6,7 @@ import { BookOpen } from "lucide-react";
 import { GenreChip, TagChip } from "@/components/public/genre-chip";
 import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { SaveToLibrary } from "@/components/public/save-to-library";
+import { useGenreLabelMap } from "@/hooks/public/use-genre-labels";
 import { authorOrFallback } from "@/lib/public-format";
 import type { PublicNovelSummary } from "@/lib/public-types";
 
@@ -20,6 +21,13 @@ type DiscoveryNovel = PublicNovelSummary & {
 const MAX_VISIBLE_GENRES = 3;
 const MAX_VISIBLE_TAGS = 2;
 
+function genreLabel(slug: string, labelMap: Map<string, string> | null): string {
+  if (labelMap) {
+    return labelMap.get(slug) ?? slug;
+  }
+  return slug;
+}
+
 interface NovelCardProps {
   novel: DiscoveryNovel;
 }
@@ -30,6 +38,7 @@ export function NovelCard({ novel }: NovelCardProps) {
   const showSourceTitle = Boolean(sourceTitle && sourceTitle !== title);
   const genres = novel.genres ?? [];
   const tags = novel.tags ?? [];
+  const labelMap = useGenreLabelMap();
 
   return (
     <div className="group flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card/85 transition-all duration-200 hover:border-accent/30 hover:bg-card">
@@ -87,7 +96,7 @@ export function NovelCard({ novel }: NovelCardProps) {
           {(genres.length > 0 || tags.length > 0) && (
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               {genres.slice(0, MAX_VISIBLE_GENRES).map((genre) => (
-                <GenreChip key={genre} label={genre} />
+                <GenreChip key={genre} label={genreLabel(genre, labelMap)} />
               ))}
               {genres.length > MAX_VISIBLE_GENRES && (
                 <span className="text-xs text-muted-foreground">
