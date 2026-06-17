@@ -169,9 +169,6 @@ export default function RequestsPage() {
                         <span className="mx-1">·</span>
                         <span className="font-metadata">{formatCreatedAt(request.created_at)}</span>
                       </div>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Rejection reason: <span className="italic">Not provided by current API</span>
-                      </p>
                     </div>
                   );
                 })}
