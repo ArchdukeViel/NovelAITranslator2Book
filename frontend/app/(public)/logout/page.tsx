@@ -16,7 +16,7 @@ export default function LogoutPage() {
     <main className="mx-auto max-w-md px-4 py-16 text-center">
       <h1 className="text-3xl font-semibold tracking-normal">Signing out</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Your public reader session is being cleared.
+        You have been signed out. You are now browsing as a guest.
       </p>
       <Link className="mt-6 inline-flex text-sm font-medium underline" href="/home">
         Return home

@@ -1,5 +1,7 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
+
 import { usePublicAuth } from "@/hooks/public/use-auth";
 import { LoginPrompt } from "@/components/public/login-prompt";
 
@@ -18,9 +20,14 @@ interface AuthGateProps {
 export function AuthGate({ children, fallback }: AuthGateProps) {
   const { isAuthenticated, isPending } = usePublicAuth();
 
-  // While auth state is loading, render nothing to avoid layout thrash.
+  // While auth state is loading, show a calm spinner.
   if (isPending) {
-    return null;
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Checking session
+      </div>
+    );
   }
 
   if (isAuthenticated) {
