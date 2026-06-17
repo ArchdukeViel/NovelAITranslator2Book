@@ -32,6 +32,10 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(""),
 }));
 
+const mocks = vi.hoisted(() => ({
+  catalogQuery: vi.fn(),
+}));
+
 vi.mock("@/hooks/public", async () => {
   const actual = await vi.importActual<typeof import("@/hooks/public")>(
     "@/hooks/public"
@@ -50,6 +54,7 @@ vi.mock("@/hooks/public", async () => {
     useAddToLibrary: () => ({ mutate: vi.fn(), isPending: false }),
     useRemoveFromLibrary: () => ({ mutate: vi.fn(), isPending: false }),
     useLogout: () => vi.fn(),
+    useCatalog: () => mocks.catalogQuery(),
   };
 });
 
@@ -62,6 +67,58 @@ let queryClient: QueryClient;
 beforeEach(() => {
   queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
+  });
+  vi.clearAllMocks();
+  mocks.catalogQuery.mockReturnValue({
+    data: {
+      novels: [
+        {
+          novel_id: "n1",
+          slug: "test-novel-1",
+          title: "Test Novel One",
+          author: "Author One",
+          language: "ja",
+          status: "Ongoing",
+          chapter_count: 42,
+          translated_count: 15,
+          added_at: "2026-06-17T08:00:00Z",
+          genres: ["fantasy", "slice-of-life"],
+          tags: ["magic", "healing"],
+        },
+        {
+          novel_id: "n2",
+          slug: "test-novel-2",
+          title: "Test Novel Two",
+          author: "Author Two",
+          language: "ja",
+          status: "Completed",
+          chapter_count: 120,
+          translated_count: 120,
+          added_at: "2026-06-16T10:00:00Z",
+          genres: ["adventure"],
+          tags: [],
+        },
+        {
+          novel_id: "n3",
+          slug: "test-novel-3",
+          title: "Test Novel Three",
+          author: "Author Three",
+          language: "en",
+          status: "Ongoing",
+          chapter_count: 5,
+          translated_count: 2,
+          added_at: "2026-06-12T09:00:00Z",
+          genres: [],
+          tags: [],
+        },
+      ],
+      total: 3,
+      page: 1,
+      page_size: 8,
+    },
+    isPending: false,
+    isError: false,
+    error: null,
   });
 });
 
@@ -151,11 +208,8 @@ describe("Home page visual honesty", () => {
     expect(screen.queryByText(/library stats/i)).not.toBeInTheDocument();
   });
 
-  it("displays Editor's Pick not Featured - Editor's Pick", () => {
+  it("displays Latest Release eyebrow on hero section", () => {
     renderHome();
-    expect(screen.getByText("Editor's Pick")).toBeInTheDocument();
-    expect(
-      screen.queryByText(/Featured.*Editor/i)
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("Latest Release")).toBeInTheDocument();
   });
 });
