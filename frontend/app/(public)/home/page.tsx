@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BookOpen } from "lucide-react";
+import { ArrowRight, BookOpen, Compass } from "lucide-react";
 
 import { GenreChip } from "@/components/public/genre-chip";
 import { LatestUpdateRow } from "@/components/public/latest-update-row";
@@ -40,6 +40,32 @@ export default function HomePage() {
             </div>
           </div>
         </section>
+
+        {/* Section skeletons matching final layout */}
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <section className="py-14">
+            <div className="h-6 w-40 animate-pulse rounded bg-muted" />
+            <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-16 animate-pulse rounded-lg bg-muted/60"
+                />
+              ))}
+            </div>
+          </section>
+          <section className="mb-12">
+            <div className="h-6 w-36 animate-pulse rounded bg-muted" />
+            <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-64 animate-pulse rounded-lg bg-muted/60"
+                />
+              ))}
+            </div>
+          </section>
+        </div>
       </main>
     );
   }
@@ -50,9 +76,19 @@ export default function HomePage() {
       <main>
         <div className="mx-auto max-w-7xl px-4 py-24 text-center sm:px-6 lg:px-8">
           <BookOpen className="mx-auto h-10 w-10 text-muted-foreground/50" />
-          <p className="mt-4 text-sm text-muted-foreground">
-            Catalog temporarily unavailable. Please try again later.
+          <p className="mt-4 text-sm font-medium text-foreground">
+            Could not load the catalog
           </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Something went wrong fetching novels. This is usually temporary.
+          </p>
+          <Link
+            href="/browse-novels"
+            className="mt-6 inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <Compass className="h-4 w-4" />
+            Browse the catalog
+          </Link>
         </div>
       </main>
     );
@@ -64,9 +100,28 @@ export default function HomePage() {
       <main>
         <div className="mx-auto max-w-7xl px-4 py-24 text-center sm:px-6 lg:px-8">
           <BookOpen className="mx-auto h-10 w-10 text-muted-foreground/50" />
-          <p className="mt-4 text-sm text-muted-foreground">
-            No novels yet. Check back soon.
+          <p className="mt-4 text-sm font-medium text-foreground">
+            No novels in the catalog yet
           </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            New translations are added regularly. You can also request a novel
+            to be translated.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href="/request-novel"
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              Request a novel
+            </Link>
+            <Link
+              href="/browse-novels"
+              className="inline-flex items-center gap-2 rounded-md border border-accent/40 px-4 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
+            >
+              <Compass className="h-4 w-4" />
+              Browse the catalog
+            </Link>
+          </div>
         </div>
       </main>
     );
@@ -153,11 +208,12 @@ export default function HomePage() {
         )}
       </section>
 
-      {/* ── Latest Updates ── */}
+      {/* ── Recently Added (compact rows) ── */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <section className="py-14">
           <SectionHeader
-            title="Latest Updates"
+            title="Recently Added"
+            description="New novels added to the catalog."
             actionHref="/browse-novels"
             actionLabel="View all"
           />
@@ -181,11 +237,10 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── Latest Novels ── */}
+        {/* ── Latest Novels (card grid) ── */}
         <section className="mb-12">
           <SectionHeader
             title="Latest Novels"
-            description="Recently added works from the catalog."
             actionHref="/browse-novels"
             actionLabel="Browse all"
           />
@@ -196,19 +251,20 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── Browse the library ── */}
+        {/* ── Explore the catalog CTA ── */}
         <section className="mb-16">
-          <SectionHeader
-            title="Browse the library"
-            description="The full catalog is available with search, filter, and sort."
-            actionHref="/browse-novels"
-            actionLabel="Browse novels"
-          />
-          <div className="mt-6 flex flex-col items-center justify-center rounded-lg bg-card/70 px-4 py-14 text-center ring-1 ring-border">
-            <BookOpen className="mb-4 h-10 w-10 text-muted-foreground/50" />
+          <div className="flex flex-col items-center justify-center rounded-lg bg-card/70 px-4 py-14 text-center ring-1 ring-border">
+            <Compass className="mb-4 h-10 w-10 text-muted-foreground/50" />
             <p className="max-w-md text-sm leading-6 text-muted-foreground">
-              Ranking data is not live yet. All available novels can be found in the catalog.
+              Search, filter, and sort the full catalog of translated novels.
             </p>
+            <Link
+              href="/browse-novels"
+              className="mt-5 inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              <Compass className="h-4 w-4" />
+              Browse the catalog
+            </Link>
           </div>
         </section>
       </div>

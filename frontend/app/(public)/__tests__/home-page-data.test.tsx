@@ -129,7 +129,7 @@ describe("HomePage real data rendering", () => {
     expect(screen.getByText("Latest Release")).toBeInTheDocument();
   });
 
-  it("renders Latest Updates section with catalog novels", () => {
+  it("renders Recently Added section with catalog novels", () => {
     mocks.catalogQuery.mockReturnValue({
       data: {
         novels: [
@@ -147,7 +147,7 @@ describe("HomePage real data rendering", () => {
     });
     renderHome();
 
-    expect(screen.getByText("Latest Updates")).toBeInTheDocument();
+    expect(screen.getByText("Recently Added")).toBeInTheDocument();
     // Each novel appears in hero + update rows + cards, so use getAllByText
     expect(screen.getAllByText("First Novel").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Second Novel").length).toBeGreaterThanOrEqual(1);
@@ -202,7 +202,7 @@ describe("HomePage real data rendering", () => {
     expect(isekaiChips.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders Browse the library section with catalog link", () => {
+  it("renders catalog CTA section", () => {
     mocks.catalogQuery.mockReturnValue({
       data: {
         novels: [makeNovel()],
@@ -216,9 +216,13 @@ describe("HomePage real data rendering", () => {
     });
     renderHome();
 
-    expect(screen.getByText("Browse the library")).toBeInTheDocument();
-    expect(screen.getByText("Browse novels")).toBeInTheDocument();
-    expect(screen.getByText(/ranking data is not live/i)).toBeInTheDocument();
+    // Catalog CTA with search/filter/sort mention
+    expect(
+      screen.getByText(/search, filter, and sort/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText("Browse the catalog")).toBeInTheDocument();
+    // Old ranking placeholder is gone
+    expect(screen.queryByText(/ranking data is not live/i)).not.toBeInTheDocument();
   });
 });
 
@@ -242,7 +246,7 @@ describe("HomePage empty and state handling", () => {
     expect(screen.getByLabelText("Featured Dokushodo novel")).toBeInTheDocument();
   });
 
-  it("shows error message when catalog fetch fails", () => {
+  it("shows error message with recovery link when catalog fetch fails", () => {
     mocks.catalogQuery.mockReturnValue({
       data: undefined,
       isPending: false,
@@ -252,13 +256,15 @@ describe("HomePage empty and state handling", () => {
     renderHome();
 
     expect(
-      screen.getByText("Catalog temporarily unavailable. Please try again later.")
+      screen.getByText("Could not load the catalog")
     ).toBeInTheDocument();
+    // Recovery: link to browse-novels
+    expect(screen.getByText("Browse the catalog")).toBeInTheDocument();
     // Should not render real content
-    expect(screen.queryByText("Latest Updates")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recently Added")).not.toBeInTheDocument();
   });
 
-  it("shows empty message when catalog has zero novels", () => {
+  it("shows empty message with CTAs when catalog has zero novels", () => {
     mocks.catalogQuery.mockReturnValue({
       data: { novels: [], total: 0, page: 1, page_size: 8 },
       isPending: false,
@@ -268,10 +274,13 @@ describe("HomePage empty and state handling", () => {
     renderHome();
 
     expect(
-      screen.getByText("No novels yet. Check back soon.")
+      screen.getByText("No novels in the catalog yet")
     ).toBeInTheDocument();
+    // CTAs: request novel + browse catalog
+    expect(screen.getByText("Request a novel")).toBeInTheDocument();
+    expect(screen.getByText("Browse the catalog")).toBeInTheDocument();
     // Should not render section headers
-    expect(screen.queryByText("Latest Updates")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recently Added")).not.toBeInTheDocument();
     expect(screen.queryByText("Latest Novels")).not.toBeInTheDocument();
   });
 });

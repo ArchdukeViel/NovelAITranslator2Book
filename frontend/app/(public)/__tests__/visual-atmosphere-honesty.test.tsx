@@ -142,10 +142,10 @@ function renderHome() {
 describe("Home page visual honesty", () => {
   it("renders without crashing", () => {
     renderHome();
-    expect(screen.getByText("Latest Updates")).toBeInTheDocument();
+    expect(screen.getByText("Recently Added")).toBeInTheDocument();
   });
 
-  it("shows grouped dates in the latest updates section", () => {
+  it("shows grouped dates in the Recently Added section", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
 
@@ -183,24 +183,15 @@ describe("Home page visual honesty", () => {
     expect(screen.queryByText("Ranking Preview")).not.toBeInTheDocument();
   });
 
-  it("shows honest ranking message instead of fake ranking data", () => {
+  it("shows honest catalog CTA instead of ranking placeholder", () => {
     renderHome();
+    // The old "Ranking data is not live yet" placeholder is removed.
     expect(
-      screen.getByText(/ranking data is not live/i)
-    ).toBeInTheDocument();
-  });
-
-  it("shows Browse the library section linking to catalog", () => {
-    renderHome();
-    expect(screen.getByText("Browse the library")).toBeInTheDocument();
-    expect(screen.getByText("Browse novels")).toBeInTheDocument();
-  });
-
-  it("does not display Backend trending metrics are pending text", () => {
-    renderHome();
-    expect(
-      screen.queryByText(/backend trending metrics are pending/i)
+      screen.queryByText(/ranking data is not live/i)
     ).not.toBeInTheDocument();
+    // Replaced by "Browse the catalog" CTA
+    const browseLinks = screen.getAllByText("Browse the catalog");
+    expect(browseLinks.length).toBeGreaterThanOrEqual(1);
   });
 
   it("does not display a fake library stats label", () => {
@@ -211,5 +202,17 @@ describe("Home page visual honesty", () => {
   it("displays Latest Release eyebrow on hero section", () => {
     renderHome();
     expect(screen.getByText("Latest Release")).toBeInTheDocument();
+  });
+
+  it("renders Recently Added section (renamed from Latest Updates)", () => {
+    renderHome();
+    expect(screen.getByText("Recently Added")).toBeInTheDocument();
+    // Old "Latest Updates" header should not appear
+    expect(screen.queryByText("Latest Updates")).not.toBeInTheDocument();
+  });
+
+  it("does not show the old Browse the library section header", () => {
+    renderHome();
+    expect(screen.queryByText("Browse the library")).not.toBeInTheDocument();
   });
 });
