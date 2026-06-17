@@ -3,7 +3,7 @@
 ## 0. Document Status
 
 **Status**: canonical project architecture
-**Last reviewed**: 2026-06-15 (doc audit refresh)
+**Last reviewed**: 2026-06-17 (frontend consistency refresh)
 
 This is the single active architecture reasoning file for NovelAI. Historical
 notes are archived under `docs/archive/architecture/`. If another document
@@ -263,10 +263,11 @@ frontend/lib/               API clients, shared types, client utilities
 - `frontend/lib/public-api.ts` owns the public reader API client.
 - Direct `fetch(...)` and `axios(...)` calls are allowed only in approved API
   client files.
-- Public hooks currently export guest-safe reader hooks only:
-  `useCatalog`, `useNovel`, `useChapters`, and `useChapter`.
+- Public hooks export guest-safe reader hooks (`useCatalog`, `useNovel`,
+  `useChapters`, `useChapter`), public auth hooks, and authenticated user
+  hooks for library/progress/history/reviews/requests.
 - Public login uses Google OAuth only. Library/progress/history/reviews/requests
-  hooks are re-exported and available to authenticated users.
+  hooks are available to authenticated users.
 - Contribution credential actions must remain unavailable until the contribution
   readiness gate is satisfied.
 
@@ -319,6 +320,11 @@ owner  - authenticated single owner; dangerous operations
 - `POST /api/auth/login`: owner bootstrap login only.
 - `POST /api/auth/logout`: clears current session.
 - `GET /api/auth/me`: returns the current session user or guest.
+- `GET /api/auth/csrf`: returns the session-bound CSRF token for
+  state-changing cookie-auth requests.
+- `GET /api/auth/google/start`: starts public Google OAuth.
+- `GET /api/auth/google/callback`: validates Google OAuth and creates/resumes
+  a `role="user"` session.
 
 **Public auth implementation**:
 
@@ -388,15 +394,15 @@ cookies, or frontend-only flags.
 | Public catalog | Browse translated novels publicly | Implemented basic guest catalog via `/api/public/catalog` | Needs stronger UX, pagination polish, status/sort clarity | Guest reader contract | High |
 | Novel finder/search/filter | Finder with title/author/status/source filters | Basic catalog params exist | Rich finder UI and backend semantics incomplete | Catalog contract, metadata quality | High |
 | Tags/genres | Tag and genre browsing | Architecture references tags, but active UX not proven | Tag data model/API/UI needs design | Metadata model, admin tagging | Medium |
-| Ranking/leaderboard/trending | Popular/trending/ranking pages | Not implemented | Needs metrics, jobs, anti-gaming rules | Public analytics, user events | Medium |
+| Ranking/leaderboard/trending | Popular/trending/ranking pages | Placeholder ranking page exists without fake metrics | Needs metrics, jobs, anti-gaming rules before live rankings | Public analytics, user events | Medium |
 | Novel detail metadata | Cover, synopsis, source, chapter list, status | Basic novel detail/chapter list exists | Rich metadata, cover/assets, recommendations missing | Metadata ingestion, public UI | High |
 | Chapter reader | Clean mobile reader with navigation | Implemented guest chapter reader | Reader preferences and polish deferred | Reader UX pass | High |
 | Reading preferences | Font/theme/layout controls | Not established as complete | Preferences persistence and UX missing | Public auth for saved prefs; local guest prefs optional | Medium |
-| Public login | Google/email login for users | Intentionally disabled; `/api/auth/login` is owner-only | Public OAuth/session flow not implemented | Auth design and tests | P0 |
-| User library | Save novels to library | Backend routes exist; frontend surface quarantined | Contract and UI disabled | Public auth, `/api/user/*` contract tests | P0 |
-| Reading progress/history | Continue reading/history | Backend routes exist; frontend surface quarantined | Contract and UI disabled | Public auth, ownership tests | P0 |
-| Ratings/reviews | User ratings and reviews | Backend route exists; frontend surface quarantined | Contract, moderation, UI disabled | Public auth, moderation policy | High |
-| Requests/requesters | Users request novels/chapters | Admin request workflow exists; public user request UI disabled | Public request contract and moderation flow incomplete | Public auth, request ownership | High |
+| Public login | Google/email login for users | Google OAuth public login implemented; email/password deferred | OAuth deployment validation and email/password later | Auth tests, deployment config | P0 |
+| User library | Save novels to library | Implemented for authenticated public users | UX polish and update alerts remain | Public auth, `/api/user/*` ownership tests | P0 |
+| Reading progress/history | Continue reading/history | Implemented for authenticated public users | UX polish and reader preferences remain | Public auth, ownership tests | P0 |
+| Ratings/reviews | User ratings and reviews | Implemented for authenticated public users with basic controls | Moderation policy and anti-spam depth need more hardening | Public auth, moderation policy | High |
+| Requests/requesters | Users request novels/chapters | Public request UI and account request history implemented | Owner approval semantics and audit depth need polish | Public auth, request ownership | High |
 | Community folders/lists | User-created lists/folders/community discovery | Not implemented | Full feature missing | Public auth, moderation, abuse controls | Low |
 | Admin import/crawl | Owner imports/crawls sources | Implemented active admin workflows | Needs ongoing source hardening | FetchService/source fixtures | High |
 | Admin translation/job operations | Owner queues/translates/monitors jobs | Implemented active workflows | Needs operational polish and resume hardening | Worker/scheduler hardening | High |
@@ -407,9 +413,10 @@ cookies, or frontend-only flags.
 
 **P0 - correctness/security risk**:
 
-- Public auth must not be faked or routed through owner bootstrap login.
-- Public user frontend actions must remain disabled until `/api/user/*`
-  contracts and ownership tests are designed.
+- Public auth must remain on Google OAuth and must not be routed through owner
+  bootstrap login.
+- Public user frontend actions must continue using tested `/api/user/*`
+  contracts and must not accept client-supplied `user_id`.
 - Public contribution credentials must remain gated until Section 13 is met.
 - Runtime storage must stay isolated from frontend/static serving.
 - Future admin endpoints must not be advertised as exported frontend methods
@@ -574,15 +581,15 @@ regressions, missing tests, and contract drift.
 Single-owner platform with guest/user/owner roles. Enforced in the backend, not
 by hiding frontend routes.
 
-| Capability | Guest | Future User | Owner |
+| Capability | Guest | User | Owner |
 |---|---|---|---|
 | View public catalog | Yes | Yes | Yes |
 | Read public chapters | Yes | Yes | Yes |
 | Search/filter novels | Basic | Yes | Yes |
-| Save to library | No | Planned | Yes |
-| Track reading progress | No | Planned | Yes |
-| Rate/review | No | Planned | Yes |
-| Request novel/chapter | No active public UI | Planned, rate-limited | Yes |
+| Save to library | No | Yes | Yes |
+| Track reading progress | No | Yes | Yes |
+| Rate/review | No | Yes, rate-limited | Yes |
+| Request novel/chapter | No | Yes, rate-limited | Yes |
 | Start crawler | No | No | Yes |
 | Start translation | No | No | Yes |
 | Edit metadata/content | No | No | Yes |

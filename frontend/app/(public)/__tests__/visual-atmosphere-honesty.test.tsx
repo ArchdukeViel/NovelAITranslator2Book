@@ -65,7 +65,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function renderHome() {
   return render(
@@ -83,6 +86,17 @@ describe("Home page visual honesty", () => {
   it("renders without crashing", () => {
     renderHome();
     expect(screen.getByText("Latest Updates")).toBeInTheDocument();
+  });
+
+  it("shows grouped dates in the latest updates section", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
+
+    renderHome();
+
+    expect(screen.getByText("Today")).toBeInTheDocument();
+    expect(screen.getByText("Yesterday")).toBeInTheDocument();
+    expect(screen.getByText("1 week ago")).toBeInTheDocument();
   });
 
   it("does not display a Preview Feature badge", () => {

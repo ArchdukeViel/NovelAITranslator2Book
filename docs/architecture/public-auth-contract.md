@@ -3,7 +3,7 @@
 ## 0. Status
 
 **Status**: design contract, largely implemented
-**Last reviewed**: 2026-06-15 (doc audit refresh)
+**Last reviewed**: 2026-06-17 (frontend consistency refresh)
 **Authority**: subordinate to `docs/architecture/architecture.md`
 
 This document defines the target contract for public user authentication and
@@ -23,7 +23,7 @@ been implemented. Contribution credentials remain gated and unavailable.
 | OAuth model support | `backend/src/novelai/db/models/users.py`, `backend/src/novelai/api/auth/google_oauth.py` | Provider and subject fields exist. Google OAuth client and routes (`/api/auth/google/start`, `/api/auth/google/callback`) are implemented. |
 | User data endpoints | `backend/src/novelai/api/routers/user_data.py` | `/api/user/library`, `/progress`, `/history`, `/reviews`, and `/requests` exist behind `require_role("user")`. |
 | Backend tests | `backend/tests/test_auth.py`, `backend/tests/test_user_data_router.py` | Owner session, role guards, no public signup/JWT route, and basic user-data endpoint behavior are tested. |
-| Public auth frontend | `frontend/lib/public-api.ts`, `frontend/hooks/public/use-auth.ts` | Public client exposes `authApi.me`, `authApi.logout`, and `authApi.startGoogleLogin`. No `/api/auth/login` call from public UI. |
+| Public auth frontend | `frontend/lib/public-api.ts`, `frontend/hooks/public/use-auth.ts` | Public client exposes `authApi.me`, `authApi.logout`, `authApi.csrf`, and `authApi.googleStart`. No `/api/auth/login` call from public UI. |
 | Public user frontend | `frontend/hooks/public/index.ts`, `frontend/lib/public-api.ts` | Guest reader hooks and `/api/user/*` public client methods for library, progress, history, reviews, and requests are re-exported and active. |
 | Public UI gates | `frontend/components/public/*`, `frontend/app/(public)/account/*` | Login uses Google OAuth. Library, progress, history, reviews, and requests UI are active for authenticated users. Contribution UI remains gated/unavailable. |
 
@@ -195,7 +195,8 @@ The following plan has been largely followed through phases B1–B6. Remaining
 items are noted inline.
 
 1. Add public auth methods to `frontend/lib/public-api.ts` only after OAuth
-   endpoints exist: `authApi.startGoogleLogin`, `authApi.me`, `authApi.logout`.
+   endpoints exist: `authApi.googleStart`, `authApi.me`, `authApi.logout`,
+   and `authApi.csrf`.
 2. Add public user methods to `frontend/lib/public-api.ts` only after
    `/api/user/*` response shapes are tested.
 3. Re-export hooks from `frontend/hooks/public/index.ts` only when their

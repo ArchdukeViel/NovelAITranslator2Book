@@ -21,6 +21,7 @@ const PREVIEW_NOVELS = [
     status: "Ongoing",
     chapter_count: 42,
     translated_count: 15,
+    updated_at: "2026-06-17T08:00:00Z",
     genres: ["Fantasy", "Slice of Life", "Slow Burn"],
     synopsis:
       "After a second life begins in the mountains, a former court mage chooses tea, quiet rain, and small mysteries over royal intrigue.",
@@ -35,6 +36,7 @@ const PREVIEW_NOVELS = [
     status: "Completed",
     chapter_count: 120,
     translated_count: 120,
+    updated_at: "2026-06-16T10:00:00Z",
     genres: ["Dungeon", "Found Family"],
     synopsis:
       "A living dungeon rebuilds itself as a shelter for wanderers, turning old traps into hearths and hidden gardens.",
@@ -49,6 +51,7 @@ const PREVIEW_NOVELS = [
     status: "Ongoing",
     chapter_count: 305,
     translated_count: 89,
+    updated_at: "2026-06-12T09:00:00Z",
     genres: ["Adventure", "Wuxia"],
     synopsis:
       "Across cloud roads and border towns, a courier follows a vanished constellation and the stories it leaves behind.",
@@ -154,6 +157,7 @@ export default function HomePage() {
                 title={novel.title}
                 sourceTitle={novel.source_title}
                 chapterLabel={`Chapter ${novel.translated_count} translated`}
+                updatedAt={novel.updated_at}
               />
             ))}
           </div>
