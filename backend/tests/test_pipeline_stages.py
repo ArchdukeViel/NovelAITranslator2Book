@@ -191,6 +191,71 @@ async def test_smart_segment_stage_keeps_short_chapter_as_single_chunk():
 
 
 @pytest.mark.asyncio
+async def test_smart_segment_stage_adaptive_keeps_chapter_below_hard_max_as_single_chunk():
+    segment = SmartSegmentStage(adaptive_chunking_enabled=True)
+    context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
+    context.normalized_text = "a" * 6000
+
+    result = await segment.run(context)
+
+    assert len(result.translation_chunks) == 1
+    assert result.translation_chunks[0].char_count == 6000
+    assert result.metadata["segmentation"]["adaptive_chunking_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_smart_segment_stage_adaptive_reduces_mid_length_extra_chunks():
+    text = "\n\n".join(["a" * 3000, "b" * 3000, "c" * 3000])
+    adaptive = SmartSegmentStage(adaptive_chunking_enabled=True)
+    baseline = SmartSegmentStage(adaptive_chunking_enabled=False)
+
+    adaptive_context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
+    baseline_context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
+    adaptive_context.normalized_text = text
+    baseline_context.normalized_text = text
+
+    adaptive_result = await adaptive.run(adaptive_context)
+    baseline_result = await baseline.run(baseline_context)
+
+    assert len(baseline_result.translation_chunks) == 3
+    assert len(adaptive_result.translation_chunks) == 2
+    assert [chunk.char_count for chunk in adaptive_result.translation_chunks] == [6000, 3000]
+
+
+@pytest.mark.asyncio
+async def test_smart_segment_stage_adaptive_balances_twelve_thousand_chars_into_two_chunks():
+    segment = SmartSegmentStage(adaptive_chunking_enabled=True)
+    context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
+    context.normalized_text = "\n\n".join(["a" * 3000, "b" * 3000, "c" * 3000, "d" * 3000])
+
+    result = await segment.run(context)
+
+    assert len(result.translation_chunks) == 2
+    assert [chunk.char_count for chunk in result.translation_chunks] == [6000, 6000]
+    assert all(chunk.char_count <= 7000 for chunk in result.translation_chunks)
+
+
+@pytest.mark.asyncio
+async def test_smart_segment_stage_adaptive_preserves_refs_and_previous_context():
+    segment = SmartSegmentStage(adaptive_chunking_enabled=True, overlap_paragraphs=1)
+    context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
+    paragraphs = ["a" * 3000, "b" * 3000, "c" * 3000, "d" * 3000]
+    context.normalized_text = "\n\n".join(paragraphs)
+
+    result = await segment.run(context)
+
+    assert [chunk.paragraph_ids for chunk in result.translation_chunks] == [
+        ["p0001", "p0002"],
+        ["p0003", "p0004"],
+    ]
+    assert result.translation_chunks[1].paragraph_refs == [
+        ("chapter_001", "p0003"),
+        ("chapter_001", "p0004"),
+    ]
+    assert result.translation_chunks[1].previous_context == paragraphs[1]
+
+
+@pytest.mark.asyncio
 async def test_smart_segment_stage_bundles_multiple_short_neighboring_chapters():
     segment = SmartSegmentStage(target_chars=100, hard_max_chars=150, max_chapters_per_bundle=3)
     context = PipelineState(chapter_url="bundle", novel_id="novel1")
@@ -217,6 +282,22 @@ async def test_smart_segment_stage_bundles_multiple_short_neighboring_chapters()
 
 
 @pytest.mark.asyncio
+async def test_smart_segment_stage_adaptive_bundles_multiple_short_neighboring_chapters():
+    segment = SmartSegmentStage(adaptive_chunking_enabled=True, max_chapters_per_bundle=3)
+    context = PipelineState(chapter_url="bundle", novel_id="novel1")
+    context.metadata["_normalized_chapters"] = [
+        {"novel_id": "novel1", "chapter_id": "chapter_001", "text": "One."},
+        {"novel_id": "novel1", "chapter_id": "chapter_002", "text": "Two."},
+        {"novel_id": "novel1", "chapter_id": "chapter_003", "text": "Three."},
+    ]
+
+    result = await segment.run(context)
+
+    assert len(result.translation_chunks) == 1
+    assert result.translation_chunks[0].chapter_ids == ["chapter_001", "chapter_002", "chapter_003"]
+
+
+@pytest.mark.asyncio
 async def test_smart_segment_stage_splits_long_chapter_without_paragraph_loss():
     segment = SmartSegmentStage(target_chars=30, hard_max_chars=45)
     context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
@@ -229,6 +310,18 @@ async def test_smart_segment_stage_splits_long_chapter_without_paragraph_loss():
     expected = [("chapter_001", f"p{index:04d}") for index in range(1, 8)]
     assert refs == expected
     assert all(chunk.char_count <= 45 for chunk in result.translation_chunks)
+
+
+@pytest.mark.asyncio
+async def test_smart_segment_stage_adaptive_disabled_preserves_baseline_chunk_count():
+    segment = SmartSegmentStage(adaptive_chunking_enabled=False)
+    context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
+    context.normalized_text = "\n\n".join(["a" * 3000, "b" * 3000, "c" * 3000, "d" * 3000])
+
+    result = await segment.run(context)
+
+    assert len(result.translation_chunks) == 4
+    assert result.metadata["segmentation"]["adaptive_chunking_enabled"] is False
 
 
 @pytest.mark.asyncio

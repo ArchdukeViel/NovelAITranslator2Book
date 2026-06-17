@@ -38,6 +38,9 @@ class SmartSegmentStage(PipelineStage):
         overlap_paragraphs: int | None = None,
         allow_multi_chapter_bundles: bool | None = None,
         max_chapters_per_bundle: int | None = None,
+        adaptive_chunking_enabled: bool | None = None,
+        adaptive_soft_target_chars: int | None = None,
+        adaptive_hard_max_chars: int | None = None,
     ) -> None:
         self.target_chars = self._positive_int(
             target_chars if target_chars is not None else settings.TRANSLATION_TARGET_CHARS_PER_CHUNK,
@@ -49,6 +52,26 @@ class SmartSegmentStage(PipelineStage):
         )
         if self.hard_max_chars < self.target_chars:
             self.hard_max_chars = self.target_chars
+        explicit_baseline_budget = target_chars is not None or hard_max_chars is not None
+        self.adaptive_chunking_enabled = (
+            bool(settings.TRANSLATION_ADAPTIVE_CHUNKING_ENABLED) and not explicit_baseline_budget
+            if adaptive_chunking_enabled is None
+            else bool(adaptive_chunking_enabled)
+        )
+        self.adaptive_soft_target_chars = self._positive_int(
+            adaptive_soft_target_chars
+            if adaptive_soft_target_chars is not None
+            else settings.TRANSLATION_ADAPTIVE_SOFT_TARGET_CHARS,
+            default=5800,
+        )
+        self.adaptive_hard_max_chars = self._positive_int(
+            adaptive_hard_max_chars
+            if adaptive_hard_max_chars is not None
+            else settings.TRANSLATION_ADAPTIVE_HARD_MAX_CHARS,
+            default=7000,
+        )
+        if self.adaptive_hard_max_chars < self.adaptive_soft_target_chars:
+            self.adaptive_soft_target_chars = self.adaptive_hard_max_chars
 
         self.overlap_paragraphs = max(
             0,
@@ -180,6 +203,11 @@ class SmartSegmentStage(PipelineStage):
             lines.append("")
         return "\n".join(lines).strip()
 
+    @staticmethod
+    def _is_scene_separator(paragraph: Paragraph) -> bool:
+        text = paragraph.text.strip()
+        return text in {"***", "* * *", "---", "- - -", "◇◇◇", "◆◆◆"}
+
     def _previous_context(self, previous_paragraphs: list[Paragraph]) -> str | None:
         if self.overlap_paragraphs <= 0 or not previous_paragraphs:
             return None
@@ -223,6 +251,100 @@ class SmartSegmentStage(PipelineStage):
         )
         chunks.append(chunk)
         return list(pending), novel_id
+
+    def _balanced_paragraph_groups(
+        self,
+        paragraphs: list[Paragraph],
+        *,
+        chunk_count: int,
+        hard_max_chars: int,
+    ) -> list[list[Paragraph]]:
+        if chunk_count <= 1:
+            return [list(paragraphs)] if paragraphs else []
+
+        total_chars = sum(paragraph.char_count for paragraph in paragraphs)
+        target = max(1, total_chars / chunk_count)
+        groups: list[list[Paragraph]] = []
+        pending: list[Paragraph] = []
+        pending_chars = 0
+
+        for index, paragraph in enumerate(paragraphs):
+            remaining_paragraphs = len(paragraphs) - index - 1
+            remaining_groups = chunk_count - len(groups) - 1
+            projected = pending_chars + paragraph.char_count
+            has_enough_remaining = 1 + remaining_paragraphs >= remaining_groups
+            can_close_before = bool(pending) and len(groups) < chunk_count - 1 and has_enough_remaining
+            near_target = can_close_before and abs(pending_chars - target) < abs(projected - target)
+            scene_boundary = can_close_before and pending_chars >= target * 0.75 and self._is_scene_separator(pending[-1])
+            exceeds_hard = can_close_before and projected > hard_max_chars
+
+            if len(groups) < chunk_count - 1 and (exceeds_hard or scene_boundary or near_target):
+                groups.append(pending)
+                pending = []
+                pending_chars = 0
+
+            pending.append(paragraph)
+            pending_chars += paragraph.char_count
+
+        if pending:
+            groups.append(pending)
+        return groups
+
+    def _adaptive_groups_for_chapter(
+        self,
+        chapter: _ChapterParagraphs,
+        *,
+        warnings: list[str],
+    ) -> list[list[Paragraph]]:
+        groups: list[list[Paragraph]] = []
+        segment: list[Paragraph] = []
+
+        def flush_segment() -> None:
+            if not segment:
+                return
+            segment_chars = sum(paragraph.char_count for paragraph in segment)
+            chunk_count = max(1, -(-segment_chars // self.adaptive_hard_max_chars))
+            while True:
+                balanced = self._balanced_paragraph_groups(
+                    segment,
+                    chunk_count=chunk_count,
+                    hard_max_chars=self.adaptive_hard_max_chars,
+                )
+                if all(sum(paragraph.char_count for paragraph in group) <= self.adaptive_hard_max_chars for group in balanced):
+                    groups.extend(balanced)
+                    break
+                chunk_count += 1
+            segment.clear()
+
+        for paragraph in chapter.paragraphs:
+            if paragraph.char_count > self.adaptive_hard_max_chars:
+                flush_segment()
+                warnings.append(
+                    f"Oversized paragraph {chapter.chapter_id}/{paragraph.paragraph_id} has "
+                    f"{paragraph.char_count} chars; isolated in its own chunk."
+                )
+                groups.append([paragraph])
+                continue
+            segment.append(paragraph)
+        flush_segment()
+        return groups
+
+    def _append_adaptive_chapter_chunks(
+        self,
+        *,
+        chapter: _ChapterParagraphs,
+        chunks: list[TranslationChunk],
+        warnings: list[str],
+        previous_paragraphs: list[Paragraph],
+    ) -> list[Paragraph]:
+        for group in self._adaptive_groups_for_chapter(chapter, warnings=warnings):
+            previous_paragraphs, _ = self._flush_chunk(
+                chunks=chunks,
+                pending=group,
+                novel_id=chapter.novel_id,
+                previous_paragraphs=previous_paragraphs,
+            )
+        return previous_paragraphs
 
     def _append_paragraphs_as_chunks(
         self,
@@ -278,7 +400,7 @@ class SmartSegmentStage(PipelineStage):
         )
         return previous_paragraphs
 
-    def _pack_chunks(self, chapters: list[_ChapterParagraphs]) -> tuple[list[TranslationChunk], list[str]]:
+    def _pack_chunks_baseline(self, chapters: list[_ChapterParagraphs]) -> tuple[list[TranslationChunk], list[str]]:
         chunks: list[TranslationChunk] = []
         warnings: list[str] = []
         pending: list[Paragraph] = []
@@ -374,6 +496,76 @@ class SmartSegmentStage(PipelineStage):
         )
         return chunks, warnings
 
+    def _pack_chunks_adaptive(self, chapters: list[_ChapterParagraphs]) -> tuple[list[TranslationChunk], list[str]]:
+        chunks: list[TranslationChunk] = []
+        warnings: list[str] = []
+        pending: list[Paragraph] = []
+        pending_novel_id = chapters[0].novel_id if chapters else "unknown_novel"
+        pending_chars = 0
+        previous_paragraphs: list[Paragraph] = []
+
+        for chapter in chapters:
+            if not chapter.paragraphs:
+                continue
+
+            can_single_chunk = chapter.char_count <= self.adaptive_hard_max_chars and all(
+                paragraph.char_count <= self.adaptive_hard_max_chars for paragraph in chapter.paragraphs
+            )
+            can_bundle = self.allow_multi_chapter_bundles and can_single_chunk
+
+            if not can_bundle:
+                previous_paragraphs, pending_novel_id = self._flush_chunk(
+                    chunks=chunks,
+                    pending=pending,
+                    novel_id=pending_novel_id,
+                    previous_paragraphs=previous_paragraphs,
+                )
+                pending = []
+                pending_chars = 0
+                previous_paragraphs = self._append_adaptive_chapter_chunks(
+                    chapter=chapter,
+                    chunks=chunks,
+                    warnings=warnings,
+                    previous_paragraphs=previous_paragraphs,
+                )
+                continue
+
+            pending_chapter_ids = self._ordered_unique(paragraph.chapter_id for paragraph in pending)
+            would_add_chapter = chapter.chapter_id not in pending_chapter_ids
+            too_many_chapters = (
+                bool(pending)
+                and would_add_chapter
+                and len(pending_chapter_ids) >= self.max_chapters_per_bundle
+            )
+            would_exceed_soft_target = bool(pending) and pending_chars + chapter.char_count > self.adaptive_soft_target_chars
+            would_exceed_hard_max = bool(pending) and pending_chars + chapter.char_count > self.adaptive_hard_max_chars
+            if too_many_chapters or would_exceed_soft_target or would_exceed_hard_max:
+                previous_paragraphs, pending_novel_id = self._flush_chunk(
+                    chunks=chunks,
+                    pending=pending,
+                    novel_id=pending_novel_id,
+                    previous_paragraphs=previous_paragraphs,
+                )
+                pending = []
+                pending_chars = 0
+
+            pending.extend(chapter.paragraphs)
+            pending_chars += chapter.char_count
+            pending_novel_id = chapter.novel_id
+
+        self._flush_chunk(
+            chunks=chunks,
+            pending=pending,
+            novel_id=pending_novel_id,
+            previous_paragraphs=previous_paragraphs,
+        )
+        return chunks, warnings
+
+    def _pack_chunks(self, chapters: list[_ChapterParagraphs]) -> tuple[list[TranslationChunk], list[str]]:
+        if self.adaptive_chunking_enabled:
+            return self._pack_chunks_adaptive(chapters)
+        return self._pack_chunks_baseline(chapters)
+
     def estimate_chapter_chunks(
         self,
         *,
@@ -411,6 +603,9 @@ class SmartSegmentStage(PipelineStage):
             "stage": "SmartSegmentStage",
             "target_chars_per_chunk": self.target_chars,
             "hard_max_chars_per_chunk": self.hard_max_chars,
+            "adaptive_chunking_enabled": self.adaptive_chunking_enabled,
+            "adaptive_soft_target_chars": self.adaptive_soft_target_chars,
+            "adaptive_hard_max_chars": self.adaptive_hard_max_chars,
             "paragraph_count": len(paragraphs),
             "chunk_count": len(chunks),
             "warnings": warnings,
