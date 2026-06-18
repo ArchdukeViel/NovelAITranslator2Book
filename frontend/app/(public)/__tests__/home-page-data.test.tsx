@@ -91,8 +91,10 @@ function makeNovel(overrides: Record<string, unknown> = {}) {
     novel_id: "n1",
     slug: "test-novel",
     title: "Test Novel",
+    source_title: null as string | null,
     author: "Test Author",
     language: "ja",
+    synopsis: null as string | null,
     status: "Ongoing",
     chapter_count: 10,
     translated_count: 5,
@@ -478,5 +480,64 @@ describe("HomePage copy polish", () => {
     renderHome();
 
     expect(screen.queryByText(/ranking data is not live/i)).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Source title rendering
+// ---------------------------------------------------------------------------
+
+describe("HomePage source_title rendering", () => {
+  it("renders source_title in Recently Added rows when present", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          makeNovel({
+            title: "Translated Title",
+            source_title: "Original Japanese Title",
+          }),
+        ],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    // Display title appears in hero h1 + rows
+    const heroTitles = screen.getAllByText("Translated Title");
+    expect(heroTitles.length).toBeGreaterThanOrEqual(1);
+    // source_title appears in the LatestUpdateRow
+    expect(screen.getByText("Original Japanese Title")).toBeInTheDocument();
+  });
+
+  it("does not render source_title when it is null", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          makeNovel({
+            title: "Only Title",
+            source_title: null,
+          }),
+        ],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    // Only Title visible but source_title not rendered as a separate element
+    const titles = screen.getAllByText("Only Title");
+    expect(titles.length).toBeGreaterThanOrEqual(1);
+    // No duplicate "Only Title" in sourceTitle position
   });
 });

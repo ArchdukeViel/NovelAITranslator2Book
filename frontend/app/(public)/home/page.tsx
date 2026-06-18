@@ -237,16 +237,14 @@ export default function HomePage() {
               <LatestUpdateRow
                 key={novel.novel_id}
                 href={`/novel/${novel.slug}`}
-                title={novel.title || novel.slug}
+                title={novel.title}
                 chapterLabel={
                   novel.translated_count > 0
                     ? `Chapter ${novel.translated_count} translated`
                     : undefined
                 }
                 updatedAt={novel.added_at}
-                sourceTitle={
-                  novel.title !== novel.slug ? novel.title : undefined
-                }
+                sourceTitle={novel.source_title ?? undefined}
               />
             ))}
           </div>

@@ -8,9 +8,11 @@
 export interface PublicNovelSummary {
   novel_id: string;
   slug: string;
-  title: string | null;
+  title: string;
+  source_title: string | null;
   author: string | null; // null -> render "Unknown author" (Req 2.4)
   language: string | null;
+  synopsis: string | null;
   status: string | null;
   chapter_count: number;
   translated_count: number;
