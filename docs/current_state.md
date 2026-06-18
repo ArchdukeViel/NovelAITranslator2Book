@@ -1,6 +1,6 @@
 # NovelAI Current State
 
-**Last updated**: 2026-06-18 (post-PUBLIC-SEARCH-1)
+**Last updated**: 2026-06-18 (post-SOURCE-SMOKE-1)
 **Source of truth**: `docs/architecture/architecture.md`
 
 ## Verdict
@@ -19,8 +19,8 @@
 | Translation optimization stack | ✅ | Request estimator, retry ceiling, metadata batching, adaptive chunking, conditional overlap, paragraph hash lineage, delta window estimator, conservative delta retranslation, structured provider JSON hardening |
 | Multi-model scheduler | ✅ | Admin-owned provider/model routing, RPM/RPD tracking, pause/resume |
 | Source ingestion | ✅ | FetchService, SSRF protection, per-domain throttle, fetch cache |
-| Source adapters | ✅ | Syosetu, Novel18, Kakuyomu, Generic with offline fixtures |
-| Source pipeline hardening | ✅ | GenericSource ruby/preflight/confidence, KakuyomuSource preflight/UTF-8/UA, per-chapter partial failure, in-process crawl lock |
+| Source adapters | ✅ | Syosetu, Novel18, Kakuyomu, Generic with offline fixtures; Syosetu live smoke confirmed; Kakuyomu trailing-slash URL canonicalization fixed |
+| Source pipeline hardening | ✅ | GenericSource ruby/preflight/confidence, KakuyomuSource preflight/UTF-8/UA/Kakuyomu URL canonicalization, per-chapter partial failure, in-process crawl lock, block-page regex refined |
 | Storage layer | ✅ | File-backed, chapter-based, runtime contracts |
 | Provider errors | ✅ | `ProviderError` / `ProviderErrorCode` classification, API error mapping |
 || PostgreSQL database | ✅ | Supabase PostgreSQL 16, 12 ORM models, Alembic migrations applied |
@@ -228,9 +228,10 @@ backend/src/novelai/
 
 **P1 (maintainability)**:
 - Router thinning (operations.py, admin.py)
-- Kakuyomu/Generic FetchService migration verification
+- GenericSource FetchService migration verification
 - Legacy alias migration plan
 - ~~Source pipeline audit / ingestion fixes~~ ✅ Done (AUDIT-1, FIX-1, FIX-2A/B/C, FIX-3)
+- ~~Kakuyomu work URL canonicalization~~ ✅ Done (trailing-slash URL pattern fixed in FIX-3B)
 
 **P2 (cosmetic)**:
 - Frontend lint configuration
@@ -286,6 +287,13 @@ backend/src/novelai/
 5. ✅ SOURCE-PIPELINE-FIX-2B: per-chapter partial failure handling — failed chapters recorded, remaining chapters continue, summary dict returned
 6. ✅ SOURCE-PIPELINE-FIX-2C: per-novel in-process crawl lock — concurrent same-novel scrapes rejected, different-novel scrapes independent
 
+**Source smoke and live compatibility (SOURCE-SMOKE-1, SOURCE-PIPELINE-FIX-3B)**:
+1. ✅ Syosetu live smoke: metadata + 1 chapter fetch, temp storage roundtrip, update-mode dedup (n6656lw, 20/20 checks passed)
+2. ✅ Kakuyomu work URL canonicalization fixed (trailing slash removed from `_normalize_url`)
+3. ✅ Block-page regex false positive fixed (`(?<!re)captcha` excludes "recaptcha" in JSON metadata)
+4. ✅ Kakuyomu live smoke: metadata + 1 chapter fetch after fix (822139845959461179)
+5. ✅ GenericSource live smoke deferred (no known safe public disposable URL)
+
 **Public homepage data states (PUBLIC-HOME-DATA-* phases)**:
 1. ✅ PUBLIC-HOME-DATA-1: real catalog data wiring (useCatalog with sort/limit)
 2. ✅ PUBLIC-HOME-DATA-2: polish loading/error/empty states, duplicate section reduction, copy polish
@@ -310,7 +318,7 @@ backend/src/novelai/
 8. PUBLIC-COPY-1: de-AI public copy polish
 9. SOURCE-PIPELINE-FIX-4: novel status extraction (ongoing/completed/hiatus)
 10. SOURCE-PIPELINE-FIX-5: storage safety (cache TTL, metadata backup, event pruning)
-11. SOURCE-SMOKE-1: small real-source smoke after source pipeline hardening
+11. GenericSource live smoke (once a safe public disposable URL is identified)
 12. Admin provider credential UI (currently env-based only)
 13. Broader real-source smoke / manual verification
 
@@ -352,5 +360,6 @@ cd frontend && npm run dev                           # Admin UI
 - [x] Adult taxonomy filtering internal-only (ORM `Genre.is_adult`, `Tag.is_adult`)
 - [x] Public catalog summary enrichment preserves adult safety (`source_title`/`synopsis` added, no `is_adult` reintroduced)
 - [x] Per-novel in-process crawl lock (prevents concurrent same-novel scrapes; not distributed)
+- [x] Block-page detection refined (`(?<!re)captcha` avoids false positives on "recaptcha" in page metadata)
 - [ ] Encrypted credential storage (later phase)
 - [ ] Security audit logging (schema ready, not wired)
