@@ -19,9 +19,12 @@ describe("public auth API", () => {
     expect(googleOAuthStartUrl("relative/path")).toContain("next=%2F");
   });
 
-  it("has owner bootstrap login available in authApi", () => {
-    expect(authApi.login).toBeDefined();
-    expect(typeof authApi.login).toBe("function");
+  it("has public email auth available without owner bootstrap login", () => {
+    expect(authApi.passwordLogin).toBeDefined();
+    expect(typeof authApi.passwordLogin).toBe("function");
+    expect(authApi.register).toBeDefined();
+    expect(typeof authApi.register).toBe("function");
+    expect("login" in authApi).toBe(false);
   });
 
   it("does not restore non-reading public user APIs", () => {

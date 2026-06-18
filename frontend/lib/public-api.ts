@@ -13,6 +13,7 @@ import type { ApiErrorPayload } from "@/lib/api-types";
 import type {
   AuthUser,
   CatalogParams,
+  EmailPasswordAuthInput,
   HistoryListParams,
   HistoryListResponse,
   HistoryRecordInput,
@@ -28,6 +29,7 @@ import type {
   PublicGenreResponse,
   PublicNovelSummary,
   PublicTagSearchResult,
+  RegisterAuthInput,
   RequestListParams,
   RequestListResponse,
   ReviewInput,
@@ -299,13 +301,12 @@ export const authApi = {
     return googleOAuthStartUrl(returnTo);
   },
 
-  /**
-   * Owner bootstrap login via secret.
-   * Returns the authenticated user on success.
-   * Throws 401 on invalid secret, 503 if secret not configured.
-   */
-  login(secret: string): Promise<AuthUser> {
-    return publicPost<AuthUser>("/api/auth/login", { secret });
+  passwordLogin(input: EmailPasswordAuthInput): Promise<AuthUser> {
+    return publicPost<AuthUser>("/api/auth/password/login", input);
+  },
+
+  register(input: RegisterAuthInput): Promise<AuthUser> {
+    return publicPost<AuthUser>("/api/auth/register", input);
   },
 };
 

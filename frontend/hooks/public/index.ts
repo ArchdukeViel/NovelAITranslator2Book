@@ -1,9 +1,10 @@
 export {
   useAuthMe,
-  useLogin,
   useLogout,
+  usePasswordLogin,
   usePublicAuth,
   usePublicAuthState,
+  useRegister,
   useStartGoogleOAuth,
 } from "./use-auth";
 export { useCatalog } from "./use-catalog";

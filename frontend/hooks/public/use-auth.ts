@@ -3,7 +3,11 @@
 import { useCallback, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authApi } from "@/lib/public-api";
-import type { PublicAuthState } from "@/lib/public-types";
+import type {
+  EmailPasswordAuthInput,
+  PublicAuthState,
+  RegisterAuthInput,
+} from "@/lib/public-types";
 
 const AUTH_ME_KEY = ["auth", "me"] as const;
 
@@ -65,18 +69,26 @@ export function useLogout() {
   });
 }
 
-/**
- * Owner bootstrap login mutation.
- *
- * Calls POST /api/auth/login with the owner secret, then invalidates the
- * auth-me query so usePublicAuth() reflects the new session immediately.
- */
-export function useLogin() {
+function invalidateAuthState(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: AUTH_ME_KEY });
+}
+
+export function usePasswordLogin() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (secret: string) => authApi.login(secret),
+    mutationFn: (input: EmailPasswordAuthInput) => authApi.passwordLogin(input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: AUTH_ME_KEY });
+      invalidateAuthState(queryClient);
+    },
+  });
+}
+
+export function useRegister() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RegisterAuthInput) => authApi.register(input),
+    onSuccess: () => {
+      invalidateAuthState(queryClient);
     },
   });
 }

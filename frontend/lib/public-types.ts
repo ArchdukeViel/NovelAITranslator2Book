@@ -76,6 +76,15 @@ export interface AuthUser {
   is_owner: boolean;
 }
 
+export interface EmailPasswordAuthInput {
+  email: string;
+  password: string;
+}
+
+export interface RegisterAuthInput extends EmailPasswordAuthInput {
+  display_name?: string | null;
+}
+
 export type PublicAuthStatus = "guest" | "authenticated";
 
 export interface PublicAuthState {

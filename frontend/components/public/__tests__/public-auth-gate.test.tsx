@@ -21,31 +21,32 @@ function renderLoginStatic() {
 }
 
 describe("public auth gate", () => {
-  it("renders public login with Google OAuth and owner sign-in options", () => {
+  it("renders public login with Google OAuth and email options", () => {
     const html = renderLoginStatic();
 
     expect(html).toContain("Continue with Google");
+    expect(html).toContain("Email sign in");
+    expect(html).toContain("Email sign up");
+    expect(html).toContain("type=\"email\"");
     expect(html).toContain("Guest reading");
     expect(html).toContain("Save novels");
     expect(html).toContain("Continue reading where");
     expect(html).toContain("Leave reviews");
-    // Owner login tab is present
-    expect(html).toContain("Owner");
-    // No email field
-    expect(html).not.toContain("type=\"email\"");
-    // No token field
-    expect(html).not.toContain("token");
-    // No "Password / Token" legacy label
+    expect(html).not.toMatch(/owner|admin|secret|bootstrap/i);
     expect(html).not.toContain("Password / Token");
   });
 
-  it("exposes owner bootstrap login through the public API client", () => {
+  it("does not expose owner bootstrap login through the public API client", () => {
     const publicApi = readFileSync("lib/public-api.ts", "utf8");
     const publicHooks = readFileSync("hooks/public/index.ts", "utf8");
 
-    expect(publicApi).toContain("/api/auth/login");
-    expect(publicApi).toContain("login(secret");
-    expect(publicHooks).toContain("useLogin");
+    expect(publicApi).not.toContain("/api/auth/login");
+    expect(publicApi).not.toContain("login(secret");
+    expect(publicHooks).not.toContain("useLogin");
+    expect(publicApi).toContain("/api/auth/password/login");
+    expect(publicApi).toContain("/api/auth/register");
+    expect(publicHooks).toContain("usePasswordLogin");
+    expect(publicHooks).toContain("useRegister");
     expect(publicHooks).toContain("useAuthMe");
     expect(publicHooks).toContain("useLogout");
     expect(publicHooks).toContain("useStartGoogleOAuth");
@@ -87,15 +88,18 @@ describe("logout page", () => {
 /* ------------------------------------------------------------------ */
 
 describe("LoginPrompt component", () => {
-  it("renders benefit text and sign-in button with owner toggle", () => {
+  it("renders benefit text and sign-in button with email auth options", () => {
     // Re-use the existing LoginView render since LoginPrompt wraps it
     const html = renderLoginStatic();
 
     expect(html).toContain("Continue with Google");
+    expect(html).toContain("Email sign in");
+    expect(html).toContain("Email sign up");
     expect(html).toContain("Guest reading");
     expect(html).toContain("Save novels");
     expect(html).toContain("reading history");
-    expect(html).not.toContain("type=\"email\"");
+    expect(html).toContain("type=\"email\"");
+    expect(html).not.toMatch(/owner|admin|secret|bootstrap/i);
     expect(html).not.toContain("Password / Token");
   });
 });
