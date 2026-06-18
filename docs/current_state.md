@@ -1,6 +1,6 @@
 # NovelAI Current State
 
-**Last updated**: 2026-06-17 (post-source-pipeline-hardening)
+**Last updated**: 2026-06-18 (post-PUBLIC-SEARCH-1)
 **Source of truth**: `docs/architecture/architecture.md`
 
 ## Verdict
@@ -26,9 +26,9 @@
 || PostgreSQL database | ✅ | Supabase PostgreSQL 16, 12 ORM models, Alembic migrations applied |
 || Redis/RQ workers | ✅ | Background crawl and translation jobs |
 | Authentication | ✅ | HTTP-only sessions, guest/user/owner roles, `require_role()` dependency |
-| Public catalog API | ✅ | `/api/public/*` — browse, search, read published chapters |
-| Public taxonomy contract | ✅ | Genre/tag display labels, adult filtering internal via ORM, `is_adult` stripped from public API responses |
-| Public frontend polish | ✅ | Loading/error/empty states, SEO, trust pages, auth UX, account honesty, de-AI copy |
+|| Public catalog API | ✅ | `/api/public/*` — browse, search, read published chapters; `PublicNovelSummary` includes `source_title` and `synopsis` |
+|| Public taxonomy contract | ✅ | Genre/tag display labels, adult filtering internal via ORM, `is_adult` stripped from public API responses |
+| Public frontend polish | ✅ | Loading/error/empty states, SEO, trust pages, auth UX, account honesty, de-AI copy; catalog summary enrichment (source_title, synopsis) |
 | User data API | ✅ | `/api/user/*` — library, progress, history, reviews, requests |
 | Admin frontend | ✅ | Dashboard, crawler, translation, library, editor, activity, requests, settings |
 | Public frontend | ✅ | Novel catalog, chapter reader |
@@ -60,11 +60,11 @@
 ## Test Baseline
 
 ```
-Backend: 150+ tests pass (pytest, 2026-06-17)
+Backend: 150+ tests pass (pytest, 2026-06-18)
   - test_crawl_resilience_contracts.py: 21 passed (contract tests for crawl behavior)
   - test_novel_orchestration_service.py: 56 passed
   - test_taxonomy.py: 37 passed
-  - test_public_router.py: 80 passed
+  - test_public_router.py: 83 passed (incl. source_title, synopsis, is_adult contract)
   - test_gemini_provider.py: 12 passed
   - test_translation_qa.py: 21 passed
   - test_source_quality.py: 8 passed
@@ -236,7 +236,7 @@ backend/src/novelai/
 - Frontend lint configuration
 - Documentation examples
 - TAXONOMY-5C: tag `name_ja` display
-- TAXONOMY-5D: `PublicNovelSummary` genre enrichment
+- TAXONOMY-5D: public genre enrichment / label payload decision
 - Admin provider credential UI (currently env-based only)
 
 ---
@@ -286,6 +286,18 @@ backend/src/novelai/
 5. ✅ SOURCE-PIPELINE-FIX-2B: per-chapter partial failure handling — failed chapters recorded, remaining chapters continue, summary dict returned
 6. ✅ SOURCE-PIPELINE-FIX-2C: per-novel in-process crawl lock — concurrent same-novel scrapes rejected, different-novel scrapes independent
 
+**Public homepage data states (PUBLIC-HOME-DATA-* phases)**:
+1. ✅ PUBLIC-HOME-DATA-1: real catalog data wiring (useCatalog with sort/limit)
+2. ✅ PUBLIC-HOME-DATA-2: polish loading/error/empty states, duplicate section reduction, copy polish
+
+**Public catalog summary enrichment (PUBLIC-SEARCH-1)**:
+1. ✅ Backend `PublicNovelSummary` exposes `source_title` (original title when translation differs) and `synopsis`
+2. ✅ `source_title` is null when no translation exists (no distinct original)
+3. ✅ `synopsis` populated from description field in file-backed metadata
+4. ✅ Frontend `PublicNovelSummary` type aligned; homepage uses real `source_title` instead of fallback
+5. ✅ NovelCard `DiscoveryNovel` simplified (source_title/synopsis now in base type)
+6. ✅ Adult/R18 safety preserved: no `is_adult` in public responses, no `include_adult=true` calls
+
 ### Next
 
 1. Implement object storage boundary (S3/R2/B2)
@@ -293,11 +305,14 @@ backend/src/novelai/
 3. Production deployment (DEP1)
 4. Monitor Gemini metadata batch structured output on broader real inputs
 5. TAXONOMY-5C: tag `name_ja` display (frontend-only)
-6. TAXONOMY-5D: `PublicNovelSummary` genre enrichment (backend contract change)
-7. SOURCE-PIPELINE-FIX-4: novel status extraction (ongoing/completed/hiatus)
-8. SOURCE-PIPELINE-FIX-5: storage safety (cache TTL, metadata backup, event pruning)
-9. Admin provider credential UI (currently env-based only)
-10. Broader real-source smoke / manual verification
+6. TAXONOMY-5D: public genre enrichment / label payload decision
+7. PUBLIC-LATEST-1: latest updates time grouping
+8. PUBLIC-COPY-1: de-AI public copy polish
+9. SOURCE-PIPELINE-FIX-4: novel status extraction (ongoing/completed/hiatus)
+10. SOURCE-PIPELINE-FIX-5: storage safety (cache TTL, metadata backup, event pruning)
+11. SOURCE-SMOKE-1: small real-source smoke after source pipeline hardening
+12. Admin provider credential UI (currently env-based only)
+13. Broader real-source smoke / manual verification
 
 ---
 
@@ -335,6 +350,7 @@ cd frontend && npm run dev                           # Admin UI
 - [x] Google OAuth public login (separate from owner bootstrap)
 - [x] Public taxonomy contract hardened (no `is_adult` leakage)
 - [x] Adult taxonomy filtering internal-only (ORM `Genre.is_adult`, `Tag.is_adult`)
+- [x] Public catalog summary enrichment preserves adult safety (`source_title`/`synopsis` added, no `is_adult` reintroduced)
 - [x] Per-novel in-process crawl lock (prevents concurrent same-novel scrapes; not distributed)
 - [ ] Encrypted credential storage (later phase)
 - [ ] Security audit logging (schema ready, not wired)
