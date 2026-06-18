@@ -301,6 +301,63 @@ class ActivityQueueService:
             return dict(updated)
         return None
 
+    def retry_activity(self, activity_id: str) -> dict[str, Any] | None:
+        activity_log = self._load_activity()
+        for index, activity in enumerate(activity_log):
+            if activity.get("id") != activity_id:
+                continue
+
+            current_status = str(activity.get("status") or "")
+            if current_status not in {JobStatus.FAILED.value, JobStatus.CANCELLED.value}:
+                raise ValueError(f"Activity cannot be retried from status: {current_status}")
+
+            updated = dict(activity)
+            metadata = updated.get("metadata")
+            updated_metadata: dict[str, Any] = dict(metadata) if isinstance(metadata, dict) else {}
+            retry_history = updated_metadata.get("retry_history")
+            if not isinstance(retry_history, list):
+                retry_history = []
+            previous_metadata = dict(updated_metadata)
+            previous_metadata.pop("retry_history", None)
+            retry_history.append(
+                {
+                    "status": current_status,
+                    "error": updated.get("error"),
+                    "finished_at": updated.get("finished_at"),
+                    "retry_count": int(updated.get("retry_count", 0) or 0),
+                    "metadata": previous_metadata,
+                }
+            )
+            updated_metadata["retry_history"] = retry_history
+            updated_metadata["current_stage"] = "queued"
+            updated_metadata["current_label"] = None
+            updated_metadata["errors"] = []
+            updated_metadata["paused_reason"] = None
+            updated_metadata["resume_after"] = None
+            for stale_key in (
+                "failure_code",
+                "failure_category",
+                "failure_explanation",
+                "provider_error",
+                "provider_error_code",
+                "retry_after_seconds",
+                "cooldown_until",
+                "exhausted_until",
+            ):
+                updated_metadata.pop(stale_key, None)
+
+            updated["status"] = JobStatus.PENDING.value
+            updated["started_at"] = None
+            updated["finished_at"] = None
+            updated["retry_count"] = int(updated.get("retry_count", 0) or 0) + 1
+            updated["error"] = None
+            updated["metadata"] = updated_metadata
+
+            activity_log[index] = updated
+            self._persist_activity(activity_log)
+            return dict(updated)
+        return None
+
     def next_pending_activity(self, *, activity_type: str | None = None) -> dict[str, Any] | None:
         pending = self.list_activity(status=JobStatus.PENDING, activity_type=activity_type, limit=1)
         return pending[0] if pending else None

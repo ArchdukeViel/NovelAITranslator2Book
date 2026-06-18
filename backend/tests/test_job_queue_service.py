@@ -109,6 +109,43 @@ def test_update_activity_status_records_lifecycle_fields(activity_log: ActivityQ
     assert failed["metadata"]["attempt"] == 1
 
 
+def test_retry_activity_resets_failed_activity_and_preserves_previous_error(activity_log: ActivityQueueService) -> None:
+    activity = activity_log.create_translation_activity(novel_id="novel-1", metadata={"current_stage": "TranslateStage"})
+    failed = activity_log.update_activity_status(
+        activity["id"],
+        "failed",
+        error="provider timeout",
+        metadata={"failure_code": "TRANSLATION_ACTIVITY_FAILED"},
+    )
+
+    retried = activity_log.retry_activity(activity["id"])
+
+    assert failed is not None
+    assert retried is not None
+    assert retried["status"] == "pending"
+    assert retried["started_at"] is None
+    assert retried["finished_at"] is None
+    assert retried["error"] is None
+    assert retried["retry_count"] == 2
+    assert retried["metadata"]["current_stage"] == "queued"
+    assert retried["metadata"]["retry_history"][0]["status"] == "failed"
+    assert retried["metadata"]["retry_history"][0]["error"] == "provider timeout"
+    assert retried["metadata"]["retry_history"][0]["metadata"]["failure_code"] == "TRANSLATION_ACTIVITY_FAILED"
+
+
+def test_retry_activity_accepts_cancelled_activity(activity_log: ActivityQueueService) -> None:
+    activity = activity_log.create_translation_activity(novel_id="novel-1")
+    cancelled = activity_log.update_activity_status(activity["id"], "cancelled", error="cancelled by owner")
+
+    retried = activity_log.retry_activity(activity["id"])
+
+    assert cancelled is not None
+    assert retried is not None
+    assert retried["status"] == "pending"
+    assert retried["error"] is None
+    assert retried["retry_count"] == 1
+
+
 def test_next_pending_activity_returns_oldest_pending_by_type(activity_log: ActivityQueueService) -> None:
     first = activity_log.create_crawl_activity(novel_id="novel-1", source_key="syosetu_ncode")
     activity_log.create_translation_activity(novel_id="novel-1")

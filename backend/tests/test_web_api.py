@@ -192,10 +192,12 @@ def test_router_path_method_snapshot() -> None:
         (("POST",), "/activity/crawl"),
         (("POST",), "/activity/run-next"),
         (("POST",), "/activity/translation"),
+        (("POST",), "/activity/{activity_id}/retry"),
         (("POST",), "/activity/{activity_id}/run"),
         (("POST",), "/jobs/crawl"),
         (("POST",), "/jobs/run-next"),
         (("POST",), "/jobs/translation"),
+        (("POST",), "/jobs/{activity_id}/retry"),
         (("POST",), "/jobs/{activity_id}/run"),
         (("POST",), "/requests"),
         (("POST",), "/requests/{request_id}/source-candidates"),
@@ -864,6 +866,7 @@ class TestAuth:
             ("GET", "/novels/admin/worker", None),
             ("GET", "/novels/activity", None),
             ("POST", "/novels/activity/crawl", {"novel_id": "test-n1", "source_key": "dummy", "kind": "chapters"}),
+            ("POST", "/novels/activity/activity-1/retry", None),
             ("PATCH", "/novels/activity/activity-1", {"status": "failed"}),
             ("DELETE", "/novels/activity/activity-1", None),
             ("POST", "/novels/test-n1/scrape", {"source_key": "dummy", "url": "https://example.com/n1"}),
@@ -877,6 +880,7 @@ class TestAuth:
             ("GET", "/api/admin/activity", None),
             ("GET", "/api/admin/providers/gemini", None),
             ("POST", "/api/admin/activity/crawl", {"novel_id": "test-n1", "source_key": "dummy", "kind": "chapters"}),
+            ("POST", "/api/admin/activity/activity-1/retry", None),
             ("PATCH", "/api/admin/activity/activity-1", {"status": "failed"}),
             ("DELETE", "/api/admin/activity/activity-1", None),
             ("POST", "/api/admin/novels/test-n1/scrape", {"source_key": "dummy", "url": "https://example.com/n1"}),
@@ -1522,12 +1526,13 @@ class TestActivity:
 
         update_resp = c.patch(
             f"/novels/activity/{job_id}",
-            json={"status": "running", "metadata": {"worker": "local"}},
+            json={"status": "failed", "error": "worker failed", "metadata": {"worker": "local"}},
             headers=_csrf_headers(c),
         )
         assert update_resp.status_code == 200
-        assert update_resp.json()["status"] == "running"
-        assert update_resp.json()["started_at"] is not None
+        assert update_resp.json()["status"] == "failed"
+        assert update_resp.json()["finished_at"] is not None
+        assert update_resp.json()["error"] == "worker failed"
 
         get_resp = c.get(f"/novels/activity/{job_id}")
         assert get_resp.status_code == 200
@@ -1739,6 +1744,104 @@ class TestActivity:
         assert payload["status"] == "completed"
         assert payload["finished_at"] == stored["finished_at"]
         assert payload["metadata"] == stored["metadata"]
+
+    def test_run_activity_rejects_failed_activity_use_retry(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        jobs = ActivityQueueService(_TMP / "jobs")
+        worker = ActivityWorkerService(jobs, StubJobOrchestrator(storage))  # type: ignore[arg-type]
+        c = _make_app(storage, jobs, worker)
+        created = jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="chapters")
+        jobs.update_activity_status(str(created["id"]), "failed", error="source timeout")
+
+        resp = c.post(f"/novels/activity/{created['id']}/run", headers=_csrf_headers(c))
+
+        assert resp.status_code == 400
+        assert "cannot be run from status: failed" in resp.text
+
+    def test_retry_failed_activity_resets_to_pending(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        jobs = ActivityQueueService(_TMP / "jobs")
+        worker = ActivityWorkerService(jobs, StubJobOrchestrator(storage))  # type: ignore[arg-type]
+        c = _make_app(storage, jobs, worker)
+        created = jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="chapters")
+        failed = jobs.update_activity_status(str(created["id"]), "failed", error="source timeout")
+        assert failed is not None
+
+        resp = c.post(f"/api/admin/activity/{created['id']}/retry", headers=_csrf_headers(c))
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["status"] == "pending"
+        assert payload["started_at"] is None
+        assert payload["finished_at"] is None
+        assert payload["error"] is None
+        assert payload["retry_count"] == 2
+        assert payload["metadata"]["retry_history"][0]["status"] == "failed"
+        assert payload["metadata"]["retry_history"][0]["error"] == "source timeout"
+
+    @pytest.mark.parametrize("status", ["pending", "running", "completed"])
+    def test_retry_rejects_non_retryable_statuses(self, _no_api_key: None, status: str) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        jobs = ActivityQueueService(_TMP / "jobs")
+        worker = ActivityWorkerService(jobs, StubJobOrchestrator(storage))  # type: ignore[arg-type]
+        c = _make_app(storage, jobs, worker)
+        created = jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="chapters")
+        if status != "pending":
+            jobs.update_activity_status(str(created["id"]), status)
+
+        resp = c.post(f"/api/admin/activity/{created['id']}/retry", headers=_csrf_headers(c))
+
+        assert resp.status_code == 400
+        assert f"cannot be retried from status: {status}" in resp.text
+
+    def test_retry_missing_activity_returns_404(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        jobs = ActivityQueueService(_TMP / "jobs")
+        worker = ActivityWorkerService(jobs, StubJobOrchestrator(storage))  # type: ignore[arg-type]
+        c = _make_app(storage, jobs, worker)
+
+        resp = c.post("/api/admin/activity/missing/retry", headers=_csrf_headers(c))
+
+        assert resp.status_code == 404
+
+    def test_retry_requires_owner_and_csrf(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        jobs = ActivityQueueService(_TMP / "jobs")
+        worker = ActivityWorkerService(jobs, StubJobOrchestrator(storage))  # type: ignore[arg-type]
+        owner = _make_app(storage, jobs, worker)
+        user = _make_app(storage, jobs, worker, session_user=REGULAR_USER)
+        created = jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="chapters")
+        jobs.update_activity_status(str(created["id"]), "failed", error="source timeout")
+
+        missing_csrf = owner.post(f"/api/admin/activity/{created['id']}/retry")
+        non_owner = user.post(f"/api/admin/activity/{created['id']}/retry", headers=_csrf_headers(user))
+        legacy_alias = owner.post(f"/novels/activity/{created['id']}/retry", headers=_csrf_headers(owner))
+
+        assert missing_csrf.status_code == 403
+        assert non_owner.status_code == 403
+        assert legacy_alias.status_code == 200
+        assert legacy_alias.json()["status"] == "pending"
+
+    def test_manual_status_patch_rejects_running_transition(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        jobs = ActivityQueueService(_TMP / "jobs")
+        c = _make_app(storage, jobs)
+        created = jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="chapters")
+
+        resp = c.patch(
+            f"/api/admin/activity/{created['id']}",
+            json={"status": "running"},
+            headers=_csrf_headers(c),
+        )
+
+        assert resp.status_code == 400
+        assert "Use the activity run endpoint" in resp.text
 
 
 # ---------------------------------------------------------------------------
