@@ -21,12 +21,16 @@ export function PublicBrand({
     >
       <span
         className={cn(
-          "flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-primary font-literary text-xs font-bold text-primary-foreground",
+          "flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-primary",
           markClassName
         )}
         aria-hidden="true"
       >
-        読
+        <img
+          src="/assets/dokushodo/brand/dokushodo-mark.png"
+          alt=""
+          className="h-full w-full object-cover"
+        />
       </span>
       <span className="flex min-w-0 flex-col leading-none">
         <span className="font-literary text-base font-semibold tracking-normal text-foreground">

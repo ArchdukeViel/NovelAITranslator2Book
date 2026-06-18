@@ -71,7 +71,8 @@ describe("NovelCard genre/tag rendering", () => {
     const novel = makeNovel();
     renderWithClient(<NovelCard novel={novel} />);
 
-    expect(document.querySelector("img")).toBeNull();
+    const image = document.querySelector("img");
+    expect(image).toHaveAttribute("src", "/assets/dokushodo/covers/cover-archive.png");
     expect(screen.queryByText(/cover_url/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/https?:\/\//i)).not.toBeInTheDocument();
   });

@@ -4,22 +4,26 @@ import { BookOpen } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+const COVER_ASSETS = {
+  archive: "/assets/dokushodo/covers/cover-archive.png",
+  completed: "/assets/dokushodo/covers/cover-completed.png",
+  fantasy: "/assets/dokushodo/covers/cover-fantasy.png",
+  mystery: "/assets/dokushodo/covers/cover-mystery.png",
+} as const;
+
 const PALETTES = [
   {
-    root: "bg-secondary text-secondary-foreground",
-    wash: "from-primary/18 via-accent/10 to-transparent",
+    root: "text-secondary-foreground",
     mark: "border-primary/35 bg-primary/12 text-primary",
     rule: "bg-primary",
   },
   {
-    root: "bg-card text-card-foreground",
-    wash: "from-accent/18 via-secondary/70 to-transparent",
+    root: "text-card-foreground",
     mark: "border-accent/35 bg-accent/12 text-accent",
     rule: "bg-accent",
   },
   {
-    root: "bg-muted text-foreground",
-    wash: "from-foreground/10 via-secondary/70 to-transparent",
+    root: "text-foreground",
     mark: "border-border bg-background/40 text-muted-foreground",
     rule: "bg-foreground/30",
   },
@@ -72,6 +76,23 @@ function displayMeta(language: string | null | undefined, status: string | null 
   return items.join(" / ") || "Dokushodo";
 }
 
+function chooseCoverAsset(genres: string[] | null | undefined, status: string | null | undefined): string {
+  const statusText = status?.toLowerCase() ?? "";
+  if (statusText.includes("complete")) {
+    return COVER_ASSETS.completed;
+  }
+
+  const genreText = genres?.join(" ").toLowerCase() ?? "";
+  if (/(mystery|horror|supernatural|thriller|suspense)/u.test(genreText)) {
+    return COVER_ASSETS.mystery;
+  }
+  if (/(fantasy|isekai|adventure|magic)/u.test(genreText)) {
+    return COVER_ASSETS.fantasy;
+  }
+
+  return COVER_ASSETS.archive;
+}
+
 export function FallbackCover({
   className,
   genres,
@@ -85,23 +106,31 @@ export function FallbackCover({
   const subtitle = safeSourceTitle && safeSourceTitle !== safeTitle ? safeSourceTitle : null;
   const genreSeed = genres?.filter(Boolean).join("|") ?? "";
   const palette = PALETTES[hashText(`${safeTitle}|${subtitle ?? ""}|${genreSeed}`) % PALETTES.length];
+  const coverAsset = chooseCoverAsset(genres, status);
 
   return (
     <div
       role="img"
       aria-label={`Generated Dokushodo bookplate for ${safeTitle}`}
       className={cn(
-        "relative flex aspect-[2/3] h-full w-full overflow-hidden rounded-lg border border-border shadow-sm",
+        "relative flex aspect-[2/3] h-full w-full overflow-hidden rounded-lg border border-border bg-card shadow-sm",
         palette.root,
         className
       )}
     >
+      <img
+        src={coverAsset}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
       <div
-        className={cn("absolute inset-0 bg-gradient-to-br", palette.wash)}
+        className="absolute inset-0 bg-gradient-to-b from-background/20 via-background/45 to-background/90"
         aria-hidden="true"
       />
       <div
-        className="absolute inset-y-0 left-0 w-[12%] border-r border-border/60 bg-background/20"
+        className="absolute inset-y-0 left-0 w-[12%] border-r border-border/60 bg-background/30"
         aria-hidden="true"
       />
       <div
@@ -126,7 +155,7 @@ export function FallbackCover({
         <div className="mx-auto flex max-w-[11rem] flex-col items-center gap-4">
           <span
             className={cn(
-              "flex h-16 w-16 items-center justify-center rounded-md border font-literary text-xl font-medium shadow-sm",
+              "flex h-16 w-16 items-center justify-center rounded-md border font-literary text-xl font-medium shadow-sm backdrop-blur-[1px]",
               palette.mark
             )}
             aria-hidden="true"
