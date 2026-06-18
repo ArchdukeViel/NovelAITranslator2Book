@@ -1,33 +1,51 @@
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createElement, type ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
 import { LoginView } from "@/components/public/login-view";
 
+/** Render LoginView with a QueryClient for static SSR. */
+function renderLoginStatic() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return renderToStaticMarkup(
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(LoginView, { onClose: () => undefined })
+    )
+  );
+}
+
 describe("public auth gate", () => {
-  it("renders public login with Google OAuth and without credential fields", () => {
-    const html = renderToStaticMarkup(<LoginView onClose={() => undefined} />);
+  it("renders public login with Google OAuth and owner sign-in options", () => {
+    const html = renderLoginStatic();
 
     expect(html).toContain("Continue with Google");
     expect(html).toContain("Guest reading");
     expect(html).toContain("Save novels");
     expect(html).toContain("Continue reading where");
     expect(html).toContain("Leave reviews");
+    // Owner login tab is present
+    expect(html).toContain("Owner");
+    // No email field
     expect(html).not.toContain("type=\"email\"");
-    expect(html).not.toContain("type=\"password\"");
+    // No token field
     expect(html).not.toContain("token");
-    expect(html).not.toContain("secret");
+    // No "Password / Token" legacy label
     expect(html).not.toContain("Password / Token");
-    expect(html).not.toContain("/api/auth/login");
   });
 
-  it("does not expose owner bootstrap login through the public API client", () => {
+  it("exposes owner bootstrap login through the public API client", () => {
     const publicApi = readFileSync("lib/public-api.ts", "utf8");
     const publicHooks = readFileSync("hooks/public/index.ts", "utf8");
 
-    expect(publicApi).not.toContain("/api/auth/login");
-    expect(publicApi).not.toContain("authApi.login");
-    expect(publicHooks).not.toContain("useLogin");
+    expect(publicApi).toContain("/api/auth/login");
+    expect(publicApi).toContain("login(secret");
+    expect(publicHooks).toContain("useLogin");
     expect(publicHooks).toContain("useAuthMe");
     expect(publicHooks).toContain("useLogout");
     expect(publicHooks).toContain("useStartGoogleOAuth");
@@ -69,16 +87,15 @@ describe("logout page", () => {
 /* ------------------------------------------------------------------ */
 
 describe("LoginPrompt component", () => {
-  it("renders benefit text and sign-in button without credential fields", () => {
+  it("renders benefit text and sign-in button with owner toggle", () => {
     // Re-use the existing LoginView render since LoginPrompt wraps it
-    const html = renderToStaticMarkup(<LoginView onClose={() => undefined} />);
+    const html = renderLoginStatic();
 
     expect(html).toContain("Continue with Google");
     expect(html).toContain("Guest reading");
     expect(html).toContain("Save novels");
     expect(html).toContain("reading history");
     expect(html).not.toContain("type=\"email\"");
-    expect(html).not.toContain("type=\"password\"");
     expect(html).not.toContain("Password / Token");
   });
 });

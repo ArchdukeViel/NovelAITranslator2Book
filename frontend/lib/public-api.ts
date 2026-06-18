@@ -298,6 +298,15 @@ export const authApi = {
   googleStart(returnTo?: string): string {
     return googleOAuthStartUrl(returnTo);
   },
+
+  /**
+   * Owner bootstrap login via secret.
+   * Returns the authenticated user on success.
+   * Throws 401 on invalid secret, 503 if secret not configured.
+   */
+  login(secret: string): Promise<AuthUser> {
+    return publicPost<AuthUser>("/api/auth/login", { secret });
+  },
 };
 
 // ---------------------------------------------------------------------------
