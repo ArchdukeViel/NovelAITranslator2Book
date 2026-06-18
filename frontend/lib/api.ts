@@ -430,7 +430,7 @@ export const api = {
 // ===========================================
 export const adminAuth = {
   me: () => request<import("./api-types").AuthUser>("/auth/me"),
-  login: (secret: string) =>
+  ownerBootstrapLogin: (secret: string) =>
     request<import("./api-types").AuthUser>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ secret })
