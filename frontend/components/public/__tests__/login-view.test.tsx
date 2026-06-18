@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ComponentProps } from "react";
 
 import { LoginView } from "@/components/public/login-view";
 
@@ -39,24 +40,31 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderLogin(onClose = vi.fn(), onSuccess = vi.fn()) {
+function renderLogin(
+  onClose = vi.fn(),
+  onSuccess = vi.fn(),
+  props: Partial<ComponentProps<typeof LoginView>> = {}
+) {
   return render(
     <QueryClientProvider client={queryClient}>
-      <LoginView onClose={onClose} onSuccess={onSuccess} />
+      <LoginView onClose={onClose} onSuccess={onSuccess} {...props} />
     </QueryClientProvider>
   );
 }
 
 describe("LoginView public auth options", () => {
-  it("shows Google, email sign in, email sign up, and guest reading note", () => {
+  it("shows Google, email sign in, sign-up text link, and guest reading note", () => {
     renderLogin();
 
     expect(screen.getByText("Continue with Google")).toBeInTheDocument();
-    expect(screen.getByText("Email sign in")).toBeInTheDocument();
-    expect(screen.getByText("Email sign up")).toBeInTheDocument();
+    expect(screen.getByText("Sign in with email")).toBeInTheDocument();
+    expect(screen.getByText("No account yet?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create one" })).toBeInTheDocument();
     expect(
       screen.getByText("Guest reading is always available without sign-in.")
     ).toBeInTheDocument();
+    expect(screen.queryByText("Email sign in")).not.toBeInTheDocument();
+    expect(screen.queryByText("Email sign up")).not.toBeInTheDocument();
   });
 
   it("does not show public owner, admin, secret, or bootstrap wording", () => {
@@ -67,6 +75,11 @@ describe("LoginView public auth options", () => {
     expect(bodyText).not.toContain("admin");
     expect(bodyText).not.toContain("secret");
     expect(bodyText).not.toContain("bootstrap");
+    expect(bodyText).not.toContain("github");
+    expect(bodyText).not.toContain("discord");
+    expect(bodyText).not.toContain("magic-link");
+    expect(bodyText).not.toContain("password reset");
+    expect(bodyText).not.toContain("email verification");
     expect(screen.queryByLabelText(/secret/i)).not.toBeInTheDocument();
   });
 });
@@ -147,8 +160,18 @@ describe("LoginView email sign up", () => {
     const user = userEvent.setup();
     renderLogin();
 
-    await user.click(screen.getByText("Email sign up"));
+    await user.click(screen.getByRole("button", { name: "Create one" }));
 
+    expect(screen.getByLabelText("Confirm password")).toBeInTheDocument();
+    expect(screen.getByText("Create account")).toBeInTheDocument();
+    expect(screen.getByText("Already have an account?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+  });
+
+  it("opens directly in sign-up mode when requested", () => {
+    renderLogin(vi.fn(), vi.fn(), { initialMode: "signup" });
+
+    expect(screen.getByRole("heading", { name: "Create your Dokushodo account" })).toBeInTheDocument();
     expect(screen.getByLabelText("Confirm password")).toBeInTheDocument();
     expect(screen.getByText("Create account")).toBeInTheDocument();
   });
@@ -157,7 +180,7 @@ describe("LoginView email sign up", () => {
     const user = userEvent.setup();
     renderLogin();
 
-    await user.click(screen.getByText("Email sign up"));
+    await user.click(screen.getByRole("button", { name: "Create one" }));
     await user.type(screen.getByLabelText("Email"), "reader@example.com");
     await user.type(screen.getByLabelText("Password"), "long-enough-password");
     await user.type(
@@ -185,7 +208,7 @@ describe("LoginView email sign up", () => {
 
     renderLogin(vi.fn(), onSuccess);
 
-    await user.click(screen.getByText("Email sign up"));
+    await user.click(screen.getByRole("button", { name: "Create one" }));
     await user.type(screen.getByLabelText("Email"), "reader@example.com");
     await user.type(screen.getByLabelText("Password"), "long-enough-password");
     await user.type(
@@ -209,7 +232,7 @@ describe("LoginView email sign up", () => {
 
     renderLogin();
 
-    await user.click(screen.getByText("Email sign up"));
+    await user.click(screen.getByRole("button", { name: "Create one" }));
     await user.type(screen.getByLabelText("Email"), "reader@example.com");
     await user.type(screen.getByLabelText("Password"), "long-enough-password");
     await user.type(

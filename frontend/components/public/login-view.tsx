@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, LogIn, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +12,8 @@ import {
 interface LoginViewProps {
   onClose: () => void;
   onSuccess?: () => void;
+  initialMode?: EmailMode;
+  onModeChange?: (mode: EmailMode) => void;
 }
 
 type EmailMode = "signin" | "signup";
@@ -45,8 +47,13 @@ function validatePassword(value: string): string | null {
 /**
  * Public reader account panel with Google and email/password auth.
  */
-export function LoginView({ onClose, onSuccess }: LoginViewProps) {
-  const [mode, setMode] = useState<EmailMode>("signin");
+export function LoginView({
+  onClose,
+  onSuccess,
+  initialMode = "signin",
+  onModeChange,
+}: LoginViewProps) {
+  const [mode, setMode] = useState<EmailMode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -57,6 +64,17 @@ export function LoginView({ onClose, onSuccess }: LoginViewProps) {
   const passwordLogin = usePasswordLogin();
   const register = useRegister();
   const emailPending = passwordLogin.isPending || register.isPending;
+
+  useEffect(() => {
+    setMode(initialMode);
+    setError(null);
+  }, [initialMode]);
+
+  function switchMode(nextMode: EmailMode) {
+    setMode(nextMode);
+    setError(null);
+    onModeChange?.(nextMode);
+  }
 
   const handleGoogleLogin = async () => {
     setError(null);
@@ -123,7 +141,9 @@ export function LoginView({ onClose, onSuccess }: LoginViewProps) {
   return (
     <div className="w-full max-w-sm rounded-lg border border-border bg-background p-6 shadow-lg">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Sign in to Dokushodo</h2>
+        <h2 className="text-lg font-semibold">
+          {mode === "signup" ? "Create your Dokushodo account" : "Sign in to Dokushodo"}
+        </h2>
         <Button
           variant="ghost"
           size="icon"
@@ -163,37 +183,6 @@ export function LoginView({ onClose, onSuccess }: LoginViewProps) {
           <LogIn className="h-4 w-4" />
           Continue with Google
         </Button>
-      </div>
-
-      <div className="mb-4 grid grid-cols-2 gap-2 text-xs">
-        <button
-          type="button"
-          onClick={() => {
-            setMode("signin");
-            setError(null);
-          }}
-          className={`rounded px-3 py-2 ${
-            mode === "signin"
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted hover:bg-muted/80"
-          }`}
-        >
-          Email sign in
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setMode("signup");
-            setError(null);
-          }}
-          className={`rounded px-3 py-2 ${
-            mode === "signup"
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted hover:bg-muted/80"
-          }`}
-        >
-          Email sign up
-        </button>
       </div>
 
       <form onSubmit={handleEmailAuth} className="flex flex-col gap-3" noValidate>
@@ -271,6 +260,17 @@ export function LoginView({ onClose, onSuccess }: LoginViewProps) {
               : "Sign in with email"}
         </Button>
       </form>
+
+      <p className="mt-4 text-center text-xs text-muted-foreground">
+        {mode === "signup" ? "Already have an account? " : "No account yet? "}
+        <button
+          type="button"
+          onClick={() => switchMode(mode === "signup" ? "signin" : "signup")}
+          className="font-medium text-accent underline-offset-4 hover:underline"
+        >
+          {mode === "signup" ? "Sign in" : "Create one"}
+        </button>
+      </p>
 
       <Button
         type="button"
