@@ -5,6 +5,7 @@ import { createElement, type ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
 import { LoginView } from "@/components/public/login-view";
+import { LoginPrompt } from "@/components/public/login-prompt";
 
 /** Render LoginView with a QueryClient for static SSR. */
 function renderLoginStatic() {
@@ -25,8 +26,9 @@ describe("public auth gate", () => {
     const html = renderLoginStatic();
 
     expect(html).toContain("Continue with Google");
-    expect(html).toContain("Email sign in");
-    expect(html).toContain("Email sign up");
+    expect(html).toContain("Sign in with email");
+    expect(html).toContain("No account yet?");
+    expect(html).toContain("Create one");
     expect(html).toContain("type=\"email\"");
     expect(html).toContain("Guest reading");
     expect(html).toContain("Save novels");
@@ -88,17 +90,13 @@ describe("logout page", () => {
 /* ------------------------------------------------------------------ */
 
 describe("LoginPrompt component", () => {
-  it("renders benefit text and sign-in button with email auth options", () => {
-    // Re-use the existing LoginView render since LoginPrompt wraps it
-    const html = renderLoginStatic();
+  it("renders benefit text and routes sign-in to the login page", () => {
+    const html = renderToStaticMarkup(createElement(LoginPrompt));
 
-    expect(html).toContain("Continue with Google");
-    expect(html).toContain("Email sign in");
-    expect(html).toContain("Email sign up");
-    expect(html).toContain("Guest reading");
-    expect(html).toContain("Save novels");
-    expect(html).toContain("reading history");
-    expect(html).toContain("type=\"email\"");
+    expect(html).toContain("Sign in to save novels");
+    expect(html).toContain("href=\"/login?mode=signin\"");
+    expect(html).not.toContain("Continue with Google");
+    expect(html).not.toContain("type=\"email\"");
     expect(html).not.toMatch(/owner|admin|secret|bootstrap/i);
     expect(html).not.toContain("Password / Token");
   });

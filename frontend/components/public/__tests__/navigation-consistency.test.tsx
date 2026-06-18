@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, within } from "@testing-library/react";
 import { PublicSidebar } from "@/components/public/public-sidebar";
 import { PublicHeader } from "@/components/public/public-header";
 import { PublicFooter } from "@/components/public/public-footer";
@@ -106,6 +106,28 @@ describe("Sidebar navigation consistency", () => {
     expect(screen.queryByText("Requests")).not.toBeInTheDocument();
   });
 
+  it("links guest sign-in to the login route without rendering the auth form in the sidebar", () => {
+    setAuth(false);
+    render(<PublicSidebar isOpen onClose={() => {}} />);
+
+    const sidebar = screen.getByRole("dialog", { name: "Public navigation" });
+    expect(within(sidebar).getByRole("link", { name: /sign in/i })).toHaveAttribute(
+      "href",
+      "/login?mode=signin"
+    );
+    expect(within(sidebar).queryByText("Continue with Google")).not.toBeInTheDocument();
+    expect(within(sidebar).queryByLabelText("Email")).not.toBeInTheDocument();
+    expect(within(sidebar).queryByLabelText("Password")).not.toBeInTheDocument();
+  });
+
+  it("renders the public theme control in the sidebar utility area", () => {
+    setAuth(false);
+    render(<PublicSidebar isOpen onClose={() => {}} />);
+
+    expect(screen.getByText("Theme")).toBeInTheDocument();
+    expect(screen.getByLabelText(/switch to (dark|light) theme/i)).toBeInTheDocument();
+  });
+
   it("renders account nav items when authenticated", () => {
     setAuth(true);
     render(<PublicSidebar isOpen onClose={() => {}} />);
@@ -155,11 +177,15 @@ describe("Header navigation consistency", () => {
     expect(screen.queryByRole("link", { name: /library/i })).not.toBeInTheDocument();
   });
 
-  it("header has brand, menu button, theme toggle, and user indicator", () => {
+  it("header has brand, menu button, and user indicator without the theme toggle", () => {
     setAuth(false);
     render(<PublicHeader onMenuClick={() => {}} />);
     expect(screen.getByLabelText("Open navigation menu")).toBeInTheDocument();
-    expect(screen.getByLabelText(/switch to (dark|light) theme/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /sign in/i })).toHaveAttribute(
+      "href",
+      "/login?mode=signin"
+    );
+    expect(screen.queryByLabelText(/switch to (dark|light) theme/i)).not.toBeInTheDocument();
   });
 });
 
@@ -219,8 +245,8 @@ describe("Route inventory completeness", () => {
    * component. Each entry documents why it's excluded.
    */
   const knownExcludedRoutes: { route: string; reason: string }[] = [
-    { route: "/login", reason: "Auth uses LoginView overlay (Google OAuth), not page navigation" },
-    { route: "/register", reason: "No manual sign-up flow — auth is Google OAuth only" },
+    { route: "/login", reason: "Auth is reached from header/sidebar as /login?mode=signin or /login?mode=signup" },
+    { route: "/register", reason: "Legacy route redirects to /login?mode=signup" },
     { route: "/logout", reason: "Logout calls API mutation with server-side redirect, not a nav link" },
     { route: "/auth/callback", reason: "OAuth redirect_uri target — never user-facing" },
     { route: "/error", reason: "Next.js error boundary fallback" },

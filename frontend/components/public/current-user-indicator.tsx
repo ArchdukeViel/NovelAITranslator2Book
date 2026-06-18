@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
 import { LogIn, LogOut, Loader2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { LoginView } from "@/components/public/login-view";
 import { useLogout, usePublicAuth } from "@/hooks/public/use-auth";
 
 interface CurrentUserIndicatorProps {
@@ -13,12 +12,9 @@ interface CurrentUserIndicatorProps {
 
 /**
  * Current User Indicator for the Public Header.
- * Shows email + sign-out when authenticated, sign-in button when guest.
- * Login panel uses a center-screen overlay with backdrop instead of
- * absolute-position dropdown to avoid overflow/clipping on mobile.
+ * Shows email + sign-out when authenticated, sign-in route when guest.
  */
 export function CurrentUserIndicator({ onNavigate }: CurrentUserIndicatorProps) {
-  const [showLogin, setShowLogin] = useState(false);
   const { isAuthenticated, user } = usePublicAuth();
   const logout = useLogout();
 
@@ -48,34 +44,14 @@ export function CurrentUserIndicator({ onNavigate }: CurrentUserIndicatorProps) 
   }
 
   return (
-    <>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setShowLogin(true)}
-        aria-label="Sign in"
-      >
-        <LogIn className="h-4 w-4" />
-        <span>Sign in</span>
-      </Button>
-
-      {/* Center-screen overlay with backdrop — mobile-safe, no overflow risk */}
-      {showLogin && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowLogin(false);
-          }}
-        >
-          <LoginView
-            onClose={() => setShowLogin(false)}
-            onSuccess={() => {
-              setShowLogin(false);
-              onNavigate?.();
-            }}
-          />
-        </div>
-      )}
-    </>
+    <Link
+      href="/login?mode=signin"
+      onClick={onNavigate}
+      aria-label="Sign in"
+      className="inline-flex h-8 items-center justify-center gap-2 rounded-md px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+    >
+      <LogIn className="h-4 w-4" />
+      <span>Sign in</span>
+    </Link>
   );
 }
