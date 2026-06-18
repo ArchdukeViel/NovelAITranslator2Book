@@ -20,7 +20,7 @@ Postgres-backed metadata, file-backed chapter content
 background crawl/translation activity worker
 owner session auth implemented for dangerous admin operations
 guest public catalog / novel detail / chapter reader implemented
-Google OAuth public login implemented (backend routes + frontend plumbing)
+Google OAuth and email/password public login implemented (backend routes + frontend plumbing)
 public user library/progress/history/reviews/requests frontend re-enabled
 CSRF enforcement and basic public rate limits implemented
 production session secret fails closed when left at default
@@ -40,7 +40,7 @@ machine-translated novel platform in product shape, not branding.
 |---|---|
 | Owner/admin | Active. Single owner operates crawling, imports, translation jobs, editing, exports, provider config, activity, runtime state, requests, and worker controls. |
 | Guest public reader | Active. Guests can browse the public catalog, view novel detail, list chapters, and read chapters. |
-| Registered public users | Active. Google OAuth backend routes exist, public login UI uses Google OAuth, and frontend hooks for library/progress/history/reviews/requests are re-enabled. Public users authenticate via Google OAuth and receive `role="user"` sessions. |
+| Registered public users | Active. Google OAuth and email/password backend routes exist, public login/sign-up UI supports both public auth paths, and frontend hooks for library/progress/history/reviews/requests are re-enabled. Public users receive `role="user"` sessions only. |
 | Public contribution credentials | Deferred and gated. Public credential UI/API must remain disabled until the contribution readiness gate is satisfied. |
 | Community features | Deferred. Folders/lists/rankings/community surfaces require public auth, moderation, and abuse controls first. |
 
@@ -237,7 +237,7 @@ contract migration.
 | Dangerous admin routes | Protected by owner-session authorization through `require_role("owner")`. |
 | Legacy API-key auth | Fail-closed; do not rely on it for dangerous routes. |
 | Public reader | `frontend/lib/public-api.ts` calls `/api/public/*` catalog, novel, chapter list, and chapter endpoints. |
-| Public auth | Google OAuth implemented: `GET /api/auth/google/start` and `GET /api/auth/google/callback` create `role="user"` sessions. `POST /api/auth/login` remains owner bootstrap login only. CSRF enforcement and rate limits protect auth mutations. |
+| Public auth | Google OAuth and email/password public auth implemented: `GET /api/auth/google/start`, `GET /api/auth/google/callback`, `POST /api/auth/register`, and `POST /api/auth/password/login` create or resume `role="user"` sessions only. `POST /api/auth/login` remains admin-only owner bootstrap login. CSRF enforcement and rate limits protect auth mutations. |
 | Public user data | Backend `/api/user/*` routes exist and public frontend API methods/hooks are re-exported for library, progress, history, reviews, and requests. |
 | Admin future APIs | Exported future admin methods for missing endpoints are quarantined. Do not advertise `/api/admin/users`, `/api/admin/controls`, contributed credentials, or provider activation until backend routes exist. |
 
@@ -266,7 +266,8 @@ frontend/lib/               API clients, shared types, client utilities
 - Public hooks export guest-safe reader hooks (`useCatalog`, `useNovel`,
   `useChapters`, `useChapter`), public auth hooks, and authenticated user
   hooks for library/progress/history/reviews/requests.
-- Public login uses Google OAuth only. Library/progress/history/reviews/requests
+- Public login uses Google OAuth and email/password through public auth
+  endpoints. Library/progress/history/reviews/requests
   hooks are available to authenticated users.
 - Contribution credential actions must remain unavailable until the contribution
   readiness gate is satisfied.
@@ -298,8 +299,9 @@ frontend/lib/               API clients, shared types, client utilities
 
 ## 11. Authentication and Session Architecture
 
-**Current status**: owner/admin session auth and Google OAuth public login are
-both implemented.
+**Current status**: owner/admin session auth plus Google OAuth and
+email/password public auth are implemented. Password reset and email
+verification are not implemented yet.
 
 **Single owner-admin rule**:
 
@@ -311,7 +313,7 @@ both implemented.
 
 ```text
 guest  - unauthenticated; read public catalog/chapters
-user   - authenticated future public user; library, progress, history, ratings/reviews, requests
+user   - authenticated public user; library, progress, history, ratings/reviews, requests
 owner  - authenticated single owner; dangerous operations
 ```
 
@@ -322,18 +324,25 @@ owner  - authenticated single owner; dangerous operations
 - `GET /api/auth/me`: returns the current session user or guest.
 - `GET /api/auth/csrf`: returns the session-bound CSRF token for
   state-changing cookie-auth requests.
+- `POST /api/auth/register`: creates a public email/password `role="user"`
+  account and session.
+- `POST /api/auth/password/login`: verifies a public email/password account and
+  creates a `role="user"` session.
 - `GET /api/auth/google/start`: starts public Google OAuth.
 - `GET /api/auth/google/callback`: validates Google OAuth and creates/resumes
   a `role="user"` session.
 
 **Public auth implementation**:
 
-- Public login UI uses Google OAuth (`GET /api/auth/google/start`), never the
-  owner bootstrap `/api/auth/login`.
-- Google OAuth creates or resumes `role="user"` sessions only; it never
-  creates or promotes an owner account.
-- Frontend login view offers "Continue with Google" and redirects through the
-  OAuth flow.
+- Public login UI uses Google OAuth (`GET /api/auth/google/start`) and
+  email/password public endpoints, never the owner bootstrap `/api/auth/login`.
+- Google OAuth and email/password auth create or resume `role="user"` sessions
+  only; they never create or promote an owner account.
+- Frontend login view offers "Continue with Google", email/password sign-in,
+  and email/password sign-up. Google OAuth requires Dokushodo OAuth
+  configuration.
+- Public auth UI must not expose owner, admin, secret, or bootstrap wording.
+- Owner bootstrap login is admin-only and separate from public sign-in/sign-up.
 - Contribution credential UI remains gated and unavailable.
 
 ## 12. Implemented and Deferred State
@@ -350,6 +359,9 @@ owner  - authenticated single owner; dangerous operations
 | Admin future API frontend quarantine | Implemented and tested. |
 | Guest public catalog/novel/chapter reader | Implemented. |
 | Google OAuth public login (backend + frontend) | Implemented. |
+| Email/password public auth (backend + frontend) | Implemented. |
+| Admin-only owner bootstrap login surface | Implemented. |
+| Auth smoke after backend/frontend/admin-owner-login phases | Passed. |
 | Public user library/progress/history/reviews/requests frontend | Implemented. |
 | CSRF enforcement for cookie-auth mutations | Implemented. |
 | Basic public rate limits | Implemented. |
@@ -398,7 +410,7 @@ cookies, or frontend-only flags.
 | Novel detail metadata | Cover, synopsis, source, chapter list, status | Basic novel detail/chapter list exists | Rich metadata, cover/assets, recommendations missing | Metadata ingestion, public UI | High |
 | Chapter reader | Clean mobile reader with navigation | Implemented guest chapter reader | Reader preferences and polish deferred | Reader UX pass | High |
 | Reading preferences | Font/theme/layout controls | Not established as complete | Preferences persistence and UX missing | Public auth for saved prefs; local guest prefs optional | Medium |
-| Public login | Google/email login for users | Google OAuth public login implemented; email/password deferred | OAuth deployment validation and email/password later | Auth tests, deployment config | P0 |
+| Public login | Google/email login for users | Google OAuth plus email/password public login/sign-up implemented | OAuth deployment validation, password reset, and email verification later | Auth tests, deployment config | P0 |
 | User library | Save novels to library | Implemented for authenticated public users | UX polish and update alerts remain | Public auth, `/api/user/*` ownership tests | P0 |
 | Reading progress/history | Continue reading/history | Implemented for authenticated public users | UX polish and reader preferences remain | Public auth, ownership tests | P0 |
 | Ratings/reviews | User ratings and reviews | Implemented for authenticated public users with basic controls | Moderation policy and anti-spam depth need more hardening | Public auth, moderation policy | High |
@@ -413,8 +425,8 @@ cookies, or frontend-only flags.
 
 **P0 - correctness/security risk**:
 
-- Public auth must remain on Google OAuth and must not be routed through owner
-  bootstrap login.
+- Public auth must remain on Google OAuth and email/password public endpoints
+  and must not be routed through owner bootstrap login.
 - Public user frontend actions must continue using tested `/api/user/*`
   contracts and must not accept client-supplied `user_id`.
 - Public contribution credentials must remain gated until Section 13 is met.
@@ -456,9 +468,9 @@ cookies, or frontend-only flags.
 - Future admin API surface quarantined.
 - Tests protect these gates.
 
-**Phase B — Public auth contract design: largely complete**
+**Phase B — Public auth contract design: complete for current public auth**
 
-- Choose and document Google OAuth-first public auth flow.
+- Choose and document Google OAuth plus email/password public auth flow.
 - Define user session semantics separately from owner bootstrap login.
 - Define object ownership rules for user-owned data.
 - Define `/api/user/*` request/response contracts.
@@ -510,7 +522,7 @@ cookies, or frontend-only flags.
 ## 17. Do Not Build Yet
 
 - Do not route public login through owner bootstrap `/api/auth/login`. Public
-  login must use the Google OAuth flow only.
+  login must use Google OAuth or email/password public auth endpoints only.
 - Do not re-enable contribution credentials until encryption, revocation,
   validation, usage ledger, owner approval, and abuse controls exist.
 - Do not add fake `/api/admin/*` endpoints to satisfy future frontend methods.
@@ -520,7 +532,8 @@ cookies, or frontend-only flags.
 - Do not implement batch mode, billing, organizations, multi-admin teams, or
   broad package flattening without a dedicated architecture update.
 - Do not accept client-supplied `user_id` for user-owned data.
-- Do not create or promote owner accounts through public OAuth.
+- Do not create or promote owner accounts through public OAuth or
+  email/password registration.
 
 ## 18. Validation Commands
 
