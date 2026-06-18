@@ -251,10 +251,18 @@ export default function HomePage() {
         {featuredNovel && (
           <>
             <div
-              className="absolute inset-0 -z-30 bg-cover bg-center opacity-45 dark:opacity-35"
+              className="absolute inset-0 -z-30 bg-cover bg-center opacity-55 dark:opacity-45"
               style={{
                 backgroundImage:
-                  "url('https://images.unsplash.com/photo-1771893327514-842e33b8bf85?w=1600&h=900&fit=crop&auto=format')",
+                  "url('/assets/dokushodo/home/hero-torii-forest.png')",
+              }}
+              aria-hidden="true"
+            />
+            <div
+              className="absolute inset-0 -z-[25] bg-cover bg-center opacity-[0.08] mix-blend-screen"
+              style={{
+                backgroundImage:
+                  "url('/assets/dokushodo/texture/charcoal-washi.png')",
               }}
               aria-hidden="true"
             />
