@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
 
+import { FallbackCover } from "@/components/public/fallback-cover";
 import { GenreChip, TagChip } from "@/components/public/genre-chip";
 import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { SaveToLibrary } from "@/components/public/save-to-library";
@@ -50,16 +51,14 @@ export function NovelCard({ novel }: NovelCardProps) {
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
             />
           ) : (
-            <div className="flex h-full items-center justify-center bg-secondary text-muted-foreground">
-              <div className="flex flex-col items-center gap-3 px-5 text-center">
-                <span className="flex h-12 w-12 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
-                  <BookOpen className="h-6 w-6" />
-                </span>
-                <span className="line-clamp-4 font-literary text-sm leading-snug text-secondary-foreground">
-                  {sourceTitle || title}
-                </span>
-              </div>
-            </div>
+            <FallbackCover
+              className="rounded-none border-0 shadow-none"
+              genres={genres}
+              language={novel.language}
+              sourceTitle={sourceTitle}
+              status={novel.status}
+              title={title}
+            />
           )}
         </div>
 

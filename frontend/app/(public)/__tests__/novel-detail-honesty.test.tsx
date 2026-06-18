@@ -167,6 +167,19 @@ describe("Novel detail page — data honesty", () => {
     expect(screen.getByText("Test Author")).toBeInTheDocument();
   });
 
+  it("renders generated fallback bookplate from safe novel metadata", () => {
+    renderPage();
+
+    expect(
+      screen.getByRole("img", {
+        name: "Generated Dokushodo bookplate for Test Novel",
+      })
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("テスト小説").length).toBeGreaterThanOrEqual(1);
+    expect(document.querySelector("img")).toBeNull();
+    expect(screen.queryByText(/official cover/i)).not.toBeInTheDocument();
+  });
+
   it("displays added_at date when present", () => {
     renderPage();
     // The date will be formatted by toLocaleDateString. We check for the prefix.
@@ -271,7 +284,7 @@ describe("Novel detail page — no fake data", () => {
   it("renders source title from API data when present", () => {
     renderPage();
     expect(screen.getByText("Source title")).toBeInTheDocument();
-    expect(screen.getByText("テスト小説")).toBeInTheDocument();
+    expect(screen.getAllByText("テスト小説").length).toBeGreaterThanOrEqual(1);
   });
 
   it("does not render source title label when source title is missing", () => {
