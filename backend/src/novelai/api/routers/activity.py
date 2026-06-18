@@ -11,6 +11,7 @@ from novelai.api.response_helpers import activity_list_response, activity_record
 from novelai.api.models import ActivityListResponse, ActivityRecordResponse
 from novelai.activity.queue import ActivityQueueService
 from novelai.activity.worker import ActivityWorkerService
+from novelai.core.platform import JobStatus
 from novelai.api.routers.dependencies import get_activity_log, get_activity_worker
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
@@ -192,6 +193,22 @@ async def run_activity(
     return activity_record_response(stored_activity or activity)
 
 
+@router.post("/activity/{activity_id}/retry")
+@router.post("/jobs/{activity_id}/retry", include_in_schema=False)
+async def retry_activity(
+    activity_id: str,
+    worker: ActivityWorkerService = Depends(get_activity_worker),
+    _owner=Depends(require_role("owner")),
+) -> ActivityRecordResponse:
+    try:
+        activity = await worker.retry_activity(activity_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if activity is None:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    return activity_record_response(activity)
+
+
 @router.patch("/activity/{activity_id}")
 @router.patch("/jobs/{activity_id}", include_in_schema=False)
 async def update_activity_status(
@@ -200,6 +217,8 @@ async def update_activity_status(
     activity_log: ActivityQueueService = Depends(get_activity_log),
     _owner=Depends(require_role("owner")),
 ) -> ActivityRecordResponse:
+    if body.status == JobStatus.RUNNING.value:
+        raise HTTPException(status_code=400, detail="Use the activity run endpoint to start pending activity.")
     try:
         activity = activity_log.update_activity_status(
             activity_id,

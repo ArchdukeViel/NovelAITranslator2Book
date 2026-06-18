@@ -217,7 +217,7 @@ class ActivityWorkerService:
         if activity is None:
             return None
 
-        if activity.get("status") in {JobStatus.RUNNING.value, JobStatus.COMPLETED.value, JobStatus.CANCELLED.value}:
+        if activity.get("status") != JobStatus.PENDING.value:
             raise ValueError(f"Activity cannot be run from status: {activity.get('status')}")
 
         activity_metadata = {
@@ -307,6 +307,9 @@ class ActivityWorkerService:
         if activity is None:
             return None
         return await self.run_activity(str(activity["id"]))
+
+    async def retry_activity(self, activity_id: str) -> dict[str, Any] | None:
+        return self.activity_log.retry_activity(activity_id)
 
     async def run_job(self, job_id: str) -> dict[str, Any] | None:
         return await self.run_activity(job_id)
