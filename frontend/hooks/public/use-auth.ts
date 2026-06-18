@@ -65,6 +65,22 @@ export function useLogout() {
   });
 }
 
+/**
+ * Owner bootstrap login mutation.
+ *
+ * Calls POST /api/auth/login with the owner secret, then invalidates the
+ * auth-me query so usePublicAuth() reflects the new session immediately.
+ */
+export function useLogin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (secret: string) => authApi.login(secret),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: AUTH_ME_KEY });
+    },
+  });
+}
+
 export function useStartGoogleOAuth() {
   return useCallback((returnTo?: string) => {
     const currentPath =

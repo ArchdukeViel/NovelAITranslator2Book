@@ -1,5 +1,6 @@
 export {
   useAuthMe,
+  useLogin,
   useLogout,
   usePublicAuth,
   usePublicAuthState,
