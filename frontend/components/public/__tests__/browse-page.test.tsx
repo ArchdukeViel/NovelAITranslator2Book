@@ -78,8 +78,8 @@ function renderPage() {
 }
 
 function openAdvancedSearch() {
-  const btn = screen.getByRole("button", { name: /filters/i });
-  act(() => { btn.click(); });
+  const btns = screen.getAllByRole("button", { name: /filters/i });
+  act(() => { btns[0].click(); });
 }
 
 /** Helper: type into a tag search input and wait for debounce + query to settle. */
@@ -160,10 +160,10 @@ describe("BrowsePage visual honesty", () => {
 });
 
 describe("BrowsePage genre filter UI", () => {
-  it("renders genre list from API", () => {
+  it("renders genre list from API — one chip per genre", () => {
     renderPage();
     openAdvancedSearch();
-    expect(screen.getAllByText("Fantasy").length).toBe(2);
+    expect(screen.getAllByText("Fantasy").length).toBe(1);
   });
 
   it("shows loading/error/empty states", () => {
@@ -173,20 +173,81 @@ describe("BrowsePage genre filter UI", () => {
     expect(screen.getByText("Loading genres…")).toBeInTheDocument();
   });
 
-  it("selecting include genre pushes genre_include param", () => {
+  it("first click on neutral genre adds genre_include param", () => {
     renderPage();
     openAdvancedSearch();
-    const includeGroup = screen.getByRole("group", { name: /include genres/i });
-    act(() => { includeGroup.querySelector("button")!.click(); });
+    const genreGroup = screen.getByRole("group", { name: /genre filters/i });
+    act(() => { genreGroup.querySelector("button")!.click(); });
     expect(mocks.pushFn.mock.calls[0][0]).toContain("genre_include=fantasy");
+    expect(mocks.pushFn.mock.calls[0][0]).not.toContain("genre_exclude");
   });
 
-  it("selecting exclude genre pushes genre_exclude param", () => {
+  it("second click moves from include to exclude param", () => {
+    // Start with fantasy included — advanced opens auto
+    searchParamsMock.mockReturnValue(new URLSearchParams("genre_include=fantasy"));
+    renderPage();
+    const btn = screen.getByRole("button", { name: /Fantasy: included/i });
+    act(() => { btn.click(); });
+    const url = mocks.pushFn.mock.calls[0][0] as string;
+    expect(url).toContain("genre_exclude=fantasy");
+    expect(url).not.toContain("genre_include=fantasy");
+  });
+
+  it("third click removes genre from both params (back to neutral)", () => {
+    // Start with fantasy excluded — advanced opens auto
+    searchParamsMock.mockReturnValue(new URLSearchParams("genre_exclude=fantasy"));
+    renderPage();
+    const btn = screen.getByRole("button", { name: /Fantasy: excluded/i });
+    act(() => { btn.click(); });
+    const url = mocks.pushFn.mock.calls[0][0] as string;
+    expect(url).not.toContain("genre_include=fantasy");
+    expect(url).not.toContain("genre_exclude=fantasy");
+  });
+
+  it("genre cannot be both include and exclude simultaneously", () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams("genre_include=fantasy"));
+    renderPage();
+    // Fantasy is included — click to move to exclude
+    const btn = screen.getByRole("button", { name: /Fantasy: included/i });
+    act(() => { btn.click(); });
+    const url = mocks.pushFn.mock.calls[0][0] as string;
+    // Should be in exclude only, not both
+    expect(url).toContain("genre_exclude=fantasy");
+    expect(url).not.toContain("genre_include=fantasy");
+  });
+
+  it("URL with genre_include initializes include state", () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams("genre_include=fantasy"));
+    renderPage();
+    expect(screen.getByRole("button", { name: /Fantasy: included/i })).toBeInTheDocument();
+  });
+
+  it("URL with genre_exclude initializes exclude state", () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams("genre_exclude=fantasy"));
+    renderPage();
+    expect(screen.getByRole("button", { name: /Fantasy: excluded/i })).toBeInTheDocument();
+  });
+
+  it("multiple genres can have different states", () => {
+    mocks.genresQuery.mockReturnValue({
+      data: [
+        { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" },
+        { slug: "romance", name_ja: "恋愛", name_en: "Romance" },
+      ],
+      isPending: false,
+      isError: false,
+    });
+    // Both params in URL — advanced opens auto
+    searchParamsMock.mockReturnValue(new URLSearchParams("genre_include=fantasy&genre_exclude=romance"));
+    renderPage();
+    expect(screen.getByRole("button", { name: /Fantasy: included/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Romance: excluded/i })).toBeInTheDocument();
+  });
+
+  it("neutral genre has accessible 'not selected' label", () => {
     renderPage();
     openAdvancedSearch();
-    const excludeGroup = screen.getByRole("group", { name: /exclude genres/i });
-    act(() => { excludeGroup.querySelector("button")!.click(); });
-    expect(mocks.pushFn.mock.calls[0][0]).toContain("genre_exclude=fantasy");
+    expect(screen.getByRole("button", { name: /Fantasy: not selected/i })).toBeInTheDocument();
   });
 
   it("clearing filters removes genre params", () => {
@@ -215,7 +276,17 @@ describe("BrowsePage genre filter UI", () => {
   it("opens advanced search automatically when genre filters in URL", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("genre_include=fantasy"));
     renderPage();
-    expect(screen.getAllByText("Must include").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("group", { name: /genre filters/i })).toBeInTheDocument();
+  });
+
+  it("does not pass include_adult=true", () => {
+    renderPage();
+    openAdvancedSearch();
+    // No genre chip click should cause include_adult in URL
+    const genreGroup = screen.getByRole("group", { name: /genre filters/i });
+    act(() => { genreGroup.querySelector("button")!.click(); });
+    const url = mocks.pushFn.mock.calls[0][0] as string;
+    expect(url).not.toContain("include_adult");
   });
 });
 
