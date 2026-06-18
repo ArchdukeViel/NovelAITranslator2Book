@@ -410,6 +410,10 @@ class RequestResponse(BaseModel):
     slug: str | None
     chapter_id: str | None
     created_at: datetime
+    updated_at: datetime
+    rejection_reason: str | None
+    approved_novel_id: int | None
+    approved_slug: str | None
 
 
 class RequestListResponse(BaseModel):
@@ -426,6 +430,12 @@ def _request_response(req: NovelRequest, session: Session) -> RequestResponse:
         slug=_novel_slug(req.novel_id, session),
         chapter_id=None,
         created_at=req.created_at,
+        updated_at=req.updated_at,
+        rejection_reason=(
+            req.rejection_reason if req.status == "rejected" else None
+        ),
+        approved_novel_id=req.approved_novel_id,
+        approved_slug=_novel_slug(req.approved_novel_id, session),
     )
 
 
