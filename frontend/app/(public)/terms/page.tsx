@@ -14,7 +14,7 @@ export default function TermsPage() {
       sections={[
         {
           title: "Accounts",
-          body: "Public accounts use Google sign-in. You are responsible for activity from your signed-in session, including saved library items, reading history, reviews, and requests. Do not try to access another reader's account, data, or admin-only tools.",
+          body: "Public accounts can use Google sign-in or email/password sign-in. You are responsible for activity from your signed-in session, including saved library items, reading history, reviews, and requests. Do not try to access another reader's account, data, or admin-only tools.",
         },
         {
           title: "Acceptable use",

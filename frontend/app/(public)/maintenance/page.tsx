@@ -12,7 +12,7 @@ export default function MaintenancePage() {
     <StaticPage
       title="Maintenance"
       description="Dokushodo is not currently in maintenance mode."
-      sections={[{ title: "Placeholder", body: "This route exists for a future operational maintenance state." }]}
+      sections={[{ title: "Status", body: "Maintenance mode is off. The public reader is available." }]}
     />
   );
 }

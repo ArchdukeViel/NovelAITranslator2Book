@@ -30,7 +30,7 @@ export default function RankingPage() {
         <p className="mt-4 max-w-2xl text-base leading-7 text-muted-foreground">
           Dokushodo does not display ranking data until real aggregated
           metrics are available. This page stays quiet instead of showing
-          fake numbers.
+          numbers the app does not have.
         </p>
       </header>
 
@@ -52,7 +52,7 @@ export default function RankingPage() {
         <SectionHeader
           eyebrow="Ranking List"
           title="No ranking data yet"
-          description="The public catalog is available, but ranked popularity data is not exposed by the current public API."
+          description="The public catalog is available, but ranked popularity data is not shown here yet."
         />
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
@@ -84,7 +84,7 @@ export default function RankingPage() {
                   <h3 className="text-sm font-medium">Not available yet</h3>
                   <p className="mt-1 text-sm leading-6 text-muted-foreground">
                     Ranking requires real aggregated data that is not
-                    currently exposed by the public API.
+                    shown on the public site yet.
                   </p>
                 </div>
               </div>
