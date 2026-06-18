@@ -76,6 +76,7 @@ function serializeSet(set: Set<string>): string | undefined {
 interface TagFilterSectionProps {
   label: string;
   icon: React.ReactNode;
+  tone: "include" | "exclude";
   query: string;
   onQueryChange: (v: string) => void;
   selectedSet: Set<string>;
@@ -88,6 +89,7 @@ interface TagFilterSectionProps {
 function TagFilterSection({
   label,
   icon,
+  tone,
   query,
   onQueryChange,
   selectedSet,
@@ -120,20 +122,34 @@ function TagFilterSection({
   const isDoneFetching = !isFetching && !isError;
 
   return (
-    <div className="mb-3 last:mb-0">
-      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-        {icon}
-        {label}
+    <div className="rounded-md bg-background/55 p-3 ring-1 ring-border/45">
+      <p className="mb-2 flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          {icon}
+          {label}
+        </span>
+        <span className="font-metadata uppercase tracking-[0.12em] text-muted-foreground/70">
+          {tone === "include" ? "Required" : "Blocked"}
+        </span>
       </p>
 
       {/* Selected tag chips */}
       {selectedSet.size > 0 && (
-        <div className="mb-1.5 flex flex-wrap gap-1.5">
+        <div className="mb-2 flex flex-wrap gap-1.5">
           {Array.from(selectedSet).sort().map((tag) => (
             <span
               key={tag}
-              className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-foreground"
+              className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${
+                tone === "include"
+                  ? "bg-primary/10 text-foreground ring-1 ring-primary/25"
+                  : "bg-destructive/10 text-foreground ring-1 ring-destructive/25"
+              }`}
             >
+              {tone === "include" ? (
+                <PlusCircle className="h-3 w-3 text-primary" aria-hidden="true" />
+              ) : (
+                <MinusCircle className="h-3 w-3 text-destructive" aria-hidden="true" />
+              )}
               {tag}
               <button
                 type="button"
@@ -158,7 +174,7 @@ function TagFilterSection({
           placeholder="Type to search tags…"
           autoComplete="off"
           aria-label={`${label} tag search`}
-          className="h-8 w-full rounded-md border border-border/60 bg-background px-2.5 text-xs text-foreground outline-none transition-colors focus:border-accent placeholder:text-muted-foreground/60"
+          className="h-8 w-full rounded-md border border-border/55 bg-card/75 px-2.5 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-accent focus:bg-card"
         />
 
         {/* Dropdown */}
@@ -450,7 +466,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
     <div className="space-y-10">
       <section
         aria-label="Browse filters"
-        className="rounded-lg bg-card/75 p-4 shadow-sm ring-1 ring-border sm:p-5"
+        className="rounded-lg bg-card/60 p-4 shadow-sm ring-1 ring-border/60 sm:p-5"
       >
         <form onSubmit={handleSearchSubmit}>
           <label
@@ -561,61 +577,82 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
 
         {/* Advanced search: chapter count + genre + tag filters */}
         {advancedOpen && (
-          <form onSubmit={handleAdvancedSubmit} className="mt-4 rounded-md border border-border/60 bg-muted/40 p-4">
-            <p className="mb-3 font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground">
-              Chapter count range
-            </p>
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
-                <label
-                  htmlFor="min-chapters"
-                  className="mb-1 block text-xs text-muted-foreground"
-                >
-                  Minimum
-                </label>
-                <input
-                  id="min-chapters"
-                  name="min_chapters"
-                  type="number"
-                  min={0}
-                  step={1}
-                  defaultValue={min_chapters ?? ""}
-                  placeholder="0"
-                  className="h-9 w-24 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-accent"
-                />
+          <form onSubmit={handleAdvancedSubmit} className="mt-4 space-y-5 border-t border-border/50 pt-4">
+            <div>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                  Chapter count
+                </p>
               </div>
-              <span className="pb-2 text-muted-foreground">–</span>
-              <div>
-                <label
-                  htmlFor="max-chapters"
-                  className="mb-1 block text-xs text-muted-foreground"
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label
+                    htmlFor="min-chapters"
+                    className="mb-1 block text-xs text-muted-foreground"
+                  >
+                    Minimum
+                  </label>
+                  <input
+                    id="min-chapters"
+                    name="min_chapters"
+                    type="number"
+                    min={0}
+                    step={1}
+                    defaultValue={min_chapters ?? ""}
+                    placeholder="0"
+                    className="h-9 w-24 rounded-md border border-border/60 bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-accent"
+                  />
+                </div>
+                <span className="pb-2 text-muted-foreground">–</span>
+                <div>
+                  <label
+                    htmlFor="max-chapters"
+                    className="mb-1 block text-xs text-muted-foreground"
+                  >
+                    Maximum
+                  </label>
+                  <input
+                    id="max-chapters"
+                    name="max_chapters"
+                    type="number"
+                    min={0}
+                    step={1}
+                    defaultValue={max_chapters ?? ""}
+                    placeholder="∞"
+                    className="h-9 w-24 rounded-md border border-border/60 bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-accent"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                 >
-                  Maximum
-                </label>
-                <input
-                  id="max-chapters"
-                  name="max_chapters"
-                  type="number"
-                  min={0}
-                  step={1}
-                  defaultValue={max_chapters ?? ""}
-                  placeholder="∞"
-                  className="h-9 w-24 rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-accent"
-                />
+                  Apply
+                </button>
               </div>
-              <button
-                type="submit"
-                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-              >
-                Apply
-              </button>
             </div>
 
             {/* Genre filters */}
-            <div className="mt-5 border-t border-border/40 pt-4">
-              <p className="mb-3 font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                Genres
-              </p>
+            <div className="border-t border-border/35 pt-4">
+              <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <p className="font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                    Genres
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground/80">
+                    Click once to include. Click again to exclude.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground" aria-hidden="true">
+                  <span className="inline-flex items-center gap-1">
+                    <PlusCircle className="h-3 w-3 text-primary" />
+                    Include
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <MinusCircle className="h-3 w-3 text-destructive" />
+                    Exclude
+                  </span>
+                </div>
+              </div>
 
               {genresPending && (
                 <p className="text-xs italic text-muted-foreground">
@@ -636,7 +673,11 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
               )}
 
               {genresData && genresData.length > 0 && (
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Genre filters">
+                <div
+                  className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+                  role="group"
+                  aria-label="Genre filters"
+                >
                   {genresData.map((genre) => {
                     const state = genreIncludeSet.has(genre.slug)
                       ? "include"
@@ -655,21 +696,27 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
                         type="button"
                         onClick={() => handleGenreClick(genre.slug)}
                         aria-label={stateLabel}
-                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                        className={`inline-flex min-h-8 items-center justify-between gap-2 rounded px-2.5 py-1 text-left text-xs font-medium transition-colors ${
                           state === "include"
-                            ? "bg-primary text-primary-foreground"
+                            ? "bg-primary/10 text-foreground ring-1 ring-primary/35"
                             : state === "exclude"
-                              ? "bg-destructive/80 text-destructive-foreground"
-                              : "bg-secondary text-secondary-foreground hover:bg-muted"
+                              ? "bg-destructive/10 text-foreground ring-1 ring-destructive/35"
+                              : "bg-background/65 text-muted-foreground ring-1 ring-border/40 hover:bg-muted hover:text-foreground"
                         }`}
                       >
+                        <span className="truncate">{genre.name_en ?? genre.slug}</span>
                         {state === "include" && (
-                          <PlusCircle className="mr-1 inline h-3 w-3" aria-hidden="true" />
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded bg-primary/20 px-1.5 py-0.5 font-metadata text-[10px] uppercase tracking-[0.08em] text-primary">
+                            <PlusCircle className="h-3 w-3" aria-hidden="true" />
+                            In
+                          </span>
                         )}
                         {state === "exclude" && (
-                          <MinusCircle className="mr-1 inline h-3 w-3" aria-hidden="true" />
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded bg-destructive/15 px-1.5 py-0.5 font-metadata text-[10px] uppercase tracking-[0.08em] text-destructive">
+                            <MinusCircle className="h-3 w-3" aria-hidden="true" />
+                            Out
+                          </span>
                         )}
-                        {genre.name_en ?? genre.slug}
                       </button>
                     );
                   })}
@@ -678,32 +725,41 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
             </div>
 
             {/* Tag filters */}
-            <div className="mt-5 border-t border-border/40 pt-4">
-              <p className="mb-3 font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                Tag filters
-              </p>
+            <div className="border-t border-border/35 pt-4">
+              <div className="mb-3">
+                <p className="font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                  Tags
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground/80">
+                  Add required tags on the left, blocked tags on the right.
+                </p>
+              </div>
 
-              <TagFilterSection
-                label="Must include"
-                icon={<PlusCircle className="h-3.5 w-3.5" />}
-                query={includeTagQuery}
-                onQueryChange={setIncludeTagQuery}
-                selectedSet={tagIncludeSet}
-                onAdd={handleTagIncludeAdd}
-                onRemove={handleTagIncludeRemove}
-                allSelected={allTagSet}
-              />
+              <div className="grid gap-3 md:grid-cols-2">
+                <TagFilterSection
+                  label="Must include"
+                  tone="include"
+                  icon={<PlusCircle className="h-3.5 w-3.5 text-primary" />}
+                  query={includeTagQuery}
+                  onQueryChange={setIncludeTagQuery}
+                  selectedSet={tagIncludeSet}
+                  onAdd={handleTagIncludeAdd}
+                  onRemove={handleTagIncludeRemove}
+                  allSelected={allTagSet}
+                />
 
-              <TagFilterSection
-                label="Exclude"
-                icon={<MinusCircle className="h-3.5 w-3.5" />}
-                query={excludeTagQuery}
-                onQueryChange={setExcludeTagQuery}
-                selectedSet={tagExcludeSet}
-                onAdd={handleTagExcludeAdd}
-                onRemove={handleTagExcludeRemove}
-                allSelected={allTagSet}
-              />
+                <TagFilterSection
+                  label="Exclude"
+                  tone="exclude"
+                  icon={<MinusCircle className="h-3.5 w-3.5 text-destructive" />}
+                  query={excludeTagQuery}
+                  onQueryChange={setExcludeTagQuery}
+                  selectedSet={tagExcludeSet}
+                  onAdd={handleTagExcludeAdd}
+                  onRemove={handleTagExcludeRemove}
+                  allSelected={allTagSet}
+                />
+              </div>
             </div>
           </form>
         )}
