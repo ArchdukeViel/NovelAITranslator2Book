@@ -70,6 +70,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/backend.Dockerfile
+    ports:
+      - "8000:8000"
     environment:
       - ENV=${ENV:-production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
