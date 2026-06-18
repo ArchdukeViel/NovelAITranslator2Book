@@ -1,6 +1,6 @@
 # NovelAI Current State
 
-**Last updated**: 2026-06-17 (post-TR-OPT + TAXONOMY-5B)
+**Last updated**: 2026-06-17 (post-source-pipeline-hardening)
 **Source of truth**: `docs/architecture/architecture.md`
 
 ## Verdict
@@ -20,6 +20,7 @@
 | Multi-model scheduler | ✅ | Admin-owned provider/model routing, RPM/RPD tracking, pause/resume |
 | Source ingestion | ✅ | FetchService, SSRF protection, per-domain throttle, fetch cache |
 | Source adapters | ✅ | Syosetu, Novel18, Kakuyomu, Generic with offline fixtures |
+| Source pipeline hardening | ✅ | GenericSource ruby/preflight/confidence, KakuyomuSource preflight/UTF-8/UA, per-chapter partial failure, in-process crawl lock |
 | Storage layer | ✅ | File-backed, chapter-based, runtime contracts |
 | Provider errors | ✅ | `ProviderError` / `ProviderErrorCode` classification, API error mapping |
 || PostgreSQL database | ✅ | Supabase PostgreSQL 16, 12 ORM models, Alembic migrations applied |
@@ -59,12 +60,15 @@
 ## Test Baseline
 
 ```
-Backend: 117+ tests pass (pytest, 2026-06-17)
+Backend: 150+ tests pass (pytest, 2026-06-17)
+  - test_crawl_resilience_contracts.py: 21 passed (contract tests for crawl behavior)
+  - test_novel_orchestration_service.py: 56 passed
   - test_taxonomy.py: 37 passed
   - test_public_router.py: 80 passed
   - test_gemini_provider.py: 12 passed
   - test_translation_qa.py: 21 passed
-  - test_novel_orchestration_service.py: 56 passed
+  - test_source_quality.py: 8 passed
+  - test_storage_service.py: 31 passed
   - (full suite: 713+ total)
 
 Frontend: 411 tests pass (vitest, 2026-06-17)
@@ -226,7 +230,7 @@ backend/src/novelai/
 - Router thinning (operations.py, admin.py)
 - Kakuyomu/Generic FetchService migration verification
 - Legacy alias migration plan
-- Source pipeline audit / ingestion fixes
+- ~~Source pipeline audit / ingestion fixes~~ ✅ Done (AUDIT-1, FIX-1, FIX-2A/B/C, FIX-3)
 
 **P2 (cosmetic)**:
 - Frontend lint configuration
@@ -274,6 +278,14 @@ backend/src/novelai/
 11. ✅ Auth UX flows
 12. ✅ Static trust pages (about, privacy, terms, DMCA, contact, cookie policy)
 
+**Source pipeline hardening (SOURCE-PIPELINE-* phases)**:
+1. ✅ SOURCE-PIPELINE-AUDIT-1: full ingestion pipeline audit (4 adapters, storage, orchestration, 197 existing tests reviewed)
+2. ✅ SOURCE-PIPELINE-FIX-1: GenericSource hardening — ruby annotation stripping, block-page/age-gate preflight, conservative confidence failure
+3. ✅ SOURCE-PIPELINE-FIX-3: KakuyomuSource hardening — block-page/age-gate preflight, UTF-8 force-decode, browser-like User-Agent
+4. ✅ SOURCE-PIPELINE-FIX-2A: crawl resilience contract tests (12 tests documenting admin taxonomy preservation, update-mode behavior, failure semantics)
+5. ✅ SOURCE-PIPELINE-FIX-2B: per-chapter partial failure handling — failed chapters recorded, remaining chapters continue, summary dict returned
+6. ✅ SOURCE-PIPELINE-FIX-2C: per-novel in-process crawl lock — concurrent same-novel scrapes rejected, different-novel scrapes independent
+
 ### Next
 
 1. Implement object storage boundary (S3/R2/B2)
@@ -282,8 +294,10 @@ backend/src/novelai/
 4. Monitor Gemini metadata batch structured output on broader real inputs
 5. TAXONOMY-5C: tag `name_ja` display (frontend-only)
 6. TAXONOMY-5D: `PublicNovelSummary` genre enrichment (backend contract change)
-7. Source pipeline audit / ingestion fixes
-8. Admin provider credential UI (currently env-based only)
+7. SOURCE-PIPELINE-FIX-4: novel status extraction (ongoing/completed/hiatus)
+8. SOURCE-PIPELINE-FIX-5: storage safety (cache TTL, metadata backup, event pruning)
+9. Admin provider credential UI (currently env-based only)
+10. Broader real-source smoke / manual verification
 
 ---
 
@@ -321,5 +335,6 @@ cd frontend && npm run dev                           # Admin UI
 - [x] Google OAuth public login (separate from owner bootstrap)
 - [x] Public taxonomy contract hardened (no `is_adult` leakage)
 - [x] Adult taxonomy filtering internal-only (ORM `Genre.is_adult`, `Tag.is_adult`)
+- [x] Per-novel in-process crawl lock (prevents concurrent same-novel scrapes; not distributed)
 - [ ] Encrypted credential storage (later phase)
 - [ ] Security audit logging (schema ready, not wired)
