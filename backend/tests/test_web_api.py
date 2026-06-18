@@ -129,6 +129,12 @@ def _make_app(
     return TestClient(app)
 
 
+def _csrf_headers(client: TestClient) -> dict[str, str]:
+    resp = client.get("/api/auth/csrf")
+    assert resp.status_code == 200
+    return {"X-CSRF-Token": resp.json()["csrf_token"]}
+
+
 def _get_routes_from_router(router) -> set:
     """Recursively extract routes from a FastAPI router, including included routers."""
     routes = set()
@@ -899,6 +905,97 @@ class TestAuth:
         assert guest_resp.status_code == 401
         assert user_resp.status_code == 403
 
+
+class TestAdminCsrf:
+    def test_provider_credential_mutation_requires_and_accepts_csrf(
+        self,
+        _no_api_key: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        bootstrap()
+        monkeypatch.setattr(settings, "PROVIDER_GEMINI_API_KEY", None)
+        storage = _fresh_storage()
+        preferences = PreferencesService(_TMP / "prefs")
+        c = _make_app(storage, preferences=preferences)
+        body = {
+            "provider_key": "gemini",
+            "api_key": "AIza-test-key",
+            "validate_connection": False,
+        }
+
+        assert c.post("/api/admin/provider-api-key", json=body).status_code == 403
+        assert c.post(
+            "/api/admin/provider-api-key",
+            json=body,
+            headers={"X-CSRF-Token": "bad"},
+        ).status_code == 403
+        accepted = c.post("/api/admin/provider-api-key", json=body, headers=_csrf_headers(c))
+
+        assert accepted.status_code == 200
+        assert preferences.get_api_key("gemini") == "AIza-test-key"
+
+    def test_representative_admin_mutations_reject_missing_csrf(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_novel(storage)
+        jobs = ActivityQueueService(_TMP / "jobs")
+        c = _make_app(storage, activity_log=jobs)
+
+        assert c.post(
+            "/api/admin/novels/test-n1/scrape",
+            json={"source_key": "dummy", "url": "https://example.com/n1"},
+        ).status_code == 403
+        assert c.put(
+            "/api/admin/novels/test-n1/chapters/1/translated",
+            json={"text": "Edited"},
+        ).status_code == 403
+        assert c.post(
+            "/api/admin/activity/crawl",
+            json={"novel_id": "test-n1", "source_key": "dummy", "kind": "chapters"},
+        ).status_code == 403
+        assert c.put(
+            "/api/admin/novels/test-n1/taxonomy",
+            json={"genre_slugs": [], "tags": []},
+        ).status_code == 403
+
+    def test_admin_read_only_get_does_not_require_csrf(self, seeded_client: TestClient) -> None:
+        resp = seeded_client.get("/api/admin/novels")
+
+        assert resp.status_code == 200
+
+    def test_legacy_alias_mutation_requires_csrf(self, seeded_client: TestClient) -> None:
+        resp = seeded_client.post(
+            "/novels/test-n1/scrape",
+            json={"source_key": "dummy", "url": "https://example.com/n1"},
+        )
+
+        assert resp.status_code == 403
+
+    def test_non_owner_with_csrf_still_cannot_mutate_admin_routes(self, _no_api_key: None) -> None:
+        bootstrap()
+        c = _make_app(_fresh_storage(), session_user=REGULAR_USER)
+        resp = c.post(
+            "/api/admin/activity/crawl",
+            json={"novel_id": "test-n1", "source_key": "dummy", "kind": "chapters"},
+            headers=_csrf_headers(c),
+        )
+
+        assert resp.status_code == 403
+
+    def test_bearer_api_key_still_does_not_grant_admin_mutation_access(
+        self,
+        _with_api_key: None,
+    ) -> None:
+        bootstrap()
+        c = _make_app(_fresh_storage(), session_user=None)
+        resp = c.post(
+            "/api/admin/activity/crawl",
+            json={"novel_id": "test-n1", "source_key": "dummy", "kind": "chapters"},
+            headers={"Authorization": "Bearer test-secret"},
+        )
+
+        assert resp.status_code == 401
+
     def test_public_guest_route_still_works(self, _no_api_key: None, isolated_db_session: Session) -> None:
         bootstrap()
         storage = _fresh_storage()
@@ -1045,6 +1142,7 @@ class TestChapters:
         resp = seeded_client.put(
             "/novels/test-n1/chapters/1/translated",
             json={"text": "Edited ch1", "editor": "admin", "note": "line edit"},
+            headers=_csrf_headers(seeded_client),
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -1063,12 +1161,14 @@ class TestChapters:
         edit_resp = seeded_client.put(
             "/novels/test-n1/chapters/1/translated",
             json={"text": "Edited ch1", "editor": "admin"},
+            headers=_csrf_headers(seeded_client),
         )
         assert edit_resp.status_code == 200
 
         rollback_resp = seeded_client.post(
             "/novels/test-n1/chapters/1/translated/rollback",
             json={"version_id": "v1", "editor": "admin", "note": "restore original"},
+            headers=_csrf_headers(seeded_client),
         )
         assert rollback_resp.status_code == 200
         rollback_payload = rollback_resp.json()
@@ -1124,14 +1224,14 @@ class TestReader:
 
 class TestDelete:
     def test_delete_novel(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.delete("/novels/test-n1")
+        resp = seeded_client.delete("/novels/test-n1", headers=_csrf_headers(seeded_client))
         assert resp.status_code == 204
         # Verify gone
         resp2 = seeded_client.get("/novels/test-n1")
         assert resp2.status_code == 404
 
     def test_delete_novel_not_found(self, client: TestClient) -> None:
-        resp = client.delete("/novels/does-not-exist")
+        resp = client.delete("/novels/does-not-exist", headers=_csrf_headers(client))
         assert resp.status_code == 404
 
 
@@ -1196,17 +1296,18 @@ class TestAdmin:
         assert canonical_status_resp.status_code == 200
         assert canonical_status_resp.json()["running"] is False
 
-        start_resp = c.post("/novels/admin/worker/start")
+        headers = _csrf_headers(c)
+        start_resp = c.post("/novels/admin/worker/start", headers=headers)
         assert start_resp.status_code == 200
         assert start_resp.json()["running"] is True
 
-        run_once_resp = c.post("/novels/admin/worker/run-once")
+        run_once_resp = c.post("/novels/admin/worker/run-once", headers=headers)
         assert run_once_resp.status_code == 200
         assert run_once_resp.json()["activity"]["id"] == "activity-1"
         assert run_once_resp.json()["job"]["id"] == "activity-1"
         assert run_once_resp.json()["worker"]["activity_processed"] == 1
 
-        stop_resp = c.post("/novels/admin/worker/stop")
+        stop_resp = c.post("/novels/admin/worker/stop", headers=headers)
         assert stop_resp.status_code == 200
         assert stop_resp.json()["running"] is False
 
@@ -1243,6 +1344,7 @@ class TestAdmin:
         set_resp = c.post(
             "/novels/admin/provider-api-key",
             json={"provider_key": "gemini", "api_key": "AIza-test-key"},
+            headers=_csrf_headers(c),
         )
 
         assert set_resp.status_code == 200
@@ -1261,7 +1363,7 @@ class TestAdmin:
         assert canonical_credential_resp.json()["configured"] is True
         assert canonical_credential_resp.json()["is_active"] is True
 
-        clear_resp = c.delete("/novels/admin/provider-api-key/gemini")
+        clear_resp = c.delete("/novels/admin/provider-api-key/gemini", headers=_csrf_headers(c))
         assert clear_resp.status_code == 200
         assert clear_resp.json()["configured"] is False
 
@@ -1284,6 +1386,7 @@ class TestAdmin:
         resp = c.post(
             "/novels/admin/provider-api-key/validate",
             json={"provider_key": "gemini", "api_key": "AIza-temp-key"},
+            headers=_csrf_headers(c),
         )
 
         assert resp.status_code == 200
@@ -1292,6 +1395,7 @@ class TestAdmin:
         canonical_resp = c.post(
             "/api/admin/providers/gemini/validate",
             json={"api_key": "AIza-temp-key"},
+            headers=_csrf_headers(c),
         )
         assert canonical_resp.status_code == 200
         assert canonical_resp.json()["validation_status"] == "Working"
@@ -1328,19 +1432,20 @@ class TestAdmin:
         assert items["translation_cache"]["affects_process"] is True
         assert items["usage"]["affects_process"] is False
 
-        refresh_resp = c.post("/novels/admin/runtime-state/preferences/refresh")
+        headers = _csrf_headers(c)
+        refresh_resp = c.post("/novels/admin/runtime-state/preferences/refresh", headers=headers)
         assert refresh_resp.status_code == 200
         assert refresh_resp.json()["key"] == "preferences"
 
-        clear_cache_resp = c.delete("/novels/admin/runtime-state/translation_cache")
+        clear_cache_resp = c.delete("/novels/admin/runtime-state/translation_cache", headers=headers)
         assert clear_cache_resp.status_code == 200
         assert cache.get("source", "gemini", "gemini-2.5-flash") is None
 
-        clear_usage_resp = c.delete("/novels/admin/runtime-state/usage")
+        clear_usage_resp = c.delete("/novels/admin/runtime-state/usage", headers=headers)
         assert clear_usage_resp.status_code == 200
         assert usage.summary(all_days=True)["total_requests"] == 0
 
-        clear_preferences_resp = c.delete("/novels/admin/runtime-state/preferences")
+        clear_preferences_resp = c.delete("/novels/admin/runtime-state/preferences", headers=headers)
         assert clear_preferences_resp.status_code == 200
         assert preferences.get_preferred_provider() == "dummy"
 
@@ -1365,6 +1470,7 @@ class TestActivity:
                 "kind": "metadata",
                 "source_url": "https://ncode.syosetu.com/n1234ab/",
             },
+            headers=_csrf_headers(c),
         )
         assert create_resp.status_code == 200
         created = create_resp.json()
@@ -1404,6 +1510,7 @@ class TestActivity:
                 "provider_key": "openai",
                 "provider_model": "gpt-5.4",
             },
+            headers=_csrf_headers(c),
         )
         assert create_resp.status_code == 200
         created_payload = create_resp.json()
@@ -1416,6 +1523,7 @@ class TestActivity:
         update_resp = c.patch(
             f"/novels/activity/{job_id}",
             json={"status": "running", "metadata": {"worker": "local"}},
+            headers=_csrf_headers(c),
         )
         assert update_resp.status_code == 200
         assert update_resp.json()["status"] == "running"
@@ -1552,11 +1660,12 @@ class TestActivity:
         c = _make_app(storage, jobs)
         created = jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="metadata")
 
-        delete_resp = c.delete(f"/novels/activity/{created['id']}")
+        headers = _csrf_headers(c)
+        delete_resp = c.delete(f"/novels/activity/{created['id']}", headers=headers)
 
         assert delete_resp.status_code == 204
         assert jobs.get_activity(str(created["id"])) is None
-        assert c.delete("/novels/activity/missing").status_code == 404
+        assert c.delete("/novels/activity/missing", headers=headers).status_code == 404
 
     def test_invalid_activity_kind_returns_400(self, _no_api_key: None) -> None:
         bootstrap()
@@ -1567,6 +1676,7 @@ class TestActivity:
         resp = c.post(
             "/novels/activity/crawl",
             json={"novel_id": "test-n1", "source_key": "syosetu_ncode", "kind": "unknown"},
+            headers=_csrf_headers(c),
         )
         assert resp.status_code == 400
 
@@ -1580,7 +1690,7 @@ class TestActivity:
 
         jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="chapters", chapters="1")
 
-        resp = c.post("/novels/activity/run-next", params={"activity_type": "crawl"})
+        resp = c.post("/novels/activity/run-next", params={"activity_type": "crawl"}, headers=_csrf_headers(c))
 
         assert resp.status_code == 200
         assert resp.json()["status"] == "completed"
@@ -1602,7 +1712,7 @@ class TestActivity:
         worker = ActivityWorkerService(jobs, StubJobOrchestrator(storage))  # type: ignore[arg-type]
         c = _make_app(storage, jobs, worker)
 
-        resp = c.post("/novels/activity/missing/run")
+        resp = c.post("/novels/activity/missing/run", headers=_csrf_headers(c))
 
         assert resp.status_code == 404
 
@@ -1620,7 +1730,7 @@ class TestActivity:
             chapters="1",
         )
 
-        resp = c.post(f"/novels/activity/{created['id']}/run")
+        resp = c.post(f"/novels/activity/{created['id']}/run", headers=_csrf_headers(c))
 
         assert resp.status_code == 200
         payload = resp.json()
@@ -1686,6 +1796,7 @@ class TestNovelRequests:
         status_resp = c.patch(
             f"/novels/requests/{req.id}",
             json={"status": "approved", "reviewed_by": "admin"},
+            headers=_csrf_headers(c),
         )
         assert status_resp.status_code == 200
         status_payload = status_resp.json()
@@ -1707,7 +1818,7 @@ class TestNovelRequests:
         isolated_db_session.commit()
         c = _make_app(storage, db_session=isolated_db_session)
 
-        resp = c.patch(f"/novels/requests/{req.id}", json={"status": "not-real"})
+        resp = c.patch(f"/novels/requests/{req.id}", json={"status": "not-real"}, headers=_csrf_headers(c))
 
         assert resp.status_code == 400
 
@@ -1715,11 +1826,13 @@ class TestNovelRequests:
         bootstrap()
         c = _make_app(_fresh_storage(), db_session=isolated_db_session)
 
-        assert c.post("/novels/requests", json={"title": "Requested Novel"}).status_code == 410
-        assert c.post("/novels/requests/1/vote", json={"voter": "reader-2"}).status_code == 410
+        headers = _csrf_headers(c)
+        assert c.post("/novels/requests", json={"title": "Requested Novel"}, headers=headers).status_code == 410
+        assert c.post("/novels/requests/1/vote", json={"voter": "reader-2"}, headers=headers).status_code == 410
         assert c.post(
             "/novels/requests/1/source-candidates",
             json={"source_key": "kakuyomu", "source_url": "https://kakuyomu.jp/works/123"},
+            headers=headers,
         ).status_code == 410
 
 
@@ -1739,6 +1852,7 @@ class TestRateLimit:
         resp = c.post(
             "/novels/n1234ab/preliminary-crawl",
             json={"identifier": "https://ncode.syosetu.com/n1234ab/", "source_key": "syosetu_ncode"},
+            headers=_csrf_headers(c),
         )
 
         assert resp.status_code == 200
@@ -1780,6 +1894,7 @@ class TestRateLimit:
         resp = c.post(
             "/novels/n1962jz/preliminary-crawl",
             json={"identifier": "https://novel18.syosetu.com/n1962jz/", "source_key": "syosetu_ncode"},
+            headers=_csrf_headers(c),
         )
 
         assert resp.status_code == 200
@@ -1804,6 +1919,7 @@ class TestRateLimit:
         resp = c.post(
             "/novels/n1962jz/preliminary-crawl",
             json={"identifier": "n1962jz", "source_key": "syosetu_ncode"},
+            headers=_csrf_headers(c),
         )
 
         assert resp.status_code == 200
@@ -1821,6 +1937,7 @@ class TestRateLimit:
         resp = c.post(
             "/novels/n1962jz/preliminary-crawl",
             json={"identifier": "n1962jz", "source_key": "syosetu_ncode"},
+            headers=_csrf_headers(c),
         )
 
         assert resp.status_code == 200
@@ -1838,6 +1955,7 @@ class TestRateLimit:
         resp = c.post(
             "/novels/n1962jz/preliminary-crawl",
             json={"identifier": "https://novel18.syosetu.com/n1962jz/"},
+            headers=_csrf_headers(c),
         )
 
         assert resp.status_code == 200
@@ -1854,6 +1972,7 @@ class TestRateLimit:
         resp = c.post(
             "/novels/n1962jz/preliminary-crawl",
             json={"identifier": "n1962jz", "source_key": "syosetu_ncode"},
+            headers=_csrf_headers(c),
         )
 
         assert resp.status_code == 502
@@ -1879,6 +1998,7 @@ class TestRateLimit:
         resp = c.post(
             "/novels/n1962jz/preliminary-crawl",
             json={"identifier": "n1962jz", "source_key": "novel18_syosetu"},
+            headers=_csrf_headers(c),
         )
 
         assert resp.status_code == 502
@@ -1907,9 +2027,10 @@ class TestRateLimit:
         with patch("novelai.api.routers.novels._hits", defaultdict(list)):
             c = TestClient(app)
             body = {"url": "https://example.com/n1", "source_key": "dummy"}
+            headers = _csrf_headers(c)
             for _ in range(5):
-                resp = c.post("/novels/test-n1/scrape", json=body)
+                resp = c.post("/novels/test-n1/scrape", json=body, headers=headers)
                 assert resp.status_code == 200
             # 6th should be rate-limited
-            resp = c.post("/novels/test-n1/scrape", json=body)
+            resp = c.post("/novels/test-n1/scrape", json=body, headers=headers)
             assert resp.status_code == 429

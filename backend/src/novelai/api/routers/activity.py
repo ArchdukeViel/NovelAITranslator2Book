@@ -6,13 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from novelai.api.auth.roles import require_role
+from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.response_helpers import activity_list_response, activity_record_response
 from novelai.api.models import ActivityListResponse, ActivityRecordResponse
 from novelai.activity.queue import ActivityQueueService
 from novelai.activity.worker import ActivityWorkerService
 from novelai.api.routers.dependencies import get_activity_log, get_activity_worker
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
 
 class CrawlActivityRequest(BaseModel):

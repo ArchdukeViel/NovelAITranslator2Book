@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from novelai.activity.runner import BackgroundActivityRunner
 from novelai.api.auth.roles import require_role
+from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.dependencies import (
     get_activity_runner,
     get_preferences,
@@ -19,7 +20,7 @@ from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
 
 class ProviderApiKeyRequest(BaseModel):

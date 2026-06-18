@@ -24,12 +24,13 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 
 from novelai.api.auth.roles import require_role
+from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.dependencies import get_db_session
 from novelai.db.models.genre import Genre, novel_genres
 from novelai.db.models.novel import Novel
 from novelai.db.models.tag import Tag, novel_tags
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
 
 # ---------------------------------------------------------------------------
