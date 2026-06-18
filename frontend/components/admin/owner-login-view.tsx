@@ -16,7 +16,7 @@ interface OwnerLoginViewProps {
 /**
  * Owner login view for the Admin_Workspace.
  * - Collects the owner login secret (bootstrap secret)
- * - Calls POST /api/auth/login via adminAuth.login()
+ * - Calls POST /api/auth/login via adminAuth.ownerBootstrapLogin()
  * - On invalid secret: renders Error_State, establishes no session
  * - Never persists a token in JS-accessible storage
  * - Session is carried by HTTP-only cookie set by backend
@@ -37,15 +37,13 @@ export function OwnerLoginView({ onSuccess }: OwnerLoginViewProps) {
 
     setIsPending(true);
     try {
-      await adminAuth.login(secret);
+      await adminAuth.ownerBootstrapLogin(secret);
       onSuccess();
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         setErrorMessage("Invalid login secret. Please try again.");
-      } else if (error instanceof ApiError) {
-        setErrorMessage(`${error.status} ${error.code}: ${error.message}`);
       } else {
-        setErrorMessage("Login failed. Please try again later.");
+        setErrorMessage("Owner login failed. Please try again later.");
       }
     } finally {
       setIsPending(false);
