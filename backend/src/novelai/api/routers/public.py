@@ -57,9 +57,11 @@ DEFAULT_ORDER = "desc"
 class PublicNovelSummary(BaseModel):
     novel_id: str
     slug: str
-    title: str | None = None
+    title: str
+    source_title: str | None = None
     author: str | None = None
     language: str | None = None
+    synopsis: str | None = None
     status: str | None = None
     chapter_count: int = 0
     translated_count: int = 0
@@ -137,12 +139,23 @@ def _novel_summary(
     chapter_count = len(meta.get("chapters", [])) or max(
         storage.count_stored_chapters(novel_id), translated_count
     )
+
+    # Determine display title and source (original) title.
+    translated_title = _optional_str(meta.get("translated_title"))
+    original_title = _optional_str(meta.get("title"))
+    display_title = translated_title or original_title or novel_id
+    source_title: str | None = None
+    if translated_title and original_title and translated_title != original_title:
+        source_title = original_title
+
     return PublicNovelSummary(
         novel_id=novel_id,
         slug=novel_id,
-        title=_optional_str(meta.get("translated_title")) or _optional_str(meta.get("title")) or novel_id,
+        title=display_title,
+        source_title=source_title,
         author=_optional_str(meta.get("translated_author")) or _optional_str(meta.get("author")),
         language=_optional_str(meta.get("language")),
+        synopsis=_optional_str(meta.get("description")),
         status=_optional_str(meta.get("status")),
         chapter_count=chapter_count,
         translated_count=translated_count,

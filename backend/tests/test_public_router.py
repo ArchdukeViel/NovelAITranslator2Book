@@ -176,6 +176,51 @@ class TestCatalog:
         assert "slug" in data["novels"][0]
         assert data["novels"][0]["slug"] == "novel-001"
 
+    def test_catalog_summary_includes_source_title_and_synopsis(self, client: TestClient, storage: StorageService) -> None:
+        """PublicNovelSummary now exposes source_title and synopsis."""
+        # Seed a novel with translated_title → source_title = original title
+        _seed_novel(
+            storage, "novel-001",
+            title="Original Title",
+            translated_title="Translated Title",
+        )
+        # Seed via raw metadata for description field
+        meta = {
+            "novel_id": "novel-002",
+            "title": "Japanese Title",
+            "translated_title": "English Title",
+            "author": "Test Author",
+            "description": "A captivating story about magic and adventure.",
+            "chapters": [{"id": "ch001", "title": "Ch1", "num": 1}],
+        }
+        storage.save_metadata("novel-002", meta)
+
+        data = client.get("/api/public/catalog").json()
+        novels = {n["novel_id"]: n for n in data["novels"]}
+
+        n1 = novels["novel-001"]
+        assert n1["source_title"] == "Original Title"
+        assert n1["synopsis"] is None  # no description in metadata
+
+        n2 = novels["novel-002"]
+        assert n2["title"] == "English Title"
+        assert n2["source_title"] == "Japanese Title"
+        assert n2["synopsis"] == "A captivating story about magic and adventure."
+
+    def test_catalog_source_title_null_when_no_translation(self, client: TestClient, storage: StorageService) -> None:
+        """source_title is null when title is not translated (no distinct original)."""
+        _seed_novel(storage, "novel-001", title="Only Title", translated_title=None)
+        data = client.get("/api/public/catalog").json()
+        novel = data["novels"][0]
+        assert novel["source_title"] is None
+        assert novel["title"] == "Only Title"
+
+    def test_catalog_does_not_expose_is_adult(self, client: TestClient, storage: StorageService) -> None:
+        """Public catalog response must not include is_adult field."""
+        _seed_novel(storage, "novel-001")
+        novel = client.get("/api/public/catalog").json()["novels"][0]
+        assert "is_adult" not in novel
+
 
 # ---------------------------------------------------------------------------
 # Novel detail endpoint

@@ -13,8 +13,6 @@ import type { PublicNovelSummary } from "@/lib/public-types";
 type DiscoveryNovel = PublicNovelSummary & {
   cover_url?: string | null;
   source?: string | null;
-  source_title?: string | null;
-  synopsis?: string | null;
   updated_at?: string | null;
 };
 

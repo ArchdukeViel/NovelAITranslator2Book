@@ -26,15 +26,15 @@ function makeNovel(
 ): PublicNovelSummary & {
   cover_url?: string | null;
   source?: string | null;
-  source_title?: string | null;
-  synopsis?: string | null;
 } {
   return {
     novel_id: "test-novel",
     slug: "test-novel",
     title: "Test Novel",
+    source_title: null as string | null,
     author: "Test Author",
     language: "ja",
+    synopsis: null as string | null,
     status: "Ongoing",
     chapter_count: 10,
     translated_count: 5,
