@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BookOpen, Compass } from "lucide-react";
+import { ArrowRight, BookOpen, Clock, Compass, FileText, Library, LogIn } from "lucide-react";
 
 import { GenreChip } from "@/components/public/genre-chip";
 import { LatestUpdateRow } from "@/components/public/latest-update-row";
 import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { SectionHeader } from "@/components/public/section-header";
 import { groupDateLabel } from "@/lib/date-group";
-import { useCatalog, useGenreLabelMap } from "@/hooks/public";
+import { useCatalog, useGenreLabelMap, usePublicAuth } from "@/hooks/public";
 
 const LATEST_UPDATE_GROUP_ORDER = [
   "Today",
@@ -29,6 +29,19 @@ function latestUpdateGroupRank(label: string): number {
   return index === -1 ? LATEST_UPDATE_GROUP_ORDER.length : index;
 }
 
+function usefulSourceTitle(sourceTitle: string | null | undefined, title: string): string | null {
+  const trimmed = sourceTitle?.trim();
+  if (!trimmed || trimmed === title.trim()) {
+    return null;
+  }
+  return trimmed;
+}
+
+function synopsisPreview(synopsis: string | null | undefined): string | null {
+  const trimmed = synopsis?.trim();
+  return trimmed || null;
+}
+
 export default function HomePage() {
   const { data, isPending, isError, refetch } = useCatalog({
     sort_by: "added_at",
@@ -39,6 +52,11 @@ export default function HomePage() {
   const novels = data?.novels ?? [];
   const featuredNovel = novels[0];
   const genreLabels = useGenreLabelMap();
+  const { isAuthenticated } = usePublicAuth();
+  const heroSourceTitle = featuredNovel
+    ? usefulSourceTitle(featuredNovel.source_title, featuredNovel.title)
+    : null;
+  const heroSynopsis = synopsisPreview(featuredNovel?.synopsis);
 
   // ── Loading ──
   if (isPending) {
@@ -198,6 +216,12 @@ export default function HomePage() {
                   {featuredNovel.title}
                 </h1>
 
+                {heroSourceTitle && (
+                  <p className="mt-3 max-w-2xl font-literary text-base text-accent">
+                    {heroSourceTitle}
+                  </p>
+                )}
+
                 <NovelMetadataRow
                   className="mt-5"
                   chapterCount={featuredNovel.chapter_count}
@@ -205,6 +229,10 @@ export default function HomePage() {
                   source={featuredNovel.language}
                   status={featuredNovel.status}
                 />
+
+                <p className="mt-5 max-w-2xl line-clamp-3 text-sm leading-6 text-muted-foreground md:text-base md:leading-7">
+                  {heroSynopsis ?? "Synopsis unavailable for this novel."}
+                </p>
 
                 {featuredNovel.genres && featuredNovel.genres.length > 0 && (
                   <div className="mt-5 flex flex-wrap gap-2">
@@ -292,6 +320,81 @@ export default function HomePage() {
                 </div>
               ));
           })()}
+        </section>
+
+        {/* ── Reader utility links ── */}
+        <section className="mb-12 grid gap-4 md:grid-cols-2">
+          <div className="rounded-lg border border-border bg-card/70 p-5">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+                <FileText className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="font-literary text-lg font-semibold">Request a novel</h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Send a supported source URL for review when a novel is not in the catalog yet.
+                </p>
+                <Link
+                  href="/request-novel"
+                  className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-accent transition-colors hover:text-foreground"
+                >
+                  Open request form
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border bg-card/70 p-5">
+            {isAuthenticated ? (
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+                  <Library className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="font-literary text-lg font-semibold">Your reading shelf</h2>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    Return to saved novels or check the chapters you opened recently.
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <Link
+                      href="/account/library"
+                      className="inline-flex items-center gap-2 text-sm font-medium text-accent transition-colors hover:text-foreground"
+                    >
+                      Open library
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                    <Link
+                      href="/account/history"
+                      className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <Clock className="h-3.5 w-3.5" />
+                      Reading history
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+                  <LogIn className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="font-literary text-lg font-semibold">Save your reading state</h2>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    Sign in to keep a library, reading history, and chapter progress.
+                  </p>
+                  <Link
+                    href="/login"
+                    className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-accent transition-colors hover:text-foreground"
+                  >
+                    Sign in
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
         </section>
 
         {/* ── Browse the catalog CTA ── */}
