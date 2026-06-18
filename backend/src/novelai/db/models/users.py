@@ -32,6 +32,7 @@ class User(Base):
     # OAuth provider name (e.g. "google") and their subject ID
     auth_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
     auth_provider_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow

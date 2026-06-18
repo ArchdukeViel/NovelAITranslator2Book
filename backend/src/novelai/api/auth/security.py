@@ -12,6 +12,8 @@ _PUBLIC_RATE_WINDOW_SECONDS = 60
 _PUBLIC_RATE_LIMITS = {
     "auth_login": 10,
     "auth_logout": 20,
+    "auth_register": 10,
+    "auth_password_login": 10,
     "oauth_start": 10,
     "oauth_callback": 20,
     "library_mutation": 60,
