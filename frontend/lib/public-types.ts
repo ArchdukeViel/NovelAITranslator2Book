@@ -17,6 +17,10 @@ export interface PublicNovelSummary {
   chapter_count: number;
   translated_count: number;
   added_at?: string | null;
+  latest_chapter_id?: string | null;
+  latest_chapter_number?: number | null;
+  latest_chapter_title?: string | null;
+  latest_chapter_updated_at?: string | null;
   genres?: string[];
   tags?: string[];
 }

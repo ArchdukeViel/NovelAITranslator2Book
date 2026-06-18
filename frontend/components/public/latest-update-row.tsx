@@ -8,20 +8,40 @@ import { groupDateLabel, todayTimeLabel } from "@/lib/date-group";
 interface LatestUpdateRowProps {
   chapterLabel?: string;
   href: string;
+  latestChapterNumber?: number | null;
+  latestChapterTitle?: string | null;
   sourceTitle?: string | null;
   title: string;
   updatedAt?: string | null;
 }
 
+function latestChapterLabel(
+  chapterNumber: number | null | undefined,
+  chapterTitle: string | null | undefined,
+): string | null {
+  const title = chapterTitle?.trim();
+  if (typeof chapterNumber === "number" && title) {
+    return `Chapter ${chapterNumber}: ${title}`;
+  }
+  if (typeof chapterNumber === "number") {
+    return `Chapter ${chapterNumber}`;
+  }
+  return title || null;
+}
+
 export function LatestUpdateRow({
   chapterLabel,
   href,
+  latestChapterNumber,
+  latestChapterTitle,
   sourceTitle,
   title,
   updatedAt,
 }: LatestUpdateRowProps) {
   const timeLabel = groupDateLabel(updatedAt);
   const timeDetail = todayTimeLabel(updatedAt);
+  const displayChapterLabel =
+    latestChapterLabel(latestChapterNumber, latestChapterTitle) ?? chapterLabel;
 
   return (
     <Link
@@ -41,7 +61,7 @@ export function LatestUpdateRow({
           </p>
         )}
         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-          {chapterLabel && <span>{chapterLabel}</span>}
+          {displayChapterLabel && <span>{displayChapterLabel}</span>}
           {/* For today items: show actual time detail.
               For older items: show nothing (group header is sufficient). */}
           {timeLabel === "Today" && timeDetail && (

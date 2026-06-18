@@ -142,6 +142,49 @@ describe("LatestUpdateRow grouped date display", () => {
     expect(screen.getByText("Chapter 15")).toBeInTheDocument();
   });
 
+  it("prefers latest chapter number and title when available", () => {
+    render(
+      <LatestUpdateRow
+        href="/novel/test/chapter/ch015"
+        title="Test Novel"
+        chapterLabel="Chapter 15 translated"
+        latestChapterNumber={15}
+        latestChapterTitle="The Quiet Return"
+      />
+    );
+
+    expect(screen.getByText("Chapter 15: The Quiet Return")).toBeInTheDocument();
+    expect(screen.queryByText("Chapter 15 translated")).not.toBeInTheDocument();
+  });
+
+  it("renders latest chapter number without title when title is missing", () => {
+    render(
+      <LatestUpdateRow
+        href="/novel/test/chapter/ch015"
+        title="Test Novel"
+        latestChapterNumber={15}
+      />
+    );
+
+    expect(screen.getByText("Chapter 15")).toBeInTheDocument();
+  });
+
+  it("keeps the provided href for latest chapter links", () => {
+    render(
+      <LatestUpdateRow
+        href="/novel/test/chapter/ch015"
+        title="Test Novel"
+        latestChapterNumber={15}
+        latestChapterTitle="The Quiet Return"
+      />
+    );
+
+    expect(screen.getByRole("link", { name: /test novel/i })).toHaveAttribute(
+      "href",
+      "/novel/test/chapter/ch015"
+    );
+  });
+
   it("renders time detail as secondary-styled span without clock icon", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
