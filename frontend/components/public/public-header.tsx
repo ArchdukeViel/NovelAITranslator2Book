@@ -6,20 +6,19 @@ import { Button } from "@/components/ui/button";
 import { SearchEntry } from "@/components/public/search-entry";
 import { CurrentUserIndicator } from "@/components/public/current-user-indicator";
 import { PublicBrand } from "@/components/public/public-brand";
-import { PublicThemeToggle } from "@/components/public/public-theme-toggle";
 
 export function PublicHeader({ onMenuClick }: { onMenuClick: () => void }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-border/60 bg-background/90 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 border-b border-border/80 bg-background/95 backdrop-blur">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
         <Button
           variant="ghost"
           size="icon"
           aria-label="Open navigation menu"
           onClick={onMenuClick}
-          className="shrink-0"
+          className="h-8 w-8 shrink-0 rounded-sm"
         >
-          <Menu className="h-5 w-5" />
+          <Menu className="h-4 w-4" />
         </Button>
 
         <PublicBrand className="shrink-0" />
@@ -29,7 +28,6 @@ export function PublicHeader({ onMenuClick }: { onMenuClick: () => void }) {
         </div>
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
-          <PublicThemeToggle />
           <CurrentUserIndicator />
         </div>
       </div>

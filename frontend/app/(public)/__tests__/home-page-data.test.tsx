@@ -156,7 +156,8 @@ describe("HomePage loading state", () => {
     // Screen-reader status text
     expect(screen.getByText("Loading catalog…")).toBeInTheDocument();
     // Should not render section headers during loading
-    expect(screen.queryByText("Recently Added")).not.toBeInTheDocument();
+    expect(screen.queryByText("Latest Releases")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recent Updates")).not.toBeInTheDocument();
     expect(screen.queryByText("Featured")).not.toBeInTheDocument();
   });
 });
@@ -216,7 +217,8 @@ describe("HomePage error state", () => {
     });
     renderHome();
 
-    expect(screen.queryByText("Recently Added")).not.toBeInTheDocument();
+    expect(screen.queryByText("Latest Releases")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recent Updates")).not.toBeInTheDocument();
     expect(screen.queryByText("Featured")).not.toBeInTheDocument();
     expect(screen.queryByText("Start Reading")).not.toBeInTheDocument();
   });
@@ -272,7 +274,11 @@ describe("HomePage real data rendering", () => {
     mocks.catalogQuery.mockReturnValue({
       data: {
         novels: [
-          makeNovel({ title: "Hero Novel", slug: "hero-novel" }),
+          makeNovel({
+            title: "Hero Novel",
+            slug: "hero-novel",
+            latest_chapter_id: "ch001",
+          }),
           makeNovel({ novel_id: "n2", slug: "second-novel", title: "Second Novel" }),
         ],
         total: 2,
@@ -289,8 +295,44 @@ describe("HomePage real data rendering", () => {
     const heroTitles = screen.getAllByText("Hero Novel");
     expect(heroTitles.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Featured")).toBeInTheDocument();
-    expect(screen.getByText("Start Reading")).toBeInTheDocument();
-    expect(screen.getByText("View Details")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /start reading/i })).toHaveAttribute(
+      "href",
+      "/novel/hero-novel/chapter/ch001"
+    );
+    expect(screen.getByRole("link", { name: /view details/i })).toHaveAttribute(
+      "href",
+      "/novel/hero-novel"
+    );
+  });
+
+  it("does not show Start Reading in the hero when no readable chapter exists", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          makeNovel({
+            title: "Unreadable Hero",
+            slug: "unreadable-hero",
+            latest_chapter_id: null,
+          }),
+        ],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    const hero = screen.getByLabelText("Featured Dokushodo novel");
+    expect(within(hero).queryByRole("link", { name: /start reading/i })).not.toBeInTheDocument();
+    expect(within(hero).getByText("No translated chapters yet.")).toBeInTheDocument();
+    expect(within(hero).getByRole("link", { name: /view details/i })).toHaveAttribute(
+      "href",
+      "/novel/unreadable-hero"
+    );
   });
 
   it("renders distinct source_title in the hero", () => {
@@ -369,7 +411,7 @@ describe("HomePage real data rendering", () => {
   it("shows hero synopsis fallback only when synopsis is missing or blank", () => {
     mocks.catalogQuery.mockReturnValue({
       data: {
-        novels: [makeNovel({ synopsis: "   " })],
+        novels: [makeNovel({ synopsis: "   ", latest_chapter_id: null })],
         total: 1,
         page: 1,
         page_size: 8,
@@ -382,9 +424,10 @@ describe("HomePage real data rendering", () => {
     renderHome();
 
     expect(screen.getByText("Synopsis unavailable for this novel.")).toBeInTheDocument();
+    expect(screen.getByText("No translated chapters yet.")).toBeInTheDocument();
   });
 
-  it("renders Recently Added section with catalog novels", () => {
+  it("renders Latest Releases and Recent Updates sections with catalog novels", () => {
     mocks.catalogQuery.mockReturnValue({
       data: {
         novels: [
@@ -403,7 +446,8 @@ describe("HomePage real data rendering", () => {
     });
     renderHome();
 
-    expect(screen.getByText("Recently Added")).toBeInTheDocument();
+    expect(screen.getByText("Latest Releases")).toBeInTheDocument();
+    expect(screen.getByText("Recent Updates")).toBeInTheDocument();
     expect(screen.getAllByText("First Novel").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Second Novel").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Third Novel").length).toBeGreaterThanOrEqual(1);
@@ -435,10 +479,12 @@ describe("HomePage real data rendering", () => {
 
     expect(screen.getByText("Chapter 15: The Quiet Return")).toBeInTheDocument();
     expect(screen.queryByText("Chapter 5 translated")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /latest novel/i })).toHaveAttribute(
-      "href",
-      "/novel/latest-novel/chapter/ch015"
-    );
+    const latestNovelLinks = screen.getAllByRole("link", { name: /latest novel/i });
+    expect(
+      latestNovelLinks.some(
+        (link) => link.getAttribute("href") === "/novel/latest-novel/chapter/ch015"
+      )
+    ).toBe(true);
   });
 
   it("falls back to novel detail link and translated count when latest chapter metadata is missing", () => {
@@ -463,10 +509,12 @@ describe("HomePage real data rendering", () => {
     renderHome();
 
     expect(screen.getByText("Chapter 4 translated")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /fallback novel/i })).toHaveAttribute(
-      "href",
-      "/novel/fallback-novel"
-    );
+    const fallbackNovelLinks = screen.getAllByRole("link", { name: /fallback novel/i });
+    expect(
+      fallbackNovelLinks.some(
+        (link) => link.getAttribute("href") === "/novel/fallback-novel"
+      )
+    ).toBe(true);
   });
 
   it("passes genres and tags through to rendered chips", () => {
@@ -532,8 +580,7 @@ describe("HomePage real data rendering", () => {
     });
     renderHome();
 
-    expect(screen.getByRole("heading", { level: 2, name: "Request a novel" })).toBeInTheDocument();
-    const requestLink = screen.getByRole("link", { name: /open request form/i });
+    const requestLink = screen.getByRole("link", { name: /request novel/i });
     expect(requestLink).toHaveAttribute("href", "/request-novel");
   });
 
@@ -552,9 +599,11 @@ describe("HomePage real data rendering", () => {
     });
     renderHome();
 
-    expect(screen.getByRole("heading", { level: 2, name: "Save your reading state" })).toBeInTheDocument();
-    expect(screen.getByText(/keep a library, reading history, and chapter progress/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^sign in/i })).toHaveAttribute("href", "/login");
+    const saveReadingLinks = screen.getAllByRole("link", { name: /save reading/i });
+    expect(
+      saveReadingLinks.some((link) => link.getAttribute("href") === "/login?mode=signin")
+    ).toBe(true);
+    expect(screen.getByText("Save reading state")).toBeInTheDocument();
   });
 
   it("renders signed-in account links", () => {
@@ -574,9 +623,8 @@ describe("HomePage real data rendering", () => {
     });
     renderHome();
 
-    expect(screen.getByRole("heading", { level: 2, name: "Your reading shelf" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /open library/i })).toHaveAttribute("href", "/account/library");
-    expect(screen.getByRole("link", { name: /reading history/i })).toHaveAttribute("href", "/account/history");
+    expect(screen.getByRole("link", { name: /^library$/i })).toHaveAttribute("href", "/account/library");
+    expect(screen.getByText("Open library")).toBeInTheDocument();
   });
 });
 
@@ -600,8 +648,8 @@ describe("HomePage section duplication", () => {
     });
     renderHome();
 
-    // Recently Added exists
-    expect(screen.getByText("Recently Added")).toBeInTheDocument();
+    // Latest Releases exists
+    expect(screen.getByText("Latest Releases")).toBeInTheDocument();
     // Latest Novels card grid does NOT exist
     expect(screen.queryByText("Latest Novels")).not.toBeInTheDocument();
   });
@@ -744,6 +792,7 @@ describe("HomePage copy polish", () => {
     expect(screen.queryByText(/trending/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/leaderboard/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/community/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/official cover|cover image|cover_url/i)).not.toBeInTheDocument();
   });
 });
 

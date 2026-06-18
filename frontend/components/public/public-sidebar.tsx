@@ -3,10 +3,23 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { BookOpen, Clock, FileText, Heart, History, Home, Library, Settings, Trophy, X } from "lucide-react";
+import {
+  BookOpen,
+  Clock,
+  FileText,
+  Heart,
+  History,
+  Home,
+  Library,
+  Settings,
+  Trophy,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { CurrentUserIndicator } from "@/components/public/current-user-indicator";
+import { PublicBrand } from "@/components/public/public-brand";
+import { PublicThemeToggle } from "@/components/public/public-theme-toggle";
 import { usePublicAuth } from "@/hooks/public/use-auth";
 import { cn } from "@/lib/utils";
 
@@ -65,34 +78,39 @@ export function PublicSidebar({
         aria-label="Public navigation"
         aria-hidden={!isOpen}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-[min(22rem,calc(100vw-2rem))] transform border-r border-border/60 bg-background shadow-2xl transition-transform duration-200 ease-in-out",
+          "fixed inset-y-0 left-0 z-50 w-[min(18rem,calc(100vw-2rem))] transform border-r border-border/80 bg-background shadow-2xl transition-transform duration-200 ease-in-out",
           isOpen ? "translate-x-0" : "invisible -translate-x-full"
         )}
       >
-        <div className="flex h-full flex-col px-5 py-5">
-          <div className="mb-6 flex items-center justify-between gap-3">
-            <div>
-              <p className="font-literary text-lg font-semibold">読書堂</p>
-              <p className="mt-1 text-xs text-muted-foreground">Dokushodo navigation</p>
-            </div>
+        <div className="flex h-full flex-col px-3 py-4">
+          <div className="mb-5 flex items-center justify-between gap-3 px-1">
+            <PublicBrand />
             <Button
               type="button"
               variant="ghost"
               size="icon"
               aria-label="Close navigation menu"
               onClick={onClose}
+              className="h-8 w-8 rounded-sm text-primary hover:bg-primary/10"
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4" />
             </Button>
           </div>
 
-          <div className="mb-5 rounded-lg bg-muted/60 p-3">
+          <div className="mb-3 rounded-sm border border-border/70 bg-card/45 p-2">
             <CurrentUserIndicator onNavigate={onClose} />
           </div>
 
-          <nav className="flex-1 space-y-6">
+          <div className="mb-4 flex items-center justify-between rounded-sm border border-border/70 bg-card/45 px-3 py-2">
+            <p className="font-metadata text-xs font-medium uppercase tracking-wide text-foreground">
+              Theme
+            </p>
+            <PublicThemeToggle />
+          </div>
+
+          <nav className="flex-1 space-y-5">
             <div>
-              <p className="px-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <p className="px-2 font-metadata text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Public
               </p>
               <div className="mt-2 space-y-1">
@@ -107,10 +125,10 @@ export function PublicSidebar({
                       href={item.href}
                       onClick={onClose}
                       className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+                        "flex items-center gap-3 rounded-sm border-l-2 px-3 py-2.5 text-sm font-medium transition-colors",
                         isActive
-                          ? "bg-secondary text-accent"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          ? "border-primary bg-card text-primary"
+                          : "border-transparent text-muted-foreground hover:bg-card/70 hover:text-foreground"
                       )}
                     >
                       <Icon className="h-4 w-4" />
@@ -123,7 +141,7 @@ export function PublicSidebar({
 
             {isAuthenticated && (
               <div>
-                <p className="px-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <p className="px-2 font-metadata text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Account
                 </p>
                 <div className="mt-2 space-y-1">
@@ -136,10 +154,10 @@ export function PublicSidebar({
                         href={item.href}
                         onClick={onClose}
                         className={cn(
-                          "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+                          "flex items-center gap-3 rounded-sm border-l-2 px-3 py-2.5 text-sm font-medium transition-colors",
                           isActive
-                            ? "bg-secondary text-accent"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            ? "border-primary bg-card text-primary"
+                            : "border-transparent text-muted-foreground hover:bg-card/70 hover:text-foreground"
                         )}
                       >
                         <Icon className="h-4 w-4" />
@@ -152,7 +170,7 @@ export function PublicSidebar({
             )}
           </nav>
 
-          <p className="mt-6 border-t border-border/60 pt-4 text-xs leading-5 text-muted-foreground">
+          <p className="mt-6 border-t border-border/60 px-2 pt-4 font-metadata text-[0.68rem] uppercase leading-5 tracking-wide text-muted-foreground">
             Dokushodo is powered by Novel AI.
           </p>
         </div>

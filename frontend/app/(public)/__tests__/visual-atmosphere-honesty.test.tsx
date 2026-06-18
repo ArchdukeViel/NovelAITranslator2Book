@@ -142,10 +142,11 @@ function renderHome() {
 describe("Home page visual honesty", () => {
   it("renders without crashing", () => {
     renderHome();
-    expect(screen.getByText("Recently Added")).toBeInTheDocument();
+    expect(screen.getByText("Latest Releases")).toBeInTheDocument();
+    expect(screen.getByText("Recent Updates")).toBeInTheDocument();
   });
 
-  it("shows grouped dates in the Recently Added section", () => {
+  it("shows grouped dates in the Recent Updates section", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
 
@@ -204,10 +205,11 @@ describe("Home page visual honesty", () => {
     expect(screen.getByText("Featured")).toBeInTheDocument();
   });
 
-  it("renders Recently Added section (renamed from Latest Updates)", () => {
+  it("renders Latest Releases and Recent Updates sections", () => {
     renderHome();
-    expect(screen.getByText("Recently Added")).toBeInTheDocument();
-    // Old "Latest Updates" header should not appear
+    expect(screen.getByText("Latest Releases")).toBeInTheDocument();
+    expect(screen.getByText("Recent Updates")).toBeInTheDocument();
+    expect(screen.queryByText("Recently Added")).not.toBeInTheDocument();
     expect(screen.queryByText("Latest Updates")).not.toBeInTheDocument();
   });
 

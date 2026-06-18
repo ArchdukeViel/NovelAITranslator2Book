@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { BookOpen } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -22,15 +21,15 @@ export function PublicBrand({
     >
       <span
         className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded bg-primary text-primary-foreground",
+          "flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-primary font-literary text-xs font-bold text-primary-foreground",
           markClassName
         )}
         aria-hidden="true"
       >
-        <BookOpen className="h-5 w-5" />
+        読
       </span>
       <span className="flex min-w-0 flex-col leading-none">
-        <span className="font-literary text-base font-semibold tracking-normal">
+        <span className="font-literary text-base font-semibold tracking-normal text-foreground">
           読書道
         </span>
         <span className="mt-1 text-xs font-medium text-muted-foreground">
