@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { ContinueReading } from "@/components/public/continue-reading";
+import { FallbackCover } from "@/components/public/fallback-cover";
 import { GenreChip, TagChip } from "@/components/public/genre-chip";
 import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { RatingReview } from "@/components/public/rating-review";
@@ -49,27 +50,6 @@ function formatAddedDate(value: string): string {
 
 function chapterHref(slug: string, chapterId: string): string {
   return `/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapterId)}`;
-}
-
-function CoverFallback({ title }: { title: string }) {
-  return (
-    <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-secondary shadow-sm ring-1 ring-border">
-      <div className="absolute inset-x-0 top-0 h-1 bg-primary" />
-      <div className="flex h-full flex-col items-center justify-center gap-5 px-7 text-center">
-        <span className="flex h-16 w-16 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
-          <BookOpen className="h-8 w-8" />
-        </span>
-        <div>
-          <p className="font-metadata text-xs uppercase tracking-[0.18em] text-accent">
-            Dokushodo
-          </p>
-          <p className="mt-3 line-clamp-5 font-literary text-lg leading-snug text-secondary-foreground">
-            {title}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function LoadingState() {
@@ -222,7 +202,13 @@ export default function NovelDetailPage() {
         />
         <div className="grid gap-8 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
           <div className="mx-auto w-full max-w-[260px] lg:mx-0">
-            <CoverFallback title={title} />
+            <FallbackCover
+              genres={data.genres}
+              language={data.language}
+              sourceTitle={sourceTitle}
+              status={data.status}
+              title={title}
+            />
           </div>
 
           <div className="min-w-0">

@@ -22,7 +22,10 @@ function renderWithClient(ui: React.ReactElement) {
 }
 
 function makeNovel(
-  overrides: Partial<PublicNovelSummary> = {}
+  overrides: Partial<PublicNovelSummary> & {
+    cover_url?: string | null;
+    source?: string | null;
+  } = {}
 ): PublicNovelSummary & {
   cover_url?: string | null;
   source?: string | null;
@@ -44,6 +47,58 @@ function makeNovel(
 }
 
 describe("NovelCard genre/tag rendering", () => {
+  it("renders a generated fallback cover when cover_url is absent", () => {
+    const novel = makeNovel({
+      source_title: "テスト小説",
+      genres: ["fantasy"],
+      status: "Ongoing",
+    });
+    renderWithClient(<NovelCard novel={novel} />);
+
+    expect(
+      screen.getByRole("img", {
+        name: "Generated Dokushodo bookplate for Test Novel",
+      })
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("テスト小説").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("fantasy")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("img", { name: "Cover for Test Novel" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not render a remote image when no cover_url exists", () => {
+    const novel = makeNovel();
+    renderWithClient(<NovelCard novel={novel} />);
+
+    expect(document.querySelector("img")).toBeNull();
+    expect(screen.queryByText(/cover_url/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/https?:\/\//i)).not.toBeInTheDocument();
+  });
+
+  it("renders a real image only when an explicit cover_url prop exists", () => {
+    const novel = makeNovel({
+      cover_url: "https://assets.example.test/test-cover.jpg",
+    });
+    renderWithClient(<NovelCard novel={novel} />);
+
+    const image = screen.getByRole("img", { name: "Cover for Test Novel" });
+    expect(image).toHaveAttribute("src", "https://assets.example.test/test-cover.jpg");
+    expect(
+      screen.queryByRole("img", {
+        name: "Generated Dokushodo bookplate for Test Novel",
+      })
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not add fake cover or activity signals", () => {
+    const novel = makeNovel();
+    renderWithClient(<NovelCard novel={novel} />);
+
+    expect(screen.queryByText(/official cover/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/views|readers|rating|ranking|trending/i)).not.toBeInTheDocument();
+  });
+
   it("renders genre chips when genres are provided", () => {
     const novel = makeNovel({ genres: ["fantasy", "isekai-tensei"] });
     renderWithClient(<NovelCard novel={novel} />);
