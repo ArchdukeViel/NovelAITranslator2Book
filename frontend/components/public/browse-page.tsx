@@ -663,6 +663,12 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
                               : "bg-secondary text-secondary-foreground hover:bg-muted"
                         }`}
                       >
+                        {state === "include" && (
+                          <PlusCircle className="mr-1 inline h-3 w-3" aria-hidden="true" />
+                        )}
+                        {state === "exclude" && (
+                          <MinusCircle className="mr-1 inline h-3 w-3" aria-hidden="true" />
+                        )}
                         {genre.name_en ?? genre.slug}
                       </button>
                     );

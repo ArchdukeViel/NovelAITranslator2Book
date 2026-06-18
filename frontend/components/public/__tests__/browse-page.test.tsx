@@ -166,6 +166,18 @@ describe("BrowsePage genre filter UI", () => {
     expect(screen.getAllByText("Fantasy").length).toBe(1);
   });
 
+  it("keeps genre filters in one tri-state group without include/exclude rows", () => {
+    renderPage();
+    openAdvancedSearch();
+    const genreGroup = screen.getByRole("group", { name: /genre filters/i });
+    expect(genreGroup).toHaveTextContent("Fantasy");
+    expect(genreGroup).not.toHaveTextContent("Must include");
+    expect(genreGroup).not.toHaveTextContent("Exclude");
+    expect(screen.getByText("Tag filters")).toBeInTheDocument();
+    expect(screen.getByText("Must include")).toBeInTheDocument();
+    expect(screen.getByText("Exclude")).toBeInTheDocument();
+  });
+
   it("shows loading/error/empty states", () => {
     mocks.genresQuery.mockReturnValue({ data: undefined, isPending: true, isError: false });
     renderPage();
