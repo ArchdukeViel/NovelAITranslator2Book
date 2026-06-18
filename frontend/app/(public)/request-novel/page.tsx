@@ -28,7 +28,7 @@ export default function RequestNovelPage() {
       <header className="mb-8">
         <h1 className="text-3xl font-semibold tracking-normal font-literary">Request Novel</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Sign in to request a novel from a supported source. Requests are reviewed by the owner and may be accepted, rejected, or queued based on catalog priorities.
+          Sign in to request a novel from a supported source. Requests are reviewed before they enter the catalog queue.
         </p>
       </header>
 
@@ -67,7 +67,7 @@ export default function RequestNovelPage() {
                 aria-label="Supported source URL (disabled)"
               />
               <p className="text-xs text-muted-foreground">
-                URL submission is not available yet. It will be enabled in a future update.
+                URL submission is not open yet.
               </p>
             </PanelBody>
           </Panel>
@@ -116,7 +116,7 @@ function RequestHistory() {
                 "Requested Novel / URL",
                 "Source",
                 "Status",
-                "Rejection Reason",
+                "Notes",
                 "Requested At",
                 "Updated At",
                 "Action",
@@ -142,9 +142,9 @@ function RequestHistory() {
                   </td>
                   <td className="px-4 py-3 font-metadata">{sourceFromUrl(request.source_url)}</td>
                   <td className="px-4 py-3 font-metadata capitalize">{request.status}</td>
-                  <td className="px-4 py-3 text-muted-foreground">Not provided by current API</td>
+                  <td className="px-4 py-3 text-muted-foreground">No note shown</td>
                   <td className="px-4 py-3 font-metadata">{request.created_at}</td>
-                  <td className="px-4 py-3 text-muted-foreground">Not provided by current API</td>
+                  <td className="px-4 py-3 text-muted-foreground">Not shown</td>
                   <td className="px-4 py-3">
                     {request.slug ? (
                       <Link className="text-accent underline hover:text-foreground" href={`/novel/${encodeURIComponent(request.slug)}`}>

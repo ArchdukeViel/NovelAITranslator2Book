@@ -22,7 +22,7 @@ export default function AccountContributionsPage() {
             <div className="flex items-start gap-3">
               <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
               <div className="space-y-1 text-sm text-amber-800 dark:text-amber-200">
-                <p className="font-medium">Coming Soon</p>
+                <p className="font-medium">Not available yet</p>
                 <p>Key management is not available yet.</p>
               </div>
             </div>
@@ -71,7 +71,7 @@ export default function AccountContributionsPage() {
             </PanelHeader>
             <PanelBody className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                Visit the main contribution page to understand how provider keys help the platform.
+                Visit the main contribution page to read how contribution keys are planned.
               </p>
               <Link
                 href="/contribute"

@@ -135,7 +135,7 @@ export function LoginView({ onClose, onSuccess }: LoginViewProps) {
       </div>
 
       <p className="mb-3 text-sm text-muted-foreground">
-        Sign in to unlock reader features:
+        Sign in to save reading state:
       </p>
       <ul className="mb-5 space-y-1 text-sm text-muted-foreground">
         <li>Save novels to your library</li>
