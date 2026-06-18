@@ -8,7 +8,7 @@ afterEach(() => {
 });
 
 describe("LatestUpdateRow grouped date display", () => {
-  it('shows "Today" when updatedAt is today', () => {
+  it("shows actual time when updatedAt is today (not 'Today' text)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
 
@@ -16,14 +16,18 @@ describe("LatestUpdateRow grouped date display", () => {
       <LatestUpdateRow
         href="/novel/test"
         title="Test Novel"
-        updatedAt="2026-06-17T08:00:00Z"
+        updatedAt="2026-06-17T14:30:00Z"
       />
     );
 
-    expect(screen.getByText("Today")).toBeInTheDocument();
+    // Should NOT show "Today" as a time label (that's now the group header)
+    expect(screen.queryByText("Today")).not.toBeInTheDocument();
+    // Old-style relative time text should not appear
+    expect(screen.queryByText(/hours? ago/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/minutes? ago/i)).not.toBeInTheDocument();
   });
 
-  it('shows "Yesterday" when updatedAt is yesterday', () => {
+  it("shows no time text for yesterday items (group header is sufficient)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
 
@@ -35,10 +39,13 @@ describe("LatestUpdateRow grouped date display", () => {
       />
     );
 
-    expect(screen.getByText("Yesterday")).toBeInTheDocument();
+    expect(screen.getByText("Test Novel")).toBeInTheDocument();
+    // No exact hour for older-than-24h items
+    expect(screen.queryByText("Yesterday")).not.toBeInTheDocument();
+    expect(screen.queryByText(/hours? ago/i)).not.toBeInTheDocument();
   });
 
-  it('shows "1 week ago" when updatedAt is 5 days ago', () => {
+  it("shows no time text for 1-week-ago items", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
 
@@ -50,10 +57,12 @@ describe("LatestUpdateRow grouped date display", () => {
       />
     );
 
-    expect(screen.getByText("1 week ago")).toBeInTheDocument();
+    expect(screen.getByText("Test Novel")).toBeInTheDocument();
+    // No group label rendered in row — that's the group header's job
+    expect(screen.queryByText("1 week ago")).not.toBeInTheDocument();
   });
 
-  it('shows "Last month" when updatedAt is 30 days ago', () => {
+  it("shows no time text for month-ago items", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
 
@@ -65,22 +74,8 @@ describe("LatestUpdateRow grouped date display", () => {
       />
     );
 
-    expect(screen.getByText("Last month")).toBeInTheDocument();
-  });
-
-  it('shows "Mon YYYY" when updatedAt is more than 2 months ago', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
-
-    render(
-      <LatestUpdateRow
-        href="/novel/test"
-        title="Test Novel"
-        updatedAt="2026-03-01T00:00:00Z"
-      />
-    );
-
-    expect(screen.getByText("Mar 2026")).toBeInTheDocument();
+    expect(screen.getByText("Test Novel")).toBeInTheDocument();
+    expect(screen.queryByText(/month(s)? ago/i)).not.toBeInTheDocument();
   });
 
   it("renders no time label when updatedAt is missing", () => {
@@ -98,7 +93,7 @@ describe("LatestUpdateRow grouped date display", () => {
     expect(screen.queryByText("Today")).not.toBeInTheDocument();
     expect(screen.queryByText("Yesterday")).not.toBeInTheDocument();
     expect(screen.queryByText(/week(s)? ago/)).not.toBeInTheDocument();
-    expect(screen.queryByText("Last month")).not.toBeInTheDocument();
+    expect(screen.queryByText(/month(s)? ago/i)).not.toBeInTheDocument();
   });
 
   it("renders no time label when updatedAt is null", () => {
@@ -121,18 +116,17 @@ describe("LatestUpdateRow grouped date display", () => {
       <LatestUpdateRow
         href="/novel/test"
         title="Test Novel"
-        // 5 hours ago - should NOT show "5 hours ago"
         updatedAt="2026-06-17T07:00:00Z"
       />
     );
 
-    expect(screen.getByText("Today")).toBeInTheDocument();
+    // Should not show "5 hours ago" or similar
     expect(screen.queryByText(/hours? ago/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/minutes? ago/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/\d+ hours? ago/)).not.toBeInTheDocument();
   });
 
-  it("renders chapter label when provided alongside time label", () => {
+  it("renders chapter label when provided alongside time detail", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
 
@@ -146,10 +140,9 @@ describe("LatestUpdateRow grouped date display", () => {
     );
 
     expect(screen.getByText("Chapter 15")).toBeInTheDocument();
-    expect(screen.getByText("Today")).toBeInTheDocument();
   });
 
-  it("renders time label as secondary-styled element", () => {
+  it("renders time detail as secondary-styled span without clock icon", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
 
@@ -157,14 +150,14 @@ describe("LatestUpdateRow grouped date display", () => {
       <LatestUpdateRow
         href="/novel/test"
         title="Test Novel"
-        updatedAt="2026-06-17T08:00:00Z"
+        updatedAt="2026-06-17T14:30:00Z"
       />
     );
 
-    const timeEl = screen.getByText("Today");
-    // Should be a span (not a heading/button/link)
-    expect(timeEl.tagName).toBe("SPAN");
-    // Should not be a clock icon
-    expect(timeEl.querySelector("svg")).toBeNull();
+    // No clock icon (svg) alongside time text
+    const timeElements = document.querySelectorAll("span.font-metadata");
+    timeElements.forEach((el) => {
+      expect(el.querySelector("svg")).toBeNull();
+    });
   });
 });
