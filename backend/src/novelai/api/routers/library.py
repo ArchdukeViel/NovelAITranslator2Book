@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from novelai.api.auth.roles import require_role
+from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.response_helpers import translated_chapter_response
 from novelai.api.routers.dependencies import (
     _rate_limit,
@@ -17,7 +18,7 @@ from novelai.api.routers.dependencies import (
 )
 from novelai.storage.service import StorageService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 logger = logging.getLogger(__name__)
 
 

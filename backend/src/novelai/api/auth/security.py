@@ -4,10 +4,13 @@ import secrets
 import time
 from collections import defaultdict
 
-from fastapi import HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
+
+from novelai.api.auth.session import SessionUser, get_current_user
 
 CSRF_HEADER_NAME = "X-CSRF-Token"
 _CSRF_SESSION_KEY = "csrf_token"
+_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 _PUBLIC_RATE_WINDOW_SECONDS = 60
 _PUBLIC_RATE_LIMITS = {
     "auth_login": 10,
@@ -49,6 +52,22 @@ def require_csrf_token(request: Request) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid CSRF token.",
         )
+
+
+def require_csrf_for_unsafe_methods(
+    request: Request,
+    user: SessionUser = Depends(get_current_user),
+) -> None:
+    """Require CSRF for owner-authenticated unsafe browser requests.
+
+    Non-owner requests are left for require_role("owner") to reject so auth
+    failures keep their existing 401/403 behavior.
+    """
+    if request.method.upper() in _SAFE_METHODS:
+        return
+    if not user.is_owner:
+        return
+    require_csrf_token(request)
 
 
 def _client_ip(request: Request) -> str:

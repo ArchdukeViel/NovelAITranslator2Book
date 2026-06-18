@@ -8,13 +8,14 @@ from pydantic import BaseModel
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.api.auth.roles import require_role
+from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.dependencies import _rate_limit, get_activity_log, get_orchestrator, get_storage
 from novelai.runtime.container import container
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.orchestration.operations import OperationError, OperationsService
 from novelai.storage.service import StorageService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
 
 class ScrapeRequest(BaseModel):

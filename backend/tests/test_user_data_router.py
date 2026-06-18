@@ -496,7 +496,14 @@ class TestRequestContract:
         assert detail.json()["id"] == str(request_id)
         assert detail.json()["resolved_at"] is None
 
-        updated = client.patch(f"/api/admin/requests/{request_id}", json={"status": "approved"})
+        missing_csrf = client.patch(f"/api/admin/requests/{request_id}", json={"status": "approved"})
+        assert missing_csrf.status_code == 403
+
+        updated = client.patch(
+            f"/api/admin/requests/{request_id}",
+            json={"status": "approved"},
+            headers=csrf_headers(client),
+        )
         assert updated.status_code == 200
         assert updated.json()["status"] == "approved"
         assert updated.json()["resolved_at"] is not None
@@ -519,9 +526,17 @@ class TestRequestContract:
         request_id = created.json()["id"]
 
         set_user(app, 999, role="owner")
-        rejected = client.patch(f"/api/admin/requests/{request_id}", json={"status": "rejected"})
+        rejected = client.patch(
+            f"/api/admin/requests/{request_id}",
+            json={"status": "rejected"},
+            headers=csrf_headers(client),
+        )
         assert rejected.json()["resolved_at"] is not None
-        reopened = client.patch(f"/api/admin/requests/{request_id}", json={"status": "pending"})
+        reopened = client.patch(
+            f"/api/admin/requests/{request_id}",
+            json={"status": "pending"},
+            headers=csrf_headers(client),
+        )
         assert reopened.status_code == 200
         assert reopened.json()["status"] == "pending"
         assert reopened.json()["resolved_at"] is None
@@ -540,6 +555,7 @@ class TestRequestContract:
         rejected = client.patch(
             f"/api/admin/requests/{request_id}",
             json={"status": "rejected", "rejection_reason": "Source page is not readable yet."},
+            headers=csrf_headers(client),
         )
         assert rejected.status_code == 200
         assert rejected.json()["status"] == "rejected"
@@ -556,6 +572,7 @@ class TestRequestContract:
         approved = client.patch(
             f"/api/admin/requests/{request_id}",
             json={"status": "approved", "approved_novel_id": seeded_catalog["novel"].id},
+            headers=csrf_headers(client),
         )
         assert approved.status_code == 200
         assert approved.json()["status"] == "approved"
@@ -581,6 +598,7 @@ class TestRequestContract:
         resp = client.patch(
             f"/api/admin/requests/{request_id}",
             json={"status": "approved", "approved_novel_id": 999},
+            headers=csrf_headers(client),
         )
         assert resp.status_code == 404
 
@@ -597,7 +615,8 @@ class TestRequestContract:
 
         assert client.get("/api/admin/requests").status_code == expected
         assert client.get("/api/admin/requests/1").status_code == expected
-        assert client.patch("/api/admin/requests/1", json={"status": "approved"}).status_code == expected
+        headers = csrf_headers(client) if role != "guest" else None
+        assert client.patch("/api/admin/requests/1", json={"status": "approved"}, headers=headers).status_code == expected
         assert client.patch(
             "/api/admin/requests/1",
             json={
@@ -605,12 +624,17 @@ class TestRequestContract:
                 "rejection_reason": "Nope",
                 "approved_novel_id": seeded_catalog["novel"].id,
             },
+            headers=headers,
         ).status_code == expected
 
     def test_admin_request_missing_id_and_invalid_status(self, app, client, seeded_catalog) -> None:
         set_user(app, 999, role="owner")
         assert client.get("/api/admin/requests/999").status_code == 404
-        assert client.patch("/api/admin/requests/999", json={"status": "not-real"}).status_code == 400
+        assert client.patch(
+            "/api/admin/requests/999",
+            json={"status": "not-real"},
+            headers=csrf_headers(client),
+        ).status_code == 400
         assert client.get("/api/admin/requests", params={"status": "not-real"}).status_code == 400
 
     def test_admin_legacy_request_actions_are_not_file_backed_on_canonical_route(
@@ -620,11 +644,13 @@ class TestRequestContract:
         seeded_catalog,
     ) -> None:
         set_user(app, 999, role="owner")
-        assert client.post("/api/admin/requests", json={"title": "Requested Novel"}).status_code == 410
-        assert client.post("/api/admin/requests/1/vote", json={"voter": "reader"}).status_code == 410
+        headers = csrf_headers(client)
+        assert client.post("/api/admin/requests", json={"title": "Requested Novel"}, headers=headers).status_code == 410
+        assert client.post("/api/admin/requests/1/vote", json={"voter": "reader"}, headers=headers).status_code == 410
         assert client.post(
             "/api/admin/requests/1/source-candidates",
             json={"source_key": "syosetu_ncode", "source_url": "https://ncode.syosetu.com/n1234ab/"},
+            headers=headers,
         ).status_code == 410
 
     def test_request_create_rate_limit_eventually_returns_429(self, app, client, seeded_catalog) -> None:

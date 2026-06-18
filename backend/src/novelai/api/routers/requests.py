@@ -8,12 +8,13 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
+from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.dependencies import get_db_session
 from novelai.core.platform import NovelRequestStatus
 from novelai.db.models.novel import Novel
 from novelai.db.models.users import NovelRequest
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
 _VALID_STATUSES = {item.value for item in NovelRequestStatus}
 _RESOLVED_STATUSES = {
