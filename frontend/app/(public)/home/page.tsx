@@ -10,6 +10,25 @@ import { SectionHeader } from "@/components/public/section-header";
 import { groupDateLabel } from "@/lib/date-group";
 import { useCatalog, useGenreLabelMap } from "@/hooks/public";
 
+const LATEST_UPDATE_GROUP_ORDER = [
+  "Today",
+  "Yesterday",
+  "1 week ago",
+  "2 weeks ago",
+  "3 weeks ago",
+  "1 month ago",
+  "2 months ago",
+  "3 months ago",
+  "Earlier",
+] as const;
+
+function latestUpdateGroupRank(label: string): number {
+  const index = LATEST_UPDATE_GROUP_ORDER.indexOf(
+    label as (typeof LATEST_UPDATE_GROUP_ORDER)[number]
+  );
+  return index === -1 ? LATEST_UPDATE_GROUP_ORDER.length : index;
+}
+
 export default function HomePage() {
   const { data, isPending, isError, refetch } = useCatalog({
     sort_by: "added_at",
@@ -247,29 +266,31 @@ export default function HomePage() {
               grouped.get(label)!.push(novel);
             }
 
-            return groupOrder.map((label) => (
-              <div key={label} className="mt-6 first:mt-4">
-                <h3 className="font-metadata text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {label}
-                </h3>
-                <div className="mt-2 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                  {grouped.get(label)!.map((novel) => (
-                    <LatestUpdateRow
-                      key={novel.novel_id}
-                      href={`/novel/${novel.slug}`}
-                      title={novel.title}
-                      chapterLabel={
-                        novel.translated_count > 0
-                          ? `Chapter ${novel.translated_count} translated`
-                          : undefined
-                      }
-                      updatedAt={novel.added_at}
-                      sourceTitle={novel.source_title ?? undefined}
-                    />
-                  ))}
+            return groupOrder
+              .sort((left, right) => latestUpdateGroupRank(left) - latestUpdateGroupRank(right))
+              .map((label) => (
+                <div key={label} className="mt-6 first:mt-4">
+                  <h3 className="font-metadata text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {label}
+                  </h3>
+                  <div className="mt-2 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                    {grouped.get(label)!.map((novel) => (
+                      <LatestUpdateRow
+                        key={novel.novel_id}
+                        href={`/novel/${novel.slug}`}
+                        title={novel.title}
+                        chapterLabel={
+                          novel.translated_count > 0
+                            ? `Chapter ${novel.translated_count} translated`
+                            : undefined
+                        }
+                        updatedAt={novel.added_at}
+                        sourceTitle={novel.source_title ?? undefined}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ));
+              ));
           })()}
         </section>
 
