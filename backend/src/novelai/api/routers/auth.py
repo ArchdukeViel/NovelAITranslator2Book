@@ -17,17 +17,19 @@ Architecture rules (architecture.md §19):
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from starlette.responses import RedirectResponse
 
 from novelai.api.auth.google_oauth import GoogleOAuthClient, GoogleOAuthProfile, get_google_oauth_client
+from novelai.api.auth.passwords import hash_password, verify_password
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import (
     clear_csrf_token,
@@ -47,6 +49,9 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 _OAUTH_STATE_KEY = "oauth_google_state"
 _OAUTH_RETURN_TO_KEY = "oauth_google_return_to"
 _DEFAULT_PUBLIC_RETURN_TO = "/"
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_MIN_PASSWORD_LENGTH = 10
+_MAX_PASSWORD_LENGTH = 256
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +61,19 @@ _DEFAULT_PUBLIC_RETURN_TO = "/"
 class LoginRequest(BaseModel):
     """Owner bootstrap login payload."""
     secret: str
+
+
+class RegisterRequest(BaseModel):
+    """Public email/password signup payload."""
+    email: str
+    password: str = Field(min_length=1, max_length=_MAX_PASSWORD_LENGTH)
+    display_name: str | None = Field(default=None, max_length=128)
+
+
+class PasswordLoginRequest(BaseModel):
+    """Public email/password login payload."""
+    email: str
+    password: str = Field(min_length=1, max_length=_MAX_PASSWORD_LENGTH)
 
 
 class UserResponse(BaseModel):
@@ -106,6 +124,26 @@ def _frontend_redirect(path: str) -> str:
 
 def _normalize_email(email: str) -> str:
     return email.strip().lower()
+
+
+def _validate_public_email(email: str) -> str:
+    normalized = _normalize_email(email)
+    if len(normalized) > 255 or not _EMAIL_RE.match(normalized):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email address.")
+    return normalized
+
+
+def _validate_public_password(password: str) -> None:
+    if len(password) < _MIN_PASSWORD_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Password must be at least {_MIN_PASSWORD_LENGTH} characters.",
+        )
+    if len(password) > _MAX_PASSWORD_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Password must be at most {_MAX_PASSWORD_LENGTH} characters.",
+        )
 
 
 def _clear_google_oauth_session(request: Request) -> None:
@@ -229,6 +267,79 @@ async def login(payload: LoginRequest, request: Request) -> UserResponse:
     request.session["role"] = "owner"
     logger.info("Owner bootstrap login succeeded.")
     return _user_response(SessionUser(user_id=1, email="owner@local", role="owner"))
+
+
+@router.post("/register")
+async def register(
+    payload: RegisterRequest,
+    request: Request,
+    session: Session = Depends(get_db_session),
+) -> UserResponse:
+    """Create a public email/password user account and session."""
+    require_public_rate_limit(request, "auth_register")
+    email = _validate_public_email(payload.email)
+    _validate_public_password(payload.password)
+    display_name = payload.display_name.strip() if payload.display_name else None
+    if display_name == "":
+        display_name = None
+
+    existing = session.query(User).filter(func.lower(User.email) == email).one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account already exists for this email.",
+        )
+
+    now = datetime.now(timezone.utc)
+    user = User(
+        email=email,
+        display_name=display_name,
+        role="user",
+        auth_provider="password",
+        auth_provider_subject=None,
+        password_hash=hash_password(payload.password),
+        is_active=True,
+        last_login_at=now,
+    )
+    session.add(user)
+    session.flush()
+    _set_session_user(request, user)
+    logger.info("Public password registration succeeded for user_id=%s.", user.id)
+    return _user_response(SessionUser(user_id=user.id, email=user.email, role=user.role))
+
+
+@router.post("/password/login")
+async def password_login(
+    payload: PasswordLoginRequest,
+    request: Request,
+    session: Session = Depends(get_db_session),
+) -> UserResponse:
+    """Authenticate a public email/password user."""
+    require_public_rate_limit(request, "auth_password_login")
+    email = _normalize_email(payload.email)
+    generic_error = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid email or password.",
+    )
+    if not email or len(email) > 255:
+        raise generic_error
+
+    user = session.query(User).filter(func.lower(User.email) == email).one_or_none()
+    if (
+        user is None
+        or not user.is_active
+        or user.role == "owner"
+        or not user.password_hash
+        or not verify_password(payload.password, user.password_hash)
+    ):
+        logger.warning("Failed public password login attempt.")
+        raise generic_error
+
+    user.last_login_at = datetime.now(timezone.utc)
+    session.flush()
+    _set_session_user(request, user)
+    logger.info("Public password login succeeded for user_id=%s.", user.id)
+    return _user_response(SessionUser(user_id=user.id, email=user.email, role=user.role))
 
 
 @router.get("/google/start")

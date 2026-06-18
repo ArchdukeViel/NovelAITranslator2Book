@@ -15,6 +15,7 @@ from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
 
 from novelai.api.auth.google_oauth import GoogleOAuthProfile, get_google_oauth_client
+from novelai.api.auth.passwords import hash_password, verify_password
 from novelai.api.auth.security import reset_public_rate_limits
 from novelai.api.auth.session import GUEST, SessionUser, get_current_user
 from novelai.api.auth.roles import require_role
@@ -261,6 +262,235 @@ class TestAuthRouterLogin:
         assert resp2.json()["role"] == "owner"
 
 
+class TestPasswordHashing:
+    def test_hash_password_output_is_not_plaintext(self):
+        password_hash = hash_password("correct horse battery staple")
+        assert password_hash != "correct horse battery staple"
+        assert password_hash.startswith("$argon2")
+
+    def test_verify_password_accepts_correct_password(self):
+        password_hash = hash_password("correct horse battery staple")
+        assert verify_password("correct horse battery staple", password_hash) is True
+
+    def test_verify_password_rejects_wrong_password(self):
+        password_hash = hash_password("correct horse battery staple")
+        assert verify_password("wrong horse battery staple", password_hash) is False
+
+
+class TestPublicPasswordRegistration:
+    def test_register_creates_user_role_never_owner_and_sets_session(self, oauth_client, db_session):
+        resp = oauth_client.post(
+            "/api/auth/register",
+            json={"email": "Reader@Example.COM ", "password": "long-enough-password", "display_name": "Reader"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["role"] == "user"
+        assert data["is_owner"] is False
+        assert data["email"] == "reader@example.com"
+        assert "password_hash" not in data
+
+        user = db_session.query(User).filter_by(email="reader@example.com").one()
+        assert user.role == "user"
+        assert user.auth_provider == "password"
+        assert user.password_hash
+        assert user.password_hash != "long-enough-password"
+        assert user.last_login_at is not None
+
+        me = oauth_client.get("/api/auth/me")
+        assert me.status_code == 200
+        assert me.json()["user_id"] == user.id
+        assert me.json()["role"] == "user"
+
+    def test_register_rejects_weak_short_password(self, oauth_client):
+        resp = oauth_client.post(
+            "/api/auth/register",
+            json={"email": "reader@example.com", "password": "short"},
+        )
+        assert resp.status_code == 400
+
+    def test_register_rejects_invalid_email(self, oauth_client):
+        resp = oauth_client.post(
+            "/api/auth/register",
+            json={"email": "not-an-email", "password": "long-enough-password"},
+        )
+        assert resp.status_code == 400
+
+    def test_register_duplicate_email_fails_safely(self, oauth_client, db_session):
+        db_session.add(
+            User(
+                email="reader@example.com",
+                role="user",
+                auth_provider="password",
+                password_hash=hash_password("existing-password"),
+                is_active=True,
+            )
+        )
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/register",
+            json={"email": " READER@example.com ", "password": "long-enough-password"},
+        )
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == "An account already exists for this email."
+        assert db_session.query(User).filter_by(email="reader@example.com").count() == 1
+
+    def test_register_does_not_overwrite_google_user(self, oauth_client, db_session):
+        db_session.add(
+            User(
+                email="reader@example.com",
+                role="user",
+                auth_provider="google",
+                auth_provider_subject="google-sub-1",
+                is_active=True,
+            )
+        )
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/register",
+            json={"email": "reader@example.com", "password": "long-enough-password"},
+        )
+        assert resp.status_code == 409
+        user = db_session.query(User).filter_by(email="reader@example.com").one()
+        assert user.auth_provider == "google"
+        assert user.auth_provider_subject == "google-sub-1"
+        assert user.password_hash is None
+
+    def test_register_rate_limit_eventually_returns_429(self, oauth_client):
+        statuses = [
+            oauth_client.post(
+                "/api/auth/register",
+                json={"email": "bad-email", "password": "long-enough-password"},
+            ).status_code
+            for _ in range(11)
+        ]
+        assert statuses[:10] == [400] * 10
+        assert statuses[-1] == 429
+
+
+class TestPublicPasswordLogin:
+    def test_password_login_succeeds_with_correct_credentials(self, oauth_client, db_session):
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": " READER@example.com ", "password": "long-enough-password"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["user_id"] == user.id
+        assert data["role"] == "user"
+        assert data["email"] == "reader@example.com"
+        assert "password_hash" not in data
+        db_session.refresh(user)
+        assert user.last_login_at is not None
+
+    def test_password_login_fails_with_wrong_password_generic_error(self, oauth_client, db_session):
+        db_session.add(
+            User(
+                email="reader@example.com",
+                role="user",
+                auth_provider="password",
+                password_hash=hash_password("long-enough-password"),
+                is_active=True,
+            )
+        )
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "reader@example.com", "password": "wrong-password"},
+        )
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "Invalid email or password."
+
+    def test_password_login_fails_unknown_email_generic_error(self, oauth_client):
+        resp = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "unknown@example.com", "password": "wrong-password"},
+        )
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "Invalid email or password."
+
+    def test_password_login_fails_google_only_user_without_password_hash(self, oauth_client, db_session):
+        db_session.add(
+            User(
+                email="reader@example.com",
+                role="user",
+                auth_provider="google",
+                auth_provider_subject="google-sub-1",
+                is_active=True,
+            )
+        )
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "reader@example.com", "password": "long-enough-password"},
+        )
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "Invalid email or password."
+
+    def test_password_login_fails_inactive_user(self, oauth_client, db_session):
+        db_session.add(
+            User(
+                email="reader@example.com",
+                role="user",
+                auth_provider="password",
+                password_hash=hash_password("long-enough-password"),
+                is_active=False,
+            )
+        )
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "reader@example.com", "password": "long-enough-password"},
+        )
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "Invalid email or password."
+
+    def test_password_login_does_not_authenticate_owner_db_user(self, oauth_client, db_session):
+        db_session.add(
+            User(
+                email="owner@example.com",
+                role="owner",
+                auth_provider="password",
+                password_hash=hash_password("long-enough-password"),
+                is_active=True,
+            )
+        )
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "owner@example.com", "password": "long-enough-password"},
+        )
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "Invalid email or password."
+
+    def test_password_login_rate_limit_eventually_returns_429(self, oauth_client):
+        statuses = [
+            oauth_client.post(
+                "/api/auth/password/login",
+                json={"email": "unknown@example.com", "password": "wrong-password"},
+            ).status_code
+            for _ in range(11)
+        ]
+        assert statuses[:10] == [401] * 10
+        assert statuses[-1] == 429
+
+
 class TestAuthRouterLogout:
     def test_logout_clears_session(self, owner_client):
         # Confirm owner before logout
@@ -307,13 +537,13 @@ class TestAuthRouterMe:
 
 
 class TestOwnerBoundaryContracts:
-    def test_owner_never_via_public_signup(self):
-        """Owner role cannot be set by client — only by session layer."""
-        # There is no /api/auth/register endpoint — verified by absence.
+    def test_public_signup_route_is_explicit_and_not_owner_login(self):
+        """Public registration is separate from owner bootstrap login."""
+        # Public registration exists, but it must not be a signup alias or owner login.
         from novelai.api.routers import auth as auth_module
         router = auth_module.router
         routes = {r.path for r in router.routes}  # type: ignore[attr-defined]
-        assert "/api/auth/register" not in routes
+        assert "/api/auth/register" in routes
         assert "/api/auth/signup" not in routes
 
     def test_no_jwt_endpoint_exists(self):

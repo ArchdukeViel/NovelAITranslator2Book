@@ -14,6 +14,7 @@ requires-python = ">=3.13"
 license = {text = "GPL-3.0-or-later"}
 
 dependencies = [
+  "argon2-cffi>=25.1.0",
   "fastapi>=0.135.1",
   "uvicorn[standard]>=0.41.0",
   "pydantic>=2.12.5",
@@ -50,9 +51,11 @@ worker = [
   "redis>=5.0",
 ]
 auth = [
+  "argon2-cffi>=25.1.0",
   "itsdangerous>=2.2",
 ]
 dev = [
+  "argon2-cffi>=25.1.0",
   "google-genai>=1.36.0",
   "openai>=2.26.0",
   "pip-tools>=7.5.3",
