@@ -16,7 +16,12 @@ def _utc_now_iso() -> str:
 
 
 class NovelRequestService:
-    """Durable request/vote/source-candidate store for the reader platform."""
+    """Deprecated file-backed request/vote/source-candidate store.
+
+    Canonical request moderation uses the DB-backed ``NovelRequest`` model.
+    Keep this service quarantined for legacy compatibility and direct tests
+    until a dedicated cleanup phase removes the container/dependency surface.
+    """
 
     def __init__(self, base_dir: Path | None = None) -> None:
         self.base_dir = (base_dir or settings.DATA_DIR).resolve()

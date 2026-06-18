@@ -114,6 +114,7 @@ def get_job_runner() -> BackgroundActivityRunner:
 
 
 def get_requests() -> NovelRequestService:
+    """Deprecated dependency for the quarantined file-backed request service."""
     return container.requests
 
 
