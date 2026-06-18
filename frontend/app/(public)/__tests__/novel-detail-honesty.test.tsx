@@ -123,8 +123,10 @@ function makeNovelData(overrides: Record<string, unknown> = {}) {
     novel_id: "test-slug",
     slug: "test-slug",
     title: "Test Novel",
+    source_title: "テスト小説",
     author: "Test Author",
     language: "ja",
+    synopsis: "A real source synopsis from the public novel detail payload.",
     status: "Ongoing",
     chapter_count: 10,
     translated_count: 5,
@@ -266,10 +268,32 @@ describe("Novel detail page — no fake data", () => {
     expect(screen.queryByText(/available for reading, but/i)).not.toBeInTheDocument();
   });
 
-  it("does not render fake source title", () => {
+  it("renders source title from API data when present", () => {
     renderPage();
-    // Source title is not in the API response
-    expect(screen.queryByText(/source title/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Source title")).toBeInTheDocument();
+    expect(screen.getByText("テスト小説")).toBeInTheDocument();
+  });
+
+  it("does not render source title label when source title is missing", () => {
+    mocks.novelQuery.mockReturnValue({
+      data: makeNovelData({ source_title: null }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    renderPage();
+    expect(screen.queryByText("Source title")).not.toBeInTheDocument();
+  });
+
+  it("does not duplicate source title when it matches display title", () => {
+    mocks.novelQuery.mockReturnValue({
+      data: makeNovelData({ source_title: "Test Novel" }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    renderPage();
+    expect(screen.queryByText("Source title")).not.toBeInTheDocument();
   });
 });
 
@@ -408,10 +432,44 @@ describe("Novel detail page — adult/R18 safety", () => {
 });
 
 describe("Novel detail page — synopsis section honesty", () => {
-  it("shows honest synopsis disclaimer without redundant body", () => {
+  it("renders real synopsis when provided by the API", () => {
+    renderPage();
+    expect(screen.getByText("A real source synopsis from the public novel detail payload.")).toBeInTheDocument();
+    expect(screen.queryByText("Synopsis unavailable for this novel.")).not.toBeInTheDocument();
+  });
+
+  it("shows honest synopsis fallback when synopsis is missing", () => {
+    mocks.novelQuery.mockReturnValue({
+      data: makeNovelData({ synopsis: null }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
     renderPage();
     expect(screen.getByText("About this story")).toBeInTheDocument();
-    // The redundant body paragraph should no longer exist
+    expect(screen.getByText("Synopsis unavailable for this novel.")).toBeInTheDocument();
+  });
+
+  it("shows honest synopsis fallback when synopsis is blank", () => {
+    mocks.novelQuery.mockReturnValue({
+      data: makeNovelData({ synopsis: "   " }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    renderPage();
+    expect(screen.getByText("Synopsis unavailable for this novel.")).toBeInTheDocument();
+  });
+
+  it("does not render developer-facing synopsis placeholder copy", () => {
+    mocks.novelQuery.mockReturnValue({
+      data: makeNovelData({ synopsis: null }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    renderPage();
     expect(screen.queryByText(/not yet include a synopsis/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/not provided by current API/i)).not.toBeInTheDocument();
   });
 });
