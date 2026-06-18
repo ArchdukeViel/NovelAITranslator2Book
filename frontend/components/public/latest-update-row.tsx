@@ -46,13 +46,13 @@ export function LatestUpdateRow({
   return (
     <Link
       href={href}
-      className="group flex items-center gap-3 rounded-lg bg-card/70 p-3 transition-colors hover:bg-card"
+      className="group flex items-center gap-4 px-4 py-4 transition-colors hover:bg-card"
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
-        <BookOpen className="h-5 w-5" />
+      <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded-sm border border-border/70 bg-muted text-muted-foreground">
+        <BookOpen className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium group-hover:text-accent">
+        <p className="truncate font-literary text-sm font-semibold group-hover:text-accent">
           {title}
         </p>
         {sourceTitle && (
