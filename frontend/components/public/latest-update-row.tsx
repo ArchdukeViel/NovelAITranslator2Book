@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
 
-import { groupDateLabel } from "@/lib/date-group";
+import { groupDateLabel, todayTimeLabel } from "@/lib/date-group";
 
 interface LatestUpdateRowProps {
   chapterLabel?: string;
@@ -21,6 +21,7 @@ export function LatestUpdateRow({
   updatedAt,
 }: LatestUpdateRowProps) {
   const timeLabel = groupDateLabel(updatedAt);
+  const timeDetail = todayTimeLabel(updatedAt);
 
   return (
     <Link
@@ -41,9 +42,11 @@ export function LatestUpdateRow({
         )}
         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
           {chapterLabel && <span>{chapterLabel}</span>}
-          {timeLabel && (
+          {/* For today items: show actual time detail.
+              For older items: show nothing (group header is sufficient). */}
+          {timeLabel === "Today" && timeDetail && (
             <span className="font-metadata tracking-wide text-muted-foreground/60">
-              {timeLabel}
+              {timeDetail}
             </span>
           )}
         </div>

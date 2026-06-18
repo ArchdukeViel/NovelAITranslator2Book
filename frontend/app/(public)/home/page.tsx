@@ -7,6 +7,7 @@ import { GenreChip } from "@/components/public/genre-chip";
 import { LatestUpdateRow } from "@/components/public/latest-update-row";
 import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { SectionHeader } from "@/components/public/section-header";
+import { groupDateLabel } from "@/lib/date-group";
 import { useCatalog, useGenreLabelMap } from "@/hooks/public";
 
 export default function HomePage() {
@@ -232,22 +233,44 @@ export default function HomePage() {
             actionHref="/browse-novels"
             actionLabel="View all"
           />
-          <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {novels.slice(0, 6).map((novel) => (
-              <LatestUpdateRow
-                key={novel.novel_id}
-                href={`/novel/${novel.slug}`}
-                title={novel.title}
-                chapterLabel={
-                  novel.translated_count > 0
-                    ? `Chapter ${novel.translated_count} translated`
-                    : undefined
-                }
-                updatedAt={novel.added_at}
-                sourceTitle={novel.source_title ?? undefined}
-              />
-            ))}
-          </div>
+          {(() => {
+            // Group novels by their date label (Today, Yesterday, etc.)
+            const grouped = new Map<string, typeof novels>();
+            const groupOrder: string[] = [];
+
+            for (const novel of novels.slice(0, 8)) {
+              const label = groupDateLabel(novel.added_at) ?? "Earlier";
+              if (!grouped.has(label)) {
+                grouped.set(label, []);
+                groupOrder.push(label);
+              }
+              grouped.get(label)!.push(novel);
+            }
+
+            return groupOrder.map((label) => (
+              <div key={label} className="mt-6 first:mt-4">
+                <h3 className="font-metadata text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {label}
+                </h3>
+                <div className="mt-2 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {grouped.get(label)!.map((novel) => (
+                    <LatestUpdateRow
+                      key={novel.novel_id}
+                      href={`/novel/${novel.slug}`}
+                      title={novel.title}
+                      chapterLabel={
+                        novel.translated_count > 0
+                          ? `Chapter ${novel.translated_count} translated`
+                          : undefined
+                      }
+                      updatedAt={novel.added_at}
+                      sourceTitle={novel.source_title ?? undefined}
+                    />
+                  ))}
+                </div>
+              </div>
+            ));
+          })()}
         </section>
 
         {/* ── Browse the catalog CTA ── */}
