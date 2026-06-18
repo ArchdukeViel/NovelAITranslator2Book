@@ -29,6 +29,9 @@ import type {
 export type * from "@/lib/api-types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
+const CSRF_HEADER_NAME = "X-CSRF-Token";
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+let csrfTokenPromise: Promise<string> | null = null;
 
 // ===========================================
 // Shared low-level request helper (Task 3.1)
@@ -36,8 +39,12 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 // Does NOT read apiToken from store, does NOT set Authorization header
 // ===========================================
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
+  if (!SAFE_METHODS.has(method) && path !== "/auth/csrf" && !headers.has(CSRF_HEADER_NAME)) {
+    headers.set(CSRF_HEADER_NAME, await getCsrfToken());
+  }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -53,6 +60,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     return undefined as T;
   }
   return response.json() as Promise<T>;
+}
+
+async function getCsrfToken(): Promise<string> {
+  csrfTokenPromise ??= request<{ csrf_token: string }>("/auth/csrf")
+    .then((payload) => payload.csrf_token)
+    .catch((error) => {
+      csrfTokenPromise = null;
+      throw error;
+    });
+  return csrfTokenPromise;
 }
 
 export class ApiError extends Error {
@@ -236,9 +253,11 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 async function apiDownload(path: string, body: unknown): Promise<Blob> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  headers.set(CSRF_HEADER_NAME, await getCsrfToken());
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
     credentials: "include", // Send HTTP-only Session_Cookie
     cache: "no-store"
