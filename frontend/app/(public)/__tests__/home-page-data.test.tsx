@@ -124,6 +124,10 @@ function makeNovel(overrides: Record<string, unknown> = {}) {
     chapter_count: 10,
     translated_count: 5,
     added_at: "2026-06-17T08:00:00Z",
+    latest_chapter_id: null as string | null,
+    latest_chapter_number: null as number | null,
+    latest_chapter_title: null as string | null,
+    latest_chapter_updated_at: null as string | null,
     genres: ["fantasy"],
     tags: ["magic"],
     ...overrides,
@@ -403,6 +407,66 @@ describe("HomePage real data rendering", () => {
     expect(screen.getAllByText("First Novel").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Second Novel").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Third Novel").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("links latest update rows to latest readable chapter when available", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          makeNovel({
+            title: "Latest Novel",
+            slug: "latest-novel",
+            latest_chapter_id: "ch015",
+            latest_chapter_number: 15,
+            latest_chapter_title: "The Quiet Return",
+            latest_chapter_updated_at: "2026-06-17T09:30:00Z",
+          }),
+        ],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    expect(screen.getByText("Chapter 15: The Quiet Return")).toBeInTheDocument();
+    expect(screen.queryByText("Chapter 5 translated")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /latest novel/i })).toHaveAttribute(
+      "href",
+      "/novel/latest-novel/chapter/ch015"
+    );
+  });
+
+  it("falls back to novel detail link and translated count when latest chapter metadata is missing", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          makeNovel({
+            title: "Fallback Novel",
+            slug: "fallback-novel",
+            translated_count: 4,
+          }),
+        ],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    expect(screen.getByText("Chapter 4 translated")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /fallback novel/i })).toHaveAttribute(
+      "href",
+      "/novel/fallback-novel"
+    );
   });
 
   it("passes genres and tags through to rendered chips", () => {
@@ -968,6 +1032,37 @@ describe("Homepage time grouping", () => {
       .filter((text): text is string => expectedOrder.includes(text ?? ""));
 
     expect(headerTexts).toEqual(expectedOrder);
+    vi.useRealTimers();
+  });
+
+  it("uses latest chapter update time for grouping when available", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
+
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          makeNovel({
+            title: "Updated Today",
+            added_at: "2026-05-23T10:00:00Z",
+            latest_chapter_id: "ch010",
+            latest_chapter_number: 10,
+            latest_chapter_updated_at: "2026-06-17T08:00:00Z",
+          }),
+        ],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    expect(screen.getByText("Today")).toBeInTheDocument();
+    expect(screen.queryByText("1 month ago")).not.toBeInTheDocument();
     vi.useRealTimers();
   });
 

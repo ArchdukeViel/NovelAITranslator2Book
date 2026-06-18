@@ -9,6 +9,7 @@ import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { SectionHeader } from "@/components/public/section-header";
 import { groupDateLabel } from "@/lib/date-group";
 import { useCatalog, useGenreLabelMap, usePublicAuth } from "@/hooks/public";
+import type { PublicNovelSummary } from "@/lib/public-types";
 
 const LATEST_UPDATE_GROUP_ORDER = [
   "Today",
@@ -40,6 +41,17 @@ function usefulSourceTitle(sourceTitle: string | null | undefined, title: string
 function synopsisPreview(synopsis: string | null | undefined): string | null {
   const trimmed = synopsis?.trim();
   return trimmed || null;
+}
+
+function latestActivityAt(novel: PublicNovelSummary): string | null | undefined {
+  return novel.latest_chapter_updated_at ?? novel.added_at;
+}
+
+function latestChapterHref(novel: PublicNovelSummary): string {
+  if (novel.latest_chapter_id) {
+    return `/novel/${novel.slug}/chapter/${encodeURIComponent(novel.latest_chapter_id)}`;
+  }
+  return `/novel/${novel.slug}`;
 }
 
 export default function HomePage() {
@@ -286,7 +298,7 @@ export default function HomePage() {
             const groupOrder: string[] = [];
 
             for (const novel of novels.slice(0, 8)) {
-              const label = groupDateLabel(novel.added_at) ?? "Earlier";
+              const label = groupDateLabel(latestActivityAt(novel)) ?? "Earlier";
               if (!grouped.has(label)) {
                 grouped.set(label, []);
                 groupOrder.push(label);
@@ -305,14 +317,16 @@ export default function HomePage() {
                     {grouped.get(label)!.map((novel) => (
                       <LatestUpdateRow
                         key={novel.novel_id}
-                        href={`/novel/${novel.slug}`}
+                        href={latestChapterHref(novel)}
                         title={novel.title}
                         chapterLabel={
                           novel.translated_count > 0
                             ? `Chapter ${novel.translated_count} translated`
                             : undefined
                         }
-                        updatedAt={novel.added_at}
+                        latestChapterNumber={novel.latest_chapter_number}
+                        latestChapterTitle={novel.latest_chapter_title}
+                        updatedAt={latestActivityAt(novel)}
                         sourceTitle={novel.source_title ?? undefined}
                       />
                     ))}

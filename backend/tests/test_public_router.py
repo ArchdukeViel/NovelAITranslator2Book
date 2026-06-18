@@ -215,6 +215,43 @@ class TestCatalog:
         assert novel["source_title"] is None
         assert novel["title"] == "Only Title"
 
+    def test_catalog_summary_includes_latest_translated_chapter(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        _seed_novel(storage, "novel-001", chapters=[
+            {"id": "ch001", "title": "Source Chapter 1", "translated_title": "Translated Chapter 1", "num": 1},
+            {"id": "ch002", "title": "Source Chapter 2", "translated_title": "Translated Chapter 2", "num": 2},
+            {"id": "ch003", "title": "Source Chapter 3", "translated_title": "Translated Chapter 3", "num": 3},
+        ])
+        _seed_translated_chapter(storage, "novel-001", "ch001", "Translated one.")
+        _seed_translated_chapter(storage, "novel-001", "ch002", "Translated two.")
+
+        data = client.get("/api/public/catalog").json()
+        novel = data["novels"][0]
+
+        assert novel["latest_chapter_id"] == "ch002"
+        assert novel["latest_chapter_number"] == 2
+        assert novel["latest_chapter_title"] == "Translated Chapter 2"
+        assert isinstance(novel["latest_chapter_updated_at"], str)
+        assert novel["title"] == "Title novel-001"
+        assert novel["chapter_count"] == 3
+        assert novel["translated_count"] == 2
+
+    def test_catalog_summary_latest_chapter_fields_null_without_translation(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        _seed_novel(storage, "novel-001", chapters=[
+            {"id": "ch001", "title": "Source Chapter 1", "num": 1},
+        ])
+
+        data = client.get("/api/public/catalog").json()
+        novel = data["novels"][0]
+
+        assert novel["latest_chapter_id"] is None
+        assert novel["latest_chapter_number"] is None
+        assert novel["latest_chapter_title"] is None
+        assert novel["latest_chapter_updated_at"] is None
+
     def test_catalog_does_not_expose_is_adult(self, client: TestClient, storage: StorageService) -> None:
         """Public catalog response must not include is_adult field."""
         _seed_novel(storage, "novel-001")

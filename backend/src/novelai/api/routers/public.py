@@ -66,6 +66,10 @@ class PublicNovelSummary(BaseModel):
     chapter_count: int = 0
     translated_count: int = 0
     added_at: str | None = None
+    latest_chapter_id: str | None = None
+    latest_chapter_number: int | None = None
+    latest_chapter_title: str | None = None
+    latest_chapter_updated_at: str | None = None
     genres: list[str] = []
     tags: list[str] = []
 
@@ -127,6 +131,34 @@ def _novel_added_at(meta: dict[str, Any]) -> str | None:
     return None
 
 
+def _latest_translated_chapter(
+    novel_id: str,
+    meta: dict[str, Any],
+    storage: StorageService,
+) -> dict[str, Any] | None:
+    """Return latest chapter metadata that the public reader can actually load."""
+    translated_ids = set(storage.list_translated_chapters(novel_id))
+    if not translated_ids:
+        return None
+
+    latest: dict[str, Any] | None = None
+    for index, chapter in enumerate(metadata_chapters(meta)):
+        chapter_id = str(chapter.get("id", "")).strip()
+        if not chapter_id or chapter_id not in translated_ids:
+            continue
+        translated = storage.load_translated_chapter(novel_id, chapter_id)
+        if translated is None or not isinstance(translated.get("text"), str):
+            continue
+        latest = {
+            "id": chapter_id,
+            "number": chapter.get("num") or (index + 1),
+            "title": _optional_str(chapter.get("translated_title")) or _optional_str(chapter.get("title")),
+            "updated_at": _optional_str(translated.get("translated_at")) or _optional_str(translated.get("created_at")),
+        }
+
+    return latest
+
+
 def _novel_summary(
     novel_id: str,
     meta: dict[str, Any],
@@ -147,6 +179,7 @@ def _novel_summary(
     source_title: str | None = None
     if translated_title and original_title and translated_title != original_title:
         source_title = original_title
+    latest_chapter = _latest_translated_chapter(novel_id, meta, storage)
 
     return PublicNovelSummary(
         novel_id=novel_id,
@@ -160,6 +193,10 @@ def _novel_summary(
         chapter_count=chapter_count,
         translated_count=translated_count,
         added_at=_novel_added_at(meta),
+        latest_chapter_id=latest_chapter.get("id") if latest_chapter else None,
+        latest_chapter_number=latest_chapter.get("number") if latest_chapter else None,
+        latest_chapter_title=latest_chapter.get("title") if latest_chapter else None,
+        latest_chapter_updated_at=latest_chapter.get("updated_at") if latest_chapter else None,
         genres=genres or [],
         tags=tags or [],
     )
