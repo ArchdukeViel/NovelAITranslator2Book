@@ -39,6 +39,8 @@ class NovelRequestStatusRequest(BaseModel):
     status: str
     reviewed_by: str | None = None
     notes: str | None = None
+    rejection_reason: str | None = None
+    approved_novel_id: int | None = None
 
 
 class SourceCandidateCreateRequest(BaseModel):
@@ -75,6 +77,13 @@ def _novel_slug(novel_id: int | None, session: Session) -> str | None:
     return novel.slug if novel else None
 
 
+def _get_novel_by_id(novel_id: int, session: Session) -> Novel:
+    novel = session.get(Novel, novel_id)
+    if novel is None:
+        raise HTTPException(status_code=404, detail="Approved novel not found")
+    return novel
+
+
 def _request_response(item: NovelRequest, session: Session) -> dict[str, Any]:
     request_id = str(item.id)
     return {
@@ -88,7 +97,11 @@ def _request_response(item: NovelRequest, session: Session) -> dict[str, Any]:
         "slug": _novel_slug(item.novel_id, session),
         "chapter_id": None,
         "created_at": item.created_at,
+        "updated_at": item.updated_at,
         "resolved_at": item.resolved_at,
+        "rejection_reason": item.rejection_reason,
+        "approved_novel_id": item.approved_novel_id,
+        "approved_slug": _novel_slug(item.approved_novel_id, session),
     }
 
 
@@ -165,8 +178,22 @@ async def update_novel_request_status(
     item.status = status
     if status == NovelRequestStatus.PENDING.value:
         item.resolved_at = None
+        item.rejection_reason = None
+        item.approved_novel_id = None
     elif status in _RESOLVED_STATUSES:
         item.resolved_at = item.resolved_at or _utcnow()
+        if status == NovelRequestStatus.REJECTED.value:
+            item.rejection_reason = body.rejection_reason.strip() if body.rejection_reason else None
+            item.approved_novel_id = None
+        elif status == NovelRequestStatus.APPROVED.value:
+            item.rejection_reason = None
+            if body.approved_novel_id is not None:
+                item.approved_novel_id = _get_novel_by_id(body.approved_novel_id, session).id
+        elif status == NovelRequestStatus.RELEASED.value:
+            item.rejection_reason = None
+            if body.approved_novel_id is not None:
+                item.approved_novel_id = _get_novel_by_id(body.approved_novel_id, session).id
+    item.updated_at = _utcnow()
     session.flush()
     return _request_response(item, session)
 

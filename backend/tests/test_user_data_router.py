@@ -372,8 +372,26 @@ class TestRequestContract:
         assert created.status_code == 201
         assert duplicate.status_code == 201
         assert duplicate.json()["id"] == created.json()["id"]
-        assert_keys(created.json(), {"id", "request_type", "status", "source_url", "slug", "chapter_id", "created_at"})
+        assert_keys(
+            created.json(),
+            {
+                "id",
+                "request_type",
+                "status",
+                "source_url",
+                "slug",
+                "chapter_id",
+                "created_at",
+                "updated_at",
+                "rejection_reason",
+                "approved_novel_id",
+                "approved_slug",
+            },
+        )
         assert created.json()["status"] == "pending"
+        assert created.json()["updated_at"] is not None
+        assert created.json()["rejection_reason"] is None
+        assert created.json()["approved_novel_id"] is None
 
         listed = client.get("/api/user/requests")
         assert listed.status_code == 200
@@ -403,6 +421,16 @@ class TestRequestContract:
         assert client.post(
             "/api/user/requests",
             json={"request_type": "novel", "source_url": "https://example.com/novel", "user_id": 1},
+            headers=headers,
+        ).status_code == 422
+        assert client.post(
+            "/api/user/requests",
+            json={
+                "request_type": "novel",
+                "source_url": "https://example.com/novel",
+                "rejection_reason": "not allowed",
+                "approved_novel_id": seeded_catalog["novel"].id,
+            },
             headers=headers,
         ).status_code == 422
 
@@ -443,6 +471,9 @@ class TestRequestContract:
         assert items[0]["request_type"] == "novel"
         assert items[0]["status"] == "pending"
         assert items[0]["source_url"] == "https://example.com/novel"
+        assert items[0]["updated_at"] is not None
+        assert items[0]["rejection_reason"] is None
+        assert items[0]["approved_novel_id"] is None
 
     def test_admin_gets_and_updates_request_status_public_history_reflects_change(
         self,
@@ -457,6 +488,7 @@ class TestRequestContract:
             headers=csrf_headers(client),
         )
         request_id = created.json()["id"]
+        created_updated_at = created.json()["updated_at"]
 
         set_user(app, 999, role="owner")
         detail = client.get(f"/api/admin/requests/{request_id}")
@@ -468,6 +500,8 @@ class TestRequestContract:
         assert updated.status_code == 200
         assert updated.json()["status"] == "approved"
         assert updated.json()["resolved_at"] is not None
+        assert updated.json()["updated_at"] is not None
+        assert updated.json()["updated_at"] != created_updated_at
 
         set_user(app, 42)
         history = client.get("/api/user/requests")
@@ -491,6 +525,64 @@ class TestRequestContract:
         assert reopened.status_code == 200
         assert reopened.json()["status"] == "pending"
         assert reopened.json()["resolved_at"] is None
+        assert reopened.json()["rejection_reason"] is None
+
+    def test_admin_rejects_request_with_reason_visible_to_owner_public_user(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        created = client.post(
+            "/api/user/requests",
+            json={"request_type": "novel", "source_url": "https://example.com/novel"},
+            headers=csrf_headers(client),
+        )
+        request_id = created.json()["id"]
+
+        set_user(app, 999, role="owner")
+        rejected = client.patch(
+            f"/api/admin/requests/{request_id}",
+            json={"status": "rejected", "rejection_reason": "Source page is not readable yet."},
+        )
+        assert rejected.status_code == 200
+        assert rejected.json()["status"] == "rejected"
+        assert rejected.json()["rejection_reason"] == "Source page is not readable yet."
+        assert rejected.json()["approved_novel_id"] is None
+
+        set_user(app, 42)
+        history = client.get("/api/user/requests")
+        assert history.status_code == 200
+        assert history.json()["items"][0]["status"] == "rejected"
+        assert history.json()["items"][0]["rejection_reason"] == "Source page is not readable yet."
+
+        set_user(app, 999, role="owner")
+        approved = client.patch(
+            f"/api/admin/requests/{request_id}",
+            json={"status": "approved", "approved_novel_id": seeded_catalog["novel"].id},
+        )
+        assert approved.status_code == 200
+        assert approved.json()["status"] == "approved"
+        assert approved.json()["rejection_reason"] is None
+        assert approved.json()["approved_novel_id"] == seeded_catalog["novel"].id
+        assert approved.json()["approved_slug"] == "test-novel"
+
+        set_user(app, 42)
+        approved_history = client.get("/api/user/requests")
+        assert approved_history.json()["items"][0]["approved_novel_id"] == seeded_catalog["novel"].id
+        assert approved_history.json()["items"][0]["approved_slug"] == "test-novel"
+
+    def test_admin_approval_missing_linked_novel_fails_safely(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        created = client.post(
+            "/api/user/requests",
+            json={"request_type": "novel", "source_url": "https://example.com/novel"},
+            headers=csrf_headers(client),
+        )
+        request_id = created.json()["id"]
+
+        set_user(app, 999, role="owner")
+        resp = client.patch(
+            f"/api/admin/requests/{request_id}",
+            json={"status": "approved", "approved_novel_id": 999},
+        )
+        assert resp.status_code == 404
 
     @pytest.mark.parametrize(
         ("role", "expected"),
@@ -506,6 +598,14 @@ class TestRequestContract:
         assert client.get("/api/admin/requests").status_code == expected
         assert client.get("/api/admin/requests/1").status_code == expected
         assert client.patch("/api/admin/requests/1", json={"status": "approved"}).status_code == expected
+        assert client.patch(
+            "/api/admin/requests/1",
+            json={
+                "status": "rejected",
+                "rejection_reason": "Nope",
+                "approved_novel_id": seeded_catalog["novel"].id,
+            },
+        ).status_code == expected
 
     def test_admin_request_missing_id_and_invalid_status(self, app, client, seeded_catalog) -> None:
         set_user(app, 999, role="owner")
