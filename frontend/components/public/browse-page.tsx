@@ -356,32 +356,23 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
 
   // ---- Genre handlers ----
 
-  function handleGenreInclude(slug: string) {
+  /** Tri-state genre click: neutral → include → exclude → neutral */
+  function handleGenreClick(slug: string) {
     const nextInclude = new Set(genreIncludeSet);
     const nextExclude = new Set(genreExcludeSet);
-    if (nextInclude.has(slug)) {
-      nextInclude.delete(slug);
-    } else {
-      nextInclude.add(slug);
-      nextExclude.delete(slug); // mutually exclusive
-    }
-    pushParams({
-      ...params,
-      genre_include: serializeSet(nextInclude),
-      genre_exclude: serializeSet(nextExclude),
-      page: 1,
-    });
-  }
 
-  function handleGenreExclude(slug: string) {
-    const nextInclude = new Set(genreIncludeSet);
-    const nextExclude = new Set(genreExcludeSet);
-    if (nextExclude.has(slug)) {
+    if (nextInclude.has(slug)) {
+      // include → exclude
+      nextInclude.delete(slug);
+      nextExclude.add(slug);
+    } else if (nextExclude.has(slug)) {
+      // exclude → neutral
       nextExclude.delete(slug);
     } else {
-      nextExclude.add(slug);
-      nextInclude.delete(slug); // mutually exclusive
+      // neutral → include
+      nextInclude.add(slug);
     }
+
     pushParams({
       ...params,
       genre_include: serializeSet(nextInclude),
@@ -623,7 +614,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
             {/* Genre filters */}
             <div className="mt-5 border-t border-border/40 pt-4">
               <p className="mb-3 font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                Genre filters
+                Genres
               </p>
 
               {genresPending && (
@@ -645,56 +636,37 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
               )}
 
               {genresData && genresData.length > 0 && (
-                <div className="space-y-3">
-                  {/* Include */}
-                  <div>
-                    <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                      <PlusCircle className="h-3.5 w-3.5" />
-                      Must include
-                    </p>
-                    <div className="flex flex-wrap gap-1.5" role="group" aria-label="Include genres">
-                      {genresData.map((genre) => (
-                        <button
-                          key={genre.slug}
-                          type="button"
-                          onClick={() => handleGenreInclude(genre.slug)}
-                          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                            genreIncludeSet.has(genre.slug)
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-secondary text-secondary-foreground hover:bg-muted"
-                          }`}
-                          aria-pressed={genreIncludeSet.has(genre.slug)}
-                        >
-                          {genre.name_en ?? genre.slug}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Exclude */}
-                  <div>
-                    <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                      <MinusCircle className="h-3.5 w-3.5" />
-                      Exclude
-                    </p>
-                    <div className="flex flex-wrap gap-1.5" role="group" aria-label="Exclude genres">
-                      {genresData.map((genre) => (
-                        <button
-                          key={genre.slug}
-                          type="button"
-                          onClick={() => handleGenreExclude(genre.slug)}
-                          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                            genreExcludeSet.has(genre.slug)
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Genre filters">
+                  {genresData.map((genre) => {
+                    const state = genreIncludeSet.has(genre.slug)
+                      ? "include"
+                      : genreExcludeSet.has(genre.slug)
+                        ? "exclude"
+                        : "neutral";
+                    const stateLabel =
+                      state === "include"
+                        ? `${genre.name_en ?? genre.slug}: included`
+                        : state === "exclude"
+                          ? `${genre.name_en ?? genre.slug}: excluded`
+                          : `${genre.name_en ?? genre.slug}: not selected`;
+                    return (
+                      <button
+                        key={genre.slug}
+                        type="button"
+                        onClick={() => handleGenreClick(genre.slug)}
+                        aria-label={stateLabel}
+                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                          state === "include"
+                            ? "bg-primary text-primary-foreground"
+                            : state === "exclude"
                               ? "bg-destructive/80 text-destructive-foreground"
                               : "bg-secondary text-secondary-foreground hover:bg-muted"
-                          }`}
-                          aria-pressed={genreExcludeSet.has(genre.slug)}
-                        >
-                          {genre.name_en ?? genre.slug}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                        }`}
+                      >
+                        {genre.name_en ?? genre.slug}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
