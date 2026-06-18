@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -21,6 +21,10 @@ import HomePage from "@/app/(public)/home/page";
 
 const mocks = vi.hoisted(() => ({
   catalogQuery: vi.fn(),
+  authState: {
+    isAuthenticated: false,
+    user: null as { email?: string | null } | null,
+  },
 }));
 
 vi.mock("@/hooks/public", async () => {
@@ -30,12 +34,31 @@ vi.mock("@/hooks/public", async () => {
   return {
     ...actual,
     usePublicAuth: () => ({
-      isAuthenticated: false,
+      isAuthenticated: mocks.authState.isAuthenticated,
       isPending: false,
-      isPublicUser: false,
+      isPublicUser: mocks.authState.isAuthenticated,
       isOwner: false,
-      authState: null,
-      user: null,
+      authState: mocks.authState.isAuthenticated
+        ? {
+            status: "authenticated",
+            user: {
+              user_id: 1,
+              email: mocks.authState.user?.email ?? "reader@example.com",
+              role: "user",
+              is_authenticated: true,
+              is_owner: false,
+            },
+          }
+        : null,
+      user: mocks.authState.isAuthenticated
+        ? {
+            user_id: 1,
+            email: mocks.authState.user?.email ?? "reader@example.com",
+            role: "user",
+            is_authenticated: true,
+            is_owner: false,
+          }
+        : null,
     }),
     useLibraryItem: () => ({ data: undefined, isPending: false }),
     useAddToLibrary: () => ({ mutate: vi.fn(), isPending: false }),
@@ -71,6 +94,8 @@ beforeEach(() => {
     defaultOptions: { queries: { retry: false } },
   });
   vi.clearAllMocks();
+  mocks.authState.isAuthenticated = false;
+  mocks.authState.user = null;
 });
 
 afterEach(() => {
@@ -264,6 +289,97 @@ describe("HomePage real data rendering", () => {
     expect(screen.getByText("View Details")).toBeInTheDocument();
   });
 
+  it("renders distinct source_title in the hero", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          makeNovel({
+            title: "Translated Hero",
+            source_title: "原作タイトル",
+          }),
+        ],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    const hero = screen.getByLabelText("Featured Dokushodo novel");
+    expect(within(hero).getByRole("heading", { level: 1, name: "Translated Hero" })).toBeInTheDocument();
+    expect(within(hero).getByText("原作タイトル")).toBeInTheDocument();
+  });
+
+  it("hides source_title in the hero when missing or same as title", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          makeNovel({
+            title: "Same Title",
+            source_title: "Same Title",
+          }),
+        ],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    const hero = screen.getByLabelText("Featured Dokushodo novel");
+    expect(within(hero).getAllByText("Same Title")).toHaveLength(1);
+    expect(screen.queryByText("Original Japanese Title")).not.toBeInTheDocument();
+  });
+
+  it("renders synopsis snippet in the hero when present", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          makeNovel({
+            synopsis: "  A quiet source synopsis from the catalog summary.  ",
+          }),
+        ],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    expect(screen.getByText("A quiet source synopsis from the catalog summary.")).toBeInTheDocument();
+    expect(screen.queryByText("Synopsis unavailable for this novel.")).not.toBeInTheDocument();
+  });
+
+  it("shows hero synopsis fallback only when synopsis is missing or blank", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [makeNovel({ synopsis: "   " })],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    expect(screen.getByText("Synopsis unavailable for this novel.")).toBeInTheDocument();
+  });
+
   it("renders Recently Added section with catalog novels", () => {
     mocks.catalogQuery.mockReturnValue({
       data: {
@@ -335,6 +451,68 @@ describe("HomePage real data rendering", () => {
       screen.getByText(/Browse the full catalog/i)
     ).toBeInTheDocument();
     expect(screen.getByText("Browse the catalog")).toBeInTheDocument();
+  });
+
+  it("renders normal-state request CTA", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [makeNovel()],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    expect(screen.getByRole("heading", { level: 2, name: "Request a novel" })).toBeInTheDocument();
+    const requestLink = screen.getByRole("link", { name: /open request form/i });
+    expect(requestLink).toHaveAttribute("href", "/request-novel");
+  });
+
+  it("renders signed-out account prompt", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [makeNovel()],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    expect(screen.getByRole("heading", { level: 2, name: "Save your reading state" })).toBeInTheDocument();
+    expect(screen.getByText(/keep a library, reading history, and chapter progress/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^sign in/i })).toHaveAttribute("href", "/login");
+  });
+
+  it("renders signed-in account links", () => {
+    mocks.authState.isAuthenticated = true;
+    mocks.authState.user = { email: "reader@example.com" };
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [makeNovel()],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    expect(screen.getByRole("heading", { level: 2, name: "Your reading shelf" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open library/i })).toHaveAttribute("href", "/account/library");
+    expect(screen.getByRole("link", { name: /reading history/i })).toHaveAttribute("href", "/account/history");
   });
 });
 
@@ -481,6 +659,28 @@ describe("HomePage copy polish", () => {
 
     expect(screen.queryByText(/ranking data is not live/i)).not.toBeInTheDocument();
   });
+
+  it("does not render fake metric or community language", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [makeNovel()],
+        total: 1,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    expect(screen.queryByText(/\d+\s*views/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\d+\s*readers/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/trending/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/leaderboard/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/community/i)).not.toBeInTheDocument();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -511,8 +711,8 @@ describe("HomePage source_title rendering", () => {
     // Display title appears in hero h1 + rows
     const heroTitles = screen.getAllByText("Translated Title");
     expect(heroTitles.length).toBeGreaterThanOrEqual(1);
-    // source_title appears in the LatestUpdateRow
-    expect(screen.getByText("Original Japanese Title")).toBeInTheDocument();
+    // source_title appears in the hero and the LatestUpdateRow
+    expect(screen.getAllByText("Original Japanese Title").length).toBeGreaterThanOrEqual(2);
   });
 
   it("does not render source_title when it is null", () => {
