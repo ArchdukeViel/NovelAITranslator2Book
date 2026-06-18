@@ -3,14 +3,15 @@
 ## 0. Status
 
 **Status**: design contract, largely implemented
-**Last reviewed**: 2026-06-17 (frontend consistency refresh)
+**Last reviewed**: 2026-06-18 (public email/password auth sync)
 **Authority**: subordinate to `docs/architecture/architecture.md`
 
 This document defines the target contract for public user authentication and
-user-owned public reader features. The Google OAuth backend, public auth
-frontend plumbing, `/api/user/*` contract alignment, library/progress/history
-UI, reviews/ratings and requests UI, CSRF enforcement, and rate limiting have
-been implemented. Contribution credentials remain gated and unavailable.
+user-owned public reader features. The Google OAuth backend, email/password
+backend auth, public auth frontend plumbing, `/api/user/*` contract alignment,
+library/progress/history UI, reviews/ratings and requests UI, CSRF enforcement,
+and rate limiting have been implemented. Contribution credentials remain gated
+and unavailable.
 
 ## 1. Current Repository State
 
@@ -19,28 +20,31 @@ been implemented. Contribution credentials remain gated and unavailable.
 | Owner bootstrap auth | `backend/src/novelai/api/routers/auth.py` | `POST /api/auth/login` accepts an owner bootstrap secret only. It is not public login. |
 | Session cookie behavior | `backend/src/novelai/api/app.py`, `backend/src/novelai/api/auth/session.py` | `SessionMiddleware` stores `novelai_session` with `same_site="lax"` and `https_only` in production. Session stores `user_id`, `email`, and `role`. |
 | Role support | `backend/src/novelai/api/auth/roles.py` | `guest < user < owner`; `require_role("user")` allows users and owner, guests receive 401. |
-| User DB model | `backend/src/novelai/db/models/users.py` | `User` has `email`, `display_name`, `role`, `auth_provider`, `auth_provider_subject`, `is_active`, timestamps. |
+| User DB model | `backend/src/novelai/db/models/users.py` | `User` has `email`, `display_name`, `password_hash`, `role`, `auth_provider`, `auth_provider_subject`, `is_active`, timestamps. |
 | OAuth model support | `backend/src/novelai/db/models/users.py`, `backend/src/novelai/api/auth/google_oauth.py` | Provider and subject fields exist. Google OAuth client and routes (`/api/auth/google/start`, `/api/auth/google/callback`) are implemented. |
 | User data endpoints | `backend/src/novelai/api/routers/user_data.py` | `/api/user/library`, `/progress`, `/history`, `/reviews`, and `/requests` exist behind `require_role("user")`. |
-| Backend tests | `backend/tests/test_auth.py`, `backend/tests/test_user_data_router.py` | Owner session, role guards, no public signup/JWT route, and basic user-data endpoint behavior are tested. |
-| Public auth frontend | `frontend/lib/public-api.ts`, `frontend/hooks/public/use-auth.ts` | Public client exposes `authApi.me`, `authApi.logout`, `authApi.csrf`, and `authApi.googleStart`. No `/api/auth/login` call from public UI. |
+| Backend tests | `backend/tests/test_auth.py`, `backend/tests/test_user_data_router.py` | Owner session, role guards, public email/password auth, OAuth protections, and basic user-data endpoint behavior are tested. |
+| Public auth frontend | `frontend/lib/public-api.ts`, `frontend/hooks/public/use-auth.ts` | Public client exposes `authApi.me`, `authApi.logout`, `authApi.csrf`, `authApi.googleStart`, public email/password sign-in, and public sign-up. No `/api/auth/login` call from public UI. |
 | Public user frontend | `frontend/hooks/public/index.ts`, `frontend/lib/public-api.ts` | Guest reader hooks and `/api/user/*` public client methods for library, progress, history, reviews, and requests are re-exported and active. |
-| Public UI gates | `frontend/components/public/*`, `frontend/app/(public)/account/*` | Login uses Google OAuth. Library, progress, history, reviews, and requests UI are active for authenticated users. Contribution UI remains gated/unavailable. |
+| Public UI gates | `frontend/components/public/*`, `frontend/app/(public)/account/*` | Login uses Google OAuth plus email/password sign-in/sign-up. Library, progress, history, reviews, and requests UI are active for authenticated users. Contribution UI remains gated/unavailable. |
 
 ## 2. Public Auth Model
 
-**Decision for v1**: Google OAuth first; email/password later.
+**Decision for v1**: Public auth supports Google OAuth plus email/password
+sign-in/sign-up. Password reset and email verification are not implemented yet.
 
 Rules:
 
 - Public users use the same HTTP-only session mechanism as the owner session.
-- Public OAuth creates or resumes `role="user"` sessions only.
-- The owner remains separate. Public OAuth must never create or promote an
-  owner account.
-- No public self-register password flow in v1.
+- Public OAuth and email/password auth create or resume `role="user"` sessions
+  only.
+- The owner remains separate. Public auth must never create or promote an owner
+  account.
 - `/api/auth/login` remains owner bootstrap login only. Public UI must never
   call it.
-- Public auth uses separate OAuth endpoints.
+- Public auth uses separate OAuth and email/password endpoints.
+- Public auth UI must not expose owner, admin, secret, or bootstrap wording.
+- Google OAuth requires Dokushodo OAuth configuration.
 
 ### Endpoint Contract
 
@@ -48,6 +52,8 @@ Rules:
 |---|---|---|---|---|---|
 | `/api/auth/google/start` | GET | Guest | Query: optional `next` relative path | `302` to Google OAuth consent | Sets signed `oauth_state`, nonce, and optional safe return path in session. |
 | `/api/auth/google/callback` | GET | Guest | Query: `code`, `state` | `302` to safe frontend path | Validates state/nonce, exchanges code server-side, upserts/resumes user, sets session. |
+| `/api/auth/register` | POST | Guest | `{ "email": string, "password": string, "display_name"?: string }` | `AuthUser` user on success | Creates a public `role="user"` session only; duplicate email fails safely. |
+| `/api/auth/password/login` | POST | Guest | `{ "email": string, "password": string }` | `AuthUser` user on success | Uses generic failure errors and never authenticates owner bootstrap. |
 | `/api/auth/logout` | POST | Any | Empty body | `{ "status": "logged_out" }` | Clears any guest/user/owner session. Existing endpoint may be reused. |
 | `/api/auth/me` | GET | Any | None | `AuthUser` | Existing endpoint returns guest, user, or owner session. |
 | `/api/auth/login` | POST | Owner bootstrap only | `{ "secret": string }` | `AuthUser` owner on success | Must remain hidden from public UI; consider renaming later only in a dedicated owner-auth migration. |
@@ -86,9 +92,10 @@ Guest response remains:
 - Google OAuth login links to an existing account only when the provider subject
   already matches or when a verified email matches an existing non-owner user
   without another provider link.
-- Public OAuth must not link to or create the owner account.
-- Public users cannot become owner/admin through OAuth, request payloads, or
-  frontend flags.
+- Public OAuth and email/password auth must not link to or create the owner
+  account.
+- Public users cannot become owner/admin through OAuth, password registration,
+  request payloads, or frontend flags.
 - Anonymous guests have no server-side saved user data. Guest reading remains
   available without login.
 - Library items, progress, history, reviews, and public requests belong to the
@@ -194,15 +201,15 @@ schema migration and must not be faked.
 The following plan has been largely followed through phases B1–B6. Remaining
 items are noted inline.
 
-1. Add public auth methods to `frontend/lib/public-api.ts` only after OAuth
-   endpoints exist: `authApi.googleStart`, `authApi.me`, `authApi.logout`,
-   and `authApi.csrf`.
+1. Add public auth methods to `frontend/lib/public-api.ts` only after auth
+   endpoints exist: `authApi.googleStart`, public password login/register,
+   `authApi.me`, `authApi.logout`, and `authApi.csrf`.
 2. Add public user methods to `frontend/lib/public-api.ts` only after
    `/api/user/*` response shapes are tested.
 3. Re-export hooks from `frontend/hooks/public/index.ts` only when their
    corresponding API contracts are live.
-4. Replace unavailable login dialogs with Google login entry points only after
-   `/api/auth/google/start` and callback tests pass.
+4. Replace unavailable login dialogs with Google and email/password login entry
+   points only after their backend tests pass.
 5. Preserve guest catalog, novel detail, and reader behavior when unauthenticated.
 6. Account pages should show unavailable or guest-safe states until the relevant
    user feature phase lands.
@@ -221,11 +228,14 @@ items are noted inline.
 - Redirect URIs: allow only configured backend callback URLs and safe relative
   frontend return paths. Reject open redirects.
 - Account takeover: never link OAuth accounts on unverified email; never link a
-  public OAuth identity to the owner account.
-- Rate limits: login start/callback, review creation/update, request creation,
-  and history writes need limits.
-- Login abuse: log failed OAuth callbacks without raw tokens; cap repeated
-  attempts per IP/session.
+  public OAuth or password identity to the owner account.
+- Password storage: never store plaintext passwords; password hashes must use a
+  maintained password hashing library with salts/parameters embedded.
+- Rate limits: login start/callback, password login/register, review
+  creation/update, request creation, and history writes need limits.
+- Login abuse: log failed OAuth callbacks and password login attempts without
+  raw tokens, passwords, or password hashes; cap repeated attempts per
+  IP/session.
 - Privacy: reading history is private to the owning user and owner only through
   deliberate admin/audit surfaces, not public endpoints.
 - Review spam: cap write frequency, length, duplicate content, and moderation
@@ -238,10 +248,13 @@ items are noted inline.
 
 ## 7. Implementation Phases
 
-> **Status update (doc audit 2026-06-15)**: Phases B1–B6 have been implemented.
-> Google OAuth backend, public auth frontend, `/api/user/*` contract alignment,
-> library/progress/history/reviews/requests UI re-enable, and security
-> hardening (CSRF, rate limits, session secret fail-closed) are complete.
+> **Status update (doc audit 2026-06-18)**: Phases B1-B6 plus
+> AUTH-EMAIL-BACKEND-1, AUTH-EMAIL-FRONTEND-1, AUTH-ADMIN-OWNER-LOGIN-1, and
+> AUTH-SMOKE-1 have passed. Google OAuth backend, email/password backend auth,
+> public auth frontend, admin-only owner login, `/api/user/*` contract
+> alignment, library/progress/history/reviews/requests UI re-enable, and
+> security hardening (CSRF, rate limits, session secret fail-closed) are
+> complete.
 
 ### Phase B1 - Backend OAuth Foundation ✅
 
@@ -255,7 +268,6 @@ Forbidden:
 
 - Do not alter owner bootstrap semantics.
 - Do not add frontend user actions.
-- Do not implement email/password login.
 
 Validation:
 
@@ -292,7 +304,8 @@ Scope:
 
 - Add OAuth start/logout/me methods through `frontend/lib/public-api.ts`.
 - Add public auth hooks.
-- Replace unavailable login dialog with Google login only after backend tests pass.
+- Replace unavailable login dialog with Google and email/password login only
+  after backend tests pass.
 
 Forbidden:
 
@@ -379,10 +392,11 @@ git diff --check
 ## 8. Remaining Guardrails
 
 - Do not route public login through owner bootstrap `/api/auth/login`. Public
-  login must use Google OAuth only.
+  login must use Google OAuth or email/password public auth endpoints only.
 - Do not implement contributed credentials in the public-auth phase.
 - Do not build community features before moderation exists.
 - Do not add fake endpoints to satisfy UI.
 - Do not accept client-supplied `user_id` for user-owned data.
-- Do not create or promote owner accounts through public OAuth.
-- Do not add email/password self-registration in v1.
+- Do not create or promote owner accounts through public OAuth or
+  email/password registration.
+- Do not add password reset or email verification until a dedicated phase.

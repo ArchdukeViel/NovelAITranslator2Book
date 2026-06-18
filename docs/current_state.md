@@ -1,11 +1,25 @@
 # NovelAI Current State
 
-**Last updated**: 2026-06-18 (post-SOURCE-SMOKE-1)
+**Last updated**: 2026-06-18 (post-AUTH-SMOKE-1)
 **Source of truth**: `docs/architecture/architecture.md`
 
 ## Verdict
 
-**PASS** — Core platform operational. Database migrated to PostgreSQL 16. Google OAuth public login implemented. Public user features (library, progress, history, reviews, requests) re-enabled with CSRF and rate-limit hardening.
+**PASS** — Core platform operational. Database migrated to PostgreSQL 16. Public auth supports Google OAuth plus email/password sign-up, sign-in, and sign-out. Owner bootstrap login is admin-only and separate from public auth. Public user features (library, progress, history, reviews, requests) remain enabled with CSRF and rate-limit hardening.
+
+---
+
+## Auth State
+
+- Email/password backend auth is complete for public sign-up and sign-in.
+- Email/password public UI is complete alongside Google OAuth.
+- Public auth supports Google OAuth plus email/password; Google OAuth requires Dokushodo OAuth configuration.
+- Public sign-up/sign-in creates and uses normal public user sessions only (`role="user"`), never owner sessions.
+- Owner bootstrap login is admin-only at `POST /api/auth/login` and is separate from public sign-in/sign-up.
+- Public auth UI must not expose owner, admin, secret, or bootstrap wording.
+- Password reset is not implemented yet.
+- Email verification is not implemented yet.
+- Auth smoke passed after the backend, public frontend, and admin-owner-login auth phases.
 
 ---
 
@@ -25,7 +39,7 @@
 | Provider errors | ✅ | `ProviderError` / `ProviderErrorCode` classification, API error mapping |
 || PostgreSQL database | ✅ | Supabase PostgreSQL 16, 12 ORM models, Alembic migrations applied |
 || Redis/RQ workers | ✅ | Background crawl and translation jobs |
-| Authentication | ✅ | HTTP-only sessions, guest/user/owner roles, `require_role()` dependency |
+| Authentication | ✅ | HTTP-only sessions, guest/user/owner roles, `require_role()` dependency; public Google OAuth plus email/password auth implemented |
 || Public catalog API | ✅ | `/api/public/*` — browse, search, read published chapters; `PublicNovelSummary` includes `source_title` and `synopsis` |
 || Public taxonomy contract | ✅ | Genre/tag display labels, adult filtering internal via ORM, `is_adult` stripped from public API responses |
 | Public frontend polish | ✅ | Loading/error/empty states, SEO, trust pages, auth UX, account honesty, de-AI copy; catalog summary enrichment (source_title, synopsis) |
@@ -42,7 +56,7 @@
 || Alembic migrations | ✅ | Applied — `bb48b53baff5_initial_schema` on Supabase |
 || Data migration script | ✅ | `backend/src/novelai/scripts/migrate_file_to_db.py` — 1 novel, 12 chapters migrated |
 || Object storage boundary | ⚠️ | Authorized for v1, not yet implemented |
-|| Google OAuth | ✅ | Backend routes (`/api/auth/google/start`, `/api/auth/google/callback`), frontend login view, and auth hooks implemented |
+|| Public auth | ✅ | Google OAuth plus email/password backend routes, frontend login/sign-up UI, and auth hooks implemented |
 | Public user features | ✅ | Library, progress, history, reviews/ratings, requests frontend hooks re-enabled |
 | Security hardening | ✅ | CSRF enforcement, public rate limits, production session secret fail-closed |
 
@@ -52,6 +66,8 @@
 |-----------|--------|--------|
 | Public contribution credentials | 🚫 | Later gated phase (architecture.md §13) |
 | Encrypted credential storage | 🚫 | Depends on contribution phase |
+| Password reset | 🚫 | Not implemented yet |
+| Email verification | 🚫 | Not implemented yet |
 | Batch mode | 🚫 | Not prioritized |
 | Billing, organizations, multi-admin | 🚫 | Out of scope for v1 |
 
@@ -75,6 +91,8 @@ Frontend: 411 tests pass (vitest, 2026-06-17)
   - 40 test files
   - taxonomy-contract.test.tsx: 9 passed
   - browse-page.test.tsx: 42 passed
+
+Auth smoke: PASS (2026-06-18) after email/password backend, public auth UI, and admin-owner-login phases. Public auth smoke confirmed sign-up/sign-in/sign-out, safe failures, duplicate-email handling, Google unavailable messaging, admin-only owner login, and the public auth boundary.
 ```
 
 **CI gates**: pytest + pyright on Python 3.13 only
@@ -107,7 +125,7 @@ Frontend: 411 tests pass (vitest, 2026-06-17)
 ## ORM Models (14 total)
 
 **User domain**:
-- `User` — email, role (guest/user/owner), auth_provider, auth_provider_subject
+- `User` — email, password_hash, role (guest/user/owner), auth_provider, auth_provider_subject
 - `LibraryItem` — user_id + novel_id composite key
 - `ReadingProgress` — user_id + novel_id composite key
 - `ReadingHistory` — read log per chapter
@@ -154,11 +172,15 @@ Frontend: 411 tests pass (vitest, 2026-06-17)
 - All `/api/admin/*` routes for crawl, translation, providers, settings, activity
 
 ### Auth
-- `POST /api/auth/login` — owner login (secret-based bootstrap)
-- `GET /api/auth/google/start` — start public Google OAuth login
-- `GET /api/auth/google/callback` — complete public Google OAuth login
+- `POST /api/auth/login` — admin-only owner login (secret-based bootstrap)
+- `POST /api/auth/register` — public email/password sign-up; creates normal `role="user"` sessions only
+- `POST /api/auth/password/login` — public email/password sign-in; uses normal public user sessions only
+- `GET /api/auth/google/start` — start public Google OAuth login; requires Dokushodo OAuth configuration
+- `GET /api/auth/google/callback` — complete public Google OAuth login; requires Dokushodo OAuth configuration
 - `POST /api/auth/logout` — clear session
 - `GET /api/auth/me` — current user info
+
+Public sign-up/sign-in must never create or expose owner/admin access and must not show owner, admin, secret, or bootstrap wording. Owner bootstrap remains separate from public sign-in/sign-up.
 
 ---
 
@@ -356,6 +378,9 @@ cd frontend && npm run dev                           # Admin UI
 - [x] Basic public rate limits (auth, user data, engagement)
 - [x] Production session secret fail-closed
 - [x] Google OAuth public login (separate from owner bootstrap)
+- [x] Email/password public sign-up and sign-in (separate from owner bootstrap)
+- [x] Admin-only owner bootstrap login surface
+- [x] Public auth UI boundary: no owner/admin/secret/bootstrap wording
 - [x] Public taxonomy contract hardened (no `is_adult` leakage)
 - [x] Adult taxonomy filtering internal-only (ORM `Genre.is_adult`, `Tag.is_adult`)
 - [x] Public catalog summary enrichment preserves adult safety (`source_title`/`synopsis` added, no `is_adult` reintroduced)
