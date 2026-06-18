@@ -90,4 +90,36 @@ describe("admin API CSRF wiring", () => {
     expect(mutationInit?.method).toBe("POST");
     expect(headers.get("X-CSRF-Token")).toBe("admin-csrf");
   });
+
+  it("keeps runActivity on the pending-only run endpoint", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ csrf_token: "admin-csrf" }))
+      .mockResolvedValueOnce(jsonResponse({ id: "activity-1", type: "crawl", kind: "chapters", novel_id: "novel-1", status: "completed", retry_count: 0 }));
+    const { api } = await loadApi();
+
+    await api.runActivity("activity-1");
+
+    const [, mutationInit] = fetchMock.mock.calls[1];
+    const headers = new Headers(mutationInit?.headers);
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/admin/activity/activity-1/run");
+    expect(mutationInit?.method).toBe("POST");
+    expect(headers.get("X-CSRF-Token")).toBe("admin-csrf");
+  });
+
+  it("sends X-CSRF-Token on explicit activity retry", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ csrf_token: "admin-csrf" }))
+      .mockResolvedValueOnce(jsonResponse({ id: "activity-1", type: "crawl", kind: "chapters", novel_id: "novel-1", status: "pending", retry_count: 2 }));
+    const { api } = await loadApi();
+
+    await api.retryActivity("activity-1");
+
+    const [, mutationInit] = fetchMock.mock.calls[1];
+    const headers = new Headers(mutationInit?.headers);
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/admin/activity/activity-1/retry");
+    expect(mutationInit?.method).toBe("POST");
+    expect(headers.get("X-CSRF-Token")).toBe("admin-csrf");
+  });
 });
