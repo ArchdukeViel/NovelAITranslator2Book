@@ -83,6 +83,8 @@ class Container:
 
     @property
     def requests(self) -> NovelRequestService:
+        # Deprecated legacy file-backed request service. Admin/public request
+        # moderation must use DB-backed NovelRequest rows instead.
         if self._requests is None:
             self._requests = NovelRequestService()
         return self._requests
