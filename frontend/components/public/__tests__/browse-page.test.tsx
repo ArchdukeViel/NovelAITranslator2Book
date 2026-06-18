@@ -173,9 +173,16 @@ describe("BrowsePage genre filter UI", () => {
     expect(genreGroup).toHaveTextContent("Fantasy");
     expect(genreGroup).not.toHaveTextContent("Must include");
     expect(genreGroup).not.toHaveTextContent("Exclude");
-    expect(screen.getByText("Tag filters")).toBeInTheDocument();
+    expect(screen.getByText("Tags")).toBeInTheDocument();
     expect(screen.getByText("Must include")).toBeInTheDocument();
-    expect(screen.getByText("Exclude")).toBeInTheDocument();
+    expect(screen.getAllByText("Exclude").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("explains the tri-state genre cycle without adding separate genre rows", () => {
+    renderPage();
+    openAdvancedSearch();
+    expect(screen.getByText("Click once to include. Click again to exclude.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Fantasy: not selected/i })).toBeInTheDocument();
   });
 
   it("shows loading/error/empty states", () => {
@@ -310,6 +317,10 @@ describe("BrowsePage tag filter UI", () => {
   it("shows tag search inputs inside advanced search", () => {
     renderPage();
     openAdvancedSearch();
+    expect(screen.getByText("Tags")).toBeInTheDocument();
+    expect(screen.getByText("Add required tags on the left, blocked tags on the right.")).toBeInTheDocument();
+    expect(screen.getByText("Required")).toBeInTheDocument();
+    expect(screen.getByText("Blocked")).toBeInTheDocument();
     const inputs = screen.getAllByPlaceholderText("Type to search tags…");
     expect(inputs.length).toBe(2);
   });
@@ -477,7 +488,7 @@ describe("BrowsePage tag filter UI", () => {
   it("advanced search opens automatically when tag params in URL", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("tag_include=isekai"));
     renderPage();
-    expect(screen.getByText("Tag filters")).toBeInTheDocument();
+    expect(screen.getByText("Tags")).toBeInTheDocument();
   });
 
   it("shows no-matching-tags state when search returns empty", async () => {
