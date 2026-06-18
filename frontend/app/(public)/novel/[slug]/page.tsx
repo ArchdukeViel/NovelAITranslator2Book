@@ -199,6 +199,9 @@ export default function NovelDetailPage() {
 
   const data = novel.data;
   const title = data.title || slug;
+  const synopsis = data.synopsis?.trim();
+  const sourceTitle = data.source_title?.trim();
+  const showSourceTitle = Boolean(sourceTitle && sourceTitle !== title);
   const sortedChapters = chapters.data
     ? sortChaptersAscending(chapters.data)
     : [];
@@ -232,6 +235,16 @@ export default function NovelDetailPage() {
             <p className="mt-3 text-base text-muted-foreground">
               {authorOrFallback(data.author)}
             </p>
+            {showSourceTitle && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                <span className="font-metadata text-xs uppercase tracking-[0.14em] text-accent">
+                  Source title
+                </span>{" "}
+                <span className="font-literary text-foreground">
+                  {sourceTitle}
+                </span>
+              </p>
+            )}
 
             <NovelMetadataRow
               className="mt-5"
@@ -326,7 +339,7 @@ export default function NovelDetailPage() {
             <SectionHeader
               eyebrow="Synopsis"
               title="About this story"
-              description="A source synopsis is not available for this novel."
+              description={synopsis || "Synopsis unavailable for this novel."}
             />
           </section>
 
