@@ -124,7 +124,7 @@ class KakuyomuSource(SourceAdapter):
 
     def _normalize_url(self, identifier_or_url: str) -> str:
         work_id = self.normalize_novel_id(identifier_or_url)
-        return f"https://kakuyomu.jp/works/{work_id.strip('/')}/"
+        return f"https://kakuyomu.jp/works/{work_id.strip('/')}"
 
     @staticmethod
     def _request_headers() -> dict[str, str]:

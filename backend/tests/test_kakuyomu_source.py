@@ -163,7 +163,7 @@ def test_parse_chapter_payload_extracts_image_metadata() -> None:
 async def test_fetch_metadata_normalizes_episode_url_to_work_root() -> None:
     source = KakuyomuSource()
     episode_url = "https://kakuyomu.jp/works/822139845959461179/episodes/822139845959540845"
-    work_url = "https://kakuyomu.jp/works/822139845959461179/"
+    work_url = "https://kakuyomu.jp/works/822139845959461179"
 
     async def fake_fetch_page(url: str) -> str:
         assert url == work_url
@@ -322,3 +322,30 @@ class TestKakuyomuHeaders:
         ua = headers["User-Agent"]
         # Should look like a real browser, not a bot
         assert "AppleWebKit" in ua or "Gecko" in ua
+
+
+# ---------------------------------------------------------------------------
+# URL canonicalization tests
+# ---------------------------------------------------------------------------
+
+
+class TestKakuyomuURLCanonicalization:
+    """KakuyomuSource must construct work URLs without trailing slashes."""
+
+    def test_normalize_url_has_no_trailing_slash(self) -> None:
+        source = KakuyomuSource()
+        url = source._normalize_url("822139845959461179")
+        assert url == "https://kakuyomu.jp/works/822139845959461179"
+        assert not url.endswith("/")
+
+    def test_normalize_url_strips_trailing_slash_from_input(self) -> None:
+        source = KakuyomuSource()
+        url = source._normalize_url("https://kakuyomu.jp/works/822139845959461179/")
+        assert url == "https://kakuyomu.jp/works/822139845959461179"
+
+    def test_normalize_url_handles_episode_input(self) -> None:
+        source = KakuyomuSource()
+        url = source._normalize_url(
+            "https://kakuyomu.jp/works/822139845959461179/episodes/822139845959540845"
+        )
+        assert url == "https://kakuyomu.jp/works/822139845959461179"

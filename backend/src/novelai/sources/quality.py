@@ -25,7 +25,7 @@ class QualityGateResult:
 
 _JAPANESE_SOURCE_KEYS = {"syosetu_ncode", "novel18_syosetu", "kakuyomu", "narou"}
 _BLOCK_PAGE_RE = re.compile(
-    r"(cloudflare|checking your browser|access denied|captcha|cf-ray|error\s+403|error\s+404|"
+    r"(cloudflare|checking your browser|access denied|(?<!re)captcha|cf-ray|error\s+403|error\s+404|"
     r"service unavailable|temporarily unavailable|enable javascript)",
     re.IGNORECASE,
 )
