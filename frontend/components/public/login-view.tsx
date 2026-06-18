@@ -1,34 +1,66 @@
 "use client";
 
 import { useState } from "react";
-import { LogIn, X } from "lucide-react";
+import { Loader2, LogIn, UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useLogin, useStartGoogleOAuth } from "@/hooks/public/use-auth";
+import {
+  usePasswordLogin,
+  useRegister,
+  useStartGoogleOAuth,
+} from "@/hooks/public/use-auth";
 
 interface LoginViewProps {
   onClose: () => void;
   onSuccess?: () => void;
 }
 
-type LoginMode = "google" | "owner";
+type EmailMode = "signin" | "signup";
+
+const MIN_PASSWORD_LENGTH = 10;
+
+function validateEmail(value: string): string | null {
+  const email = value.trim();
+  if (!email) {
+    return "Enter your email address.";
+  }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return "Enter a valid email address.";
+  }
+  return null;
+}
+
+function validatePassword(value: string): string | null {
+  if (!value) {
+    return "Enter your password.";
+  }
+  if (value.length < MIN_PASSWORD_LENGTH) {
+    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+  }
+  if (value.length > 256) {
+    return "Password must be 256 characters or fewer.";
+  }
+  return null;
+}
 
 /**
- * Login panel with Google OAuth sign-in and owner bootstrap login.
- * Shows benefit bullet list to give guests a clear reason to sign in.
+ * Public reader account panel with Google and email/password auth.
  */
 export function LoginView({ onClose, onSuccess }: LoginViewProps) {
-  const [mode, setMode] = useState<LoginMode>("google");
-  const [secret, setSecret] = useState("");
+  const [mode, setMode] = useState<EmailMode>("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [googleUnavailable, setGoogleUnavailable] = useState(false);
 
   const startGoogleOAuth = useStartGoogleOAuth();
-  const loginMutation = useLogin();
+  const passwordLogin = usePasswordLogin();
+  const register = useRegister();
+  const emailPending = passwordLogin.isPending || register.isPending;
 
   const handleGoogleLogin = async () => {
     setError(null);
     try {
-      // Preflight check: does Google OAuth exist?
       const response = await fetch("/api/auth/google/start", {
         method: "HEAD",
         redirect: "manual",
@@ -37,30 +69,54 @@ export function LoginView({ onClose, onSuccess }: LoginViewProps) {
         setGoogleUnavailable(true);
         return;
       }
-      // Proceed with Google OAuth redirect
       startGoogleOAuth();
     } catch {
-      // Network error — still try the redirect, browser will handle it
       startGoogleOAuth();
     }
   };
 
-  const handleOwnerLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleEmailAuth = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError(null);
-    if (!secret.trim()) {
-      setError("Please enter your owner secret.");
+
+    const emailError = validateEmail(email);
+    if (emailError) {
+      setError(emailError);
       return;
     }
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
+      return;
+    }
+
+    if (mode === "signup" && password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
     try {
-      await loginMutation.mutateAsync(secret);
-      // Clear secret from memory
-      setSecret("");
-      // Notify parent of successful login
+      if (mode === "signup") {
+        await register.mutateAsync({
+          email: email.trim(),
+          password,
+        });
+      } else {
+        await passwordLogin.mutateAsync({
+          email: email.trim(),
+          password,
+        });
+      }
+      setPassword("");
+      setConfirmPassword("");
       onSuccess?.();
-    } catch (err) {
-      // Don't leak details about whether the secret exists
-      setError("Invalid credentials. Please try again.");
+    } catch {
+      setError(
+        mode === "signup"
+          ? "Could not create that account. Check your details and try again."
+          : "Invalid email or password."
+      );
     }
   };
 
@@ -78,103 +134,149 @@ export function LoginView({ onClose, onSuccess }: LoginViewProps) {
         </Button>
       </div>
 
-      <p className="text-sm text-muted-foreground mb-3">
+      <p className="mb-3 text-sm text-muted-foreground">
         Sign in to unlock reader features:
       </p>
-      <ul className="space-y-1 text-sm text-muted-foreground mb-5">
+      <ul className="mb-5 space-y-1 text-sm text-muted-foreground">
         <li>Save novels to your library</li>
         <li>Continue reading where you left off</li>
         <li>Keep your reading history</li>
         <li>Leave reviews and request new content</li>
       </ul>
-      <p className="text-xs text-muted-foreground mb-4">
+      <p className="mb-4 text-xs text-muted-foreground">
         Guest reading is always available without sign-in.
       </p>
 
-      {/* Mode toggle */}
-      <div className="mb-4 flex gap-2 text-xs">
+      <div className="mb-4 flex flex-col gap-2">
+        {googleUnavailable && (
+          <p className="text-sm text-muted-foreground">
+            Google sign-in is not available right now. You can still use email
+            and password.
+          </p>
+        )}
+        <Button
+          type="button"
+          onClick={handleGoogleLogin}
+          className="w-full"
+          disabled={googleUnavailable}
+        >
+          <LogIn className="h-4 w-4" />
+          Continue with Google
+        </Button>
+      </div>
+
+      <div className="mb-4 grid grid-cols-2 gap-2 text-xs">
         <button
           type="button"
-          onClick={() => setMode("google")}
-          className={`px-3 py-1 rounded ${
-            mode === "google"
+          onClick={() => {
+            setMode("signin");
+            setError(null);
+          }}
+          className={`rounded px-3 py-2 ${
+            mode === "signin"
               ? "bg-primary text-primary-foreground"
               : "bg-muted hover:bg-muted/80"
           }`}
         >
-          Google
+          Email sign in
         </button>
         <button
           type="button"
-          onClick={() => setMode("owner")}
-          className={`px-3 py-1 rounded ${
-            mode === "owner"
+          onClick={() => {
+            setMode("signup");
+            setError(null);
+          }}
+          className={`rounded px-3 py-2 ${
+            mode === "signup"
               ? "bg-primary text-primary-foreground"
               : "bg-muted hover:bg-muted/80"
           }`}
         >
-          Owner
+          Email sign up
         </button>
       </div>
 
-      {mode === "google" && (
-        <div className="flex flex-col gap-2">
-          {googleUnavailable && (
-            <p className="text-sm text-destructive">
-              Google sign-in is not configured on this server.
-            </p>
-          )}
-          <Button
-            type="button"
-            onClick={handleGoogleLogin}
-            className="w-full"
-            disabled={googleUnavailable}
-          >
-            <LogIn className="h-4 w-4" />
-            Continue with Google
-          </Button>
+      <form onSubmit={handleEmailAuth} className="flex flex-col gap-3" noValidate>
+        <div>
+          <label htmlFor="auth-email" className="mb-1 block text-sm font-medium">
+            Email
+          </label>
+          <input
+            id="auth-email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            className="w-full rounded border border-border bg-background px-3 py-2 text-sm"
+            autoComplete="email"
+            disabled={emailPending}
+          />
         </div>
-      )}
 
-      {mode === "owner" && (
-        <form onSubmit={handleOwnerLogin} className="flex flex-col gap-3">
+        <div>
+          <label
+            htmlFor="auth-password"
+            className="mb-1 block text-sm font-medium"
+          >
+            Password
+          </label>
+          <input
+            id="auth-password"
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            className="w-full rounded border border-border bg-background px-3 py-2 text-sm"
+            autoComplete={mode === "signup" ? "new-password" : "current-password"}
+            disabled={emailPending}
+          />
+        </div>
+
+        {mode === "signup" && (
           <div>
             <label
-              htmlFor="owner-secret"
-              className="block text-sm font-medium mb-1"
+              htmlFor="auth-confirm-password"
+              className="mb-1 block text-sm font-medium"
             >
-              Owner secret
+              Confirm password
             </label>
             <input
-              id="owner-secret"
+              id="auth-confirm-password"
               type="password"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
               className="w-full rounded border border-border bg-background px-3 py-2 text-sm"
-              autoComplete="current-password"
-              disabled={loginMutation.isPending}
+              autoComplete="new-password"
+              disabled={emailPending}
             />
           </div>
-          {error && (
-            <p className="text-sm text-destructive" role="alert">
-              {error}
-            </p>
+        )}
+
+        {error && (
+          <p className="text-sm text-destructive" role="alert">
+            {error}
+          </p>
+        )}
+
+        <Button type="submit" className="w-full" disabled={emailPending}>
+          {emailPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : mode === "signup" ? (
+            <UserPlus className="h-4 w-4" />
+          ) : (
+            <LogIn className="h-4 w-4" />
           )}
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={loginMutation.isPending}
-          >
-            {loginMutation.isPending ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
-      )}
+          {emailPending
+            ? "Submitting..."
+            : mode === "signup"
+              ? "Create account"
+              : "Sign in with email"}
+        </Button>
+      </form>
 
       <Button
         type="button"
         variant="outline"
         onClick={onClose}
-        className="w-full mt-2"
+        className="mt-2 w-full"
       >
         Close
       </Button>
