@@ -332,6 +332,10 @@ export const api = {
     apiFetch<ActivityRecord>(`/admin/activity/${encodeURIComponent(activityId)}/run`, {
       method: "POST"
     }),
+  retryActivity: (activityId: string) =>
+    apiFetch<ActivityRecord>(`/admin/activity/${encodeURIComponent(activityId)}/retry`, {
+      method: "POST"
+    }),
   runNextActivity: (activityType?: string) => {
     const suffix = activityType ? `?activity_type=${encodeURIComponent(activityType)}` : "";
     return apiFetch<ActivityRecord>(`/admin/activity/run-next${suffix}`, { method: "POST" });

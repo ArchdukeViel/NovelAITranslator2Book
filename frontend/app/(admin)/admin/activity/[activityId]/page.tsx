@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, RotateCw } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -63,6 +63,7 @@ async function loadActivity(activityId: string) {
 
 export default function ActivityDetailPage() {
   const params = useParams<{ activityId: string }>();
+  const queryClient = useQueryClient();
   const activityId = decodeURIComponent(params.activityId);
   const [selectedPhase, setSelectedPhase] = React.useState<ActivityPhaseKey>("preliminary");
   const activity = useQuery({
@@ -83,6 +84,20 @@ export default function ActivityDetailPage() {
   const firstActivity = activityRows[0];
   const title = firstActivity ? activityTitle(firstActivity) : activity.data?.novelId ?? activityId;
   const status = activityStatus(activityRows);
+  const runOrRetryActivity = useMutation({
+    mutationFn: async (activityItem: ActivityRecord) => {
+      if (activityItem.status === "pending") {
+        return api.runActivity(activityItem.id);
+      }
+      if (activityItem.status === "failed" || activityItem.status === "cancelled") {
+        return api.retryActivity(activityItem.id);
+      }
+      throw new Error(`Activity cannot be run from status: ${activityItem.status}`);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["activity"] });
+    }
+  });
 
   return (
     <>
@@ -109,6 +124,7 @@ export default function ActivityDetailPage() {
               <RotateCw className="h-4 w-4" />
               Refresh
             </Button>
+            <ErrorBanner error={runOrRetryActivity.error} fallback="Activity action failed." />
             <dl className="space-y-3 text-sm">
               <div>
                 <dt className="text-muted-foreground">Novel</dt>
@@ -160,15 +176,16 @@ export default function ActivityDetailPage() {
                     <th className="px-3 py-3">Scope</th>
                     <th className="px-3 py-3">Status</th>
                     <th className="px-3 py-3">Updated</th>
+                    <th className="px-3 py-3 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {activity.isLoading ? (
-                    <LoadingRows colSpan={4} label="Loading activity..." />
+                    <LoadingRows colSpan={5} label="Loading activity..." />
                   ) : activity.error ? (
-                    <EmptyState title="Failed to load activity." colSpan={4} />
+                    <EmptyState title="Failed to load activity." colSpan={5} />
                   ) : activeActivity.length === 0 ? (
-                    <EmptyState title="No activity records found." colSpan={4} />
+                    <EmptyState title="No activity records found." colSpan={5} />
                   ) : activeActivity.map((activityItem) => (
                     (() => {
                       const progress = activityProgress(activityItem);
@@ -192,6 +209,29 @@ export default function ActivityDetailPage() {
                             ) : null}
                           </td>
                           <td className="px-3 py-3 text-muted-foreground">{formatDateTime(activityUpdatedAtValue(activityItem))}</td>
+                          <td className="px-3 py-3 text-right">
+                            {activityItem.status === "pending" ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => runOrRetryActivity.mutate(activityItem)}
+                                disabled={runOrRetryActivity.isPending}
+                              >
+                                Run
+                              </Button>
+                            ) : activityItem.status === "failed" || activityItem.status === "cancelled" ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => runOrRetryActivity.mutate(activityItem)}
+                                disabled={runOrRetryActivity.isPending}
+                              >
+                                Retry
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
+                          </td>
                         </tr>
                       );
                     })()
