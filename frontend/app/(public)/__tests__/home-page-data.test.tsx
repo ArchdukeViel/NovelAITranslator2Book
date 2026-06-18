@@ -725,6 +725,52 @@ describe("Homepage time grouping", () => {
     vi.useRealTimers();
   });
 
+  it("renders latest update groups newest-first even when catalog data is not grouped that way", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
+
+    mocks.catalogQuery.mockReturnValue({
+      data: {
+        novels: [
+          makeNovel({ novel_id: "n-earlier", added_at: null }),
+          makeNovel({ novel_id: "n-month-2", added_at: "2026-04-18T10:00:00Z" }),
+          makeNovel({ novel_id: "n-month-1", added_at: "2026-05-23T10:00:00Z" }),
+          makeNovel({ novel_id: "n-week-3", added_at: "2026-05-30T10:00:00Z" }),
+          makeNovel({ novel_id: "n-week-2", added_at: "2026-06-07T10:00:00Z" }),
+          makeNovel({ novel_id: "n-week-1", added_at: "2026-06-12T10:00:00Z" }),
+          makeNovel({ novel_id: "n-yesterday", added_at: "2026-06-16T10:00:00Z" }),
+          makeNovel({ novel_id: "n-today", added_at: "2026-06-17T08:00:00Z" }),
+        ],
+        total: 8,
+        page: 1,
+        page_size: 8,
+      },
+      isPending: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderHome();
+
+    const expectedOrder = [
+      "Today",
+      "Yesterday",
+      "1 week ago",
+      "2 weeks ago",
+      "3 weeks ago",
+      "1 month ago",
+      "2 months ago",
+      "Earlier",
+    ];
+    const headerTexts = screen
+      .getAllByRole("heading", { level: 3 })
+      .map((el) => el.textContent)
+      .filter((text): text is string => expectedOrder.includes(text ?? ""));
+
+    expect(headerTexts).toEqual(expectedOrder);
+    vi.useRealTimers();
+  });
+
   it("does not show exact hour for older-than-24h items", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
