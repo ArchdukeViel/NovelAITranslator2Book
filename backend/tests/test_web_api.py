@@ -39,6 +39,7 @@ from novelai.activity.runner import BackgroundActivityRunner
 from novelai.activity.worker import ActivityWorkerService
 from novelai.db.base import Base
 import novelai.db.models  # noqa: F401
+from novelai.db.models.users import NovelRequest
 from novelai.providers.gemini_provider import GeminiProvider
 from novelai.runtime.bootstrap import bootstrap
 from novelai.services.novel_request_service import NovelRequestService
@@ -1650,84 +1651,76 @@ def _assert_source_candidate_url_mirror(payload: dict[str, object]) -> str | Non
 
 
 class TestNovelRequests:
-    def test_create_vote_and_list_request(self, _no_api_key: None) -> None:
+    def test_list_db_backed_request(self, _no_api_key: None, isolated_db_session: Session) -> None:
         bootstrap()
         storage = _fresh_storage()
-        requests = NovelRequestService(_TMP / "requests")
-        c = _make_app(storage, requests=requests)
-
-        create_resp = c.post(
-            "/novels/requests",
-            json={
-                "title": "Requested Novel",
-                "source_key": "syosetu_ncode",
-                "source_url": "https://ncode.syosetu.com/n1234ab/",
-                "requested_by": "reader-1",
-            },
+        req = NovelRequest(
+            user_id=2,
+            request_type="novel",
+            source_url="https://ncode.syosetu.com/n1234ab/",
+            status="pending",
         )
-        assert create_resp.status_code == 200
-        request_id = _assert_request_id_mirror(create_resp.json())
-
-        vote_resp = c.post(f"/novels/requests/{request_id}/vote", json={"voter": "reader-2"})
-        assert vote_resp.status_code == 200
-        voted = vote_resp.json()
-        assert voted["vote_count"] == 1
-        assert _assert_request_id_mirror(voted) == request_id
+        isolated_db_session.add(req)
+        isolated_db_session.commit()
+        c = _make_app(storage, db_session=isolated_db_session)
 
         list_resp = c.get("/novels/requests", params={"status": "pending"})
         assert list_resp.status_code == 200
         listed = list_resp.json()["requests"]
         assert len(listed) == 1
-        assert listed[0]["id"] == request_id
-        assert _assert_request_id_mirror(listed[0]) == request_id
-        assert listed[0]["source_candidates"][0]["source_key"] == "syosetu_ncode"
-        assert _assert_source_candidate_url_mirror(listed[0]["source_candidates"][0]) == "https://ncode.syosetu.com/n1234ab/"
+        assert listed[0]["id"] == str(req.id)
+        assert listed[0]["request_id"] == str(req.id)
+        assert listed[0]["source_url"] == "https://ncode.syosetu.com/n1234ab/"
         canonical_list_resp = c.get("/api/admin/requests", params={"status": "pending"})
         assert canonical_list_resp.status_code == 200
-        assert canonical_list_resp.json()["requests"][0]["id"] == request_id
+        assert canonical_list_resp.json()["requests"][0]["id"] == str(req.id)
 
-    def test_update_request_status_and_add_source_candidate(self, _no_api_key: None) -> None:
+    def test_update_db_backed_request_status(self, _no_api_key: None, isolated_db_session: Session) -> None:
         bootstrap()
         storage = _fresh_storage()
-        requests = NovelRequestService(_TMP / "requests")
-        c = _make_app(storage, requests=requests)
-        request_id = _assert_request_id_mirror(c.post("/novels/requests", json={"title": "Requested Novel"}).json())
+        req = NovelRequest(user_id=2, request_type="novel", source_url="https://example.com/novel", status="pending")
+        isolated_db_session.add(req)
+        isolated_db_session.commit()
+        c = _make_app(storage, db_session=isolated_db_session)
 
         status_resp = c.patch(
-            f"/novels/requests/{request_id}",
+            f"/novels/requests/{req.id}",
             json={"status": "approved", "reviewed_by": "admin"},
         )
         assert status_resp.status_code == 200
         status_payload = status_resp.json()
         assert status_payload["status"] == "approved"
-        assert _assert_request_id_mirror(status_payload) == request_id
+        assert status_payload["request_id"] == str(req.id)
+        assert status_payload["resolved_at"] is not None
 
-        candidate_resp = c.post(
-            f"/novels/requests/{request_id}/source-candidates",
-            json={"source_key": "kakuyomu", "source_url": "https://kakuyomu.jp/works/123"},
-        )
-        assert candidate_resp.status_code == 200
-        candidate_payload = candidate_resp.json()
-        assert candidate_payload["source_key"] == "kakuyomu"
-        assert _assert_source_candidate_url_mirror(candidate_payload) == "https://kakuyomu.jp/works/123"
-
-        get_resp = c.get(f"/novels/requests/{request_id}")
+        get_resp = c.get(f"/novels/requests/{req.id}")
         assert get_resp.status_code == 200
         get_payload = get_resp.json()
-        assert len(get_payload["source_candidates"]) == 1
-        assert _assert_request_id_mirror(get_payload) == request_id
-        assert _assert_source_candidate_url_mirror(get_payload["source_candidates"][0]) == "https://kakuyomu.jp/works/123"
+        assert get_payload["status"] == "approved"
+        assert get_payload["request_id"] == str(req.id)
 
-    def test_invalid_request_status_returns_400(self, _no_api_key: None) -> None:
+    def test_invalid_request_status_returns_400(self, _no_api_key: None, isolated_db_session: Session) -> None:
         bootstrap()
         storage = _fresh_storage()
-        requests = NovelRequestService(_TMP / "requests")
-        c = _make_app(storage, requests=requests)
-        request_id = c.post("/novels/requests", json={"title": "Requested Novel"}).json()["id"]
+        req = NovelRequest(user_id=2, request_type="novel", source_url="https://example.com/novel", status="pending")
+        isolated_db_session.add(req)
+        isolated_db_session.commit()
+        c = _make_app(storage, db_session=isolated_db_session)
 
-        resp = c.patch(f"/novels/requests/{request_id}", json={"status": "not-real"})
+        resp = c.patch(f"/novels/requests/{req.id}", json={"status": "not-real"})
 
         assert resp.status_code == 400
+
+    def test_legacy_request_actions_return_gone(self, _no_api_key: None, isolated_db_session: Session) -> None:
+        bootstrap()
+        c = _make_app(_fresh_storage(), db_session=isolated_db_session)
+
+        assert c.post("/novels/requests", json={"title": "Requested Novel"}).status_code == 410
+        assert c.post("/novels/requests/1/vote", json={"voter": "reader-2"}).status_code == 410
+        assert c.post(
+            "/novels/requests/1/source-candidates",
+            json={"source_key": "kakuyomu", "source_url": "https://kakuyomu.jp/works/123"},
+        ).status_code == 410
 
 
 # ---------------------------------------------------------------------------

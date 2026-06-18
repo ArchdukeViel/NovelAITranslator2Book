@@ -14,6 +14,7 @@ from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.auth.security import reset_public_rate_limits
 from novelai.api.routers.dependencies import get_db_session
 from novelai.api.routers.auth import router as auth_router
+from novelai.api.routers.requests import router as admin_requests_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.db.base import Base
 
@@ -65,6 +66,7 @@ def app(db_session):
     _app.add_middleware(SessionMiddleware, secret_key="test", https_only=False)
     _app.include_router(auth_router)
     _app.include_router(user_data_router)
+    _app.include_router(admin_requests_router, prefix="/api/admin")
 
     def _db_override():
         yield db_session
@@ -419,6 +421,111 @@ class TestRequestContract:
         assert resp.json()["status"] == "pending"
         assert "auto_translate" not in resp.json()
         assert "triggered" not in resp.json()
+
+    def test_admin_lists_public_user_request_from_db(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        created = client.post(
+            "/api/user/requests",
+            json={"request_type": "novel", "source_url": "https://example.com/novel"},
+            headers=csrf_headers(client),
+        )
+        assert created.status_code == 201
+
+        set_user(app, 999, role="owner")
+        listed = client.get("/api/admin/requests", params={"status": "pending"})
+
+        assert listed.status_code == 200
+        items = listed.json()["requests"]
+        assert len(items) == 1
+        assert items[0]["id"] == str(created.json()["id"])
+        assert items[0]["request_id"] == str(created.json()["id"])
+        assert items[0]["user_id"] == 42
+        assert items[0]["request_type"] == "novel"
+        assert items[0]["status"] == "pending"
+        assert items[0]["source_url"] == "https://example.com/novel"
+
+    def test_admin_gets_and_updates_request_status_public_history_reflects_change(
+        self,
+        app,
+        client,
+        seeded_catalog,
+    ) -> None:
+        set_user(app, 42)
+        created = client.post(
+            "/api/user/requests",
+            json={"request_type": "novel", "source_url": "https://example.com/novel"},
+            headers=csrf_headers(client),
+        )
+        request_id = created.json()["id"]
+
+        set_user(app, 999, role="owner")
+        detail = client.get(f"/api/admin/requests/{request_id}")
+        assert detail.status_code == 200
+        assert detail.json()["id"] == str(request_id)
+        assert detail.json()["resolved_at"] is None
+
+        updated = client.patch(f"/api/admin/requests/{request_id}", json={"status": "approved"})
+        assert updated.status_code == 200
+        assert updated.json()["status"] == "approved"
+        assert updated.json()["resolved_at"] is not None
+
+        set_user(app, 42)
+        history = client.get("/api/user/requests")
+        assert history.status_code == 200
+        assert history.json()["items"][0]["id"] == request_id
+        assert history.json()["items"][0]["status"] == "approved"
+
+    def test_admin_setting_request_pending_clears_resolved_at(self, app, client, seeded_catalog) -> None:
+        set_user(app, 42)
+        created = client.post(
+            "/api/user/requests",
+            json={"request_type": "novel", "source_url": "https://example.com/novel"},
+            headers=csrf_headers(client),
+        )
+        request_id = created.json()["id"]
+
+        set_user(app, 999, role="owner")
+        rejected = client.patch(f"/api/admin/requests/{request_id}", json={"status": "rejected"})
+        assert rejected.json()["resolved_at"] is not None
+        reopened = client.patch(f"/api/admin/requests/{request_id}", json={"status": "pending"})
+        assert reopened.status_code == 200
+        assert reopened.json()["status"] == "pending"
+        assert reopened.json()["resolved_at"] is None
+
+    @pytest.mark.parametrize(
+        ("role", "expected"),
+        [
+            ("guest", 401),
+            ("user", 403),
+        ],
+    )
+    def test_non_owner_cannot_access_admin_request_routes(self, app, client, seeded_catalog, role, expected) -> None:
+        user_id = None if role == "guest" else 42
+        app.state.current_user["user"] = SessionUser(user_id=user_id, email="reader@test.com", role=role)
+
+        assert client.get("/api/admin/requests").status_code == expected
+        assert client.get("/api/admin/requests/1").status_code == expected
+        assert client.patch("/api/admin/requests/1", json={"status": "approved"}).status_code == expected
+
+    def test_admin_request_missing_id_and_invalid_status(self, app, client, seeded_catalog) -> None:
+        set_user(app, 999, role="owner")
+        assert client.get("/api/admin/requests/999").status_code == 404
+        assert client.patch("/api/admin/requests/999", json={"status": "not-real"}).status_code == 400
+        assert client.get("/api/admin/requests", params={"status": "not-real"}).status_code == 400
+
+    def test_admin_legacy_request_actions_are_not_file_backed_on_canonical_route(
+        self,
+        app,
+        client,
+        seeded_catalog,
+    ) -> None:
+        set_user(app, 999, role="owner")
+        assert client.post("/api/admin/requests", json={"title": "Requested Novel"}).status_code == 410
+        assert client.post("/api/admin/requests/1/vote", json={"voter": "reader"}).status_code == 410
+        assert client.post(
+            "/api/admin/requests/1/source-candidates",
+            json={"source_key": "syosetu_ncode", "source_url": "https://ncode.syosetu.com/n1234ab/"},
+        ).status_code == 410
 
     def test_request_create_rate_limit_eventually_returns_429(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
