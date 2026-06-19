@@ -42,6 +42,15 @@ def _metadata_datetime(value: object) -> datetime | None:
     return None
 
 
+def _metadata_chapters(metadata: dict) -> list[dict]:
+    chapters = metadata.get("chapters")
+    return [chapter for chapter in chapters if isinstance(chapter, dict)] if isinstance(chapters, list) else []
+
+
+def _optional_string(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 class CatalogService:
     """Bridge between file-backed StorageService and the DB catalog.
 
@@ -107,6 +116,8 @@ class CatalogService:
             if source_updated_at is not None:
                 novel.source_updated_at = source_updated_at
 
+        self.recompute_catalog_projection(novel.slug, novel=novel, metadata=metadata)
+
         # Persist taxonomy assignments from scraped metadata
         source_key = metadata.get("source_key") or metadata.get("source")
         persist_taxonomy_assignments(
@@ -162,6 +173,7 @@ class CatalogService:
         chapter.raw_storage_key = f"{storage_key}:{checksum[:8]}"
         chapter.raw_status = "fetched"
         self._session.add(chapter)
+        self.recompute_catalog_projection(novel_id, novel=novel)
         return chapter
 
     def save_translated_chapter(
@@ -198,7 +210,72 @@ class CatalogService:
         chapter.translated_storage_key = f"{storage_key}:{checksum[:8]}"
         chapter.translation_status = "translated"
         self._session.add(chapter)
+        self.recompute_catalog_projection(novel_id, novel=novel)
         return chapter
+
+    def recompute_catalog_projection(
+        self,
+        novel_id: str,
+        *,
+        novel: Novel | None = None,
+        metadata: dict | None = None,
+    ) -> Novel | None:
+        """Refresh denormalized catalog summary fields for one novel.
+
+        Mirrors the current public catalog's file-backed semantics so later
+        DB-backed listing phases can switch storage without changing values.
+        """
+        novel = novel or self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        if novel is None:
+            return None
+
+        metadata = metadata if metadata is not None else (self._storage.load_metadata(novel_id) or {})
+        translated_count = self._storage.count_translated_chapters(novel_id)
+        metadata_chapters = _metadata_chapters(metadata)
+        chapter_count = len(metadata_chapters) or max(
+            self._storage.count_stored_chapters(novel_id),
+            translated_count,
+        )
+        latest_chapter = self._latest_translated_chapter(novel_id, metadata_chapters)
+
+        novel.chapter_count = chapter_count
+        novel.translated_count = translated_count
+        novel.latest_chapter_id = latest_chapter["id"] if latest_chapter else None
+        novel.latest_chapter_number = latest_chapter["number"] if latest_chapter else None
+        novel.latest_chapter_title = latest_chapter["title"] if latest_chapter else None
+        novel.latest_chapter_updated_at = latest_chapter["updated_at"] if latest_chapter else None
+        return novel
+
+    def _latest_translated_chapter(
+        self,
+        novel_id: str,
+        metadata_chapters: list[dict],
+    ) -> dict[str, object] | None:
+        """Return latest public-readable chapter metadata using public semantics."""
+        translated_ids = set(self._storage.list_translated_chapters(novel_id))
+        if not translated_ids:
+            return None
+
+        latest: dict[str, object] | None = None
+        for index, chapter in enumerate(metadata_chapters):
+            chapter_id = str(chapter.get("id", "")).strip()
+            if not chapter_id or chapter_id not in translated_ids:
+                continue
+            translated = self._storage.load_translated_chapter(novel_id, chapter_id)
+            if translated is None or not isinstance(translated.get("text"), str):
+                continue
+            latest = {
+                "id": chapter_id,
+                "number": chapter.get("num") or (index + 1),
+                "title": _optional_string(chapter.get("translated_title"))
+                or _optional_string(chapter.get("title")),
+                "updated_at": _metadata_datetime(
+                    _optional_string(translated.get("translated_at"))
+                    or _optional_string(translated.get("created_at"))
+                ),
+            }
+
+        return latest
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -60,6 +60,10 @@ class TestGetOrCreateNovel:
             "author": "Author A",
             "language": "ja",
             "status": "ongoing",
+            "chapters": [
+                {"id": "ch001", "num": 1, "title": "Chapter 1"},
+                {"id": "ch002", "num": 2, "title": "Chapter 2"},
+            ],
         }
         novel = catalog.get_or_create_novel("new-novel", metadata)
         db_session.commit()
@@ -68,7 +72,7 @@ class TestGetOrCreateNovel:
         assert result.author == "Author A"
         assert result.publication_status == "ongoing"
         assert result.status == "ongoing"
-        assert result.chapter_count == 0
+        assert result.chapter_count == 2
         assert result.translated_count == 0
 
     def test_returns_existing_novel(self, catalog, db_session, seeded_novel) -> None:
@@ -158,6 +162,85 @@ class TestGetOrCreateNovel:
         assert result.publication_status == "unknown"
         assert result.status == "unknown"
 
+    def test_populates_latest_chapter_fields_from_latest_readable_translation(
+        self, catalog, db_session, storage
+    ) -> None:
+        storage.save_translated_chapter("readable-novel", "ch001", "Translated 1")
+        storage.save_translated_chapter("readable-novel", "ch003", "Translated 3")
+
+        catalog.get_or_create_novel(
+            "readable-novel",
+            {
+                "title": "Readable Novel",
+                "chapters": [
+                    {"id": "ch001", "num": 1, "title": "Raw 1", "translated_title": "Translated Title 1"},
+                    {"id": "ch002", "num": 2, "title": "Raw 2"},
+                    {"id": "ch003", "num": 3, "title": "Raw 3", "translated_title": "Translated Title 3"},
+                ],
+            },
+        )
+        db_session.commit()
+
+        result = db_session.query(Novel).filter_by(slug="readable-novel").one()
+        assert result.chapter_count == 3
+        assert result.translated_count == 2
+        assert result.latest_chapter_id == "ch003"
+        assert result.latest_chapter_number == 3
+        assert result.latest_chapter_title == "Translated Title 3"
+        assert result.latest_chapter_updated_at is not None
+
+    def test_latest_chapter_fields_remain_null_without_readable_translation(
+        self, catalog, db_session
+    ) -> None:
+        catalog.get_or_create_novel(
+            "untranslated-novel",
+            {
+                "title": "Untranslated Novel",
+                "chapters": [{"id": "ch001", "num": 1, "title": "Chapter 1"}],
+            },
+        )
+        db_session.commit()
+
+        result = db_session.query(Novel).filter_by(slug="untranslated-novel").one()
+        assert result.chapter_count == 1
+        assert result.translated_count == 0
+        assert result.latest_chapter_id is None
+        assert result.latest_chapter_number is None
+        assert result.latest_chapter_title is None
+        assert result.latest_chapter_updated_at is None
+
+    def test_rescrape_recomputes_changed_chapter_count(self, catalog, db_session) -> None:
+        catalog.get_or_create_novel(
+            "rescraped-novel",
+            {"title": "Rescraped Novel", "chapters": [{"id": "ch001", "num": 1}]},
+        )
+        db_session.commit()
+
+        catalog.get_or_create_novel(
+            "rescraped-novel",
+            {
+                "title": "Rescraped Novel",
+                "chapters": [
+                    {"id": "ch001", "num": 1},
+                    {"id": "ch002", "num": 2},
+                    {"id": "ch003", "num": 3},
+                ],
+            },
+        )
+        db_session.commit()
+
+        result = db_session.query(Novel).filter_by(slug="rescraped-novel").one()
+        assert result.chapter_count == 3
+
+    def test_missing_metadata_chapter_list_becomes_zero(self, catalog, db_session) -> None:
+        catalog.get_or_create_novel("empty-metadata-novel", {"title": "Empty Metadata Novel"})
+        db_session.commit()
+
+        result = db_session.query(Novel).filter_by(slug="empty-metadata-novel").one()
+        assert result.chapter_count == 0
+        assert result.translated_count == 0
+        assert result.latest_chapter_id is None
+
 
 class TestSaveRawChapter:
     def test_saves_to_file_storage(self, catalog, db_session, seeded_novel, storage) -> None:
@@ -185,6 +268,8 @@ class TestSaveRawChapter:
         db_session.commit()
         chapter = db_session.query(Chapter).filter_by(novel_id=seeded_novel.id).one()
         assert chapter.raw_status == "fetched"
+        refreshed = db_session.query(Novel).filter_by(slug="novel-001").one()
+        assert refreshed.chapter_count == 1
 
     def test_storage_key_includes_checksum_prefix(self, catalog, db_session, seeded_novel) -> None:
         catalog.save_raw_chapter("novel-001", "ch001", "Deterministic content", chapter_number=1)
@@ -222,6 +307,33 @@ class TestSaveTranslatedChapter:
         db_session.commit()
         chapter = db_session.query(Chapter).filter_by(novel_id=seeded_novel.id).one()
         assert chapter.translation_status == "translated"
+        refreshed = db_session.query(Novel).filter_by(slug="novel-001").one()
+        assert refreshed.translated_count == 1
+
+    def test_save_translated_chapter_refreshes_latest_projection(
+        self, catalog, db_session, seeded_novel, storage
+    ) -> None:
+        storage.save_metadata(
+            "novel-001",
+            {
+                "title": "Test Novel",
+                "chapters": [
+                    {"id": "ch001", "num": 1, "title": "Chapter 1"},
+                    {"id": "ch002", "num": 2, "title": "Chapter 2"},
+                ],
+            },
+        )
+        catalog.save_translated_chapter("novel-001", "ch002", "Translated")
+        db_session.commit()
+
+        result = db_session.query(Novel).filter_by(slug="novel-001").one()
+        assert result.id == seeded_novel.id
+        assert result.chapter_count == 2
+        assert result.translated_count == 1
+        assert result.latest_chapter_id == "ch002"
+        assert result.latest_chapter_number == 2
+        assert result.latest_chapter_title == "Chapter 2"
+        assert result.latest_chapter_updated_at is not None
 
 
 def test_catalog_projection_migration_upgrade_backfill_and_downgrade(
