@@ -5,8 +5,13 @@ Uses SQLite in-memory + temp dir StorageService; no Postgres required.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from pathlib import Path
+
 import pytest
-from sqlalchemy import create_engine
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
 from novelai.db.base import Base
@@ -61,6 +66,10 @@ class TestGetOrCreateNovel:
         result = db_session.query(Novel).filter_by(slug="new-novel").one()
         assert result.title == "New Novel"
         assert result.author == "Author A"
+        assert result.publication_status == "ongoing"
+        assert result.status == "ongoing"
+        assert result.chapter_count == 0
+        assert result.translated_count == 0
 
     def test_returns_existing_novel(self, catalog, db_session, seeded_novel) -> None:
         novel = catalog.get_or_create_novel("novel-001", {"title": "Different Title"})
@@ -83,6 +92,71 @@ class TestGetOrCreateNovel:
         result = db_session.query(Novel).filter_by(slug="sourced-novel").one()
         assert result.source_site == "syosetu"
         assert result.source_url == "https://ncode.syosetu.com/n1234"
+
+    def test_model_accepts_catalog_projection_fields(self, db_session) -> None:
+        scraped_at = datetime(2026, 6, 19, 1, 2, 3, tzinfo=timezone.utc)
+        novel = Novel(
+            slug="projected-novel",
+            title="Projected Novel",
+            language="ja",
+            status="completed",
+            publication_status="completed",
+            source_updated_at=scraped_at,
+            chapter_count=12,
+            translated_count=4,
+            latest_chapter_id="ch004",
+            latest_chapter_number=4,
+            latest_chapter_title="Fourth Chapter",
+            latest_chapter_updated_at=scraped_at,
+        )
+
+        db_session.add(novel)
+        db_session.commit()
+
+        result = db_session.query(Novel).filter_by(slug="projected-novel").one()
+        assert result.publication_status == "completed"
+        assert result.source_updated_at is not None
+        assert result.source_updated_at.replace(tzinfo=timezone.utc) == scraped_at
+        assert result.chapter_count == 12
+        assert result.translated_count == 4
+        assert result.latest_chapter_id == "ch004"
+        assert result.latest_chapter_number == 4
+        assert result.latest_chapter_title == "Fourth Chapter"
+        assert result.latest_chapter_updated_at is not None
+        assert result.latest_chapter_updated_at.replace(tzinfo=timezone.utc) == scraped_at
+
+    def test_normalizes_publication_status_from_metadata(self, catalog, db_session) -> None:
+        catalog.get_or_create_novel(
+            "finished-novel",
+            {
+                "title": "Finished Novel",
+                "publication_status": "Finished",
+                "updated_at": "2026-06-19T01:02:03+00:00",
+            },
+        )
+        db_session.commit()
+
+        result = db_session.query(Novel).filter_by(slug="finished-novel").one()
+        assert result.publication_status == "completed"
+        assert result.status == "completed"
+        assert result.source_updated_at is not None
+        assert result.source_updated_at.replace(tzinfo=timezone.utc) == datetime(
+            2026, 6, 19, 1, 2, 3, tzinfo=timezone.utc
+        )
+
+    def test_updates_existing_publication_status_when_metadata_provides_it(
+        self, catalog, db_session, seeded_novel
+    ) -> None:
+        catalog.get_or_create_novel(
+            "novel-001",
+            {"publication_status": "not a known status"},
+        )
+        db_session.commit()
+
+        result = db_session.query(Novel).filter_by(slug="novel-001").one()
+        assert result.id == seeded_novel.id
+        assert result.publication_status == "unknown"
+        assert result.status == "unknown"
 
 
 class TestSaveRawChapter:
@@ -148,3 +222,78 @@ class TestSaveTranslatedChapter:
         db_session.commit()
         chapter = db_session.query(Chapter).filter_by(novel_id=seeded_novel.id).one()
         assert chapter.translation_status == "translated"
+
+
+def test_catalog_projection_migration_upgrade_backfill_and_downgrade(
+    tmp_path, monkeypatch
+) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    alembic_cfg = Config(str(repo_root / "alembic.ini"))
+    db_path = tmp_path / "catalog_projection.sqlite"
+    database_url = f"sqlite:///{db_path.as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    alembic_cfg.set_main_option("sqlalchemy.url", database_url)
+
+    command.upgrade(alembic_cfg, "d9b7e2a1c4f6")
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO novels (slug, title, language, status, is_published)
+                VALUES
+                    ('completed-novel', 'Completed Novel', 'ja', 'completed', 0),
+                    ('invalid-novel', 'Invalid Novel', 'ja', 'strange', 0)
+                """
+            )
+        )
+    engine.dispose()
+
+    command.upgrade(alembic_cfg, "head")
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    columns = {column["name"] for column in inspect(engine).get_columns("novels")}
+    assert {
+        "publication_status",
+        "source_updated_at",
+        "chapter_count",
+        "translated_count",
+        "latest_chapter_id",
+        "latest_chapter_number",
+        "latest_chapter_title",
+        "latest_chapter_updated_at",
+    }.issubset(columns)
+
+    with engine.begin() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT slug, publication_status, chapter_count, translated_count
+                FROM novels
+                ORDER BY slug
+                """
+            )
+        ).mappings().all()
+    assert rows == [
+        {
+            "slug": "completed-novel",
+            "publication_status": "completed",
+            "chapter_count": 0,
+            "translated_count": 0,
+        },
+        {
+            "slug": "invalid-novel",
+            "publication_status": "unknown",
+            "chapter_count": 0,
+            "translated_count": 0,
+        },
+    ]
+    engine.dispose()
+
+    command.downgrade(alembic_cfg, "-1")
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    downgraded_columns = {column["name"] for column in inspect(engine).get_columns("novels")}
+    assert "publication_status" not in downgraded_columns
+    assert "latest_chapter_updated_at" not in downgraded_columns
+    engine.dispose()
+
+    command.upgrade(alembic_cfg, "head")
