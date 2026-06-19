@@ -393,7 +393,112 @@ class TestCatalog:
         assert novel["genres"] == ["romance", "fantasy"]
         assert novel["tags"] == ["魔法"]
 
-    def test_catalog_complex_filter_falls_back_to_storage_path(
+    def test_catalog_status_filter_uses_db_publication_status(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "ongoing-novel", status="ongoing")
+        _seed_db_catalog_novel(db_session, "completed-novel", status="completed")
+        monkeypatch.setattr(
+            storage,
+            "list_novels",
+            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
+        )
+
+        data = client.get("/api/public/catalog?status=completed").json()
+
+        assert data["total"] == 1
+        assert data["novels"][0]["novel_id"] == "completed-novel"
+        assert data["novels"][0]["status"] == "completed"
+
+    def test_catalog_language_filter_uses_db_path(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "ja-novel", language="ja")
+        _seed_db_catalog_novel(db_session, "zh-novel", language="zh")
+        monkeypatch.setattr(
+            storage,
+            "list_novels",
+            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
+        )
+
+        data = client.get("/api/public/catalog?language=zh").json()
+
+        assert data["total"] == 1
+        assert data["novels"][0]["novel_id"] == "zh-novel"
+        assert data["novels"][0]["language"] == "zh"
+
+    def test_catalog_chapter_count_range_uses_db_path(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "short", chapter_count=2)
+        _seed_db_catalog_novel(db_session, "middle", chapter_count=5)
+        _seed_db_catalog_novel(db_session, "long", chapter_count=9)
+        monkeypatch.setattr(
+            storage,
+            "list_novels",
+            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
+        )
+
+        data = client.get("/api/public/catalog?min_chapters=5&max_chapters=9&sort_by=chapter_count&order=asc").json()
+
+        assert data["total"] == 2
+        assert [novel["novel_id"] for novel in data["novels"]] == ["middle", "long"]
+        assert [novel["chapter_count"] for novel in data["novels"]] == [5, 9]
+
+    def test_catalog_basic_search_uses_db_title_and_author(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "dragon-title", title="Dragon King", author="Tanaka")
+        _seed_db_catalog_novel(db_session, "author-match", title="Quiet Novel", author="Dragon Writer")
+        _seed_db_catalog_novel(db_session, "miss", title="Slime World", author="Yamamoto")
+        monkeypatch.setattr(
+            storage,
+            "list_novels",
+            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
+        )
+
+        data = client.get("/api/public/catalog?q=dragon&sort_by=title&order=asc").json()
+
+        assert data["total"] == 2
+        assert [novel["novel_id"] for novel in data["novels"]] == ["dragon-title", "author-match"]
+
+    def test_catalog_title_sort_uses_db_path(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "charlie", title="Charlie")
+        _seed_db_catalog_novel(db_session, "alpha", title="Alpha")
+        _seed_db_catalog_novel(db_session, "bravo", title="Bravo")
+        monkeypatch.setattr(
+            storage,
+            "list_novels",
+            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
+        )
+
+        data = client.get("/api/public/catalog?sort_by=title&order=asc").json()
+
+        assert [novel["title"] for novel in data["novels"]] == ["Alpha", "Bravo", "Charlie"]
+
+    def test_catalog_taxonomy_filter_still_falls_back_to_storage_path(
         self,
         client: TestClient,
         storage: StorageService,
@@ -401,8 +506,10 @@ class TestCatalog:
     ) -> None:
         _seed_db_catalog_novel(db_session, "db-only", title="Other DB Novel")
         _seed_novel(storage, "storage-dragon", title="Dragon King")
+        _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
+        _assign_genre_for_tests(db_session, "storage-dragon", "fantasy")
 
-        data = client.get("/api/public/catalog?q=dragon").json()
+        data = client.get("/api/public/catalog?genre_include=fantasy").json()
 
         assert data["total"] == 1
         assert data["novels"][0]["novel_id"] == "storage-dragon"

@@ -267,16 +267,11 @@ def _is_db_catalog_base_request(
     tag_exclude_set: set[str],
 ) -> bool:
     return (
-        q is None
-        and status is None
-        and language is None
-        and min_chapters is None
-        and max_chapters is None
-        and not genre_include_set
+        not genre_include_set
         and not genre_exclude_set
         and not tag_include_set
         and not tag_exclude_set
-        and (sort_by is None or sort_by == DEFAULT_SORT_BY)
+        and (sort_by is None or sort_by in VALID_SORT_FIELDS)
     )
 
 
@@ -297,21 +292,47 @@ def _published_db_catalog_query(db: Session, *, include_adult: bool):
 def _catalog_from_db_page(
     db: Session,
     *,
+    q: str | None,
+    status: str | None,
+    language: str | None,
+    effective_sort_by: str,
+    min_chapters: int | None,
+    max_chapters: int | None,
     include_adult: bool,
     page: int,
     page_size: int,
     order: str,
 ) -> PublicCatalogResponse | None:
     query = _published_db_catalog_query(db, include_adult=include_adult)
-    total = query.count()
-    if total == 0:
+    has_published_db_catalog = query.count() > 0
+    if not has_published_db_catalog:
         return None
 
-    order_columns = (
-        (Novel.updated_at.asc(), Novel.id.asc())
-        if order == "asc"
-        else (Novel.updated_at.desc(), Novel.id.desc())
-    )
+    search_text = _optional_str(q)
+    if search_text:
+        pattern = f"%{search_text}%"
+        query = query.filter(
+            Novel.title.ilike(pattern)
+            | Novel.author.ilike(pattern)
+        )
+    if status:
+        query = query.filter(Novel.publication_status == status)
+    if language:
+        query = query.filter(Novel.language == language)
+    if min_chapters is not None:
+        query = query.filter(Novel.chapter_count >= min_chapters)
+    if max_chapters is not None:
+        query = query.filter(Novel.chapter_count <= max_chapters)
+
+    total = query.count()
+
+    if effective_sort_by == "title":
+        order_field = Novel.title
+    elif effective_sort_by == "chapter_count":
+        order_field = Novel.chapter_count
+    else:
+        order_field = Novel.updated_at
+    order_columns = (order_field.asc(), Novel.id.asc()) if order == "asc" else (order_field.desc(), Novel.id.desc())
     offset = (page - 1) * page_size
     novels = query.order_by(*order_columns).offset(offset).limit(page_size).all()
     return PublicCatalogResponse(
@@ -496,6 +517,12 @@ async def catalog(
     ):
         db_response = _catalog_from_db_page(
             db,
+            q=q,
+            status=status,
+            language=language,
+            effective_sort_by=effective_sort_by,
+            min_chapters=min_chapters,
+            max_chapters=max_chapters,
             include_adult=include_adult,
             page=page,
             page_size=page_size,
