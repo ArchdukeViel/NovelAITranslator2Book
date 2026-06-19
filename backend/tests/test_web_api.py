@@ -208,6 +208,7 @@ def test_router_path_method_snapshot() -> None:
         (("POST",), "/{novel_id}/export"),
         (("POST",), "/{novel_id}/import"),
         (("POST",), "/{novel_id}/preliminary-crawl"),
+        (("POST",), "/{novel_id}/refresh-catalog-projection"),
         (("POST",), "/{novel_id}/scrape"),
         (("POST",), "/{novel_id}/translate"),
         (("PUT",), "/{novel_id}/chapters/{chapter_id}/translated"),
@@ -872,6 +873,7 @@ class TestAuth:
             ("PATCH", "/novels/activity/activity-1", {"status": "failed"}),
             ("DELETE", "/novels/activity/activity-1", None),
             ("POST", "/novels/test-n1/scrape", {"source_key": "dummy", "url": "https://example.com/n1"}),
+            ("POST", "/novels/test-n1/refresh-catalog-projection", None),
             ("PUT", "/novels/test-n1/chapters/1/translated", {"text": "edited"}),
             ("POST", "/novels/test-n1/chapters/1/translated/rollback", {"version_id": "v1"}),
             ("PATCH", "/novels/requests/request-1", {"status": "approved"}),
@@ -886,6 +888,7 @@ class TestAuth:
             ("PATCH", "/api/admin/activity/activity-1", {"status": "failed"}),
             ("DELETE", "/api/admin/activity/activity-1", None),
             ("POST", "/api/admin/novels/test-n1/scrape", {"source_key": "dummy", "url": "https://example.com/n1"}),
+            ("POST", "/api/admin/novels/test-n1/refresh-catalog-projection", None),
             ("PUT", "/api/admin/novels/test-n1/chapters/1/translated", {"text": "edited"}),
             ("POST", "/api/admin/novels/test-n1/chapters/1/translated/rollback", {"version_id": "v1"}),
             ("PATCH", "/api/admin/requests/request-1", {"status": "approved"}),
@@ -959,6 +962,7 @@ class TestAdminCsrf:
             "/api/admin/activity/crawl",
             json={"novel_id": "test-n1", "source_key": "dummy", "kind": "chapters"},
         ).status_code == 403
+        assert c.post("/api/admin/novels/test-n1/refresh-catalog-projection").status_code == 403
         assert c.put(
             "/api/admin/novels/test-n1/taxonomy",
             json={"genre_slugs": [], "tags": []},
@@ -1236,6 +1240,124 @@ class TestListDetail:
         c = _make_app(storage, session_user=None, db_session=isolated_db_session)
 
         resp = c.get("/api/public/novels/test-n1/source-metadata")
+
+        assert resp.status_code == 404
+
+    def test_refresh_catalog_projection_endpoint_repairs_stale_db_fields(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        storage.save_metadata(
+            "repair-n1",
+            {
+                "title": "Repair Novel",
+                "status": "completed",
+                "chapters": [
+                    {"id": "1", "num": 1, "title": "Chapter One"},
+                    {"id": "2", "num": 2, "title": "Chapter Two"},
+                ],
+            },
+        )
+        storage.save_translated_chapter("repair-n1", "2", "Translated chapter two")
+        isolated_db_session.add(
+            Novel(
+                slug="repair-n1",
+                title="Repair Novel",
+                language="ja",
+                status="unknown",
+                publication_status="unknown",
+                chapter_count=0,
+                translated_count=0,
+            )
+        )
+        isolated_db_session.commit()
+        c = _make_app(storage, db_session=isolated_db_session)
+
+        resp = c.post(
+            "/api/admin/novels/repair-n1/refresh-catalog-projection",
+            headers=_csrf_headers(c),
+        )
+        payload = resp.json()
+
+        assert resp.status_code == 200
+        assert payload["novel_id"] == "repair-n1"
+        assert payload["created"] is False
+        assert payload["before"]["chapter_count"] == 0
+        assert payload["after"]["chapter_count"] == 2
+        assert payload["after"]["translated_count"] == 1
+        assert payload["after"]["publication_status"] == "completed"
+        assert payload["after"]["latest_chapter_id"] == "2"
+        assert payload["after"]["latest_chapter_number"] == 2
+        assert payload["after"]["latest_chapter_title"] == "Chapter Two"
+        assert "chapter_count" in payload["changed_fields"]
+        assert "latest_chapter_id" in payload["changed_fields"]
+        repaired = isolated_db_session.query(Novel).filter_by(slug="repair-n1").one()
+        assert repaired.chapter_count == 2
+        assert repaired.translated_count == 1
+        assert repaired.latest_chapter_id == "2"
+
+    def test_refresh_catalog_projection_endpoint_creates_db_row_from_storage_metadata(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        storage.save_metadata(
+            "storage-only-repair",
+            {
+                "title": "Storage Only Repair",
+                "status": "ongoing",
+                "chapters": [{"id": "1", "num": 1, "title": "Chapter One"}],
+            },
+        )
+        c = _make_app(storage, db_session=isolated_db_session)
+
+        resp = c.post(
+            "/api/admin/novels/storage-only-repair/refresh-catalog-projection",
+            headers=_csrf_headers(c),
+        )
+        payload = resp.json()
+
+        assert resp.status_code == 200
+        assert payload["created"] is True
+        assert payload["before"] is None
+        assert payload["after"]["chapter_count"] == 1
+        repaired = isolated_db_session.query(Novel).filter_by(slug="storage-only-repair").one()
+        assert repaired.title == "Storage Only Repair"
+
+    def test_refresh_catalog_projection_endpoint_missing_novel_returns_404(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        c = _make_app(_fresh_storage(), db_session=isolated_db_session)
+
+        resp = c.post(
+            "/api/admin/novels/missing/refresh-catalog-projection",
+            headers=_csrf_headers(c),
+        )
+
+        assert resp.status_code == 404
+
+    def test_public_routes_do_not_expose_catalog_projection_repair(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_novel(storage)
+        c = _make_app(storage, session_user=None, db_session=isolated_db_session)
+
+        resp = c.post(
+            "/api/public/novels/test-n1/refresh-catalog-projection",
+            headers=_csrf_headers(c),
+        )
 
         assert resp.status_code == 404
 

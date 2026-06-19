@@ -5,17 +5,20 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.response_helpers import translated_chapter_response
 from novelai.api.routers.dependencies import (
     _rate_limit,
+    get_db_session,
     get_storage,
     metadata_chapters,
     reader_author,
     reader_title,
 )
+from novelai.services.catalog_service import CatalogService
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
 
@@ -59,6 +62,14 @@ class SourceMetadataInspection(BaseModel):
     source_metadata_keys: list[str] = []
     extraction: SourceMetadataExtraction
     warnings: list[str] = []
+
+
+class CatalogProjectionRefreshResponse(BaseModel):
+    novel_id: str
+    created: bool
+    changed_fields: list[str]
+    before: dict[str, Any] | None = None
+    after: dict[str, Any]
 
 
 class ChapterSummary(BaseModel):
@@ -200,6 +211,28 @@ async def inspect_source_metadata(
             raise HTTPException(status_code=404, detail="Novel not found")
         return _source_metadata_inspection_payload(novel_id, {}, metadata_missing=True)
     return _source_metadata_inspection_payload(novel_id, meta, metadata_missing=False)
+
+
+@router.post(
+    "/{novel_id}/refresh-catalog-projection",
+    response_model=CatalogProjectionRefreshResponse,
+)
+async def refresh_catalog_projection(
+    novel_id: str,
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+    db: Session = Depends(get_db_session),
+) -> CatalogProjectionRefreshResponse:
+    result = CatalogService(storage=storage, session=db).reconcile_catalog_projection(novel_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Novel not found")
+    return CatalogProjectionRefreshResponse(
+        novel_id=result.novel_id,
+        created=result.created,
+        changed_fields=result.changed_fields,
+        before=result.before,
+        after=result.after,
+    )
 
 
 @router.get("/{novel_id}")
