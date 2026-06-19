@@ -178,6 +178,7 @@ def test_router_path_method_snapshot() -> None:
         (("GET",), "/{novel_id}/progress"),
         (("GET",), "/{novel_id}/reader"),
         (("GET",), "/{novel_id}/reader/chapters/{chapter_id}"),
+        (("GET",), "/{novel_id}/source-metadata"),
         (("PATCH",), "/activity/{activity_id}"),
         (("PATCH",), "/jobs/{activity_id}"),
         (("PATCH",), "/requests/{request_id}"),
@@ -1098,6 +1099,143 @@ class TestListDetail:
 
     def test_get_novel_not_found(self, client: TestClient) -> None:
         resp = client.get("/novels/does-not-exist")
+        assert resp.status_code == 404
+
+    def test_owner_can_inspect_source_metadata(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        storage.save_metadata(
+            "inspect-n1",
+            {
+                "title": "Source Title",
+                "translated_title": "Translated Title",
+                "author": "Source Author",
+                "source": "syosetu_ncode",
+                "source_url": "https://ncode.syosetu.com/n1234ab/",
+                "publication_status": "完結済",
+                "source_publication_status": "完結済",
+                "description": "A stored synopsis.",
+                "language": "ja",
+                "chapters": [{"id": "1", "title": "Chapter 1"}],
+                "raw_html": "<html>secret source page</html>",
+                "api_key": "secret-key",
+                "authorization_header": "Bearer secret",
+            },
+        )
+        c = _make_app(storage)
+
+        resp = c.get("/api/admin/novels/inspect-n1/source-metadata")
+        payload = resp.json()
+
+        assert resp.status_code == 200
+        assert payload["novel_id"] == "inspect-n1"
+        assert payload["title"] == "Translated Title"
+        assert payload["source_title"] == "Source Title"
+        assert payload["author"] == "Source Author"
+        assert payload["source"] == "syosetu_ncode"
+        assert payload["source_url"] == "https://ncode.syosetu.com/n1234ab/"
+        assert payload["publication_status"] == "completed"
+        assert payload["raw_status"] == "完結済"
+        assert payload["synopsis"] == "A stored synopsis."
+        assert payload["language"] == "ja"
+        assert payload["chapter_count"] == 1
+        assert payload["extraction"] == {
+            "publication_status": "completed",
+            "source_title": "Source Title",
+            "synopsis_present": True,
+            "author_present": True,
+        }
+        assert payload["warnings"] == []
+        assert "raw_html" not in payload["source_metadata_keys"]
+        assert "api_key" not in payload["source_metadata_keys"]
+        assert "authorization_header" not in payload["source_metadata_keys"]
+        encoded = json.dumps(payload, ensure_ascii=False)
+        assert "<html>" not in encoded
+        assert "secret-key" not in encoded
+        assert "Bearer secret" not in encoded
+
+    def test_non_owner_cannot_inspect_source_metadata(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_novel(storage)
+        guest = _make_app(storage, session_user=None)
+        user = _make_app(storage, session_user=REGULAR_USER)
+
+        guest_resp = guest.get("/api/admin/novels/test-n1/source-metadata")
+        user_resp = user.get("/api/admin/novels/test-n1/source-metadata")
+
+        assert guest_resp.status_code == 401
+        assert user_resp.status_code == 403
+
+    def test_source_metadata_inspection_missing_novel_returns_404(self, client: TestClient) -> None:
+        resp = client.get("/api/admin/novels/missing/source-metadata")
+
+        assert resp.status_code == 404
+
+    def test_source_metadata_inspection_legacy_metadata_missing_fallback(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        chapter_dir = storage.novels_dir / "0813kx" / "chapters"
+        chapter_dir.mkdir(parents=True)
+        (chapter_dir / "1.json").write_text(
+            json.dumps({"id": "1", "raw": {"text": "raw chapter"}}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        c = _make_app(storage)
+
+        resp = c.get("/api/admin/novels/n0813kx/source-metadata")
+        payload = resp.json()
+
+        assert resp.status_code == 200
+        assert payload["novel_id"] == "n0813kx"
+        assert payload["title"] == "n0813kx"
+        assert payload["publication_status"] == "unknown"
+        assert payload["chapter_count"] == 0
+        assert payload["source_metadata_keys"] == []
+        assert payload["extraction"]["publication_status"] == "unknown"
+        assert set(payload["warnings"]) == {
+            "metadata_missing",
+            "missing_source_url",
+            "unknown_publication_status",
+            "missing_synopsis",
+            "no_chapters",
+        }
+
+    def test_source_metadata_inspection_unknown_status_warns(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        storage.save_metadata(
+            "unknown-status",
+            {
+                "title": "Unknown Status",
+                "source_url": "https://example.com/novel",
+                "chapters": [{"id": "1"}],
+            },
+        )
+        c = _make_app(storage)
+
+        resp = c.get("/api/admin/novels/unknown-status/source-metadata")
+        payload = resp.json()
+
+        assert resp.status_code == 200
+        assert payload["publication_status"] == "unknown"
+        assert "unknown_publication_status" in payload["warnings"]
+        assert "missing_synopsis" in payload["warnings"]
+        assert "missing_source_url" not in payload["warnings"]
+        assert "no_chapters" not in payload["warnings"]
+
+    def test_public_routes_do_not_expose_source_metadata_inspection(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_novel(storage)
+        c = _make_app(storage, session_user=None, db_session=isolated_db_session)
+
+        resp = c.get("/api/public/novels/test-n1/source-metadata")
+
         assert resp.status_code == 404
 
 
