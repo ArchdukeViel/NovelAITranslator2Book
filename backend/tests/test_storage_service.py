@@ -569,6 +569,45 @@ def test_metadata_save_creates_bounded_backups_without_touching_chapters(storage
     assert loaded_chapter["text"] == "Canonical chapter text"
 
 
+def test_list_metadata_history_returns_current_and_backup_summaries(storage):
+    storage.save_metadata(
+        "novel1",
+        {
+            "title": "Version 0",
+            "author": "Author 0",
+            "publication_status": "ongoing",
+            "api_key": "secret-key",
+            "raw_html": "<html>secret source</html>",
+        },
+    )
+    storage.save_metadata(
+        "novel1",
+        {
+            "title": "Version 1",
+            "translated_title": "Translated Version 1",
+            "author": "Author 1",
+            "publication_status": "completed",
+        },
+    )
+
+    history = storage.list_metadata_history("novel1")
+
+    assert len(history) == 2
+    assert history[0]["snapshot_id"] == "current"
+    assert history[0]["is_current"] is True
+    assert history[0]["title"] == "Translated Version 1"
+    assert history[0]["source_title"] == "Version 1"
+    assert history[0]["author"] == "Author 1"
+    assert history[0]["publication_status"] == "completed"
+    assert history[0]["size_bytes"] > 0
+    assert history[1]["is_current"] is False
+    assert history[1]["publication_status"] == "ongoing"
+    assert history[1]["title"] == "Version 0"
+    encoded = json.dumps(history, ensure_ascii=False)
+    assert "secret-key" not in encoded
+    assert "<html>" not in encoded
+
+
 def test_metadata_save_merges_original_and_translated_fields(storage):
     storage.save_metadata("novel1", {"title": "Original Title", "author": "Original Author"})
     storage.save_metadata("novel1", {"translated_title": "Translated Title", "translated_author": "Translated Author"})

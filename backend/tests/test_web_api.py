@@ -214,6 +214,7 @@ def test_router_path_method_snapshot() -> None:
         (("GET",), "/{novel_id}/reader"),
         (("GET",), "/{novel_id}/reader/chapters/{chapter_id}"),
         (("GET",), "/{novel_id}/source-metadata"),
+        (("GET",), "/{novel_id}/source-metadata/history"),
         (("PATCH",), "/activity/{activity_id}"),
         (("PATCH",), "/jobs/{activity_id}"),
         (("PATCH",), "/requests/{request_id}"),
@@ -1301,6 +1302,111 @@ class TestListDetail:
         assert "<html>" not in encoded
         assert "secret-key" not in encoded
         assert "Bearer secret" not in encoded
+
+    def test_owner_can_inspect_source_metadata_history(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        storage.save_metadata(
+            "history-n1",
+            {
+                "title": "Version 0",
+                "author": "Original Author",
+                "publication_status": "ongoing",
+                "raw_html": "<html>secret source page</html>",
+                "api_key": "secret-key",
+                "authorization_header": "Bearer secret",
+            },
+        )
+        storage.save_metadata(
+            "history-n1",
+            {
+                "title": "Version 1",
+                "translated_title": "Translated Version 1",
+                "author": "Updated Author",
+                "publication_status": "completed",
+            },
+        )
+        c = _make_app(storage)
+
+        resp = c.get("/api/admin/novels/history-n1/source-metadata/history")
+        payload = resp.json()
+
+        assert resp.status_code == 200
+        assert payload["novel_id"] == "history-n1"
+        assert payload["limit"] == 10
+        assert len(payload["entries"]) == 2
+        assert payload["entries"][0]["snapshot_id"] == "current"
+        assert payload["entries"][0]["is_current"] is True
+        assert payload["entries"][0]["publication_status"] == "completed"
+        assert payload["entries"][0]["title"] == "Translated Version 1"
+        assert payload["entries"][0]["source_title"] == "Version 1"
+        assert payload["entries"][1]["is_current"] is False
+        assert payload["entries"][1]["publication_status"] == "ongoing"
+        encoded = json.dumps(payload, ensure_ascii=False)
+        assert "<html>" not in encoded
+        assert "secret-key" not in encoded
+        assert "Bearer secret" not in encoded
+
+    def test_source_metadata_history_limit_bounds_entries(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        storage.save_metadata("history-limit", {"title": "Version 0"})
+        for index in range(1, 4):
+            storage.save_metadata("history-limit", {"title": f"Version {index}"})
+        c = _make_app(storage)
+
+        resp = c.get("/api/admin/novels/history-limit/source-metadata/history?limit=1")
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["limit"] == 1
+        assert len(payload["entries"]) == 1
+        assert payload["entries"][0]["snapshot_id"] == "current"
+
+    def test_non_owner_cannot_inspect_source_metadata_history(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_novel(storage)
+        guest = _make_app(storage, session_user=None)
+        user = _make_app(storage, session_user=REGULAR_USER)
+
+        guest_resp = guest.get("/api/admin/novels/test-n1/source-metadata/history")
+        user_resp = user.get("/api/admin/novels/test-n1/source-metadata/history")
+
+        assert guest_resp.status_code == 401
+        assert user_resp.status_code == 403
+
+    def test_source_metadata_history_get_does_not_require_csrf(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_novel(storage)
+        c = _make_app(storage)
+
+        resp = c.get("/api/admin/novels/test-n1/source-metadata/history")
+
+        assert resp.status_code == 200
+
+    def test_source_metadata_history_missing_novel_returns_404(self, _no_api_key: None) -> None:
+        bootstrap()
+        c = _make_app(_fresh_storage())
+
+        resp = c.get("/api/admin/novels/missing/source-metadata/history")
+
+        assert resp.status_code == 404
+
+    def test_public_routes_do_not_expose_source_metadata_history(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_novel(storage)
+        c = _make_app(storage, session_user=None, db_session=isolated_db_session)
+
+        resp = c.get("/api/public/novels/test-n1/source-metadata/history")
+
+        assert resp.status_code == 404
 
     def test_non_owner_cannot_inspect_source_metadata(self, _no_api_key: None) -> None:
         bootstrap()
