@@ -608,6 +608,37 @@ def test_list_metadata_history_returns_current_and_backup_summaries(storage):
     assert "<html>" not in encoded
 
 
+def test_load_metadata_snapshot_returns_current_and_backup_payloads(storage):
+    storage.save_metadata("novel1", {"title": "Version 0", "publication_status": "ongoing"})
+    storage.save_metadata("novel1", {"title": "Version 1", "publication_status": "completed"})
+
+    history = storage.list_metadata_history("novel1")
+    backup_id = history[1]["snapshot_id"]
+
+    current = storage.load_metadata_snapshot("novel1", "current")
+    backup = storage.load_metadata_snapshot("novel1", backup_id)
+
+    assert current is not None
+    assert current["snapshot_id"] == "current"
+    assert current["is_current"] is True
+    assert current["publication_status"] == "completed"
+    assert current["metadata"]["title"] == "Version 1"
+    assert backup is not None
+    assert backup["snapshot_id"] == backup_id
+    assert backup["is_current"] is False
+    assert backup["publication_status"] == "ongoing"
+    assert backup["metadata"]["title"] == "Version 0"
+
+
+def test_load_metadata_snapshot_rejects_unknown_and_path_like_ids(storage):
+    storage.save_metadata("novel1", {"title": "Version 0"})
+
+    assert storage.load_metadata_snapshot("novel1", "missing.json") is None
+    assert storage.load_metadata_snapshot("novel1", "metadata.txt") is None
+    with pytest.raises(ValueError):
+        storage.load_metadata_snapshot("novel1", "..\\metadata.json")
+
+
 def test_metadata_save_merges_original_and_translated_fields(storage):
     storage.save_metadata("novel1", {"title": "Original Title", "author": "Original Author"})
     storage.save_metadata("novel1", {"translated_title": "Translated Title", "translated_author": "Translated Author"})
