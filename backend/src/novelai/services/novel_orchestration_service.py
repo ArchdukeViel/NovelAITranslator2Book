@@ -30,6 +30,7 @@ from novelai.services.orchestration.translation import (
     run_phased_translation_pipeline,
     translate_chapters,
 )
+from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
@@ -301,6 +302,11 @@ class NovelOrchestrationService:
             return False
         restored = self.storage.restore_from_checkpoint(novel_id, chapter_id, checkpoint_name)
         if restored:
+            safely_refresh_catalog_projection_after_storage_write(
+                novel_id,
+                self.storage,
+                context="checkpoint_restore",
+            )
             logger.info(
                 "Restored latest checkpoint '%s' before resuming chapter %s/%s.",
                 checkpoint_name,

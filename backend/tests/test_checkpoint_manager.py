@@ -52,3 +52,29 @@ class TestCheckpointManager:
         await mgr.create_checkpoint("n1", "ch1", ChapterState.SCRAPED)
         history = mgr.get_checkpoint_history("n1", "ch1")
         assert len(history) >= 1
+
+    @pytest.mark.asyncio
+    async def test_restore_checkpoint_refreshes_catalog_projection(
+        self, mgr: CheckpointManager, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await mgr.create_checkpoint("n1", "ch1", ChapterState.TRANSLATED)
+        refresh_calls: list[tuple[str, StorageService, str]] = []
+
+        def _tracking_refresh(
+            novel_id: str,
+            storage: StorageService,
+            *,
+            context: str,
+        ) -> bool:
+            refresh_calls.append((novel_id, storage, context))
+            return True
+
+        monkeypatch.setattr(
+            "novelai.services.checkpoint_manager.safely_refresh_catalog_projection_after_storage_write",
+            _tracking_refresh,
+        )
+
+        restored = await mgr.restore_checkpoint("n1", "ch1")
+
+        assert restored is True
+        assert refresh_calls == [("n1", mgr.storage, "checkpoint_restore")]

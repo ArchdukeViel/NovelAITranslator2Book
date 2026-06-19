@@ -412,6 +412,53 @@ def test_reconcile_catalog_projection_updates_translated_latest_fields(storage, 
     assert {"translated_count", "latest_chapter_id"}.issubset(result.changed_fields)
 
 
+def test_checkpoint_restore_projection_refresh_updates_translated_latest_fields(
+    storage, db_session, seeded_novel
+) -> None:
+    storage.save_metadata(
+        "novel-001",
+        {
+            "title": "Checkpoint Projection Repair",
+            "chapters": [
+                {"id": "ch001", "num": 1, "title": "Chapter 1"},
+                {"id": "ch002", "num": 2, "title": "Chapter 2"},
+            ],
+        },
+    )
+    storage.save_translated_chapter("novel-001", "ch002", "Translated from checkpoint")
+    storage.create_checkpoint("novel-001", "ch002", "resume")
+    storage.save_translated_chapter("novel-001", "ch002", "Changed after checkpoint")
+    seeded_novel.chapter_count = 0
+    seeded_novel.translated_count = 0
+    seeded_novel.latest_chapter_id = None
+    seeded_novel.latest_chapter_number = None
+    seeded_novel.latest_chapter_title = None
+    seeded_novel.latest_chapter_updated_at = None
+    db_session.commit()
+
+    assert storage.restore_from_checkpoint("novel-001", "ch002", "resume") is True
+    translated = storage.load_translated_chapter("novel-001", "ch002")
+    assert translated is not None
+    assert translated["text"] == "Translated from checkpoint"
+
+    refreshed = safely_refresh_catalog_projection_after_storage_write(
+        "novel-001",
+        storage,
+        context="checkpoint_restore",
+        session=db_session,
+    )
+    db_session.commit()
+
+    assert refreshed is True
+    repaired = db_session.query(Novel).filter_by(slug="novel-001").one()
+    assert repaired.chapter_count == 2
+    assert repaired.translated_count == 1
+    assert repaired.latest_chapter_id == "ch002"
+    assert repaired.latest_chapter_number == 2
+    assert repaired.latest_chapter_title == "Chapter 2"
+    assert repaired.latest_chapter_updated_at is not None
+
+
 def test_reconcile_catalog_projection_creates_db_row_from_storage_metadata(storage, db_session) -> None:
     storage.save_metadata(
         "storage-only",
@@ -698,9 +745,12 @@ def test_safe_projection_refresh_logs_failure_without_raising(storage) -> None:
 
 
 def test_storage_service_has_no_db_or_catalog_dependency() -> None:
-    storage_service_source = Path("backend/src/novelai/storage/service.py").read_text(
-        encoding="utf-8"
-    )
+    storage_sources = [
+        Path("backend/src/novelai/storage/service.py").read_text(encoding="utf-8"),
+        Path("backend/src/novelai/storage/jobs.py").read_text(encoding="utf-8"),
+    ]
 
-    assert "novelai.db" not in storage_service_source
-    assert "CatalogService" not in storage_service_source
+    for storage_source in storage_sources:
+        assert "novelai.db" not in storage_source
+        assert "CatalogService" not in storage_source
+        assert "safely_refresh_catalog_projection" not in storage_source
