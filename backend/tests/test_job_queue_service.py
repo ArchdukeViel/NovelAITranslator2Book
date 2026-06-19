@@ -169,3 +169,88 @@ def test_record_source_health_tracks_success_and_failure(activity_log: ActivityQ
     assert loaded["last_error"] == "timeout"
     assert failed == loaded
     assert all_sources == [loaded]
+
+
+def test_prune_activity_log_handles_missing_queue_file(activity_log: ActivityQueueService) -> None:
+    result = activity_log.prune_activity_log(dry_run=False)
+
+    assert result == {"dry_run": False, "deleted": 0, "candidates": [], "kept": 0}
+
+
+def test_prune_activity_log_dry_run_reports_candidates_without_deleting(activity_log: ActivityQueueService) -> None:
+    activity_log._persist_activity(
+        [
+            {
+                "id": "completed_old",
+                "status": "completed",
+                "created_at": "2026-06-01T00:00:00Z",
+                "finished_at": "2026-06-01T00:01:00Z",
+            },
+            {
+                "id": "completed_new",
+                "status": "completed",
+                "created_at": "2026-06-02T00:00:00Z",
+                "finished_at": "2026-06-02T00:01:00Z",
+            },
+            {
+                "id": "pending_active",
+                "status": "pending",
+                "created_at": "2026-06-03T00:00:00Z",
+            },
+        ]
+    )
+
+    result = activity_log.prune_activity_log(keep_completed=1, keep_failed=1, dry_run=True)
+
+    assert [item["id"] for item in result["candidates"]] == ["completed_old"]
+    assert result["deleted"] == 0
+    assert activity_log.get_activity("completed_old") is not None
+    assert activity_log.get_activity("pending_active") is not None
+
+
+def test_prune_activity_log_preserves_active_and_recent_failed_retry_metadata(
+    activity_log: ActivityQueueService,
+) -> None:
+    activity_log._persist_activity(
+        [
+            {
+                "id": "failed_old",
+                "status": "failed",
+                "created_at": "2026-06-01T00:00:00Z",
+                "finished_at": "2026-06-01T00:01:00Z",
+                "metadata": {"retry_history": [{"error": "old"}]},
+            },
+            {
+                "id": "failed_recent",
+                "status": "failed",
+                "created_at": "2026-06-02T00:00:00Z",
+                "finished_at": "2026-06-02T00:01:00Z",
+                "metadata": {"retry_history": [{"error": "recent"}]},
+            },
+            {
+                "id": "cancelled_recent",
+                "status": "cancelled",
+                "created_at": "2026-06-03T00:00:00Z",
+                "finished_at": "2026-06-03T00:01:00Z",
+                "metadata": {"retry_history": [{"error": "cancelled"}]},
+            },
+            {
+                "id": "running_active",
+                "status": "running",
+                "created_at": "2026-06-04T00:00:00Z",
+            },
+        ]
+    )
+
+    result = activity_log.prune_activity_log(keep_completed=0, keep_failed=2, dry_run=False)
+
+    assert [item["id"] for item in result["candidates"]] == ["failed_old"]
+    assert result["deleted"] == 1
+    assert activity_log.get_activity("failed_old") is None
+    assert activity_log.get_activity("running_active") is not None
+    recent_failed = activity_log.get_activity("failed_recent")
+    cancelled_recent = activity_log.get_activity("cancelled_recent")
+    assert recent_failed is not None
+    assert recent_failed["metadata"]["retry_history"] == [{"error": "recent"}]
+    assert cancelled_recent is not None
+    assert cancelled_recent["metadata"]["retry_history"] == [{"error": "cancelled"}]

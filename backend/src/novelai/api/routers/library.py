@@ -16,6 +16,7 @@ from novelai.api.routers.dependencies import (
     reader_author,
     reader_title,
 )
+from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
@@ -28,6 +29,7 @@ class NovelSummary(BaseModel):
     author: str | None = None
     source: str | None = None
     source_url: str | None = None
+    publication_status: str = "unknown"
     chapter_count: int = 0
     scraped_count: int = 0
     translated_count: int = 0
@@ -59,6 +61,7 @@ async def list_novels(
         scraped_count = storage.count_stored_chapters(novel_id)
         translated_count = storage.count_translated_chapters(novel_id)
         chapter_count = _metadata_chapter_count(meta) or max(scraped_count, translated_count)
+        publication_status = normalize_publication_status(meta.get("publication_status") or meta.get("status"))
         if not meta:
             logger.info("Listing novel %s from files because metadata is missing or unreadable.", novel_id)
         summaries.append(
@@ -68,6 +71,7 @@ async def list_novels(
                 author=_optional_string(meta.get("translated_author")) or _optional_string(meta.get("author")),
                 source=_optional_string(meta.get("source")),
                 source_url=_optional_string(meta.get("source_url")),
+                publication_status=publication_status,
                 chapter_count=chapter_count,
                 scraped_count=scraped_count,
                 translated_count=translated_count,
