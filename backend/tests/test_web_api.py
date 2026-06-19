@@ -1059,6 +1059,7 @@ class TestListDetail:
         assert data[0]["chapter_count"] == 2
         assert data[0]["scraped_count"] == 1
         assert data[0]["translated_count"] == 1
+        assert data[0]["publication_status"] == "unknown"
 
     def test_list_novels_includes_legacy_syosetu_folder_without_metadata(self, _no_api_key: None) -> None:
         bootstrap()
@@ -1083,6 +1084,7 @@ class TestListDetail:
                 "author": None,
                 "source": None,
                 "source_url": None,
+                "publication_status": "unknown",
                 "chapter_count": 1,
                 "scraped_count": 1,
                 "translated_count": 0,
