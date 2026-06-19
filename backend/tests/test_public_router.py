@@ -6,6 +6,7 @@ Uses FastAPI TestClient + temp dir StorageService; DB session via SQLAlchemy.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -94,6 +95,48 @@ def _seed_translated_chapter(
     storage: StorageService, novel_id: str, chapter_id: str, text: str = "Translated text."
 ) -> None:
     storage.save_translated_chapter(novel_id, chapter_id, text)
+
+
+def _seed_db_catalog_novel(
+    db_session,
+    slug: str,
+    *,
+    title: str | None = None,
+    source_title: str | None = None,
+    author: str | None = None,
+    language: str = "ja",
+    status: str = "ongoing",
+    synopsis: str | None = None,
+    is_published: bool = True,
+    updated_at: datetime | None = None,
+    chapter_count: int = 0,
+    translated_count: int = 0,
+    latest_chapter_id: str | None = None,
+    latest_chapter_number: int | None = None,
+    latest_chapter_title: str | None = None,
+    latest_chapter_updated_at: datetime | None = None,
+) -> Novel:
+    novel = Novel(
+        slug=slug,
+        title=title or f"Title {slug}",
+        original_title=source_title,
+        author=author,
+        language=language,
+        status=status,
+        publication_status=status,
+        synopsis=synopsis,
+        is_published=is_published,
+        updated_at=updated_at or datetime(2024, 1, 1, tzinfo=timezone.utc),
+        chapter_count=chapter_count,
+        translated_count=translated_count,
+        latest_chapter_id=latest_chapter_id,
+        latest_chapter_number=latest_chapter_number,
+        latest_chapter_title=latest_chapter_title,
+        latest_chapter_updated_at=latest_chapter_updated_at,
+    )
+    db_session.add(novel)
+    db_session.commit()
+    return novel
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +300,126 @@ class TestCatalog:
         _seed_novel(storage, "novel-001")
         novel = client.get("/api/public/catalog").json()["novels"][0]
         assert "is_adult" not in novel
+
+    def test_catalog_uses_db_pagination_for_base_request(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _seed_db_catalog_novel(
+            db_session,
+            "novel-old",
+            title="Old Novel",
+            updated_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        )
+        _seed_db_catalog_novel(
+            db_session,
+            "novel-new",
+            title="New Novel",
+            source_title="新しい小説",
+            author="Author",
+            synopsis="Stored synopsis.",
+            updated_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
+            chapter_count=9,
+            translated_count=3,
+            latest_chapter_id="ch009",
+            latest_chapter_number=9,
+            latest_chapter_title="Chapter 9",
+            latest_chapter_updated_at=datetime(2024, 6, 2, tzinfo=timezone.utc),
+        )
+        _seed_db_catalog_novel(
+            db_session,
+            "novel-mid",
+            title="Mid Novel",
+            updated_at=datetime(2024, 3, 1, tzinfo=timezone.utc),
+        )
+        monkeypatch.setattr(
+            storage,
+            "list_novels",
+            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
+        )
+
+        resp = client.get("/api/public/catalog?page=1&page_size=2")
+        data = resp.json()
+
+        assert resp.status_code == 200
+        assert data["total"] == 3
+        assert [novel["novel_id"] for novel in data["novels"]] == ["novel-new", "novel-mid"]
+        first = data["novels"][0]
+        assert first["slug"] == "novel-new"
+        assert first["title"] == "New Novel"
+        assert first["source_title"] == "新しい小説"
+        assert first["author"] == "Author"
+        assert first["language"] == "ja"
+        assert first["synopsis"] == "Stored synopsis."
+        assert first["status"] == "ongoing"
+        assert first["chapter_count"] == 9
+        assert first["translated_count"] == 3
+        assert first["latest_chapter_id"] == "ch009"
+        assert first["latest_chapter_number"] == 9
+        assert first["latest_chapter_title"] == "Chapter 9"
+        assert isinstance(first["added_at"], str)
+        assert isinstance(first["latest_chapter_updated_at"], str)
+
+    def test_catalog_db_path_excludes_unpublished_rows(
+        self,
+        client: TestClient,
+        db_session,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "published", is_published=True)
+        _seed_db_catalog_novel(db_session, "draft", is_published=False)
+
+        data = client.get("/api/public/catalog").json()
+
+        assert data["total"] == 1
+        assert [novel["novel_id"] for novel in data["novels"]] == ["published"]
+
+    def test_catalog_db_path_includes_taxonomy_for_returned_page(
+        self,
+        client: TestClient,
+        db_session,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "novel-tax", updated_at=datetime(2024, 6, 1, tzinfo=timezone.utc))
+        _seed_genre_for_tests(db_session, "fantasy", "ファンタジー", display_order=2)
+        _seed_genre_for_tests(db_session, "romance", "恋愛", display_order=1)
+        _assign_genre_for_tests(db_session, "novel-tax", "fantasy")
+        _assign_genre_for_tests(db_session, "novel-tax", "romance")
+        _assign_tag_for_tests(db_session, "novel-tax", "魔法")
+
+        novel = client.get("/api/public/catalog").json()["novels"][0]
+
+        assert novel["genres"] == ["romance", "fantasy"]
+        assert novel["tags"] == ["魔法"]
+
+    def test_catalog_complex_filter_falls_back_to_storage_path(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "db-only", title="Other DB Novel")
+        _seed_novel(storage, "storage-dragon", title="Dragon King")
+
+        data = client.get("/api/public/catalog?q=dragon").json()
+
+        assert data["total"] == 1
+        assert data["novels"][0]["novel_id"] == "storage-dragon"
+
+    def test_storage_fallback_does_not_expose_unpublished_db_row(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+    ) -> None:
+        _seed_novel(storage, "draft-storage", title="Draft Storage")
+        _seed_db_catalog_novel(db_session, "draft-storage", is_published=False)
+
+        data = client.get("/api/public/catalog").json()
+
+        assert data["total"] == 0
+        assert data["novels"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -691,9 +854,11 @@ class TestCatalogTaxonomy:
         from sqlalchemy import text
         novel = db_session.query(Novel).filter_by(slug=novel_slug).one_or_none()
         if novel is None:
-            novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing")
+            novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing", is_published=True)
             db_session.add(novel)
             db_session.flush()
+        else:
+            novel.is_published = True
         genre = db_session.query(Genre).filter_by(slug=genre_slug).one()
         db_session.execute(text(
             "INSERT OR IGNORE INTO novel_genres (novel_id, genre_id, assigned_by) "
@@ -711,9 +876,11 @@ class TestCatalogTaxonomy:
             db_session.flush()
         novel = db_session.query(Novel).filter_by(slug=novel_slug).one_or_none()
         if novel is None:
-            novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing")
+            novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing", is_published=True)
             db_session.add(novel)
             db_session.flush()
+        else:
+            novel.is_published = True
         db_session.execute(text(
             "INSERT OR IGNORE INTO novel_tags (novel_id, tag_id, origin, assigned_by) "
             "VALUES (:nid, :tid, 'test', 'scraper')"
@@ -883,9 +1050,11 @@ def _assign_genre_for_tests(db_session, novel_slug: str, genre_slug: str) -> Non
     from sqlalchemy import text
     novel = db_session.query(Novel).filter_by(slug=novel_slug).one_or_none()
     if novel is None:
-        novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing")
+        novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing", is_published=True)
         db_session.add(novel)
         db_session.flush()
+    else:
+        novel.is_published = True
     from novelai.db.models.genre import Genre
     genre = db_session.query(Genre).filter_by(slug=genre_slug).one()
     db_session.execute(text(
@@ -905,9 +1074,11 @@ def _assign_tag_for_tests(db_session, novel_slug: str, tag_name: str) -> None:
         db_session.flush()
     novel = db_session.query(Novel).filter_by(slug=novel_slug).one_or_none()
     if novel is None:
-        novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing")
+        novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing", is_published=True)
         db_session.add(novel)
         db_session.flush()
+    else:
+        novel.is_published = True
     db_session.execute(text(
         "INSERT OR IGNORE INTO novel_tags (novel_id, tag_id, origin, assigned_by) "
         "VALUES (:nid, :tid, 'test', 'scraper')"
