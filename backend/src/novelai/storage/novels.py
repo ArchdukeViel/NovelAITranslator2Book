@@ -134,6 +134,54 @@ def list_metadata_history(self: Any, novel_id: str, *, limit: int = 10) -> list[
     return entries[:limit]
 
 
+def load_metadata_snapshot(self: Any, novel_id: str, snapshot_id: str) -> dict[str, Any] | None:
+    """Return one metadata snapshot with its summary entry and raw JSON payload.
+
+    Snapshot IDs are deliberately narrow: "current" for the active metadata file,
+    or a JSON filename that already exists under the novel's metadata_backups
+    directory. Callers are responsible for sanitizing the returned metadata before
+    exposing it outside the storage boundary.
+    """
+    novel_id = self._normalize_library_novel_id(novel_id) or novel_id
+    snapshot_id = validate_storage_identifier(snapshot_id, "snapshot_id")
+    novel_dir = self._novel_dir(novel_id)
+
+    if snapshot_id == "current":
+        snapshot_path = novel_dir / "metadata.json"
+        is_current = True
+    else:
+        if not snapshot_id.endswith(".json"):
+            return None
+        backup_dir = _metadata_backup_dir(novel_dir)
+        snapshot_path = backup_dir / snapshot_id
+        is_current = False
+        try:
+            snapshot_path.resolve().relative_to(backup_dir.resolve())
+        except ValueError as exc:
+            raise ValueError("snapshot_id must stay within metadata_backups.") from exc
+        if snapshot_id not in {path.name for path in backup_dir.glob("*.json")}:
+            return None
+
+    if not snapshot_path.exists() or not snapshot_path.is_file():
+        return None
+
+    try:
+        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Could not read metadata snapshot at %s: %s", snapshot_path, exc)
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    entry = _metadata_history_entry(snapshot_path, snapshot_id=snapshot_id, is_current=is_current)
+    if entry is None:
+        return None
+    return {
+        **entry,
+        "metadata": payload,
+    }
+
+
 def _compute_folder_name(self: Any, novel_id: str, metadata: dict[str, Any]) -> str:
     """Return a stable folder name for a novel."""
     return self._sanitize_folder_name(novel_id)

@@ -18,6 +18,7 @@ from novelai.api.routers.dependencies import (
     reader_author,
     reader_title,
 )
+from novelai.core.security import redact_sensitive
 from novelai.db.models.novel import Novel
 from novelai.services.catalog_service import CatalogService
 from novelai.sources.status import normalize_publication_status
@@ -82,6 +83,17 @@ class SourceMetadataHistoryResponse(BaseModel):
     limit: int
 
 
+class SourceMetadataSnapshotDetail(BaseModel):
+    novel_id: str
+    snapshot_id: str
+    is_current: bool
+    created_at: str | None = None
+    size_bytes: int = 0
+    metadata: dict[str, Any]
+    metadata_keys: list[str]
+    warnings: list[str] = []
+
+
 class CatalogProjectionRefreshResponse(BaseModel):
     novel_id: str
     created: bool
@@ -133,18 +145,28 @@ def _metadata_chapter_count(meta: dict[str, Any]) -> int:
 _INSPECTION_EXCLUDED_KEY_PARTS = (
     "api_key",
     "authorization",
+    "credential",
     "cookie",
     "password",
     "secret",
+    "session",
     "token",
 )
 _INSPECTION_EXCLUDED_KEYS = {
     "html",
     "page_html",
     "raw_html",
+    "raw_payload",
+    "raw_source",
     "raw_source_html",
+    "response_body",
+    "source_body",
     "source_html",
 }
+_DETAIL_MAX_STRING_LENGTH = 1000
+_DETAIL_MAX_LIST_ITEMS = 25
+_DETAIL_MAX_DICT_ITEMS = 50
+_DETAIL_MAX_DEPTH = 4
 
 
 def _safe_metadata_keys(meta: dict[str, Any]) -> list[str]:
@@ -158,6 +180,88 @@ def _safe_metadata_keys(meta: dict[str, Any]) -> list[str]:
             continue
         keys.append(key_text)
     return sorted(keys)
+
+
+def _is_sensitive_metadata_key(key: str) -> bool:
+    lowered = key.lower()
+    return any(part in lowered for part in _INSPECTION_EXCLUDED_KEY_PARTS)
+
+
+def _is_raw_payload_key(key: str) -> bool:
+    lowered = key.lower()
+    return lowered in _INSPECTION_EXCLUDED_KEYS or (
+        ("html" in lowered or "payload" in lowered or "source_body" in lowered) and "title" not in lowered
+    )
+
+
+def _sanitize_metadata_value(
+    key: str,
+    value: Any,
+    *,
+    warnings: list[str],
+    path: str,
+    depth: int = 0,
+) -> Any:
+    if _is_sensitive_metadata_key(key):
+        warnings.append(f"redacted:{path}")
+        return None
+    if _is_raw_payload_key(key):
+        warnings.append(f"omitted_raw_payload:{path}")
+        return None
+
+    value = redact_sensitive(value)
+    if isinstance(value, str):
+        if "<html" in value.lower() or "<!doctype" in value.lower():
+            warnings.append(f"omitted_raw_payload:{path}")
+            return None
+        if len(value) > _DETAIL_MAX_STRING_LENGTH:
+            warnings.append(f"truncated:{path}")
+            return f"{value[:_DETAIL_MAX_STRING_LENGTH]}... [truncated]"
+        return value
+    if isinstance(value, list):
+        if depth >= _DETAIL_MAX_DEPTH:
+            warnings.append(f"truncated:{path}")
+            return "[TRUNCATED]"
+        items = value[:_DETAIL_MAX_LIST_ITEMS]
+        if len(value) > _DETAIL_MAX_LIST_ITEMS:
+            warnings.append(f"truncated:{path}")
+        return [
+            _sanitize_metadata_value(str(index), item, warnings=warnings, path=f"{path}.{index}", depth=depth + 1)
+            for index, item in enumerate(items)
+        ]
+    if isinstance(value, dict):
+        if depth >= _DETAIL_MAX_DEPTH:
+            warnings.append(f"truncated:{path}")
+            return "[TRUNCATED]"
+        sanitized: dict[str, Any] = {}
+        items = list(value.items())
+        if len(items) > _DETAIL_MAX_DICT_ITEMS:
+            warnings.append(f"truncated:{path}")
+        for child_key, child_value in items[:_DETAIL_MAX_DICT_ITEMS]:
+            child_key_text = str(child_key)
+            child_path = f"{path}.{child_key_text}"
+            sanitized_value = _sanitize_metadata_value(
+                child_key_text,
+                child_value,
+                warnings=warnings,
+                path=child_path,
+                depth=depth + 1,
+            )
+            if sanitized_value is not None:
+                sanitized[child_key_text] = sanitized_value
+        return sanitized
+    return value
+
+
+def _sanitize_metadata_snapshot(meta: dict[str, Any]) -> tuple[dict[str, Any], list[str], list[str]]:
+    warnings: list[str] = []
+    sanitized: dict[str, Any] = {}
+    for key, value in meta.items():
+        key_text = str(key)
+        sanitized_value = _sanitize_metadata_value(key_text, value, warnings=warnings, path=key_text)
+        if sanitized_value is not None:
+            sanitized[key_text] = sanitized_value
+    return sanitized, sorted(sanitized.keys()), sorted(set(warnings))
 
 
 def _source_metadata_warnings(meta: dict[str, Any], *, metadata_missing: bool) -> list[str]:
@@ -349,6 +453,41 @@ async def inspect_source_metadata_history(
         novel_id=novel_id,
         entries=[SourceMetadataHistoryEntry(**entry) for entry in entries],
         limit=limit,
+    )
+
+
+@router.get("/{novel_id}/source-metadata/history/{snapshot_id}", response_model=SourceMetadataSnapshotDetail)
+async def inspect_source_metadata_snapshot_detail(
+    novel_id: str,
+    snapshot_id: str,
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> SourceMetadataSnapshotDetail:
+    try:
+        snapshot = storage.load_metadata_snapshot(novel_id, snapshot_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid snapshot id") from None
+
+    if snapshot is None:
+        if novel_id not in storage.list_novels():
+            raise HTTPException(status_code=404, detail="Novel not found")
+        raise HTTPException(status_code=404, detail="Metadata snapshot not found")
+
+    raw_metadata = snapshot.get("metadata") if isinstance(snapshot.get("metadata"), dict) else {}
+    sanitized_metadata, metadata_keys, sanitize_warnings = _sanitize_metadata_snapshot(raw_metadata)
+    warnings = sorted(
+        set(sanitize_warnings)
+        | set(_source_metadata_warnings(raw_metadata, metadata_missing=False))
+    )
+    return SourceMetadataSnapshotDetail(
+        novel_id=novel_id,
+        snapshot_id=str(snapshot["snapshot_id"]),
+        is_current=bool(snapshot["is_current"]),
+        created_at=snapshot.get("created_at") if isinstance(snapshot.get("created_at"), str) else None,
+        size_bytes=int(snapshot.get("size_bytes", 0) or 0),
+        metadata=sanitized_metadata,
+        metadata_keys=metadata_keys,
+        warnings=warnings,
     )
 
 
