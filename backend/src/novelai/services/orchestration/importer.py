@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
+
 
 async def import_document(
     self: Any,
@@ -40,6 +42,11 @@ async def import_document(
         **document.metadata,
     }
     self.storage.save_metadata(novel_id, metadata)
+    safely_refresh_catalog_projection_after_storage_write(
+        novel_id,
+        self.storage,
+        context="import_metadata",
+    )
 
     for unit in adapter.list_units(document):
         self.storage.clear_chapter_image_assets(novel_id, unit.unit_id)
@@ -88,6 +95,11 @@ async def import_document(
             region_metadata=[dict(item) for item in unit.region_metadata],
             ocr_artifacts=[dict(item) for item in unit.ocr_artifacts],
         )
+        safely_refresh_catalog_projection_after_storage_write(
+            novel_id,
+            self.storage,
+            context="import_chapter",
+        )
         self.storage.save_chapter_media_state(
             novel_id,
             unit.unit_id,
@@ -98,4 +110,3 @@ async def import_document(
         )
 
     return self.storage.load_metadata(novel_id) or metadata
-
