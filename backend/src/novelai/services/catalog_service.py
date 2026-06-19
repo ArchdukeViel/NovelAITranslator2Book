@@ -10,6 +10,7 @@ the two can run in parallel during the file→DB transition.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import logging
 from collections.abc import Callable
@@ -26,6 +27,27 @@ from novelai.services.taxonomy_persistence import persist_taxonomy_assignments
 from novelai.storage.service import StorageService
 
 logger = logging.getLogger(__name__)
+
+
+CATALOG_PROJECTION_FIELDS = (
+    "publication_status",
+    "source_updated_at",
+    "chapter_count",
+    "translated_count",
+    "latest_chapter_id",
+    "latest_chapter_number",
+    "latest_chapter_title",
+    "latest_chapter_updated_at",
+)
+
+
+@dataclass(frozen=True)
+class CatalogProjectionReconciliation:
+    novel_id: str
+    created: bool
+    before: dict[str, object] | None
+    after: dict[str, object]
+    changed_fields: list[str]
 
 
 def _sha256(text: str) -> str:
@@ -55,6 +77,10 @@ def _metadata_chapters(metadata: dict) -> list[dict]:
 
 def _optional_string(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _projection_snapshot(novel: Novel) -> dict[str, object]:
+    return {field: getattr(novel, field) for field in CATALOG_PROJECTION_FIELDS}
 
 
 def refresh_catalog_projection_for_storage_novel(
@@ -291,6 +317,64 @@ class CatalogService:
         novel.latest_chapter_title = latest_chapter["title"] if latest_chapter else None
         novel.latest_chapter_updated_at = latest_chapter["updated_at"] if latest_chapter else None
         return novel
+
+    def reconcile_catalog_projection(
+        self,
+        novel_id: str,
+    ) -> CatalogProjectionReconciliation | None:
+        """Repair one DB catalog projection from canonical storage state.
+
+        Returns None only when neither a DB row nor storage metadata exists.
+        Storage-backed novels with metadata may create the missing DB row via
+        the same CatalogService ownership path used by write refreshes.
+        """
+        metadata = self._storage.load_metadata(novel_id)
+        novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        if novel is None and metadata is None:
+            return None
+
+        before = _projection_snapshot(novel) if novel is not None else None
+        created = novel is None
+        if metadata is not None and novel is None:
+            novel = self.get_or_create_novel(novel_id, metadata)
+        elif metadata is not None and novel is not None:
+            publication_status = normalize_publication_status(
+                metadata.get("publication_status") or metadata.get("status")
+            )
+            novel.status = publication_status
+            novel.publication_status = publication_status
+            novel.source_updated_at = _metadata_datetime(
+                metadata.get("source_updated_at")
+                or metadata.get("scraped_at")
+                or metadata.get("updated_at")
+            )
+            self.recompute_catalog_projection(novel_id, novel=novel, metadata=metadata)
+        elif novel is not None:
+            publication_status = normalize_publication_status(
+                novel.publication_status or novel.status
+            )
+            novel.status = publication_status
+            novel.publication_status = publication_status
+            self.recompute_catalog_projection(novel_id, novel=novel, metadata={})
+
+        if novel is None:
+            return None
+
+        self._session.add(novel)
+        self._session.flush()
+        after = _projection_snapshot(novel)
+        changed_fields = [
+            field
+            for field in CATALOG_PROJECTION_FIELDS
+            if before is None or before.get(field) != after.get(field)
+        ]
+        return CatalogProjectionReconciliation(
+            novel_id=novel_id,
+            created=created,
+            before=before,
+            after=after,
+            changed_fields=changed_fields,
+        )
 
     def _latest_translated_chapter(
         self,

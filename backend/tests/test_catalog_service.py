@@ -19,6 +19,7 @@ from novelai.db.base import Base
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
 from novelai.services.catalog_service import (
+    CATALOG_PROJECTION_FIELDS,
     CatalogService,
     safely_refresh_catalog_projection_after_storage_write,
 )
@@ -338,6 +339,106 @@ class TestSaveTranslatedChapter:
         assert result.latest_chapter_number == 2
         assert result.latest_chapter_title == "Chapter 2"
         assert result.latest_chapter_updated_at is not None
+
+
+def test_reconcile_catalog_projection_updates_stale_counts(storage, db_session, seeded_novel) -> None:
+    seeded_novel.chapter_count = 0
+    seeded_novel.translated_count = 0
+    seeded_novel.publication_status = "unknown"
+    seeded_novel.status = "unknown"
+    db_session.commit()
+    storage.save_metadata(
+        "novel-001",
+        {
+            "title": "Projection Repair",
+            "status": "completed",
+            "scraped_at": "2026-06-19T01:02:03+00:00",
+            "chapters": [
+                {"id": "ch001", "num": 1, "title": "Chapter 1"},
+                {"id": "ch002", "num": 2, "title": "Chapter 2"},
+            ],
+        },
+    )
+
+    result = CatalogService(storage=storage, session=db_session).reconcile_catalog_projection("novel-001")
+    db_session.commit()
+
+    assert result is not None
+    assert result.created is False
+    assert result.before is not None
+    assert result.after["chapter_count"] == 2
+    assert result.after["translated_count"] == 0
+    assert result.after["publication_status"] == "completed"
+    assert "chapter_count" in result.changed_fields
+    assert "publication_status" in result.changed_fields
+    repaired = db_session.query(Novel).filter_by(slug="novel-001").one()
+    assert repaired.chapter_count == 2
+    assert repaired.translated_count == 0
+    assert repaired.publication_status == "completed"
+    assert repaired.source_updated_at is not None
+    assert repaired.source_updated_at.replace(tzinfo=timezone.utc) == datetime(
+        2026,
+        6,
+        19,
+        1,
+        2,
+        3,
+        tzinfo=timezone.utc,
+    )
+
+
+def test_reconcile_catalog_projection_updates_translated_latest_fields(storage, db_session, seeded_novel) -> None:
+    storage.save_metadata(
+        "novel-001",
+        {
+            "title": "Projection Repair",
+            "chapters": [
+                {"id": "ch001", "num": 1, "title": "Chapter 1"},
+                {"id": "ch002", "num": 2, "title": "Chapter 2"},
+            ],
+        },
+    )
+    storage.save_translated_chapter("novel-001", "ch002", "Translated chapter two")
+
+    result = CatalogService(storage=storage, session=db_session).reconcile_catalog_projection("novel-001")
+    db_session.commit()
+
+    assert result is not None
+    assert result.after["translated_count"] == 1
+    assert result.after["latest_chapter_id"] == "ch002"
+    assert result.after["latest_chapter_number"] == 2
+    assert result.after["latest_chapter_title"] == "Chapter 2"
+    assert result.after["latest_chapter_updated_at"] is not None
+    assert {"translated_count", "latest_chapter_id"}.issubset(result.changed_fields)
+
+
+def test_reconcile_catalog_projection_creates_db_row_from_storage_metadata(storage, db_session) -> None:
+    storage.save_metadata(
+        "storage-only",
+        {
+            "title": "Storage Only",
+            "status": "ongoing",
+            "chapters": [{"id": "ch001", "num": 1, "title": "Chapter 1"}],
+        },
+    )
+
+    result = CatalogService(storage=storage, session=db_session).reconcile_catalog_projection("storage-only")
+    db_session.commit()
+
+    assert result is not None
+    assert result.created is True
+    assert result.before is None
+    assert result.changed_fields == list(CATALOG_PROJECTION_FIELDS)
+    repaired = db_session.query(Novel).filter_by(slug="storage-only").one()
+    assert repaired.title == "Storage Only"
+    assert repaired.chapter_count == 1
+    assert repaired.publication_status == "ongoing"
+
+
+def test_reconcile_catalog_projection_missing_novel_returns_none(storage, db_session) -> None:
+    result = CatalogService(storage=storage, session=db_session).reconcile_catalog_projection("missing")
+
+    assert result is None
 
 
 def test_catalog_projection_migration_upgrade_backfill_and_downgrade(
