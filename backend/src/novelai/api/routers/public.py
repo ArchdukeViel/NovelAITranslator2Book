@@ -36,6 +36,7 @@ from novelai.api.routers.dependencies import (
 from novelai.db.models.genre import Genre
 from novelai.db.models.novel import Novel
 from novelai.db.models.tag import Tag
+from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -64,6 +65,7 @@ class PublicNovelSummary(BaseModel):
     language: str | None = None
     synopsis: str | None = None
     status: str | None = None
+    publication_status: str = "unknown"
     chapter_count: int = 0
     translated_count: int = 0
     added_at: str | None = None
@@ -136,6 +138,10 @@ def _datetime_to_public_string(value: datetime | None) -> str | None:
     return value.isoformat() if isinstance(value, datetime) else None
 
 
+def _publication_status_from_metadata(meta: dict[str, Any]) -> str:
+    return normalize_publication_status(meta.get("publication_status") or meta.get("status"))
+
+
 def _latest_translated_chapter(
     novel_id: str,
     meta: dict[str, Any],
@@ -185,6 +191,7 @@ def _novel_summary(
     if translated_title and original_title and translated_title != original_title:
         source_title = original_title
     latest_chapter = _latest_translated_chapter(novel_id, meta, storage)
+    publication_status = _publication_status_from_metadata(meta)
 
     return PublicNovelSummary(
         novel_id=novel_id,
@@ -194,7 +201,8 @@ def _novel_summary(
         author=_optional_str(meta.get("translated_author")) or _optional_str(meta.get("author")),
         language=_optional_str(meta.get("language")),
         synopsis=_optional_str(meta.get("description")),
-        status=_optional_str(meta.get("status")),
+        status=publication_status,
+        publication_status=publication_status,
         chapter_count=chapter_count,
         translated_count=translated_count,
         added_at=_novel_added_at(meta),
@@ -232,6 +240,9 @@ def _db_novel_summary(
 ) -> PublicNovelSummary:
     genres, tags = _taxonomy_from_db_novel(novel, include_adult=include_adult)
     source_title = novel.original_title if novel.original_title and novel.original_title != novel.title else None
+    publication_status = normalize_publication_status(
+        novel.publication_status or novel.status
+    )
     return PublicNovelSummary(
         novel_id=novel.slug,
         slug=novel.slug,
@@ -240,7 +251,8 @@ def _db_novel_summary(
         author=novel.author,
         language=novel.language,
         synopsis=novel.synopsis,
-        status=novel.status,
+        status=publication_status,
+        publication_status=publication_status,
         chapter_count=novel.chapter_count,
         translated_count=novel.translated_count,
         added_at=_datetime_to_public_string(novel.updated_at),
@@ -455,7 +467,7 @@ def _catalog_from_storage(
         meta = storage.load_metadata(novel_id) or {}
         if q and not _novel_matches_search(meta, q):
             continue
-        if status and _optional_str(meta.get("status")) != status:
+        if status and _publication_status_from_metadata(meta) != status:
             continue
         if language and _optional_str(meta.get("language")) != language:
             continue
@@ -516,6 +528,7 @@ def _catalog_from_storage(
 async def catalog(
     q: str | None = Query(default=None, description="Search title or author"),
     status: str | None = Query(default=None, description="Filter by status"),
+    publication_status: str | None = Query(default=None, description="Filter by publication status"),
     language: str | None = Query(default=None, description="Filter by language (deprecated for public Browse)"),
     sort_by: str | None = Query(default=None, description="Sort field: added_at, title, chapter_count"),
     order: str | None = Query(default=None, description="Sort order: asc or desc"),
@@ -532,6 +545,19 @@ async def catalog(
     db: Session = Depends(get_db_session),
 ) -> PublicCatalogResponse:
     """Paginated public novel catalog with optional search, filter, and sort."""
+    effective_status = normalize_publication_status(status) if status else None
+    effective_publication_status = (
+        normalize_publication_status(publication_status)
+        if publication_status
+        else None
+    )
+    if effective_status and effective_publication_status and effective_status != effective_publication_status:
+        raise HTTPException(
+            status_code=400,
+            detail="status and publication_status filters must match when both are provided.",
+        )
+    publication_status_filter = effective_publication_status or effective_status
+
     # Normalize sort parameters with safe fallbacks
     effective_sort_by = sort_by if sort_by and sort_by in VALID_SORT_FIELDS else DEFAULT_SORT_BY
     effective_order = order if order and order in VALID_ORDER_VALUES else DEFAULT_ORDER
@@ -545,7 +571,7 @@ async def catalog(
 
     if _is_db_catalog_base_request(
         q=q,
-        status=status,
+        status=publication_status_filter,
         language=language,
         sort_by=sort_by,
         min_chapters=min_chapters,
@@ -558,7 +584,7 @@ async def catalog(
         db_response = _catalog_from_db_page(
             db,
             q=q,
-            status=status,
+            status=publication_status_filter,
             language=language,
             effective_sort_by=effective_sort_by,
             min_chapters=min_chapters,
@@ -577,7 +603,7 @@ async def catalog(
 
     return _catalog_from_storage(
         q=q,
-        status=status,
+        status=publication_status_filter,
         language=language,
         effective_sort_by=effective_sort_by,
         reverse=reverse,

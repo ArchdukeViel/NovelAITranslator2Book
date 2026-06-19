@@ -81,6 +81,7 @@ def _seed_novel(storage: StorageService, novel_id: str, **kwargs) -> None:
         "author": kwargs.get("author", "Test Author"),
         "language": kwargs.get("language", "ja"),
         "status": kwargs.get("status", "ongoing"),
+        "publication_status": kwargs.get("publication_status", kwargs.get("status", "ongoing")),
         "scraped_at": kwargs.get("scraped_at"),
         "updated_at": kwargs.get("updated_at"),
         "chapters": kwargs.get("chapters", [
@@ -106,6 +107,7 @@ def _seed_db_catalog_novel(
     author: str | None = None,
     language: str = "ja",
     status: str = "ongoing",
+    publication_status: str | None = None,
     synopsis: str | None = None,
     is_published: bool = True,
     updated_at: datetime | None = None,
@@ -123,7 +125,7 @@ def _seed_db_catalog_novel(
         author=author,
         language=language,
         status=status,
-        publication_status=status,
+        publication_status=publication_status or status,
         synopsis=synopsis,
         is_published=is_published,
         updated_at=updated_at or datetime(2024, 1, 1, tzinfo=timezone.utc),
@@ -187,6 +189,29 @@ class TestCatalog:
         data = resp.json()
         assert data["total"] == 1
         assert data["novels"][0]["status"] == "completed"
+        assert data["novels"][0]["publication_status"] == "completed"
+
+    def test_catalog_includes_publication_status_alias_for_storage_summary(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        _seed_novel(storage, "novel-001", status="連載中")
+
+        resp = client.get("/api/public/catalog")
+
+        assert resp.status_code == 200
+        novel = resp.json()["novels"][0]
+        assert novel["publication_status"] == "ongoing"
+        assert novel["status"] == novel["publication_status"]
+
+    def test_catalog_unknowns_invalid_storage_status(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        _seed_novel(storage, "novel-001", status="unexpected source value")
+
+        novel = client.get("/api/public/catalog").json()["novels"][0]
+
+        assert novel["publication_status"] == "unknown"
+        assert novel["status"] == "unknown"
 
     def test_catalog_filter_by_language(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001", language="ja")
@@ -355,6 +380,7 @@ class TestCatalog:
         assert first["language"] == "ja"
         assert first["synopsis"] == "Stored synopsis."
         assert first["status"] == "ongoing"
+        assert first["publication_status"] == "ongoing"
         assert first["chapter_count"] == 9
         assert first["translated_count"] == 3
         assert first["latest_chapter_id"] == "ch009"
@@ -413,6 +439,63 @@ class TestCatalog:
         assert data["total"] == 1
         assert data["novels"][0]["novel_id"] == "completed-novel"
         assert data["novels"][0]["status"] == "completed"
+        assert data["novels"][0]["publication_status"] == "completed"
+
+    def test_catalog_publication_status_filter_alias_uses_db_publication_status(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "ongoing-novel", status="ongoing")
+        _seed_db_catalog_novel(db_session, "completed-novel", status="completed")
+        monkeypatch.setattr(
+            storage,
+            "list_novels",
+            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
+        )
+
+        resp = client.get("/api/public/catalog?publication_status=completed")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["novels"][0]["novel_id"] == "completed-novel"
+        assert data["novels"][0]["publication_status"] == "completed"
+        assert data["novels"][0]["status"] == "completed"
+
+    def test_catalog_status_filter_alias_conflict_returns_400(
+        self, client: TestClient
+    ) -> None:
+        resp = client.get("/api/public/catalog?status=ongoing&publication_status=completed")
+
+        assert resp.status_code == 400
+        assert "must match" in resp.json()["detail"]
+
+    def test_catalog_db_summary_status_matches_publication_status_when_legacy_status_differs(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _seed_db_catalog_novel(
+            db_session,
+            "novel-001",
+            status="internal-workflow-state",
+            publication_status="completed",
+        )
+        monkeypatch.setattr(
+            storage,
+            "list_novels",
+            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
+        )
+
+        novel = client.get("/api/public/catalog").json()["novels"][0]
+
+        assert novel["publication_status"] == "completed"
+        assert novel["status"] == "completed"
 
     def test_catalog_language_filter_uses_db_path(
         self,
@@ -541,12 +624,14 @@ class TestCatalog:
 
 class TestGetNovel:
     def test_returns_novel_detail(self, client: TestClient, storage: StorageService) -> None:
-        _seed_novel(storage, "novel-001", title="My Novel", author="Author A")
+        _seed_novel(storage, "novel-001", title="My Novel", author="Author A", status="完結")
         resp = client.get("/api/public/novels/novel-001")
         assert resp.status_code == 200
         data = resp.json()
         assert data["novel_id"] == "novel-001"
         assert data["title"] == "My Novel"
+        assert data["publication_status"] == "completed"
+        assert data["status"] == "completed"
 
     def test_404_for_unknown_novel(self, client: TestClient) -> None:
         resp = client.get("/api/public/novels/does-not-exist")
