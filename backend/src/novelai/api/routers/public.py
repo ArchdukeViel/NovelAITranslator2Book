@@ -11,19 +11,20 @@ These endpoints are intentionally open to guests. They must never expose:
 - Raw filesystem paths
 - Unpublished chapters
 
-Architecture note: In v1 the catalog is read from file-backed StorageService
-(parallel-run). Once DB is fully populated, these will query the Novel/Chapter
-DB models directly. The API contract does not change.
+Architecture note: The base catalog listing prefers DB-backed published novel
+pagination. Complex filters temporarily fall back to the legacy file-backed
+scanner until their DB query contracts are introduced.
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import case
+from sqlalchemy import and_, case
 from sqlalchemy.orm import Session
 
 from novelai.api.routers.dependencies import (
@@ -131,6 +132,10 @@ def _novel_added_at(meta: dict[str, Any]) -> str | None:
     return None
 
 
+def _datetime_to_public_string(value: datetime | None) -> str | None:
+    return value.isoformat() if isinstance(value, datetime) else None
+
+
 def _latest_translated_chapter(
     novel_id: str,
     meta: dict[str, Any],
@@ -202,6 +207,129 @@ def _novel_summary(
     )
 
 
+def _taxonomy_from_db_novel(
+    novel: Novel,
+    *,
+    include_adult: bool = True,
+) -> tuple[list[str], list[str]]:
+    genre_slugs = [
+        genre.slug
+        for genre in sorted(novel.genres, key=lambda item: (item.display_order, item.slug))
+        if genre.is_active and (include_adult or not genre.is_adult)
+    ]
+    tag_names = sorted({
+        tag.name
+        for tag in novel.tags
+        if include_adult or not tag.is_adult
+    })
+    return genre_slugs, tag_names
+
+
+def _db_novel_summary(
+    novel: Novel,
+    *,
+    include_adult: bool,
+) -> PublicNovelSummary:
+    genres, tags = _taxonomy_from_db_novel(novel, include_adult=include_adult)
+    source_title = novel.original_title if novel.original_title and novel.original_title != novel.title else None
+    return PublicNovelSummary(
+        novel_id=novel.slug,
+        slug=novel.slug,
+        title=novel.title,
+        source_title=source_title,
+        author=novel.author,
+        language=novel.language,
+        synopsis=novel.synopsis,
+        status=novel.status,
+        chapter_count=novel.chapter_count,
+        translated_count=novel.translated_count,
+        added_at=_datetime_to_public_string(novel.updated_at),
+        latest_chapter_id=novel.latest_chapter_id,
+        latest_chapter_number=novel.latest_chapter_number,
+        latest_chapter_title=novel.latest_chapter_title,
+        latest_chapter_updated_at=_datetime_to_public_string(novel.latest_chapter_updated_at),
+        genres=genres,
+        tags=tags,
+    )
+
+
+def _is_db_catalog_base_request(
+    *,
+    q: str | None,
+    status: str | None,
+    language: str | None,
+    sort_by: str | None,
+    min_chapters: int | None,
+    max_chapters: int | None,
+    genre_include_set: set[str],
+    genre_exclude_set: set[str],
+    tag_include_set: set[str],
+    tag_exclude_set: set[str],
+) -> bool:
+    return (
+        q is None
+        and status is None
+        and language is None
+        and min_chapters is None
+        and max_chapters is None
+        and not genre_include_set
+        and not genre_exclude_set
+        and not tag_include_set
+        and not tag_exclude_set
+        and (sort_by is None or sort_by == DEFAULT_SORT_BY)
+    )
+
+
+def _published_db_catalog_query(db: Session, *, include_adult: bool):
+    query = db.query(Novel).filter(Novel.is_published.is_(True))
+    if not include_adult:
+        query = query.filter(
+            ~Novel.genres.any(
+                and_(
+                    Genre.is_active.is_(True),
+                    Genre.is_adult.is_(True),
+                )
+            )
+        )
+    return query
+
+
+def _catalog_from_db_page(
+    db: Session,
+    *,
+    include_adult: bool,
+    page: int,
+    page_size: int,
+    order: str,
+) -> PublicCatalogResponse | None:
+    query = _published_db_catalog_query(db, include_adult=include_adult)
+    total = query.count()
+    if total == 0:
+        return None
+
+    order_columns = (
+        (Novel.updated_at.asc(), Novel.id.asc())
+        if order == "asc"
+        else (Novel.updated_at.desc(), Novel.id.desc())
+    )
+    offset = (page - 1) * page_size
+    novels = query.order_by(*order_columns).offset(offset).limit(page_size).all()
+    return PublicCatalogResponse(
+        novels=[
+            _db_novel_summary(novel, include_adult=include_adult)
+            for novel in novels
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+def _db_row_allows_storage_catalog_entry(db: Session, novel_id: str) -> bool:
+    novel = db.query(Novel).filter_by(slug=novel_id).one_or_none()
+    return novel is None or novel.is_published is True
+
+
 def _load_taxonomy_for_novel(
     session: Session,
     slug: str,
@@ -240,43 +368,29 @@ def _load_taxonomy_for_novel(
     return genre_slugs, tag_names, has_adult_genre
 
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
-
-@router.get("/catalog", response_model=PublicCatalogResponse)
-async def catalog(
-    q: str | None = Query(default=None, description="Search title or author"),
-    status: str | None = Query(default=None, description="Filter by status"),
-    language: str | None = Query(default=None, description="Filter by language (deprecated for public Browse)"),
-    sort_by: str | None = Query(default=None, description="Sort field: added_at, title, chapter_count"),
-    order: str | None = Query(default=None, description="Sort order: asc or desc"),
-    min_chapters: int | None = Query(default=None, ge=0, description="Minimum chapter count"),
-    max_chapters: int | None = Query(default=None, ge=0, description="Maximum chapter count"),
-    genre_include: str | None = Query(default=None, description="Comma-separated genre slugs — novel must have all"),
-    genre_exclude: str | None = Query(default=None, description="Comma-separated genre slugs — novel must have none"),
-    tag_include: str | None = Query(default=None, description="Comma-separated tag names — novel must have all"),
-    tag_exclude: str | None = Query(default=None, description="Comma-separated tag names — novel must have none"),
-    include_adult: bool = Query(default=False, description="Include novels with adult/R18 genres"),
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
-    page_size: int = Query(default=24, ge=1, le=100, description="Items per page"),
-    storage: StorageService = Depends(get_storage),
-    db: Session = Depends(get_db_session),
+def _catalog_from_storage(
+    *,
+    q: str | None,
+    status: str | None,
+    language: str | None,
+    effective_sort_by: str,
+    reverse: bool,
+    min_chapters: int | None,
+    max_chapters: int | None,
+    genre_include_set: set[str],
+    genre_exclude_set: set[str],
+    tag_include_set: set[str],
+    tag_exclude_set: set[str],
+    include_adult: bool,
+    page: int,
+    page_size: int,
+    storage: StorageService,
+    db: Session,
 ) -> PublicCatalogResponse:
-    """Paginated public novel catalog with optional search, filter, and sort."""
-    # Normalize sort parameters with safe fallbacks
-    effective_sort_by = sort_by if sort_by and sort_by in VALID_SORT_FIELDS else DEFAULT_SORT_BY
-    effective_order = order if order and order in VALID_ORDER_VALUES else DEFAULT_ORDER
-    reverse = effective_order == "desc"
-
-    # Pre-parse taxonomy filters outside the loop
-    genre_include_set = set(_parse_csv_filter(genre_include))
-    genre_exclude_set = set(_parse_csv_filter(genre_exclude))
-    tag_include_set = set(_parse_csv_filter(tag_include))
-    tag_exclude_set = set(_parse_csv_filter(tag_exclude))
-
     novels: list[PublicNovelSummary] = []
     for novel_id in storage.list_novels():
+        if not _db_row_allows_storage_catalog_entry(db, novel_id):
+            continue
         meta = storage.load_metadata(novel_id) or {}
         if q and not _novel_matches_search(meta, q):
             continue
@@ -330,6 +444,83 @@ async def catalog(
         total=total,
         page=page,
         page_size=page_size,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+@router.get("/catalog", response_model=PublicCatalogResponse)
+async def catalog(
+    q: str | None = Query(default=None, description="Search title or author"),
+    status: str | None = Query(default=None, description="Filter by status"),
+    language: str | None = Query(default=None, description="Filter by language (deprecated for public Browse)"),
+    sort_by: str | None = Query(default=None, description="Sort field: added_at, title, chapter_count"),
+    order: str | None = Query(default=None, description="Sort order: asc or desc"),
+    min_chapters: int | None = Query(default=None, ge=0, description="Minimum chapter count"),
+    max_chapters: int | None = Query(default=None, ge=0, description="Maximum chapter count"),
+    genre_include: str | None = Query(default=None, description="Comma-separated genre slugs — novel must have all"),
+    genre_exclude: str | None = Query(default=None, description="Comma-separated genre slugs — novel must have none"),
+    tag_include: str | None = Query(default=None, description="Comma-separated tag names — novel must have all"),
+    tag_exclude: str | None = Query(default=None, description="Comma-separated tag names — novel must have none"),
+    include_adult: bool = Query(default=False, description="Include novels with adult/R18 genres"),
+    page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
+    page_size: int = Query(default=24, ge=1, le=100, description="Items per page"),
+    storage: StorageService = Depends(get_storage),
+    db: Session = Depends(get_db_session),
+) -> PublicCatalogResponse:
+    """Paginated public novel catalog with optional search, filter, and sort."""
+    # Normalize sort parameters with safe fallbacks
+    effective_sort_by = sort_by if sort_by and sort_by in VALID_SORT_FIELDS else DEFAULT_SORT_BY
+    effective_order = order if order and order in VALID_ORDER_VALUES else DEFAULT_ORDER
+    reverse = effective_order == "desc"
+
+    # Pre-parse taxonomy filters outside the loop
+    genre_include_set = set(_parse_csv_filter(genre_include))
+    genre_exclude_set = set(_parse_csv_filter(genre_exclude))
+    tag_include_set = set(_parse_csv_filter(tag_include))
+    tag_exclude_set = set(_parse_csv_filter(tag_exclude))
+
+    if _is_db_catalog_base_request(
+        q=q,
+        status=status,
+        language=language,
+        sort_by=sort_by,
+        min_chapters=min_chapters,
+        max_chapters=max_chapters,
+        genre_include_set=genre_include_set,
+        genre_exclude_set=genre_exclude_set,
+        tag_include_set=tag_include_set,
+        tag_exclude_set=tag_exclude_set,
+    ):
+        db_response = _catalog_from_db_page(
+            db,
+            include_adult=include_adult,
+            page=page,
+            page_size=page_size,
+            order=effective_order,
+        )
+        if db_response is not None:
+            return db_response
+
+    return _catalog_from_storage(
+        q=q,
+        status=status,
+        language=language,
+        effective_sort_by=effective_sort_by,
+        reverse=reverse,
+        min_chapters=min_chapters,
+        max_chapters=max_chapters,
+        genre_include_set=genre_include_set,
+        genre_exclude_set=genre_exclude_set,
+        tag_include_set=tag_include_set,
+        tag_exclude_set=tag_exclude_set,
+        include_adult=include_adult,
+        page=page,
+        page_size=page_size,
+        storage=storage,
+        db=db,
     )
 
 
