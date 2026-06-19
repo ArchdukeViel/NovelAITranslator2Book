@@ -63,6 +63,7 @@ from novelai.storage.novels import (
     _novel_dir,
     _persist_index,
     delete_novel,
+    list_metadata_history,
     list_novels,
     load_metadata,
     save_metadata,
@@ -306,6 +307,7 @@ class StorageService:
     delete_novel = delete_novel
     save_metadata = save_metadata
     load_metadata = load_metadata
+    list_metadata_history = list_metadata_history
     list_novels = list_novels
     _chapter_dir = _chapter_dir
     _chapter_path = _chapter_path

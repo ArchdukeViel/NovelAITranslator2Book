@@ -73,6 +73,67 @@ def _backup_metadata_file(metadata_path: Path, *, keep: int = METADATA_BACKUP_RE
     return backup_path
 
 
+def _metadata_history_entry(path: Path, *, snapshot_id: str, is_current: bool) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        stat = path.stat()
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Could not read metadata history snapshot at %s: %s", path, exc)
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    publication_status = normalize_publication_status(payload.get("publication_status") or payload.get("status"))
+    return {
+        "snapshot_id": snapshot_id,
+        "created_at": payload.get("updated_at") if isinstance(payload.get("updated_at"), str) else None,
+        "size_bytes": stat.st_size,
+        "is_current": is_current,
+        "publication_status": publication_status,
+        "title": payload.get("translated_title") if isinstance(payload.get("translated_title"), str) else payload.get("title"),
+        "source_title": payload.get("title") if isinstance(payload.get("title"), str) else None,
+        "author": payload.get("translated_author") if isinstance(payload.get("translated_author"), str) else payload.get("author"),
+    }
+
+
+def list_metadata_history(self: Any, novel_id: str, *, limit: int = 10) -> list[dict[str, Any]]:
+    """Return bounded current/backup metadata snapshot summaries for a novel."""
+    novel_id = self._normalize_library_novel_id(novel_id) or novel_id
+    limit = max(1, min(limit, 25))
+    novel_dir = self._novel_dir(novel_id)
+    entries: list[dict[str, Any]] = []
+
+    current_path = novel_dir / "metadata.json"
+    if current_path.exists():
+        current_entry = _metadata_history_entry(
+            current_path,
+            snapshot_id="current",
+            is_current=True,
+        )
+        if current_entry is not None:
+            entries.append(current_entry)
+
+    backup_dir = _metadata_backup_dir(novel_dir)
+    if backup_dir.exists():
+        backups = sorted(
+            backup_dir.glob("*.json"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        for backup_path in backups:
+            if len(entries) >= limit:
+                break
+            backup_entry = _metadata_history_entry(
+                backup_path,
+                snapshot_id=backup_path.name,
+                is_current=False,
+            )
+            if backup_entry is not None:
+                entries.append(backup_entry)
+
+    return entries[:limit]
+
+
 def _compute_folder_name(self: Any, novel_id: str, metadata: dict[str, Any]) -> str:
     """Return a stable folder name for a novel."""
     return self._sanitize_folder_name(novel_id)

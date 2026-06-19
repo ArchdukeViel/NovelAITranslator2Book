@@ -65,6 +65,23 @@ class SourceMetadataInspection(BaseModel):
     warnings: list[str] = []
 
 
+class SourceMetadataHistoryEntry(BaseModel):
+    snapshot_id: str
+    created_at: str | None = None
+    size_bytes: int = 0
+    is_current: bool = False
+    publication_status: str = "unknown"
+    title: str | None = None
+    source_title: str | None = None
+    author: str | None = None
+
+
+class SourceMetadataHistoryResponse(BaseModel):
+    novel_id: str
+    entries: list[SourceMetadataHistoryEntry]
+    limit: int
+
+
 class CatalogProjectionRefreshResponse(BaseModel):
     novel_id: str
     created: bool
@@ -316,6 +333,23 @@ async def inspect_source_metadata(
             raise HTTPException(status_code=404, detail="Novel not found")
         return _source_metadata_inspection_payload(novel_id, {}, metadata_missing=True)
     return _source_metadata_inspection_payload(novel_id, meta, metadata_missing=False)
+
+
+@router.get("/{novel_id}/source-metadata/history", response_model=SourceMetadataHistoryResponse)
+async def inspect_source_metadata_history(
+    novel_id: str,
+    limit: int = Query(default=10, ge=1, le=25),
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> SourceMetadataHistoryResponse:
+    entries = storage.list_metadata_history(novel_id, limit=limit)
+    if not entries and novel_id not in storage.list_novels():
+        raise HTTPException(status_code=404, detail="Novel not found")
+    return SourceMetadataHistoryResponse(
+        novel_id=novel_id,
+        entries=[SourceMetadataHistoryEntry(**entry) for entry in entries],
+        limit=limit,
+    )
 
 
 @router.post(
