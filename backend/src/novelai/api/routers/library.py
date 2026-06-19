@@ -73,6 +73,31 @@ class CatalogProjectionRefreshResponse(BaseModel):
     after: dict[str, Any]
 
 
+class CatalogProjectionFailureResponse(BaseModel):
+    novel_id: str
+    error: str
+
+
+class CatalogProjectionBulkChangedResponse(BaseModel):
+    novel_id: str
+    created: bool
+    changed_fields: list[str]
+    before: dict[str, Any] | None = None
+    after: dict[str, Any]
+
+
+class CatalogProjectionBulkRefreshResponse(BaseModel):
+    dry_run: bool
+    scanned: int
+    created: int
+    updated: int
+    unchanged: int
+    failed: int
+    changed: list[CatalogProjectionBulkChangedResponse]
+    failures: list[CatalogProjectionFailureResponse]
+    details_truncated: bool = False
+
+
 class ChapterSummary(BaseModel):
     id: str
     title: str | None = None
@@ -232,6 +257,51 @@ async def list_novels(
     start = offset
     end = start + limit if limit is not None else None
     return summaries[start:end]
+
+
+@router.post(
+    "/refresh-catalog-projections",
+    response_model=CatalogProjectionBulkRefreshResponse,
+)
+async def refresh_catalog_projections(
+    dry_run: bool = Query(default=True),
+    limit: int | None = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+    db: Session = Depends(get_db_session),
+) -> CatalogProjectionBulkRefreshResponse:
+    result = CatalogService(storage=storage, session=db).reconcile_all_catalog_projections(
+        dry_run=dry_run,
+        limit=limit,
+        offset=offset,
+    )
+    return CatalogProjectionBulkRefreshResponse(
+        dry_run=result.dry_run,
+        scanned=result.scanned,
+        created=result.created,
+        updated=result.updated,
+        unchanged=result.unchanged,
+        failed=result.failed,
+        changed=[
+            CatalogProjectionBulkChangedResponse(
+                novel_id=item.novel_id,
+                created=item.created,
+                changed_fields=item.changed_fields,
+                before=item.before,
+                after=item.after,
+            )
+            for item in result.changed
+        ],
+        failures=[
+            CatalogProjectionFailureResponse(
+                novel_id=item.novel_id,
+                error=item.error,
+            )
+            for item in result.failures
+        ],
+        details_truncated=result.details_truncated,
+    )
 
 
 @router.get("/{novel_id}/source-metadata", response_model=SourceMetadataInspection)

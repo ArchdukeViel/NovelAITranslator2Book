@@ -50,6 +50,25 @@ class CatalogProjectionReconciliation:
     changed_fields: list[str]
 
 
+@dataclass(frozen=True)
+class CatalogProjectionFailure:
+    novel_id: str
+    error: str
+
+
+@dataclass(frozen=True)
+class CatalogProjectionBulkReconciliation:
+    dry_run: bool
+    scanned: int
+    created: int
+    updated: int
+    unchanged: int
+    failed: int
+    changed: list[CatalogProjectionReconciliation]
+    failures: list[CatalogProjectionFailure]
+    details_truncated: bool = False
+
+
 def _sha256(text: str) -> str:
     """Return a hex SHA-256 digest for a text string."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -375,6 +394,105 @@ class CatalogService:
             after=after,
             changed_fields=changed_fields,
         )
+
+    def reconcile_all_catalog_projections(
+        self,
+        *,
+        dry_run: bool = True,
+        limit: int | None = None,
+        offset: int = 0,
+        detail_limit: int = 100,
+    ) -> CatalogProjectionBulkReconciliation:
+        """Audit or repair catalog projections for DB and storage-backed novels.
+
+        Candidate order is deterministic: DB slugs first, then storage slugs
+        not already present in DB. Storage folders without metadata are
+        harmless unchanged candidates because the single-novel creator requires
+        canonical metadata to create a DB row.
+        """
+        candidates = self._catalog_projection_candidates()
+        selected = candidates[offset:]
+        if limit is not None:
+            selected = selected[:limit]
+
+        created = 0
+        updated = 0
+        unchanged = 0
+        failed = 0
+        failures: list[CatalogProjectionFailure] = []
+        changed: list[CatalogProjectionReconciliation] = []
+        details_truncated = False
+
+        for novel_id in selected:
+            try:
+                if dry_run:
+                    transaction = self._session.begin_nested()
+                    try:
+                        result = self.reconcile_catalog_projection(novel_id)
+                    finally:
+                        transaction.rollback()
+                        self._session.expire_all()
+                else:
+                    result = self.reconcile_catalog_projection(novel_id)
+                    self._session.flush()
+            except Exception as exc:  # noqa: BLE001 - bulk repair must continue per novel.
+                failed += 1
+                logger.warning(
+                    "Catalog projection bulk reconciliation failed for novel_id=%s: %s",
+                    novel_id,
+                    exc,
+                    exc_info=True,
+                )
+                if len(failures) < detail_limit:
+                    failures.append(CatalogProjectionFailure(novel_id=novel_id, error=str(exc)))
+                else:
+                    details_truncated = True
+                continue
+
+            if result is None:
+                unchanged += 1
+                continue
+            if result.created:
+                created += 1
+            elif result.changed_fields:
+                updated += 1
+            else:
+                unchanged += 1
+
+            if result.created or result.changed_fields:
+                if len(changed) < detail_limit:
+                    changed.append(result)
+                else:
+                    details_truncated = True
+
+        return CatalogProjectionBulkReconciliation(
+            dry_run=dry_run,
+            scanned=len(selected),
+            created=created,
+            updated=updated,
+            unchanged=unchanged,
+            failed=failed,
+            changed=changed,
+            failures=failures,
+            details_truncated=details_truncated,
+        )
+
+    def _catalog_projection_candidates(self) -> list[str]:
+        seen: set[str] = set()
+        candidates: list[str] = []
+
+        for (slug,) in self._session.query(Novel.slug).order_by(Novel.slug.asc()).all():
+            if slug not in seen:
+                seen.add(slug)
+                candidates.append(slug)
+
+        for novel_id in self._storage.list_novels():
+            if novel_id in seen:
+                continue
+            seen.add(novel_id)
+            candidates.append(novel_id)
+
+        return candidates
 
     def _latest_translated_chapter(
         self,
