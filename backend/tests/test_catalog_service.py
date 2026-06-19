@@ -441,6 +441,137 @@ def test_reconcile_catalog_projection_missing_novel_returns_none(storage, db_ses
     assert result is None
 
 
+def test_reconcile_all_catalog_projections_dry_run_reports_without_commit(storage, db_session, seeded_novel) -> None:
+    seeded_novel.chapter_count = 0
+    seeded_novel.publication_status = "unknown"
+    seeded_novel.status = "unknown"
+    db_session.commit()
+    storage.save_metadata(
+        "novel-001",
+        {
+            "title": "Dry Run Repair",
+            "status": "completed",
+            "chapters": [{"id": "ch001", "num": 1}],
+        },
+    )
+
+    result = CatalogService(storage=storage, session=db_session).reconcile_all_catalog_projections(dry_run=True)
+
+    assert result.dry_run is True
+    assert result.scanned == 1
+    assert result.updated == 1
+    assert result.created == 0
+    assert result.failed == 0
+    assert result.changed[0].novel_id == "novel-001"
+    assert "publication_status" in result.changed[0].changed_fields
+    db_session.expire_all()
+    stored = db_session.query(Novel).filter_by(slug="novel-001").one()
+    assert stored.chapter_count == 0
+    assert stored.publication_status == "unknown"
+
+
+def test_reconcile_all_catalog_projections_apply_updates_stale_fields(storage, db_session, seeded_novel) -> None:
+    seeded_novel.chapter_count = 0
+    seeded_novel.publication_status = "unknown"
+    seeded_novel.status = "unknown"
+    db_session.commit()
+    storage.save_metadata(
+        "novel-001",
+        {
+            "title": "Apply Repair",
+            "status": "completed",
+            "chapters": [{"id": "ch001", "num": 1}, {"id": "ch002", "num": 2}],
+        },
+    )
+
+    result = CatalogService(storage=storage, session=db_session).reconcile_all_catalog_projections(dry_run=False)
+    db_session.commit()
+
+    assert result.updated == 1
+    assert result.created == 0
+    stored = db_session.query(Novel).filter_by(slug="novel-001").one()
+    assert stored.chapter_count == 2
+    assert stored.publication_status == "completed"
+
+
+def test_reconcile_all_catalog_projections_apply_creates_storage_metadata_row(storage, db_session) -> None:
+    storage.save_metadata(
+        "storage-created",
+        {
+            "title": "Storage Created",
+            "status": "ongoing",
+            "chapters": [{"id": "ch001", "num": 1}],
+        },
+    )
+
+    result = CatalogService(storage=storage, session=db_session).reconcile_all_catalog_projections(dry_run=False)
+    db_session.commit()
+
+    assert result.scanned == 1
+    assert result.created == 1
+    created = db_session.query(Novel).filter_by(slug="storage-created").one()
+    assert created.title == "Storage Created"
+    assert created.chapter_count == 1
+
+
+def test_reconcile_all_catalog_projections_deduplicates_db_and_storage_candidates(storage, db_session, seeded_novel) -> None:
+    storage.save_metadata(
+        "novel-001",
+        {
+            "title": "Duplicate Candidate",
+            "chapters": [{"id": "ch001", "num": 1}],
+        },
+    )
+
+    result = CatalogService(storage=storage, session=db_session).reconcile_all_catalog_projections(dry_run=True)
+
+    assert result.scanned == 1
+
+
+def test_reconcile_all_catalog_projections_continues_after_failure(storage, db_session) -> None:
+    storage.save_metadata("bad", {"title": "Bad", "chapters": [{"id": "1"}]})
+    storage.save_metadata("good", {"title": "Good", "chapters": [{"id": "1"}]})
+    original_load_metadata = storage.load_metadata
+
+    def load_metadata_with_failure(novel_id: str):
+        if novel_id == "bad":
+            raise RuntimeError("broken metadata")
+        return original_load_metadata(novel_id)
+
+    with patch.object(storage, "load_metadata", side_effect=load_metadata_with_failure):
+        result = CatalogService(storage=storage, session=db_session).reconcile_all_catalog_projections(dry_run=False)
+    db_session.commit()
+
+    assert result.scanned == 2
+    assert result.failed == 1
+    assert result.failures[0].novel_id == "bad"
+    assert result.created == 1
+    assert db_session.query(Novel).filter_by(slug="good").one_or_none() is not None
+
+
+def test_reconcile_all_catalog_projections_limit_offset(storage, db_session) -> None:
+    for slug in ("a-novel", "b-novel", "c-novel"):
+        db_session.add(
+            Novel(
+                slug=slug,
+                title=slug,
+                language="ja",
+                status="strange" if slug == "b-novel" else "unknown",
+                publication_status="strange" if slug == "b-novel" else "unknown",
+            )
+        )
+    db_session.commit()
+
+    result = CatalogService(storage=storage, session=db_session).reconcile_all_catalog_projections(
+        dry_run=True,
+        limit=1,
+        offset=1,
+    )
+
+    assert result.scanned == 1
+    assert result.changed[0].novel_id == "b-novel"
+
+
 def test_catalog_projection_migration_upgrade_backfill_and_downgrade(
     tmp_path, monkeypatch
 ) -> None:

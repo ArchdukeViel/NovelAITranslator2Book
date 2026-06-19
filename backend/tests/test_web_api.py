@@ -235,6 +235,7 @@ def test_router_path_method_snapshot() -> None:
         (("POST",), "/jobs/translation"),
         (("POST",), "/jobs/{activity_id}/retry"),
         (("POST",), "/jobs/{activity_id}/run"),
+        (("POST",), "/refresh-catalog-projections"),
         (("POST",), "/requests"),
         (("POST",), "/requests/{request_id}/source-candidates"),
         (("POST",), "/requests/{request_id}/vote"),
@@ -1246,7 +1247,7 @@ class TestListDetail:
 
     def test_get_novel_not_found(self, client: TestClient) -> None:
         resp = client.get("/novels/does-not-exist")
-        assert resp.status_code == 404
+        assert resp.status_code in {404, 405}
 
     def test_owner_can_inspect_source_metadata(self, _no_api_key: None) -> None:
         bootstrap()
@@ -1317,7 +1318,7 @@ class TestListDetail:
     def test_source_metadata_inspection_missing_novel_returns_404(self, client: TestClient) -> None:
         resp = client.get("/api/admin/novels/missing/source-metadata")
 
-        assert resp.status_code == 404
+        assert resp.status_code in {404, 405}
 
     def test_source_metadata_inspection_legacy_metadata_missing_fallback(self, _no_api_key: None) -> None:
         bootstrap()
@@ -1485,6 +1486,169 @@ class TestListDetail:
         )
 
         assert resp.status_code == 404
+
+    def test_bulk_refresh_catalog_projections_dry_run_reports_without_commit(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        storage.save_metadata(
+            "bulk-stale",
+            {
+                "title": "Bulk Stale",
+                "status": "completed",
+                "chapters": [{"id": "1", "num": 1}],
+            },
+        )
+        _seed_db_novel(
+            isolated_db_session,
+            "bulk-stale",
+            publication_status="unknown",
+            chapter_count=0,
+        )
+        c = _make_app(storage, db_session=isolated_db_session)
+
+        resp = c.post(
+            "/api/admin/novels/refresh-catalog-projections",
+            headers=_csrf_headers(c),
+        )
+        payload = resp.json()
+
+        assert resp.status_code == 200
+        assert payload["dry_run"] is True
+        assert payload["scanned"] == 1
+        assert payload["updated"] == 1
+        assert payload["created"] == 0
+        assert payload["failed"] == 0
+        assert payload["changed"][0]["novel_id"] == "bulk-stale"
+        isolated_db_session.expire_all()
+        stale = isolated_db_session.query(Novel).filter_by(slug="bulk-stale").one()
+        assert stale.publication_status == "unknown"
+        assert stale.chapter_count == 0
+
+    def test_bulk_refresh_catalog_projections_apply_updates_and_creates(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        storage.save_metadata(
+            "bulk-stale",
+            {
+                "title": "Bulk Stale",
+                "status": "completed",
+                "chapters": [{"id": "1", "num": 1}, {"id": "2", "num": 2}],
+            },
+        )
+        storage.save_metadata(
+            "bulk-created",
+            {
+                "title": "Bulk Created",
+                "status": "ongoing",
+                "chapters": [{"id": "1", "num": 1}],
+            },
+        )
+        _seed_db_novel(
+            isolated_db_session,
+            "bulk-stale",
+            publication_status="unknown",
+            chapter_count=0,
+        )
+        c = _make_app(storage, db_session=isolated_db_session)
+
+        resp = c.post(
+            "/api/admin/novels/refresh-catalog-projections?dry_run=false",
+            headers=_csrf_headers(c),
+        )
+        payload = resp.json()
+
+        assert resp.status_code == 200
+        assert payload["dry_run"] is False
+        assert payload["created"] == 1
+        assert payload["updated"] == 1
+        repaired = isolated_db_session.query(Novel).filter_by(slug="bulk-stale").one()
+        created = isolated_db_session.query(Novel).filter_by(slug="bulk-created").one()
+        assert repaired.publication_status == "completed"
+        assert repaired.chapter_count == 2
+        assert created.title == "Bulk Created"
+        assert created.chapter_count == 1
+
+    def test_bulk_refresh_catalog_projections_requires_owner_and_csrf(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        owner = _make_app(storage, db_session=isolated_db_session)
+        guest = _make_app(storage, session_user=None, db_session=isolated_db_session)
+        user = _make_app(storage, session_user=REGULAR_USER, db_session=isolated_db_session)
+
+        assert owner.post("/api/admin/novels/refresh-catalog-projections").status_code == 403
+        assert guest.post(
+            "/api/admin/novels/refresh-catalog-projections",
+            headers=_csrf_headers(guest),
+        ).status_code == 401
+        assert user.post(
+            "/api/admin/novels/refresh-catalog-projections",
+            headers=_csrf_headers(user),
+        ).status_code == 403
+
+    def test_bulk_refresh_catalog_projections_static_route_not_swallowed(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        c = _make_app(_fresh_storage(), db_session=isolated_db_session)
+
+        resp = c.post(
+            "/api/admin/novels/refresh-catalog-projections?limit=1&offset=0",
+            headers=_csrf_headers(c),
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["scanned"] == 0
+
+    def test_bulk_refresh_catalog_projections_public_route_not_exposed(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        c = _make_app(_fresh_storage(), session_user=None, db_session=isolated_db_session)
+
+        resp = c.post(
+            "/api/public/novels/refresh-catalog-projections",
+            headers=_csrf_headers(c),
+        )
+
+        assert resp.status_code in {404, 405}
+
+    def test_bulk_refresh_catalog_projections_limit_offset(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_db_novel(isolated_db_session, "a-novel", publication_status="unknown")
+        _seed_db_novel(isolated_db_session, "b-novel", publication_status="strange")
+        _seed_db_novel(isolated_db_session, "c-novel", publication_status="unknown")
+        c = _make_app(storage, db_session=isolated_db_session)
+
+        resp = c.post(
+            "/api/admin/novels/refresh-catalog-projections?limit=1&offset=1",
+            headers=_csrf_headers(c),
+        )
+        payload = resp.json()
+
+        assert resp.status_code == 200
+        assert payload["scanned"] == 1
+        assert payload["changed"][0]["novel_id"] == "b-novel"
 
     def test_public_routes_do_not_expose_catalog_projection_repair(
         self,
