@@ -35,6 +35,32 @@ class NovelSummary(BaseModel):
     translated_count: int = 0
 
 
+class SourceMetadataExtraction(BaseModel):
+    publication_status: str
+    source_title: str | None = None
+    synopsis_present: bool = False
+    author_present: bool = False
+
+
+class SourceMetadataInspection(BaseModel):
+    novel_id: str
+    title: str | None = None
+    source_title: str | None = None
+    author: str | None = None
+    source: str | None = None
+    source_url: str | None = None
+    publication_status: str = "unknown"
+    raw_status: str | None = None
+    synopsis: str | None = None
+    language: str | None = None
+    last_scraped_at: str | None = None
+    updated_at: str | None = None
+    chapter_count: int = 0
+    source_metadata_keys: list[str] = []
+    extraction: SourceMetadataExtraction
+    warnings: list[str] = []
+
+
 class ChapterSummary(BaseModel):
     id: str
     title: str | None = None
@@ -48,6 +74,88 @@ def _optional_string(value: Any) -> str | None:
 def _metadata_chapter_count(meta: dict[str, Any]) -> int:
     chapters = meta.get("chapters")
     return len(chapters) if isinstance(chapters, list) else 0
+
+
+_INSPECTION_EXCLUDED_KEY_PARTS = (
+    "api_key",
+    "authorization",
+    "cookie",
+    "password",
+    "secret",
+    "token",
+)
+_INSPECTION_EXCLUDED_KEYS = {
+    "html",
+    "page_html",
+    "raw_html",
+    "raw_source_html",
+    "source_html",
+}
+
+
+def _safe_metadata_keys(meta: dict[str, Any]) -> list[str]:
+    keys: list[str] = []
+    for key in meta:
+        key_text = str(key)
+        lowered = key_text.lower()
+        if lowered in _INSPECTION_EXCLUDED_KEYS:
+            continue
+        if any(part in lowered for part in _INSPECTION_EXCLUDED_KEY_PARTS):
+            continue
+        keys.append(key_text)
+    return sorted(keys)
+
+
+def _source_metadata_warnings(meta: dict[str, Any], *, metadata_missing: bool) -> list[str]:
+    warnings: list[str] = []
+    publication_status = normalize_publication_status(meta.get("publication_status") or meta.get("status"))
+    if metadata_missing:
+        warnings.append("metadata_missing")
+    if not _optional_string(meta.get("source_url")):
+        warnings.append("missing_source_url")
+    if publication_status == "unknown":
+        warnings.append("unknown_publication_status")
+    if not (_optional_string(meta.get("description")) or _optional_string(meta.get("synopsis"))):
+        warnings.append("missing_synopsis")
+    if _metadata_chapter_count(meta) == 0:
+        warnings.append("no_chapters")
+    return warnings
+
+
+def _source_metadata_inspection_payload(
+    novel_id: str,
+    meta: dict[str, Any],
+    *,
+    metadata_missing: bool,
+) -> SourceMetadataInspection:
+    publication_status = normalize_publication_status(meta.get("publication_status") or meta.get("status"))
+    source_title = _optional_string(meta.get("title"))
+    synopsis = _optional_string(meta.get("description")) or _optional_string(meta.get("synopsis"))
+    author = _optional_string(meta.get("translated_author")) or _optional_string(meta.get("author"))
+    display_title = _optional_string(meta.get("translated_title")) or source_title or novel_id
+    return SourceMetadataInspection(
+        novel_id=novel_id,
+        title=display_title,
+        source_title=source_title,
+        author=author,
+        source=_optional_string(meta.get("source")),
+        source_url=_optional_string(meta.get("source_url")),
+        publication_status=publication_status,
+        raw_status=_optional_string(meta.get("source_publication_status")) or _optional_string(meta.get("raw_status")),
+        synopsis=synopsis,
+        language=_optional_string(meta.get("language")),
+        last_scraped_at=_optional_string(meta.get("scraped_at")),
+        updated_at=_optional_string(meta.get("updated_at")),
+        chapter_count=_metadata_chapter_count(meta),
+        source_metadata_keys=_safe_metadata_keys(meta),
+        extraction=SourceMetadataExtraction(
+            publication_status=publication_status,
+            source_title=source_title,
+            synopsis_present=synopsis is not None,
+            author_present=author is not None,
+        ),
+        warnings=_source_metadata_warnings(meta, metadata_missing=metadata_missing),
+    )
 
 
 @router.get("/", response_model=list[NovelSummary])
@@ -78,6 +186,20 @@ async def list_novels(
             )
         )
     return summaries
+
+
+@router.get("/{novel_id}/source-metadata", response_model=SourceMetadataInspection)
+async def inspect_source_metadata(
+    novel_id: str,
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> SourceMetadataInspection:
+    meta = storage.load_metadata(novel_id)
+    if meta is None:
+        if novel_id not in storage.list_novels():
+            raise HTTPException(status_code=404, detail="Novel not found")
+        return _source_metadata_inspection_payload(novel_id, {}, metadata_missing=True)
+    return _source_metadata_inspection_payload(novel_id, meta, metadata_missing=False)
 
 
 @router.get("/{novel_id}")
