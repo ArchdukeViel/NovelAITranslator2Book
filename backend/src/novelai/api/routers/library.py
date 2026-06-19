@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,7 @@ from novelai.api.routers.dependencies import (
     reader_author,
     reader_title,
 )
+from novelai.db.models.novel import Novel
 from novelai.services.catalog_service import CatalogService
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
@@ -169,34 +170,68 @@ def _source_metadata_inspection_payload(
     )
 
 
+def _db_novel_summary(novel: Novel) -> NovelSummary:
+    publication_status = normalize_publication_status(novel.publication_status or novel.status)
+    return NovelSummary(
+        novel_id=novel.slug,
+        title=_optional_string(novel.title) or novel.slug,
+        author=_optional_string(novel.author),
+        source=_optional_string(novel.source_site),
+        source_url=_optional_string(novel.source_url),
+        publication_status=publication_status,
+        chapter_count=novel.chapter_count,
+        scraped_count=novel.chapter_count,
+        translated_count=novel.translated_count,
+    )
+
+
+def _storage_novel_summary(
+    novel_id: str,
+    meta: dict[str, Any],
+    storage: StorageService,
+) -> NovelSummary:
+    scraped_count = storage.count_stored_chapters(novel_id)
+    translated_count = storage.count_translated_chapters(novel_id)
+    chapter_count = _metadata_chapter_count(meta) or max(scraped_count, translated_count)
+    publication_status = normalize_publication_status(meta.get("publication_status") or meta.get("status"))
+    if not meta:
+        logger.info("Listing novel %s from files because metadata is missing or unreadable.", novel_id)
+    return NovelSummary(
+        novel_id=novel_id,
+        title=_optional_string(meta.get("translated_title")) or _optional_string(meta.get("title")) or novel_id,
+        author=_optional_string(meta.get("translated_author")) or _optional_string(meta.get("author")),
+        source=_optional_string(meta.get("source")),
+        source_url=_optional_string(meta.get("source_url")),
+        publication_status=publication_status,
+        chapter_count=chapter_count,
+        scraped_count=scraped_count,
+        translated_count=translated_count,
+    )
+
+
 @router.get("/", response_model=list[NovelSummary])
 async def list_novels(
+    limit: int | None = Query(default=None, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     storage: StorageService = Depends(get_storage),
     _owner=Depends(require_role("owner")),
+    db: Session = Depends(get_db_session),
 ) -> list[NovelSummary]:
+    query = db.query(Novel).order_by(Novel.updated_at.desc(), Novel.id.desc())
+    if query.count() > 0:
+        if offset:
+            query = query.offset(offset)
+        if limit is not None:
+            query = query.limit(limit)
+        return [_db_novel_summary(novel) for novel in query.all()]
+
     summaries: list[NovelSummary] = []
     for novel_id in storage.list_novels():
         meta = storage.load_metadata(novel_id) or {}
-        scraped_count = storage.count_stored_chapters(novel_id)
-        translated_count = storage.count_translated_chapters(novel_id)
-        chapter_count = _metadata_chapter_count(meta) or max(scraped_count, translated_count)
-        publication_status = normalize_publication_status(meta.get("publication_status") or meta.get("status"))
-        if not meta:
-            logger.info("Listing novel %s from files because metadata is missing or unreadable.", novel_id)
-        summaries.append(
-            NovelSummary(
-                novel_id=novel_id,
-                title=_optional_string(meta.get("translated_title")) or _optional_string(meta.get("title")) or novel_id,
-                author=_optional_string(meta.get("translated_author")) or _optional_string(meta.get("author")),
-                source=_optional_string(meta.get("source")),
-                source_url=_optional_string(meta.get("source_url")),
-                publication_status=publication_status,
-                chapter_count=chapter_count,
-                scraped_count=scraped_count,
-                translated_count=translated_count,
-            )
-        )
-    return summaries
+        summaries.append(_storage_novel_summary(novel_id, meta, storage))
+    start = offset
+    end = start + limit if limit is not None else None
+    return summaries[start:end]
 
 
 @router.get("/{novel_id}/source-metadata", response_model=SourceMetadataInspection)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -72,6 +73,39 @@ def _seed_novel(storage: StorageService, novel_id: str = "test-n1") -> None:
     })
     storage.save_chapter(novel_id, "1", "Raw text ch1", source_key="dummy", source_url="http://example.com/1")
     storage.save_translated_chapter(novel_id, "1", "Translated ch1", provider="dummy", model="dummy")
+
+
+def _seed_db_novel(
+    session: Session,
+    slug: str,
+    *,
+    title: str | None = None,
+    author: str | None = None,
+    source_site: str | None = None,
+    source_url: str | None = None,
+    publication_status: str = "unknown",
+    chapter_count: int = 0,
+    translated_count: int = 0,
+    updated_at: datetime | None = None,
+    is_published: bool = False,
+) -> Novel:
+    novel = Novel(
+        slug=slug,
+        title=title or f"Title {slug}",
+        author=author,
+        source_site=source_site,
+        source_url=source_url,
+        language="ja",
+        status=publication_status,
+        publication_status=publication_status,
+        chapter_count=chapter_count,
+        translated_count=translated_count,
+        updated_at=updated_at or datetime(2024, 1, 1, tzinfo=timezone.utc),
+        is_published=is_published,
+    )
+    session.add(novel)
+    session.commit()
+    return novel
 
 
 def _assert_provider_mirrors(payload: dict[str, object]) -> None:
@@ -812,10 +846,10 @@ def isolated_db_session():
 
 
 @pytest.fixture()
-def client(_no_api_key: None) -> TestClient:
+def client(_no_api_key: None, isolated_db_session: Session) -> TestClient:
     """Owner-authenticated client."""
     bootstrap()
-    return _make_app(_fresh_storage())
+    return _make_app(_fresh_storage(), db_session=isolated_db_session)
 
 
 @pytest.fixture()
@@ -1067,7 +1101,115 @@ class TestListDetail:
         assert data[0]["translated_count"] == 1
         assert data[0]["publication_status"] == "unknown"
 
-    def test_list_novels_includes_legacy_syosetu_folder_without_metadata(self, _no_api_key: None) -> None:
+    def test_admin_list_uses_db_rows_without_storage_scan(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        storage = _fresh_storage()
+        _seed_db_novel(
+            isolated_db_session,
+            "old-db",
+            title="Old DB Novel",
+            updated_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        )
+        _seed_db_novel(
+            isolated_db_session,
+            "new-db",
+            title="New DB Novel",
+            author="DB Author",
+            source_site="syosetu_ncode",
+            source_url="https://ncode.syosetu.com/n1234ab/",
+            publication_status="completed",
+            chapter_count=12,
+            translated_count=4,
+            updated_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
+        )
+        monkeypatch.setattr(
+            storage,
+            "list_novels",
+            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
+        )
+        c = _make_app(storage, db_session=isolated_db_session)
+
+        resp = c.get("/api/admin/novels")
+        data = resp.json()
+
+        assert resp.status_code == 200
+        assert [novel["novel_id"] for novel in data] == ["new-db", "old-db"]
+        assert data[0] == {
+            "novel_id": "new-db",
+            "title": "New DB Novel",
+            "author": "DB Author",
+            "source": "syosetu_ncode",
+            "source_url": "https://ncode.syosetu.com/n1234ab/",
+            "publication_status": "completed",
+            "chapter_count": 12,
+            "scraped_count": 12,
+            "translated_count": 4,
+        }
+
+    def test_admin_list_limit_offset_use_db_pagination(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        storage = _fresh_storage()
+        _seed_db_novel(isolated_db_session, "first", updated_at=datetime(2024, 3, 1, tzinfo=timezone.utc))
+        _seed_db_novel(isolated_db_session, "second", updated_at=datetime(2024, 2, 1, tzinfo=timezone.utc))
+        _seed_db_novel(isolated_db_session, "third", updated_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+        c = _make_app(storage, db_session=isolated_db_session)
+
+        resp = c.get("/api/admin/novels?limit=1&offset=1")
+
+        assert resp.status_code == 200
+        assert [novel["novel_id"] for novel in resp.json()] == ["second"]
+
+    def test_admin_list_legacy_aliases_use_db_listing(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        storage = _fresh_storage()
+        _seed_db_novel(isolated_db_session, "db-alias", title="DB Alias")
+        monkeypatch.setattr(
+            storage,
+            "list_novels",
+            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
+        )
+        c = _make_app(storage, db_session=isolated_db_session)
+
+        legacy = c.get("/novels/")
+        api_legacy = c.get("/api/novels/")
+
+        assert legacy.status_code == 200
+        assert api_legacy.status_code == 200
+        assert legacy.json()[0]["novel_id"] == "db-alias"
+        assert api_legacy.json()[0]["novel_id"] == "db-alias"
+
+    def test_admin_list_does_not_duplicate_storage_rows_when_db_exists(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        storage = _fresh_storage()
+        _seed_novel(storage, "same-id")
+        _seed_novel(storage, "storage-only")
+        _seed_db_novel(isolated_db_session, "same-id", title="DB Canonical")
+        c = _make_app(storage, db_session=isolated_db_session)
+
+        resp = c.get("/novels/")
+
+        assert resp.status_code == 200
+        assert [novel["novel_id"] for novel in resp.json()] == ["same-id"]
+
+    def test_list_novels_includes_legacy_syosetu_folder_without_metadata(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
         bootstrap()
         storage = _fresh_storage()
         novel_dir = storage.novels_dir / "0813kx"
@@ -1077,7 +1219,7 @@ class TestListDetail:
             json.dumps({"id": "1", "raw": {"text": "raw chapter"}}, ensure_ascii=False),
             encoding="utf-8",
         )
-        c = _make_app(storage)
+        c = _make_app(storage, db_session=isolated_db_session)
 
         resp = c.get("/novels/")
         assert resp.status_code == 200
