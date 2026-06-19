@@ -255,7 +255,7 @@ def _db_novel_summary(
         publication_status=publication_status,
         chapter_count=novel.chapter_count,
         translated_count=novel.translated_count,
-        added_at=_datetime_to_public_string(novel.updated_at),
+        added_at=_datetime_to_public_string(novel.created_at),
         latest_chapter_id=novel.latest_chapter_id,
         latest_chapter_number=novel.latest_chapter_number,
         latest_chapter_title=novel.latest_chapter_title,
@@ -383,7 +383,7 @@ def _catalog_from_db_page(
     elif effective_sort_by == "chapter_count":
         order_field = Novel.chapter_count
     else:
-        order_field = Novel.updated_at
+        order_field = Novel.created_at
     order_columns = (order_field.asc(), Novel.id.asc()) if order == "asc" else (order_field.desc(), Novel.id.desc())
     offset = (page - 1) * page_size
     novels = query.order_by(*order_columns).offset(offset).limit(page_size).all()

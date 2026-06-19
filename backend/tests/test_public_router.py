@@ -110,6 +110,7 @@ def _seed_db_catalog_novel(
     publication_status: str | None = None,
     synopsis: str | None = None,
     is_published: bool = True,
+    created_at: datetime | None = None,
     updated_at: datetime | None = None,
     chapter_count: int = 0,
     translated_count: int = 0,
@@ -128,6 +129,7 @@ def _seed_db_catalog_novel(
         publication_status=publication_status or status,
         synopsis=synopsis,
         is_published=is_published,
+        created_at=created_at or datetime(2024, 1, 1, tzinfo=timezone.utc),
         updated_at=updated_at or datetime(2024, 1, 1, tzinfo=timezone.utc),
         chapter_count=chapter_count,
         translated_count=translated_count,
@@ -337,6 +339,7 @@ class TestCatalog:
             db_session,
             "novel-old",
             title="Old Novel",
+            created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
             updated_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
         )
         _seed_db_catalog_novel(
@@ -346,6 +349,7 @@ class TestCatalog:
             source_title="新しい小説",
             author="Author",
             synopsis="Stored synopsis.",
+            created_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
             updated_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
             chapter_count=9,
             translated_count=3,
@@ -358,6 +362,7 @@ class TestCatalog:
             db_session,
             "novel-mid",
             title="Mid Novel",
+            created_at=datetime(2024, 3, 1, tzinfo=timezone.utc),
             updated_at=datetime(2024, 3, 1, tzinfo=timezone.utc),
         )
         monkeypatch.setattr(
@@ -386,8 +391,72 @@ class TestCatalog:
         assert first["latest_chapter_id"] == "ch009"
         assert first["latest_chapter_number"] == 9
         assert first["latest_chapter_title"] == "Chapter 9"
-        assert isinstance(first["added_at"], str)
-        assert isinstance(first["latest_chapter_updated_at"], str)
+        assert first["added_at"] == "2024-06-01T00:00:00"
+        assert first["latest_chapter_updated_at"] == "2024-06-02T00:00:00"
+
+    def test_catalog_db_default_sort_uses_created_at_not_updated_at(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _seed_db_catalog_novel(
+            db_session,
+            "created-old-updated-new",
+            created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            updated_at=datetime(2024, 12, 1, tzinfo=timezone.utc),
+        )
+        _seed_db_catalog_novel(
+            db_session,
+            "created-new-updated-old",
+            created_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
+            updated_at=datetime(2024, 2, 1, tzinfo=timezone.utc),
+        )
+        monkeypatch.setattr(
+            storage,
+            "list_novels",
+            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
+        )
+
+        data = client.get("/api/public/catalog").json()
+
+        assert [novel["novel_id"] for novel in data["novels"]] == [
+            "created-new-updated-old",
+            "created-old-updated-new",
+        ]
+        assert data["novels"][0]["added_at"] == "2024-06-01T00:00:00"
+
+    def test_catalog_db_sort_by_added_at_uses_created_at_with_stable_tiebreaker(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        created_at = datetime(2024, 3, 1, tzinfo=timezone.utc)
+        _seed_db_catalog_novel(
+            db_session,
+            "first",
+            created_at=created_at,
+            updated_at=datetime(2024, 5, 1, tzinfo=timezone.utc),
+        )
+        _seed_db_catalog_novel(
+            db_session,
+            "second",
+            created_at=created_at,
+            updated_at=datetime(2024, 4, 1, tzinfo=timezone.utc),
+        )
+        monkeypatch.setattr(
+            storage,
+            "list_novels",
+            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
+        )
+
+        data = client.get("/api/public/catalog?sort_by=added_at&order=asc").json()
+
+        assert [novel["novel_id"] for novel in data["novels"]] == ["first", "second"]
+        assert {novel["added_at"] for novel in data["novels"]} == {"2024-03-01T00:00:00"}
 
     def test_catalog_db_path_excludes_unpublished_rows(
         self,
