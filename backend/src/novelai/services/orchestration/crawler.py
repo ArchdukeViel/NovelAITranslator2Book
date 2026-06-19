@@ -11,6 +11,7 @@ from novelai.sources.quality import (
     evaluate_chapter_quality,
     evaluate_metadata_quality,
 )
+from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,11 @@ async def scrape_metadata(
         meta["metadata_translation_status"] = "failed"
         meta["metadata_translation_error"] = str(exc)
     self.storage.save_metadata(novel_id, meta)
+    safely_refresh_catalog_projection_after_storage_write(
+        novel_id,
+        self.storage,
+        context="scrape_metadata",
+    )
     logger.info(f"Metadata scraped: {len(meta)} fields saved")
     if progress_callback:
         progress_callback(f"Metadata saved ({len(meta)} fields).")
@@ -177,6 +183,11 @@ async def _scrape_chapters_impl(
             meta["metadata_translation_status"] = "failed"
             meta["metadata_translation_error"] = str(exc)
         self.storage.save_metadata(novel_id, meta)
+        safely_refresh_catalog_projection_after_storage_write(
+            novel_id,
+            self.storage,
+            context="scrape_chapters_metadata",
+        )
     else:
         meta = self.storage.load_metadata(novel_id)
         if not meta:
@@ -302,6 +313,11 @@ async def _scrape_chapters_impl(
                 unit_type="chapter",
                 import_order=chapter_num,
                 context_group_id=novel_id,
+            )
+            safely_refresh_catalog_projection_after_storage_write(
+                novel_id,
+                self.storage,
+                context="scrape_chapter",
             )
             if progress_callback:
                 progress_callback(f"  Saved chapter {chapter_id}.")

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from alembic import command
@@ -17,7 +18,10 @@ from sqlalchemy.orm import sessionmaker
 from novelai.db.base import Base
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
-from novelai.services.catalog_service import CatalogService
+from novelai.services.catalog_service import (
+    CatalogService,
+    safely_refresh_catalog_projection_after_storage_write,
+)
 from novelai.storage.service import StorageService
 
 _SQLITE = "sqlite:///:memory:"
@@ -409,3 +413,35 @@ def test_catalog_projection_migration_upgrade_backfill_and_downgrade(
     engine.dispose()
 
     command.upgrade(alembic_cfg, "head")
+
+
+def test_safe_projection_refresh_logs_failure_without_raising(storage) -> None:
+    storage.save_metadata("novel-log", {"title": "Novel Log", "chapters": [{"id": "1"}]})
+
+    def broken_session_scope():
+        raise RuntimeError("database unavailable")
+
+    with patch("novelai.services.catalog_service.logger.warning") as warning:
+        refreshed = safely_refresh_catalog_projection_after_storage_write(
+            "novel-log",
+            storage,
+            context="test_write",
+            session_scope_factory=broken_session_scope,
+        )
+
+    assert refreshed is False
+    warning.assert_called_once()
+    assert warning.call_args.args[:3] == (
+        "Catalog projection refresh failed after %s for novel_id=%s: %s",
+        "test_write",
+        "novel-log",
+    )
+
+
+def test_storage_service_has_no_db_or_catalog_dependency() -> None:
+    storage_service_source = Path("backend/src/novelai/storage/service.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "novelai.db" not in storage_service_source
+    assert "CatalogService" not in storage_service_source

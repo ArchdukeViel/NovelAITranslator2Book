@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import json
-import logging
 import shutil
 from typing import Any
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState
+from novelai.db.base import Base
+from novelai.db.models.novel import Novel
+from novelai.inputs.base import DocumentAdapter
+from novelai.inputs.models import ImportedDocument, ImportedUnit
 from novelai.translation.pipeline.context import PipelineResult, paragraph_source_hash
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
@@ -66,6 +72,51 @@ class StubSource(SourceAdapter):
 
 class UnusedTranslationService(TranslationService):
     pass
+
+
+class StubDocumentAdapter(DocumentAdapter):
+    @property
+    def key(self) -> str:
+        return "text"
+
+    def probe(self, source: str) -> bool:
+        return True
+
+    async def import_document(
+        self,
+        source: str,
+        *,
+        max_units: int | None = None,
+    ) -> ImportedDocument:
+        units = (
+            ImportedUnit(
+                unit_id="1",
+                import_order=1,
+                title="Part 1",
+                text="Hero Aria entered the city.",
+                source_ref=source,
+                unit_type="chapter",
+                context_group_id="stub-doc",
+            ),
+            ImportedUnit(
+                unit_id="2",
+                import_order=2,
+                title="Part 2",
+                text="Hero Aria returned.",
+                source_ref=source,
+                unit_type="chapter",
+                context_group_id="stub-doc",
+            ),
+        )
+        return ImportedDocument(
+            adapter_key=self.key,
+            origin_type="file",
+            origin_uri_or_path=source,
+            document_type="text",
+            title="Imported Story",
+            source_language="Japanese",
+            units=units,
+        )
 
 
 class StubTranslationService(TranslationService):
@@ -278,8 +329,18 @@ class BatchMetadataProvider(MockTranslationProvider):
         return {"text": f"[TRANSLATED] {prompt}", "metadata": {"usage": {"total_tokens": 3}}}
 
 
+def _configure_catalog_projection_db(data_dir, monkeypatch):
+    db_path = data_dir / "catalog_projection.sqlite"
+    database_url = f"sqlite:///{db_path.as_posix()}"
+    monkeypatch.setattr(settings, "DATABASE_URL", database_url)
+    engine = create_engine(database_url)
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine)
+    return SessionLocal, engine
+
+
 @pytest.fixture
-def orchestration_env():
+def orchestration_env(monkeypatch):
     TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     data_dir = TESTS_TMP_ROOT / f"orchestrator_{uuid4().hex}"
     data_dir.mkdir(parents=True, exist_ok=False)
@@ -290,16 +351,114 @@ def orchestration_env():
     settings.set_provider_model("mock-1.0")
     cache = TranslationCache(data_dir)
     usage = UsageService(data_dir)
+    catalog_sessionmaker, catalog_engine = _configure_catalog_projection_db(data_dir, monkeypatch)
 
-    yield {
-        "data_dir": data_dir,
-        "storage": storage,
-        "settings": settings,
-        "cache": cache,
-        "usage": usage,
-    }
+    try:
+        yield {
+            "data_dir": data_dir,
+            "storage": storage,
+            "settings": settings,
+            "cache": cache,
+            "usage": usage,
+            "catalog_sessionmaker": catalog_sessionmaker,
+        }
+    finally:
+        catalog_engine.dispose()
+        shutil.rmtree(data_dir, ignore_errors=True)
 
-    shutil.rmtree(data_dir, ignore_errors=True)
+
+@pytest.mark.asyncio
+async def test_scrape_write_paths_refresh_catalog_projection(orchestration_env) -> None:
+    SessionLocal = orchestration_env["catalog_sessionmaker"]
+    source = StubSource()
+    storage = orchestration_env["storage"]
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: MockTranslationProvider(key="dummy", model="dummy"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
+    with SessionLocal() as session:
+        novel = session.query(Novel).filter_by(slug="novel-1").one()
+        assert novel.chapter_count == 2
+        assert novel.translated_count == 0
+
+    await orchestrator.scrape_chapters("syosetu_ncode", "novel-1", "all")
+    with SessionLocal() as session:
+        novel = session.query(Novel).filter_by(slug="novel-1").one()
+        assert novel.chapter_count == 2
+        assert novel.translated_count == 0
+
+
+@pytest.mark.asyncio
+async def test_import_write_paths_refresh_catalog_projection(orchestration_env) -> None:
+    SessionLocal = orchestration_env["catalog_sessionmaker"]
+    storage = orchestration_env["storage"]
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=UnusedTranslationService(),
+        input_adapter_factory=lambda key: StubDocumentAdapter(),
+        provider_factory=lambda key: MockTranslationProvider(key="dummy", model="dummy"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.import_document("text", "imported-novel", "C:/story.txt")
+    with SessionLocal() as session:
+        novel = session.query(Novel).filter_by(slug="imported-novel").one()
+        assert novel.chapter_count == 2
+        assert novel.translated_count == 0
+
+
+@pytest.mark.asyncio
+async def test_translation_write_path_refreshes_catalog_projection(orchestration_env) -> None:
+    SessionLocal = orchestration_env["catalog_sessionmaker"]
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "translated-novel",
+        {
+            "title": "Translated Novel",
+            "source": "stub",
+            "source_language": "Japanese",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"},
+                {"id": "2", "num": 2, "title": "Chapter 2", "url": "https://example.com/2"},
+            ],
+        },
+    )
+    storage.save_chapter("translated-novel", "1", "raw text", title="Chapter 1")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=StubTranslationService(final_text="translated body"),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.translate_chapters(
+        "stub",
+        "translated-novel",
+        "1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        source_language="Japanese",
+    )
+    with SessionLocal() as session:
+        novel = session.query(Novel).filter_by(slug="translated-novel").one()
+        assert novel.chapter_count == 2
+        assert novel.translated_count == 1
+        assert novel.latest_chapter_id == "1"
+        assert novel.latest_chapter_number == 1
+        assert novel.latest_chapter_title == "Chapter 1"
+        assert novel.latest_chapter_updated_at is not None
 
 
 @pytest.mark.asyncio
@@ -709,7 +868,7 @@ async def test_scrape_metadata_passes_max_chapter_to_source(orchestration_env) -
 
 
 @pytest.mark.asyncio
-async def test_scrape_metadata_logs_missing_openai_key_only_once(orchestration_env, caplog) -> None:
+async def test_scrape_metadata_logs_missing_openai_key_only_once(orchestration_env) -> None:
     provider = MockTranslationProvider(key="dummy", model="dummy")
     source = StubSource()
     settings = orchestration_env["settings"]
@@ -727,17 +886,11 @@ async def test_scrape_metadata_logs_missing_openai_key_only_once(orchestration_e
         usage_service=orchestration_env["usage"],
     )
 
-    with caplog.at_level(logging.WARNING, logger="novelai.services.novel_orchestration_service"):
+    with patch("novelai.services.novel_orchestration_service.logger.warning") as warning:
         metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
         await orchestrator.scrape_metadata("syosetu_ncode", "novel-2", mode="update")
 
-    warnings = [
-        record.message
-        for record in caplog.records
-        if "OpenAI API key missing; falling back to dummy provider for metadata translation." in record.message
-    ]
-
-    assert warnings == ["OpenAI API key missing; falling back to dummy provider for metadata translation."]
+    warning.assert_called_once_with("OpenAI API key missing; falling back to dummy provider for metadata translation.")
     assert metadata["metadata_translation_status"] == "failed"
     assert "Add and use a provider API token" in metadata["metadata_translation_error"]
     assert "translated_title" not in metadata

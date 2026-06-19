@@ -11,15 +11,21 @@ the two can run in parallel during the file→DB transition.
 from __future__ import annotations
 
 import hashlib
+import logging
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from novelai.db.engine import session_scope
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
 from novelai.sources.status import normalize_publication_status
 from novelai.services.taxonomy_persistence import persist_taxonomy_assignments
 from novelai.storage.service import StorageService
+
+logger = logging.getLogger(__name__)
 
 
 def _sha256(text: str) -> str:
@@ -49,6 +55,46 @@ def _metadata_chapters(metadata: dict) -> list[dict]:
 
 def _optional_string(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def refresh_catalog_projection_for_storage_novel(
+    novel_id: str,
+    storage: StorageService,
+    session: Session,
+) -> Novel | None:
+    """Refresh one DB catalog projection from canonical storage state."""
+    service = CatalogService(storage=storage, session=session)
+    metadata = storage.load_metadata(novel_id)
+    if metadata is not None:
+        return service.get_or_create_novel(novel_id, metadata)
+    return service.recompute_catalog_projection(novel_id)
+
+
+def safely_refresh_catalog_projection_after_storage_write(
+    novel_id: str,
+    storage: StorageService,
+    *,
+    context: str,
+    session: Session | None = None,
+    session_scope_factory: Callable[[], AbstractContextManager[Session]] = session_scope,
+) -> bool:
+    """Best-effort DB catalog projection refresh after a storage write."""
+    try:
+        if session is not None:
+            refresh_catalog_projection_for_storage_novel(novel_id, storage, session)
+            return True
+        with session_scope_factory() as scoped_session:
+            refresh_catalog_projection_for_storage_novel(novel_id, storage, scoped_session)
+        return True
+    except Exception as exc:  # noqa: BLE001 - projection freshness must not break storage writes yet.
+        logger.warning(
+            "Catalog projection refresh failed after %s for novel_id=%s: %s",
+            context,
+            novel_id,
+            exc,
+            exc_info=True,
+        )
+        return False
 
 
 class CatalogService:

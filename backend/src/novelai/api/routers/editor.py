@@ -4,11 +4,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.response_helpers import translation_provider_response, translated_chapter_response
-from novelai.api.routers.dependencies import _rate_limit, get_storage
+from novelai.api.routers.dependencies import _rate_limit, get_db_session, get_storage
+from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.storage.service import StorageService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
@@ -70,6 +72,7 @@ async def update_translated_chapter(
     body: TranslationEditRequest,
     request: Request,
     storage: StorageService = Depends(get_storage),
+    db: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     _rate_limit(request, "edit")
@@ -89,6 +92,12 @@ async def update_translated_chapter(
         editor=body.editor,
         note=body.note,
     )
+    safely_refresh_catalog_projection_after_storage_write(
+        novel_id,
+        storage,
+        context="editor_update_translation",
+        session=db,
+    )
     translated = storage.load_translated_chapter(novel_id, chapter_id)
     if translated is None:
         raise HTTPException(status_code=500, detail="Edited translation could not be loaded")
@@ -102,6 +111,7 @@ async def rollback_translated_chapter(
     body: TranslationRollbackRequest,
     request: Request,
     storage: StorageService = Depends(get_storage),
+    db: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     _rate_limit(request, "edit")
@@ -115,6 +125,12 @@ async def rollback_translated_chapter(
         note=body.note,
     ):
         raise HTTPException(status_code=404, detail="Translation version not found")
+    safely_refresh_catalog_projection_after_storage_write(
+        novel_id,
+        storage,
+        context="editor_rollback_translation",
+        session=db,
+    )
     translated = storage.load_translated_chapter(novel_id, chapter_id)
     if translated is None:
         raise HTTPException(status_code=500, detail="Rolled back translation could not be loaded")

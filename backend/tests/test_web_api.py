@@ -39,6 +39,7 @@ from novelai.activity.runner import BackgroundActivityRunner
 from novelai.activity.worker import ActivityWorkerService
 from novelai.db.base import Base
 import novelai.db.models  # noqa: F401
+from novelai.db.models.novel import Novel
 from novelai.db.models.users import NovelRequest
 from novelai.providers.gemini_provider import GeminiProvider
 from novelai.runtime.bootstrap import bootstrap
@@ -817,12 +818,12 @@ def client(_no_api_key: None) -> TestClient:
 
 
 @pytest.fixture()
-def seeded_client(_no_api_key: None) -> TestClient:
+def seeded_client(_no_api_key: None, isolated_db_session: Session) -> TestClient:
     """Client with a pre-seeded novel."""
     bootstrap()
     storage = _fresh_storage()
     _seed_novel(storage)
-    return _make_app(storage)
+    return _make_app(storage, db_session=isolated_db_session)
 
 
 # ---------------------------------------------------------------------------
@@ -1282,7 +1283,11 @@ class TestChapters:
         assert data["versions"][0]["active"] is True
         _assert_provider_mirrors(data["versions"][0])
 
-    def test_update_translated_chapter_creates_edit_history(self, seeded_client: TestClient) -> None:
+    def test_update_translated_chapter_creates_edit_history(
+        self,
+        seeded_client: TestClient,
+        isolated_db_session: Session,
+    ) -> None:
         resp = seeded_client.put(
             "/novels/test-n1/chapters/1/translated",
             json={"text": "Edited ch1", "editor": "admin", "note": "line edit"},
@@ -1301,7 +1306,17 @@ class TestChapters:
         assert history[0]["action"] == "manual_edit"
         assert history[0]["editor"] == "admin"
 
-    def test_rollback_translated_chapter_version(self, seeded_client: TestClient) -> None:
+        novel = isolated_db_session.query(Novel).filter_by(slug="test-n1").one()
+        assert novel.chapter_count == 2
+        assert novel.translated_count == 1
+        assert novel.latest_chapter_id == "1"
+        assert novel.latest_chapter_updated_at is not None
+
+    def test_rollback_translated_chapter_version(
+        self,
+        seeded_client: TestClient,
+        isolated_db_session: Session,
+    ) -> None:
         edit_resp = seeded_client.put(
             "/novels/test-n1/chapters/1/translated",
             json={"text": "Edited ch1", "editor": "admin"},
@@ -1324,6 +1339,12 @@ class TestChapters:
         history = history_resp.json()["history"]
         assert history[-1]["action"] == "rollback"
         assert history[-1]["previous_version_id"] == "v2"
+
+        novel = isolated_db_session.query(Novel).filter_by(slug="test-n1").one()
+        assert novel.chapter_count == 2
+        assert novel.translated_count == 1
+        assert novel.latest_chapter_id == "1"
+        assert novel.latest_chapter_updated_at is not None
 
 
 # ---------------------------------------------------------------------------

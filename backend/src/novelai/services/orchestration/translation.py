@@ -17,6 +17,7 @@ from novelai.prompts import (
     build_metadata_translation_prompt,
 )
 from novelai.providers.model_fallbacks import model_candidates
+from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.services.orchestration.common import PreflightIssue, _make_state_data
 from novelai.sources.base import SourceAdapter
 from novelai.translation.pipeline.context import TranslationChunk
@@ -1939,6 +1940,11 @@ async def translate_chapters(
                             "delta": dict(delta_result.get("provenance") or {}),
                         },
                     )
+                    safely_refresh_catalog_projection_after_storage_write(
+                        novel_id,
+                        self.storage,
+                        context="translate_delta",
+                    )
                     self.storage.save_chapter_state(
                         novel_id,
                         chapter_id,
@@ -1992,6 +1998,11 @@ async def translate_chapters(
                         "fallback_reason": delta_fallback_reason,
                     } if delta_fallback_reason else None,
                 },
+            )
+            safely_refresh_catalog_projection_after_storage_write(
+                novel_id,
+                self.storage,
+                context="translate_full",
             )
             self.storage.save_chapter_state(
                 novel_id, chapter_id,
