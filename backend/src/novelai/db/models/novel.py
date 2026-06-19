@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy import DateTime, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from novelai.db.base import Base
@@ -29,6 +29,16 @@ class Novel(Base):
     """A novel entry in the catalog."""
 
     __tablename__ = "novels"
+    __table_args__ = (
+        Index("ix_novels_is_published_updated_at", "is_published", "updated_at"),
+        Index("ix_novels_is_published_publication_status", "is_published", "publication_status"),
+        Index("ix_novels_language", "language"),
+        Index("ix_novels_source_site", "source_site"),
+        Index("ix_novels_source_updated_at", "source_updated_at"),
+        Index("ix_novels_chapter_count", "chapter_count"),
+        Index("ix_novels_translated_count", "translated_count"),
+        Index("ix_novels_latest_chapter_updated_at", "latest_chapter_updated_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)

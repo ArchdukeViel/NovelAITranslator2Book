@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from novelai.db.base import Base
@@ -22,6 +22,10 @@ class Chapter(Base):
     """A chapter belonging to a Novel."""
 
     __tablename__ = "chapters"
+    __table_args__ = (
+        Index("ix_chapters_novel_id_chapter_number", "novel_id", "chapter_number"),
+        Index("ix_chapters_novel_id_translation_status_updated_at", "novel_id", "translation_status", "updated_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     novel_id: Mapped[int] = mapped_column(
