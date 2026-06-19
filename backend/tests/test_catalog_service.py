@@ -469,6 +469,8 @@ def test_catalog_projection_migration_upgrade_backfill_and_downgrade(
     command.upgrade(alembic_cfg, "head")
     engine = create_engine(f"sqlite:///{db_path.as_posix()}")
     columns = {column["name"] for column in inspect(engine).get_columns("novels")}
+    novel_indexes = {index["name"] for index in inspect(engine).get_indexes("novels")}
+    chapter_indexes = {index["name"] for index in inspect(engine).get_indexes("chapters")}
     assert {
         "publication_status",
         "source_updated_at",
@@ -479,6 +481,20 @@ def test_catalog_projection_migration_upgrade_backfill_and_downgrade(
         "latest_chapter_title",
         "latest_chapter_updated_at",
     }.issubset(columns)
+    assert {
+        "ix_novels_is_published_updated_at",
+        "ix_novels_is_published_publication_status",
+        "ix_novels_language",
+        "ix_novels_source_site",
+        "ix_novels_source_updated_at",
+        "ix_novels_chapter_count",
+        "ix_novels_translated_count",
+        "ix_novels_latest_chapter_updated_at",
+    }.issubset(novel_indexes)
+    assert {
+        "ix_chapters_novel_id_chapter_number",
+        "ix_chapters_novel_id_translation_status_updated_at",
+    }.issubset(chapter_indexes)
 
     with engine.begin() as conn:
         rows = conn.execute(
@@ -507,6 +523,17 @@ def test_catalog_projection_migration_upgrade_backfill_and_downgrade(
     engine.dispose()
 
     command.downgrade(alembic_cfg, "-1")
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    downgraded_indexes = {index["name"] for index in inspect(engine).get_indexes("novels")}
+    downgraded_chapter_indexes = {index["name"] for index in inspect(engine).get_indexes("chapters")}
+    downgraded_columns = {column["name"] for column in inspect(engine).get_columns("novels")}
+    assert "publication_status" in downgraded_columns
+    assert "latest_chapter_updated_at" in downgraded_columns
+    assert "ix_novels_is_published_updated_at" not in downgraded_indexes
+    assert "ix_chapters_novel_id_chapter_number" not in downgraded_chapter_indexes
+    engine.dispose()
+
+    command.downgrade(alembic_cfg, "d9b7e2a1c4f6")
     engine = create_engine(f"sqlite:///{db_path.as_posix()}")
     downgraded_columns = {column["name"] for column in inspect(engine).get_columns("novels")}
     assert "publication_status" not in downgraded_columns
