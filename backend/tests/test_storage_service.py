@@ -528,6 +528,45 @@ def test_metadata_operations(storage):
     assert loaded is not None
     assert loaded["title"] == "Test Novel"
     assert loaded["novel_id"] == "novel1"
+    assert loaded["publication_status"] == "unknown"
+    assert loaded["status"] == "unknown"
+
+
+def test_metadata_normalizes_publication_status(storage):
+    storage.save_metadata("novel1", {"title": "Test Novel", "publication_status": "Finished"})
+
+    loaded = storage.load_metadata("novel1")
+
+    assert loaded is not None
+    assert loaded["publication_status"] == "completed"
+    assert loaded["status"] == "completed"
+
+
+def test_metadata_rescrape_updates_publication_status(storage):
+    storage.save_metadata("novel1", {"title": "Test Novel", "publication_status": "ongoing"})
+    storage.save_metadata("novel1", {"publication_status": "completed"})
+
+    loaded = storage.load_metadata("novel1")
+
+    assert loaded is not None
+    assert loaded["publication_status"] == "completed"
+    assert loaded["status"] == "completed"
+
+
+def test_metadata_save_creates_bounded_backups_without_touching_chapters(storage):
+    storage.save_chapter("novel1", "ch1", "Canonical chapter text", title="Chapter 1")
+    storage.save_metadata("novel1", {"title": "Version 0"})
+    for index in range(1, 8):
+        storage.save_metadata("novel1", {"title": f"Version {index}"})
+
+    backup_dir = storage.base_dir / "novels" / "novel1" / "metadata_backups"
+    backups = sorted(backup_dir.glob("*.json"))
+    loaded_chapter = storage.load_chapter("novel1", "ch1")
+
+    assert len(backups) == 5
+    assert any(json.loads(path.read_text(encoding="utf-8"))["title"] == "Version 6" for path in backups)
+    assert loaded_chapter is not None
+    assert loaded_chapter["text"] == "Canonical chapter text"
 
 
 def test_metadata_save_merges_original_and_translated_fields(storage):

@@ -26,8 +26,17 @@ class ActivityQueueService:
     """
 
     VALID_ACTIVITY_TYPES = {"crawl", "translation"}
+    ACTIVE_STATUSES = {
+        JobStatus.PENDING.value,
+        JobStatus.RUNNING.value,
+        JobStatus.PAUSED.value,
+        JobStatus.PAUSED_UNTIL_COOLDOWN.value,
+        JobStatus.PAUSED_UNTIL_QUOTA_RESET.value,
+    }
     ACTIVITY_LOG_DIRNAME = "activity_log"
     LEGACY_JOBS_DIRNAME = "jobs"
+    DEFAULT_PRUNE_KEEP_COMPLETED = 200
+    DEFAULT_PRUNE_KEEP_FAILED = 100
 
     def __init__(self, base_dir: Path | None = None) -> None:
         self.base_dir = (base_dir or settings.DATA_DIR).resolve()
@@ -144,6 +153,63 @@ class ActivityQueueService:
             JobStatus.CANCELLED.value: 5,
         }
         return (priority.get(str(activity.get("status")), 99), str(activity.get("created_at") or ""))
+
+    @staticmethod
+    def _newest_activity_sort_key(activity: dict[str, Any]) -> str:
+        return str(activity.get("finished_at") or activity.get("started_at") or activity.get("created_at") or "")
+
+    def prune_activity_log(
+        self,
+        *,
+        keep_completed: int = DEFAULT_PRUNE_KEEP_COMPLETED,
+        keep_failed: int = DEFAULT_PRUNE_KEEP_FAILED,
+        dry_run: bool = True,
+    ) -> dict[str, Any]:
+        """Prune old terminal activity records while preserving active/retryable work.
+
+        This helper is intentionally opt-in. Pending/running/paused records are
+        always kept, and failed/cancelled records are kept by a separate bound so
+        recent retry context remains available.
+        """
+        if not self.activity_file.exists():
+            return {"dry_run": dry_run, "deleted": 0, "candidates": [], "kept": 0}
+
+        keep_completed = max(0, int(keep_completed))
+        keep_failed = max(0, int(keep_failed))
+        activity_log = self._load_activity()
+        completed_like = [
+            activity
+            for activity in activity_log
+            if str(activity.get("status")) == JobStatus.COMPLETED.value
+        ]
+        failed_like = [
+            activity
+            for activity in activity_log
+            if str(activity.get("status")) in {JobStatus.FAILED.value, JobStatus.CANCELLED.value}
+        ]
+
+        completed_like.sort(key=self._newest_activity_sort_key, reverse=True)
+        failed_like.sort(key=self._newest_activity_sort_key, reverse=True)
+        candidate_ids = {
+            str(activity.get("id"))
+            for activity in [*completed_like[keep_completed:], *failed_like[keep_failed:]]
+            if activity.get("id") is not None
+        }
+
+        candidates = [activity for activity in activity_log if str(activity.get("id")) in candidate_ids]
+        if not dry_run and candidate_ids:
+            remaining = [
+                activity
+                for activity in activity_log
+                if str(activity.get("status")) in self.ACTIVE_STATUSES or str(activity.get("id")) not in candidate_ids
+            ]
+            self._persist_activity(remaining)
+        return {
+            "dry_run": dry_run,
+            "deleted": 0 if dry_run else len(candidates),
+            "candidates": [dict(activity) for activity in candidates],
+            "kept": len(activity_log) if dry_run else len(self._load_activity()),
+        }
 
     def create_crawl_activity(
         self,

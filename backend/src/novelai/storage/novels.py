@@ -9,6 +9,7 @@ from typing import Any
 
 from novelai.config.workflow_profiles import normalize_workflow_profiles
 from novelai.core.security import validate_storage_identifier
+from novelai.sources.status import normalize_publication_status
 from novelai.storage.common import _utc_now_iso
 from novelai.utils import atomic_write
 
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 _SYOSETU_NCODE_PATTERN = re.compile(r"^n\d{4}[a-z]{2}$", re.IGNORECASE)
 _LEGACY_SYOSETU_NCODE_FOLDER_PATTERN = re.compile(r"^\d{4}[a-z]{2}$", re.IGNORECASE)
+METADATA_BACKUP_DIRNAME = "metadata_backups"
+METADATA_BACKUP_RETENTION = 5
 
 def _index_path(self: Any) -> Path:
     return self.novels_dir / self.INDEX_FILENAME
@@ -35,6 +38,39 @@ def _load_index(self: Any) -> dict[str, dict[str, Any]]:
 def _persist_index(self: Any, index: dict[str, dict[str, Any]]) -> None:
     path = self._index_path()
     atomic_write(path, json.dumps(index, ensure_ascii=False, indent=2))
+
+
+def _metadata_backup_dir(novel_dir: Path) -> Path:
+    return novel_dir / METADATA_BACKUP_DIRNAME
+
+
+def _backup_metadata_file(metadata_path: Path, *, keep: int = METADATA_BACKUP_RETENTION) -> Path | None:
+    if keep <= 0 or not metadata_path.exists():
+        return None
+
+    try:
+        existing_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+    backup_dir = _metadata_backup_dir(metadata_path.parent)
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    updated_at = str(existing_payload.get("updated_at") or _utc_now_iso()) if isinstance(existing_payload, dict) else _utc_now_iso()
+    safe_stamp = re.sub(r"[^0-9A-Za-z_\-.]+", "_", updated_at).strip("._") or "metadata"
+    backup_path = backup_dir / f"{safe_stamp}.json"
+    suffix = 1
+    while backup_path.exists():
+        backup_path = backup_dir / f"{safe_stamp}_{suffix}.json"
+        suffix += 1
+    shutil.copy2(metadata_path, backup_path)
+
+    backups = sorted(backup_dir.glob("*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+    for stale_backup in backups[keep:]:
+        try:
+            stale_backup.unlink()
+        except OSError:
+            logger.warning("Could not prune stale metadata backup at %s.", stale_backup)
+    return backup_path
 
 
 def _compute_folder_name(self: Any, novel_id: str, metadata: dict[str, Any]) -> str:
@@ -158,6 +194,9 @@ def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
     merged["input_adapter_key"] = self._clean_string(merged.get("input_adapter_key"))
     merged["context_group_id"] = self._clean_string(merged.get("context_group_id"), novel_id)
     merged["translation_profiles"] = normalize_workflow_profiles(merged.get("translation_profiles", existing.get("translation_profiles")))
+    publication_status = normalize_publication_status(merged.get("publication_status") or merged.get("status"))
+    merged["publication_status"] = publication_status
+    merged["status"] = publication_status
 
     titles = existing.get("titles", {}) if isinstance(existing.get("titles"), dict) else {}
     if isinstance(merged.get("title"), str) and merged.get("title"):
@@ -180,6 +219,7 @@ def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
 
     novel_dir = self._ensure_novel_dir(novel_id, folder_name)
     path = novel_dir / "metadata.json"
+    _backup_metadata_file(path)
     atomic_write(path, json.dumps(merged, ensure_ascii=False, indent=2))
     return path
 
@@ -201,6 +241,9 @@ def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
         payload["document_type"] = self._clean_string(payload.get("document_type"), "web_novel")
         payload["input_adapter_key"] = self._clean_string(payload.get("input_adapter_key"))
         payload["context_group_id"] = self._clean_string(payload.get("context_group_id"), novel_id)
+        publication_status = normalize_publication_status(payload.get("publication_status") or payload.get("status"))
+        payload["publication_status"] = publication_status
+        payload["status"] = publication_status
         return payload
     except json.JSONDecodeError as exc:
         logger.warning("Corrupted metadata for novel %s at %s: %s", novel_id, path, exc)
