@@ -11,11 +11,13 @@ the two can run in parallel during the file→DB transition.
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
+from novelai.sources.status import normalize_publication_status
 from novelai.services.taxonomy_persistence import persist_taxonomy_assignments
 from novelai.storage.service import StorageService
 
@@ -23,6 +25,21 @@ from novelai.storage.service import StorageService
 def _sha256(text: str) -> str:
     """Return a hex SHA-256 digest for a text string."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _metadata_datetime(value: object) -> datetime | None:
+    """Return a datetime from safe metadata timestamp shapes."""
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and value.strip():
+        text = value.strip()
+        if text.endswith("Z"):
+            text = f"{text[:-1]}+00:00"
+        try:
+            return datetime.fromisoformat(text)
+        except ValueError:
+            return None
+    return None
 
 
 class CatalogService:
@@ -58,6 +75,15 @@ class CatalogService:
             The Novel ORM instance (added to session, not yet committed).
         """
         novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        has_publication_status = "publication_status" in metadata or "status" in metadata
+        publication_status = normalize_publication_status(
+            metadata.get("publication_status") or metadata.get("status")
+        )
+        source_updated_at = _metadata_datetime(
+            metadata.get("source_updated_at")
+            or metadata.get("scraped_at")
+            or metadata.get("updated_at")
+        )
         if novel is None:
             novel = Novel(
                 slug=novel_id,
@@ -67,11 +93,19 @@ class CatalogService:
                 source_site=metadata.get("source_key"),
                 source_url=metadata.get("source_url"),
                 language=metadata.get("language", "ja"),
-                status=metadata.get("status", "unknown"),
+                status=publication_status,
+                publication_status=publication_status,
+                source_updated_at=source_updated_at,
                 synopsis=metadata.get("description"),
             )
             self._session.add(novel)
             self._session.flush()  # Ensure novel.id is available
+        else:
+            if has_publication_status:
+                novel.status = publication_status
+                novel.publication_status = publication_status
+            if source_updated_at is not None:
+                novel.source_updated_at = source_updated_at
 
         # Persist taxonomy assignments from scraped metadata
         source_key = metadata.get("source_key") or metadata.get("source")

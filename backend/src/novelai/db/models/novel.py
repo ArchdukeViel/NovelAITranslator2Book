@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, String, Text, func
+from sqlalchemy import DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from novelai.db.base import Base
@@ -39,6 +39,17 @@ class Novel(Base):
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     language: Mapped[str] = mapped_column(String(32), nullable=False, default="ja")
     status: Mapped[str] = mapped_column(String(64), nullable=False, default="unknown")
+    publication_status: Mapped[str] = mapped_column(String(64), nullable=False, default="unknown")
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    chapter_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    translated_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    latest_chapter_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    latest_chapter_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    latest_chapter_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    latest_chapter_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     synopsis: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     is_published: Mapped[bool] = mapped_column(nullable=False, default=False)
