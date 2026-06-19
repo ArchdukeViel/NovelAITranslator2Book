@@ -1853,10 +1853,18 @@ async def test_translate_chapters_attempts_checkpoint_restore_after_error_state(
         usage_service=orchestration_env["usage"],
     )
 
-    await orchestrator.translate_chapters("stub", "novel-1", "1", force=True)
+    with patch(
+        "novelai.services.novel_orchestration_service.safely_refresh_catalog_projection_after_storage_write"
+    ) as refresh_projection:
+        await orchestrator.translate_chapters("stub", "novel-1", "1", force=True)
 
     assert restore_calls
     assert restore_calls[-1] == ("novel-1", "1", "resume")
+    refresh_projection.assert_called_once_with(
+        "novel-1",
+        storage,
+        context="checkpoint_restore",
+    )
     translated = storage.load_translated_chapter("novel-1", "1")
     assert translated is not None
     assert translated["text"] == "translated ok"

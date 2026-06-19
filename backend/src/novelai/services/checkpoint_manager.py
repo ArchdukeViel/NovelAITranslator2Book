@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from novelai.core.chapter_state import ChapterState
+from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.storage.service import StorageService
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,11 @@ class CheckpointManager:
 
         success = self.storage.restore_from_checkpoint(novel_id, chapter_id, checkpoint_id)
         if success:
+            safely_refresh_catalog_projection_after_storage_write(
+                novel_id,
+                self.storage,
+                context="checkpoint_restore",
+            )
             self._checkpoints.pop(self._get_checkpoint_id(novel_id, chapter_id), None)
 
         return success
