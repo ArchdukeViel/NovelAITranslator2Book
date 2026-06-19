@@ -498,21 +498,27 @@ class TestCatalog:
 
         assert [novel["title"] for novel in data["novels"]] == ["Alpha", "Bravo", "Charlie"]
 
-    def test_catalog_taxonomy_filter_still_falls_back_to_storage_path(
+    def test_catalog_taxonomy_filter_uses_db_path(
         self,
         client: TestClient,
         storage: StorageService,
         db_session,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         _seed_db_catalog_novel(db_session, "db-only", title="Other DB Novel")
-        _seed_novel(storage, "storage-dragon", title="Dragon King")
+        _seed_db_catalog_novel(db_session, "db-dragon", title="Dragon King")
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
-        _assign_genre_for_tests(db_session, "storage-dragon", "fantasy")
+        _assign_genre_for_tests(db_session, "db-dragon", "fantasy")
+        monkeypatch.setattr(
+            storage,
+            "list_novels",
+            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
+        )
 
         data = client.get("/api/public/catalog?genre_include=fantasy").json()
 
         assert data["total"] == 1
-        assert data["novels"][0]["novel_id"] == "storage-dragon"
+        assert data["novels"][0]["novel_id"] == "db-dragon"
 
     def test_storage_fallback_does_not_expose_unpublished_db_row(
         self,
@@ -1146,9 +1152,23 @@ class TestCatalogTaxonomy:
 # ---------------------------------------------------------------------------
 
 
-def _seed_genre_for_tests(db_session, slug: str, name_ja: str, display_order: int = 0, is_active: bool = True) -> None:
+def _seed_genre_for_tests(
+    db_session,
+    slug: str,
+    name_ja: str,
+    display_order: int = 0,
+    is_active: bool = True,
+    is_adult: bool = False,
+) -> None:
     from novelai.db.models.genre import Genre
-    genre = Genre(slug=slug, name_ja=name_ja, name_en=slug, display_order=display_order, is_active=is_active)
+    genre = Genre(
+        slug=slug,
+        name_ja=name_ja,
+        name_en=slug,
+        display_order=display_order,
+        is_active=is_active,
+        is_adult=is_adult,
+    )
     db_session.add(genre)
     db_session.commit()
 
@@ -1214,8 +1234,8 @@ class TestCatalogGenreTagFilter:
     def test_genre_exclude_removes(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001")
-        _seed_novel(storage, "n002")
+        _seed_db_catalog_novel(db_session, "n001")
+        _seed_db_catalog_novel(db_session, "n002")
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
         _assign_genre_for_tests(db_session, "n001", "fantasy")
         resp = client.get("/api/public/catalog?genre_exclude=fantasy")
@@ -1227,7 +1247,7 @@ class TestCatalogGenreTagFilter:
     def test_tag_include_matches(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001")
+        _seed_db_catalog_novel(db_session, "n001")
         _assign_tag_for_tests(db_session, "n001", "魔法")
         resp = client.get("/api/public/catalog?tag_include=魔法")
         assert resp.status_code == 200
@@ -1236,8 +1256,8 @@ class TestCatalogGenreTagFilter:
     def test_tag_exclude_removes(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001")
-        _seed_novel(storage, "n002")
+        _seed_db_catalog_novel(db_session, "n001")
+        _seed_db_catalog_novel(db_session, "n002")
         _assign_tag_for_tests(db_session, "n001", "魔法")
         resp = client.get("/api/public/catalog?tag_exclude=魔法")
         assert resp.status_code == 200
@@ -1248,8 +1268,8 @@ class TestCatalogGenreTagFilter:
     def test_genre_include_all_required(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001")
-        _seed_novel(storage, "n002")
+        _seed_db_catalog_novel(db_session, "n001")
+        _seed_db_catalog_novel(db_session, "n002")
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
         _seed_genre_for_tests(db_session, "romance", "恋愛")
         _assign_genre_for_tests(db_session, "n001", "fantasy")
@@ -1265,7 +1285,7 @@ class TestCatalogGenreTagFilter:
     def test_unknown_genre_include_returns_zero(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001")
+        _seed_db_catalog_novel(db_session, "n001")
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
         _assign_genre_for_tests(db_session, "n001", "fantasy")
         resp = client.get("/api/public/catalog?genre_include=nonexistent-slug")
@@ -1275,8 +1295,8 @@ class TestCatalogGenreTagFilter:
     def test_unknown_genre_exclude_no_effect(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001")
-        _seed_novel(storage, "n002")
+        _seed_db_catalog_novel(db_session, "n001")
+        _seed_db_catalog_novel(db_session, "n002")
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
         _assign_genre_for_tests(db_session, "n001", "fantasy")
         resp = client.get("/api/public/catalog?genre_exclude=nonexistent-slug")
@@ -1286,7 +1306,7 @@ class TestCatalogGenreTagFilter:
     def test_unknown_tag_include_returns_zero(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001")
+        _seed_db_catalog_novel(db_session, "n001")
         _assign_tag_for_tests(db_session, "n001", "魔法")
         resp = client.get("/api/public/catalog?tag_include=nonexistent_tag")
         assert resp.status_code == 200
@@ -1295,8 +1315,8 @@ class TestCatalogGenreTagFilter:
     def test_unknown_tag_exclude_no_effect(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001")
-        _seed_novel(storage, "n002")
+        _seed_db_catalog_novel(db_session, "n001")
+        _seed_db_catalog_novel(db_session, "n002")
         _assign_tag_for_tests(db_session, "n001", "魔法")
         resp = client.get("/api/public/catalog?tag_exclude=nonexistent_tag")
         assert resp.status_code == 200
@@ -1305,8 +1325,8 @@ class TestCatalogGenreTagFilter:
     def test_tag_include_all_required(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001")
-        _seed_novel(storage, "n002")
+        _seed_db_catalog_novel(db_session, "n001")
+        _seed_db_catalog_novel(db_session, "n002")
         _assign_tag_for_tests(db_session, "n001", "魔法")
         _assign_tag_for_tests(db_session, "n001", "勇者")
         _assign_tag_for_tests(db_session, "n002", "魔法")
@@ -1319,8 +1339,8 @@ class TestCatalogGenreTagFilter:
     def test_filter_combines_with_status(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001", status="ongoing")
-        _seed_novel(storage, "n002", status="completed")
+        _seed_db_catalog_novel(db_session, "n001", status="ongoing")
+        _seed_db_catalog_novel(db_session, "n002", status="completed")
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
         _assign_genre_for_tests(db_session, "n001", "fantasy")
         _assign_genre_for_tests(db_session, "n002", "fantasy")
@@ -1333,8 +1353,8 @@ class TestCatalogGenreTagFilter:
     def test_filter_combines_with_search(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001", title="Dragon King")
-        _seed_novel(storage, "n002", title="Slime World")
+        _seed_db_catalog_novel(db_session, "n001", title="Dragon King")
+        _seed_db_catalog_novel(db_session, "n002", title="Slime World")
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
         _assign_genre_for_tests(db_session, "n001", "fantasy")
         _assign_genre_for_tests(db_session, "n002", "fantasy")
@@ -1347,10 +1367,8 @@ class TestCatalogGenreTagFilter:
     def test_filter_combines_with_chapter_filter(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001", chapters=[{"id": "ch001", "title": "Ch 1", "num": 1}])
-        _seed_novel(storage, "n002", chapters=[
-            {"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i} for i in range(1, 11)
-        ])
+        _seed_db_catalog_novel(db_session, "n001", chapter_count=1)
+        _seed_db_catalog_novel(db_session, "n002", chapter_count=10)
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
         _assign_genre_for_tests(db_session, "n001", "fantasy")
         _assign_genre_for_tests(db_session, "n002", "fantasy")
@@ -1366,9 +1384,9 @@ class TestCatalogGenreTagFilter:
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
         for i in range(5):
             nid = f"n{i:03d}"
-            _seed_novel(storage, nid)
+            _seed_db_catalog_novel(db_session, nid)
             _assign_genre_for_tests(db_session, nid, "fantasy")
-        _seed_novel(storage, "n999")
+        _seed_db_catalog_novel(db_session, "n999")
         _assign_tag_for_tests(db_session, "n999", "魔法")
         resp = client.get("/api/public/catalog?genre_include=fantasy&page_size=2")
         assert resp.status_code == 200
@@ -1379,8 +1397,8 @@ class TestCatalogGenreTagFilter:
     def test_sort_works_with_genre_filter(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001", title="Zebra")
-        _seed_novel(storage, "n002", title="Alpha")
+        _seed_db_catalog_novel(db_session, "n001", title="Zebra")
+        _seed_db_catalog_novel(db_session, "n002", title="Alpha")
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
         _assign_genre_for_tests(db_session, "n001", "fantasy")
         _assign_genre_for_tests(db_session, "n002", "fantasy")
@@ -1393,9 +1411,9 @@ class TestCatalogGenreTagFilter:
     def test_genre_exclude_with_multiple_values(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001")
-        _seed_novel(storage, "n002")
-        _seed_novel(storage, "n003")
+        _seed_db_catalog_novel(db_session, "n001")
+        _seed_db_catalog_novel(db_session, "n002")
+        _seed_db_catalog_novel(db_session, "n003")
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
         _seed_genre_for_tests(db_session, "romance", "恋愛")
         _assign_genre_for_tests(db_session, "n001", "fantasy")
@@ -1410,9 +1428,9 @@ class TestCatalogGenreTagFilter:
     def test_tag_exclude_with_multiple_values(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001")
-        _seed_novel(storage, "n002")
-        _seed_novel(storage, "n003")
+        _seed_db_catalog_novel(db_session, "n001")
+        _seed_db_catalog_novel(db_session, "n002")
+        _seed_db_catalog_novel(db_session, "n003")
         _assign_tag_for_tests(db_session, "n001", "魔法")
         _assign_tag_for_tests(db_session, "n002", "勇者")
         resp = client.get("/api/public/catalog?tag_exclude=魔法,勇者")
@@ -1421,11 +1439,49 @@ class TestCatalogGenreTagFilter:
         assert data["total"] == 1
         assert data["novels"][0]["novel_id"] == "n003"
 
+    def test_inactive_genre_include_returns_zero(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "n001")
+        _seed_genre_for_tests(db_session, "dormant", "Dormant", is_active=False)
+        _assign_genre_for_tests(db_session, "n001", "dormant")
+
+        resp = client.get("/api/public/catalog?genre_include=dormant")
+
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 0
+
+    def test_inactive_genre_exclude_has_no_effect(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "n001")
+        _seed_genre_for_tests(db_session, "dormant", "Dormant", is_active=False)
+        _assign_genre_for_tests(db_session, "n001", "dormant")
+
+        resp = client.get("/api/public/catalog?genre_exclude=dormant")
+
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 1
+
+    def test_adult_genre_include_requires_include_adult(
+        self, client: TestClient, storage: StorageService, db_session,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "adult-novel")
+        _seed_genre_for_tests(db_session, "adult-romance", "Adult Romance", is_adult=True)
+        _assign_genre_for_tests(db_session, "adult-novel", "adult-romance")
+
+        hidden = client.get("/api/public/catalog?genre_include=adult-romance").json()
+        visible = client.get("/api/public/catalog?genre_include=adult-romance&include_adult=true").json()
+
+        assert hidden["total"] == 0
+        assert visible["total"] == 1
+        assert visible["novels"][0]["novel_id"] == "adult-novel"
+
     def test_no_params_returns_all(
         self, client: TestClient, storage: StorageService, db_session,
     ) -> None:
-        _seed_novel(storage, "n001")
-        _seed_novel(storage, "n002")
+        _seed_db_catalog_novel(db_session, "n001")
+        _seed_db_catalog_novel(db_session, "n002")
         resp = client.get("/api/public/catalog")
         assert resp.status_code == 200
         assert resp.json()["total"] == 2

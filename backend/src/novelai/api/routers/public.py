@@ -24,7 +24,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import and_, case
+from sqlalchemy import and_, case, true
 from sqlalchemy.orm import Session
 
 from novelai.api.routers.dependencies import (
@@ -266,13 +266,7 @@ def _is_db_catalog_base_request(
     tag_include_set: set[str],
     tag_exclude_set: set[str],
 ) -> bool:
-    return (
-        not genre_include_set
-        and not genre_exclude_set
-        and not tag_include_set
-        and not tag_exclude_set
-        and (sort_by is None or sort_by in VALID_SORT_FIELDS)
-    )
+    return sort_by is None or sort_by in VALID_SORT_FIELDS
 
 
 def _published_db_catalog_query(db: Session, *, include_adult: bool):
@@ -298,6 +292,10 @@ def _catalog_from_db_page(
     effective_sort_by: str,
     min_chapters: int | None,
     max_chapters: int | None,
+    genre_include_set: set[str],
+    genre_exclude_set: set[str],
+    tag_include_set: set[str],
+    tag_exclude_set: set[str],
     include_adult: bool,
     page: int,
     page_size: int,
@@ -323,6 +321,48 @@ def _catalog_from_db_page(
         query = query.filter(Novel.chapter_count >= min_chapters)
     if max_chapters is not None:
         query = query.filter(Novel.chapter_count <= max_chapters)
+    active_public_genre = (
+        Genre.is_active.is_(True)
+        if include_adult
+        else and_(Genre.is_active.is_(True), Genre.is_adult.is_(False))
+    )
+    public_tag = true() if include_adult else Tag.is_adult.is_(False)
+    for genre_slug in sorted(genre_include_set):
+        query = query.filter(
+            Novel.genres.any(
+                and_(
+                    Genre.slug == genre_slug,
+                    active_public_genre,
+                )
+            )
+        )
+    if genre_exclude_set:
+        query = query.filter(
+            ~Novel.genres.any(
+                and_(
+                    Genre.slug.in_(genre_exclude_set),
+                    active_public_genre,
+                )
+            )
+        )
+    for tag_name in sorted(tag_include_set):
+        query = query.filter(
+            Novel.tags.any(
+                and_(
+                    Tag.name == tag_name,
+                    public_tag,
+                )
+            )
+        )
+    if tag_exclude_set:
+        query = query.filter(
+            ~Novel.tags.any(
+                and_(
+                    Tag.name.in_(tag_exclude_set),
+                    public_tag,
+                )
+            )
+        )
 
     total = query.count()
 
@@ -523,6 +563,10 @@ async def catalog(
             effective_sort_by=effective_sort_by,
             min_chapters=min_chapters,
             max_chapters=max_chapters,
+            genre_include_set=genre_include_set,
+            genre_exclude_set=genre_exclude_set,
+            tag_include_set=tag_include_set,
+            tag_exclude_set=tag_exclude_set,
             include_adult=include_adult,
             page=page,
             page_size=page_size,

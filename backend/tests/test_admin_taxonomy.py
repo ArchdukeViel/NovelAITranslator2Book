@@ -88,6 +88,8 @@ def owner_client(app):
     """Client pre-authenticated as owner via dependency override."""
     set_user(app, user_id=1, role="owner")
     c = TestClient(app, raise_server_exceptions=True)
+    token_resp = c.get("/api/auth/csrf")
+    c.headers.update({"X-CSRF-Token": token_resp.json()["csrf_token"]})
     yield c
     set_user(app, user_id=None, role="guest")
 
