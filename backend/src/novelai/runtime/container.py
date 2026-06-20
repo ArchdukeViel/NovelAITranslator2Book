@@ -7,7 +7,7 @@ from novelai.activity.runner import BackgroundActivityRunner
 from novelai.activity.worker import ActivityWorkerService
 from novelai.config.settings import settings
 from novelai.providers.registry import get_provider
-from novelai.services.email import AuthEmailService, NoopAuthEmailService
+from novelai.services.email import AuthEmailService, NoopAuthEmailService, SMTPAuthEmailService
 from novelai.services.export_service import ExportService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
@@ -107,11 +107,29 @@ class Container:
     @property
     def auth_email(self) -> AuthEmailService:
         if self._auth_email is None:
-            self._auth_email = NoopAuthEmailService(
-                public_base_url=settings.PUBLIC_FRONTEND_URL,
-                password_reset_path=settings.AUTH_PASSWORD_RESET_PATH,
-                email_verification_path=settings.AUTH_EMAIL_VERIFICATION_PATH,
-            )
+            mode = settings.AUTH_EMAIL_DELIVERY_MODE.strip().lower()
+            common = {
+                "public_base_url": settings.PUBLIC_FRONTEND_URL,
+                "password_reset_path": settings.AUTH_PASSWORD_RESET_PATH,
+                "email_verification_path": settings.AUTH_EMAIL_VERIFICATION_PATH,
+            }
+            if mode == "noop":
+                self._auth_email = NoopAuthEmailService(**common)
+            elif mode == "smtp":
+                self._auth_email = SMTPAuthEmailService(
+                    **common,
+                    host=settings.SMTP_HOST,
+                    port=settings.SMTP_PORT,
+                    username=settings.SMTP_USERNAME,
+                    password=settings.SMTP_PASSWORD,
+                    from_email=settings.SMTP_FROM_EMAIL,
+                    from_name=settings.SMTP_FROM_NAME,
+                    starttls=settings.SMTP_STARTTLS,
+                    use_ssl=settings.SMTP_USE_SSL,
+                    timeout_seconds=settings.SMTP_TIMEOUT_SECONDS,
+                )
+            else:
+                raise ValueError(f"Unsupported AUTH_EMAIL_DELIVERY_MODE: {settings.AUTH_EMAIL_DELIVERY_MODE!r}")
         return self._auth_email
 
     @property
