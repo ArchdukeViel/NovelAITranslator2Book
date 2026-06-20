@@ -102,6 +102,33 @@ def test_parse_metadata_html_detects_chapter_parts_and_source_dates() -> None:
     ]
 
 
+def test_parse_metadata_html_counts_episodes_not_arc_headings_and_preserves_groups() -> None:
+    source = SyosetuNcodeSource()
+    html = """
+    <html>
+      <body>
+        <h1 class="p-novel__title">Arc Story</h1>
+        <h2 class="chapter_title">Chapter 1: 8 Years Old</h2>
+        <a href="/n8733gf/1/">Prologue</a>
+        <a href="/n8733gf/2/">First Day</a>
+        <h2 class="chapter_title">Chapter 2: 12 Years Old</h2>
+        <a href="/n8733gf/3/">Second Arc Opens</a>
+        <a href="/n8733gf/4/">Second Arc Continues</a>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://ncode.syosetu.com/n8733gf/")
+
+    assert [chapter["id"] for chapter in metadata["chapters"]] == ["1", "2", "3", "4"]
+    assert [chapter["part"] for chapter in metadata["chapters"]] == [
+        "Chapter 1: 8 Years Old",
+        "Chapter 1: 8 Years Old",
+        "Chapter 2: 12 Years Old",
+        "Chapter 2: 12 Years Old",
+    ]
+
+
 def test_parse_metadata_html_synthesizes_single_chapter_for_one_shot() -> None:
     source = SyosetuNcodeSource()
     html = """
@@ -370,3 +397,31 @@ async def test_fetch_metadata_stops_after_requested_max_chapter_page() -> None:
 
     assert requests == [root_url, f"{root_url}?p=2"]
     assert [chapter["id"] for chapter in metadata["chapters"]] == ["1", "2", "3", "4"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_metadata_caps_single_page_toc_without_counting_headings() -> None:
+    source = SyosetuNcodeSource()
+    root_url = "https://ncode.syosetu.com/n8733gf/"
+
+    async def fake_fetch_page(url: str) -> str:
+        assert url == root_url
+        return """
+        <html>
+          <body>
+            <h1 class="p-novel__title">Single Page Story</h1>
+            <h2 class="chapter_title">Part One</h2>
+            <a href="/n8733gf/1/">Episode One</a>
+            <a href="/n8733gf/2/">Episode Two</a>
+            <h2 class="chapter_title">Part Two</h2>
+            <a href="/n8733gf/3/">Episode Three</a>
+            <a href="/n8733gf/4/">Episode Four</a>
+          </body>
+        </html>
+        """
+
+    source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
+    metadata = await source.fetch_metadata(root_url, max_chapter=3)
+
+    assert [chapter["id"] for chapter in metadata["chapters"]] == ["1", "2", "3"]
+    assert [chapter["part"] for chapter in metadata["chapters"]] == ["Part One", "Part One", "Part Two"]

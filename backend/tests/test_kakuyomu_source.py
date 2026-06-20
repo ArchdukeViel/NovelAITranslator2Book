@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from novelai.sources.kakuyomu import KakuyomuSource
@@ -64,6 +66,134 @@ def test_parse_metadata_html_collects_episode_links_in_order() -> None:
             "source_episode_id": "822139845959540999",
         },
     ]
+
+
+def test_parse_metadata_html_prefers_grouped_next_data_toc_over_partial_links() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    next_data = {
+        "props": {
+            "pageProps": {
+                "__APOLLO_STATE__": {
+                    "ROOT_QUERY": {
+                        f'work({{"id":"{work_id}"}})': {"__ref": f"Work:{work_id}"},
+                    },
+                    f"Work:{work_id}": {
+                        "__typename": "Work",
+                        "id": work_id,
+                        "tableOfContentsV2": [
+                            {"__ref": "TableOfContentsChapter:part-1"},
+                            {"__ref": "TableOfContentsChapter:part-2"},
+                        ],
+                    },
+                    "TableOfContentsChapter:part-1": {
+                        "__typename": "TableOfContentsChapter",
+                        "id": "part-1",
+                        "chapter": {"__ref": "Chapter:part-1"},
+                        "episodeUnions": [
+                            {"__ref": "Episode:e1"},
+                            {"__ref": "Episode:e2"},
+                            {"__ref": "Episode:e2"},
+                        ],
+                    },
+                    "TableOfContentsChapter:part-2": {
+                        "__typename": "TableOfContentsChapter",
+                        "id": "part-2",
+                        "chapter": {"__ref": "Chapter:part-2"},
+                        "episodeUnions": [
+                            {"__ref": "Episode:e3"},
+                            {"__ref": "Episode:e4"},
+                        ],
+                    },
+                    "Chapter:part-1": {"__typename": "Chapter", "id": "part-1", "title": "Part One"},
+                    "Chapter:part-2": {"__typename": "Chapter", "id": "part-2", "title": "Part Two"},
+                    "Episode:e1": {"__typename": "Episode", "id": "e1", "title": "Episode One", "publishedAt": "2026-01-01T00:00:00Z"},
+                    "Episode:e2": {"__typename": "Episode", "id": "e2", "title": "Episode Two", "publishedAt": "2026-01-02T00:00:00Z"},
+                    "Episode:e3": {"__typename": "Episode", "id": "e3", "title": "Episode Three", "publishedAt": "2026-01-03T00:00:00Z"},
+                    "Episode:e4": {"__typename": "Episode", "id": "e4", "title": "Episode Four", "publishedAt": "2026-01-04T00:00:00Z"},
+                },
+            },
+        },
+    }
+    html = f"""
+    <html>
+      <body>
+        <main id="contentMain">
+          <h1 class="widget-workTitle">Grouped Work</h1>
+          <section class="widget-toc">
+            <a href="/works/{work_id}/episodes/e1">Start reading only</a>
+          </section>
+          <button>Show more</button>
+          <script id="__NEXT_DATA__" type="application/json">{json.dumps(next_data)}</script>
+        </main>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+    assert [chapter["source_episode_id"] for chapter in metadata["chapters"]] == ["e1", "e2", "e3", "e4"]
+    assert [chapter["num"] for chapter in metadata["chapters"]] == [1, 2, 3, 4]
+    assert [chapter["part"] for chapter in metadata["chapters"]] == ["Part One", "Part One", "Part Two", "Part Two"]
+    assert metadata["chapters"][0]["url"] == f"https://kakuyomu.jp/works/{work_id}/episodes/e1"
+    assert metadata["chapters"][0]["date_added"] == "2026-01-01T00:00:00Z"
+
+
+def test_parse_metadata_html_fallback_scans_all_toc_roots_and_preserves_group_labels() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    html = f"""
+    <html>
+      <body>
+        <main id="contentMain">
+          <h1 class="widget-workTitle">Fallback Work</h1>
+          <section class="widget-toc">
+            <a href="/works/{work_id}/episodes/e1">Start reading only</a>
+          </section>
+          <section class="widget-toc-main">
+            <h2>Part One</h2>
+            <a href="/works/{work_id}/episodes/e1">Episode One Duplicate</a>
+            <a href="/works/{work_id}/episodes/e2">Episode Two</a>
+            <h2>Part Two</h2>
+            <a href="/works/{work_id}/episodes/e3">Episode Three</a>
+          </section>
+        </main>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+    assert [chapter["source_episode_id"] for chapter in metadata["chapters"]] == ["e1", "e2", "e3"]
+    assert [chapter["part"] for chapter in metadata["chapters"]] == ["Part One", "Part One", "Part Two"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_metadata_caps_kakuyomu_after_readable_episode_ordering() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+
+    async def fake_fetch_page(url: str) -> str:
+        assert url == f"https://kakuyomu.jp/works/{work_id}"
+        links = "\n".join(
+            f'<a href="/works/{work_id}/episodes/e{index}">Episode {index}</a>'
+            for index in range(1, 5)
+        )
+        return f"""
+        <html>
+          <body>
+            <main>
+              <h1 class="widget-workTitle">Cap Work</h1>
+              <section class="widget-toc-main">{links}</section>
+            </main>
+          </body>
+        </html>
+        """
+
+    source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
+    metadata = await source.fetch_metadata(f"https://kakuyomu.jp/works/{work_id}", max_chapter=3)
+
+    assert [chapter["source_episode_id"] for chapter in metadata["chapters"]] == ["e1", "e2", "e3"]
 
 
 def test_parse_chapter_html_preserves_structure_and_strips_furigana() -> None:
