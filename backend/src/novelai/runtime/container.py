@@ -7,6 +7,7 @@ from novelai.activity.runner import BackgroundActivityRunner
 from novelai.activity.worker import ActivityWorkerService
 from novelai.config.settings import settings
 from novelai.providers.registry import get_provider
+from novelai.services.email import AuthEmailService, NoopAuthEmailService
 from novelai.services.export_service import ExportService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
@@ -37,6 +38,7 @@ class Container:
     _orchestrator: NovelOrchestrationService | None = None
     _activity_worker: ActivityWorkerService | None = None
     _activity_runner: BackgroundActivityRunner | None = None
+    _auth_email: AuthEmailService | None = None
 
     @property
     def storage(self) -> StorageService:
@@ -101,6 +103,16 @@ class Container:
     @property
     def job_runner(self) -> BackgroundActivityRunner:
         return self.activity_runner
+
+    @property
+    def auth_email(self) -> AuthEmailService:
+        if self._auth_email is None:
+            self._auth_email = NoopAuthEmailService(
+                public_base_url=settings.PUBLIC_FRONTEND_URL,
+                password_reset_path=settings.AUTH_PASSWORD_RESET_PATH,
+                email_verification_path=settings.AUTH_EMAIL_VERIFICATION_PATH,
+            )
+        return self._auth_email
 
     @property
     def translation(self) -> TranslationService:

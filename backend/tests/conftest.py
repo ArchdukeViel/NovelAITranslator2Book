@@ -114,6 +114,7 @@ def _reset_global_container() -> None:
     runtime_container._translation = None
     runtime_container._export = None
     runtime_container._orchestrator = None
+    runtime_container._auth_email = None
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -28,6 +28,7 @@ from novelai.api.routers.user_data import router as user_data_router
 from novelai.db.base import Base
 from novelai.db.models.novel import Novel
 from novelai.db.models.users import EmailVerificationToken, PasswordResetToken, User
+from novelai.services.email import EmailDeliveryResult, InMemoryAuthEmailService
 
 # Import all models so Base.metadata has every FK target before create_all.
 import novelai.db.models.chapter  # noqa: F401
@@ -141,6 +142,19 @@ def oauth_app(db_session, monkeypatch):
 @pytest.fixture()
 def oauth_client(oauth_app):
     return TestClient(oauth_app, raise_server_exceptions=True)
+
+
+@pytest.fixture()
+def auth_email_outbox(oauth_app):
+    from novelai.config.settings import settings
+
+    service = InMemoryAuthEmailService(
+        public_base_url=settings.PUBLIC_FRONTEND_URL,
+        password_reset_path=settings.AUTH_PASSWORD_RESET_PATH,
+        email_verification_path=settings.AUTH_EMAIL_VERIFICATION_PATH,
+    )
+    oauth_app.dependency_overrides[auth_module.get_auth_email_service] = lambda: service
+    return service
 
 
 def _start_oauth(client: TestClient, next_path: str = "/account/history") -> str:
@@ -500,6 +514,44 @@ class TestPublicPasswordLogin:
 
 
 class TestPublicPasswordReset:
+    def test_reset_request_sends_fake_email_and_confirm_uses_captured_token(
+        self, oauth_client, db_session, auth_email_outbox
+    ):
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("old-password-long"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/password/reset/request",
+            json={"email": "reader@example.com"},
+        )
+
+        assert resp.status_code == 200
+        assert len(auth_email_outbox.outbox) == 1
+        message = auth_email_outbox.outbox[0]
+        assert message.message_type == "password_reset"
+        assert message.recipient == "reader@example.com"
+        assert message.token
+        assert message.token in message.url
+        assert message.url.startswith("http://frontend.test/password/reset?token=")
+        token = db_session.query(PasswordResetToken).one()
+        assert token.token_hash == auth_module._hash_password_reset_token(message.token)
+        assert token.token_hash != message.token
+
+        confirm = oauth_client.post(
+            "/api/auth/password/reset/confirm",
+            json={"token": message.token, "new_password": "new-password-long"},
+        )
+        assert confirm.status_code == 200
+        db_session.refresh(user)
+        assert verify_password("new-password-long", user.password_hash)
+
     def test_reset_request_generic_for_existing_and_missing_email(self, oauth_client, db_session, monkeypatch):
         monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
         user = User(
@@ -527,6 +579,30 @@ class TestPublicPasswordReset:
         assert missing.json() == {"status": "ok"}
         assert "known-reset-token" not in existing.text
         assert db_session.query(PasswordResetToken).count() == 1
+
+    def test_noop_reset_delivery_does_not_log_raw_token(
+        self, oauth_client, db_session, monkeypatch, caplog
+    ):
+        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("old-password-long"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        with caplog.at_level("INFO"):
+            resp = oauth_client.post(
+                "/api/auth/password/reset/request",
+                json={"email": "reader@example.com"},
+            )
+
+        assert resp.status_code == 200
+        assert "known-reset-token" not in caplog.text
+        assert "reader@example.com" not in caplog.text
 
     def test_reset_request_stores_hashed_token_not_raw(self, oauth_client, db_session, monkeypatch):
         monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
@@ -691,7 +767,9 @@ class TestPublicPasswordReset:
         assert resp.status_code == 400
         assert "Password must be at least" in resp.json()["detail"]
 
-    def test_reset_request_google_only_user_does_not_create_token_or_leak(self, oauth_client, db_session, monkeypatch):
+    def test_reset_request_google_only_user_does_not_create_token_or_leak(
+        self, oauth_client, db_session, monkeypatch, auth_email_outbox
+    ):
         monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
         db_session.add(
             User(
@@ -712,8 +790,11 @@ class TestPublicPasswordReset:
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
         assert db_session.query(PasswordResetToken).count() == 0
+        assert auth_email_outbox.outbox == []
 
-    def test_reset_request_owner_account_does_not_create_token_or_leak(self, oauth_client, db_session, monkeypatch):
+    def test_reset_request_owner_account_does_not_create_token_or_leak(
+        self, oauth_client, db_session, monkeypatch, auth_email_outbox
+    ):
         monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
         db_session.add(
             User(
@@ -734,6 +815,49 @@ class TestPublicPasswordReset:
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
         assert db_session.query(PasswordResetToken).count() == 0
+        assert auth_email_outbox.outbox == []
+
+    def test_reset_delivery_failure_is_generic_and_token_remains_valid(
+        self, oauth_app, oauth_client, db_session, monkeypatch, caplog
+    ):
+        class FailingAuthEmailService:
+            def send_password_reset_email(self, *, email: str, token: str) -> EmailDeliveryResult:
+                raise RuntimeError("mail failed")
+
+            def send_email_verification_email(self, *, email: str, token: str) -> EmailDeliveryResult:
+                raise RuntimeError("mail failed")
+
+        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        oauth_app.dependency_overrides[auth_module.get_auth_email_service] = lambda: FailingAuthEmailService()
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("old-password-long"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        with caplog.at_level("WARNING"):
+            resp = oauth_client.post(
+                "/api/auth/password/reset/request",
+                json={"email": "reader@example.com"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+        assert "known-reset-token" not in caplog.text
+        token = db_session.query(PasswordResetToken).one()
+        assert token.used_at is None
+
+        confirm = oauth_client.post(
+            "/api/auth/password/reset/confirm",
+            json={"token": "known-reset-token", "new_password": "new-password-long"},
+        )
+        assert confirm.status_code == 200
+        db_session.refresh(user)
+        assert verify_password("new-password-long", user.password_hash)
 
     def test_reset_request_rate_limit_eventually_returns_429(self, oauth_client):
         statuses = [
@@ -748,6 +872,34 @@ class TestPublicPasswordReset:
 
 
 class TestPublicEmailVerification:
+    def test_register_sends_verification_email_and_confirm_uses_captured_token(
+        self, oauth_client, db_session, auth_email_outbox
+    ):
+        resp = oauth_client.post(
+            "/api/auth/register",
+            json={"email": "Reader@Example.COM", "password": "long-enough-password"},
+        )
+
+        assert resp.status_code == 200
+        assert len(auth_email_outbox.outbox) == 1
+        message = auth_email_outbox.outbox[0]
+        assert message.message_type == "email_verification"
+        assert message.recipient == "reader@example.com"
+        assert message.token
+        assert message.token in message.url
+        assert message.url.startswith("http://frontend.test/email/verify?token=")
+        token = db_session.query(EmailVerificationToken).one()
+        assert token.token_hash == auth_module._hash_email_verification_token(message.token)
+        assert token.token_hash != message.token
+
+        confirm = oauth_client.post(
+            "/api/auth/email/verification/confirm",
+            json={"token": message.token},
+        )
+        assert confirm.status_code == 200
+        user = db_session.query(User).filter_by(email="reader@example.com").one()
+        assert user.email_verified_at is not None
+
     def test_register_creates_unverified_user_and_hashed_verification_token(
         self, oauth_client, db_session, monkeypatch
     ):
@@ -770,6 +922,39 @@ class TestPublicEmailVerification:
         assert token.used_at is None
         assert token.request_ip is not None
         assert token.user_agent == "verify-test-agent"
+
+    def test_verification_request_sends_fake_email_and_confirm_uses_captured_token(
+        self, oauth_client, db_session, auth_email_outbox
+    ):
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/email/verification/request",
+            json={"email": "reader@example.com"},
+        )
+
+        assert resp.status_code == 200
+        assert len(auth_email_outbox.outbox) == 1
+        message = auth_email_outbox.outbox[0]
+        assert message.message_type == "email_verification"
+        assert message.recipient == "reader@example.com"
+        assert message.token in message.url
+
+        confirm = oauth_client.post(
+            "/api/auth/email/verification/confirm",
+            json={"token": message.token},
+        )
+        assert confirm.status_code == 200
+        db_session.refresh(user)
+        assert user.email_verified_at is not None
 
     def test_verification_request_generic_for_existing_and_missing_email(
         self, oauth_client, db_session, monkeypatch
@@ -801,8 +986,32 @@ class TestPublicEmailVerification:
         assert "known-verify-token" not in existing.text
         assert db_session.query(EmailVerificationToken).count() == 1
 
+    def test_noop_verification_delivery_does_not_log_raw_token(
+        self, oauth_client, db_session, monkeypatch, caplog
+    ):
+        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        with caplog.at_level("INFO"):
+            resp = oauth_client.post(
+                "/api/auth/email/verification/request",
+                json={"email": "reader@example.com"},
+            )
+
+        assert resp.status_code == 200
+        assert "known-verify-token" not in caplog.text
+        assert "reader@example.com" not in caplog.text
+
     def test_verification_request_creates_token_only_for_eligible_password_user(
-        self, oauth_client, db_session, monkeypatch
+        self, oauth_client, db_session, monkeypatch, auth_email_outbox
     ):
         monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
         db_session.add_all(
@@ -839,6 +1048,7 @@ class TestPublicEmailVerification:
             assert resp.json() == {"status": "ok"}
 
         assert db_session.query(EmailVerificationToken).count() == 0
+        assert auth_email_outbox.outbox == []
 
     def test_second_verification_request_invalidates_old_unused_tokens(
         self, oauth_client, db_session, monkeypatch
@@ -987,6 +1197,48 @@ class TestPublicEmailVerification:
         ]
         assert statuses[:5] == [200] * 5
         assert statuses[-1] == 429
+
+    def test_verification_delivery_failure_is_generic_and_token_remains_valid(
+        self, oauth_app, oauth_client, db_session, monkeypatch, caplog
+    ):
+        class FailingAuthEmailService:
+            def send_password_reset_email(self, *, email: str, token: str) -> EmailDeliveryResult:
+                raise RuntimeError("mail failed")
+
+            def send_email_verification_email(self, *, email: str, token: str) -> EmailDeliveryResult:
+                raise RuntimeError("mail failed")
+
+        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
+        oauth_app.dependency_overrides[auth_module.get_auth_email_service] = lambda: FailingAuthEmailService()
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        with caplog.at_level("WARNING"):
+            resp = oauth_client.post(
+                "/api/auth/email/verification/request",
+                json={"email": "reader@example.com"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+        assert "known-verify-token" not in caplog.text
+        token = db_session.query(EmailVerificationToken).one()
+        assert token.used_at is None
+
+        confirm = oauth_client.post(
+            "/api/auth/email/verification/confirm",
+            json={"token": "known-verify-token"},
+        )
+        assert confirm.status_code == 200
+        db_session.refresh(user)
+        assert user.email_verified_at is not None
 
 
 class TestAuthRouterLogout:

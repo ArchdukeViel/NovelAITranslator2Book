@@ -42,6 +42,8 @@ from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import get_db_session
 from novelai.config.settings import settings
 from novelai.db.models.users import EmailVerificationToken, PasswordResetToken, User
+from novelai.runtime.container import container
+from novelai.services.email import AuthEmailService
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +218,58 @@ def _truncate_header(value: str | None, max_length: int = 255) -> str | None:
     return value.strip()[:max_length]
 
 
+def get_auth_email_service() -> AuthEmailService:
+    return container.auth_email
+
+
+def _deliver_password_reset_email(
+    mailer: AuthEmailService,
+    *,
+    email: str,
+    token: str,
+    user_id: int,
+) -> None:
+    try:
+        result = mailer.send_password_reset_email(email=email, token=token)
+    except Exception as exc:
+        logger.warning(
+            "Password reset email delivery failed for user_id=%s error=%s.",
+            user_id,
+            exc.__class__.__name__,
+        )
+        return
+    if not result.delivered:
+        logger.info(
+            "Password reset email not delivered for user_id=%s provider=%s.",
+            user_id,
+            result.provider,
+        )
+
+
+def _deliver_email_verification_email(
+    mailer: AuthEmailService,
+    *,
+    email: str,
+    token: str,
+    user_id: int,
+) -> None:
+    try:
+        result = mailer.send_email_verification_email(email=email, token=token)
+    except Exception as exc:
+        logger.warning(
+            "Email verification delivery failed for user_id=%s error=%s.",
+            user_id,
+            exc.__class__.__name__,
+        )
+        return
+    if not result.delivered:
+        logger.info(
+            "Email verification not delivered for user_id=%s provider=%s.",
+            user_id,
+            result.provider,
+        )
+
+
 def _clear_google_oauth_session(request: Request) -> None:
     request.session.pop(_OAUTH_STATE_KEY, None)
     request.session.pop(_OAUTH_RETURN_TO_KEY, None)
@@ -347,6 +401,7 @@ async def register(
     payload: RegisterRequest,
     request: Request,
     session: Session = Depends(get_db_session),
+    mailer: AuthEmailService = Depends(get_auth_email_service),
 ) -> UserResponse:
     """Create a public email/password user account and session."""
     require_public_rate_limit(request, "auth_register")
@@ -388,6 +443,7 @@ async def register(
         )
     )
     session.flush()
+    _deliver_email_verification_email(mailer, email=user.email, token=raw_token, user_id=user.id)
     _set_session_user(request, user)
     logger.info("Public password registration succeeded for user_id=%s.", user.id)
     return _user_response(SessionUser(user_id=user.id, email=user.email, role=user.role))
@@ -432,6 +488,7 @@ async def password_reset_request(
     payload: PasswordResetRequest,
     request: Request,
     session: Session = Depends(get_db_session),
+    mailer: AuthEmailService = Depends(get_auth_email_service),
 ) -> PasswordResetResponse:
     """Create a reset token for a public email/password user, if eligible.
 
@@ -472,6 +529,7 @@ async def password_reset_request(
         )
     )
     session.flush()
+    _deliver_password_reset_email(mailer, email=user.email, token=raw_token, user_id=user.id)
     logger.info("Password reset requested for user_id=%s.", user.id)
     return PasswordResetResponse(status="ok")
 
@@ -526,6 +584,7 @@ async def email_verification_request(
     payload: EmailVerificationRequest,
     request: Request,
     session: Session = Depends(get_db_session),
+    mailer: AuthEmailService = Depends(get_auth_email_service),
 ) -> EmailVerificationResponse:
     """Create or resend a verification token for an eligible public account.
 
@@ -567,6 +626,7 @@ async def email_verification_request(
         )
     )
     session.flush()
+    _deliver_email_verification_email(mailer, email=user.email, token=raw_token, user_id=user.id)
     logger.info("Email verification requested for user_id=%s.", user.id)
     return EmailVerificationResponse(status="ok")
 
