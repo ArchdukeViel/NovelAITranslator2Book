@@ -135,8 +135,18 @@ class AppSettings(BaseSettings):
     GOOGLE_OAUTH_CLIENT_SECRET: SecretStr | None = None
     GOOGLE_OAUTH_REDIRECT_URI: str | None = None
     PUBLIC_FRONTEND_URL: str = "http://127.0.0.1:3000"
+    AUTH_EMAIL_DELIVERY_MODE: str = "noop"
     AUTH_PASSWORD_RESET_PATH: str = "/password/reset"
     AUTH_EMAIL_VERIFICATION_PATH: str = "/email/verify"
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: SecretStr | None = None
+    SMTP_FROM_EMAIL: str | None = None
+    SMTP_FROM_NAME: str = "Dokushodo"
+    SMTP_STARTTLS: bool = True
+    SMTP_USE_SSL: bool = False
+    SMTP_TIMEOUT_SECONDS: float = 10.0
 
     # --- Cache
     TRANSLATION_CACHE_MAX_ENTRIES: int = 50_000
