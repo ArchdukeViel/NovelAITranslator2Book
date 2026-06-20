@@ -14,6 +14,7 @@ from novelai.db.models.novel import Novel
 from novelai.db.models.system import AuditLog, SystemSetting
 from novelai.db.models.tag import Tag, novel_tags
 from novelai.db.models.users import (
+    EmailVerificationToken,
     LibraryItem,
     NovelRequest,
     PasswordResetToken,
@@ -27,6 +28,7 @@ __all__ = [
     "AuditLog",
     "Chapter",
     "CrawlJob",
+    "EmailVerificationToken",
     "Genre",
     "LibraryItem",
     "Novel",

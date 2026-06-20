@@ -27,7 +27,7 @@ from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.db.base import Base
 from novelai.db.models.novel import Novel
-from novelai.db.models.users import PasswordResetToken, User
+from novelai.db.models.users import EmailVerificationToken, PasswordResetToken, User
 
 # Import all models so Base.metadata has every FK target before create_all.
 import novelai.db.models.chapter  # noqa: F401
@@ -298,7 +298,12 @@ class TestPublicPasswordRegistration:
         assert user.auth_provider == "password"
         assert user.password_hash
         assert user.password_hash != "long-enough-password"
+        assert user.email_verified_at is None
         assert user.last_login_at is not None
+        token = db_session.query(EmailVerificationToken).one()
+        assert token.user_id == user.id
+        assert token.used_at is None
+        assert token.expires_at is not None
 
         me = oauth_client.get("/api/auth/me")
         assert me.status_code == 200
@@ -742,6 +747,248 @@ class TestPublicPasswordReset:
         assert statuses[-1] == 429
 
 
+class TestPublicEmailVerification:
+    def test_register_creates_unverified_user_and_hashed_verification_token(
+        self, oauth_client, db_session, monkeypatch
+    ):
+        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
+
+        resp = oauth_client.post(
+            "/api/auth/register",
+            json={"email": "Reader@Example.COM", "password": "long-enough-password"},
+            headers={"User-Agent": "verify-test-agent"},
+        )
+
+        assert resp.status_code == 200
+        assert "known-verify-token" not in resp.text
+        user = db_session.query(User).filter_by(email="reader@example.com").one()
+        assert user.email_verified_at is None
+        token = db_session.query(EmailVerificationToken).one()
+        assert token.user_id == user.id
+        assert token.token_hash == auth_module._hash_email_verification_token("known-verify-token")
+        assert token.token_hash != "known-verify-token"
+        assert token.used_at is None
+        assert token.request_ip is not None
+        assert token.user_agent == "verify-test-agent"
+
+    def test_verification_request_generic_for_existing_and_missing_email(
+        self, oauth_client, db_session, monkeypatch
+    ):
+        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        existing = oauth_client.post(
+            "/api/auth/email/verification/request",
+            json={"email": " READER@example.com "},
+        )
+        missing = oauth_client.post(
+            "/api/auth/email/verification/request",
+            json={"email": "missing@example.com"},
+        )
+
+        assert existing.status_code == 200
+        assert missing.status_code == 200
+        assert existing.json() == {"status": "ok"}
+        assert missing.json() == {"status": "ok"}
+        assert "known-verify-token" not in existing.text
+        assert db_session.query(EmailVerificationToken).count() == 1
+
+    def test_verification_request_creates_token_only_for_eligible_password_user(
+        self, oauth_client, db_session, monkeypatch
+    ):
+        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
+        db_session.add_all(
+            [
+                User(
+                    email="google@example.com",
+                    role="user",
+                    auth_provider="google",
+                    auth_provider_subject="google-sub-1",
+                    is_active=True,
+                ),
+                User(
+                    email="owner@example.com",
+                    role="owner",
+                    auth_provider="password",
+                    password_hash=hash_password("long-enough-password"),
+                    is_active=True,
+                ),
+                User(
+                    email="verified@example.com",
+                    role="user",
+                    auth_provider="password",
+                    password_hash=hash_password("long-enough-password"),
+                    email_verified_at=datetime.now(timezone.utc),
+                    is_active=True,
+                ),
+            ]
+        )
+        db_session.commit()
+
+        for email in ["google@example.com", "owner@example.com", "verified@example.com"]:
+            resp = oauth_client.post("/api/auth/email/verification/request", json={"email": email})
+            assert resp.status_code == 200
+            assert resp.json() == {"status": "ok"}
+
+        assert db_session.query(EmailVerificationToken).count() == 0
+
+    def test_second_verification_request_invalidates_old_unused_tokens(
+        self, oauth_client, db_session, monkeypatch
+    ):
+        tokens = iter(["first-verify-token", "second-verify-token"])
+        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: next(tokens))
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        first = oauth_client.post("/api/auth/email/verification/request", json={"email": "reader@example.com"})
+        second = oauth_client.post("/api/auth/email/verification/request", json={"email": "reader@example.com"})
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        stored = db_session.query(EmailVerificationToken).order_by(EmailVerificationToken.id).all()
+        assert len(stored) == 2
+        assert stored[0].used_at is not None
+        assert stored[1].used_at is None
+
+    def test_verification_confirm_valid_token_sets_email_verified_at(
+        self, oauth_client, db_session, monkeypatch
+    ):
+        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+        oauth_client.post("/api/auth/email/verification/request", json={"email": "reader@example.com"})
+
+        resp = oauth_client.post(
+            "/api/auth/email/verification/confirm",
+            json={"token": "known-verify-token"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+        db_session.refresh(user)
+        assert user.email_verified_at is not None
+        stored_token = db_session.query(EmailVerificationToken).one()
+        assert stored_token.used_at is not None
+
+    def test_verification_confirm_invalid_missing_token_fails_generically(self, oauth_client):
+        resp = oauth_client.post(
+            "/api/auth/email/verification/confirm",
+            json={"token": "not-a-token"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid or expired verification token."
+
+    def test_verification_confirm_expired_token_fails(self, oauth_client, db_session):
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.flush()
+        db_session.add(
+            EmailVerificationToken(
+                user_id=user.id,
+                token_hash=auth_module._hash_email_verification_token("expired-verify-token"),
+                created_at=datetime.now(timezone.utc) - timedelta(days=2),
+                expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+            )
+        )
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/email/verification/confirm",
+            json={"token": "expired-verify-token"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid or expired verification token."
+        db_session.refresh(user)
+        assert user.email_verified_at is None
+
+    def test_verification_confirm_token_reuse_fails(self, oauth_client, db_session, monkeypatch):
+        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+        oauth_client.post("/api/auth/email/verification/request", json={"email": "reader@example.com"})
+
+        first = oauth_client.post(
+            "/api/auth/email/verification/confirm",
+            json={"token": "known-verify-token"},
+        )
+        second = oauth_client.post(
+            "/api/auth/email/verification/confirm",
+            json={"token": "known-verify-token"},
+        )
+
+        assert first.status_code == 200
+        assert second.status_code == 400
+        assert second.json()["detail"] == "Invalid or expired verification token."
+
+    def test_unverified_password_user_can_still_login(self, oauth_client, db_session):
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            email_verified_at=None,
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "reader@example.com", "password": "long-enough-password"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["user_id"] == user.id
+
+    def test_verification_request_rate_limit_eventually_returns_429(self, oauth_client):
+        statuses = [
+            oauth_client.post(
+                "/api/auth/email/verification/request",
+                json={"email": "missing@example.com"},
+            ).status_code
+            for _ in range(6)
+        ]
+        assert statuses[:5] == [200] * 5
+        assert statuses[-1] == 429
+
+
 class TestAuthRouterLogout:
     def test_logout_clears_session(self, owner_client):
         # Confirm owner before logout
@@ -871,6 +1118,7 @@ class TestGoogleOAuth:
         user = db_session.query(User).filter_by(auth_provider="google", auth_provider_subject="google-sub-1").one()
         assert user.email == "reader@example.com"
         assert user.role == "user"
+        assert user.email_verified_at is not None
 
     def test_callback_resumes_existing_google_user(self, oauth_client, db_session):
         user = User(
@@ -900,6 +1148,7 @@ class TestGoogleOAuth:
         db_session.refresh(user)
         assert user.auth_provider == "google"
         assert user.auth_provider_subject == "google-sub-1"
+        assert user.email_verified_at is not None
 
     def test_callback_rejects_owner_email_link(self, oauth_client, db_session):
         db_session.add(User(email="reader@example.com", role="owner", is_active=True))
