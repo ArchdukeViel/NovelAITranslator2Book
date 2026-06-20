@@ -135,6 +135,8 @@ class AppSettings(BaseSettings):
     GOOGLE_OAUTH_CLIENT_SECRET: SecretStr | None = None
     GOOGLE_OAUTH_REDIRECT_URI: str | None = None
     PUBLIC_FRONTEND_URL: str = "http://127.0.0.1:3000"
+    AUTH_PASSWORD_RESET_PATH: str = "/password/reset"
+    AUTH_EMAIL_VERIFICATION_PATH: str = "/email/verify"
 
     # --- Cache
     TRANSLATION_CACHE_MAX_ENTRIES: int = 50_000
