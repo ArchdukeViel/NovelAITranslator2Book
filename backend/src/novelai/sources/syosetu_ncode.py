@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup, Tag
 from novelai.core.errors import SourceError
 from novelai.infrastructure.http.fetch_service import FetchService, get_default_fetch_service
 from novelai.sources.quality import detect_age_gate_text, detect_block_page_text
+from novelai.sources.status import normalize_publication_status, publication_status_payload
 from novelai.sources._helpers import (
     attribute_to_str,
     extract_image_references,
@@ -68,6 +69,26 @@ class SyosetuNcodeSource(SourceAdapter):
     )
     RUBY_REMOVE_SELECTORS = ("rt", "rp")
     SEPARATOR_LINE = "-" * 60
+    PUBLICATION_STATUS_LABEL_MARKERS = (
+        "掲載状態",
+        "連載状態",
+        "状態",
+        "ステータス",
+        "作品種別",
+        "種別",
+    )
+    PUBLICATION_STATUS_VALUE_MARKERS = (
+        "完結済",
+        "連載終了",
+        "完結",
+        "完了",
+        "連載中",
+        "更新中",
+        "休載",
+        "一時停止",
+        "停止",
+        "中断",
+    )
 
     def __init__(self, fetch_service: FetchService | None = None) -> None:
         self._fetch_service = fetch_service or get_default_fetch_service()
@@ -115,6 +136,12 @@ class SyosetuNcodeSource(SourceAdapter):
         # Accept either a full URL or the ncode identifier.
         novel_id = self.normalize_novel_id(identifier_or_url)
         return f"https://ncode.syosetu.com/{novel_id.strip('/')}/"
+
+    def _infotop_url(self, identifier_or_url: str) -> str:
+        root_url = httpx.URL(self._normalize_url(identifier_or_url))
+        novel_id = self.normalize_novel_id(identifier_or_url)
+        host = root_url.host or "ncode.syosetu.com"
+        return f"{root_url.scheme}://{host}/novelview/infotop/ncode/{novel_id.strip('/')}/"
 
     def _build_request_cookies(self) -> httpx.Cookies | None:
         return None
@@ -584,6 +611,53 @@ class SyosetuNcodeSource(SourceAdapter):
 
         return normalize_keywords(keywords)
 
+    def _extract_publication_status_text(self, soup: BeautifulSoup) -> str | None:
+        for row in soup.find_all("tr"):
+            if not isinstance(row, Tag):
+                continue
+            cells = [
+                cell.get_text(" ", strip=True)
+                for cell in row.find_all(["th", "td"])
+                if isinstance(cell, Tag)
+            ]
+            if len(cells) < 2:
+                continue
+            label = cells[0]
+            value = " ".join(cells[1:]).strip()
+            if any(marker in label for marker in self.PUBLICATION_STATUS_LABEL_MARKERS):
+                if normalize_publication_status(value) != "unknown":
+                    return value
+
+        for container in soup.find_all(["dl", "div", "p", "li", "section"]):
+            if not isinstance(container, Tag):
+                continue
+            text = container.get_text(" ", strip=True)
+            if not text or len(text) > 240:
+                continue
+            if not any(marker in text for marker in self.PUBLICATION_STATUS_LABEL_MARKERS):
+                continue
+            if normalize_publication_status(text) != "unknown":
+                return text
+
+        page_text = soup.get_text(" ", strip=True)
+        for marker in self.PUBLICATION_STATUS_VALUE_MARKERS:
+            if marker in page_text:
+                return marker
+        return None
+
+    def _publication_status_payload_from_html(self, html: str, url: str) -> dict[str, str]:
+        soup = BeautifulSoup(html, "lxml")
+        payload = publication_status_payload(self._extract_publication_status_text(soup))
+        payload["source_publication_status_page"] = url
+        return payload
+
+    @staticmethod
+    def _merge_publication_status(metadata: dict[str, Any], payload: dict[str, str]) -> None:
+        incoming_status = payload.get("publication_status")
+        current_status = metadata.get("publication_status")
+        if incoming_status != "unknown" or current_status in (None, "unknown"):
+            metadata.update(payload)
+
     def _parse_metadata_html(self, html: str, url: str) -> dict[str, Any]:
         soup = BeautifulSoup(html, "lxml")
         title = self._extract_title(soup)
@@ -593,6 +667,7 @@ class SyosetuNcodeSource(SourceAdapter):
         published_at, updated_at = self._extract_dates(soup)
         source_genre_name, genre_slug = self._extract_source_genre(soup)
         source_keywords = self._extract_source_keywords(soup)
+        status_payload = self._publication_status_payload_from_html(html, url)
 
         return {
             "source": self.key,
@@ -606,6 +681,7 @@ class SyosetuNcodeSource(SourceAdapter):
             "source_genre_name": source_genre_name,
             "genre_slug": genre_slug,
             "source_keywords": source_keywords,
+            **status_payload,
         }
 
     def _parse_chapter_payload(self, html: str, url: str) -> dict[str, Any]:
@@ -644,6 +720,16 @@ class SyosetuNcodeSource(SourceAdapter):
         url = self._normalize_url(url)
         html = await self._fetch_page(url)
         metadata = self._parse_metadata_html(html, url)
+        try:
+            infotop_url = self._infotop_url(url)
+            infotop_html = await self._fetch_page(infotop_url)
+        except SourceError:
+            pass
+        else:
+            self._merge_publication_status(
+                metadata,
+                self._publication_status_payload_from_html(infotop_html, infotop_url),
+            )
         soup = BeautifulSoup(html, "lxml")
         page_numbers = self._extract_page_numbers(soup, url)
         if len(page_numbers) == 1:

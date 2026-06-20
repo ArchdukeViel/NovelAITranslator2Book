@@ -39,13 +39,78 @@ def test_novel18_raises_clear_error_for_age_gate_redirect() -> None:
         )
 
 
+def test_novel18_parse_metadata_html_extracts_completed_publication_status() -> None:
+    source = Novel18SyosetuSource()
+    html = """
+    <html>
+      <body>
+        <h1 class="p-novel__title">Completed Adult Work</h1>
+        <table>
+          <tr><th>掲載状態</th><td>完結済</td></tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://novel18.syosetu.com/n0813kx/")
+
+    assert metadata["publication_status"] == "completed"
+    assert metadata["status"] == "completed"
+    assert metadata["source_publication_status"] == "完結済"
+
+
+def test_novel18_parse_metadata_html_extracts_ongoing_publication_status() -> None:
+    source = Novel18SyosetuSource()
+    html = """
+    <html>
+      <body>
+        <h1 class="p-novel__title">Ongoing Adult Work</h1>
+        <table>
+          <tr><th>掲載状態</th><td>連載中</td></tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://novel18.syosetu.com/n0813kx/")
+
+    assert metadata["publication_status"] == "ongoing"
+    assert metadata["status"] == "ongoing"
+    assert metadata["source_publication_status"] == "連載中"
+
+
+def test_novel18_parse_metadata_html_leaves_ambiguous_publication_status_unknown() -> None:
+    source = Novel18SyosetuSource()
+    html = """
+    <html>
+      <body>
+        <h1 class="p-novel__title">Ambiguous Adult Work</h1>
+        <table>
+          <tr><th>作品種別</th><td>短編</td></tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://novel18.syosetu.com/n0813kx/")
+
+    assert metadata["publication_status"] == "unknown"
+    assert metadata["status"] == "unknown"
+    assert "source_publication_status" not in metadata
+
+
 @pytest.mark.asyncio
 async def test_novel18_fetch_metadata_uses_novel18_domain() -> None:
     source = Novel18SyosetuSource()
     seen_urls: list[str] = []
+    infotop_url = "https://novel18.syosetu.com/novelview/infotop/ncode/n0813kx/"
 
     async def fake_fetch_page(url: str) -> str:
         seen_urls.append(url)
+        if url == infotop_url:
+            return """
+            <html><body><table><tr><th>掲載状態</th><td>完結済</td></tr></table></body></html>
+            """
         return """
         <html>
           <body>
@@ -59,18 +124,24 @@ async def test_novel18_fetch_metadata_uses_novel18_domain() -> None:
     source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
     metadata = await source.fetch_metadata("https://novel18.syosetu.com/n0813kx/1/")
 
-    assert seen_urls == ["https://novel18.syosetu.com/n0813kx/"]
+    assert seen_urls == ["https://novel18.syosetu.com/n0813kx/", infotop_url]
     assert metadata["source"] == "novel18_syosetu"
     assert metadata["title"] == "夜の物語"
     assert metadata["chapters"][0]["url"] == "https://novel18.syosetu.com/n0813kx/1/"
+    assert metadata["publication_status"] == "completed"
 
 
 @pytest.mark.asyncio
 async def test_novel18_fetch_metadata_caps_single_page_flat_toc() -> None:
     source = Novel18SyosetuSource()
     root_url = "https://novel18.syosetu.com/n0813kx/"
+    infotop_url = "https://novel18.syosetu.com/novelview/infotop/ncode/n0813kx/"
 
     async def fake_fetch_page(url: str) -> str:
+        if url == infotop_url:
+            return """
+            <html><body><table><tr><th>掲載状態</th><td>連載中</td></tr></table></body></html>
+            """
         assert url == root_url
         links = "\n".join(
             f'<a href="/n0813kx/{index}/">Episode {index}</a>'
