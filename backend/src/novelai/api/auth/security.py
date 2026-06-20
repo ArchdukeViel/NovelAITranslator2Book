@@ -17,6 +17,8 @@ _PUBLIC_RATE_LIMITS = {
     "auth_logout": 20,
     "auth_register": 10,
     "auth_password_login": 10,
+    "auth_password_reset_request": 5,
+    "auth_password_reset_confirm": 10,
     "oauth_start": 10,
     "oauth_callback": 20,
     "library_mutation": 60,

@@ -19,7 +19,8 @@ from __future__ import annotations
 import logging
 import re
 import secrets
-from datetime import datetime, timezone
+import hashlib
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -40,7 +41,7 @@ from novelai.api.auth.security import (
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import get_db_session
 from novelai.config.settings import settings
-from novelai.db.models.users import User
+from novelai.db.models.users import PasswordResetToken, User
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,8 @@ _DEFAULT_PUBLIC_RETURN_TO = "/"
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _MIN_PASSWORD_LENGTH = 10
 _MAX_PASSWORD_LENGTH = 256
+_PASSWORD_RESET_TOKEN_BYTES = 32
+_PASSWORD_RESET_EXPIRES_MINUTES = 60
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +77,21 @@ class PasswordLoginRequest(BaseModel):
     """Public email/password login payload."""
     email: str
     password: str = Field(min_length=1, max_length=_MAX_PASSWORD_LENGTH)
+
+
+class PasswordResetRequest(BaseModel):
+    """Public password reset request payload."""
+    email: str
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    """Public password reset confirmation payload."""
+    token: str = Field(min_length=1, max_length=512)
+    new_password: str = Field(min_length=1, max_length=_MAX_PASSWORD_LENGTH)
+
+
+class PasswordResetResponse(BaseModel):
+    status: str
 
 
 class UserResponse(BaseModel):
@@ -144,6 +162,34 @@ def _validate_public_password(password: str) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Password must be at most {_MAX_PASSWORD_LENGTH} characters.",
         )
+
+
+def _new_password_reset_token() -> str:
+    return secrets.token_urlsafe(_PASSWORD_RESET_TOKEN_BYTES)
+
+
+def _hash_password_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _is_expired(expires_at: datetime) -> bool:
+    now = datetime.now(timezone.utc)
+    if expires_at.tzinfo is None:
+        return expires_at <= now.replace(tzinfo=None)
+    return expires_at <= now
+
+
+def _client_ip(request: Request) -> str | None:
+    try:
+        return request.client.host if request.client else None
+    except Exception:
+        return None
+
+
+def _truncate_header(value: str | None, max_length: int = 255) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip()[:max_length]
 
 
 def _clear_google_oauth_session(request: Request) -> None:
@@ -340,6 +386,100 @@ async def password_login(
     _set_session_user(request, user)
     logger.info("Public password login succeeded for user_id=%s.", user.id)
     return _user_response(SessionUser(user_id=user.id, email=user.email, role=user.role))
+
+
+@router.post("/password/reset/request")
+async def password_reset_request(
+    payload: PasswordResetRequest,
+    request: Request,
+    session: Session = Depends(get_db_session),
+) -> PasswordResetResponse:
+    """Create a reset token for a public email/password user, if eligible.
+
+    The response is intentionally generic and never exposes whether an account
+    exists. Raw reset tokens are not returned or logged; delivery is a future
+    email-provider integration.
+    """
+    require_public_rate_limit(request, "auth_password_reset_request")
+    try:
+        email = _validate_public_email(payload.email)
+    except HTTPException:
+        return PasswordResetResponse(status="ok")
+
+    user = session.query(User).filter(func.lower(User.email) == email).one_or_none()
+    if (
+        user is None
+        or not user.is_active
+        or user.role != "user"
+        or user.auth_provider != "password"
+        or not user.password_hash
+    ):
+        return PasswordResetResponse(status="ok")
+
+    now = datetime.now(timezone.utc)
+    session.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.used_at.is_(None),
+    ).update({"used_at": now}, synchronize_session=False)
+    raw_token = _new_password_reset_token()
+    session.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token_hash=_hash_password_reset_token(raw_token),
+            created_at=now,
+            expires_at=now + timedelta(minutes=_PASSWORD_RESET_EXPIRES_MINUTES),
+            request_ip=_client_ip(request),
+            user_agent=_truncate_header(request.headers.get("user-agent")),
+        )
+    )
+    session.flush()
+    logger.info("Password reset requested for user_id=%s.", user.id)
+    return PasswordResetResponse(status="ok")
+
+
+@router.post("/password/reset/confirm")
+async def password_reset_confirm(
+    payload: PasswordResetConfirmRequest,
+    request: Request,
+    session: Session = Depends(get_db_session),
+) -> PasswordResetResponse:
+    """Reset a public email/password user's password with a one-time token."""
+    require_public_rate_limit(request, "auth_password_reset_confirm")
+    _validate_public_password(payload.new_password)
+    generic_error = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid or expired reset token.",
+    )
+    token = payload.token.strip()
+    if not token:
+        raise generic_error
+
+    token_hash = _hash_password_reset_token(token)
+    reset_token = session.query(PasswordResetToken).filter_by(token_hash=token_hash).one_or_none()
+    if reset_token is None or reset_token.used_at is not None or _is_expired(reset_token.expires_at):
+        raise generic_error
+
+    user = session.get(User, reset_token.user_id)
+    if (
+        user is None
+        or not user.is_active
+        or user.role != "user"
+        or user.auth_provider != "password"
+        or not user.password_hash
+    ):
+        raise generic_error
+
+    now = datetime.now(timezone.utc)
+    user.password_hash = hash_password(payload.new_password)
+    reset_token.used_at = now
+    session.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.used_at.is_(None),
+        PasswordResetToken.id != reset_token.id,
+    ).update({"used_at": now}, synchronize_session=False)
+    session.flush()
+    logger.info("Password reset confirmed for user_id=%s.", user.id)
+    return PasswordResetResponse(status="ok")
 
 
 @router.get("/google/start")

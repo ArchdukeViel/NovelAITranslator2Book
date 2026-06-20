@@ -16,6 +16,7 @@ from novelai.db.models.tag import Tag, novel_tags
 from novelai.db.models.users import (
     LibraryItem,
     NovelRequest,
+    PasswordResetToken,
     ReadingHistory,
     ReadingProgress,
     Review,
@@ -30,6 +31,7 @@ __all__ = [
     "LibraryItem",
     "Novel",
     "NovelRequest",
+    "PasswordResetToken",
     "ProviderRequest",
     "ReadingHistory",
     "ReadingProgress",
