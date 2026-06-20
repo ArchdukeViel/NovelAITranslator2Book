@@ -8,7 +8,6 @@ from novelai.activity.worker import ActivityWorkerService
 from novelai.config.settings import settings
 from novelai.providers.registry import get_provider
 from novelai.services.export_service import ExportService
-from novelai.services.novel_request_service import NovelRequestService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
 from novelai.storage.service import StorageService
@@ -33,7 +32,6 @@ class Container:
     _preferences: PreferencesService | None = None
     _usage: UsageService | None = None
     _activity_log: ActivityQueueService | None = None
-    _requests: NovelRequestService | None = None
     _translation: TranslationService | None = None
     _export: ExportService | None = None
     _orchestrator: NovelOrchestrationService | None = None
@@ -80,14 +78,6 @@ class Container:
     @property
     def jobs(self) -> ActivityQueueService:
         return self.activity_log
-
-    @property
-    def requests(self) -> NovelRequestService:
-        # Deprecated legacy file-backed request service. Admin/public request
-        # moderation must use DB-backed NovelRequest rows instead.
-        if self._requests is None:
-            self._requests = NovelRequestService()
-        return self._requests
 
     @property
     def activity_worker(self) -> ActivityWorkerService:

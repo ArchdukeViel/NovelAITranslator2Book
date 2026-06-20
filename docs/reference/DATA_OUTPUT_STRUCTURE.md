@@ -181,23 +181,9 @@ Example:
 
 ### `requests/novel_requests.json`
 
-Stores reader/admin novel request intake.
-
-Example:
-
-```json
-[
-  {
-    "id": "request_abc123",
-    "title": "Requested Novel",
-    "source_url": "https://example.com/novel",
-    "status": "open",
-    "vote_count": 3,
-    "created_at": "2026-06-02T10:00:00Z",
-    "updated_at": "2026-06-02T10:00:00Z"
-  }
-]
-```
+Removed legacy file-backed request intake. Novel requests are stored in the
+database-backed `novel_requests` table. Legacy admin create/vote/source-candidate
+routes remain as compatibility stubs that return `410 Gone`.
 
 ## Novel Index
 

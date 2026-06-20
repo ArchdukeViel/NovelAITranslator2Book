@@ -14,7 +14,6 @@ from novelai.activity.worker import ActivityWorkerService
 from novelai.config.settings import settings
 from novelai.runtime.container import container
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
-from novelai.services.novel_request_service import NovelRequestService
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
@@ -111,11 +110,6 @@ def get_activity_runner() -> BackgroundActivityRunner:
 
 def get_job_runner() -> BackgroundActivityRunner:
     return container.activity_runner
-
-
-def get_requests() -> NovelRequestService:
-    """Deprecated dependency for the quarantined file-backed request service."""
-    return container.requests
 
 
 def get_preferences() -> PreferencesService:
