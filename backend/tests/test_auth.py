@@ -5,6 +5,8 @@ Uses FastAPI TestClient with SessionMiddleware; no real DB required.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi import FastAPI, Depends
 from fastapi.testclient import TestClient
@@ -19,12 +21,13 @@ from novelai.api.auth.passwords import hash_password, verify_password
 from novelai.api.auth.security import reset_public_rate_limits
 from novelai.api.auth.session import GUEST, SessionUser, get_current_user
 from novelai.api.auth.roles import require_role
+from novelai.api.routers import auth as auth_module
 from novelai.api.routers.dependencies import get_db_session
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.db.base import Base
 from novelai.db.models.novel import Novel
-from novelai.db.models.users import User
+from novelai.db.models.users import PasswordResetToken, User
 
 # Import all models so Base.metadata has every FK target before create_all.
 import novelai.db.models.chapter  # noqa: F401
@@ -488,6 +491,254 @@ class TestPublicPasswordLogin:
             for _ in range(11)
         ]
         assert statuses[:10] == [401] * 10
+        assert statuses[-1] == 429
+
+
+class TestPublicPasswordReset:
+    def test_reset_request_generic_for_existing_and_missing_email(self, oauth_client, db_session, monkeypatch):
+        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("old-password-long"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        existing = oauth_client.post(
+            "/api/auth/password/reset/request",
+            json={"email": " READER@example.com "},
+        )
+        missing = oauth_client.post(
+            "/api/auth/password/reset/request",
+            json={"email": "missing@example.com"},
+        )
+
+        assert existing.status_code == 200
+        assert missing.status_code == 200
+        assert existing.json() == {"status": "ok"}
+        assert missing.json() == {"status": "ok"}
+        assert "known-reset-token" not in existing.text
+        assert db_session.query(PasswordResetToken).count() == 1
+
+    def test_reset_request_stores_hashed_token_not_raw(self, oauth_client, db_session, monkeypatch):
+        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("old-password-long"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/password/reset/request",
+            json={"email": "reader@example.com"},
+            headers={"User-Agent": "reset-test-agent"},
+        )
+
+        assert resp.status_code == 200
+        token = db_session.query(PasswordResetToken).one()
+        assert token.user_id == user.id
+        assert token.token_hash == auth_module._hash_password_reset_token("known-reset-token")
+        assert token.token_hash != "known-reset-token"
+        assert token.used_at is None
+        assert token.expires_at is not None
+        assert token.request_ip is not None
+        assert token.user_agent == "reset-test-agent"
+
+    def test_second_reset_request_invalidates_old_unused_tokens(self, oauth_client, db_session, monkeypatch):
+        tokens = iter(["first-reset-token", "second-reset-token"])
+        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: next(tokens))
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("old-password-long"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        first = oauth_client.post("/api/auth/password/reset/request", json={"email": "reader@example.com"})
+        second = oauth_client.post("/api/auth/password/reset/request", json={"email": "reader@example.com"})
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        stored = db_session.query(PasswordResetToken).order_by(PasswordResetToken.id).all()
+        assert len(stored) == 2
+        assert stored[0].used_at is not None
+        assert stored[1].used_at is None
+
+    def test_reset_confirm_valid_token_updates_password_and_login(self, oauth_client, db_session, monkeypatch):
+        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("old-password-long"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+        oauth_client.post("/api/auth/password/reset/request", json={"email": "reader@example.com"})
+
+        resp = oauth_client.post(
+            "/api/auth/password/reset/confirm",
+            json={"token": "known-reset-token", "new_password": "new-password-long"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+        db_session.refresh(user)
+        assert verify_password("new-password-long", user.password_hash)
+        assert not verify_password("old-password-long", user.password_hash)
+        stored_token = db_session.query(PasswordResetToken).one()
+        assert stored_token.used_at is not None
+
+        old_login = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "reader@example.com", "password": "old-password-long"},
+        )
+        new_login = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "reader@example.com", "password": "new-password-long"},
+        )
+        assert old_login.status_code == 401
+        assert new_login.status_code == 200
+        assert new_login.json()["user_id"] == user.id
+
+    def test_reset_confirm_token_reuse_fails(self, oauth_client, db_session, monkeypatch):
+        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("old-password-long"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+        oauth_client.post("/api/auth/password/reset/request", json={"email": "reader@example.com"})
+
+        first = oauth_client.post(
+            "/api/auth/password/reset/confirm",
+            json={"token": "known-reset-token", "new_password": "new-password-long"},
+        )
+        second = oauth_client.post(
+            "/api/auth/password/reset/confirm",
+            json={"token": "known-reset-token", "new_password": "another-password-long"},
+        )
+
+        assert first.status_code == 200
+        assert second.status_code == 400
+        assert second.json()["detail"] == "Invalid or expired reset token."
+
+    def test_reset_confirm_expired_token_fails(self, oauth_client, db_session):
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("old-password-long"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.flush()
+        db_session.add(
+            PasswordResetToken(
+                user_id=user.id,
+                token_hash=auth_module._hash_password_reset_token("expired-reset-token"),
+                created_at=datetime.now(timezone.utc) - timedelta(hours=2),
+                expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+            )
+        )
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/password/reset/confirm",
+            json={"token": "expired-reset-token", "new_password": "new-password-long"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid or expired reset token."
+        db_session.refresh(user)
+        assert verify_password("old-password-long", user.password_hash)
+
+    def test_reset_confirm_missing_invalid_token_fails_generically(self, oauth_client):
+        resp = oauth_client.post(
+            "/api/auth/password/reset/confirm",
+            json={"token": "not-a-token", "new_password": "new-password-long"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid or expired reset token."
+
+    def test_reset_confirm_rejects_weak_password(self, oauth_client):
+        resp = oauth_client.post(
+            "/api/auth/password/reset/confirm",
+            json={"token": "not-a-token", "new_password": "short"},
+        )
+
+        assert resp.status_code == 400
+        assert "Password must be at least" in resp.json()["detail"]
+
+    def test_reset_request_google_only_user_does_not_create_token_or_leak(self, oauth_client, db_session, monkeypatch):
+        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        db_session.add(
+            User(
+                email="reader@example.com",
+                role="user",
+                auth_provider="google",
+                auth_provider_subject="google-sub-1",
+                is_active=True,
+            )
+        )
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/password/reset/request",
+            json={"email": "reader@example.com"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+        assert db_session.query(PasswordResetToken).count() == 0
+
+    def test_reset_request_owner_account_does_not_create_token_or_leak(self, oauth_client, db_session, monkeypatch):
+        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        db_session.add(
+            User(
+                email="owner@example.com",
+                role="owner",
+                auth_provider="password",
+                password_hash=hash_password("old-password-long"),
+                is_active=True,
+            )
+        )
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/password/reset/request",
+            json={"email": "owner@example.com"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+        assert db_session.query(PasswordResetToken).count() == 0
+
+    def test_reset_request_rate_limit_eventually_returns_429(self, oauth_client):
+        statuses = [
+            oauth_client.post(
+                "/api/auth/password/reset/request",
+                json={"email": "missing@example.com"},
+            ).status_code
+            for _ in range(6)
+        ]
+        assert statuses[:5] == [200] * 5
         assert statuses[-1] == 429
 
 
