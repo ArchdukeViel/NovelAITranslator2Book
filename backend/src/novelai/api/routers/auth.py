@@ -41,7 +41,7 @@ from novelai.api.auth.security import (
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import get_db_session
 from novelai.config.settings import settings
-from novelai.db.models.users import PasswordResetToken, User
+from novelai.db.models.users import EmailVerificationToken, PasswordResetToken, User
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,8 @@ _MIN_PASSWORD_LENGTH = 10
 _MAX_PASSWORD_LENGTH = 256
 _PASSWORD_RESET_TOKEN_BYTES = 32
 _PASSWORD_RESET_EXPIRES_MINUTES = 60
+_EMAIL_VERIFICATION_TOKEN_BYTES = 32
+_EMAIL_VERIFICATION_EXPIRES_HOURS = 24
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +93,20 @@ class PasswordResetConfirmRequest(BaseModel):
 
 
 class PasswordResetResponse(BaseModel):
+    status: str
+
+
+class EmailVerificationRequest(BaseModel):
+    """Public email verification request/resend payload."""
+    email: str
+
+
+class EmailVerificationConfirmRequest(BaseModel):
+    """Public email verification confirmation payload."""
+    token: str = Field(min_length=1, max_length=512)
+
+
+class EmailVerificationResponse(BaseModel):
     status: str
 
 
@@ -169,6 +185,14 @@ def _new_password_reset_token() -> str:
 
 
 def _hash_password_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _new_email_verification_token() -> str:
+    return secrets.token_urlsafe(_EMAIL_VERIFICATION_TOKEN_BYTES)
+
+
+def _hash_email_verification_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
@@ -257,6 +281,8 @@ def _upsert_google_user(profile: GoogleOAuthProfile, session: Session) -> User:
         user.email = email
         if profile.display_name:
             user.display_name = profile.display_name
+        if user.email_verified_at is None:
+            user.email_verified_at = datetime.now(timezone.utc)
         user.last_login_at = datetime.now(timezone.utc)
         session.flush()
         return user
@@ -267,6 +293,7 @@ def _upsert_google_user(profile: GoogleOAuthProfile, session: Session) -> User:
         role="user",
         auth_provider="google",
         auth_provider_subject=profile.subject,
+        email_verified_at=datetime.now(timezone.utc),
         is_active=True,
         last_login_at=datetime.now(timezone.utc),
     )
@@ -348,6 +375,18 @@ async def register(
         last_login_at=now,
     )
     session.add(user)
+    session.flush()
+    raw_token = _new_email_verification_token()
+    session.add(
+        EmailVerificationToken(
+            user_id=user.id,
+            token_hash=_hash_email_verification_token(raw_token),
+            created_at=now,
+            expires_at=now + timedelta(hours=_EMAIL_VERIFICATION_EXPIRES_HOURS),
+            request_ip=_client_ip(request),
+            user_agent=_truncate_header(request.headers.get("user-agent")),
+        )
+    )
     session.flush()
     _set_session_user(request, user)
     logger.info("Public password registration succeeded for user_id=%s.", user.id)
@@ -480,6 +519,109 @@ async def password_reset_confirm(
     session.flush()
     logger.info("Password reset confirmed for user_id=%s.", user.id)
     return PasswordResetResponse(status="ok")
+
+
+@router.post("/email/verification/request")
+async def email_verification_request(
+    payload: EmailVerificationRequest,
+    request: Request,
+    session: Session = Depends(get_db_session),
+) -> EmailVerificationResponse:
+    """Create or resend a verification token for an eligible public account.
+
+    The response is intentionally generic and never exposes whether an account
+    exists. Raw verification tokens are not returned or logged; delivery is a
+    future email-provider integration.
+    """
+    require_public_rate_limit(request, "auth_email_verification_request")
+    try:
+        email = _validate_public_email(payload.email)
+    except HTTPException:
+        return EmailVerificationResponse(status="ok")
+
+    user = session.query(User).filter(func.lower(User.email) == email).one_or_none()
+    if (
+        user is None
+        or not user.is_active
+        or user.role != "user"
+        or user.auth_provider != "password"
+        or not user.password_hash
+        or user.email_verified_at is not None
+    ):
+        return EmailVerificationResponse(status="ok")
+
+    now = datetime.now(timezone.utc)
+    session.query(EmailVerificationToken).filter(
+        EmailVerificationToken.user_id == user.id,
+        EmailVerificationToken.used_at.is_(None),
+    ).update({"used_at": now}, synchronize_session=False)
+    raw_token = _new_email_verification_token()
+    session.add(
+        EmailVerificationToken(
+            user_id=user.id,
+            token_hash=_hash_email_verification_token(raw_token),
+            created_at=now,
+            expires_at=now + timedelta(hours=_EMAIL_VERIFICATION_EXPIRES_HOURS),
+            request_ip=_client_ip(request),
+            user_agent=_truncate_header(request.headers.get("user-agent")),
+        )
+    )
+    session.flush()
+    logger.info("Email verification requested for user_id=%s.", user.id)
+    return EmailVerificationResponse(status="ok")
+
+
+@router.post("/email/verification/confirm")
+async def email_verification_confirm(
+    payload: EmailVerificationConfirmRequest,
+    request: Request,
+    session: Session = Depends(get_db_session),
+) -> EmailVerificationResponse:
+    """Verify a public email/password user's email with a one-time token."""
+    require_public_rate_limit(request, "auth_email_verification_confirm")
+    generic_error = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid or expired verification token.",
+    )
+    token = payload.token.strip()
+    if not token:
+        raise generic_error
+
+    token_hash = _hash_email_verification_token(token)
+    verification_token = (
+        session.query(EmailVerificationToken)
+        .filter_by(token_hash=token_hash)
+        .one_or_none()
+    )
+    if (
+        verification_token is None
+        or verification_token.used_at is not None
+        or _is_expired(verification_token.expires_at)
+    ):
+        raise generic_error
+
+    user = session.get(User, verification_token.user_id)
+    if (
+        user is None
+        or not user.is_active
+        or user.role != "user"
+        or user.auth_provider != "password"
+        or not user.password_hash
+    ):
+        raise generic_error
+
+    now = datetime.now(timezone.utc)
+    if user.email_verified_at is None:
+        user.email_verified_at = now
+    verification_token.used_at = now
+    session.query(EmailVerificationToken).filter(
+        EmailVerificationToken.user_id == user.id,
+        EmailVerificationToken.used_at.is_(None),
+        EmailVerificationToken.id != verification_token.id,
+    ).update({"used_at": now}, synchronize_session=False)
+    session.flush()
+    logger.info("Email verification confirmed for user_id=%s.", user.id)
+    return EmailVerificationResponse(status="ok")
 
 
 @router.get("/google/start")
