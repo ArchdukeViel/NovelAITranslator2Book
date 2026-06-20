@@ -13,6 +13,10 @@ _COMPLETED_MARKERS = (
     "完結",
     "完了",
     "連載終了",
+    "完結済",
+    "完結",
+    "完了",
+    "連載終了",
 )
 _HIATUS_MARKERS = (
     "hiatus",
@@ -22,12 +26,19 @@ _HIATUS_MARKERS = (
     "休載",
     "停止",
     "中断",
+    "一時停止",
+    "休載",
+    "停止",
+    "中断",
 )
 _ONGOING_MARKERS = (
     "ongoing",
     "serial",
     "serializing",
     "in progress",
+    "連載中",
+    "連載",
+    "更新中",
     "連載中",
     "連載",
     "更新中",

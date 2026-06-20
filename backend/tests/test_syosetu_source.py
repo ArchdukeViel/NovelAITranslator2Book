@@ -27,6 +27,66 @@ def test_decode_page_response_uses_utf8_when_charset_is_missing() -> None:
     assert SyosetuNcodeSource._decode_page_response(response) == "TS刑事　如月真琴の憂鬱"
 
 
+def test_parse_metadata_html_extracts_completed_publication_status() -> None:
+    source = SyosetuNcodeSource()
+    html = """
+    <html>
+      <body>
+        <h1 class="p-novel__title">Completed Story</h1>
+        <table>
+          <tr><th>掲載状態</th><td>完結済</td></tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://ncode.syosetu.com/n8733gf/")
+
+    assert metadata["publication_status"] == "completed"
+    assert metadata["status"] == "completed"
+    assert metadata["source_publication_status"] == "完結済"
+
+
+def test_parse_metadata_html_extracts_ongoing_publication_status() -> None:
+    source = SyosetuNcodeSource()
+    html = """
+    <html>
+      <body>
+        <h1 class="p-novel__title">Ongoing Story</h1>
+        <table>
+          <tr><th>掲載状態</th><td>連載中</td></tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://ncode.syosetu.com/n8733gf/")
+
+    assert metadata["publication_status"] == "ongoing"
+    assert metadata["status"] == "ongoing"
+    assert metadata["source_publication_status"] == "連載中"
+
+
+def test_parse_metadata_html_leaves_ambiguous_publication_status_unknown() -> None:
+    source = SyosetuNcodeSource()
+    html = """
+    <html>
+      <body>
+        <h1 class="p-novel__title">Ambiguous Story</h1>
+        <table>
+          <tr><th>作品種別</th><td>短編</td></tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, "https://ncode.syosetu.com/n8733gf/")
+
+    assert metadata["publication_status"] == "unknown"
+    assert metadata["status"] == "unknown"
+    assert "source_publication_status" not in metadata
+
+
 def test_parse_metadata_html_detects_multi_chapter_series() -> None:
     source = SyosetuNcodeSource()
     html = """
@@ -268,6 +328,7 @@ def test_parse_chapter_payload_extracts_images_wrapped_in_paragraph() -> None:
 async def test_fetch_metadata_collects_all_paginated_chapter_pages() -> None:
     source = SyosetuNcodeSource()
     root_url = "https://ncode.syosetu.com/n8733gf/"
+    infotop_url = "https://ncode.syosetu.com/novelview/infotop/ncode/n8733gf/"
     pages = {
         root_url: """
         <html>
@@ -288,6 +349,9 @@ async def test_fetch_metadata_collects_all_paginated_chapter_pages() -> None:
           </body>
         </html>
         """,
+        infotop_url: """
+        <html><body><table><tr><th>掲載状態</th><td>連載中</td></tr></table></body></html>
+        """,
     }
 
     async def fake_fetch_page(url: str) -> str:
@@ -297,12 +361,15 @@ async def test_fetch_metadata_collects_all_paginated_chapter_pages() -> None:
     metadata = await source.fetch_metadata(root_url)
 
     assert [chapter["id"] for chapter in metadata["chapters"]] == ["1", "2", "3", "4"]
+    assert metadata["publication_status"] == "ongoing"
+    assert metadata["source_publication_status_page"] == infotop_url
 
 
 @pytest.mark.asyncio
 async def test_fetch_metadata_carries_part_heading_between_paginated_pages() -> None:
     source = SyosetuNcodeSource()
     root_url = "https://ncode.syosetu.com/n8733gf/"
+    infotop_url = "https://ncode.syosetu.com/novelview/infotop/ncode/n8733gf/"
     pages = {
         root_url: """
         <html>
@@ -336,6 +403,9 @@ async def test_fetch_metadata_carries_part_heading_between_paginated_pages() -> 
           </body>
         </html>
         """,
+        infotop_url: """
+        <html><body><table><tr><th>掲載状態</th><td>連載中</td></tr></table></body></html>
+        """,
     }
 
     async def fake_fetch_page(url: str) -> str:
@@ -356,6 +426,7 @@ async def test_fetch_metadata_carries_part_heading_between_paginated_pages() -> 
 async def test_fetch_metadata_stops_after_requested_max_chapter_page() -> None:
     source = SyosetuNcodeSource()
     root_url = "https://ncode.syosetu.com/n8733gf/"
+    infotop_url = "https://ncode.syosetu.com/novelview/infotop/ncode/n8733gf/"
     requests: list[str] = []
     pages = {
         root_url: """
@@ -386,6 +457,9 @@ async def test_fetch_metadata_stops_after_requested_max_chapter_page() -> None:
           </body>
         </html>
         """,
+        infotop_url: """
+        <html><body><table><tr><th>掲載状態</th><td>連載中</td></tr></table></body></html>
+        """,
     }
 
     async def fake_fetch_page(url: str) -> str:
@@ -395,7 +469,7 @@ async def test_fetch_metadata_stops_after_requested_max_chapter_page() -> None:
     source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
     metadata = await source.fetch_metadata(root_url, max_chapter=4)
 
-    assert requests == [root_url, f"{root_url}?p=2"]
+    assert requests == [root_url, infotop_url, f"{root_url}?p=2"]
     assert [chapter["id"] for chapter in metadata["chapters"]] == ["1", "2", "3", "4"]
 
 
@@ -403,8 +477,13 @@ async def test_fetch_metadata_stops_after_requested_max_chapter_page() -> None:
 async def test_fetch_metadata_caps_single_page_toc_without_counting_headings() -> None:
     source = SyosetuNcodeSource()
     root_url = "https://ncode.syosetu.com/n8733gf/"
+    infotop_url = "https://ncode.syosetu.com/novelview/infotop/ncode/n8733gf/"
 
     async def fake_fetch_page(url: str) -> str:
+        if url == infotop_url:
+            return """
+            <html><body><table><tr><th>掲載状態</th><td>連載中</td></tr></table></body></html>
+            """
         assert url == root_url
         return """
         <html>

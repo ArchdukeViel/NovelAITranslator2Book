@@ -17,6 +17,107 @@ def test_normalize_novel_id_accepts_work_and_episode_urls() -> None:
     )
 
 
+def test_parse_metadata_html_extracts_completed_publication_status_from_next_data() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    next_data = {
+        "props": {
+            "pageProps": {
+                "__APOLLO_STATE__": {
+                    "ROOT_QUERY": {
+                        f'work({{"id":"{work_id}"}})': {"__ref": f"Work:{work_id}"},
+                    },
+                    f"Work:{work_id}": {
+                        "__typename": "Work",
+                        "id": work_id,
+                        "serialStatus": "完結済",
+                        "tableOfContentsV2": [],
+                    },
+                },
+            },
+        },
+    }
+    html = f"""
+    <html>
+      <body>
+        <main><h1 class="widget-workTitle">Completed Work</h1></main>
+        <script id="__NEXT_DATA__" type="application/json">{json.dumps(next_data)}</script>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+    assert metadata["publication_status"] == "completed"
+    assert metadata["status"] == "completed"
+    assert metadata["source_publication_status"] == "完結済"
+
+
+def test_parse_metadata_html_extracts_ongoing_publication_status_from_next_data() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    next_data = {
+        "props": {
+            "pageProps": {
+                "__APOLLO_STATE__": {
+                    f"Work:{work_id}": {
+                        "__typename": "Work",
+                        "id": work_id,
+                        "publicationStatus": "連載中",
+                        "tableOfContentsV2": [],
+                    },
+                },
+            },
+        },
+    }
+    html = f"""
+    <html>
+      <body>
+        <main><h1 class="widget-workTitle">Ongoing Work</h1></main>
+        <script id="__NEXT_DATA__" type="application/json">{json.dumps(next_data)}</script>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+    assert metadata["publication_status"] == "ongoing"
+    assert metadata["status"] == "ongoing"
+    assert metadata["source_publication_status"] == "連載中"
+
+
+def test_parse_metadata_html_leaves_missing_publication_status_unknown() -> None:
+    source = KakuyomuSource()
+    work_id = "822139845959461179"
+    next_data = {
+        "props": {
+            "pageProps": {
+                "__APOLLO_STATE__": {
+                    f"Work:{work_id}": {
+                        "__typename": "Work",
+                        "id": work_id,
+                        "tableOfContentsV2": [],
+                    },
+                },
+            },
+        },
+    }
+    html = f"""
+    <html>
+      <body>
+        <main><h1 class="widget-workTitle">Unknown Work</h1></main>
+        <script id="__NEXT_DATA__" type="application/json">{json.dumps(next_data)}</script>
+      </body>
+    </html>
+    """
+
+    metadata = source._parse_metadata_html(html, f"https://kakuyomu.jp/works/{work_id}")
+
+    assert metadata["publication_status"] == "unknown"
+    assert metadata["status"] == "unknown"
+    assert "source_publication_status" not in metadata
+
+
 def test_parse_metadata_html_collects_episode_links_in_order() -> None:
     source = KakuyomuSource()
     html = """

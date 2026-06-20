@@ -18,6 +18,7 @@ from novelai.sources._helpers import (
 from novelai.sources.base import SourceAdapter
 from novelai.sources.html_parsers import HTMLParserMixin
 from novelai.sources.quality import detect_age_gate_text, detect_block_page_text
+from novelai.sources.status import normalize_publication_status, publication_status_payload
 from novelai.sources.taxonomy import (
     KAKUYOMU_GENRE_MAP,
     map_genre,
@@ -76,6 +77,18 @@ class KakuyomuSource(SourceAdapter):
     RUBY_REMOVE_SELECTORS = ("rt", "rp")
     SEPARATOR_LINE = "-" * 60
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    PUBLICATION_STATUS_TEXT_MARKERS = (
+        "完結済",
+        "連載終了",
+        "完結",
+        "完了",
+        "連載中",
+        "更新中",
+        "休載",
+        "一時停止",
+        "停止",
+        "中断",
+    )
 
     def __init__(self, fetch_service: FetchService | None = None) -> None:
         self._fetch_service = fetch_service or get_default_fetch_service()
@@ -239,35 +252,50 @@ class KakuyomuSource(SourceAdapter):
         record = apollo_state.get(ref_or_key.strip())
         return record if isinstance(record, dict) else None
 
+    @staticmethod
+    def _next_data_apollo_state(soup: BeautifulSoup) -> dict[str, Any] | None:
+        script = soup.find("script", id="__NEXT_DATA__")
+        if not isinstance(script, Tag):
+            return None
+        raw_json = script.string
+        if not isinstance(raw_json, str) or not raw_json.strip():
+            return None
+
+        try:
+            data = json.loads(raw_json)
+        except json.JSONDecodeError:
+            return None
+
+        page_props = data.get("props", {}).get("pageProps", {})
+        apollo_state = page_props.get("__APOLLO_STATE__")
+        return apollo_state if isinstance(apollo_state, dict) else None
+
+    def _next_data_work_record(self, soup: BeautifulSoup, url: str) -> dict[str, Any] | None:
+        apollo_state = self._next_data_apollo_state(soup)
+        if apollo_state is None:
+            return None
+
+        work_id = self.normalize_novel_id(url)
+        work = self._apollo_record(apollo_state, f"Work:{work_id}")
+        if work is not None:
+            return work
+
+        root_query = apollo_state.get("ROOT_QUERY")
+        if isinstance(root_query, dict):
+            work_ref = self._apollo_ref(root_query.get(f'work({{"id":"{work_id}"}})'))
+            return self._apollo_record(apollo_state, work_ref)
+        return None
+
     def _extract_chapters_from_next_data(
         self,
         soup: BeautifulSoup,
         url: str,
     ) -> list[dict[str, str | int]]:
-        script = soup.find("script", id="__NEXT_DATA__")
-        if not isinstance(script, Tag):
+        apollo_state = self._next_data_apollo_state(soup)
+        if apollo_state is None:
             return []
-        raw_json = script.string
-        if not isinstance(raw_json, str) or not raw_json.strip():
-            return []
-
-        try:
-            data = json.loads(raw_json)
-        except json.JSONDecodeError:
-            return []
-
         work_id = self.normalize_novel_id(url)
-        page_props = data.get("props", {}).get("pageProps", {})
-        apollo_state = page_props.get("__APOLLO_STATE__")
-        if not isinstance(apollo_state, dict):
-            return []
-
-        work = self._apollo_record(apollo_state, f"Work:{work_id}")
-        if work is None:
-            root_query = apollo_state.get("ROOT_QUERY")
-            if isinstance(root_query, dict):
-                work_ref = self._apollo_ref(root_query.get(f'work({{"id":"{work_id}"}})'))
-                work = self._apollo_record(apollo_state, work_ref)
+        work = self._next_data_work_record(soup, url)
         if work is None:
             return []
 
@@ -520,6 +548,51 @@ class KakuyomuSource(SourceAdapter):
 
         return normalize_keywords(tags)
 
+    def _extract_publication_status_text(self, soup: BeautifulSoup, url: str) -> str | None:
+        work = self._next_data_work_record(soup, url)
+        if work is not None:
+            for key in (
+                "publicationStatus",
+                "publication_status",
+                "serialStatus",
+                "serial_status",
+                "workStatus",
+                "work_status",
+                "status",
+                "state",
+            ):
+                value = work.get(key)
+                if isinstance(value, str) and normalize_publication_status(value) != "unknown":
+                    return value
+            for key in (
+                "isCompleted",
+                "isComplete",
+                "completed",
+                "complete",
+                "isEnded",
+                "ended",
+            ):
+                if work.get(key) is True:
+                    return "completed"
+
+        for node in soup.find_all(["span", "div", "dd", "dt", "p", "li"]):
+            if not isinstance(node, Tag):
+                continue
+            text = node.get_text(" ", strip=True)
+            if not text or len(text) > 160:
+                continue
+            if normalize_publication_status(text) != "unknown":
+                for marker in self.PUBLICATION_STATUS_TEXT_MARKERS:
+                    if marker in text:
+                        return marker
+                return text
+
+        page_text = soup.get_text(" ", strip=True)
+        for marker in self.PUBLICATION_STATUS_TEXT_MARKERS:
+            if marker in page_text:
+                return marker
+        return None
+
     def _find_story_body(self, soup: BeautifulSoup) -> Tag | None:
         for selector in self.BODY_SELECTORS:
             candidate = soup.select_one(selector)
@@ -587,6 +660,9 @@ class KakuyomuSource(SourceAdapter):
         published_at, updated_at = self._extract_dates(soup)
         source_genre_name, genre_slug = self._extract_source_genre(soup)
         source_tags = self._extract_source_tags(soup)
+        status_payload = publication_status_payload(self._extract_publication_status_text(soup, url))
+        if status_payload.get("source_publication_status"):
+            status_payload["source_publication_status_page"] = url
 
         return {
             "source": self.key,
@@ -600,6 +676,7 @@ class KakuyomuSource(SourceAdapter):
             "source_genre_name": source_genre_name,
             "genre_slug": genre_slug,
             "source_tags": source_tags,
+            **status_payload,
         }
 
     def _parse_chapter_payload(self, html: str, url: str) -> dict[str, Any]:
