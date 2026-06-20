@@ -700,7 +700,7 @@ def test_catalog_projection_migration_upgrade_backfill_and_downgrade(
     ]
     engine.dispose()
 
-    command.downgrade(alembic_cfg, "-1")
+    command.downgrade(alembic_cfg, "e4f2d0a9c1b3")
     engine = create_engine(f"sqlite:///{db_path.as_posix()}")
     downgraded_indexes = {index["name"] for index in inspect(engine).get_indexes("novels")}
     downgraded_chapter_indexes = {index["name"] for index in inspect(engine).get_indexes("chapters")}
