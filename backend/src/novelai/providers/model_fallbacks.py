@@ -24,6 +24,7 @@ def model_candidates(
 
     _add_unique(candidates, requested_model)
     if provider_key == "gemini":
+        _add_unique(candidates, settings.PROVIDER_GEMINI_DEFAULT_MODEL)
         for model in settings.PROVIDER_GEMINI_MODEL_FALLBACKS:
             _add_unique(candidates, model)
         for model in supported:

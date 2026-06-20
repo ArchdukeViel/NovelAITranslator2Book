@@ -437,6 +437,8 @@ class PreferencesService:
         """Get preferred model with OpenAI validation."""
         model = self.get_preferred_model()
         provider_key = self.get_provider_key()
+        if provider_key == "gemini" and model == "gpt-5.4":
+            return settings.PROVIDER_GEMINI_DEFAULT_MODEL
         if provider_key != "openai":
             return model
         try:

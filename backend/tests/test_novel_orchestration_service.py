@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from novelai.config.settings import settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.core.chapter_state import ChapterState
 from novelai.db.base import Base
 from novelai.db.models.novel import Novel
@@ -24,6 +24,7 @@ from novelai.services.translation_cache import TranslationCache
 from novelai.translation.service import TranslationService
 from novelai.services.usage_service import UsageService
 from novelai.sources.base import SourceAdapter
+from novelai.providers.model_fallbacks import model_candidates
 from tests.conftest import TESTS_TMP_ROOT, MockTranslationProvider
 
 
@@ -461,6 +462,20 @@ async def test_translation_write_path_refreshes_catalog_projection(orchestration
         assert novel.latest_chapter_updated_at is not None
 
 
+def test_gemini_model_candidates_default_to_stable_flash_lite() -> None:
+    candidates = model_candidates("gemini", None, ["gemini-2.5-flash"])
+
+    assert candidates[0] == GEMINI_DEFAULT_MODEL
+    assert candidates[0] == "gemini-3.1-flash-lite"
+    assert not candidates[0].endswith("-preview")
+
+
+def test_gemini_model_candidates_preserve_explicit_override() -> None:
+    candidates = model_candidates("gemini", "custom-gemini-model", [GEMINI_DEFAULT_MODEL])
+
+    assert candidates[:2] == ["custom-gemini-model", GEMINI_DEFAULT_MODEL]
+
+
 @pytest.mark.asyncio
 async def test_scrape_metadata_translates_title_author_and_chapter_titles(orchestration_env) -> None:
     provider = BatchMetadataProvider()
@@ -591,8 +606,8 @@ async def test_scrape_metadata_falls_back_between_gemini_models(orchestration_en
 
     metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
 
-    assert provider.models_seen[:2] == ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
-    assert metadata["translated_title"] == "[gemini-2.5-flash-lite] Original Novel"
+    assert provider.models_seen[:2] == ["gemini-2.5-flash", GEMINI_DEFAULT_MODEL]
+    assert metadata["translated_title"] == f"[{GEMINI_DEFAULT_MODEL}] Original Novel"
     assert metadata["metadata_translation_status"] == "completed"
 
 
@@ -619,7 +634,7 @@ async def test_scrape_metadata_retries_incomplete_chapter_title_translation(orch
 
     assert metadata["metadata_translation_status"] == "completed"
     assert metadata["chapters"][0]["translated_title"] == "Episode 10: First Skirt Reveal"
-    assert "gemini-2.5-flash-lite" in provider.models_seen
+    assert GEMINI_DEFAULT_MODEL in provider.models_seen
 
 
 @pytest.mark.asyncio

@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from novelai.config.settings import settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.prompts.models import TranslationRequest
 from novelai.providers.base import TranslationProvider
@@ -16,7 +16,7 @@ from novelai.providers.base import TranslationProvider
 class GeminiProvider(TranslationProvider):
     """Google Gemini translation provider using a per-request client instance."""
 
-    DEFAULT_TEXT_MODEL = "gemini-2.5-flash"
+    DEFAULT_TEXT_MODEL = GEMINI_DEFAULT_MODEL
 
     @property
     def key(self) -> str:
@@ -24,6 +24,7 @@ class GeminiProvider(TranslationProvider):
 
     def available_models(self) -> list[str]:
         return [
+            GEMINI_DEFAULT_MODEL,
             "gemini-2.5-flash",
             "gemini-2.5-pro",
             "gemini-2.5-flash-lite",
