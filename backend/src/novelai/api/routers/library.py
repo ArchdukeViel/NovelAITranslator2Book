@@ -94,6 +94,24 @@ class SourceMetadataSnapshotDetail(BaseModel):
     warnings: list[str] = []
 
 
+class SourceMetadataChangedField(BaseModel):
+    key: str
+    before: Any = None
+    after: Any = None
+
+
+class SourceMetadataSnapshotDiff(BaseModel):
+    novel_id: str
+    from_snapshot: str
+    to_snapshot: str
+    added_keys: list[str]
+    removed_keys: list[str]
+    changed: list[SourceMetadataChangedField]
+    unchanged_count: int = 0
+    warnings: list[str] = []
+    truncated: bool = False
+
+
 class CatalogProjectionRefreshResponse(BaseModel):
     novel_id: str
     created: bool
@@ -167,6 +185,7 @@ _DETAIL_MAX_STRING_LENGTH = 1000
 _DETAIL_MAX_LIST_ITEMS = 25
 _DETAIL_MAX_DICT_ITEMS = 50
 _DETAIL_MAX_DEPTH = 4
+_DIFF_MAX_CHANGED_FIELDS = 50
 
 
 def _safe_metadata_keys(meta: dict[str, Any]) -> list[str]:
@@ -262,6 +281,65 @@ def _sanitize_metadata_snapshot(meta: dict[str, Any]) -> tuple[dict[str, Any], l
         if sanitized_value is not None:
             sanitized[key_text] = sanitized_value
     return sanitized, sorted(sanitized.keys()), sorted(set(warnings))
+
+
+def _load_sanitized_metadata_snapshot(
+    storage: StorageService,
+    novel_id: str,
+    snapshot_id: str,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, list[str]]:
+    snapshot = storage.load_metadata_snapshot(novel_id, snapshot_id)
+    if snapshot is None:
+        return None, None, []
+    raw_metadata = snapshot.get("metadata") if isinstance(snapshot.get("metadata"), dict) else {}
+    sanitized_metadata, _metadata_keys, sanitize_warnings = _sanitize_metadata_snapshot(raw_metadata)
+    return snapshot, sanitized_metadata, sanitize_warnings
+
+
+def _metadata_snapshot_diff(
+    novel_id: str,
+    from_snapshot_id: str,
+    from_metadata: dict[str, Any],
+    to_snapshot_id: str,
+    to_metadata: dict[str, Any],
+    warnings: list[str],
+) -> SourceMetadataSnapshotDiff:
+    from_keys = set(from_metadata)
+    to_keys = set(to_metadata)
+    added_keys = sorted(to_keys - from_keys)
+    removed_keys = sorted(from_keys - to_keys)
+    changed_keys = sorted(key for key in from_keys & to_keys if from_metadata[key] != to_metadata[key])
+    unchanged_count = len([key for key in from_keys & to_keys if from_metadata[key] == to_metadata[key]])
+    truncated = len(changed_keys) > _DIFF_MAX_CHANGED_FIELDS
+    if truncated:
+        warnings.append("truncated:changed_fields")
+    safe_warnings: list[str] = []
+    for warning in warnings:
+        if warning.startswith("redacted:"):
+            safe_warnings.append("redacted_sensitive_fields")
+        elif warning.startswith("omitted_raw_payload:"):
+            safe_warnings.append("omitted_raw_payload_fields")
+        else:
+            safe_warnings.append(warning)
+    changed = [
+        SourceMetadataChangedField(
+            key=key,
+            before=from_metadata[key],
+            after=to_metadata[key],
+        )
+        for key in changed_keys[:_DIFF_MAX_CHANGED_FIELDS]
+    ]
+    return SourceMetadataSnapshotDiff(
+        novel_id=novel_id,
+        from_snapshot=from_snapshot_id,
+        to_snapshot=to_snapshot_id,
+        added_keys=added_keys,
+        removed_keys=removed_keys,
+        changed=changed,
+        unchanged_count=unchanged_count,
+        warnings=sorted(set(safe_warnings)),
+        truncated=truncated,
+    )
 
 
 def _source_metadata_warnings(meta: dict[str, Any], *, metadata_missing: bool) -> list[str]:
@@ -453,6 +531,43 @@ async def inspect_source_metadata_history(
         novel_id=novel_id,
         entries=[SourceMetadataHistoryEntry(**entry) for entry in entries],
         limit=limit,
+    )
+
+
+@router.get("/{novel_id}/source-metadata/history/diff", response_model=SourceMetadataSnapshotDiff)
+async def diff_source_metadata_history_snapshots(
+    novel_id: str,
+    from_snapshot: str = Query(...),
+    to_snapshot: str = Query(default="current"),
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> SourceMetadataSnapshotDiff:
+    try:
+        from_snapshot_entry, from_metadata, from_warnings = _load_sanitized_metadata_snapshot(
+            storage,
+            novel_id,
+            from_snapshot,
+        )
+        to_snapshot_entry, to_metadata, to_warnings = _load_sanitized_metadata_snapshot(
+            storage,
+            novel_id,
+            to_snapshot,
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid snapshot id") from None
+
+    if from_snapshot_entry is None or to_snapshot_entry is None:
+        if novel_id not in storage.list_novels():
+            raise HTTPException(status_code=404, detail="Novel not found")
+        raise HTTPException(status_code=404, detail="Metadata snapshot not found")
+
+    return _metadata_snapshot_diff(
+        novel_id,
+        str(from_snapshot_entry["snapshot_id"]),
+        from_metadata or {},
+        str(to_snapshot_entry["snapshot_id"]),
+        to_metadata or {},
+        [*from_warnings, *to_warnings],
     )
 
 

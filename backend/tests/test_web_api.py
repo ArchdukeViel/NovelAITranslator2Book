@@ -215,6 +215,7 @@ def test_router_path_method_snapshot() -> None:
         (("GET",), "/{novel_id}/reader/chapters/{chapter_id}"),
         (("GET",), "/{novel_id}/source-metadata"),
         (("GET",), "/{novel_id}/source-metadata/history"),
+        (("GET",), "/{novel_id}/source-metadata/history/diff"),
         (("GET",), "/{novel_id}/source-metadata/history/{snapshot_id}"),
         (("PATCH",), "/activity/{activity_id}"),
         (("PATCH",), "/jobs/{activity_id}"),
@@ -1363,6 +1364,190 @@ class TestListDetail:
         assert payload["limit"] == 1
         assert len(payload["entries"]) == 1
         assert payload["entries"][0]["snapshot_id"] == "current"
+
+    def test_owner_can_diff_source_metadata_backup_to_current(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        storage.save_metadata(
+            "diff-n1",
+            {
+                "title": "Version 0",
+                "author": "Stable Author",
+                "publication_status": "ongoing",
+                "removed_field": "old-only",
+                "api_key": "secret-key",
+                "raw_html": "<html>secret source page</html>",
+            },
+        )
+        storage.save_metadata(
+            "diff-n1",
+            {
+                "title": "Version 1",
+                "author": "Stable Author",
+                "publication_status": "completed",
+                "added_field": "new-only",
+            },
+        )
+        metadata_path = storage._novel_dir("diff-n1") / "metadata.json"
+        current_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        current_payload.pop("removed_field", None)
+        metadata_path.write_text(json.dumps(current_payload, ensure_ascii=False), encoding="utf-8")
+        backup_id = storage.list_metadata_history("diff-n1")[1]["snapshot_id"]
+        c = _make_app(storage)
+
+        resp = c.get(
+            "/api/admin/novels/diff-n1/source-metadata/history/diff",
+            params={"from_snapshot": backup_id},
+        )
+        payload = resp.json()
+        changed = {item["key"]: item for item in payload["changed"]}
+
+        assert resp.status_code == 200
+        assert payload["novel_id"] == "diff-n1"
+        assert payload["from_snapshot"] == backup_id
+        assert payload["to_snapshot"] == "current"
+        assert "added_field" in payload["added_keys"]
+        assert "removed_field" in payload["removed_keys"]
+        assert changed["title"]["before"] == "Version 0"
+        assert changed["title"]["after"] == "Version 1"
+        assert changed["publication_status"]["before"] == "ongoing"
+        assert changed["publication_status"]["after"] == "completed"
+        assert payload["unchanged_count"] > 0
+        assert payload["truncated"] is False
+        encoded = json.dumps(payload, ensure_ascii=False)
+        assert "secret-key" not in encoded
+        assert "<html>" not in encoded
+        assert "api_key" not in encoded
+        assert "raw_html" not in encoded
+
+    def test_owner_can_diff_current_to_backup_snapshot(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        storage.save_metadata("diff-reverse", {"title": "Version 0", "legacy_key": "backup-only"})
+        storage.save_metadata("diff-reverse", {"title": "Version 1", "new_key": "current-only"})
+        metadata_path = storage._novel_dir("diff-reverse") / "metadata.json"
+        current_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        current_payload.pop("legacy_key", None)
+        metadata_path.write_text(json.dumps(current_payload, ensure_ascii=False), encoding="utf-8")
+        backup_id = storage.list_metadata_history("diff-reverse")[1]["snapshot_id"]
+        c = _make_app(storage)
+
+        resp = c.get(
+            "/api/admin/novels/diff-reverse/source-metadata/history/diff",
+            params={"from_snapshot": "current", "to_snapshot": backup_id},
+        )
+        payload = resp.json()
+        changed = {item["key"]: item for item in payload["changed"]}
+
+        assert resp.status_code == 200
+        assert payload["from_snapshot"] == "current"
+        assert payload["to_snapshot"] == backup_id
+        assert "legacy_key" in payload["added_keys"]
+        assert "new_key" in payload["removed_keys"]
+        assert changed["title"]["before"] == "Version 1"
+        assert changed["title"]["after"] == "Version 0"
+
+    def test_source_metadata_diff_caps_changed_entries_and_truncates_values(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        original = {f"field_{index:02d}": f"old-{index}" for index in range(55)}
+        original["huge_text"] = "a" * 1500
+        storage.save_metadata("diff-capped", original)
+        updated = {f"field_{index:02d}": f"new-{index}" for index in range(55)}
+        updated["huge_text"] = "b" * 1500
+        storage.save_metadata("diff-capped", updated)
+        backup_id = storage.list_metadata_history("diff-capped")[1]["snapshot_id"]
+        c = _make_app(storage)
+
+        resp = c.get(
+            "/api/admin/novels/diff-capped/source-metadata/history/diff",
+            params={"from_snapshot": backup_id},
+        )
+        payload = resp.json()
+        encoded = json.dumps(payload, ensure_ascii=False)
+
+        assert resp.status_code == 200
+        assert payload["truncated"] is True
+        assert len(payload["changed"]) == 50
+        assert "truncated:changed_fields" in payload["warnings"]
+        assert "truncated:huge_text" in payload["warnings"]
+        assert "a" * 1200 not in encoded
+        assert "b" * 1200 not in encoded
+
+    def test_source_metadata_diff_missing_snapshot_returns_404(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_novel(storage, "diff-missing")
+        c = _make_app(storage)
+
+        resp = c.get(
+            "/api/admin/novels/diff-missing/source-metadata/history/diff",
+            params={"from_snapshot": "missing.json"},
+        )
+
+        assert resp.status_code == 404
+
+    def test_source_metadata_diff_rejects_path_traversal(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_novel(storage, "diff-traversal")
+        c = _make_app(storage)
+
+        resp = c.get(
+            "/api/admin/novels/diff-traversal/source-metadata/history/diff",
+            params={"from_snapshot": "..\\metadata.json"},
+        )
+
+        assert resp.status_code == 400
+
+    def test_non_owner_cannot_diff_source_metadata_snapshots(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_novel(storage)
+        guest = _make_app(storage, session_user=None)
+        user = _make_app(storage, session_user=REGULAR_USER)
+
+        guest_resp = guest.get(
+            "/api/admin/novels/test-n1/source-metadata/history/diff",
+            params={"from_snapshot": "current"},
+        )
+        user_resp = user.get(
+            "/api/admin/novels/test-n1/source-metadata/history/diff",
+            params={"from_snapshot": "current"},
+        )
+
+        assert guest_resp.status_code == 401
+        assert user_resp.status_code == 403
+
+    def test_source_metadata_diff_get_does_not_require_csrf(self, _no_api_key: None) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_novel(storage)
+        c = _make_app(storage)
+
+        resp = c.get(
+            "/api/admin/novels/test-n1/source-metadata/history/diff",
+            params={"from_snapshot": "current"},
+        )
+
+        assert resp.status_code == 200
+
+    def test_public_routes_do_not_expose_source_metadata_diff(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_novel(storage)
+        c = _make_app(storage, session_user=None, db_session=isolated_db_session)
+
+        resp = c.get(
+            "/api/public/novels/test-n1/source-metadata/history/diff",
+            params={"from_snapshot": "current"},
+        )
+
+        assert resp.status_code == 404
 
     def test_owner_can_inspect_current_source_metadata_snapshot_detail(self, _no_api_key: None) -> None:
         bootstrap()
