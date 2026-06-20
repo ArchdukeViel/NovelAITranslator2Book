@@ -28,7 +28,6 @@ from novelai.api.routers.novels import (
     get_activity_worker,
     get_orchestrator,
     get_preferences,
-    get_requests,
     get_storage,
     get_translation_cache,
     get_usage,
@@ -44,7 +43,6 @@ from novelai.db.models.novel import Novel
 from novelai.db.models.users import NovelRequest
 from novelai.providers.gemini_provider import GeminiProvider
 from novelai.runtime.bootstrap import bootstrap
-from novelai.services.novel_request_service import NovelRequestService
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
@@ -126,7 +124,6 @@ def _make_app(
     activity_log: ActivityQueueService | None = None,
     worker: ActivityWorkerService | None = None,
     runner: BackgroundActivityRunner | None = None,
-    requests: NovelRequestService | None = None,
     orchestrator: object | None = None,
     preferences: PreferencesService | None = None,
     translation_cache: TranslationCache | None = None,
@@ -151,8 +148,6 @@ def _make_app(
         app.dependency_overrides[get_activity_worker] = lambda: worker
     if runner is not None:
         app.dependency_overrides[get_activity_runner] = lambda: runner
-    if requests is not None:
-        app.dependency_overrides[get_requests] = lambda: requests
     if orchestrator is not None:
         app.dependency_overrides[get_orchestrator] = lambda: orchestrator
     if preferences is not None:

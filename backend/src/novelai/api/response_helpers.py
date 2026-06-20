@@ -35,31 +35,6 @@ def translated_chapter_response(novel_id: str, chapter_id: str, translated: dict
     }
 
 
-def source_candidate_response(item: dict[str, Any]) -> dict[str, Any]:
-    response = dict(item)
-    if "url" in response:
-        response["source_url"] = response["url"]
-    return response
-
-
-def request_response(item: dict[str, Any]) -> dict[str, Any]:
-    response = dict(item)
-    if "id" in response:
-        response["request_id"] = response["id"]
-    candidates = response.get("source_candidates")
-    if isinstance(candidates, list):
-        response["source_candidates"] = [
-            source_candidate_response(candidate)
-            for candidate in candidates
-            if isinstance(candidate, dict)
-        ]
-    return response
-
-
-def request_list_response(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [request_response(item) for item in items]
-
-
 def _metadata_dict(item: dict[str, Any]) -> dict[str, Any]:
     metadata = item.get("metadata")
     return dict(metadata) if isinstance(metadata, dict) else {}

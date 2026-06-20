@@ -49,39 +49,6 @@ class ChapterVersionKind(StrEnum):
 
 
 @dataclass(frozen=True)
-class SourceCandidate:
-    id: str
-    source_key: str
-    url: str
-    submitted_by: str | None = None
-    status: NovelRequestStatus = NovelRequestStatus.PENDING
-    created_at: str | None = None
-    reviewed_at: str | None = None
-    reviewed_by: str | None = None
-    notes: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return _serialize_dataclass(self)
-
-
-@dataclass(frozen=True)
-class NovelRequest:
-    id: str
-    title: str
-    source_candidates: tuple[SourceCandidate, ...] = ()
-    requested_by: str | None = None
-    status: NovelRequestStatus = NovelRequestStatus.PENDING
-    created_at: str | None = None
-    reviewed_at: str | None = None
-    reviewed_by: str | None = None
-    vote_count: int = 0
-    notes: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return _serialize_dataclass(self)
-
-
-@dataclass(frozen=True)
 class CrawlJob:
     id: str
     novel_id: str
