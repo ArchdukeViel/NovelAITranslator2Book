@@ -19,7 +19,8 @@ See `.env.example` for full reference. Critical variables:
 | `GOOGLE_OAUTH_CLIENT_ID` | For public login | Google Cloud Console |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | For public login | Google Cloud Console |
 | `GOOGLE_OAUTH_REDIRECT_URI` | For public login | Must match Google Console exactly |
-| `PUBLIC_FRONTEND_URL` | For public login | Frontend origin for post-OAuth redirect |
+| `PUBLIC_FRONTEND_URL` | For public login and auth email links | Frontend origin for post-OAuth redirect, password reset, and email verification links |
+| `AUTH_EMAIL_DELIVERY_MODE` | For auth email | `noop` by default; set `smtp` only after SMTP vars are configured |
 | `WEB_CORS_ORIGINS` | If cross-origin | Empty list (default) for same-origin behind Caddy |
 | `WEB_RATE_LIMITER_BACKEND` | Recommended | `redis` for multi-instance; `memory` for single |
 | `PROVIDER_GEMINI_API_KEY` | If using Gemini | Translation provider key |
@@ -46,7 +47,48 @@ See `.env.example` for full reference. Critical variables:
 
 ---
 
-## 3. HTTPS / Caddy / Reverse Proxy Checklist
+## 3. Auth Email / SMTP Checklist
+
+Password reset and email verification use the backend auth email service.
+
+### Safe Defaults
+
+- [ ] `AUTH_EMAIL_DELIVERY_MODE=noop` unless SMTP is ready.
+- [ ] In `noop` mode, password reset and verification tokens are created but no email is sent.
+- [ ] `noop` mode does not require any SMTP variables and should not block app startup.
+- [ ] Configure SMTP before enabling frontend password reset or email verification UI.
+
+### SMTP Mode
+
+Set `AUTH_EMAIL_DELIVERY_MODE=smtp` and configure:
+
+| Variable | Required in `smtp` mode | Notes |
+|---|---|---|
+| `SMTP_HOST` | Yes | SMTP server hostname |
+| `SMTP_PORT` | Yes | Usually `587` for STARTTLS or `465` for SSL |
+| `SMTP_USERNAME` | Usually | SMTP username, if provider requires auth |
+| `SMTP_PASSWORD` | Usually | SMTP password or app password; never commit real value |
+| `SMTP_FROM_EMAIL` | Yes | Sender email address |
+| `SMTP_FROM_NAME` | No | Defaults to `Dokushodo` |
+| `SMTP_STARTTLS` | No | Defaults to `true`; use with port `587` |
+| `SMTP_USE_SSL` | No | Defaults to `false`; use with port `465` when needed |
+| `SMTP_TIMEOUT_SECONDS` | No | Defaults to `10` |
+| `PUBLIC_FRONTEND_URL` | Yes | Base origin used in reset/verification links |
+| `AUTH_PASSWORD_RESET_PATH` | No | Defaults to `/password/reset` |
+| `AUTH_EMAIL_VERIFICATION_PATH` | No | Defaults to `/email/verify` |
+
+### Security Notes
+
+- [ ] Password reset and email verification links contain bearer tokens.
+- [ ] Do not log reset/verification URLs, request bodies, or email bodies.
+- [ ] Do not log `SMTP_PASSWORD`.
+- [ ] Use provider app passwords or restricted SMTP credentials where available.
+- [ ] Missing SMTP config in `smtp` mode returns a safe delivery failure; auth endpoints still return generic responses to avoid account enumeration.
+- [ ] Invalid `AUTH_EMAIL_DELIVERY_MODE` fails clearly during mailer construction.
+
+---
+
+## 4. HTTPS / Caddy / Reverse Proxy Checklist
 
 ### Production (HTTPS)
 
@@ -68,7 +110,7 @@ See `.env.example` for full reference. Critical variables:
 
 ---
 
-## 4. Session Cookie / CSRF Checklist
+## 5. Session Cookie / CSRF Checklist
 
 ### Session Security
 
@@ -91,7 +133,7 @@ See `.env.example` for full reference. Critical variables:
 
 ---
 
-## 5. Database Migration Checklist
+## 6. Database Migration Checklist
 
 ### PostgreSQL
 
@@ -112,7 +154,7 @@ alembic current  # Verify current revision
 
 ---
 
-## 6. Redis / Worker Checklist
+## 7. Redis / Worker Checklist
 
 ### Redis
 
@@ -137,7 +179,7 @@ novelaibook worker
 
 ---
 
-## 7. Service Startup Order (Docker Compose)
+## 8. Service Startup Order (Docker Compose)
 
 1. `postgres` — PostgreSQL (health check required)
 2. `redis` — Redis (health check required)
@@ -173,7 +215,7 @@ docker compose -f deploy/compose.yml run --rm migrate
 
 ---
 
-## 8. Health Check Commands
+## 9. Health Check Commands
 
 ```bash
 # Backend
@@ -193,7 +235,7 @@ curl http://localhost/api/auth/me
 
 ---
 
-## 9. Smoke Test Checklist
+## 10. Smoke Test Checklist
 
 ### Public User Flow
 
@@ -219,7 +261,7 @@ curl http://localhost/api/auth/me
 
 ---
 
-## 10. Rollback Checklist
+## 11. Rollback Checklist
 
 ### Quick Rollback
 
@@ -243,7 +285,7 @@ cd backend && alembic downgrade -1
 
 ---
 
-## 11. Known Limitations
+## 12. Known Limitations
 
 ### Current State
 
