@@ -63,3 +63,33 @@ async def test_novel18_fetch_metadata_uses_novel18_domain() -> None:
     assert metadata["source"] == "novel18_syosetu"
     assert metadata["title"] == "夜の物語"
     assert metadata["chapters"][0]["url"] == "https://novel18.syosetu.com/n0813kx/1/"
+
+
+@pytest.mark.asyncio
+async def test_novel18_fetch_metadata_caps_single_page_flat_toc() -> None:
+    source = Novel18SyosetuSource()
+    root_url = "https://novel18.syosetu.com/n0813kx/"
+
+    async def fake_fetch_page(url: str) -> str:
+        assert url == root_url
+        links = "\n".join(
+            f'<a href="/n0813kx/{index}/">Episode {index}</a>'
+            for index in range(1, 13)
+        )
+        return f"""
+        <html>
+          <body>
+            <h1 class="p-novel__title">Night Story</h1>
+            <div id="novel_writername">Author C</div>
+            {links}
+          </body>
+        </html>
+        """
+
+    source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
+    full = await source.fetch_metadata(root_url)
+    capped = await source.fetch_metadata(root_url, max_chapter=3)
+
+    assert len(full["chapters"]) == 12
+    assert [chapter["id"] for chapter in capped["chapters"]] == ["1", "2", "3"]
+    assert all("part" not in chapter for chapter in full["chapters"])

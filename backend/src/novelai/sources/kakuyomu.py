@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -223,22 +224,178 @@ class KakuyomuSource(SourceAdapter):
         text = anchor.get_text(" ", strip=True)
         return text or f"Episode {fallback_index}"
 
+    @staticmethod
+    def _apollo_ref(value: Any) -> str | None:
+        if isinstance(value, dict):
+            ref = value.get("__ref")
+            if isinstance(ref, str) and ref.strip():
+                return ref.strip()
+        return None
+
+    @staticmethod
+    def _apollo_record(apollo_state: dict[str, Any], ref_or_key: str | None) -> dict[str, Any] | None:
+        if not isinstance(ref_or_key, str) or not ref_or_key.strip():
+            return None
+        record = apollo_state.get(ref_or_key.strip())
+        return record if isinstance(record, dict) else None
+
+    def _extract_chapters_from_next_data(
+        self,
+        soup: BeautifulSoup,
+        url: str,
+    ) -> list[dict[str, str | int]]:
+        script = soup.find("script", id="__NEXT_DATA__")
+        if not isinstance(script, Tag):
+            return []
+        raw_json = script.string
+        if not isinstance(raw_json, str) or not raw_json.strip():
+            return []
+
+        try:
+            data = json.loads(raw_json)
+        except json.JSONDecodeError:
+            return []
+
+        work_id = self.normalize_novel_id(url)
+        page_props = data.get("props", {}).get("pageProps", {})
+        apollo_state = page_props.get("__APOLLO_STATE__")
+        if not isinstance(apollo_state, dict):
+            return []
+
+        work = self._apollo_record(apollo_state, f"Work:{work_id}")
+        if work is None:
+            root_query = apollo_state.get("ROOT_QUERY")
+            if isinstance(root_query, dict):
+                work_ref = self._apollo_ref(root_query.get(f'work({{"id":"{work_id}"}})'))
+                work = self._apollo_record(apollo_state, work_ref)
+        if work is None:
+            return []
+
+        toc = work.get("tableOfContentsV2")
+        if not isinstance(toc, list):
+            return []
+
+        chapters: list[dict[str, str | int]] = []
+        seen_episode_ids: set[str] = set()
+        for toc_item in toc:
+            toc_record = self._apollo_record(apollo_state, self._apollo_ref(toc_item))
+            if toc_record is None:
+                continue
+
+            part: str | None = None
+            chapter_ref = self._apollo_ref(toc_record.get("chapter"))
+            chapter_record = self._apollo_record(apollo_state, chapter_ref)
+            if chapter_record is not None:
+                title = chapter_record.get("title")
+                if isinstance(title, str) and title.strip():
+                    part = title.strip()
+
+            episode_refs = toc_record.get("episodeUnions")
+            if not isinstance(episode_refs, list):
+                continue
+            for episode_ref in episode_refs:
+                episode_record = self._apollo_record(apollo_state, self._apollo_ref(episode_ref))
+                if episode_record is None:
+                    continue
+                episode_id = episode_record.get("id")
+                if not isinstance(episode_id, str) or not episode_id.strip():
+                    continue
+                episode_id = episode_id.strip()
+                if episode_id in seen_episode_ids:
+                    continue
+                seen_episode_ids.add(episode_id)
+                index = len(chapters) + 1
+                title = episode_record.get("title")
+                chapter: dict[str, str | int] = {
+                    "id": str(index),
+                    "num": index,
+                    "title": title.strip() if isinstance(title, str) and title.strip() else f"Episode {index}",
+                    "url": f"https://kakuyomu.jp/works/{work_id}/episodes/{episode_id}",
+                    "source_episode_id": episode_id,
+                }
+                if part:
+                    chapter["part"] = part
+                published_at = episode_record.get("publishedAt")
+                if isinstance(published_at, str) and published_at.strip():
+                    chapter["date_added"] = published_at.strip()
+                chapters.append(chapter)
+
+        return chapters
+
+    def _is_part_heading_node(self, node: Tag) -> bool:
+        raw_classes = node.get("class") or []
+        classes = " ".join(str(value) for value in (raw_classes if isinstance(raw_classes, list) else [raw_classes]))
+        lowered_classes = classes.lower()
+        text = node.get_text(" ", strip=True)
+        if not text or node.name.lower() == "a" or node.find("a", href=True):
+            return False
+        if node.name.lower() in {"h2", "h3", "h4"}:
+            return True
+        if "chapter" in lowered_classes or "part" in lowered_classes or "toc" in lowered_classes:
+            return True
+        lowered_text = text.lower()
+        return (
+            "part " in lowered_text
+            or bool(re.search(r"(?:^|\s)(?:第?[0-9０-９一二三四五六七八九十百]+[章部編]|[0-9０-９]+章)(?:\s|　|$)", text))
+        )
+
+    def _nearest_part_heading(self, anchor: Tag) -> str | None:
+        current: Tag | None = anchor
+        for _ in range(6):
+            if isinstance(current, Tag):
+                for sibling in reversed(list(current.previous_siblings)):
+                    if not isinstance(sibling, Tag):
+                        continue
+                    if self._is_part_heading_node(sibling):
+                        return sibling.get_text(" ", strip=True)
+            parent = current.parent if current is not None else None
+            if not isinstance(parent, Tag):
+                break
+            for sibling in reversed(list(parent.previous_siblings)):
+                if not isinstance(sibling, Tag):
+                    continue
+                if self._is_part_heading_node(sibling):
+                    return sibling.get_text(" ", strip=True)
+            current = parent
+        return None
+
     def _extract_chapters(self, soup: BeautifulSoup, url: str, work_title: str | None) -> list[dict[str, str | int]]:
         base_url = httpx.URL(url)
         work_id = self.normalize_novel_id(url)
+        next_data_chapters = self._extract_chapters_from_next_data(soup, url)
+        if next_data_chapters:
+            return next_data_chapters
+
         seen_episode_ids: set[str] = set()
+        chapters_by_episode_id: dict[str, dict[str, str | int]] = {}
         chapter_rows: list[dict[str, str | int]] = []
 
         roots: list[Tag] = []
         for selector in self.TOC_ROOT_SELECTORS:
             roots.extend(node for node in soup.select(selector) if isinstance(node, Tag))
-            if roots:
-                break
+        deduped_roots: list[Tag] = []
+        seen_root_ids: set[int] = set()
+        for root in roots:
+            root_id = id(root)
+            if root_id in seen_root_ids:
+                continue
+            seen_root_ids.add(root_id)
+            deduped_roots.append(root)
+        roots = deduped_roots
         if not roots:
             roots = [node for node in soup.find_all("main") if isinstance(node, Tag)] or [soup]
 
         for root in roots:
-            for anchor in root.find_all("a", href=True):
+            current_part: str | None = None
+            for node in root.find_all(["h2", "h3", "h4", "div", "section", "a"], recursive=True):
+                if not isinstance(node, Tag):
+                    continue
+                if self._is_part_heading_node(node):
+                    current_part = node.get_text(" ", strip=True)
+                    continue
+                if node.name.lower() != "a":
+                    continue
+                anchor = node
                 if not isinstance(anchor, Tag):
                     continue
                 href = attribute_to_str(anchor.get("href"))
@@ -252,23 +409,25 @@ class KakuyomuSource(SourceAdapter):
                     continue
 
                 episode_id = match.group(2)
+                part = current_part or self._nearest_part_heading(anchor)
                 if episode_id in seen_episode_ids:
+                    if part and "part" not in chapters_by_episode_id.get(episode_id, {}):
+                        chapters_by_episode_id[episode_id]["part"] = part
                     continue
 
                 seen_episode_ids.add(episode_id)
                 index = len(chapter_rows) + 1
-                chapter_rows.append(
-                    {
-                        "id": str(index),
-                        "num": index,
-                        "title": self._extract_episode_title(anchor, index),
-                        "url": absolute_url,
-                        "source_episode_id": episode_id,
-                    }
-                )
-
-            if chapter_rows:
-                break
+                chapter: dict[str, str | int] = {
+                    "id": str(index),
+                    "num": index,
+                    "title": self._extract_episode_title(anchor, index),
+                    "url": absolute_url,
+                    "source_episode_id": episode_id,
+                }
+                if part:
+                    chapter["part"] = part
+                chapter_rows.append(chapter)
+                chapters_by_episode_id[episode_id] = chapter
 
         if chapter_rows:
             return chapter_rows

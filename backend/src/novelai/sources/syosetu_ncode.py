@@ -231,10 +231,17 @@ class SyosetuNcodeSource(SourceAdapter):
         classes = self._classes(tag)
         if classes.intersection(self.PART_HEADING_CLASSES):
             return True
-        if tag.name.lower() not in {"h2", "h3"}:
+        if tag.name.lower() not in {"h2", "h3", "h4", "div", "p"}:
+            return False
+        if tag.find("a", href=True):
             return False
         text = tag.get_text(" ", strip=True)
-        return bool(text) and not tag.find("a", href=True)
+        if not text:
+            return False
+        lowered = text.lower()
+        if "chapter" in lowered or "part" in lowered or "arc" in lowered:
+            return True
+        return bool(re.search(r"(?:^|\s)(?:第?[0-9０-９一二三四五六七八九十百]+[章部編]|[0-9０-９]+章)(?:\s|　|$)", text))
 
     def _extract_source_date_from_text(self, text: str) -> str | None:
         match = self.SOURCE_DATE_PATTERN.search(text)
@@ -296,13 +303,15 @@ class SyosetuNcodeSource(SourceAdapter):
         return None
 
     def _extract_chapter_part(self, anchor: Tag, current_part: str | None) -> str | None:
+        if current_part:
+            return current_part
         if isinstance(anchor.parent, Tag):
             for sibling in reversed(list(anchor.parent.previous_siblings)[-8:]):
                 if isinstance(sibling, Tag) and self._is_part_heading(sibling):
                     text = sibling.get_text(" ", strip=True)
                     if text:
                         return text
-        return current_part
+        return None
 
     def _extract_chapters(
         self,
@@ -318,7 +327,7 @@ class SyosetuNcodeSource(SourceAdapter):
         chapter_urls: dict[int, dict[str, Any]] = {}
         current_part = initial_part.strip() if isinstance(initial_part, str) and initial_part.strip() else None
 
-        for node in soup.find_all(["div", "section", "h2", "h3", "a"], recursive=True):
+        for node in soup.find_all(["div", "section", "h2", "h3", "h4", "p", "li", "a"], recursive=True):
             if not isinstance(node, Tag):
                 continue
 
@@ -353,6 +362,13 @@ class SyosetuNcodeSource(SourceAdapter):
             date_added = self._extract_chapter_date(node)
             if date_added:
                 chapter["date_added"] = date_added
+            existing = chapter_urls.get(chapter_number)
+            if existing is not None:
+                if part and not existing.get("part"):
+                    existing["part"] = part
+                if date_added and not existing.get("date_added"):
+                    existing["date_added"] = date_added
+                continue
             chapter_urls[chapter_number] = chapter
 
         if chapter_urls:
@@ -368,6 +384,16 @@ class SyosetuNcodeSource(SourceAdapter):
                 "title": title or "Chapter 1",
                 "url": str(base_url),
             }
+        ]
+
+    @staticmethod
+    def _apply_chapter_cap(chapters: list[dict[str, Any]], max_chapter: int | None) -> list[dict[str, Any]]:
+        if max_chapter is None:
+            return chapters
+        return [
+            chapter
+            for chapter in chapters
+            if isinstance(chapter.get("num"), int) and int(chapter["num"]) <= max_chapter
         ]
 
     @staticmethod
@@ -621,6 +647,7 @@ class SyosetuNcodeSource(SourceAdapter):
         soup = BeautifulSoup(html, "lxml")
         page_numbers = self._extract_page_numbers(soup, url)
         if len(page_numbers) == 1:
+            metadata["chapters"] = self._apply_chapter_cap(metadata.get("chapters", []), max_chapter)
             return metadata
 
         chapters_by_number = {
