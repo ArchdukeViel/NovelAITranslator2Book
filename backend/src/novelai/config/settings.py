@@ -6,6 +6,7 @@ from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
+GEMINI_DEFAULT_MODEL = "gemini-3.1-flash-lite"
 
 
 def _default_novel_library_dir() -> Path:
@@ -58,8 +59,10 @@ class AppSettings(BaseSettings):
     PROVIDER_DEFAULT: str = "dummy"
     PROVIDER_OPENAI_API_KEY: SecretStr | None = None
     PROVIDER_GEMINI_API_KEY: SecretStr | None = None
+    PROVIDER_GEMINI_DEFAULT_MODEL: str = GEMINI_DEFAULT_MODEL
     PROVIDER_GEMINI_MODEL_FALLBACKS: list[str] = Field(
         default_factory=lambda: [
+            GEMINI_DEFAULT_MODEL,
             "gemini-2.5-flash",
             "gemini-2.5-flash-lite",
             "gemini-2.5-pro",

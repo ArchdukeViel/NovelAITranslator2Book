@@ -13,7 +13,7 @@ from novelai.services.usage_service import UsageService
 
 API_KEY_PROVIDERS = {"gemini", "openai"}
 DEFAULT_PROVIDER_MODELS = {
-    "gemini": "gemini-2.5-flash",
+    "gemini": "gemini-3.1-flash-lite",
     "openai": "gpt-5.4",
 }
 RUNTIME_STATE_DEFINITIONS = {
