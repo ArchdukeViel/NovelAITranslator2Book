@@ -27,18 +27,28 @@ from tests.conftest import (
 
 
 class FallbackPipelineProvider:
-    key = "gemini"
-
-    def __init__(self) -> None:
+    def __init__(self, key: str) -> None:
+        self._key = key
         self.models_seen: list[str | None] = []
 
+    @property
+    def key(self) -> str:
+        return self._key
+
     def available_models(self) -> list[str]:
-        return ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+        if self.key == "gemini":
+            return ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
+        return ["google/gemma-4-31b-it"]
 
     async def translate(self, prompt: str, model: str | None = None, **kwargs: object) -> dict[str, object]:
         self.models_seen.append(model)
-        if model == "gemini-2.5-flash":
-            raise RuntimeError("quota exceeded")
+        if self.key == "gemini":
+            raise ProviderError(
+                code=ProviderErrorCode.QUOTA_EXHAUSTED,
+                provider_key="gemini",
+                provider_model=model or "gemini-3.1-flash-lite",
+                message="Gemini daily quota exceeded",
+            )
         return {"text": f"[{model}] {prompt}", "metadata": {"usage": {"total_tokens": 7}}}
 
 
@@ -250,7 +260,7 @@ async def test_full_translation_pipeline(integration_fixture):
     assert result.chunk_states
     first_chunk_state = next(iter(result.chunk_states.values()))
     assert first_chunk_state["provider_key"] == "mock"
-    assert first_chunk_state["provider_model"] == "gpt-5.4"
+    assert first_chunk_state["provider_model"] == "gemini-3.1-flash-lite"
     assert first_chunk_state["status"] == "translated"
 
 
@@ -305,13 +315,15 @@ async def test_translation_service_builds_multilingual_prompt_request(integratio
 
 
 @pytest.mark.asyncio
-async def test_translate_stage_falls_back_between_gemini_models(integration_fixture):
+async def test_translate_stage_falls_back_from_gemini_to_nvidia(integration_fixture):
     fixture = integration_fixture
-    provider = FallbackPipelineProvider()
+    gemini_provider = FallbackPipelineProvider("gemini")
+    nvidia_provider = FallbackPipelineProvider("nvidia")
     fixture.add_source_chapter("http://example.com/fallback", "ãƒ†ã‚¹ãƒˆã§ã™ã€‚")
     fixture.settings_service.set_provider_key("gemini")
-    fixture.settings_service.set_provider_model("gemini-2.5-flash")
+    fixture.settings_service.set_provider_model("gemini-3.1-flash-lite")
     fixture.settings_service.set_api_key("gemini-key", provider_key="gemini")
+    fixture.settings_service.set_api_key("nvidia-key", provider_key="nvidia")
 
     pipeline = TranslationPipeline(
         stages=[
@@ -319,7 +331,7 @@ async def test_translate_stage_falls_back_between_gemini_models(integration_fixt
             ParseStage(),
             SegmentStage(),
             TranslateStage(
-                provider_factory=lambda key: provider,
+                provider_factory=lambda key: gemini_provider if key == "gemini" else nvidia_provider,
                 cache=fixture.cache,
                 settings_service=fixture.settings_service,
                 usage_service=fixture.usage_service,
@@ -334,8 +346,9 @@ async def test_translate_stage_falls_back_between_gemini_models(integration_fixt
 
     result = await pipeline.run(context)
 
-    assert provider.models_seen[:2] == ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
-    assert "[gemini-2.5-flash-lite]" in result.final_text
+    assert gemini_provider.models_seen == ["gemini-3.1-flash-lite"]
+    assert nvidia_provider.models_seen == ["google/gemma-4-31b-it"]
+    assert "[google/gemma-4-31b-it]" in result.final_text
 
 
 @pytest.mark.asyncio

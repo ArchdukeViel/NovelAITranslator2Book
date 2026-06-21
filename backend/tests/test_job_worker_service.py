@@ -86,7 +86,12 @@ async def test_run_crawl_metadata_activity(worker_env) -> None:
 async def test_run_translation_activity_uses_stored_metadata_source(worker_env) -> None:
     storage, activity_log, orchestrator, worker = worker_env
     storage.save_metadata("novel-1", {"source": "kakuyomu", "chapters": [{"id": "1"}]})
-    activity = activity_log.create_translation_activity(novel_id="novel-1", chapters="1", provider="openai", model="gpt-5.4")
+    activity = activity_log.create_translation_activity(
+        novel_id="novel-1",
+        chapters="1",
+        provider="nvidia",
+        model="google/gemma-4-31b-it",
+    )
 
     result = await worker.run_activity(activity["id"])
 
@@ -96,8 +101,8 @@ async def test_run_translation_activity_uses_stored_metadata_source(worker_env) 
     assert result["metadata"]["activity_phase"] == "translate"
     assert orchestrator.calls[0][0] == "translate_chapters"
     assert orchestrator.calls[0][1][:3] == ("kakuyomu", "novel-1", "1")
-    assert orchestrator.calls[0][2]["provider_key"] == "openai"
-    assert orchestrator.calls[0][2]["provider_model"] == "gpt-5.4"
+    assert orchestrator.calls[0][2]["provider_key"] == "nvidia"
+    assert orchestrator.calls[0][2]["provider_model"] == "google/gemma-4-31b-it"
 
 
 @pytest.mark.asyncio

@@ -27,6 +27,8 @@ def model_candidates(
         _add_unique(candidates, settings.PROVIDER_GEMINI_DEFAULT_MODEL)
         for model in settings.PROVIDER_GEMINI_MODEL_FALLBACKS:
             _add_unique(candidates, model)
+    elif provider_key == "nvidia":
+        _add_unique(candidates, settings.NVIDIA_DEFAULT_MODEL)
         for model in supported:
             _add_unique(candidates, model)
     elif supported:

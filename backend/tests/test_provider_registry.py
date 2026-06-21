@@ -13,6 +13,7 @@ from novelai.providers.registry import (
     get_provider,
     register_provider,
 )
+from novelai.runtime.bootstrap import bootstrap_providers
 
 
 class _FakeProvider(TranslationProvider):
@@ -56,3 +57,12 @@ class TestProviderRegistry:
     def test_available_providers(self) -> None:
         register_provider("prov_x", lambda: _FakeProvider())
         assert "prov_x" in available_providers()
+
+    def test_bootstrap_registers_nvidia_and_excludes_openai(self) -> None:
+        _PROVIDER_REGISTRY.clear()
+
+        bootstrap_providers()
+
+        providers = set(available_providers())
+        assert {"dummy", "gemini", "nvidia"}.issubset(providers)
+        assert "openai" not in providers

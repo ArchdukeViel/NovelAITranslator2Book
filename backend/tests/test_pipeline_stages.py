@@ -1,14 +1,93 @@
 """Tests for pipeline stages."""
 
+from collections.abc import Mapping
+from typing import Any
+
 import pytest
 
+from novelai.config.settings import settings
+from novelai.core.errors import ProviderError, ProviderErrorCode
+from novelai.providers.base import TranslationProvider
+from novelai.services.preferences_service import PreferencesService
+from novelai.services.translation_cache import TranslationCache
+from novelai.services.usage_service import UsageService
+from novelai.storage.service import StorageService
 from novelai.translation.pipeline.context import PipelineState, TranslationChunk, paragraph_source_hash
 from novelai.translation.pipeline.pipeline import TranslationPipeline
 from novelai.translation.pipeline.stages.base import PipelineStage
 from novelai.translation.pipeline.stages.fetch import FetchStage
 from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.segment import SegmentStage, SmartSegmentStage
+from novelai.translation.pipeline.stages.translate import TranslateStage
 from tests.conftest import MockSourceAdapter
+
+
+class _FallbackContractProvider(TranslationProvider):
+    def __init__(self, key: str, *, error_code: ProviderErrorCode | None = None) -> None:
+        self._key = key
+        self.error_code = error_code
+        self.models_seen: list[str | None] = []
+
+    @property
+    def key(self) -> str:
+        return self._key
+
+    def available_models(self) -> list[str]:
+        if self.key == "gemini":
+            return ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
+        return ["google/gemma-4-31b-it"]
+
+    async def translate(
+        self,
+        prompt: str,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> Mapping[str, Any]:
+        self.models_seen.append(model)
+        if self.error_code is not None:
+            raise ProviderError(
+                self.error_code,
+                provider_key=self.key,
+                provider_model=model or "unknown",
+                message=self.error_code.value,
+            )
+        return {"text": "Translated paragraph.", "metadata": {"usage": {"total_tokens": 3}}}
+
+
+def _fallback_stage_env(tmp_path):
+    prefs = PreferencesService(tmp_path / "prefs")
+    prefs.set_provider_key("gemini")
+    prefs.set_provider_model(settings.PROVIDER_GEMINI_DEFAULT_MODEL)
+    prefs.set_api_key("gemini-key", provider_key="gemini")
+    prefs.set_api_key("nvidia-key", provider_key="nvidia")
+    return {
+        "prefs": prefs,
+        "cache": TranslationCache(tmp_path / "cache"),
+        "usage": UsageService(tmp_path / "usage"),
+        "storage": StorageService(tmp_path / "storage"),
+    }
+
+
+def _fallback_context() -> PipelineState:
+    return PipelineState(
+        chapter_url="test",
+        novel_id="novel1",
+        chapter_id="chapter_001",
+        provider_key="gemini",
+        provider_model=settings.PROVIDER_GEMINI_DEFAULT_MODEL,
+        translation_chunks=[
+            TranslationChunk(
+                chunk_id="c0001",
+                novel_id="novel1",
+                chapter_ids=["chapter_001"],
+                paragraph_ids=["p0001"],
+                source_text="源テキスト",
+                char_count=4,
+            )
+        ],
+        metadata={"source_language": "Japanese", "target_language": "English"},
+    )
 
 
 class _FailingStage(PipelineStage):
@@ -164,6 +243,71 @@ async def test_smart_segment_stage_is_deterministic():
 def test_paragraph_source_hash_is_stable_and_line_ending_normalized():
     assert paragraph_source_hash("Alpha\r\nBeta") == paragraph_source_hash("Alpha\nBeta")
     assert paragraph_source_hash("Alpha\nBeta") != paragraph_source_hash("Alpha\nGamma")
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_default_fallback_order_is_gemini_then_nvidia(tmp_path):
+    env = _fallback_stage_env(tmp_path)
+    gemini_provider = _FallbackContractProvider("gemini")
+    nvidia_provider = _FallbackContractProvider("nvidia")
+    stage = TranslateStage(
+        provider_factory=lambda key: gemini_provider if key == "gemini" else nvidia_provider,
+        cache=env["cache"],
+        settings_service=env["prefs"],
+        usage_service=env["usage"],
+        storage=env["storage"],
+    )
+
+    scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
+    model_states = scheduler.to_model_state_list()
+
+    assert [(item["provider_key"], item["provider_model"]) for item in model_states[:2]] == [
+        ("gemini", "gemini-3.1-flash-lite"),
+        ("nvidia", "google/gemma-4-31b-it"),
+    ]
+    assert ("gemini", "gemini-2.5-flash-lite") not in [
+        (item["provider_key"], item["provider_model"]) for item in model_states
+    ]
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_gemini_quota_falls_back_to_nvidia(tmp_path):
+    env = _fallback_stage_env(tmp_path)
+    gemini_provider = _FallbackContractProvider("gemini", error_code=ProviderErrorCode.QUOTA_EXHAUSTED)
+    nvidia_provider = _FallbackContractProvider("nvidia")
+    stage = TranslateStage(
+        provider_factory=lambda key: gemini_provider if key == "gemini" else nvidia_provider,
+        cache=env["cache"],
+        settings_service=env["prefs"],
+        usage_service=env["usage"],
+        storage=env["storage"],
+    )
+
+    result = await stage.run(_fallback_context())
+
+    assert gemini_provider.models_seen == ["gemini-3.1-flash-lite"]
+    assert nvidia_provider.models_seen == ["google/gemma-4-31b-it"]
+    assert result.translations == ["Translated paragraph."]
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_gemini_unknown_error_does_not_fallback_to_nvidia(tmp_path):
+    env = _fallback_stage_env(tmp_path)
+    gemini_provider = _FallbackContractProvider("gemini", error_code=ProviderErrorCode.UNKNOWN)
+    nvidia_provider = _FallbackContractProvider("nvidia")
+    stage = TranslateStage(
+        provider_factory=lambda key: gemini_provider if key == "gemini" else nvidia_provider,
+        cache=env["cache"],
+        settings_service=env["prefs"],
+        usage_service=env["usage"],
+        storage=env["storage"],
+    )
+
+    with pytest.raises(ProviderError):
+        await stage.run(_fallback_context())
+
+    assert gemini_provider.models_seen == ["gemini-3.1-flash-lite"]
+    assert nvidia_provider.models_seen == []
 
 
 @pytest.mark.asyncio

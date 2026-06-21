@@ -30,7 +30,7 @@ from novelai.translation.qa import (
 
 logger = logging.getLogger(__name__)
 
-_METADATA_TRANSLATION_PROMPT_SOURCES = {"gemini", "openai"}
+_METADATA_TRANSLATION_PROMPT_SOURCES = {"gemini", "nvidia"}
 _CJK_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
 _GENERIC_TITLE_RE = re.compile(
     r"^\s*(?:episode|chapter|part|volume|section|arc)(?:\s+[\w.-]+)?\s*$",
@@ -605,7 +605,7 @@ async def _translate_text(
     if provider_key == "dummy":
         if field is not None:
             raise RuntimeError(
-                "Metadata translation skipped because no active Gemini/OpenAI provider is configured. "
+                "Metadata translation skipped because no active Gemini/NVIDIA provider is configured. "
                 "Add and use a provider API token in Settings."
             )
         return normalized
@@ -740,7 +740,7 @@ async def _translate_metadata_batch(
     provider_model = str(resolved_provider_model)
     if provider_key == "dummy":
         raise RuntimeError(
-            "Metadata translation skipped because no active Gemini/OpenAI provider is configured. "
+            "Metadata translation skipped because no active Gemini/NVIDIA provider is configured. "
             "Add and use a provider API token in Settings."
         )
 

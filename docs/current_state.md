@@ -201,7 +201,7 @@ backend/src/novelai/
 ├── infrastructure/   HTTP fetching, throttle, cache
 ├── inputs/           Non-web input adapters
 ├── prompts/          Prompt builders, templates, parsing
-├── providers/        LLM provider interfaces (Gemini, OpenAI)
+├── providers/        LLM provider interfaces (Gemini, NVIDIA)
 ├── runtime/          CLI, bootstrap, container
 ├── services/         Application use cases, orchestration
 ├── shared/           Cross-domain protocols, pipeline contracts

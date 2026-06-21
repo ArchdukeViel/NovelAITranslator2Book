@@ -52,7 +52,7 @@ every later phase silently violates the project's own highest authority.
 
 **Scope distinction:** The notes' "public users" (read, save to library, track
 progress, rate, request) are a *lighter* model than architecture.md's blocked
-"public contribution credentials" (users donating Gemini/OpenAI API keys). This
+"public contribution credentials" (users donating Gemini/NVIDIA API keys). This
 plan implements the lighter read/user model and keeps credential-contribution
 explicitly out of scope (still blocked).
 

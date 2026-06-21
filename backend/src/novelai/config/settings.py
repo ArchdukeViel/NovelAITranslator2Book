@@ -7,6 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 GEMINI_DEFAULT_MODEL = "gemini-3.1-flash-lite"
+NVIDIA_DEFAULT_MODEL = "google/gemma-4-31b-it"
+NVIDIA_DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 
 def _default_novel_library_dir() -> Path:
@@ -57,26 +59,20 @@ class AppSettings(BaseSettings):
 
     # --- Provider / Model
     PROVIDER_DEFAULT: str = "dummy"
-    PROVIDER_OPENAI_API_KEY: SecretStr | None = None
     PROVIDER_GEMINI_API_KEY: SecretStr | None = None
+    NVIDIA_API_KEY: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("NVIDIA_API_KEY", "PROVIDER_NVIDIA_API_KEY"),
+    )
+    NVIDIA_BASE_URL: str = NVIDIA_DEFAULT_BASE_URL
+    NVIDIA_DEFAULT_MODEL: str = NVIDIA_DEFAULT_MODEL
+    NVIDIA_TIMEOUT_SECONDS: float = 60.0
     PROVIDER_GEMINI_DEFAULT_MODEL: str = GEMINI_DEFAULT_MODEL
     PROVIDER_GEMINI_MODEL_FALLBACKS: list[str] = Field(
-        default_factory=lambda: [
-            GEMINI_DEFAULT_MODEL,
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-pro",
-            "gemini-3-flash-preview",
-            "gemini-3-pro-preview",
-            "gemini-3.1-flash-preview",
-            "gemini-3.1-pro-preview",
-            "gemini-3.1-flash-lite-preview",
-            "gemini-flash-latest",
-            "gemini-pro-latest",
-        ],
+        default_factory=list,
         description=(
-            "Gemini text model fallback order. Override with a JSON list if Google AI Studio "
-            "enables newer series such as Gemini 3.1 for your account."
+            "Optional Gemini-only text model fallback order. Defaults empty so the standard "
+            "cross-provider fallback can try NVIDIA before older Gemini models."
         ),
     )
 

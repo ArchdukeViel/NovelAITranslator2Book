@@ -32,7 +32,8 @@ Install:
 - Node.js LTS with npm
 - Git
 - Docker Desktop, only if you want the production-like Compose run
-- Gemini or OpenAI API key for real translation
+- Gemini API key for primary real translation
+- NVIDIA API key if you want the Gemma fallback provider
 
 Check versions:
 
@@ -58,7 +59,7 @@ cd "C:\Akmal\Novel AI"
 
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -e ".[documents,openai,gemini,dev,db,worker]"
+.\.venv\Scripts\python.exe -m pip install -e ".[documents,gemini,dev,db,worker]"
 ```
 
 Activate the virtual environment when working manually:
@@ -98,7 +99,9 @@ Useful local values:
 NOVEL_LIBRARY_DIR=storage/novel_library
 PROVIDER_DEFAULT=gemini
 PROVIDER_GEMINI_API_KEY=your_gemini_key_here
-PROVIDER_OPENAI_API_KEY=your_openai_key_here
+NVIDIA_API_KEY=your_nvidia_key_here
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_DEFAULT_MODEL=google/gemma-4-31b-it
 TRANSLATION_TARGET_LANGUAGE=English
 LOG_LEVEL=INFO
 WEB_RATE_LIMITER_BACKEND=memory

@@ -150,7 +150,7 @@ class NovelOrchestrationService:
 
     @staticmethod
     def _provider_requires_api_key(provider_key: str) -> bool:
-        return provider_key in {"openai", "gemini"}
+        return provider_key in {"gemini", "nvidia"}
 
 
     @staticmethod
@@ -263,10 +263,7 @@ class NovelOrchestrationService:
         model = provider_model or self._settings.get_provider_model()
         if self._provider_requires_api_key(key) and not self._settings.get_api_key(key):
             if not self._missing_api_key_warning_emitted:
-                if key == "openai":
-                    logger.warning("OpenAI API key missing; falling back to dummy provider for metadata translation.")
-                else:
-                    logger.warning("%s API key missing; falling back to dummy provider.", key.capitalize())
+                logger.warning("%s API key missing; falling back to dummy provider.", key.capitalize())
                 self._missing_api_key_warning_emitted = True
             return "dummy", "dummy"
         self._missing_api_key_warning_emitted = False

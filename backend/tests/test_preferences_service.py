@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 
 from novelai.config.workflow_profiles import WORKFLOW_PROFILE_STEPS
+from novelai.config.settings import settings
 from novelai.services.preferences_service import PreferencesService
 
 _TMP = Path(__file__).resolve().parent / ".tmp" / "prefs"
@@ -47,12 +48,12 @@ class TestPreferencesService:
 
     def test_set_preferred_provider(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
-        svc.set_preferred_provider("openai")
-        assert svc.get_preferred_provider() == "openai"
+        svc.set_preferred_provider("nvidia")
+        assert svc.get_preferred_provider() == "nvidia"
 
     def test_preferred_model_default(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
-        assert svc.get_preferred_model() == "gpt-5.4"
+        assert svc.get_preferred_model() == settings.PROVIDER_GEMINI_DEFAULT_MODEL
 
     def test_theme_default(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
@@ -69,19 +70,19 @@ class TestPreferencesService:
 
     def test_workflow_profile_accepts_legacy_step_alias(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
-        svc.set_workflow_profile("term_translation", provider="openai", model="gpt-5.4")
+        svc.set_workflow_profile("term_translation", provider="nvidia", model="google/gemma-4-31b-it")
         profile = svc.get_workflow_profile("glossary_translation")
-        assert profile["provider"] == "openai"
-        assert profile["model"] == "gpt-5.4"
+        assert profile["provider"] == "nvidia"
+        assert profile["model"] == "google/gemma-4-31b-it"
 
     def test_llm_step_config_migrates_from_workflow_profile(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
-        svc.set_workflow_profile("glossary_translation", provider="openai", model="gpt-5.4")
+        svc.set_workflow_profile("glossary_translation", provider="nvidia", model="google/gemma-4-31b-it")
 
         reloaded = PreferencesService(storage_dir=prefs_dir)
         step_config = reloaded.get_llm_step_config("glossary_translation")
-        assert step_config["provider"] == "openai"
-        assert step_config["model"] == "gpt-5.4"
+        assert step_config["provider"] == "nvidia"
+        assert step_config["model"] == "google/gemma-4-31b-it"
 
     def test_provider_specific_runtime_api_key_methods(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
@@ -89,3 +90,14 @@ class TestPreferencesService:
         assert svc.get_api_key("gemini") == "gemini-key"
         svc.clear_api_key(provider_key="gemini")
         assert svc.get_api_key("gemini") is None
+        svc.set_api_key("nvidia-key", provider_key="nvidia")
+        assert svc.get_api_key("nvidia") == "nvidia-key"
+        svc.clear_api_key(provider_key="nvidia")
+        assert svc.get_api_key("nvidia") is None
+
+    def test_nvidia_provider_model_cleans_stale_gpt_default(self, prefs_dir: Path) -> None:
+        svc = PreferencesService(storage_dir=prefs_dir)
+        svc.set_preferred_provider("nvidia")
+        svc.set_preferred_model("gpt-5.4")
+
+        assert svc.get_provider_model() == "google/gemma-4-31b-it"
