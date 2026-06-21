@@ -145,6 +145,20 @@ class CatalogProjectionBulkRefreshResponse(BaseModel):
     details_truncated: bool = False
 
 
+class CatalogPublicationResponse(BaseModel):
+    novel_id: str
+    title: str
+    source_title: str | None = None
+    is_published: bool
+    chapter_count: int
+    translated_count: int
+    latest_chapter_id: str | None = None
+    latest_chapter_number: int | None = None
+    latest_chapter_title: str | None = None
+    publication_status: str
+    visibility_warnings: list[str] = []
+
+
 class ChapterSummary(BaseModel):
     id: str
     title: str | None = None
@@ -409,6 +423,28 @@ def _db_novel_summary(novel: Novel) -> NovelSummary:
     )
 
 
+def _catalog_publication_response(
+    novel: Novel,
+    *,
+    visibility_warnings: list[str] | None = None,
+) -> CatalogPublicationResponse:
+    source_title = novel.original_title if novel.original_title and novel.original_title != novel.title else None
+    publication_status = normalize_publication_status(novel.publication_status or novel.status)
+    return CatalogPublicationResponse(
+        novel_id=novel.slug,
+        title=_optional_string(novel.title) or novel.slug,
+        source_title=source_title,
+        is_published=novel.is_published,
+        chapter_count=novel.chapter_count,
+        translated_count=novel.translated_count,
+        latest_chapter_id=novel.latest_chapter_id,
+        latest_chapter_number=novel.latest_chapter_number,
+        latest_chapter_title=novel.latest_chapter_title,
+        publication_status=publication_status,
+        visibility_warnings=visibility_warnings or [],
+    )
+
+
 def _storage_novel_summary(
     novel_id: str,
     meta: dict[str, Any],
@@ -625,6 +661,47 @@ async def refresh_catalog_projection(
         changed_fields=result.changed_fields,
         before=result.before,
         after=result.after,
+    )
+
+
+@router.post("/{novel_id}/publish", response_model=CatalogPublicationResponse)
+async def publish_novel(
+    novel_id: str,
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+    db: Session = Depends(get_db_session),
+) -> CatalogPublicationResponse:
+    try:
+        result = CatalogService(storage=storage, session=db).set_publication_state(
+            novel_id,
+            is_published=True,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    if result is None:
+        raise HTTPException(status_code=404, detail="Novel not found")
+    return _catalog_publication_response(
+        result.novel,
+        visibility_warnings=result.visibility_warnings,
+    )
+
+
+@router.post("/{novel_id}/unpublish", response_model=CatalogPublicationResponse)
+async def unpublish_novel(
+    novel_id: str,
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+    db: Session = Depends(get_db_session),
+) -> CatalogPublicationResponse:
+    result = CatalogService(storage=storage, session=db).set_publication_state(
+        novel_id,
+        is_published=False,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Novel not found")
+    return _catalog_publication_response(
+        result.novel,
+        visibility_warnings=result.visibility_warnings,
     )
 
 

@@ -72,6 +72,12 @@ class CatalogProjectionBulkReconciliation:
     details_truncated: bool = False
 
 
+@dataclass(frozen=True)
+class CatalogPublicationResult:
+    novel: Novel
+    visibility_warnings: list[str]
+
+
 def _sha256(text: str) -> str:
     """Return a hex SHA-256 digest for a text string."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -529,6 +535,33 @@ class CatalogService:
             candidates.append(novel_id)
 
         return candidates
+
+    def set_publication_state(
+        self,
+        novel_id: str,
+        *,
+        is_published: bool,
+    ) -> CatalogPublicationResult | None:
+        """Refresh projection and publish/unpublish a translated catalog novel."""
+        reconciliation = self.reconcile_catalog_projection(novel_id)
+        if reconciliation is None:
+            return None
+
+        novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        if novel is None:
+            return None
+
+        if is_published and novel.translated_count <= 0:
+            raise ValueError("Cannot publish a novel without translated chapters.")
+
+        novel.is_published = is_published
+        self._session.add(novel)
+        self._session.flush()
+
+        visibility_warnings: list[str] = []
+        if is_published and any(genre.is_adult for genre in novel.genres if genre.is_active):
+            visibility_warnings.append("adult_hidden_by_default")
+        return CatalogPublicationResult(novel=novel, visibility_warnings=visibility_warnings)
 
     def _latest_translated_chapter(
         self,
