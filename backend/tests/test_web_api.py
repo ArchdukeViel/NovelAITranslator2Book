@@ -1159,7 +1159,7 @@ class TestListDetail:
             title="Old DB Novel",
             updated_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
         )
-        _seed_db_novel(
+        new_db = _seed_db_novel(
             isolated_db_session,
             "new-db",
             title="New DB Novel",
@@ -1169,8 +1169,14 @@ class TestListDetail:
             publication_status="completed",
             chapter_count=12,
             translated_count=4,
+            is_published=True,
             updated_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
         )
+        new_db.original_title = "新しいDB小説"
+        new_db.latest_chapter_id = "4"
+        new_db.latest_chapter_number = 4
+        new_db.latest_chapter_title = "Fourth Chapter"
+        isolated_db_session.commit()
         monkeypatch.setattr(
             storage,
             "list_novels",
@@ -1186,6 +1192,7 @@ class TestListDetail:
         assert data[0] == {
             "novel_id": "new-db",
             "title": "New DB Novel",
+            "source_title": "新しいDB小説",
             "author": "DB Author",
             "source": "syosetu_ncode",
             "source_url": "https://ncode.syosetu.com/n1234ab/",
@@ -1193,6 +1200,10 @@ class TestListDetail:
             "chapter_count": 12,
             "scraped_count": 12,
             "translated_count": 4,
+            "is_published": True,
+            "latest_chapter_id": "4",
+            "latest_chapter_number": 4,
+            "latest_chapter_title": "Fourth Chapter",
         }
 
     def test_admin_list_limit_offset_use_db_pagination(
@@ -1274,6 +1285,7 @@ class TestListDetail:
             {
                 "novel_id": "n0813kx",
                 "title": "n0813kx",
+                "source_title": None,
                 "author": None,
                 "source": None,
                 "source_url": None,
@@ -1281,6 +1293,10 @@ class TestListDetail:
                 "chapter_count": 1,
                 "scraped_count": 1,
                 "translated_count": 0,
+                "is_published": False,
+                "latest_chapter_id": None,
+                "latest_chapter_number": None,
+                "latest_chapter_title": None,
             }
         ]
 

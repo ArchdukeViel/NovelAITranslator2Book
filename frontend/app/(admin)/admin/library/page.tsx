@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { compareSortableValues, useSortableTable } from "@/hooks/use-sortable-table";
-import { api, type ActivityRecord, type ChapterSummary, type NovelMetadata, type NovelSummary } from "@/lib/api";
+import { api, type ActivityRecord, type ChapterSummary, type NovelMetadata, type NovelPublicationSummary, type NovelSummary } from "@/lib/api";
 
 type LibrarySortKey = "novel" | "source" | "listed" | "raw" | "translated" | "status";
 type LibraryAction = "translate" | "recrawl" | "delete";
@@ -72,6 +72,21 @@ function metadataText(metadata: NovelMetadata | undefined, key: string) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function applyPublicationSummary(row: NovelSummary, result: NovelPublicationSummary): NovelSummary {
+  return {
+    ...row,
+    title: result.title,
+    source_title: result.source_title,
+    chapter_count: result.chapter_count,
+    translated_count: result.translated_count,
+    is_published: result.is_published,
+    latest_chapter_id: result.latest_chapter_id,
+    latest_chapter_number: result.latest_chapter_number,
+    latest_chapter_title: result.latest_chapter_title,
+    publication_status: result.publication_status,
+  };
+}
+
 function chapterSortValue(chapter: ChapterSummary) {
   const parsed = Number(chapter.id);
   return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
@@ -84,6 +99,7 @@ export default function LibraryPage() {
   const [pendingDeleteRows, setPendingDeleteRows] = React.useState<NovelSummary[] | null>(null);
   const [translationNovel, setTranslationNovel] = React.useState<NovelSummary | null>(null);
   const [taxonomyNovel, setTaxonomyNovel] = React.useState<NovelSummary | null>(null);
+  const [publicationNotice, setPublicationNotice] = React.useState<string | null>(null);
   const [translationLanguage, setTranslationLanguage] = React.useState<(typeof TRANSLATION_LANGUAGES)[number]>("English");
   const [selectedTranslationChapterIds, setSelectedTranslationChapterIds] = React.useState<Set<string>>(new Set());
   // Note: activeGeminiToken removed - provider credential now comes from Admin_API, server-managed (Task 4)
@@ -246,6 +262,24 @@ export default function LibraryPage() {
     }
   });
 
+  const publishNovel = useMutation({
+    mutationFn: async ({ novel, publish }: { novel: NovelSummary; publish: boolean }) => {
+      return publish ? api.publishNovel(novel.novel_id) : api.unpublishNovel(novel.novel_id);
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData<NovelSummary[]>(["novels"], (current) =>
+        Array.isArray(current)
+          ? current.map((row) => row.novel_id === result.novel_id ? applyPublicationSummary(row, result) : row)
+          : current
+      );
+      setPublicationNotice(
+        result.visibility_warnings.includes("adult_hidden_by_default")
+          ? "Published adult novels remain hidden from the default public catalog."
+          : null
+      );
+    }
+  });
+
   const toggleAllRows = () => {
     setSelectedNovelIds(allRowsSelected ? new Set() : new Set(rows.map((novel) => novel.novel_id)));
   };
@@ -318,6 +352,14 @@ export default function LibraryPage() {
     runLibraryAction.mutate({ action, novels: actionRows });
   };
 
+  const runPublishAction = (novel: NovelSummary, publish: boolean) => {
+    if (publishNovel.isPending) {
+      return;
+    }
+    setPublicationNotice(null);
+    publishNovel.mutate({ novel, publish });
+  };
+
   const dialogTitle =
     metadataText(translationMetadata.data, "translated_title") ||
     translationNovel?.title ||
@@ -387,7 +429,13 @@ export default function LibraryPage() {
           </div>
         </PanelHeader>
         <ErrorBanner error={runLibraryAction.error} fallback="Failed to run library action." />
+        <ErrorBanner error={publishNovel.error} fallback="Failed to update publication state." />
         <ErrorBanner error={novels.error} fallback="Failed to load novels." />
+        {publicationNotice ? (
+          <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            {publicationNotice}
+          </div>
+        ) : null}
         {unexpectedPayload ? (
           <div className="border-t px-4 py-3 text-sm text-destructive">
             Unexpected novels payload. Expected an array.
@@ -470,12 +518,14 @@ export default function LibraryPage() {
                           <LibraryRowActions
                             novel={novel}
                             missingSource={missingSource}
-                            pending={runLibraryAction.isPending}
+                            pending={runLibraryAction.isPending || publishNovel.isPending}
                             translationPending={runTranslationDialog.isPending}
                             onTranslate={(row) => runAction("translate", [row])}
                             onRecrawl={(row) => runAction("recrawl", [row])}
                             onDelete={(row) => runAction("delete", [row])}
                             onEditTaxonomy={openTaxonomyDialog}
+                            onPublish={(row) => runPublishAction(row, true)}
+                            onUnpublish={(row) => runPublishAction(row, false)}
                           />
                         </td>
                       </tr>

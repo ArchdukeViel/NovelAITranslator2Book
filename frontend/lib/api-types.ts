@@ -11,12 +11,32 @@ export type ApiErrorPayload = {
 export type NovelSummary = {
   novel_id: string;
   title?: string | null;
+  source_title?: string | null;
   author?: string | null;
   source?: string | null;
   source_url?: string | null;
+  publication_status?: string | null;
   chapter_count: number;
   scraped_count?: number;
   translated_count?: number;
+  is_published?: boolean;
+  latest_chapter_id?: string | null;
+  latest_chapter_number?: number | null;
+  latest_chapter_title?: string | null;
+};
+
+export type NovelPublicationSummary = {
+  novel_id: string;
+  title: string;
+  source_title?: string | null;
+  is_published: boolean;
+  chapter_count: number;
+  translated_count: number;
+  latest_chapter_id?: string | null;
+  latest_chapter_number?: number | null;
+  latest_chapter_title?: string | null;
+  publication_status: string;
+  visibility_warnings: string[];
 };
 
 export type ChapterSummary = {
