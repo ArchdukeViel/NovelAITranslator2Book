@@ -379,7 +379,7 @@ owner  - authenticated single owner; dangerous operations
 
 **Verdict**: later gated phase, not in the current safe product surface.
 
-Public API contribution, where registered users donate Gemini/OpenAI provider
+Public API contribution, where registered users donate Gemini/NVIDIA provider
 quota, opens only after all of the following exist and are tested:
 
 - Real public authentication/account boundary.

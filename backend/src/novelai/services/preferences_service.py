@@ -27,8 +27,8 @@ class PreferencesService:
     - Secrets: ALWAYS from environment variables (NEVER persisted)
 
     This service stores user choices like:
-    - Which provider to use (openai vs dummy, etc)
-    - Which model to use (gpt-5.4, gpt-5.2, etc)
+    - Which provider to use (gemini, nvidia, dummy, etc)
+    - Which model to use (gemini-3.1-flash-lite, google/gemma-4-31b-it, etc)
     - User UI preferences
 
     It NEVER stores API keys or other secrets.
@@ -177,7 +177,7 @@ class PreferencesService:
 
     def get_preferred_model(self) -> str:
         """Get user's preferred translation model."""
-        return self.get("preferred_model", "gpt-5.4")
+        return self.get("preferred_model", settings.PROVIDER_GEMINI_DEFAULT_MODEL)
 
     def set_preferred_model(self, model: str) -> None:
         """Set user's preferred translation model."""
@@ -434,12 +434,14 @@ class PreferencesService:
         self.set_preferred_provider(key)
 
     def get_provider_model(self) -> str:
-        """Get preferred model with OpenAI validation."""
+        """Get preferred model with provider-aware compatibility cleanup."""
         model = self.get_preferred_model()
         provider_key = self.get_provider_key()
         if provider_key == "gemini" and model == "gpt-5.4":
             return settings.PROVIDER_GEMINI_DEFAULT_MODEL
-        if provider_key != "openai":
+        if provider_key == "nvidia" and model.startswith("gpt-"):
+            return settings.NVIDIA_DEFAULT_MODEL
+        if provider_key not in {"gemini", "nvidia"}:
             return model
         try:
             from novelai.providers.registry import available_models
@@ -459,17 +461,19 @@ class PreferencesService:
     # Runtime API key management (from environment, never persisted)
     # ============================================================================
 
-    def get_api_key(self, provider_key: str = "openai") -> str | None:
+    def get_api_key(self, provider_key: str = "gemini") -> str | None:
         """Return the runtime API key from environment-backed settings."""
         if provider_key == "gemini":
             api_key = settings.PROVIDER_GEMINI_API_KEY
+        elif provider_key == "nvidia":
+            api_key = settings.NVIDIA_API_KEY
         else:
-            api_key = settings.PROVIDER_OPENAI_API_KEY
+            return None
         if api_key is None:
             return None
         return api_key.get_secret_value()
 
-    def set_api_key(self, api_key: str, provider_key: str = "openai") -> None:
+    def set_api_key(self, api_key: str, provider_key: str = "gemini") -> None:
         """Update the runtime API key without persisting it to disk."""
         # NOTE: Do not persist API keys to process environment; store in
         # runtime settings only (SecretStr). This avoids accidental leakage
@@ -477,14 +481,20 @@ class PreferencesService:
         if provider_key == "gemini":
             settings.PROVIDER_GEMINI_API_KEY = SecretStr(api_key)
             return
-        settings.PROVIDER_OPENAI_API_KEY = SecretStr(api_key)
+        if provider_key == "nvidia":
+            settings.NVIDIA_API_KEY = SecretStr(api_key)
+            return
+        raise ValueError(f"Unsupported API key provider: {provider_key}")
 
-    def clear_api_key(self, provider_key: str = "openai") -> None:
+    def clear_api_key(self, provider_key: str = "gemini") -> None:
         """Remove the runtime API key from environment-backed settings."""
         if provider_key == "gemini":
             settings.PROVIDER_GEMINI_API_KEY = None
             return
-        settings.PROVIDER_OPENAI_API_KEY = None
+        if provider_key == "nvidia":
+            settings.NVIDIA_API_KEY = None
+            return
+        raise ValueError(f"Unsupported API key provider: {provider_key}")
 
     def get_glossary_extraction_max_terms(self) -> int:
         payload = self.get(self.GLOSSARY_EXTRACTION_KEY, {})

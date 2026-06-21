@@ -121,8 +121,8 @@ def _security_test_client() -> TestClient:
     async def provider_secret() -> None:
         raise ProviderError(
             ProviderErrorCode.UNKNOWN,
-            provider_key="openai",
-            provider_model="gpt-test",
+            provider_key="nvidia",
+            provider_model="google/gemma-test",
             message="provider failed api_key=SECRET_VALUE",
             details={"headers": {"Authorization": "Bearer SECRET_VALUE"}},
         )

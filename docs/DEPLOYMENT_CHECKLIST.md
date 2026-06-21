@@ -24,7 +24,7 @@ See `.env.example` for full reference. Critical variables:
 | `WEB_CORS_ORIGINS` | If cross-origin | Empty list (default) for same-origin behind Caddy |
 | `WEB_RATE_LIMITER_BACKEND` | Recommended | `redis` for multi-instance; `memory` for single |
 | `PROVIDER_GEMINI_API_KEY` | If using Gemini | Translation provider key |
-| `PROVIDER_OPENAI_API_KEY` | If using OpenAI | Translation provider key |
+| `NVIDIA_API_KEY` | If using NVIDIA fallback | Translation provider key |
 
 ---
 

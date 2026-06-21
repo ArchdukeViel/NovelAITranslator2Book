@@ -19,12 +19,12 @@ def bootstrap_providers() -> None:
     """Register all known translation providers."""
     from novelai.providers.dummy_provider import DummyProvider
     from novelai.providers.gemini_provider import GeminiProvider
-    from novelai.providers.openai_provider import OpenAIProvider
+    from novelai.providers.nvidia_provider import NVIDIAProvider
     from novelai.providers.registry import register_provider
 
     register_provider("dummy", lambda: DummyProvider())
-    register_provider("openai", lambda: OpenAIProvider())
     register_provider("gemini", lambda: GeminiProvider())
+    register_provider("nvidia", lambda: NVIDIAProvider())
 
 
 def bootstrap_sources() -> None:

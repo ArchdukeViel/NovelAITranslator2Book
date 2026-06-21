@@ -42,6 +42,7 @@ import novelai.db.models  # noqa: F401
 from novelai.db.models.novel import Novel
 from novelai.db.models.users import NovelRequest
 from novelai.providers.gemini_provider import GeminiProvider
+from novelai.providers.nvidia_provider import NVIDIAProvider
 from novelai.runtime.bootstrap import bootstrap
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
@@ -804,15 +805,15 @@ class _FakeGeminiClient:
 
 @pytest.fixture(autouse=True)
 def _clean_tmp():
-    old_openai_key = settings.PROVIDER_OPENAI_API_KEY
     old_gemini_key = settings.PROVIDER_GEMINI_API_KEY
+    old_nvidia_key = settings.NVIDIA_API_KEY
     novels._hits.clear()
     if _TMP.exists():
         shutil.rmtree(_TMP, ignore_errors=True)
     _TMP.mkdir(parents=True, exist_ok=True)
     yield
-    settings.PROVIDER_OPENAI_API_KEY = old_openai_key
     settings.PROVIDER_GEMINI_API_KEY = old_gemini_key
+    settings.NVIDIA_API_KEY = old_nvidia_key
     novels._hits.clear()
     shutil.rmtree(_TMP, ignore_errors=True)
 
@@ -2422,6 +2423,45 @@ class TestAdmin:
         assert canonical_resp.json()["validation_status"] == "Working"
         assert preferences.get_api_key("gemini") is None
 
+    def test_admin_provider_api_accepts_nvidia_and_rejects_openai(
+        self,
+        _no_api_key: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        bootstrap()
+        monkeypatch.setattr(settings, "NVIDIA_API_KEY", None)
+        monkeypatch.setattr(
+            NVIDIAProvider,
+            "validate_connection",
+            AsyncMock(return_value=(True, "NVIDIA model google/gemma-4-31b-it is reachable.")),
+        )
+        storage = _fresh_storage()
+        preferences = PreferencesService(_TMP / "prefs")
+        c = _make_app(storage, preferences=preferences)
+
+        status_resp = c.get("/api/admin/provider-api-key/nvidia")
+        assert status_resp.status_code == 200
+        assert status_resp.json()["provider_key"] == "nvidia"
+        assert status_resp.json()["provider_model"] == "google/gemma-4-31b-it"
+
+        set_resp = c.post(
+            "/api/admin/provider-api-key",
+            json={"provider_key": "nvidia", "api_key": "nvapi-test-key"},
+            headers=_csrf_headers(c),
+        )
+
+        assert set_resp.status_code == 200
+        assert set_resp.json()["configured"] is True
+        assert set_resp.json()["preferred_provider_key"] == "nvidia"
+        assert set_resp.json()["provider_model"] == "google/gemma-4-31b-it"
+        assert set_resp.json()["validation_status"] == "working"
+        assert preferences.get_api_key("nvidia") == "nvapi-test-key"
+        assert preferences.get_preferred_provider() == "nvidia"
+
+        openai_resp = c.get("/api/admin/provider-api-key/openai")
+        assert openai_resp.status_code == 400
+        assert "gemini, nvidia" in openai_resp.json()["detail"]
+
     def test_admin_runtime_state_can_list_refresh_and_clear(self, _no_api_key: None) -> None:
         bootstrap()
         data_dir = _TMP / "runtime_state"
@@ -2528,18 +2568,18 @@ class TestActivity:
             json={
                 "novel_id": "test-n1",
                 "chapters": "1-2",
-                "provider_key": "openai",
-                "provider_model": "gpt-5.4",
+                "provider_key": "nvidia",
+                "provider_model": "google/gemma-4-31b-it",
             },
             headers=_csrf_headers(c),
         )
         assert create_resp.status_code == 200
         created_payload = create_resp.json()
         job_id = created_payload["id"]
-        assert created_payload["provider"] == "openai"
-        assert created_payload["model"] == "gpt-5.4"
-        assert created_payload["provider_key"] == "openai"
-        assert created_payload["provider_model"] == "gpt-5.4"
+        assert created_payload["provider"] == "nvidia"
+        assert created_payload["model"] == "google/gemma-4-31b-it"
+        assert created_payload["provider_key"] == "nvidia"
+        assert created_payload["provider_model"] == "google/gemma-4-31b-it"
 
         update_resp = c.patch(
             f"/novels/activity/{job_id}",
@@ -2616,8 +2656,8 @@ class TestActivity:
         created = jobs.create_translation_activity(
             novel_id="test-n1",
             chapters="1-2",
-            provider="openai",
-            model="gpt-5.4",
+            provider="nvidia",
+            model="google/gemma-4-31b-it",
         )
         c = _make_app(storage, jobs)
 
@@ -2634,10 +2674,10 @@ class TestActivity:
         assert detail_payload["id"] == created["id"]
         assert detail_payload["activity_id"] == created["id"]
         assert detail_payload["job_id"] == created["id"]
-        assert detail_payload["provider"] == "openai"
-        assert detail_payload["model"] == "gpt-5.4"
-        assert detail_payload["provider_key"] == "openai"
-        assert detail_payload["provider_model"] == "gpt-5.4"
+        assert detail_payload["provider"] == "nvidia"
+        assert detail_payload["model"] == "google/gemma-4-31b-it"
+        assert detail_payload["provider_key"] == "nvidia"
+        assert detail_payload["provider_model"] == "google/gemma-4-31b-it"
 
     def test_activity_root_metadata_progress_fields_and_default_arrays_are_normalized(self, _no_api_key: None) -> None:
         bootstrap()

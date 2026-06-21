@@ -11,10 +11,10 @@ from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 
-API_KEY_PROVIDERS = {"gemini", "openai"}
+API_KEY_PROVIDERS = {"gemini", "nvidia"}
 DEFAULT_PROVIDER_MODELS = {
     "gemini": "gemini-3.1-flash-lite",
-    "openai": "gpt-5.4",
+    "nvidia": "google/gemma-4-31b-it",
 }
 RUNTIME_STATE_DEFINITIONS = {
     "preferences": {
@@ -161,7 +161,7 @@ class AdminService:
     def normalize_provider(self, provider: str) -> str:
         normalized = provider.strip().lower()
         if normalized not in API_KEY_PROVIDERS:
-            raise ValueError("Provider must be one of: gemini, openai")
+            raise ValueError("Provider must be one of: gemini, nvidia")
         return normalized
 
     def resolve_default_model(self, provider: str, requested_model: str | None = None) -> str:
@@ -257,7 +257,7 @@ class AdminService:
                 "model": resolved_model,
                 "provider_model": resolved_model,
                 "validation_status": "failed",
-                "validation_message": last_message or "No Gemini model candidate could be validated.",
+                "validation_message": last_message or "No provider model candidate could be validated.",
             }
         finally:
             if temporary_key is not None:

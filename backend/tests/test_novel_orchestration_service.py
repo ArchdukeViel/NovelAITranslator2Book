@@ -465,8 +465,9 @@ async def test_translation_write_path_refreshes_catalog_projection(orchestration
 def test_gemini_model_candidates_default_to_stable_flash_lite() -> None:
     candidates = model_candidates("gemini", None, ["gemini-2.5-flash"])
 
-    assert candidates[0] == GEMINI_DEFAULT_MODEL
+    assert candidates == [GEMINI_DEFAULT_MODEL]
     assert candidates[0] == "gemini-3.1-flash-lite"
+    assert "gemini-2.5-flash" not in candidates
     assert not candidates[0].endswith("-preview")
 
 
@@ -888,13 +889,13 @@ async def test_scrape_metadata_passes_max_chapter_to_source(orchestration_env) -
 
 
 @pytest.mark.asyncio
-async def test_scrape_metadata_logs_missing_openai_key_only_once(orchestration_env) -> None:
+async def test_scrape_metadata_logs_missing_nvidia_key_only_once(orchestration_env) -> None:
     provider = MockTranslationProvider(key="dummy", model="dummy")
     source = StubSource()
     settings = orchestration_env["settings"]
-    settings.set_provider_key("openai")
-    settings.set_provider_model("gpt-5.4")
-    settings.clear_api_key()
+    settings.set_provider_key("nvidia")
+    settings.set_provider_model("google/gemma-4-31b-it")
+    settings.clear_api_key("nvidia")
 
     orchestrator = NovelOrchestrationService(
         storage=orchestration_env["storage"],
@@ -910,7 +911,7 @@ async def test_scrape_metadata_logs_missing_openai_key_only_once(orchestration_e
         metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
         await orchestrator.scrape_metadata("syosetu_ncode", "novel-2", mode="update")
 
-    warning.assert_called_once_with("OpenAI API key missing; falling back to dummy provider for metadata translation.")
+    warning.assert_called_once_with("%s API key missing; falling back to dummy provider.", "Nvidia")
     assert metadata["metadata_translation_status"] == "failed"
     assert "Add and use a provider API token" in metadata["metadata_translation_error"]
     assert "translated_title" not in metadata

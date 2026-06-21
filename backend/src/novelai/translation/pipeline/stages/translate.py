@@ -87,7 +87,7 @@ class TranslateStage(PipelineStage):
         self._max_attempts_per_chunk = configured_max_attempts if configured_max_attempts > 0 else 3
 
     def _resolve_provider_and_model(self, provider_key: str, model: str) -> tuple[str, str]:
-        if provider_key in {"openai", "gemini"} and not self._settings.get_api_key(provider_key):
+        if provider_key in {"gemini", "nvidia"} and not self._settings.get_api_key(provider_key):
             logger.warning("%s API key missing; falling back to dummy provider for translation.", provider_key.capitalize())
             return "dummy", "dummy"
         return provider_key, model
@@ -344,6 +344,19 @@ class TranslateStage(PipelineStage):
         raw_policy = context.metadata.get("scheduler_models")
         if not isinstance(raw_policy, list):
             raw_policy = settings.TRANSLATION_MODEL_POLICY
+        if not raw_policy and provider_key == "gemini":
+            raw_policy = [
+                {
+                    "provider_key": "gemini",
+                    "provider_model": model,
+                    "priority_order": 0,
+                },
+                {
+                    "provider_key": "nvidia",
+                    "provider_model": settings.NVIDIA_DEFAULT_MODEL,
+                    "priority_order": 1,
+                },
+            ]
         configs = normalize_model_configs(raw_policy, default_provider_key=provider_key, default_models=candidates)
         existing_state = context.scheduler_state
         job_id = self._safe_job_id(context)
