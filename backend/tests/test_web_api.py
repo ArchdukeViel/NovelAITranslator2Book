@@ -39,6 +39,7 @@ from novelai.activity.runner import BackgroundActivityRunner
 from novelai.activity.worker import ActivityWorkerService
 from novelai.db.base import Base
 import novelai.db.models  # noqa: F401
+from novelai.db.models.genre import Genre
 from novelai.db.models.novel import Novel
 from novelai.db.models.users import NovelRequest
 from novelai.providers.gemini_provider import GeminiProvider
@@ -105,6 +106,43 @@ def _seed_db_novel(
     session.add(novel)
     session.commit()
     return novel
+
+
+def _seed_storage_catalog_metadata(
+    storage: StorageService,
+    novel_id: str,
+    *,
+    translated: bool = True,
+    translated_title: str = "Translated Public Title",
+    translated_synopsis: str = "Translated public synopsis.",
+    latest_title: str = "Translated Chapter One",
+) -> None:
+    storage.save_metadata(
+        novel_id,
+        {
+            "novel_id": novel_id,
+            "title": "原題",
+            "translated_title": translated_title,
+            "author": "Source Author",
+            "translated_author": "Translated Author",
+            "synopsis": "Source synopsis.",
+            "translated_synopsis": translated_synopsis,
+            "status": "ongoing",
+            "publication_status": "ongoing",
+            "chapters": [
+                {
+                    "id": "1",
+                    "num": 1,
+                    "title": "第一話",
+                    "translated_title": latest_title,
+                },
+                {"id": "2", "num": 2, "title": "第二話"},
+            ],
+        },
+    )
+    storage.save_chapter(novel_id, "1", "Raw text ch1", source_key="dummy", source_url="https://example.com/1")
+    if translated:
+        storage.save_translated_chapter(novel_id, "1", "Translated chapter one.", provider="dummy", model="dummy")
 
 
 def _assert_provider_mirrors(payload: dict[str, object]) -> None:
@@ -242,9 +280,11 @@ def test_router_path_method_snapshot() -> None:
         (("POST",), "/{novel_id}/export"),
         (("POST",), "/{novel_id}/import"),
         (("POST",), "/{novel_id}/preliminary-crawl"),
+        (("POST",), "/{novel_id}/publish"),
         (("POST",), "/{novel_id}/refresh-catalog-projection"),
         (("POST",), "/{novel_id}/scrape"),
         (("POST",), "/{novel_id}/translate"),
+        (("POST",), "/{novel_id}/unpublish"),
         (("PUT",), "/{novel_id}/chapters/{chapter_id}/translated"),
         (("DELETE",), "/admin/providers/{provider}"),
         (("DELETE",), "/admin/provider-api-key/{provider}"),
@@ -907,7 +947,9 @@ class TestAuth:
             ("PATCH", "/novels/activity/activity-1", {"status": "failed"}),
             ("DELETE", "/novels/activity/activity-1", None),
             ("POST", "/novels/test-n1/scrape", {"source_key": "dummy", "url": "https://example.com/n1"}),
+            ("POST", "/novels/test-n1/publish", None),
             ("POST", "/novels/test-n1/refresh-catalog-projection", None),
+            ("POST", "/novels/test-n1/unpublish", None),
             ("PUT", "/novels/test-n1/chapters/1/translated", {"text": "edited"}),
             ("POST", "/novels/test-n1/chapters/1/translated/rollback", {"version_id": "v1"}),
             ("PATCH", "/novels/requests/request-1", {"status": "approved"}),
@@ -922,7 +964,9 @@ class TestAuth:
             ("PATCH", "/api/admin/activity/activity-1", {"status": "failed"}),
             ("DELETE", "/api/admin/activity/activity-1", None),
             ("POST", "/api/admin/novels/test-n1/scrape", {"source_key": "dummy", "url": "https://example.com/n1"}),
+            ("POST", "/api/admin/novels/test-n1/publish", None),
             ("POST", "/api/admin/novels/test-n1/refresh-catalog-projection", None),
+            ("POST", "/api/admin/novels/test-n1/unpublish", None),
             ("PUT", "/api/admin/novels/test-n1/chapters/1/translated", {"text": "edited"}),
             ("POST", "/api/admin/novels/test-n1/chapters/1/translated/rollback", {"version_id": "v1"}),
             ("PATCH", "/api/admin/requests/request-1", {"status": "approved"}),
@@ -996,6 +1040,7 @@ class TestAdminCsrf:
             "/api/admin/activity/crawl",
             json={"novel_id": "test-n1", "source_key": "dummy", "kind": "chapters"},
         ).status_code == 403
+        assert c.post("/api/admin/novels/test-n1/publish").status_code == 403
         assert c.post("/api/admin/novels/test-n1/refresh-catalog-projection").status_code == 403
         assert c.put(
             "/api/admin/novels/test-n1/taxonomy",
@@ -2095,6 +2140,176 @@ class TestListDetail:
         )
 
         assert resp.status_code == 404
+
+
+class TestAdminNovelPublish:
+    def test_publish_requires_owner_and_csrf(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_storage_catalog_metadata(storage, "publish-auth")
+        owner = _make_app(storage, db_session=isolated_db_session)
+        guest = _make_app(storage, session_user=None, db_session=isolated_db_session)
+        user = _make_app(storage, session_user=REGULAR_USER, db_session=isolated_db_session)
+
+        assert owner.post("/api/admin/novels/publish-auth/publish").status_code == 403
+        assert guest.post(
+            "/api/admin/novels/publish-auth/publish",
+            headers=_csrf_headers(guest),
+        ).status_code == 401
+        assert user.post(
+            "/api/admin/novels/publish-auth/publish",
+            headers=_csrf_headers(user),
+        ).status_code == 403
+
+    def test_publish_fails_without_translated_chapter(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_storage_catalog_metadata(storage, "draft-only", translated=False)
+        c = _make_app(storage, db_session=isolated_db_session)
+
+        resp = c.post("/api/admin/novels/draft-only/publish", headers=_csrf_headers(c))
+
+        assert resp.status_code == 400
+        assert "translated chapters" in resp.json()["detail"]
+        novel = isolated_db_session.query(Novel).filter_by(slug="draft-only").one()
+        assert novel.is_published is False
+        assert novel.translated_count == 0
+
+    def test_publish_refreshes_projection_and_exposes_safe_summary(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_storage_catalog_metadata(
+            storage,
+            "publish-n1",
+            translated_title="The Translated Title",
+            translated_synopsis="A translated synopsis.",
+            latest_title="Translated Latest Chapter",
+        )
+        _seed_db_novel(
+            isolated_db_session,
+            "publish-n1",
+            title="Stale Title",
+            publication_status="unknown",
+            translated_count=0,
+            is_published=False,
+        )
+        c = _make_app(storage, db_session=isolated_db_session)
+
+        before_catalog = c.get("/api/public/catalog").json()
+        resp = c.post("/api/admin/novels/publish-n1/publish", headers=_csrf_headers(c))
+        payload = resp.json()
+        after_catalog = c.get("/api/public/catalog").json()
+        detail = c.get("/api/public/novels/publish-n1").json()
+        reader = c.get("/api/public/novels/publish-n1/chapters/1")
+
+        assert resp.status_code == 200
+        assert before_catalog["novels"] == []
+        assert payload == {
+            "novel_id": "publish-n1",
+            "title": "The Translated Title",
+            "source_title": "原題",
+            "is_published": True,
+            "chapter_count": 2,
+            "translated_count": 1,
+            "latest_chapter_id": "1",
+            "latest_chapter_number": 1,
+            "latest_chapter_title": "Translated Latest Chapter",
+            "publication_status": "ongoing",
+            "visibility_warnings": [],
+        }
+        assert "synopsis" not in payload
+        assert "source_url" not in payload
+        assert [novel["novel_id"] for novel in after_catalog["novels"]] == ["publish-n1"]
+        assert after_catalog["novels"][0]["title"] == "The Translated Title"
+        assert after_catalog["novels"][0]["latest_chapter_title"] == "Translated Latest Chapter"
+        assert detail["synopsis"] == "A translated synopsis."
+        assert reader.status_code == 200
+
+    def test_unpublish_removes_novel_from_default_public_catalog(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_storage_catalog_metadata(storage, "unpublish-n1")
+        c = _make_app(storage, db_session=isolated_db_session)
+
+        publish_resp = c.post("/api/admin/novels/unpublish-n1/publish", headers=_csrf_headers(c))
+        visible = c.get("/api/public/catalog").json()
+        unpublish_resp = c.post("/api/admin/novels/unpublish-n1/unpublish", headers=_csrf_headers(c))
+        hidden = c.get("/api/public/catalog").json()
+
+        assert publish_resp.status_code == 200
+        assert [novel["novel_id"] for novel in visible["novels"]] == ["unpublish-n1"]
+        assert unpublish_resp.status_code == 200
+        assert unpublish_resp.json()["is_published"] is False
+        assert hidden["novels"] == []
+        novel = isolated_db_session.query(Novel).filter_by(slug="unpublish-n1").one()
+        assert novel.is_published is False
+
+    def test_published_adult_novel_stays_hidden_by_default(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        storage = _fresh_storage()
+        _seed_storage_catalog_metadata(storage, "adult-publish")
+        novel = _seed_db_novel(
+            isolated_db_session,
+            "adult-publish",
+            title="Stale Adult Title",
+            is_published=False,
+        )
+        adult_genre = Genre(
+            slug="adult-romance",
+            name_ja="大人向け恋愛",
+            name_en="Adult Romance",
+            is_adult=True,
+            display_order=100,
+            is_active=True,
+        )
+        novel.genres.append(adult_genre)
+        isolated_db_session.add(adult_genre)
+        isolated_db_session.commit()
+        c = _make_app(storage, db_session=isolated_db_session)
+
+        publish_resp = c.post("/api/admin/novels/adult-publish/publish", headers=_csrf_headers(c))
+        default_catalog = c.get("/api/public/catalog").json()
+        adult_catalog = c.get("/api/public/catalog?include_adult=true").json()
+
+        assert publish_resp.status_code == 200
+        assert publish_resp.json()["visibility_warnings"] == ["adult_hidden_by_default"]
+        assert default_catalog["novels"] == []
+        assert [novel["novel_id"] for novel in adult_catalog["novels"]] == ["adult-publish"]
+
+    def test_public_route_does_not_expose_publish_operation(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        c = _make_app(_fresh_storage(), session_user=None, db_session=isolated_db_session)
+
+        resp = c.post(
+            "/api/public/novels/publish-n1/publish",
+            headers=_csrf_headers(c),
+        )
+
+        assert resp.status_code in {404, 405}
 
 
 # ---------------------------------------------------------------------------
