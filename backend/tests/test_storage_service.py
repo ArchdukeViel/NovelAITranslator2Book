@@ -532,6 +532,134 @@ def test_metadata_operations(storage):
     assert loaded["status"] == "unknown"
 
 
+def test_new_metadata_save_uses_translated_title_slug_layout(storage):
+    path = storage.save_metadata(
+        "n2056dn",
+        {
+            "title": "Source Title",
+            "translated_title": "The Silent Architect of Dreams",
+        },
+    )
+
+    loaded = storage.load_metadata("n2056dn")
+
+    assert path == storage.base_dir / "novel" / "the-silent-architect-of-dreams" / "metadata.json"
+    assert loaded is not None
+    assert loaded["novel_id"] == "n2056dn"
+    assert loaded["source_novel_id"] == "n2056dn"
+    assert loaded["storage_slug"] == "the-silent-architect-of-dreams"
+    assert loaded["folder_name"] == "novel/the-silent-architect-of-dreams"
+    assert storage._load_index()["n2056dn"]["folder_name"] == "novel/the-silent-architect-of-dreams"
+
+
+def test_metadata_save_slug_falls_back_to_title_then_novel_id(storage):
+    title_path = storage.save_metadata("n0813kx", {"title": "Only Source Title"})
+    id_path = storage.save_metadata("16817330655991571532", {})
+
+    assert title_path == storage.base_dir / "novel" / "only-source-title" / "metadata.json"
+    assert id_path == storage.base_dir / "novel" / "16817330655991571532" / "metadata.json"
+    assert storage.load_metadata("n0813kx")["storage_slug"] == "only-source-title"
+    assert storage.load_metadata("16817330655991571532")["storage_slug"] == "16817330655991571532"
+
+
+def test_metadata_storage_slug_is_windows_safe_and_bounded(storage):
+    long_title = "CON / Unsafe: Title? " + ("Very Long " * 30)
+
+    storage.save_metadata("unsafe-source", {"translated_title": long_title})
+    loaded = storage.load_metadata("unsafe-source")
+
+    assert loaded is not None
+    slug = loaded["storage_slug"]
+    assert len(slug) <= 100
+    assert "/" not in slug
+    assert "\\" not in slug
+    assert not slug.endswith((".", " "))
+    assert slug != "con"
+    assert loaded["folder_name"] == f"novel/{slug}"
+    assert (storage.base_dir / "novel" / slug / "metadata.json").exists()
+
+
+def test_metadata_storage_slug_collision_gets_stable_source_suffix(storage):
+    first = storage.save_metadata("source-a", {"translated_title": "Same Translated Title"})
+    second = storage.save_metadata("source-b", {"translated_title": "Same Translated Title"})
+
+    first_meta = storage.load_metadata("source-a")
+    second_meta = storage.load_metadata("source-b")
+
+    assert first_meta["folder_name"] == "novel/same-translated-title"
+    assert second_meta["folder_name"] == "novel/same-translated-title--source-b"
+    assert first.parent != second.parent
+    assert first.exists()
+    assert second.exists()
+
+
+def test_metadata_storage_slug_is_stable_on_title_change(storage):
+    first = storage.save_metadata("stable-source", {"translated_title": "First Title"})
+    storage.save_metadata("stable-source", {"translated_title": "Second Title"})
+
+    loaded = storage.load_metadata("stable-source")
+
+    assert loaded is not None
+    assert loaded["translated_title"] == "Second Title"
+    assert loaded["storage_slug"] == "first-title"
+    assert loaded["folder_name"] == "novel/first-title"
+    assert storage._load_index()["stable-source"]["folder_name"] == "novel/first-title"
+    assert first.exists()
+    assert not (storage.base_dir / "novel" / "second-title").exists()
+
+
+def test_legacy_indexed_source_folder_remains_readable_and_not_moved(storage):
+    legacy_dir = storage.novels_dir / "n0813kx"
+    legacy_dir.mkdir(parents=True)
+    (legacy_dir / "metadata.json").write_text(
+        json.dumps({"novel_id": "n0813kx", "title": "Legacy Title"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    storage._persist_index({"n0813kx": {"folder_name": "n0813kx", "updated_at": "2026-06-03T00:00:00Z"}})
+
+    storage.save_metadata("n0813kx", {"translated_title": "New Translated Title"})
+    loaded = storage.load_metadata("n0813kx")
+
+    assert loaded is not None
+    assert loaded["translated_title"] == "New Translated Title"
+    assert loaded["folder_name"] == "n0813kx"
+    assert loaded["storage_slug"] == "n0813kx"
+    assert (legacy_dir / "metadata.json").exists()
+    assert not (storage.base_dir / "novel" / "new-translated-title").exists()
+    assert storage._get_folder_name("n0813kx") == "n0813kx"
+
+
+def test_title_slug_storage_subpaths_resolve_under_mapped_folder(storage):
+    storage.save_metadata("mapped-source", {"translated_title": "Mapped Folder"})
+    stored_asset = storage.save_chapter_image_asset(
+        "mapped-source",
+        "1",
+        image_index=0,
+        content=b"asset",
+        source_url="https://example.com/a.png",
+        content_type="image/png",
+    )
+    storage.save_chapter(
+        "mapped-source",
+        "1",
+        "Raw text",
+        images=[{"index": 0, "placeholder": "[Image]", **stored_asset}],
+    )
+    storage.save_translated_chapter("mapped-source", "1", "Translated text")
+    storage.create_checkpoint("mapped-source", "1", "resume")
+    storage.save_metadata("mapped-source", {"translated_title": "Mapped Folder Updated"})
+
+    novel_dir = storage.base_dir / "novel" / "mapped-folder"
+
+    assert (novel_dir / "chapters" / "1.json").exists()
+    assert (novel_dir / "checkpoints").exists()
+    assert (novel_dir / "assets" / "images" / "1" / "0000.png").exists()
+    assert (novel_dir / "metadata_backups").exists()
+    assert storage.load_translated_chapter("mapped-source", "1")["text"] == "Translated text"
+    assert storage.load_chapter_export_images("mapped-source", "1")[0]["local_path"] == stored_asset["local_path"]
+    assert storage.list_metadata_history("mapped-source")[0]["snapshot_id"] == "current"
+
+
 def test_metadata_normalizes_publication_status(storage):
     storage.save_metadata("novel1", {"title": "Test Novel", "publication_status": "Finished"})
 

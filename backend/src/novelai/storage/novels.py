@@ -4,9 +4,12 @@ import json
 import logging
 import re
 import shutil
+import hashlib
+import unicodedata
 from pathlib import Path
 from typing import Any
 
+from novelai.core.security import safe_child_path
 from novelai.config.workflow_profiles import normalize_workflow_profiles
 from novelai.core.security import validate_storage_identifier
 from novelai.sources.status import normalize_publication_status
@@ -19,6 +22,16 @@ _SYOSETU_NCODE_PATTERN = re.compile(r"^n\d{4}[a-z]{2}$", re.IGNORECASE)
 _LEGACY_SYOSETU_NCODE_FOLDER_PATTERN = re.compile(r"^\d{4}[a-z]{2}$", re.IGNORECASE)
 METADATA_BACKUP_DIRNAME = "metadata_backups"
 METADATA_BACKUP_RETENTION = 5
+TITLE_SLUG_DIRNAME = "novel"
+STORAGE_SLUG_MAX_LENGTH = 100
+_WINDOWS_RESERVED_NAMES = {
+    "con",
+    "prn",
+    "aux",
+    "nul",
+    *(f"com{index}" for index in range(1, 10)),
+    *(f"lpt{index}" for index in range(1, 10)),
+}
 
 def _index_path(self: Any) -> Path:
     return self.novels_dir / self.INDEX_FILENAME
@@ -182,9 +195,105 @@ def load_metadata_snapshot(self: Any, novel_id: str, snapshot_id: str) -> dict[s
     }
 
 
+def _storage_slug_source(novel_id: str, metadata: dict[str, Any]) -> str:
+    for key in ("translated_title", "title"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return novel_id
+
+
+def _storage_slug_from_text(text: str, *, fallback_source_id: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii").lower()
+    ascii_text = re.sub(r"[\x00-\x1f\x7f]+", " ", ascii_text)
+    ascii_text = ascii_text.replace("/", " ").replace("\\", " ")
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_text)
+    slug = slug.strip("-._ ")
+    slug = slug[:STORAGE_SLUG_MAX_LENGTH].strip("-._ ")
+    fallback = re.sub(r"[^a-z0-9]+", "-", fallback_source_id.lower()).strip("-._ ")
+    if not slug:
+        slug = f"novel-{fallback or 'unknown'}"
+    if slug in _WINDOWS_RESERVED_NAMES:
+        slug = f"novel-{slug}"
+    return slug[:STORAGE_SLUG_MAX_LENGTH].strip("-._ ") or "novel"
+
+
+def _source_suffix(novel_id: str) -> str:
+    return _storage_slug_from_text(novel_id, fallback_source_id=novel_id)
+
+
+def _validate_folder_name(self: Any, folder_name: str) -> str:
+    cleaned = folder_name.strip().replace("\\", "/")
+    parts = [part for part in cleaned.split("/") if part]
+    if len(parts) == 1:
+        return validate_storage_identifier(parts[0], "folder_name")
+    if len(parts) == 2 and parts[0] == TITLE_SLUG_DIRNAME:
+        slug = validate_storage_identifier(parts[1], "storage_slug")
+        if slug.lower() in _WINDOWS_RESERVED_NAMES:
+            raise ValueError("storage_slug must not be a Windows reserved name.")
+        return f"{TITLE_SLUG_DIRNAME}/{slug}"
+    raise ValueError("folder_name must be a legacy folder or novel/{storage_slug}.")
+
+
+def _folder_path(self: Any, folder_name: str) -> Path:
+    folder_name = self._validate_folder_name(folder_name)
+    if folder_name.startswith(f"{TITLE_SLUG_DIRNAME}/"):
+        return safe_child_path(self.base_dir, folder_name)
+    return self.novels_dir / folder_name
+
+
+def _folder_in_use_by_other_novel(self: Any, folder_name: str, novel_id: str, index: dict[str, dict[str, Any]]) -> bool:
+    for indexed_id, entry in index.items():
+        if indexed_id == novel_id or not isinstance(entry, dict):
+            continue
+        if entry.get("folder_name") == folder_name:
+            return True
+
+    folder_path = self._folder_path(folder_name)
+    if not folder_path.exists():
+        return False
+    metadata_path = folder_path / "metadata.json"
+    if not metadata_path.exists():
+        return True
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return True
+    if not isinstance(payload, dict):
+        return True
+    return self._clean_string(payload.get("novel_id")) != novel_id
+
+
 def _compute_folder_name(self: Any, novel_id: str, metadata: dict[str, Any]) -> str:
     """Return a stable folder name for a novel."""
-    return self._sanitize_folder_name(novel_id)
+    index = self._load_index()
+    existing_entry = index.get(novel_id)
+    existing_folder = existing_entry.get("folder_name") if isinstance(existing_entry, dict) else None
+    if isinstance(existing_folder, str) and existing_folder.strip():
+        return self._validate_folder_name(existing_folder)
+
+    current_folder = self._get_folder_name(novel_id)
+    if self._folder_path(current_folder).exists():
+        return self._validate_folder_name(current_folder)
+
+    source = _storage_slug_source(novel_id, metadata)
+    storage_slug = _storage_slug_from_text(source, fallback_source_id=novel_id)
+    folder_name = f"{TITLE_SLUG_DIRNAME}/{storage_slug}"
+    if not self._folder_in_use_by_other_novel(folder_name, novel_id, index):
+        return folder_name
+
+    suffix = _source_suffix(novel_id)
+    storage_slug = f"{storage_slug}--{suffix}"[:STORAGE_SLUG_MAX_LENGTH].strip("-._ ")
+    folder_name = f"{TITLE_SLUG_DIRNAME}/{storage_slug}"
+    if not self._folder_in_use_by_other_novel(folder_name, novel_id, index):
+        return folder_name
+
+    source_hash = hashlib.sha256(
+        f"{novel_id}:{metadata.get('source_url') or ''}".encode("utf-8")
+    ).hexdigest()[:8]
+    storage_slug = f"{storage_slug}--{source_hash}"[:STORAGE_SLUG_MAX_LENGTH].strip("-._ ")
+    return f"{TITLE_SLUG_DIRNAME}/{storage_slug}"
 
 
 def _normalize_library_novel_id(self: Any, value: Any) -> str | None:
@@ -215,15 +324,15 @@ def _get_folder_name(self: Any, novel_id: str) -> str:
     folder_name = entry.get("folder_name") if isinstance(entry, dict) else None
     if isinstance(folder_name, str):
         try:
-            folder_name = validate_storage_identifier(folder_name, "folder_name")
+            folder_name = self._validate_folder_name(folder_name)
         except ValueError:
             logger.warning("Ignoring unsafe folder name in novel index for %s.", normalized_id)
             folder_name = None
-    if folder_name and (self.novels_dir / folder_name).exists():
+    if folder_name and self._folder_path(folder_name).exists():
         return folder_name
 
     for candidate in self._legacy_folder_candidates(normalized_id):
-        if (self.novels_dir / candidate).exists():
+        if self._folder_path(candidate).exists():
             return candidate
     if folder_name:
         return folder_name
@@ -232,7 +341,7 @@ def _get_folder_name(self: Any, novel_id: str) -> str:
 
 def _novel_dir(self: Any, novel_id: str) -> Path:
     folder = self._get_folder_name(novel_id)
-    return self.novels_dir / folder
+    return self._folder_path(folder)
 
 
 def _ensure_novel_dir(self: Any, novel_id: str, folder_name: str) -> Path:
@@ -241,26 +350,12 @@ def _ensure_novel_dir(self: Any, novel_id: str, folder_name: str) -> Path:
     entry = index.get(novel_id, {})
     old_folder = entry.get("folder_name")
 
-    # If the folder name has changed, rename the existing folder to preserve data.
-    if old_folder and old_folder != folder_name:
-        old_dir = self.novels_dir / old_folder
-        new_dir = self.novels_dir / folder_name
-        if old_dir.exists() and not new_dir.exists():
-            shutil.move(str(old_dir), str(new_dir))
-        elif old_dir.exists() and new_dir.exists():
-            for child in old_dir.iterdir():
-                target = new_dir / child.name
-                if not target.exists():
-                    shutil.move(str(child), str(target))
-                    continue
-                if child.is_dir() and target.is_dir():
-                    for nested in child.iterdir():
-                        nested_target = target / nested.name
-                        if not nested_target.exists():
-                            shutil.move(str(nested), str(nested_target))
-            shutil.rmtree(old_dir, ignore_errors=True)
+    if isinstance(old_folder, str) and old_folder.strip() and old_folder != folder_name:
+        folder_name = self._validate_folder_name(old_folder)
+    else:
+        folder_name = self._validate_folder_name(folder_name)
 
-    novel_dir = self.novels_dir / folder_name
+    novel_dir = self._folder_path(folder_name)
     novel_dir.mkdir(parents=True, exist_ok=True)
 
     index[novel_id] = {
@@ -274,7 +369,7 @@ def _ensure_novel_dir(self: Any, novel_id: str, folder_name: str) -> Path:
 def delete_novel(self: Any, novel_id: str) -> None:
     """Delete stored data for a novel (used for full re-scrapes)."""
     folder_name = self._get_folder_name(novel_id)
-    novel_dir = self.novels_dir / folder_name
+    novel_dir = self._folder_path(folder_name)
     if novel_dir.exists():
         shutil.rmtree(novel_dir)
 
@@ -324,6 +419,9 @@ def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
         merged["authors"] = authors
 
     folder_name = self._compute_folder_name(novel_id, merged)
+    storage_slug = folder_name.split("/", 1)[1] if folder_name.startswith(f"{TITLE_SLUG_DIRNAME}/") else folder_name
+    merged["source_novel_id"] = self._clean_string(merged.get("source_novel_id"), novel_id)
+    merged["storage_slug"] = storage_slug
     merged["folder_name"] = folder_name
 
     novel_dir = self._ensure_novel_dir(novel_id, folder_name)
@@ -402,7 +500,11 @@ def list_novels(self: Any) -> list[str]:
     for novel_id, entry in index.items():
         folder_name = entry.get("folder_name") if isinstance(entry, dict) else None
         folder_name = self._clean_string(folder_name, novel_id) or novel_id
-        metadata_path = self.novels_dir / folder_name / "metadata.json"
+        try:
+            metadata_path = self._folder_path(folder_name) / "metadata.json"
+        except ValueError:
+            logger.warning("Ignoring unsafe folder name in novel index for %s.", novel_id)
+            continue
         resolved_id = novel_id
         if metadata_path.exists():
             try:
@@ -440,6 +542,35 @@ def list_novels(self: Any) -> list[str]:
             continue
         resolved_id = self._clean_string(metadata.get("novel_id"), novel_dir.name) or novel_dir.name
         add_novel(resolved_id, novel_dir.name)
+
+    title_slug_root = self.base_dir / TITLE_SLUG_DIRNAME
+    if title_slug_root.exists():
+        for novel_dir in sorted(title_slug_root.iterdir(), key=lambda path: path.name.lower()):
+            if not novel_dir.is_dir():
+                continue
+            folder_name = f"{TITLE_SLUG_DIRNAME}/{novel_dir.name}"
+            if not _folder_has_novel_data(novel_dir):
+                continue
+            metadata_path = novel_dir / "metadata.json"
+            if not metadata_path.exists():
+                add_novel(novel_dir.name, folder_name)
+                continue
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                logger.warning("Corrupted metadata for novel folder %s at %s: %s", folder_name, metadata_path, exc)
+                add_novel(novel_dir.name, folder_name)
+                continue
+            except OSError as exc:
+                logger.warning("Failed to read metadata for novel folder %s at %s: %s", folder_name, metadata_path, exc)
+                add_novel(novel_dir.name, folder_name)
+                continue
+            if not isinstance(metadata, dict):
+                logger.warning("Metadata for novel folder %s is not a JSON object.", folder_name)
+                add_novel(novel_dir.name, folder_name)
+                continue
+            resolved_id = self._clean_string(metadata.get("novel_id"), novel_dir.name) or novel_dir.name
+            add_novel(resolved_id, folder_name)
 
     if index_changed:
         self._persist_index(updated_index)

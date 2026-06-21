@@ -55,6 +55,8 @@ from novelai.storage.media import (
 from novelai.storage.novels import (
     _compute_folder_name,
     _ensure_novel_dir,
+    _folder_in_use_by_other_novel,
+    _folder_path,
     _get_folder_name,
     _index_path,
     _legacy_folder_candidates,
@@ -62,6 +64,7 @@ from novelai.storage.novels import (
     _normalize_library_novel_id,
     _novel_dir,
     _persist_index,
+    _validate_folder_name,
     delete_novel,
     list_metadata_history,
     load_metadata_snapshot,
@@ -299,10 +302,13 @@ class StorageService:
     _index_path = _index_path
     _load_index = _load_index
     _persist_index = _persist_index
+    _validate_folder_name = _validate_folder_name
     _normalize_library_novel_id = _normalize_library_novel_id
     _legacy_folder_candidates = _legacy_folder_candidates
     _compute_folder_name = _compute_folder_name
+    _folder_in_use_by_other_novel = _folder_in_use_by_other_novel
     _get_folder_name = _get_folder_name
+    _folder_path = _folder_path
     _novel_dir = _novel_dir
     _ensure_novel_dir = _ensure_novel_dir
     delete_novel = delete_novel
