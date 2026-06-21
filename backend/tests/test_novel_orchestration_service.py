@@ -493,15 +493,20 @@ async def test_scrape_metadata_translates_title_author_and_chapter_titles(orches
     )
 
     metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
-    metadata_path = storage.base_dir / "novels" / "novel-1" / "metadata.json"
 
     assert metadata["translated_title"] == "[TRANSLATED] Original Novel"
     assert metadata["translated_author"] == "[TRANSLATED] Original Author"
     assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v2"
     assert metadata["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
     assert metadata["chapters"][1]["translated_title"] == "[TRANSLATED] Chapter Two"
+    stored = storage.load_metadata("novel-1")
+    assert stored is not None
+    index_entry = storage._load_index()["novel-1"]
+    folder_name = index_entry["folder_name"]
+    assert folder_name == stored["folder_name"]
+    assert folder_name.startswith("novel/")
+    metadata_path = storage._folder_path(folder_name) / "metadata.json"
     assert metadata_path.exists()
-    stored = json.loads(metadata_path.read_text(encoding="utf-8"))
     assert stored["translated_title"] == "[TRANSLATED] Original Novel"
     assert stored["translated_author"] == "[TRANSLATED] Original Author"
     assert stored["metadata_translation_prompt_version"] == "metadata-literal-v2"
