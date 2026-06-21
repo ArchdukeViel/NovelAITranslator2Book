@@ -330,6 +330,21 @@ class BatchMetadataProvider(MockTranslationProvider):
         return {"text": f"[TRANSLATED] {prompt}", "metadata": {"usage": {"total_tokens": 3}}}
 
 
+class FailingMetadataProvider(MockTranslationProvider):
+    def __init__(self) -> None:
+        super().__init__(key="mock", model="mock-1.0")
+
+    async def translate(
+        self,
+        prompt: str,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        self.call_count += 1
+        raise RuntimeError("metadata provider failed " + ("x" * 800))
+
+
 def _configure_catalog_projection_db(data_dir, monkeypatch):
     db_path = data_dir / "catalog_projection.sqlite"
     database_url = f"sqlite:///{db_path.as_posix()}"
@@ -510,7 +525,10 @@ async def test_scrape_metadata_translates_title_author_and_chapter_titles(orches
     assert metadata_path.exists()
     assert stored["translated_title"] == "[TRANSLATED] Original Novel"
     assert stored["translated_author"] == "[TRANSLATED] Original Author"
+    assert stored["metadata_translation_status"] == "completed"
     assert stored["metadata_translation_prompt_version"] == "metadata-literal-v2"
+    assert stored["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
+    assert stored["chapters"][1]["translated_title"] == "[TRANSLATED] Chapter Two"
     assert stored["authors"]["translated"] == "[TRANSLATED] Original Author"
     assert provider.call_count == 2
     assert orchestration_env["usage"].summary(all_days=True)["total_requests"] == 2
@@ -535,6 +553,9 @@ async def test_scrape_metadata_batches_title_author_and_synopsis(orchestration_e
     assert metadata["translated_title"] == "[TRANSLATED] Original Novel"
     assert metadata["translated_author"] == "[TRANSLATED] Original Author"
     assert metadata["translated_synopsis"] == "[TRANSLATED] Original Synopsis"
+    stored = orchestration_env["storage"].load_metadata("novel-1")
+    assert stored["translated_synopsis"] == "[TRANSLATED] Original Synopsis"
+    assert stored["metadata_translation_status"] == "completed"
     first_batch = json.loads(provider.prompts[0].split("<metadata_items>", 1)[1].split("</metadata_items>", 1)[0])
     assert [item["id"] for item in first_batch["items"]] == ["novel_title", "author", "synopsis"]
 
@@ -912,9 +933,44 @@ async def test_scrape_metadata_logs_missing_nvidia_key_only_once(orchestration_e
         await orchestrator.scrape_metadata("syosetu_ncode", "novel-2", mode="update")
 
     warning.assert_called_once_with("%s API key missing; falling back to dummy provider.", "Nvidia")
-    assert metadata["metadata_translation_status"] == "failed"
-    assert "Add and use a provider API token" in metadata["metadata_translation_error"]
+    assert metadata["metadata_translation_status"] == "unavailable"
+    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v2"
+    assert "metadata_translation_error" not in metadata
     assert "translated_title" not in metadata
+
+
+@pytest.mark.asyncio
+async def test_scrape_metadata_failed_translation_preserves_source_fields_without_fake_translations(orchestration_env) -> None:
+    provider = FailingMetadataProvider()
+    source = SynopsisSource()
+
+    orchestrator = NovelOrchestrationService(
+        storage=orchestration_env["storage"],
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
+    stored = orchestration_env["storage"].load_metadata("novel-1")
+
+    assert metadata["title"] == "Original Novel"
+    assert metadata["author"] == "Original Author"
+    assert metadata["synopsis"] == "Original Synopsis"
+    assert metadata["chapters"][0]["title"] == "Chapter One"
+    assert metadata["metadata_translation_status"] == "failed"
+    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v2"
+    assert len(metadata["metadata_translation_error"]) <= 500
+    assert "translated_title" not in metadata
+    assert "translated_author" not in metadata
+    assert "translated_synopsis" not in metadata
+    assert "translated_title" not in metadata["chapters"][0]
+    assert stored["metadata_translation_status"] == "failed"
+    assert stored["metadata_translation_error"] == metadata["metadata_translation_error"]
+    assert stored["chapters"][1]["title"] == "Chapter Two"
 
 
 def test_estimate_translation_requests_counts_metadata_and_body_chunks(orchestration_env) -> None:

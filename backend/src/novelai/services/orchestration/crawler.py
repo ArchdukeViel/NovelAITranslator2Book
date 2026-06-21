@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from novelai.core.errors import SourceError
+from novelai.prompts import METADATA_TRANSLATION_PROMPT_VERSION
 from novelai.sources.quality import (
     chapter_content_hash,
     evaluate_chapter_quality,
@@ -19,6 +20,10 @@ logger = logging.getLogger(__name__)
 # Keys are "source_key:novel_id", values are asyncio.Lock instances.
 # This prevents concurrent scrapes of the same novel from corrupting storage.
 _crawl_locks: dict[str, asyncio.Lock] = {}
+_METADATA_TRANSLATION_UNAVAILABLE_MESSAGE = (
+    "Metadata translation skipped because no active Gemini/NVIDIA provider is configured."
+)
+_METADATA_TRANSLATION_ERROR_MAX_CHARS = 500
 
 
 def _get_crawl_lock(source_key: str, novel_id: str) -> asyncio.Lock:
@@ -39,6 +44,56 @@ def _apply_metadata_quality_gate(meta: dict[str, Any], *, source_key: str, novel
     if quality.errors:
         raise SourceError(f"Metadata quality gate failed for {source_key}/{novel_id}: {', '.join(quality.errors)}")
     return meta
+
+
+def _metadata_translation_config(self: Any) -> dict[str, str]:
+    try:
+        provider_key, provider_model = self._resolve_provider_and_model(None, None)
+    except Exception:
+        return {}
+    if provider_key == "dummy":
+        return {}
+    return {
+        "metadata_translation_provider": str(provider_key),
+        "metadata_translation_model": str(provider_model),
+    }
+
+
+def _bounded_metadata_translation_error(exc: Exception) -> str:
+    message = str(exc).strip() or exc.__class__.__name__
+    if len(message) <= _METADATA_TRANSLATION_ERROR_MAX_CHARS:
+        return message
+    return f"{message[:_METADATA_TRANSLATION_ERROR_MAX_CHARS - 3]}..."
+
+
+def _mark_metadata_translation_failure(meta: dict[str, Any], exc: Exception, *, config: dict[str, str]) -> None:
+    meta["metadata_translation_prompt_version"] = METADATA_TRANSLATION_PROMPT_VERSION
+    if _METADATA_TRANSLATION_UNAVAILABLE_MESSAGE in str(exc):
+        meta["metadata_translation_status"] = "unavailable"
+        meta.pop("metadata_translation_error", None)
+        return
+    meta.update(config)
+    meta["metadata_translation_status"] = "failed"
+    meta["metadata_translation_error"] = _bounded_metadata_translation_error(exc)
+
+
+async def _translate_and_mark_metadata(
+    self: Any,
+    meta: dict[str, Any],
+    existing_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    config = _metadata_translation_config(self)
+    try:
+        translated = await self._translate_metadata_fields(meta, existing_metadata)
+    except Exception as exc:
+        logger.warning("Failed to translate metadata for %s: %s", meta.get("context_group_id") or meta.get("novel_id"), exc)
+        _mark_metadata_translation_failure(meta, exc, config=config)
+        return meta
+
+    translated.update(config)
+    translated["metadata_translation_status"] = "completed"
+    translated.pop("metadata_translation_error", None)
+    return translated
 
 
 def _stored_chapter_hashes(storage: Any, novel_id: str, *, exclude_chapter_id: str) -> set[str]:
@@ -97,13 +152,7 @@ async def scrape_metadata(
     meta.setdefault("input_adapter_key", "web")
     meta.setdefault("context_group_id", novel_id)
 
-    try:
-        meta = await self._translate_metadata_fields(meta, existing_metadata)
-        meta["metadata_translation_status"] = "completed"
-    except Exception as exc:
-        logger.warning("Failed to translate metadata for %s: %s", novel_id, exc)
-        meta["metadata_translation_status"] = "failed"
-        meta["metadata_translation_error"] = str(exc)
+    meta = await _translate_and_mark_metadata(self, meta, existing_metadata)
     self.storage.save_metadata(novel_id, meta)
     safely_refresh_catalog_projection_after_storage_write(
         novel_id,
@@ -175,13 +224,7 @@ async def _scrape_chapters_impl(
         meta.setdefault("document_type", "web_novel")
         meta.setdefault("input_adapter_key", "web")
         meta.setdefault("context_group_id", novel_id)
-        try:
-            meta = await self._translate_metadata_fields(meta)
-            meta["metadata_translation_status"] = "completed"
-        except Exception as exc:
-            logger.warning("Failed to translate metadata for %s: %s", novel_id, exc)
-            meta["metadata_translation_status"] = "failed"
-            meta["metadata_translation_error"] = str(exc)
+        meta = await _translate_and_mark_metadata(self, meta)
         self.storage.save_metadata(novel_id, meta)
         safely_refresh_catalog_projection_after_storage_write(
             novel_id,

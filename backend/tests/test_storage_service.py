@@ -768,15 +768,42 @@ def test_load_metadata_snapshot_rejects_unknown_and_path_like_ids(storage):
 
 
 def test_metadata_save_merges_original_and_translated_fields(storage):
-    storage.save_metadata("novel1", {"title": "Original Title", "author": "Original Author"})
-    storage.save_metadata("novel1", {"translated_title": "Translated Title", "translated_author": "Translated Author"})
+    storage.save_metadata(
+        "novel1",
+        {
+            "title": "Original Title",
+            "author": "Original Author",
+            "synopsis": "Original Synopsis",
+            "metadata_translation_status": "failed",
+            "metadata_translation_error": "previous failure",
+            "chapters": [{"id": "1", "title": "Original Chapter"}],
+        },
+    )
+    storage.save_metadata(
+        "novel1",
+        {
+            "translated_title": "Translated Title",
+            "translated_author": "Translated Author",
+            "translated_synopsis": "Translated Synopsis",
+            "metadata_translation_status": "completed",
+            "metadata_translation_prompt_version": "metadata-literal-v2",
+            "chapters": [{"id": "1", "title": "Original Chapter", "translated_title": "Translated Chapter"}],
+        },
+    )
 
     loaded = storage.load_metadata("novel1")
 
     assert loaded is not None
     assert loaded["title"] == "Original Title"
+    assert loaded["synopsis"] == "Original Synopsis"
     assert loaded["translated_title"] == "Translated Title"
     assert loaded["translated_author"] == "Translated Author"
+    assert loaded["translated_synopsis"] == "Translated Synopsis"
+    assert loaded["metadata_translation_status"] == "completed"
+    assert loaded["metadata_translation_prompt_version"] == "metadata-literal-v2"
+    assert "metadata_translation_error" not in loaded
+    assert loaded["chapters"][0]["title"] == "Original Chapter"
+    assert loaded["chapters"][0]["translated_title"] == "Translated Chapter"
     assert loaded["titles"]["original"] == "Original Title"
     assert loaded["titles"]["translated"] == "Translated Title"
     assert loaded["authors"]["original"] == "Original Author"
