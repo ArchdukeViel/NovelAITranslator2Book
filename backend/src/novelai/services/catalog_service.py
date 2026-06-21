@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 
 
 CATALOG_PROJECTION_FIELDS = (
+    "title",
+    "original_title",
+    "synopsis",
     "publication_status",
     "source_updated_at",
     "chapter_count",
@@ -96,6 +99,34 @@ def _metadata_chapters(metadata: dict) -> list[dict]:
 
 def _optional_string(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _metadata_public_title(novel_id: str, metadata: dict) -> str:
+    return (
+        _optional_string(metadata.get("translated_title"))
+        or _optional_string(metadata.get("title"))
+        or novel_id
+    )
+
+
+def _metadata_original_title(metadata: dict) -> str | None:
+    translated_title = _optional_string(metadata.get("translated_title"))
+    source_title = (
+        _optional_string(metadata.get("title"))
+        or _optional_string(metadata.get("original_title"))
+        or _optional_string(metadata.get("source_title"))
+    )
+    if translated_title and source_title and translated_title == source_title:
+        return None
+    return source_title
+
+
+def _metadata_public_synopsis(metadata: dict) -> str | None:
+    for key in ("translated_synopsis", "translated_description", "synopsis", "description"):
+        value = _optional_string(metadata.get(key))
+        if value:
+            return value
+    return None
 
 
 def _projection_snapshot(novel: Novel) -> dict[str, object]:
@@ -187,16 +218,16 @@ class CatalogService:
         if novel is None:
             novel = Novel(
                 slug=novel_id,
-                title=metadata.get("title") or novel_id,
-                original_title=metadata.get("original_title"),
-                author=metadata.get("author"),
+                title=_metadata_public_title(novel_id, metadata),
+                original_title=_metadata_original_title(metadata),
+                author=_optional_string(metadata.get("translated_author")) or metadata.get("author"),
                 source_site=metadata.get("source_key"),
                 source_url=metadata.get("source_url"),
                 language=metadata.get("language", "ja"),
                 status=publication_status,
                 publication_status=publication_status,
                 source_updated_at=source_updated_at,
-                synopsis=metadata.get("description"),
+                synopsis=_metadata_public_synopsis(metadata),
             )
             self._session.add(novel)
             self._session.flush()  # Ensure novel.id is available
@@ -329,6 +360,11 @@ class CatalogService:
         )
         latest_chapter = self._latest_translated_chapter(novel_id, metadata_chapters)
 
+        if metadata:
+            novel.title = _metadata_public_title(novel_id, metadata)
+            novel.original_title = _metadata_original_title(metadata)
+            novel.author = _optional_string(metadata.get("translated_author")) or _optional_string(metadata.get("author"))
+            novel.synopsis = _metadata_public_synopsis(metadata)
         novel.chapter_count = chapter_count
         novel.translated_count = translated_count
         novel.latest_chapter_id = latest_chapter["id"] if latest_chapter else None
