@@ -10,6 +10,7 @@ from pydantic import SecretStr
 
 from novelai.config.settings import settings
 from novelai.core.errors import ProviderError, ProviderErrorCode
+from novelai.prompts import build_translation_request
 from novelai.providers.nvidia_provider import NVIDIAProvider
 
 
@@ -85,6 +86,8 @@ def test_nvidia_provider_uses_default_base_url_and_model(nvidia_settings: dict[s
     assert result["text"] == "nvidia translated"
     assert nvidia_settings["url"] == "https://integrate.api.nvidia.com/v1/chat/completions"
     assert nvidia_settings["json"]["model"] == "google/gemma-4-31b-it"
+    assert [message["role"] for message in nvidia_settings["json"]["messages"]] == ["system", "user"]
+    assert nvidia_settings["json"]["messages"][1]["content"] == "Translate this."
     assert nvidia_settings["json"]["stream"] is False
     assert nvidia_settings["json"]["max_tokens"] == 64
     assert nvidia_settings["json"]["temperature"] == 0.2
@@ -105,6 +108,28 @@ def test_nvidia_provider_accepts_chat_template_kwargs(nvidia_settings: dict[str,
     )
 
     assert nvidia_settings["json"]["chat_template_kwargs"] == {"enable_thinking": True}
+
+
+def test_nvidia_provider_translation_request_preserves_prompt_shape(nvidia_settings: dict[str, Any]) -> None:
+    provider = NVIDIAProvider()
+    source_text = "\u3053\u3093\u306b\u3061\u306f\u3002"
+    request = build_translation_request(
+        text=source_text,
+        source_language="Japanese",
+        target_language="English",
+    )
+
+    asyncio.run(provider.translate(prompt=request.text, model="google/gemma-4-31b-it", request=request, max_tokens=64))
+
+    messages = nvidia_settings["json"]["messages"]
+    assert [message["role"] for message in messages] == ["system", "user"]
+    assert messages[0]["content"].strip()
+    assert messages[1]["content"].strip()
+    assert "English" in messages[0]["content"]
+    assert "English" in messages[1]["content"]
+    assert messages[1]["content"].count(source_text) == 1
+    assert nvidia_settings["json"]["max_tokens"] == 64
+    assert nvidia_settings["json"]["chat_template_kwargs"] == {"enable_thinking": False}
 
 
 def test_nvidia_provider_parses_usage(nvidia_settings: dict[str, Any]) -> None:
