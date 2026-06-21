@@ -280,12 +280,20 @@ class NVIDIAProvider(TranslationProvider):
         payload: dict[str, Any] = {
             "model": model_name,
             "messages": [{"role": "user", "content": prompt_text}],
+            "stream": False,
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
         temperature = kwargs.get("temperature")
         if isinstance(temperature, (int, float)):
             payload["temperature"] = float(temperature)
+        top_p = kwargs.get("top_p")
+        if isinstance(top_p, (int, float)):
+            payload["top_p"] = float(top_p)
+        chat_template_kwargs = kwargs.get("chat_template_kwargs")
+        if isinstance(chat_template_kwargs, Mapping):
+            payload["chat_template_kwargs"] = dict(chat_template_kwargs)
         if expect_json:
             payload["response_format"] = {"type": "json_object"}
 
@@ -293,6 +301,7 @@ class NVIDIAProvider(TranslationProvider):
         endpoint = f"{base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
             "Content-Type": "application/json",
         }
         try:
