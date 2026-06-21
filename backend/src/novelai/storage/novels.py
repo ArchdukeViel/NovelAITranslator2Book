@@ -401,6 +401,8 @@ def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
     publication_status = normalize_publication_status(merged.get("publication_status") or merged.get("status"))
     merged["publication_status"] = publication_status
     merged["status"] = publication_status
+    if merged.get("metadata_translation_status") != "failed":
+        merged.pop("metadata_translation_error", None)
 
     titles = existing.get("titles", {}) if isinstance(existing.get("titles"), dict) else {}
     if isinstance(merged.get("title"), str) and merged.get("title"):

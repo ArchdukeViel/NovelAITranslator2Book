@@ -678,13 +678,6 @@ async def _translate_text(
         return translated
 
     if last_error is not None:
-        if field_key:
-            logger.warning(
-                "Metadata translation fell back to original text for %s after all models failed quality checks: %s",
-                field_key,
-                last_error,
-            )
-            return normalized
         raise last_error
     raise RuntimeError(f"No translation models available for provider {provider_key}.")
 
