@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 class NovelSummary(BaseModel):
     novel_id: str
     title: str | None = None
+    source_title: str | None = None
     author: str | None = None
     source: str | None = None
     source_url: str | None = None
@@ -38,6 +39,10 @@ class NovelSummary(BaseModel):
     chapter_count: int = 0
     scraped_count: int = 0
     translated_count: int = 0
+    is_published: bool = False
+    latest_chapter_id: str | None = None
+    latest_chapter_number: int | None = None
+    latest_chapter_title: str | None = None
 
 
 class SourceMetadataExtraction(BaseModel):
@@ -413,6 +418,7 @@ def _db_novel_summary(novel: Novel) -> NovelSummary:
     return NovelSummary(
         novel_id=novel.slug,
         title=_optional_string(novel.title) or novel.slug,
+        source_title=_optional_string(novel.original_title),
         author=_optional_string(novel.author),
         source=_optional_string(novel.source_site),
         source_url=_optional_string(novel.source_url),
@@ -420,6 +426,10 @@ def _db_novel_summary(novel: Novel) -> NovelSummary:
         chapter_count=novel.chapter_count,
         scraped_count=novel.chapter_count,
         translated_count=novel.translated_count,
+        is_published=novel.is_published,
+        latest_chapter_id=novel.latest_chapter_id,
+        latest_chapter_number=novel.latest_chapter_number,
+        latest_chapter_title=novel.latest_chapter_title,
     )
 
 
@@ -459,6 +469,7 @@ def _storage_novel_summary(
     return NovelSummary(
         novel_id=novel_id,
         title=_optional_string(meta.get("translated_title")) or _optional_string(meta.get("title")) or novel_id,
+        source_title=_optional_string(meta.get("title")),
         author=_optional_string(meta.get("translated_author")) or _optional_string(meta.get("author")),
         source=_optional_string(meta.get("source")),
         source_url=_optional_string(meta.get("source_url")),

@@ -63,6 +63,47 @@ describe("admin API CSRF wiring", () => {
     expect(headers.get("X-CSRF-Token")).toBe("admin-csrf");
   });
 
+  it("sends X-CSRF-Token on publish and unpublish mutations", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ csrf_token: "admin-csrf" }))
+      .mockResolvedValueOnce(jsonResponse({
+        novel_id: "test-novel",
+        title: "Test Novel",
+        is_published: true,
+        chapter_count: 2,
+        translated_count: 1,
+        publication_status: "ongoing",
+        visibility_warnings: [],
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        novel_id: "test-novel",
+        title: "Test Novel",
+        is_published: false,
+        chapter_count: 2,
+        translated_count: 1,
+        publication_status: "ongoing",
+        visibility_warnings: [],
+      }));
+    const { api } = await loadApi();
+
+    await api.publishNovel("test-novel");
+    await api.unpublishNovel("test-novel");
+
+    const [, publishInit] = fetchMock.mock.calls[1];
+    const publishHeaders = new Headers(publishInit?.headers);
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/admin/novels/test-novel/publish");
+    expect(publishInit?.method).toBe("POST");
+    expect(publishHeaders.get("X-CSRF-Token")).toBe("admin-csrf");
+
+    const [, unpublishInit] = fetchMock.mock.calls[2];
+    const unpublishHeaders = new Headers(unpublishInit?.headers);
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/admin/novels/test-novel/unpublish");
+    expect(unpublishInit?.method).toBe("POST");
+    expect(unpublishHeaders.get("X-CSRF-Token")).toBe("admin-csrf");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("does not fetch CSRF for safe admin GET calls", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock.mockResolvedValueOnce(jsonResponse({ configured: false }));

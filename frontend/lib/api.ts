@@ -8,6 +8,7 @@ import type {
   JobProgress,
   ModelState,
   NovelMetadata,
+  NovelPublicationSummary,
   NovelProgress,
   NovelRequestRecord,
   NovelSummary,
@@ -276,6 +277,14 @@ export const api = {
   deleteNovel: (novelId: string) =>
     apiFetch<void>(`/admin/novels/${encodeURIComponent(novelId)}`, {
       method: "DELETE"
+    }),
+  publishNovel: (novelId: string) =>
+    apiFetch<NovelPublicationSummary>(`/admin/novels/${encodeURIComponent(novelId)}/publish`, {
+      method: "POST"
+    }),
+  unpublishNovel: (novelId: string) =>
+    apiFetch<NovelPublicationSummary>(`/admin/novels/${encodeURIComponent(novelId)}/unpublish`, {
+      method: "POST"
     }),
   chapters: (novelId: string) => apiFetch<ChapterSummary[]>(`/admin/novels/${encodeURIComponent(novelId)}/chapters`),
   chapter: (novelId: string, chapterId: string) =>
