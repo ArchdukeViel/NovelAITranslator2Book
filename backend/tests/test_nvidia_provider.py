@@ -80,12 +80,31 @@ def nvidia_settings(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 def test_nvidia_provider_uses_default_base_url_and_model(nvidia_settings: dict[str, Any]) -> None:
     provider = NVIDIAProvider()
 
-    result = asyncio.run(provider.translate("Translate this."))
+    result = asyncio.run(provider.translate("Translate this.", max_tokens=64, temperature=0.2, top_p=0.95))
 
     assert result["text"] == "nvidia translated"
     assert nvidia_settings["url"] == "https://integrate.api.nvidia.com/v1/chat/completions"
     assert nvidia_settings["json"]["model"] == "google/gemma-4-31b-it"
+    assert nvidia_settings["json"]["stream"] is False
+    assert nvidia_settings["json"]["max_tokens"] == 64
+    assert nvidia_settings["json"]["temperature"] == 0.2
+    assert nvidia_settings["json"]["top_p"] == 0.95
+    assert nvidia_settings["json"]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert nvidia_settings["headers"]["Accept"] == "application/json"
     assert nvidia_settings["headers"]["Authorization"] == "Bearer nvidia-test-key"
+
+
+def test_nvidia_provider_accepts_chat_template_kwargs(nvidia_settings: dict[str, Any]) -> None:
+    provider = NVIDIAProvider()
+
+    asyncio.run(
+        provider.translate(
+            "Translate this.",
+            chat_template_kwargs={"enable_thinking": True},
+        )
+    )
+
+    assert nvidia_settings["json"]["chat_template_kwargs"] == {"enable_thinking": True}
 
 
 def test_nvidia_provider_parses_usage(nvidia_settings: dict[str, Any]) -> None:
