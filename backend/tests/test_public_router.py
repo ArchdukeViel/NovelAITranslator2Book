@@ -702,6 +702,46 @@ class TestGetNovel:
         assert data["publication_status"] == "completed"
         assert data["status"] == "completed"
 
+    def test_catalog_and_detail_prefer_translated_metadata(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        storage.save_metadata(
+            "translated-meta",
+            {
+                "title": "日本語の題名",
+                "translated_title": "English Title",
+                "author": "原作者",
+                "translated_author": "Original Author",
+                "synopsis": "日本語のあらすじ",
+                "translated_synopsis": "English synopsis.",
+                "publication_status": "ongoing",
+                "chapters": [
+                    {
+                        "id": "ch001",
+                        "title": "第一話",
+                        "translated_title": "Chapter One",
+                        "num": 1,
+                    }
+                ],
+            },
+        )
+
+        detail = client.get("/api/public/novels/translated-meta")
+        catalog = client.get("/api/public/catalog")
+
+        assert detail.status_code == 200
+        detail_payload = detail.json()
+        assert detail_payload["title"] == "English Title"
+        assert detail_payload["source_title"] == "日本語の題名"
+        assert detail_payload["author"] == "Original Author"
+        assert detail_payload["synopsis"] == "English synopsis."
+
+        assert catalog.status_code == 200
+        catalog_payload = catalog.json()["novels"][0]
+        assert catalog_payload["title"] == "English Title"
+        assert catalog_payload["source_title"] == "日本語の題名"
+        assert catalog_payload["synopsis"] == "English synopsis."
+
     def test_404_for_unknown_novel(self, client: TestClient) -> None:
         resp = client.get("/api/public/novels/does-not-exist")
         assert resp.status_code == 404

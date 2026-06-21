@@ -102,6 +102,38 @@ class TestGetOrCreateNovel:
         assert result.source_site == "syosetu"
         assert result.source_url == "https://ncode.syosetu.com/n1234"
 
+    def test_projects_translated_public_metadata_while_preserving_source_title(
+        self, catalog, db_session
+    ) -> None:
+        metadata = {
+            "title": "日本語の題名",
+            "translated_title": "English Title",
+            "author": "原作者",
+            "translated_author": "Original Author",
+            "synopsis": "日本語のあらすじ",
+            "translated_synopsis": "English synopsis.",
+            "description": "Older source description.",
+            "publication_status": "ongoing",
+            "chapters": [
+                {
+                    "id": "ch001",
+                    "num": 1,
+                    "title": "第一話",
+                    "translated_title": "Chapter One",
+                }
+            ],
+        }
+
+        catalog.get_or_create_novel("translated-meta", metadata)
+        db_session.commit()
+
+        result = db_session.query(Novel).filter_by(slug="translated-meta").one()
+        assert result.title == "English Title"
+        assert result.original_title == "日本語の題名"
+        assert result.author == "Original Author"
+        assert result.synopsis == "English synopsis."
+        assert result.publication_status == "ongoing"
+
     def test_model_accepts_catalog_projection_fields(self, db_session) -> None:
         scraped_at = datetime(2026, 6, 19, 1, 2, 3, tzinfo=timezone.utc)
         novel = Novel(

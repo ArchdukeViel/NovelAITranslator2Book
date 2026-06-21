@@ -142,6 +142,14 @@ def _publication_status_from_metadata(meta: dict[str, Any]) -> str:
     return normalize_publication_status(meta.get("publication_status") or meta.get("status"))
 
 
+def _public_synopsis_from_metadata(meta: dict[str, Any]) -> str | None:
+    for key in ("translated_synopsis", "translated_description", "synopsis", "description"):
+        value = _optional_str(meta.get(key))
+        if value:
+            return value
+    return None
+
+
 def _latest_translated_chapter(
     novel_id: str,
     meta: dict[str, Any],
@@ -200,7 +208,7 @@ def _novel_summary(
         source_title=source_title,
         author=_optional_str(meta.get("translated_author")) or _optional_str(meta.get("author")),
         language=_optional_str(meta.get("language")),
-        synopsis=_optional_str(meta.get("description")),
+        synopsis=_public_synopsis_from_metadata(meta),
         status=publication_status,
         publication_status=publication_status,
         chapter_count=chapter_count,
