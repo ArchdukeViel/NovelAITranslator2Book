@@ -2352,7 +2352,7 @@ class TestAdmin:
         assert status_resp.status_code == 200
         assert status_resp.json()["configured"] is False
         assert status_resp.json()["provider_key"] == "gemini"
-        assert status_resp.json()["provider_model"] == "gemini-2.5-flash"
+        assert status_resp.json()["provider_model"] == "gemini-3.1-flash-lite"
         canonical_status_resp = c.get("/api/admin/provider-api-key/gemini")
         assert canonical_status_resp.status_code == 200
         assert canonical_status_resp.json()["provider_key"] == "gemini"
@@ -2372,12 +2372,12 @@ class TestAdmin:
         assert set_resp.json()["configured"] is True
         assert set_resp.json()["preferred_provider"] == "gemini"
         assert set_resp.json()["preferred_provider_key"] == "gemini"
-        assert set_resp.json()["model"] == "gemini-2.5-flash"
-        assert set_resp.json()["provider_model"] == "gemini-2.5-flash"
+        assert set_resp.json()["model"] == "gemini-3.1-flash-lite"
+        assert set_resp.json()["provider_model"] == "gemini-3.1-flash-lite"
         assert set_resp.json()["validation_status"] == "working"
         assert preferences.get_api_key("gemini") == "AIza-test-key"
         assert preferences.get_preferred_provider() == "gemini"
-        assert preferences.get_preferred_model() == "gemini-2.5-flash"
+        assert preferences.get_preferred_model() == "gemini-3.1-flash-lite"
         assert preferences.get_llm_step_config("body_translation")["provider"] == "gemini"
         canonical_credential_resp = c.get("/api/admin/providers/gemini")
         assert canonical_credential_resp.status_code == 200
