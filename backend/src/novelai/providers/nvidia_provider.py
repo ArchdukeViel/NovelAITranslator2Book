@@ -264,6 +264,28 @@ class NVIDIAProvider(TranslationProvider):
             )
         return request.user_prompt or request.text or prompt
 
+    @staticmethod
+    def _messages_for_prompt(prompt: str, request: Any | None) -> list[dict[str, str]]:
+        if isinstance(request, TranslationRequest):
+            messages: list[dict[str, str]] = []
+            if request.system_prompt.strip():
+                messages.append({"role": "system", "content": request.system_prompt.strip()})
+            user_prompt = request.user_prompt.strip() or request.text.strip() or prompt.strip()
+            messages.append({"role": "user", "content": user_prompt})
+            return messages
+
+        prompt_text = prompt.strip()
+        return [
+            {
+                "role": "system",
+                "content": (
+                    "You are a precise literary translation engine. Translate the user's provided source text "
+                    "into the requested target language. Return only the translation unless the user asks otherwise."
+                ),
+            },
+            {"role": "user", "content": prompt_text},
+        ]
+
     async def translate(
         self,
         prompt: str,
@@ -279,7 +301,7 @@ class NVIDIAProvider(TranslationProvider):
 
         payload: dict[str, Any] = {
             "model": model_name,
-            "messages": [{"role": "user", "content": prompt_text}],
+            "messages": self._messages_for_prompt(prompt_text, request),
             "stream": False,
             "chat_template_kwargs": {"enable_thinking": False},
         }
