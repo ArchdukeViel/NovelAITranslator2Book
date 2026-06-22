@@ -477,6 +477,48 @@ async def test_translation_write_path_refreshes_catalog_projection(orchestration
         assert novel.latest_chapter_updated_at is not None
 
 
+@pytest.mark.asyncio
+async def test_translate_chapters_passes_provider_lock_to_translation_service(orchestration_env, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "locked-novel",
+        {
+            "title": "Locked Novel",
+            "source": "stub",
+            "source_language": "Japanese",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"},
+            ],
+        },
+    )
+    storage.save_chapter("locked-novel", "1", "raw text", title="Chapter 1")
+    translation = StubTranslationService(final_text="translated body")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=translation,
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.translate_chapters(
+        "stub",
+        "locked-novel",
+        "1",
+        provider_key="gemini",
+        provider_model=GEMINI_DEFAULT_MODEL,
+        source_language="Japanese",
+        allow_cross_provider_fallback=False,
+    )
+
+    assert translation.calls[0]["provider_key"] == "gemini"
+    assert translation.calls[0]["provider_model"] == GEMINI_DEFAULT_MODEL
+    assert translation.calls[0]["allow_cross_provider_fallback"] is False
+
+
 def test_gemini_model_candidates_default_to_stable_flash_lite() -> None:
     candidates = model_candidates("gemini", None, ["gemini-2.5-flash"])
 

@@ -57,6 +57,7 @@ class TranslationService:
         style_preset: str | None = None,
         consistency_mode: bool = False,
         json_output: bool = False,
+        allow_cross_provider_fallback: bool = True,
         force_retranslate: bool = False,
         raw_text: str | None = None,
         raw_images: list[dict[str, Any]] | None = None,
@@ -112,6 +113,8 @@ class TranslationService:
             state.metadata["consistency_mode"] = True
         if json_output:
             state.metadata["json_output"] = True
+        if not allow_cross_provider_fallback:
+            state.metadata["allow_cross_provider_fallback"] = False
         if force_retranslate:
             state.metadata["force_retranslate"] = True
         if raw_text is not None:

@@ -41,6 +41,7 @@ class TranslateRequest(BaseModel):
     force: bool = False
     source_language: str | None = None
     target_language: str | None = "English"
+    allow_cross_provider_fallback: bool = True
 
 
 class ExportRequest(BaseModel):
@@ -156,6 +157,7 @@ async def translate_novel(
             force=body.force,
             source_language=body.source_language,
             target_language=body.target_language,
+            allow_cross_provider_fallback=body.allow_cross_provider_fallback,
         )
     except OperationError as exc:
         _raise_operation_error(exc)

@@ -348,6 +348,7 @@ async def polish_low_confidence_chapters(
     low_confidence_only: bool = True,
     consistency_mode: bool = True,
     json_output: bool = False,
+    allow_cross_provider_fallback: bool = True,
 ) -> dict[str, Any]:
     """Retranslate only chapters that look low-confidence via heuristics."""
     meta = self.storage.load_metadata(novel_id)
@@ -423,6 +424,7 @@ async def polish_low_confidence_chapters(
         mark_polish_needed=True,
         consistency_mode=consistency_mode,
         json_output=json_output,
+        allow_cross_provider_fallback=allow_cross_provider_fallback,
     )
     return self._phase_payload(
         phase="phase3_polish",
@@ -457,6 +459,7 @@ async def run_phased_translation_pipeline(
     consistency_mode: bool = False,
     json_output: bool = False,
     run_polish_phase: bool = False,
+    body_allow_cross_provider_fallback: bool = True,
 ) -> dict[str, Any]:
     """Run one phase or the full phase chain with a shared payload schema."""
     normalized_phase = phase.strip().lower()
@@ -532,6 +535,7 @@ async def run_phased_translation_pipeline(
             mark_polish_needed=True,
             consistency_mode=consistency_mode,
             json_output=json_output,
+            allow_cross_provider_fallback=body_allow_cross_provider_fallback,
         )
         results["phase2"] = self._phase_payload(
             phase="phase2_body_translation",
@@ -565,6 +569,7 @@ async def run_phased_translation_pipeline(
             low_confidence_only=polish_low_confidence_only,
             consistency_mode=True,
             json_output=json_output,
+            allow_cross_provider_fallback=body_allow_cross_provider_fallback,
         )
 
         if normalized_phase == "3":
@@ -1400,6 +1405,7 @@ async def _try_delta_translate_chapter(
     consistency_mode: bool,
     job_id: str | None,
     activity_id: str | None,
+    allow_cross_provider_fallback: bool,
 ) -> dict[str, Any]:
     if not settings.TRANSLATION_DELTA_RETRANSLATION_ENABLED:
         return {"applied": False, "fallback_reason": "delta_disabled"}
@@ -1482,6 +1488,7 @@ async def _try_delta_translate_chapter(
                 style_preset=style_preset,
                 consistency_mode=consistency_mode,
                 json_output=True,
+                allow_cross_provider_fallback=allow_cross_provider_fallback,
                 force_retranslate=True,
                 raw_text=window_text,
             )
@@ -1804,6 +1811,7 @@ async def translate_chapters(
     mark_polish_needed: bool = True,
     consistency_mode: bool = False,
     json_output: bool = False,
+    allow_cross_provider_fallback: bool = True,
 ) -> None:
     """Translate selected chapters through the pipeline.
 
@@ -1912,6 +1920,7 @@ async def translate_chapters(
                     consistency_mode=consistency_mode,
                     job_id=job_id,
                     activity_id=activity_id,
+                    allow_cross_provider_fallback=allow_cross_provider_fallback,
                 )
                 if delta_result.get("applied"):
                     translated = str(delta_result.get("text") or "")
@@ -1965,6 +1974,7 @@ async def translate_chapters(
                 style_preset=style_preset,
                 consistency_mode=consistency_mode,
                 json_output=json_output,
+                allow_cross_provider_fallback=allow_cross_provider_fallback,
                 force_retranslate=force,
                 raw_text=raw_text,
                 raw_images=raw_images,
@@ -2085,6 +2095,7 @@ async def retranslate_chapter(
     style_preset: str | None = None,
     consistency_mode: bool = False,
     json_output: bool = False,
+    allow_cross_provider_fallback: bool = True,
 ) -> None:
     """Force retranslation for a single chapter using chapter-scoped selection."""
     normalized_chapter_id = str(chapter_id).strip()
@@ -2104,4 +2115,5 @@ async def retranslate_chapter(
         style_preset=style_preset,
         consistency_mode=consistency_mode,
         json_output=json_output,
+        allow_cross_provider_fallback=allow_cross_provider_fallback,
     )
