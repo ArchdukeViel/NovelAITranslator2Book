@@ -5,6 +5,7 @@ import { ArrowLeft, BookOpen, Bookmark, Loader2 } from "lucide-react";
 
 import { LoginPrompt } from "@/components/public/login-prompt";
 import { useHistory, useLibrary, useRemoveFromLibrary, usePublicAuth } from "@/hooks/public";
+import { publicChapterHref, publicNovelHref } from "@/lib/public-routes";
 
 function formatAddedAt(value: string): string {
   const date = new Date(value);
@@ -109,9 +110,9 @@ export default function LibraryPage() {
               <div className="divide-y rounded-md border border-border bg-card">
                 {history.data.items.map((entry) => {
                   const chapterHref = entry.chapter_id
-                    ? `/novel/${encodeURIComponent(entry.slug)}/chapter/${encodeURIComponent(entry.chapter_id)}`
+                    ? publicChapterHref(entry.slug, entry.chapter_id)
                     : null;
-                  const novelHref = `/novel/${encodeURIComponent(entry.slug)}`;
+                  const novelHref = publicNovelHref(entry.slug);
                   return (
                     <div className="flex items-center justify-between gap-3 px-4 py-3" key={entry.id}>
                       <div className="min-w-0 flex-1">
@@ -209,7 +210,7 @@ function LibrarySection({
 
 function LibraryRow({ item }: { item: { slug: string; status: string; added_at: string } }) {
   const removeFromLibrary = useRemoveFromLibrary(item.slug);
-  const novelHref = `/novel/${encodeURIComponent(item.slug)}`;
+  const novelHref = publicNovelHref(item.slug);
 
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3">

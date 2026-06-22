@@ -142,7 +142,7 @@ describe("public reading-state UI", () => {
     renderWithQuery(<ContinueReading slug="demo" />);
 
     const link = await screen.findByRole("link", { name: /continue from ch/i });
-    expect(link).toHaveAttribute("href", "/novel/demo/chapter/7");
+    expect(link).toHaveAttribute("href", "/novels/demo/chapter/7");
   });
 
   it("shows start-reading link when no saved progress (404) but firstChapterId exists", async () => {
@@ -163,7 +163,7 @@ describe("public reading-state UI", () => {
     renderWithQuery(<ContinueReading slug="demo" firstChapterId="1" />);
 
     const link = await screen.findByRole("link", { name: /start reading/i });
-    expect(link).toHaveAttribute("href", "/novel/demo/chapter/1");
+    expect(link).toHaveAttribute("href", "/novels/demo/chapter/1");
   });
 
   it("shows 'Chapter' fallback when chapter_number is null/undefined in progress", async () => {
@@ -191,7 +191,7 @@ describe("public reading-state UI", () => {
     const link = await screen.findByRole("link", { name: /continue from chapter/i });
     expect(link).toBeInTheDocument();
     // Link href still uses chapter_id
-    expect(link).toHaveAttribute("href", "/novel/demo/chapter/99");
+    expect(link).toHaveAttribute("href", "/novels/demo/chapter/99");
     // Raw numeric ID not shown in label
     expect(link?.textContent).not.toContain("Ch. 99");
   });
@@ -220,7 +220,7 @@ describe("public reading-state UI", () => {
 
     const link = await screen.findByRole("link", { name: /continue from ch/i });
     expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute("href", "/novel/demo/chapter/42");
+    expect(link).toHaveAttribute("href", "/novels/demo/chapter/42");
     // Label shows chapter_number=7, not chapter_id=42
     expect(link?.textContent).toContain("Ch. 7");
     expect(link?.textContent).not.toContain("Ch. 42");
@@ -255,11 +255,11 @@ describe("public reading-state UI", () => {
 
     // History entry shows slug + chapter reference as a link
     const entryLink = await screen.findByRole("link", { name: /demo — ch\. 7/i });
-    expect(entryLink).toHaveAttribute("href", "/novel/demo/chapter/7");
+    expect(entryLink).toHaveAttribute("href", "/novels/demo/chapter/7");
 
     // "Open" action link to the chapter
     const openLink = screen.getByRole("link", { name: /^open$/i });
-    expect(openLink).toHaveAttribute("href", "/novel/demo/chapter/7");
+    expect(openLink).toHaveAttribute("href", "/novels/demo/chapter/7");
 
     // "View My Library" cross-link appears
     expect(screen.getByRole("link", { name: /view my library/i })).toBeInTheDocument();
@@ -292,7 +292,7 @@ describe("public reading-state UI", () => {
 
     // Library entry shows slug as a link to the novel
     const novelLink = await screen.findByRole("link", { name: /demo/ });
-    expect(novelLink).toHaveAttribute("href", "/novel/demo");
+    expect(novelLink).toHaveAttribute("href", "/novels/demo");
 
     // Status badge
     expect(screen.getByText("Reading")).toBeInTheDocument();

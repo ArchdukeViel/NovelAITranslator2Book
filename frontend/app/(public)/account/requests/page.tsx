@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { LoginPrompt } from "@/components/public/login-prompt";
 import { RequestControl } from "@/components/public/request-control";
 import { usePublicAuth, useRequests } from "@/hooks/public";
+import { publicNovelHref } from "@/lib/public-routes";
 
 function formatCreatedAt(value: string): string {
   const date = new Date(value);
@@ -139,7 +140,7 @@ export default function RequestsPage() {
               <div className="divide-y rounded-md border border-border bg-card">
                 {requests.data.items.filter((request) => statusFilter === "all" || request.status === statusFilter).map((request) => {
                   const novelHref = request.slug
-                    ? `/novel/${encodeURIComponent(request.slug)}`
+                    ? publicNovelHref(request.slug)
                     : null;
                   return (
                     <div className="px-4 py-4" key={request.id}>

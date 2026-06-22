@@ -1,7 +1,7 @@
 /**
  * Chapter reader page honesty and UX tests.
  *
- * Confirms the /novel/[slug]/chapter/[chapterId] page renders real API data
+ * Confirms the /novels/[slug]/chapter/[chapterId] page renders real API data
  * honestly, links report to /contact, provides useful error recovery, and
  * does not pass include_adult=true.
  *
@@ -236,7 +236,7 @@ describe("Reader — error states", () => {
     });
 
     renderPage();
-    const backLink = document.querySelector('a[href="/novel/demo"]');
+    const backLink = document.querySelector('a[href="/novels/demo"]');
     expect(backLink).toBeTruthy();
   });
 });
@@ -393,13 +393,13 @@ describe("Reader — navigation", () => {
 
   it("All chapters link goes to novel detail page", () => {
     renderPage();
-    const allChaptersLinks = document.querySelectorAll('a[href="/novel/demo"]');
+    const allChaptersLinks = document.querySelectorAll('a[href="/novels/demo"]');
     expect(allChaptersLinks.length).toBeGreaterThanOrEqual(2);
   });
 
   it("Back to Novel link goes to correct novel", () => {
     renderPage();
-    const backLink = document.querySelector('a[href="/novel/demo"]');
+    const backLink = document.querySelector('a[href="/novels/demo"]');
     expect(backLink).toBeTruthy();
   });
 });

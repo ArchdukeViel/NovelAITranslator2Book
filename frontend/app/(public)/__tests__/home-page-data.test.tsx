@@ -297,11 +297,11 @@ describe("HomePage real data rendering", () => {
     expect(screen.getByText("Featured")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /start reading/i })).toHaveAttribute(
       "href",
-      "/novel/hero-novel/chapter/ch001"
+      "/novels/hero-novel/chapter/ch001"
     );
     expect(screen.getByRole("link", { name: /view details/i })).toHaveAttribute(
       "href",
-      "/novel/hero-novel"
+      "/novels/hero-novel"
     );
   });
 
@@ -331,7 +331,7 @@ describe("HomePage real data rendering", () => {
     expect(within(hero).getByText("No translated chapters yet.")).toBeInTheDocument();
     expect(within(hero).getByRole("link", { name: /view details/i })).toHaveAttribute(
       "href",
-      "/novel/unreadable-hero"
+      "/novels/unreadable-hero"
     );
   });
 
@@ -482,7 +482,7 @@ describe("HomePage real data rendering", () => {
     const latestNovelLinks = screen.getAllByRole("link", { name: /latest novel/i });
     expect(
       latestNovelLinks.some(
-        (link) => link.getAttribute("href") === "/novel/latest-novel/chapter/ch015"
+        (link) => link.getAttribute("href") === "/novels/latest-novel/chapter/ch015"
       )
     ).toBe(true);
   });
@@ -512,7 +512,7 @@ describe("HomePage real data rendering", () => {
     const fallbackNovelLinks = screen.getAllByRole("link", { name: /fallback novel/i });
     expect(
       fallbackNovelLinks.some(
-        (link) => link.getAttribute("href") === "/novel/fallback-novel"
+        (link) => link.getAttribute("href") === "/novels/fallback-novel"
       )
     ).toBe(true);
   });

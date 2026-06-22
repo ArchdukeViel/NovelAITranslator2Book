@@ -262,7 +262,7 @@ describe("public engagement UI", () => {
 
     // Chapter request entry (slug linked)
     const novelLink = await screen.findByRole("link", { name: /demo/i });
-    expect(novelLink).toHaveAttribute("href", "/novel/demo");
+    expect(novelLink).toHaveAttribute("href", "/novels/demo");
 
     // Status badges
     expect(await screen.findByText("Pending")).toBeInTheDocument();
@@ -301,7 +301,7 @@ describe("public engagement UI", () => {
                 id: 9,
                 request_type: "novel",
                 status: "pending",
-                source_url: "https://example.com/a/very/long/novel/url/that/might/wrap/on/mobile",
+                source_url: "https://example.com/a/very/long/novels/url/that/might/wrap/on/mobile",
                 slug: null,
                 chapter_id: null,
                 created_at: "2026-06-15T00:00:00Z",
@@ -318,7 +318,7 @@ describe("public engagement UI", () => {
 
     // Long URL is rendered
     expect(
-      await screen.findByText("https://example.com/a/very/long/novel/url/that/might/wrap/on/mobile")
+      await screen.findByText("https://example.com/a/very/long/novels/url/that/might/wrap/on/mobile")
     ).toBeInTheDocument();
 
     // Status badge is present and shrinks safely

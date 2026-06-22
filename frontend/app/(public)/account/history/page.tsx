@@ -5,6 +5,7 @@ import { ArrowLeft, BookOpen, Loader2 } from "lucide-react";
 
 import { LoginPrompt } from "@/components/public/login-prompt";
 import { useHistory, usePublicAuth } from "@/hooks/public";
+import { publicChapterHref, publicNovelHref } from "@/lib/public-routes";
 
 function formatReadAt(value: string): string {
   const date = new Date(value);
@@ -82,9 +83,9 @@ export default function HistoryPage() {
         <section className="divide-y rounded-md border border-border">
           {history.data.items.map((entry) => {
             const chapterHref = entry.chapter_id
-              ? `/novel/${encodeURIComponent(entry.slug)}/chapter/${encodeURIComponent(entry.chapter_id)}`
+              ? publicChapterHref(entry.slug, entry.chapter_id)
               : null;
-            const novelHref = `/novel/${encodeURIComponent(entry.slug)}`;
+            const novelHref = publicNovelHref(entry.slug);
 
             return (
               <div

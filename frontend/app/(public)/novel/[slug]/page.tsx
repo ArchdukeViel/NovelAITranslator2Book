@@ -26,6 +26,7 @@ import {
   authorOrFallback,
   sortChaptersAscending,
 } from "@/lib/public-format";
+import { publicChapterHref } from "@/lib/public-routes";
 import type { PublicChapterSummary } from "@/lib/public-types";
 import { useChapters, useGenreLabelMap, useNovel, usePublicAuth } from "@/hooks/public";
 
@@ -49,7 +50,7 @@ function formatAddedDate(value: string): string {
 }
 
 function chapterHref(slug: string, chapterId: string): string {
-  return `/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapterId)}`;
+  return publicChapterHref(slug, chapterId);
 }
 
 function LoadingState() {
@@ -178,6 +179,7 @@ export default function NovelDetailPage() {
   }
 
   const data = novel.data;
+  const publicSlug = data.slug?.trim() || slug;
   const title = data.title || slug;
   const synopsis = data.synopsis?.trim();
   const sourceTitle = data.source_title?.trim();
@@ -277,7 +279,7 @@ export default function NovelDetailPage() {
               {firstTranslatedChapter && (
                 <Link
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                  href={chapterHref(slug, firstTranslatedChapter.chapter_id)}
+                  href={chapterHref(publicSlug, firstTranslatedChapter.chapter_id)}
                 >
                   <BookOpen className="h-4 w-4" />
                   Start Reading
@@ -287,7 +289,7 @@ export default function NovelDetailPage() {
                 latestTranslatedChapter.chapter_id !== firstChapterId && (
                   <Link
                     className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-accent/40 bg-background/70 px-5 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
-                    href={chapterHref(slug, latestTranslatedChapter.chapter_id)}
+                    href={chapterHref(publicSlug, latestTranslatedChapter.chapter_id)}
                   >
                     Latest Chapter
                     <ArrowRight className="h-4 w-4" />
@@ -303,11 +305,11 @@ export default function NovelDetailPage() {
             <div className="mt-5 flex flex-wrap items-center gap-3">
               {!authPending && isAuthenticated && (
                 <>
-                  <SaveToLibrary slug={slug} />
-                  <ContinueReading slug={slug} firstChapterId={firstChapterId} />
+                  <SaveToLibrary slug={publicSlug} />
+                  <ContinueReading slug={publicSlug} firstChapterId={firstChapterId} />
                 </>
               )}
-              {!authPending && !isAuthenticated && <SaveToLibrary slug={slug} />}
+              {!authPending && !isAuthenticated && <SaveToLibrary slug={publicSlug} />}
               {authPending && (
                 <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-foreground" />
@@ -356,7 +358,7 @@ export default function NovelDetailPage() {
                   <ChapterRow
                     chapter={chapter}
                     key={chapter.chapter_id}
-                    slug={slug}
+                    slug={publicSlug}
                   />
                 ))
               )}
@@ -384,8 +386,8 @@ export default function NovelDetailPage() {
             </div>
           </section>
 
-          <RatingReview slug={slug} />
-          <RequestControl slug={slug} />
+          <RatingReview slug={publicSlug} />
+          <RequestControl slug={publicSlug} />
         </aside>
       </div>
     </main>
