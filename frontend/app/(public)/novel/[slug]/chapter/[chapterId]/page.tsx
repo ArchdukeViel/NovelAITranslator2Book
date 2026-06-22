@@ -14,6 +14,7 @@ import {
 } from "@/hooks/public";
 import { ApiError } from "@/lib/api";
 import { widthClass } from "@/lib/public-format";
+import { publicChapterHref, publicNovelHref } from "@/lib/public-routes";
 import { useReaderPrefsStore } from "@/lib/reader-prefs";
 
 import "../../../../reader.css";
@@ -38,7 +39,7 @@ function ChapterNav({
         {previousChapterId ? (
           <Link
             className="reader-nav-link"
-            href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(previousChapterId)}`}
+            href={publicChapterHref(slug, previousChapterId)}
           >
             ← Previous
           </Link>
@@ -53,7 +54,7 @@ function ChapterNav({
       {nextChapterId ? (
         <Link
           className="reader-nav-link reader-nav-link-strong"
-          href={`/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(nextChapterId)}`}
+          href={publicChapterHref(slug, nextChapterId)}
         >
           Next →
         </Link>
@@ -104,7 +105,7 @@ export default function ChapterPage() {
   const params = useParams<{ slug: string; chapterId: string }>();
   const slug = decodeURIComponent(params.slug);
   const chapterId = decodeURIComponent(params.chapterId);
-  const novelHref = `/novel/${encodeURIComponent(slug)}`;
+  const novelHref = publicNovelHref(slug);
 
   const { data, isPending, isError, error } = useChapter(slug, chapterId);
   const { isAuthenticated } = usePublicAuth();
@@ -165,6 +166,8 @@ export default function ChapterPage() {
     );
   }
 
+  const publicSlug = data.slug?.trim() || slug;
+  const publicNovelHrefValue = publicNovelHref(publicSlug);
   const novelTitle = data.novel_title || slug;
   const chapterTitle = data.title || (data.chapter_number != null ? `Chapter ${data.chapter_number}` : "Untitled chapter");
 
@@ -173,7 +176,7 @@ export default function ChapterPage() {
       <main className={`reader-shell ${widthClass(width)}`}>
         <header className="reader-chrome">
           <div className="min-w-0">
-            <Link href={novelHref} className="reader-back-link">
+            <Link href={publicNovelHrefValue} className="reader-back-link">
               <ArrowLeft className="h-4 w-4" />
               <span className="font-literary">{novelTitle}</span>
             </Link>
@@ -185,10 +188,10 @@ export default function ChapterPage() {
         </header>
 
         <ChapterNav
-          slug={slug}
+          slug={publicSlug}
           previousChapterId={data.previous_chapter_id}
           nextChapterId={data.next_chapter_id}
-          novelHref={novelHref}
+          novelHref={publicNovelHrefValue}
         />
 
         <article className="reader-article">
@@ -225,10 +228,10 @@ export default function ChapterPage() {
 
         <div className="reader-bottom-nav">
           <ChapterNav
-            slug={slug}
+            slug={publicSlug}
             previousChapterId={data.previous_chapter_id}
             nextChapterId={data.next_chapter_id}
-            novelHref={novelHref}
+            novelHref={publicNovelHrefValue}
           />
         </div>
       </main>

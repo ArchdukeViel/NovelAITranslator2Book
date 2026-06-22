@@ -47,6 +47,14 @@ function makeNovel(
 }
 
 describe("NovelCard genre/tag rendering", () => {
+  it("links to the canonical plural novel route", () => {
+    const novel = makeNovel({ slug: "readable-title-slug" });
+    renderWithClient(<NovelCard novel={novel} />);
+
+    const detailLink = screen.getByRole("link", { name: /view details/i });
+    expect(detailLink).toHaveAttribute("href", "/novels/readable-title-slug");
+  });
+
   it("renders a generated fallback cover when cover_url is absent", () => {
     const novel = makeNovel({
       source_title: "テスト小説",

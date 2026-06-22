@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { AuthGate } from "@/components/public/auth-gate";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { useRequests } from "@/hooks/public";
+import { publicNovelHref } from "@/lib/public-routes";
 
 const SUPPORTED_SOURCES = ["Kakuyomu", "Syosetu", "Syosetu18"];
 
@@ -147,7 +148,7 @@ function RequestHistory() {
                   <td className="px-4 py-3 text-muted-foreground">Not shown</td>
                   <td className="px-4 py-3">
                     {request.slug ? (
-                      <Link className="text-accent underline hover:text-foreground" href={`/novel/${encodeURIComponent(request.slug)}`}>
+                      <Link className="text-accent underline hover:text-foreground" href={publicNovelHref(request.slug)}>
                         Open
                       </Link>
                     ) : (

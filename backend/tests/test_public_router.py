@@ -244,7 +244,26 @@ class TestCatalog:
         _seed_novel(storage, "novel-001")
         data = client.get("/api/public/catalog").json()
         assert "slug" in data["novels"][0]
-        assert data["novels"][0]["slug"] == "novel-001"
+        assert data["novels"][0]["slug"] == "title-novel-001"
+
+    def test_catalog_uses_translated_title_storage_slug_when_available(
+        self,
+        client: TestClient,
+        storage: StorageService,
+    ) -> None:
+        _seed_novel(
+            storage,
+            "n2056dn",
+            title="父は英雄、母は精霊、娘の私は転生者。",
+            translated_title="My Father is a Hero, My Mother is a Spirit, and I am a Reincarnator.",
+        )
+
+        data = client.get("/api/public/catalog").json()
+
+        assert data["novels"][0]["novel_id"] == "n2056dn"
+        assert data["novels"][0]["slug"] == "my-father-is-a-hero-my-mother-is-a-spirit-and-i-am-a-reincarnator"
+        assert data["novels"][0]["title"] == "My Father is a Hero, My Mother is a Spirit, and I am a Reincarnator."
+        assert data["novels"][0]["source_title"] == "父は英雄、母は精霊、娘の私は転生者。"
 
     def test_catalog_summary_includes_source_title_and_synopsis(self, client: TestClient, storage: StorageService) -> None:
         """PublicNovelSummary now exposes source_title and synopsis."""
@@ -358,6 +377,14 @@ class TestCatalog:
             latest_chapter_title="Chapter 9",
             latest_chapter_updated_at=datetime(2024, 6, 2, tzinfo=timezone.utc),
         )
+        storage.save_metadata(
+            "novel-new",
+            {
+                "title": "æ–°ã—ã„å°èª¬",
+                "translated_title": "New Novel",
+                "publication_status": "ongoing",
+            },
+        )
         _seed_db_catalog_novel(
             db_session,
             "novel-mid",
@@ -378,7 +405,7 @@ class TestCatalog:
         assert data["total"] == 3
         assert [novel["novel_id"] for novel in data["novels"]] == ["novel-new", "novel-mid"]
         first = data["novels"][0]
-        assert first["slug"] == "novel-new"
+        assert first["slug"] == "new-novel"
         assert first["title"] == "New Novel"
         assert first["source_title"] == "新しい小説"
         assert first["author"] == "Author"
@@ -742,6 +769,29 @@ class TestGetNovel:
         assert catalog_payload["source_title"] == "日本語の題名"
         assert catalog_payload["synopsis"] == "English synopsis."
 
+    def test_detail_resolves_canonical_title_slug_and_source_id_alias(
+        self,
+        client: TestClient,
+        storage: StorageService,
+    ) -> None:
+        _seed_novel(
+            storage,
+            "n2056dn",
+            title="父は英雄、母は精霊、娘の私は転生者。",
+            translated_title="My Father is a Hero, My Mother is a Spirit, and I am a Reincarnator.",
+        )
+        canonical_slug = "my-father-is-a-hero-my-mother-is-a-spirit-and-i-am-a-reincarnator"
+
+        canonical = client.get(f"/api/public/novels/{canonical_slug}")
+        legacy = client.get("/api/public/novels/n2056dn")
+
+        assert canonical.status_code == 200
+        assert legacy.status_code == 200
+        assert canonical.json()["novel_id"] == "n2056dn"
+        assert legacy.json()["novel_id"] == "n2056dn"
+        assert canonical.json()["slug"] == canonical_slug
+        assert legacy.json()["slug"] == canonical_slug
+
     def test_404_for_unknown_novel(self, client: TestClient) -> None:
         resp = client.get("/api/public/novels/does-not-exist")
         assert resp.status_code == 404
@@ -818,6 +868,31 @@ class TestGetChapter:
         resp = client.get("/api/public/novels/novel-001/chapters/ch002")
         assert resp.status_code == 200
         assert resp.json()["chapter_number"] == 7
+
+    def test_reader_resolves_canonical_title_slug_and_source_id_alias(
+        self,
+        client: TestClient,
+        storage: StorageService,
+    ) -> None:
+        _seed_novel(
+            storage,
+            "n2056dn",
+            title="父は英雄、母は精霊、娘の私は転生者。",
+            translated_title="My Father is a Hero, My Mother is a Spirit, and I am a Reincarnator.",
+            chapters=[{"id": "1", "title": "序章", "translated_title": "Prologue", "num": 1}],
+        )
+        _seed_translated_chapter(storage, "n2056dn", "1", "Hello translated world.")
+        canonical_slug = "my-father-is-a-hero-my-mother-is-a-spirit-and-i-am-a-reincarnator"
+
+        canonical = client.get(f"/api/public/novels/{canonical_slug}/chapters/1")
+        legacy = client.get("/api/public/novels/n2056dn/chapters/1")
+
+        assert canonical.status_code == 200
+        assert legacy.status_code == 200
+        assert canonical.json()["novel_id"] == "n2056dn"
+        assert canonical.json()["slug"] == canonical_slug
+        assert canonical.json()["title"] == "Prologue"
+        assert legacy.json()["slug"] == canonical_slug
 
     def test_returns_prev_next_links(
         self, client: TestClient, storage: StorageService
@@ -1300,8 +1375,8 @@ class TestCatalogTaxonomy:
 
         resp = client.get("/api/public/catalog?include_adult=true")
         assert resp.status_code == 200
-        slugs = {n["slug"] for n in resp.json()["novels"]}
-        assert "adult-novel" in slugs
+        novel_ids = {n["novel_id"] for n in resp.json()["novels"]}
+        assert "adult-novel" in novel_ids
 
     def test_non_adult_genre_novel_visible_by_default(
         self, client: TestClient, storage: StorageService, db_session
@@ -1313,8 +1388,8 @@ class TestCatalogTaxonomy:
 
         resp = client.get("/api/public/catalog")
         assert resp.status_code == 200
-        slugs = {n["slug"] for n in resp.json()["novels"]}
-        assert "safe-novel" in slugs
+        novel_ids = {n["novel_id"] for n in resp.json()["novels"]}
+        assert "safe-novel" in novel_ids
 
     def test_novel_detail_filters_adult_genres_by_default(
         self, client: TestClient, storage: StorageService, db_session

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { LoginPrompt } from "@/components/public/login-prompt";
 import { useProgress, usePublicAuth } from "@/hooks/public";
 import { ApiError } from "@/lib/api";
+import { publicChapterHref } from "@/lib/public-routes";
 
 interface ContinueReadingProps {
   slug: string;
@@ -60,7 +61,7 @@ export function ContinueReading({ slug, firstChapterId }: ContinueReadingProps) 
 
   // Has saved progress → Continue Reading (show chapter number if available)
   if (chapterId) {
-    const href = `/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(chapterId)}`;
+    const href = publicChapterHref(slug, chapterId);
     return (
       <Link
         className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
@@ -74,7 +75,7 @@ export function ContinueReading({ slug, firstChapterId }: ContinueReadingProps) 
 
   // No saved progress but chapters exist → Start Reading
   if (firstChapterId) {
-    const href = `/novel/${encodeURIComponent(slug)}/chapter/${encodeURIComponent(firstChapterId)}`;
+    const href = publicChapterHref(slug, firstChapterId);
     return (
       <Link
         className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"

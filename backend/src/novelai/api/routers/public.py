@@ -19,6 +19,7 @@ scanner until their DB query contracts are introduced.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from typing import Any
 
@@ -50,6 +51,7 @@ VALID_SORT_FIELDS = {"added_at", "title", "chapter_count"}
 VALID_ORDER_VALUES = {"asc", "desc"}
 DEFAULT_SORT_BY = "added_at"
 DEFAULT_ORDER = "desc"
+PUBLIC_SLUG_MAX_LENGTH = 160
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +144,21 @@ def _publication_status_from_metadata(meta: dict[str, Any]) -> str:
     return normalize_publication_status(meta.get("publication_status") or meta.get("status"))
 
 
+def _slugify_public_title(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug[:PUBLIC_SLUG_MAX_LENGTH].strip("-") or "novel"
+
+
+def _public_slug_from_metadata(novel_id: str, meta: dict[str, Any]) -> str:
+    storage_slug = _optional_str(meta.get("storage_slug"))
+    if storage_slug:
+        return storage_slug
+    translated_title = _optional_str(meta.get("translated_title"))
+    if translated_title:
+        return _slugify_public_title(translated_title)
+    return novel_id
+
+
 def _public_synopsis_from_metadata(meta: dict[str, Any]) -> str | None:
     for key in ("translated_synopsis", "translated_description", "synopsis", "description"):
         value = _optional_str(meta.get(key))
@@ -203,7 +220,7 @@ def _novel_summary(
 
     return PublicNovelSummary(
         novel_id=novel_id,
-        slug=novel_id,
+        slug=_public_slug_from_metadata(novel_id, meta),
         title=display_title,
         source_title=source_title,
         author=_optional_str(meta.get("translated_author")) or _optional_str(meta.get("author")),
@@ -245,15 +262,18 @@ def _db_novel_summary(
     novel: Novel,
     *,
     include_adult: bool,
+    storage: StorageService | None = None,
 ) -> PublicNovelSummary:
     genres, tags = _taxonomy_from_db_novel(novel, include_adult=include_adult)
     source_title = novel.original_title if novel.original_title and novel.original_title != novel.title else None
     publication_status = normalize_publication_status(
         novel.publication_status or novel.status
     )
+    metadata = storage.load_metadata(novel.slug) if storage is not None else None
+    public_slug = _public_slug_from_metadata(novel.slug, metadata or {})
     return PublicNovelSummary(
         novel_id=novel.slug,
-        slug=novel.slug,
+        slug=public_slug,
         title=novel.title,
         source_title=source_title,
         author=novel.author,
@@ -306,6 +326,7 @@ def _published_db_catalog_query(db: Session, *, include_adult: bool):
 def _catalog_from_db_page(
     db: Session,
     *,
+    storage: StorageService,
     q: str | None,
     status: str | None,
     language: str | None,
@@ -397,7 +418,7 @@ def _catalog_from_db_page(
     novels = query.order_by(*order_columns).offset(offset).limit(page_size).all()
     return PublicCatalogResponse(
         novels=[
-            _db_novel_summary(novel, include_adult=include_adult)
+            _db_novel_summary(novel, include_adult=include_adult, storage=storage)
             for novel in novels
         ],
         total=total,
@@ -447,6 +468,31 @@ def _load_taxonomy_for_novel(
         if include_adult or not t.is_adult
     })
     return genre_slugs, tag_names, has_adult_genre
+
+
+def _resolve_public_novel(
+    slug: str,
+    storage: StorageService,
+) -> tuple[str, dict[str, Any], str] | None:
+    """Resolve a public slug or legacy source id to canonical storage metadata."""
+    meta = storage.load_metadata(slug)
+    if meta is not None:
+        source_id = _optional_str(meta.get("novel_id")) or slug
+        return source_id, meta, _public_slug_from_metadata(source_id, meta)
+
+    for novel_id in storage.list_novels():
+        candidate_meta = storage.load_metadata(novel_id) or {}
+        public_slug = _public_slug_from_metadata(novel_id, candidate_meta)
+        source_id = _optional_str(candidate_meta.get("novel_id")) or novel_id
+        aliases = {
+            novel_id,
+            source_id,
+            public_slug,
+            _optional_str(candidate_meta.get("source_novel_id")) or "",
+        }
+        if slug in aliases:
+            return source_id, candidate_meta, public_slug
+    return None
 
 
 def _catalog_from_storage(
@@ -591,6 +637,7 @@ async def catalog(
     ):
         db_response = _catalog_from_db_page(
             db,
+            storage=storage,
             q=q,
             status=publication_status_filter,
             language=language,
@@ -637,11 +684,12 @@ async def get_novel(
     db: Session = Depends(get_db_session),
 ) -> PublicNovelSummary:
     """Public novel detail."""
-    meta = storage.load_metadata(slug)
-    if meta is None:
+    resolved = _resolve_public_novel(slug, storage)
+    if resolved is None:
         raise HTTPException(status_code=404, detail="Novel not found.")
-    genres, tags, _ = _load_taxonomy_for_novel(db, slug, include_adult=include_adult)
-    return _novel_summary(slug, meta, storage, genres=genres, tags=tags)
+    novel_id, meta, _public_slug = resolved
+    genres, tags, _ = _load_taxonomy_for_novel(db, novel_id, include_adult=include_adult)
+    return _novel_summary(novel_id, meta, storage, genres=genres, tags=tags)
 
 
 @router.get("/novels/{slug}/chapters", response_model=list[PublicChapterSummary])
@@ -650,10 +698,11 @@ async def list_chapters(
     storage: StorageService = Depends(get_storage),
 ) -> list[PublicChapterSummary]:
     """Public chapter list for a novel."""
-    meta = storage.load_metadata(slug)
-    if meta is None:
+    resolved = _resolve_public_novel(slug, storage)
+    if resolved is None:
         raise HTTPException(status_code=404, detail="Novel not found.")
-    translated_ids = set(storage.list_translated_chapters(slug))
+    novel_id, meta, _public_slug = resolved
+    translated_ids = set(storage.list_translated_chapters(novel_id))
     result = []
     for idx, ch in enumerate(metadata_chapters(meta)):
         chapter_id = str(ch.get("id", ""))
@@ -673,23 +722,25 @@ async def get_chapter(
     storage: StorageService = Depends(get_storage),
 ) -> dict[str, Any]:
     """Public translated chapter reader."""
-    meta = storage.load_metadata(slug)
-    if meta is None:
+    resolved = _resolve_public_novel(slug, storage)
+    if resolved is None:
         raise HTTPException(status_code=404, detail="Novel not found.")
+    novel_id, meta, public_slug = resolved
 
     chapters = metadata_chapters(meta)
     chapter_ids = [str(ch.get("id", "")) for ch in chapters]
     if chapter_id not in chapter_ids:
         raise HTTPException(status_code=404, detail="Chapter not found.")
 
-    translated = storage.load_translated_chapter(slug, chapter_id)
+    translated = storage.load_translated_chapter(novel_id, chapter_id)
     if translated is None or not isinstance(translated.get("text"), str):
         raise HTTPException(status_code=404, detail="Translated chapter not available.")
 
     index = chapter_ids.index(chapter_id)
     chapter = chapters[index]
     return {
-        "novel_id": slug,
+        "novel_id": novel_id,
+        "slug": public_slug,
         "chapter_id": chapter_id,
         "chapter_number": chapter.get("num") or (index + 1),
         "novel_title": reader_title(meta),

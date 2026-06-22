@@ -9,6 +9,7 @@ import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { SaveToLibrary } from "@/components/public/save-to-library";
 import { useGenreLabelMap } from "@/hooks/public/use-genre-labels";
 import { authorOrFallback } from "@/lib/public-format";
+import { publicNovelHref } from "@/lib/public-routes";
 import type { PublicNovelSummary } from "@/lib/public-types";
 
 type DiscoveryNovel = PublicNovelSummary & {
@@ -42,7 +43,7 @@ export function NovelCard({ novel }: NovelCardProps) {
   return (
     <div className="group flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card/85 transition-all duration-200 hover:border-accent/30 hover:bg-card">
       {/* Title and metadata - primary click target */}
-      <Link href={`/novel/${encodeURIComponent(novel.slug)}`} className="flex-1">
+      <Link href={publicNovelHref(novel.slug)} className="flex-1">
         <div className="aspect-[2/3] overflow-hidden bg-muted">
           {novel.cover_url ? (
             <img

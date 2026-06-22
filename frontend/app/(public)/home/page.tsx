@@ -19,6 +19,7 @@ import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { SectionHeader } from "@/components/public/section-header";
 import { groupDateLabel } from "@/lib/date-group";
 import { useCatalog, useGenreLabelMap, usePublicAuth } from "@/hooks/public";
+import { publicChapterHref, publicNovelHref } from "@/lib/public-routes";
 import type { PublicNovelSummary } from "@/lib/public-types";
 
 const LATEST_UPDATE_GROUP_ORDER = [
@@ -60,13 +61,13 @@ function latestActivityAt(novel: PublicNovelSummary): string | null | undefined 
 function readableChapterHref(novel: PublicNovelSummary): string | null {
   const latestChapterId = novel.latest_chapter_id?.trim();
   if (latestChapterId) {
-    return `/novel/${novel.slug}/chapter/${encodeURIComponent(latestChapterId)}`;
+    return publicChapterHref(novel.slug, latestChapterId);
   }
   return null;
 }
 
 function latestChapterHref(novel: PublicNovelSummary): string {
-  return readableChapterHref(novel) ?? `/novel/${novel.slug}`;
+  return readableChapterHref(novel) ?? publicNovelHref(novel.slug);
 }
 
 function primaryGenre(novel: PublicNovelSummary): string | null {
@@ -88,7 +89,7 @@ export default function HomePage() {
     ? usefulSourceTitle(featuredNovel.source_title, featuredNovel.title)
     : null;
   const heroSynopsis = synopsisPreview(featuredNovel?.synopsis);
-  const heroDetailHref = featuredNovel ? `/novel/${featuredNovel.slug}` : null;
+  const heroDetailHref = featuredNovel ? publicNovelHref(featuredNovel.slug) : null;
   const heroReadableHref = featuredNovel ? readableChapterHref(featuredNovel) : null;
   const utilityItems = [
     {
@@ -388,7 +389,7 @@ export default function HomePage() {
                 return (
                   <Link
                     key={novel.novel_id}
-                    href={`/novel/${novel.slug}`}
+                    href={publicNovelHref(novel.slug)}
                     className="group block"
                   >
                     <div className="overflow-hidden rounded-sm border border-border/80 bg-card/60">
