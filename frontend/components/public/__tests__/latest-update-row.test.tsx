@@ -14,7 +14,7 @@ describe("LatestUpdateRow grouped date display", () => {
 
     render(
       <LatestUpdateRow
-        href="/novel/test"
+        href="/novels/test"
         title="Test Novel"
         updatedAt="2026-06-17T14:30:00Z"
       />
@@ -33,7 +33,7 @@ describe("LatestUpdateRow grouped date display", () => {
 
     render(
       <LatestUpdateRow
-        href="/novel/test"
+        href="/novels/test"
         title="Test Novel"
         updatedAt="2026-06-16T00:00:00Z"
       />
@@ -51,7 +51,7 @@ describe("LatestUpdateRow grouped date display", () => {
 
     render(
       <LatestUpdateRow
-        href="/novel/test"
+        href="/novels/test"
         title="Test Novel"
         updatedAt="2026-06-12T00:00:00Z"
       />
@@ -68,7 +68,7 @@ describe("LatestUpdateRow grouped date display", () => {
 
     render(
       <LatestUpdateRow
-        href="/novel/test"
+        href="/novels/test"
         title="Test Novel"
         updatedAt="2026-05-18T00:00:00Z"
       />
@@ -81,7 +81,7 @@ describe("LatestUpdateRow grouped date display", () => {
   it("renders no time label when updatedAt is missing", () => {
     render(
       <LatestUpdateRow
-        href="/novel/test"
+        href="/novels/test"
         title="Test Novel"
         chapterLabel="Chapter 5"
       />
@@ -99,7 +99,7 @@ describe("LatestUpdateRow grouped date display", () => {
   it("renders no time label when updatedAt is null", () => {
     render(
       <LatestUpdateRow
-        href="/novel/test"
+        href="/novels/test"
         title="Test Novel"
         updatedAt={null}
       />
@@ -114,7 +114,7 @@ describe("LatestUpdateRow grouped date display", () => {
 
     render(
       <LatestUpdateRow
-        href="/novel/test"
+        href="/novels/test"
         title="Test Novel"
         updatedAt="2026-06-17T07:00:00Z"
       />
@@ -132,7 +132,7 @@ describe("LatestUpdateRow grouped date display", () => {
 
     render(
       <LatestUpdateRow
-        href="/novel/test"
+        href="/novels/test"
         title="Test Novel"
         chapterLabel="Chapter 15"
         updatedAt="2026-06-17T08:00:00Z"
@@ -145,7 +145,7 @@ describe("LatestUpdateRow grouped date display", () => {
   it("prefers latest chapter number and title when available", () => {
     render(
       <LatestUpdateRow
-        href="/novel/test/chapter/ch015"
+        href="/novels/test/chapter/ch015"
         title="Test Novel"
         chapterLabel="Chapter 15 translated"
         latestChapterNumber={15}
@@ -160,7 +160,7 @@ describe("LatestUpdateRow grouped date display", () => {
   it("renders latest chapter number without title when title is missing", () => {
     render(
       <LatestUpdateRow
-        href="/novel/test/chapter/ch015"
+        href="/novels/test/chapter/ch015"
         title="Test Novel"
         latestChapterNumber={15}
       />
@@ -172,7 +172,7 @@ describe("LatestUpdateRow grouped date display", () => {
   it("keeps the provided href for latest chapter links", () => {
     render(
       <LatestUpdateRow
-        href="/novel/test/chapter/ch015"
+        href="/novels/test/chapter/ch015"
         title="Test Novel"
         latestChapterNumber={15}
         latestChapterTitle="The Quiet Return"
@@ -181,7 +181,7 @@ describe("LatestUpdateRow grouped date display", () => {
 
     expect(screen.getByRole("link", { name: /test novel/i })).toHaveAttribute(
       "href",
-      "/novel/test/chapter/ch015"
+      "/novels/test/chapter/ch015"
     );
   });
 
@@ -191,7 +191,7 @@ describe("LatestUpdateRow grouped date display", () => {
 
     render(
       <LatestUpdateRow
-        href="/novel/test"
+        href="/novels/test"
         title="Test Novel"
         updatedAt="2026-06-17T14:30:00Z"
       />

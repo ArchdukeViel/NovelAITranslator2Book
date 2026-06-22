@@ -1,7 +1,7 @@
 /**
  * Novel detail page honesty and data tests.
  *
- * Confirms the /novel/[slug] page renders real API data honestly, handles
+ * Confirms the /novels/[slug] page renders real API data honestly, handles
  * missing optional fields, shows report-to-contact link, links genre/tag
  * chips to browse filters, and does not pass include_adult=true.
  *
@@ -19,7 +19,7 @@ import {
 import { render, screen, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import NovelDetailPage from "@/app/(public)/novel/[slug]/page";
+import NovelDetailPage from "@/app/(public)/novels/[slug]/page";
 
 // ---------------------------------------------------------------------------
 // Mocks

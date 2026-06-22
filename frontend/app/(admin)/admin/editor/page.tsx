@@ -14,6 +14,7 @@ import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
+import { publicChapterHref } from "@/lib/public-routes";
 
 export default function EditorPage() {
   const queryClient = useQueryClient();
@@ -148,7 +149,7 @@ export default function EditorPage() {
               {novelId && chapterId ? (
                 <Link
                   className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border text-sm font-medium hover:bg-muted"
-                  href={`/novel/${encodeURIComponent(novelId)}/chapter/${encodeURIComponent(chapterId)}`}
+                  href={publicChapterHref(novelId, chapterId)}
                 >
                   <ExternalLink className="h-4 w-4" />
                   Reader

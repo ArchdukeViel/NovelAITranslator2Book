@@ -5,10 +5,10 @@ import { authApi, googleOAuthStartUrl } from "@/lib/public-api";
 
 describe("public auth API", () => {
   it("builds a Google OAuth start URL with a safe relative return path", () => {
-    const url = authApi.googleStart("/novel/demo?chapter=1#reader");
+    const url = authApi.googleStart("/novels/demo?chapter=1#reader");
 
     expect(url).toContain("/api/auth/google/start?");
-    expect(url).toContain("next=%2Fnovel%2Fdemo%3Fchapter%3D1%23reader");
+    expect(url).toContain("next=%2Fnovels%2Fdemo%3Fchapter%3D1%23reader");
   });
 
   it("falls back for unsafe external return paths", () => {

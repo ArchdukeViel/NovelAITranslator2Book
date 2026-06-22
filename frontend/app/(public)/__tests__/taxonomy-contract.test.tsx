@@ -172,7 +172,7 @@ describe("Taxonomy contract — adult/R18 label safety", () => {
 
   it("novel detail genre chips do not render is_adult flag", () => {
     const source = readFileSync(
-      "app/(public)/novel/[slug]/page.tsx",
+      "app/(public)/novels/[slug]/page.tsx",
       "utf8",
     );
     // Verify genre rendering uses genreLabels fallback, not is_adult
