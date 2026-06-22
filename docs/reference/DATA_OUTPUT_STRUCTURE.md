@@ -7,46 +7,60 @@ The storage backend is local and JSON-backed today. It is designed to be simple 
 ## Quick Overview
 
 ```text
-storage/novel_library/
-|-- preferences.json
-|-- translation_cache.json
-|-- usage.json
-|-- activity_log/
-|   |-- queue.json
-|   `-- source_health.json
-|-- requests/
-|   `-- novel_requests.json
-|-- runtime/
-|   |-- provider_requests.json
-|   |-- fetch_cache/
-|   |   `-- index.json
-|   |-- traceability/
-|   |   |-- pipeline_events.json
-|   |   |-- chunk_states.json
-|   |   `-- scheduler_states.json
-|   `-- translation/
-|       |-- chunks.json
-|       |-- chunk_attempts.json
-|       |-- bundles.json
-|       `-- outputs.json
-`-- novels/
-    |-- index.json
-    `-- <novel_id>/
-        |-- metadata.json
-        |-- glossary.json
-        |-- chapters/
-        |   `-- <chapter_id>.json
-        |-- assets/
-        |   `-- images/
-        |       `-- <chapter_id>/
-        |-- state/
-        |   `-- <chapter_id>.json
-        |-- checkpoints/
-        |   `-- <chapter_id>__translated.json
-        |-- full_novel.epub
-        |-- full_novel.html
-        `-- full_novel.md
+storage/
+|-- README.md
+`-- novel_library/
+    |-- preferences.json
+    |-- translation_cache.json
+    |-- usage.json
+    |-- activity_log/
+    |   |-- queue.json
+    |   `-- source_health.json
+    |-- requests/
+    |   `-- novel_requests.json
+    |-- runtime/
+    |   |-- provider_requests.json
+    |   |-- fetch_cache/
+    |   |   `-- index.json
+    |   |-- traceability/
+    |   |   |-- pipeline_events.json
+    |   |   |-- chunk_states.json
+    |   |   `-- scheduler_states.json
+    |   `-- translation/
+    |       |-- chunks.json
+    |       |-- chunk_attempts.json
+    |       |-- bundles.json
+    |       `-- outputs.json
+    |-- novels/
+    |   `-- index.json
+    `-- novel/
+        `-- <storage_slug>/
+            |-- metadata.json
+            |-- metadata_backups/
+            |-- glossary.json
+            |-- chapters/
+            |   `-- <chapter_id>.json
+            |-- assets/
+            |   `-- images/
+            |       `-- <chapter_id>/
+            |-- state/
+            |   `-- <chapter_id>.json
+            |-- checkpoints/
+            |   `-- <chapter_id>__translated.json
+            |-- full_novel.epub
+            |-- full_novel.html
+            `-- full_novel.md
 ```
+
+New novel saves use the title-slug layout under
+`storage/novel_library/novel/{storage_slug}`. Legacy data may still exist under
+`storage/novel_library/novels/{source_id}` and remains readable through the
+storage index for backward compatibility.
+
+`storage/novel_library` is private runtime data. It should not be committed,
+served as static frontend files, or pasted into public issue reports. Local
+`storage_backups/` folders, when present, are developer backups and should also
+remain untracked.
 
 Legacy `raw/` and `translated/` directories may still be read for backward compatibility, but new writes use unified chapter bundles in `chapters/`.
 
@@ -189,14 +203,23 @@ routes remain as compatibility stubs that return `410 Gone`.
 
 ### `novels/index.json`
 
-Maps novel IDs to stable folder names.
+Maps logical novel IDs/source IDs to actual storage folder names.
+
+The `folder_name` value may be either:
+
+- a legacy source-ID folder such as `n2056dn`
+- a title-slug folder such as `novel/the-silent-architect-of-dreams`
+
+Do not manually edit this file unless you are deliberately repairing storage.
+If a folder is moved without updating the index, DB rows and public/admin API
+lookups may point at missing content.
 
 Example:
 
 ```json
 {
   "n4423lw": {
-    "folder_name": "n4423lw",
+    "folder_name": "novel/translated-title",
     "updated_at": "2026-06-02T10:00:00Z"
   }
 }
@@ -204,22 +227,52 @@ Example:
 
 ## Novel Metadata
 
-### `novels/<novel_id>/metadata.json`
+### `novel/<storage_slug>/metadata.json`
+
+Legacy path: `novels/<source_id>/metadata.json`
 
 Stores source/import metadata and chapter index.
+
+Important field groups:
+
+- Identity: `novel_id`, `source_novel_id`
+- Storage resolver: `folder_name`, `storage_slug`
+- Source metadata: `source`, `source_url`, `title`, `author`, `synopsis`,
+  `description`, `publication_status`, `source_publication_status`,
+  `chapters[].title`, `chapters[].part`
+- Translated/public metadata: `translated_title`, `translated_author`,
+  `translated_synopsis`, `chapters[].translated_title`,
+  `metadata_translation_status`, `metadata_translation_prompt_version`,
+  `metadata_translation_provider`, `metadata_translation_model`,
+  `metadata_translation_error`
+- Timestamps and workflow hints: `scraped_at`, `updated_at`,
+  `source_updated_at`, `translation_profiles`
+
+Source fields must be preserved even when translated fields exist. Public
+catalog/detail projections prefer translated fields when present, but source
+metadata remains needed for audit, re-scrape, and admin inspection.
 
 Example:
 
 ```json
 {
   "novel_id": "n4423lw",
+  "source_novel_id": "n4423lw",
   "schema_version": 2,
   "title": "Original Japanese Title",
   "translated_title": "Translated Title",
   "author": "Author Name",
   "translated_author": "Translated Author Name",
+  "synopsis": "Original source synopsis.",
+  "translated_synopsis": "Translated synopsis.",
   "source": "syosetu_ncode",
   "source_url": "https://ncode.syosetu.com/n4423lw/",
+  "publication_status": "ongoing",
+  "source_publication_status": "連載中",
+  "metadata_translation_status": "completed",
+  "metadata_translation_prompt_version": "metadata-literal-v2",
+  "metadata_translation_provider": "gemini",
+  "metadata_translation_model": "gemini-3.1-flash-lite",
   "origin_type": "url",
   "origin_uri_or_path": "https://ncode.syosetu.com/n4423lw/",
   "document_type": "web_novel",
@@ -228,10 +281,13 @@ Example:
     {
       "id": 1,
       "title": "Chapter Title",
+      "translated_title": "Translated Chapter Title",
+      "part": "Part 1",
       "url": "https://ncode.syosetu.com/n4423lw/1/"
     }
   ],
-  "folder_name": "n4423lw",
+  "folder_name": "novel/translated-title",
+  "storage_slug": "translated-title",
   "scraped_at": "2026-06-02T10:00:00Z",
   "updated_at": "2026-06-02T10:00:00Z"
 }
@@ -239,9 +295,20 @@ Example:
 
 ## Chapter Bundles
 
-### `novels/<novel_id>/chapters/<chapter_id>.json`
+### `novel/<storage_slug>/chapters/<chapter_id>.json`
+
+Legacy path: `novels/<source_id>/chapters/<chapter_id>.json`
 
 The chapter bundle is the main file for source text, translation output, versions, edit history, OCR/media state, and import metadata.
+
+Final readable chapter translation lives in `translated.text` and
+`translated.paragraphs`. Historical or alternate translations live in
+`translation_versions`. Raw source content remains under `raw.text` and
+`raw.paragraphs`.
+
+Do not paste raw or translated chapter bodies into public logs or tickets
+casually. Raw source content can be copyrighted, and Novel18/adult content may
+exist in raw, translated, runtime, cache, or provider-request records.
 
 Example:
 
@@ -349,7 +416,9 @@ Example edit history:
 
 ## Glossary
 
-### `novels/<novel_id>/glossary.json`
+### `novel/<storage_slug>/glossary.json`
+
+Legacy path: `novels/<source_id>/glossary.json`
 
 Stores extracted, translated, reviewed, and approved terms.
 
@@ -371,7 +440,7 @@ Example:
 Images are stored under:
 
 ```text
-novels/<novel_id>/assets/images/<chapter_id>/
+novel/<storage_slug>/assets/images/<chapter_id>/
 ```
 
 Example:
@@ -412,7 +481,9 @@ Valid re-embedding statuses:
 
 ## Chapter State
 
-### `novels/<novel_id>/state/<chapter_id>.json`
+### `novel/<storage_slug>/state/<chapter_id>.json`
+
+Legacy path: `novels/<source_id>/state/<chapter_id>.json`
 
 Tracks state transitions and retry/error counters.
 
@@ -444,7 +515,9 @@ Example:
 
 ## Checkpoints
 
-### `novels/<novel_id>/checkpoints/<chapter_id>__<name>.json`
+### `novel/<storage_slug>/checkpoints/<chapter_id>__<name>.json`
+
+Legacy path: `novels/<source_id>/checkpoints/<chapter_id>__<name>.json`
 
 Stores recovery snapshots.
 
@@ -586,7 +659,10 @@ Retention policy: runtime/job state; deleting it may remove pause/resume hints b
 
 ## Translation Runtime Records
 
-Canonical chapter storage remains `novels/<novel_id>/chapters/<chapter_id>.json`. The following runtime files are pipeline/cache/retry artifacts and must not be treated as final chapter output.
+Canonical chapter storage remains `novel/<storage_slug>/chapters/<chapter_id>.json`
+for new saves, with legacy reads from
+`novels/<source_id>/chapters/<chapter_id>.json`. The following runtime files are
+pipeline/cache/retry artifacts and must not be treated as final chapter output.
 
 ### `runtime/translation/chunks.json`
 
@@ -832,6 +908,60 @@ Migration/backward compatibility: FetchService can continue using the in-memory 
 
 Retention policy: cache/debug artifact. Deleting fetch cache entries must not delete raw chapter snapshots already stored in chapter bundles.
 
+## Runtime File Safety
+
+Runtime JSON is private operational state. Stop the backend, worker, and any
+active scrape/translation process before deleting or replacing runtime files.
+
+| Path | Purpose | Producer/consumer | Sensitive/copyright risk | Safe to delete? | Consequence |
+|---|---|---|---|---|---|
+| `novel/` | Canonical title-slug novel metadata and chapter bundles | StorageService, catalog projection, reader/admin APIs | High: raw and translated chapter content | No, unless resetting DB/storage together from backup | Public/admin novel rows may point at missing content |
+| `novels/` | Legacy source-ID folders plus `index.json` resolver | StorageService compatibility reads/writes | High: raw and translated chapter content | No, unless resetting DB/storage together from backup | Legacy novels and folder resolution can break |
+| `novels/index.json` | Maps logical novel IDs/source IDs to folder names | StorageService | Medium: IDs/source linkage | Only during careful storage repair | Wrong edits can orphan folders or route lookups |
+| `metadata_backups/` | Bounded backup copies of old `metadata.json` | StorageService metadata save | Medium: source URLs, synopsis, titles | Usually yes after backup, but keep recent copies during active work | Loses metadata history/diff inspection |
+| `runtime/traceability/*.json` | Pipeline events, chunk states, scheduler state | Storage traceability/runtime services | Medium to high: errors, hashes, source snippets may appear | Yes for local dev after stopping services | Loses retry/debug/scheduler history |
+| `runtime/translation/*.json` | Chunk, attempt, bundle, and output artifacts | Translation pipeline/runtime services | High: source/translated text may appear | Yes for local dev after stopping services | Loses retry/debug artifacts, but final chapter bundles remain |
+| `runtime/provider_requests.json` | Provider call audit summaries | Provider/runtime services | High: prompt hashes, error summaries, token usage; must stay private even when redacted | Only after backup and with services stopped | Loses provider audit/debug records |
+| `runtime/fetch_cache/` | Source HTTP cache metadata/body cache | FetchService/runtime services | High: source pages or snippets may appear | Yes after stopping services | Source pages may be fetched again |
+| `activity_log/` | Activity queue and source-health records | Activity queue, admin activity UI | Medium: job metadata and errors | Only for local dev reset with services stopped | Loses queued/running/completed activity history |
+| `translation_cache.json` | Prompt/model keyed translation cache | Translation cache service | High: translated text | Yes after stopping services | May cost provider calls to regenerate |
+| `usage.json` | Local usage/cost accounting | Usage tracking | Low to medium: provider/model/job metadata | Yes for local dev reset | Loses usage history |
+| `preferences.json` | Non-secret owner/runtime preferences | Settings/storage service | Low, but should remain private | Yes if defaults are acceptable | Loses local preferences |
+| `requests/novel_requests.json` | Removed legacy request store | Legacy compatibility only | Medium if old data exists | Yes only after confirming DB-backed requests are canonical | Old file-backed request history is lost |
+
+Novel18/adult content can appear in raw chapter bundles, translated chapter
+bundles, runtime translation files, provider request summaries, fetch cache, and
+translation cache. Treat the whole `storage/novel_library` tree as private.
+
+## Backup And Restore
+
+For local backups, copy the entire `storage/novel_library` directory rather than
+individual novel folders. Keep backups outside git, for example under a local
+`storage_backups/` directory that remains untracked.
+
+Restore storage and the database together when possible. The database contains
+catalog projection rows, publish state, users, requests, jobs, and settings;
+storage contains chapter bodies and metadata JSON. Resetting only one side can
+leave DB rows pointing at missing storage, or storage folders that are invisible
+to admin/public listings until reconciliation runs.
+
+Do not manually move `novel/{storage_slug}` or legacy `novels/{source_id}`
+folders without also preserving or repairing `novels/index.json`.
+
+## Public URL And Slug Notes
+
+Public reader URLs use plural canonical routes:
+
+```text
+/novels/{slug}
+/novels/{slug}/chapter/{chapterId}
+```
+
+`storage_slug` and public `slug` may align, but they are separate concepts.
+`storage_slug` is a filesystem-safe folder slug owned by the storage service.
+The public slug is the API/frontend routing identifier. Source IDs can still
+exist internally as `novel_id`, `source_novel_id`, source URLs, and index keys.
+
 ## Credential Storage
 
 Public user-contributed credential storage is not implemented in the current file-backed storage. Adding it requires an explicit product-boundary change: authenticated public users, admin role separation, encrypted credential storage, revocation/deletion flows, audit logging, contribution consent, and usage limits. Raw provider keys must never be stored in plaintext, returned to the frontend after save, or logged.
@@ -841,12 +971,13 @@ Public user-contributed credential storage is not implemented in the current fil
 Default exports are written to the novel directory:
 
 ```text
-novels/<novel_id>/full_novel.epub
-novels/<novel_id>/full_novel.html
-novels/<novel_id>/full_novel.md
+novel/<storage_slug>/full_novel.epub
+novel/<storage_slug>/full_novel.html
+novel/<storage_slug>/full_novel.md
 ```
 
 A custom output directory can be used by backend export commands when supplied.
+Legacy exports may still exist under `novels/<source_id>/`.
 
 ## Workflow Artifacts
 
@@ -854,7 +985,8 @@ Typical web workflow:
 
 1. Crawl metadata.
    - Creates or updates `novels/index.json`.
-   - Creates or updates `novels/<novel_id>/metadata.json`.
+   - Creates or updates `novel/<storage_slug>/metadata.json`.
+   - Existing legacy novels may continue reading from `novels/<source_id>/metadata.json`.
 2. Crawl chapters.
    - Creates `chapters/<chapter_id>.json`.
    - Creates image assets when source images exist.
@@ -902,6 +1034,14 @@ The JSON-backed store under `storage/novel_library` remains the chapter content 
 
 Recommended future upgrades:
 
+- Explicit `schema_version` fields for every metadata/runtime JSON family.
+- DB-backed public slug and storage index resolver so route lookup and storage
+  lookup can evolve independently.
+- Runtime pruning command with dry-run output before deletion.
+- Storage diagnostic command that checks DB rows, index mappings, folder
+  existence, metadata validity, translated counts, and public slug resolution.
+- Optional legacy migration CLI to move `novels/{source_id}` folders into
+  `novel/{storage_slug}` with backups and index repair.
 - Object storage (S3/R2/B2) for images, covers, and exports at production scale.
 - CDN in front of reader assets.
 - Redis-backed rate limiting (current rate limiter is in-memory).
