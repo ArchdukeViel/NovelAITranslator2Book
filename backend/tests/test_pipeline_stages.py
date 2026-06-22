@@ -12,6 +12,7 @@ from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.storage.service import StorageService
+from novelai.translation.scheduler import SchedulerPausedError
 from novelai.translation.pipeline.context import PipelineState, TranslationChunk, paragraph_source_hash
 from novelai.translation.pipeline.pipeline import TranslationPipeline
 from novelai.translation.pipeline.stages.base import PipelineStage
@@ -271,6 +272,36 @@ async def test_translate_stage_default_fallback_order_is_gemini_then_nvidia(tmp_
 
 
 @pytest.mark.asyncio
+async def test_translate_stage_provider_lock_filters_cross_provider_fallback(tmp_path):
+    env = _fallback_stage_env(tmp_path)
+    gemini_provider = _FallbackContractProvider("gemini")
+    nvidia_provider = _FallbackContractProvider("nvidia")
+    stage = TranslateStage(
+        provider_factory=lambda key: gemini_provider if key == "gemini" else nvidia_provider,
+        cache=env["cache"],
+        settings_service=env["prefs"],
+        usage_service=env["usage"],
+        storage=env["storage"],
+    )
+    context = _fallback_context()
+    context.metadata["allow_cross_provider_fallback"] = False
+    context.metadata["scheduler_models"] = [
+        {"provider_key": "gemini", "provider_model": settings.PROVIDER_GEMINI_DEFAULT_MODEL, "priority_order": 0},
+        {"provider_key": "nvidia", "provider_model": settings.NVIDIA_DEFAULT_MODEL, "priority_order": 1},
+    ]
+
+    scheduler = stage._build_scheduler(context, provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
+    model_states = scheduler.to_model_state_list()
+
+    assert [(item["provider_key"], item["provider_model"]) for item in model_states] == [
+        ("gemini", "gemini-3.1-flash-lite"),
+    ]
+    assert context.metadata["provider_lock"] == "gemini"
+    assert context.metadata["allow_cross_provider_fallback"] is False
+    assert context.metadata["provider_lock_filtered_candidates"] == 1
+
+
+@pytest.mark.asyncio
 async def test_translate_stage_gemini_quota_falls_back_to_nvidia(tmp_path):
     env = _fallback_stage_env(tmp_path)
     gemini_provider = _FallbackContractProvider("gemini", error_code=ProviderErrorCode.QUOTA_EXHAUSTED)
@@ -288,6 +319,29 @@ async def test_translate_stage_gemini_quota_falls_back_to_nvidia(tmp_path):
     assert gemini_provider.models_seen == ["gemini-3.1-flash-lite"]
     assert nvidia_provider.models_seen == ["google/gemma-4-31b-it"]
     assert result.translations == ["Translated paragraph."]
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_provider_locked_gemini_failure_does_not_attempt_nvidia(tmp_path):
+    env = _fallback_stage_env(tmp_path)
+    gemini_provider = _FallbackContractProvider("gemini", error_code=ProviderErrorCode.QUOTA_EXHAUSTED)
+    nvidia_provider = _FallbackContractProvider("nvidia")
+    stage = TranslateStage(
+        provider_factory=lambda key: gemini_provider if key == "gemini" else nvidia_provider,
+        cache=env["cache"],
+        settings_service=env["prefs"],
+        usage_service=env["usage"],
+        storage=env["storage"],
+    )
+    context = _fallback_context()
+    context.metadata["allow_cross_provider_fallback"] = False
+
+    with pytest.raises(SchedulerPausedError) as exc_info:
+        await stage.run(context)
+
+    assert gemini_provider.models_seen == ["gemini-3.1-flash-lite"]
+    assert nvidia_provider.models_seen == []
+    assert {item["provider_key"] for item in exc_info.value.model_states} == {"gemini"}
 
 
 @pytest.mark.asyncio

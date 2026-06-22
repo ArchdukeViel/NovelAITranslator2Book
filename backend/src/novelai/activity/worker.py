@@ -197,6 +197,7 @@ class ActivityWorkerService:
             TranslationJobKind.RETRANSLATE.value,
             TranslationJobKind.BATCH_RETRANSLATE.value,
         }
+        allow_cross_provider_fallback = metadata.get("allow_cross_provider_fallback", True) is not False
 
         await self.orchestrator.translate_chapters(
             self._resolve_translation_source_key(activity),
@@ -209,6 +210,7 @@ class ActivityWorkerService:
             force=force,
             source_language=source_language,
             target_language=target_language,
+            allow_cross_provider_fallback=allow_cross_provider_fallback,
         )
         return {"chapters": chapters, "force": force, "target_language": target_language or "English"}
 

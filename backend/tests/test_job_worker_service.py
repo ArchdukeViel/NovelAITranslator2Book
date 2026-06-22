@@ -132,6 +132,26 @@ async def test_run_translation_activity_prefers_canonical_provider_fields(worker
 
 
 @pytest.mark.asyncio
+async def test_run_translation_activity_passes_provider_lock_metadata(worker_env) -> None:
+    storage, activity_log, orchestrator, worker = worker_env
+    storage.save_metadata("novel-1", {"source": "kakuyomu", "chapters": [{"id": "1"}]})
+    activity = activity_log.create_translation_activity(
+        novel_id="novel-1",
+        chapters="1",
+        provider="gemini",
+        model="gemini-3.1-flash-lite",
+        metadata={"allow_cross_provider_fallback": False},
+    )
+
+    result = await worker.run_activity(activity["id"])
+
+    assert result is not None
+    assert result["status"] == "completed"
+    assert orchestrator.calls[0][0] == "translate_chapters"
+    assert orchestrator.calls[0][2]["allow_cross_provider_fallback"] is False
+
+
+@pytest.mark.asyncio
 async def test_run_translation_activity_falls_back_to_legacy_provider_fields(worker_env) -> None:
     storage, activity_log, orchestrator, worker = worker_env
     storage.save_metadata("novel-1", {"source": "kakuyomu", "chapters": [{"id": "1"}]})

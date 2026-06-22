@@ -260,6 +260,7 @@ class OperationsService:
         force: bool,
         source_language: str | None,
         target_language: str | None,
+        allow_cross_provider_fallback: bool = True,
     ) -> dict[str, str]:
         try:
             await asyncio.wait_for(
@@ -272,6 +273,7 @@ class OperationsService:
                     force=force,
                     source_language=source_language,
                     target_language=target_language or settings.TRANSLATION_TARGET_LANGUAGE,
+                    allow_cross_provider_fallback=allow_cross_provider_fallback,
                 ),
                 timeout=settings.WEB_REQUEST_TIMEOUT_SECONDS,
             )

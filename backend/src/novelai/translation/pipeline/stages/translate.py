@@ -344,7 +344,24 @@ class TranslateStage(PipelineStage):
         raw_policy = context.metadata.get("scheduler_models")
         if not isinstance(raw_policy, list):
             raw_policy = settings.TRANSLATION_MODEL_POLICY
-        if not raw_policy and provider_key == "gemini":
+        allow_cross_provider_fallback = context.metadata.get("allow_cross_provider_fallback", True) is not False
+        filtered_count = 0
+        if not allow_cross_provider_fallback:
+            if isinstance(raw_policy, list):
+                original_policy = raw_policy
+                raw_policy = [
+                    item
+                    for item in original_policy
+                    if isinstance(item, dict) and (item.get("provider_key") or item.get("provider") or provider_key) == provider_key
+                ]
+                filtered_count = len(original_policy) - len(raw_policy)
+                if not raw_policy:
+                    raw_policy = None
+            context.metadata["provider_lock"] = provider_key
+            context.metadata["allow_cross_provider_fallback"] = False
+            if filtered_count:
+                context.metadata["provider_lock_filtered_candidates"] = filtered_count
+        if allow_cross_provider_fallback and not raw_policy and provider_key == "gemini":
             raw_policy = [
                 {
                     "provider_key": "gemini",

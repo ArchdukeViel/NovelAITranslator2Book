@@ -35,6 +35,7 @@ class TranslationActivityRequest(BaseModel):
     provider_model: str | None = None
     provider: str | None = None
     model: str | None = None
+    allow_cross_provider_fallback: bool = True
     metadata: dict[str, Any] | None = None
 
 
@@ -146,6 +147,9 @@ async def create_translation_activity(
     _owner=Depends(require_role("owner")),
 ) -> ActivityRecordResponse:
     try:
+        metadata = dict(body.metadata or {})
+        if not body.allow_cross_provider_fallback:
+            metadata["allow_cross_provider_fallback"] = False
         return activity_record_response(activity_log.create_translation_activity(
             novel_id=body.novel_id,
             source_key=body.source_key,
@@ -153,7 +157,7 @@ async def create_translation_activity(
             chapters=body.chapters,
             provider=body.provider_key or body.provider,
             model=body.provider_model or body.model,
-            metadata=body.metadata,
+            metadata=metadata,
         ))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
