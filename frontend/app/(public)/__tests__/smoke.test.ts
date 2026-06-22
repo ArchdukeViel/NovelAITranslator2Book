@@ -6,6 +6,7 @@
  * Requirements: 16.5
  */
 import { describe, it, expect } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
 
 // Verify the @/ alias resolves to the frontend root by importing a known module.
 // lib/utils.ts is a pure utility with no heavy side-effects.
@@ -33,5 +34,16 @@ describe("PBT harness smoke test", () => {
     expect(localStorage.getItem("test-key")).toBe("test-value");
     localStorage.removeItem("test-key");
     expect(localStorage.getItem("test-key")).toBeNull();
+  });
+
+  it("keeps public novel pages on the plural /novels route only", () => {
+    expect(existsSync("app/(public)/novels/[slug]/page.tsx")).toBe(true);
+    expect(existsSync("app/(public)/novels/[slug]/chapter/[chapterId]/page.tsx")).toBe(true);
+    expect(existsSync("app/(public)/novel/[slug]/page.tsx")).toBe(false);
+    expect(existsSync("app/(public)/novel/[slug]/chapter/[chapterId]/page.tsx")).toBe(false);
+
+    const nextConfig = readFileSync("next.config.mjs", "utf8");
+    expect(nextConfig).not.toContain("/novel/:slug");
+    expect(nextConfig).not.toContain("redirects()");
   });
 });

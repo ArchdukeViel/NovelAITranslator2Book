@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { NovelSummary } from "@/lib/api";
+import { publicNovelHref } from "@/lib/public-routes";
 import { cn } from "@/lib/utils";
 
 export type LibraryRowActionsProps = {
@@ -118,7 +119,7 @@ export function LibraryRowActions({
           className={cn(
             "inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
           )}
-          href={`/novel/${encodeURIComponent(novel.novel_id)}`}
+          href={publicNovelHref(novel.novel_id)}
         >
           <BookOpen className="h-4 w-4" />
           Reader

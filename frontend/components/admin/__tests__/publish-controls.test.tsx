@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -84,6 +85,35 @@ describe("Library publish controls", () => {
     expect(screen.getByText("Unpublished")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Publish" })).toBeEnabled();
     expect(screen.getByText("Latest: Ch. 1 Translated Chapter")).toBeInTheDocument();
+  });
+
+  it("links admin library reader actions to the canonical public /novels route", () => {
+    render(
+      <LibraryRowActions
+        novel={makeNovel()}
+        missingSource={false}
+        pending={false}
+        translationPending={false}
+        onTranslate={() => {}}
+        onRecrawl={() => {}}
+        onDelete={() => {}}
+        onEditTaxonomy={() => {}}
+        onPublish={() => {}}
+        onUnpublish={() => {}}
+      />
+    );
+
+    expect(screen.getByRole("link", { name: "Reader" })).toHaveAttribute(
+      "href",
+      "/novels/sample-novel"
+    );
+  });
+
+  it("keeps the admin editor reader link on the canonical public /novels chapter route", () => {
+    const source = readFileSync("app/(admin)/admin/editor/page.tsx", "utf8");
+
+    expect(source).toContain("publicChapterHref(novelId, chapterId)");
+    expect(source).not.toContain("href={`/novel/");
   });
 
   it("shows Unpublish for published novels", () => {
