@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from uuid import uuid4
 
 from novelai.translation.pipeline.context import PipelineResult, PipelineState
 from novelai.translation.pipeline.pipeline import TranslationPipeline
@@ -95,6 +96,7 @@ class TranslationService:
             state.metadata["job_id"] = job_id
         if activity_id is not None:
             state.metadata["activity_id"] = activity_id
+        state.metadata["translation_run_id"] = job_id or activity_id or f"translation_run_{uuid4().hex}"
         if novel_id is not None:
             state.metadata["novel_id"] = novel_id
         if chapter_id is not None:

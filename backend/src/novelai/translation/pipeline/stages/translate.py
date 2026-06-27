@@ -206,6 +206,17 @@ class TranslateStage(PipelineStage):
                 return value.strip()
         return None
 
+    @staticmethod
+    def _translation_run_id(context: PipelineContext) -> str:
+        for value in (
+            context.metadata.get("translation_run_id"),
+            context.job_id,
+            context.activity_id,
+        ):
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return "run_manual"
+
     def _max_attempts_exceeded_error(
         self,
         context: PipelineContext,
@@ -259,6 +270,7 @@ class TranslateStage(PipelineStage):
         payload: dict[str, Any] = {
             "job_id": context.job_id,
             "activity_id": context.activity_id,
+            "translation_run_id": TranslateStage._translation_run_id(context),
             "novel_id": context.novel_id,
             "chapter_id": context.chapter_id,
             "chapter_ids": list(chapter_ids or []),
@@ -395,6 +407,7 @@ class TranslateStage(PipelineStage):
                 {
                     "chunk_id": chunk_id,
                     "novel_id": novel_id,
+                    "translation_run_id": self._translation_run_id(context),
                     "chapter_ids": self._chapter_ids(context, chunk),
                     "paragraph_ids": self._paragraph_ids(chunk),
                     "paragraph_hashes": self._paragraph_hashes(chunk),
@@ -412,7 +425,11 @@ class TranslateStage(PipelineStage):
         novel_id = context.novel_id
         if not isinstance(novel_id, str) or not novel_id.strip():
             return
-        for stored in self._storage.load_chunk_states(novel_id=novel_id):
+        for stored in self._storage.load_chunk_states(
+            novel_id=novel_id,
+            chapter_id=context.chapter_id,
+            translation_run_id=self._translation_run_id(context),
+        ):
             chunk_id = stored.get("chunk_id") if isinstance(stored, dict) else None
             if isinstance(chunk_id, str) and chunk_id.strip():
                 context.chunk_states[chunk_id] = {
@@ -426,6 +443,7 @@ class TranslateStage(PipelineStage):
         *,
         chunk_id: str,
         chunk_text: str,
+        chapter_ids: list[str],
     ) -> str | None:
         novel_id = context.novel_id
         if not isinstance(novel_id, str) or not novel_id.strip():
@@ -433,7 +451,12 @@ class TranslateStage(PipelineStage):
         existing_state = context.chunk_states.get(chunk_id, {})
         if existing_state.get("status") != ChunkTranslationStatus.TRANSLATED.value:
             return None
-        stored = self._storage.read_translation_output(novel_id, chunk_id=chunk_id)
+        stored = self._storage.read_translation_output(
+            novel_id,
+            chunk_id=chunk_id,
+            translation_run_id=self._translation_run_id(context),
+            chapter_ids=chapter_ids,
+        )
         if not isinstance(stored, list) or not stored:
             return None
         latest = stored[-1]
@@ -478,6 +501,7 @@ class TranslateStage(PipelineStage):
             {
                 "chunk_id": chunk_id,
                 "novel_id": novel_id,
+                "translation_run_id": self._translation_run_id(context),
                 "chapter_ids": self._chapter_ids(context, chunk),
                 "paragraph_ids": self._paragraph_ids(chunk),
                 "paragraph_hashes": self._paragraph_hashes(chunk),
@@ -519,6 +543,7 @@ class TranslateStage(PipelineStage):
                 "output_id": f"{chunk_id}:attempt_{attempt_number:04d}",
                 "chunk_id": chunk_id,
                 "novel_id": novel_id,
+                "translation_run_id": self._translation_run_id(context),
                 "chapter_ids": self._chapter_ids(context, chunk),
                 "paragraph_ids": self._paragraph_ids(chunk),
                 "paragraph_hashes": self._paragraph_hashes(chunk),
@@ -545,6 +570,7 @@ class TranslateStage(PipelineStage):
         state = context.chunk_states.get(chunk_id)
         if not isinstance(state, dict):
             return
+        state["translation_run_id"] = self._translation_run_id(context)
         self._storage.upsert_chunk_state(state)
         novel_id = state.get("novel_id") or context.novel_id
         status = state.get("status")
@@ -783,7 +809,13 @@ class TranslateStage(PipelineStage):
         async def worker(chunk_index: int, chunk: str | TranslationChunk) -> str:
             chunk_text = self._chunk_text(chunk)
             chunk_id = self._chunk_id(chunk, chunk_index)
-            existing = self._load_existing_chunk_output(context, chunk_id=chunk_id, chunk_text=chunk_text)
+            chapter_ids = self._chapter_ids(context, chunk)
+            existing = self._load_existing_chunk_output(
+                context,
+                chunk_id=chunk_id,
+                chunk_text=chunk_text,
+                chapter_ids=chapter_ids,
+            )
             if existing is not None and not self._force_retranslate(context):
                 existing_state = context.chunk_states.get(chunk_id, {})
                 self._save_chunk_attempt(

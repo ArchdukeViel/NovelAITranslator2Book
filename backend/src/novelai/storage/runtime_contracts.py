@@ -98,6 +98,55 @@ def _record_key(*parts: Any) -> str:
     return ":".join(str(part) for part in parts if part is not None)
 
 
+def _scope_part(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _chapter_scope_from_payload(payload: dict[str, Any]) -> str:
+    explicit = _scope_part(payload.get("chapter_scope"))
+    if explicit is not None:
+        return explicit
+    chapter_ids = _list_strings(payload.get("chapter_ids") or payload.get("chapter_id"))
+    return "+".join(chapter_ids) if chapter_ids else "chapter_unknown"
+
+
+def _run_scope_from_payload(payload: dict[str, Any]) -> str:
+    for key in ("translation_run_id", "run_id", "job_id", "activity_id"):
+        value = _scope_part(payload.get(key))
+        if value is not None:
+            return value
+    return "run_manual"
+
+
+def _runtime_scope(payload: dict[str, Any]) -> tuple[str, str]:
+    return _run_scope_from_payload(payload), _chapter_scope_from_payload(payload)
+
+
+def _runtime_record_key(novel_id: str, payload: dict[str, Any], chunk_id: str, *tail: Any) -> str:
+    run_scope, chapter_scope = _runtime_scope(payload)
+    return _record_key(novel_id, run_scope, chapter_scope, chunk_id, *tail)
+
+
+def _matches_runtime_scope(item: dict[str, Any], payload: dict[str, Any]) -> bool:
+    expected_run = _scope_part(payload.get("translation_run_id") or payload.get("run_id") or payload.get("job_id") or payload.get("activity_id"))
+    if expected_run is not None and _run_scope_from_payload(item) != expected_run:
+        return False
+
+    requested_chapter_scope = _scope_part(payload.get("chapter_scope"))
+    requested_chapter_ids = _list_strings(payload.get("chapter_ids") or payload.get("chapter_id"))
+    if requested_chapter_scope is None and not requested_chapter_ids:
+        return True
+
+    if requested_chapter_scope is not None:
+        return _chapter_scope_from_payload(item) == requested_chapter_scope
+
+    item_chapter_ids = _list_strings(item.get("chapter_ids") or item.get("chapter_id"))
+    return item_chapter_ids == requested_chapter_ids
+
+
 def _list_strings(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value if item is not None]
@@ -152,7 +201,8 @@ def save_translation_chunks(self: Any, novel_id: str, chunks: list[dict[str, Any
         if not isinstance(source_text_hash, str) or not source_text_hash.strip():
             source_text_hash = _hash_text(source_text) if isinstance(source_text, str) else None
 
-        key = _record_key(normalized_novel_id, chunk_id)
+        run_scope, chapter_scope = _runtime_scope(payload)
+        key = _runtime_record_key(normalized_novel_id, payload, chunk_id)
         existing = records.get(key)
         created_at = existing.get("created_at") if isinstance(existing, dict) else None
         record = {
@@ -162,6 +212,9 @@ def save_translation_chunks(self: Any, novel_id: str, chunks: list[dict[str, Any
             "chunk_id": chunk_id,
             "novel_id": normalized_novel_id,
             "chapter_ids": _list_strings(payload.get("chapter_ids") or payload.get("chapter_id")),
+            "chapter_scope": chapter_scope,
+            "translation_run_id": run_scope,
+            "runtime_key": key,
             "paragraph_ids": _list_strings(payload.get("paragraph_ids")),
             "paragraph_hashes": _list_strings(payload.get("paragraph_hashes")),
             "source_text_hash": source_text_hash,
@@ -183,6 +236,10 @@ def read_translation_chunks(
     novel_id: str | None = None,
     *,
     status: str | None = None,
+    translation_run_id: str | None = None,
+    chapter_id: str | None = None,
+    chapter_ids: list[str] | tuple[str, ...] | str | None = None,
+    chapter_scope: str | None = None,
 ) -> list[dict[str, Any]]:
     path = self._translation_runtime_dir() / "chunks.json"
     records = _read_mapping(path)
@@ -191,6 +248,14 @@ def read_translation_chunks(
         items = [item for item in items if item.get("novel_id") == novel_id]
     if isinstance(status, str) and status.strip():
         items = [item for item in items if item.get("status") == status]
+    scope_payload = {
+        "translation_run_id": translation_run_id,
+        "chapter_id": chapter_id,
+        "chapter_ids": chapter_ids,
+        "chapter_scope": chapter_scope,
+    }
+    if any(value for value in scope_payload.values()):
+        items = [item for item in items if _matches_runtime_scope(item, scope_payload)]
     return items
 
 
@@ -201,7 +266,13 @@ def update_translation_chunk_status(
     status: str,
     **fields: Any,
 ) -> dict[str, Any]:
-    existing = self.read_translation_chunks(novel_id)
+    existing = self.read_translation_chunks(
+        novel_id,
+        translation_run_id=fields.get("translation_run_id"),
+        chapter_id=fields.get("chapter_id"),
+        chapter_ids=fields.get("chapter_ids"),
+        chapter_scope=fields.get("chapter_scope"),
+    )
     for record in existing:
         if record.get("chunk_id") == chunk_id:
             updated = {**record, **fields, "status": status}
@@ -229,7 +300,8 @@ def save_chunk_attempt_record(self: Any, attempt: dict[str, Any] | Any) -> dict[
 
     path = self._translation_runtime_dir() / "chunk_attempts.json"
     records = _read_mapping(path)
-    attempt_id = str(payload.get("attempt_id") or _record_key(novel_id, chunk_id, attempt_number)).strip()
+    run_scope, chapter_scope = _runtime_scope(payload)
+    attempt_id = str(payload.get("attempt_id") or _runtime_record_key(novel_id, payload, chunk_id, attempt_number)).strip()
     existing = records.get(attempt_id)
     created_at = existing.get("created_at") if isinstance(existing, dict) else None
     record = {
@@ -240,6 +312,9 @@ def save_chunk_attempt_record(self: Any, attempt: dict[str, Any] | Any) -> dict[
         "chunk_id": chunk_id,
         "novel_id": novel_id,
         "chapter_ids": _list_strings(payload.get("chapter_ids") or payload.get("chapter_id")),
+        "chapter_scope": chapter_scope,
+        "translation_run_id": run_scope,
+        "runtime_key": attempt_id,
         "paragraph_ids": _list_strings(payload.get("paragraph_ids")),
         "attempt_number": attempt_number,
         "status": str(payload.get("status") or "pending"),
@@ -257,6 +332,10 @@ def list_chunk_attempt_records(
     novel_id: str | None = None,
     chunk_id: str | None = None,
     status: str | None = None,
+    translation_run_id: str | None = None,
+    chapter_id: str | None = None,
+    chapter_ids: list[str] | tuple[str, ...] | str | None = None,
+    chapter_scope: str | None = None,
 ) -> list[dict[str, Any]]:
     path = self._translation_runtime_dir() / "chunk_attempts.json"
     records = _read_mapping(path)
@@ -264,6 +343,14 @@ def list_chunk_attempt_records(
     for key, value in (("novel_id", novel_id), ("chunk_id", chunk_id), ("status", status)):
         if isinstance(value, str) and value.strip():
             items = [item for item in items if item.get(key) == value]
+    scope_payload = {
+        "translation_run_id": translation_run_id,
+        "chapter_id": chapter_id,
+        "chapter_ids": chapter_ids,
+        "chapter_scope": chapter_scope,
+    }
+    if any(value for value in scope_payload.values()):
+        items = [item for item in items if _matches_runtime_scope(item, scope_payload)]
     return items
 
 
@@ -329,6 +416,8 @@ def save_translation_output(self: Any, output: dict[str, Any] | Any) -> dict[str
     output_id = str(payload.get("output_id") or f"{chunk_id}:{now}").strip()
     path = self._translation_runtime_dir() / "outputs.json"
     records = _read_mapping(path)
+    run_scope, chapter_scope = _runtime_scope(payload)
+    key = _runtime_record_key(novel_id, payload, chunk_id, output_id)
     record = {
         **payload,
         "schema_version": SCHEMA_VERSION,
@@ -336,6 +425,9 @@ def save_translation_output(self: Any, output: dict[str, Any] | Any) -> dict[str
         "chunk_id": chunk_id,
         "novel_id": novel_id,
         "chapter_ids": _list_strings(payload.get("chapter_ids") or payload.get("chapter_id")),
+        "chapter_scope": chapter_scope,
+        "translation_run_id": run_scope,
+        "runtime_key": key,
         "paragraph_ids": _list_strings(payload.get("paragraph_ids")),
         "translated_text": str(payload.get("translated_text") or ""),
         "structured_paragraph_map": payload.get("structured_paragraph_map") or [],
@@ -345,7 +437,7 @@ def save_translation_output(self: Any, output: dict[str, Any] | Any) -> dict[str
         "created_at": str(payload.get("created_at") or now),
         "updated_at": now,
     }
-    records[_record_key(novel_id, output_id)] = record
+    records[key] = record
     _write_mapping(path, records)
     return dict(record)
 
@@ -356,6 +448,10 @@ def read_translation_output(
     *,
     output_id: str | None = None,
     chunk_id: str | None = None,
+    translation_run_id: str | None = None,
+    chapter_id: str | None = None,
+    chapter_ids: list[str] | tuple[str, ...] | str | None = None,
+    chapter_scope: str | None = None,
 ) -> dict[str, Any] | list[dict[str, Any]] | None:
     path = self._translation_runtime_dir() / "outputs.json"
     records = _read_mapping(path)
@@ -364,6 +460,14 @@ def read_translation_output(
         for record in records.values()
         if isinstance(record, dict) and record.get("novel_id") == novel_id
     ]
+    scope_payload = {
+        "translation_run_id": translation_run_id,
+        "chapter_id": chapter_id,
+        "chapter_ids": chapter_ids,
+        "chapter_scope": chapter_scope,
+    }
+    if any(value for value in scope_payload.values()):
+        items = [item for item in items if _matches_runtime_scope(item, scope_payload)]
     if isinstance(output_id, str) and output_id.strip():
         for item in items:
             if item.get("output_id") == output_id:

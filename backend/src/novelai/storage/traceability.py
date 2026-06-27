@@ -34,6 +34,39 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _list_strings(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value if item is not None]
+    if isinstance(value, tuple):
+        return [str(item) for item in value if item is not None]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
+def _scope_part(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _chapter_scope(payload: dict[str, Any]) -> str:
+    explicit = _scope_part(payload.get("chapter_scope"))
+    if explicit is not None:
+        return explicit
+    chapter_ids = _list_strings(payload.get("chapter_ids") or payload.get("chapter_id"))
+    return "+".join(chapter_ids) if chapter_ids else "chapter_unknown"
+
+
+def _run_scope(payload: dict[str, Any]) -> str:
+    for key in ("translation_run_id", "run_id", "job_id", "activity_id"):
+        value = _scope_part(payload.get(key))
+        if value is not None:
+            return value
+    return "run_manual"
+
+
 def append_pipeline_event(self: Any, event: dict[str, Any] | Any) -> dict[str, Any]:
     payload = _as_dict(event)
     payload["timestamp"] = str(payload.get("timestamp") or _utc_now_iso())
@@ -94,7 +127,11 @@ def upsert_chunk_state(self: Any, state: dict[str, Any] | Any) -> dict[str, Any]
     states = _read_json_file(path, {})
     if not isinstance(states, dict):
         states = {}
-    key = f"{novel_id}:{chunk_id}"
+    run_scope = _run_scope(payload)
+    chapter_scope = _chapter_scope(payload)
+    payload["translation_run_id"] = run_scope
+    payload["chapter_scope"] = chapter_scope
+    key = f"{novel_id}:{run_scope}:{chapter_scope}:{chunk_id}"
     existing = states.get(key)
     merged = {**existing, **payload} if isinstance(existing, dict) else payload
     states[key] = merged
@@ -108,6 +145,7 @@ def load_chunk_states(
     novel_id: str | None = None,
     chapter_id: str | None = None,
     status: str | None = None,
+    translation_run_id: str | None = None,
 ) -> list[dict[str, Any]]:
     path = self._trace_dir() / "chunk_states.json"
     states = _read_json_file(path, {})
@@ -123,6 +161,8 @@ def load_chunk_states(
             if chapter_id in [str(value) for value in item.get("chapter_ids", [])]
             or item.get("chapter_id") == chapter_id
         ]
+    if isinstance(translation_run_id, str) and translation_run_id.strip():
+        items = [item for item in items if _run_scope(item) == translation_run_id]
     if isinstance(status, str) and status.strip():
         items = [item for item in items if item.get("status") == status]
     return items

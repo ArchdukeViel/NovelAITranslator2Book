@@ -153,6 +153,132 @@ def test_translation_chunk_records_without_paragraph_hashes_load_safely(storage:
     assert storage.read_translation_chunks("novel1")[0]["paragraph_hashes"] == []
 
 
+def test_translation_runtime_records_are_scoped_by_run_and_chapter(storage: StorageService) -> None:
+    storage.save_translation_chunks(
+        "novel1",
+        [
+            {
+                "chunk_id": "c0001",
+                "translation_run_id": "run_chapter_1",
+                "chapter_ids": ["chapter_001"],
+                "paragraph_ids": ["p0001"],
+                "source_text": "[P p0001]\nChapter 1 text",
+            },
+            {
+                "chunk_id": "c0001",
+                "translation_run_id": "run_chapter_2",
+                "chapter_ids": ["chapter_002"],
+                "paragraph_ids": ["p0001"],
+                "source_text": "[P p0001]\nChapter 2 text",
+            },
+        ],
+    )
+
+    all_chunks = storage.read_translation_chunks("novel1")
+    assert len(all_chunks) == 2
+    assert {chunk["runtime_key"] for chunk in all_chunks} == {
+        "novel1:run_chapter_1:chapter_001:c0001",
+        "novel1:run_chapter_2:chapter_002:c0001",
+    }
+
+    updated = storage.update_translation_chunk_status(
+        "novel1",
+        "c0001",
+        "needs_retry",
+        translation_run_id="run_chapter_2",
+        chapter_ids=["chapter_002"],
+        attempt_count=1,
+    )
+    assert updated["runtime_key"] == "novel1:run_chapter_2:chapter_002:c0001"
+
+    chapter_1_chunk = storage.read_translation_chunks(
+        "novel1",
+        translation_run_id="run_chapter_1",
+        chapter_ids=["chapter_001"],
+    )[0]
+    chapter_2_chunk = storage.read_translation_chunks(
+        "novel1",
+        translation_run_id="run_chapter_2",
+        chapter_ids=["chapter_002"],
+    )[0]
+    assert chapter_1_chunk["status"] == "pending"
+    assert chapter_2_chunk["status"] == "needs_retry"
+
+    first_attempt = storage.save_chunk_attempt_record(
+        {
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "translation_run_id": "run_chapter_1",
+            "chapter_ids": ["chapter_001"],
+            "attempt_number": 1,
+            "status": "failed",
+        }
+    )
+    second_attempt = storage.save_chunk_attempt_record(
+        {
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "translation_run_id": "run_chapter_2",
+            "chapter_ids": ["chapter_002"],
+            "attempt_number": 1,
+            "status": "running",
+        }
+    )
+    assert first_attempt["attempt_id"] != second_attempt["attempt_id"]
+    assert storage.list_chunk_attempt_records(
+        novel_id="novel1",
+        chunk_id="c0001",
+        translation_run_id="run_chapter_2",
+        chapter_ids=["chapter_002"],
+    ) == [second_attempt]
+
+    old_attempt = storage.save_chunk_attempt_record(
+        {
+            "attempt_id": "novel1:c0001:1",
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "attempt_number": 1,
+            "status": "failed",
+        }
+    )
+    scoped_attempts = storage.list_chunk_attempt_records(
+        novel_id="novel1",
+        chunk_id="c0001",
+        translation_run_id="run_chapter_2",
+        chapter_ids=["chapter_002"],
+    )
+    assert scoped_attempts == [second_attempt]
+    assert old_attempt in storage.list_chunk_attempt_records(novel_id="novel1", chunk_id="c0001")
+
+    first_output = storage.save_translation_output(
+        {
+            "output_id": "c0001:attempt_0001",
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "translation_run_id": "run_chapter_1",
+            "chapter_ids": ["chapter_001"],
+            "translated_text": "Chapter 1 translation.",
+        }
+    )
+    second_output = storage.save_translation_output(
+        {
+            "output_id": "c0001:attempt_0001",
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "translation_run_id": "run_chapter_2",
+            "chapter_ids": ["chapter_002"],
+            "translated_text": "Chapter 2 translation.",
+        }
+    )
+    assert first_output["runtime_key"] != second_output["runtime_key"]
+    assert storage.read_translation_output(
+        "novel1",
+        chunk_id="c0001",
+        translation_run_id="run_chapter_2",
+        chapter_ids=["chapter_002"],
+    ) == [second_output]
+
+
 def test_temporary_bundle_delete_does_not_delete_canonical_chapter_data(storage: StorageService) -> None:
     storage.save_chapter("novel1", "chapter_001", "Raw chapter text", title="Chapter 1")
     storage.save_translated_chapter("novel1", "chapter_001", "Final translated text", provider="dummy", model="dummy")

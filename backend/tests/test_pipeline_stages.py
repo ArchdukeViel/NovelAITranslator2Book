@@ -1,5 +1,6 @@
 """Tests for pipeline stages."""
 
+import hashlib
 from collections.abc import Mapping
 from typing import Any
 
@@ -89,6 +90,111 @@ def _fallback_context() -> PipelineState:
         ],
         metadata={"source_language": "Japanese", "target_language": "English"},
     )
+
+
+def test_translate_stage_scopes_existing_output_by_run_and_chapter(tmp_path):
+    env = _fallback_stage_env(tmp_path)
+    storage = env["storage"]
+    stage = TranslateStage(
+        provider_factory=lambda _key: _FallbackContractProvider("dummy"),
+        cache=env["cache"],
+        settings_service=env["prefs"],
+        usage_service=env["usage"],
+        storage=storage,
+    )
+    source_text = "[P p0001]\nこんにちは。"
+    source_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+    empty_glossary_hash = hashlib.sha256("".encode("utf-8")).hexdigest()
+    storage.save_translation_output(
+        {
+            "output_id": "c0001:attempt_0001",
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "translation_run_id": "run_chapter_1",
+            "chapter_ids": ["chapter_001"],
+            "translated_text": "Chapter 1 translation.",
+            "source_text_hash": source_hash,
+            "prompt_version": "translation_request_v1",
+            "glossary_hash": empty_glossary_hash,
+            "json_output": False,
+            "consistency_mode": False,
+        }
+    )
+    context = PipelineState(
+        chapter_url="test",
+        novel_id="novel1",
+        chapter_id="chapter_002",
+        metadata={"translation_run_id": "run_chapter_2"},
+    )
+    context.chunk_states["c0001"] = {
+        "chunk_id": "c0001",
+        "novel_id": "novel1",
+        "translation_run_id": "run_chapter_2",
+        "chapter_ids": ["chapter_002"],
+        "status": "translated",
+    }
+
+    assert stage._load_existing_chunk_output(
+        context,
+        chunk_id="c0001",
+        chunk_text=source_text,
+        chapter_ids=["chapter_002"],
+    ) is None
+
+    storage.save_translation_output(
+        {
+            "output_id": "c0001:attempt_0001",
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "translation_run_id": "run_chapter_2",
+            "chapter_ids": ["chapter_002"],
+            "translated_text": "Chapter 2 translation.",
+            "source_text_hash": source_hash,
+            "prompt_version": "translation_request_v1",
+            "glossary_hash": empty_glossary_hash,
+            "json_output": False,
+            "consistency_mode": False,
+        }
+    )
+
+    assert stage._load_existing_chunk_output(
+        context,
+        chunk_id="c0001",
+        chunk_text=source_text,
+        chapter_ids=["chapter_002"],
+    ) == "Chapter 2 translation."
+
+
+def test_translate_stage_does_not_load_full_chunk_state_for_small_chunk_retry(tmp_path):
+    env = _fallback_stage_env(tmp_path)
+    storage = env["storage"]
+    stage = TranslateStage(
+        provider_factory=lambda _key: _FallbackContractProvider("dummy"),
+        cache=env["cache"],
+        settings_service=env["prefs"],
+        usage_service=env["usage"],
+        storage=storage,
+    )
+    storage.upsert_chunk_state(
+        {
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "translation_run_id": "run_full_chunk",
+            "chapter_ids": ["chapter_001"],
+            "status": "needs_retry",
+            "attempt_number": 3,
+        }
+    )
+    context = PipelineState(
+        chapter_url="test",
+        novel_id="novel1",
+        chapter_id="chapter_001",
+        metadata={"translation_run_id": "run_small_chunk"},
+    )
+
+    stage._load_persisted_chunk_states(context)
+
+    assert context.chunk_states == {}
 
 
 class _FailingStage(PipelineStage):
