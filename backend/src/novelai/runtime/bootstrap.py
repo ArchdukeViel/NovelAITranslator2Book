@@ -12,7 +12,10 @@ implementations are registered in a given runtime (e.g., tests).
 bootstrap() is idempotent: it can be called multiple times safely.
 """
 
+import logging
+
 _BOOTSTRAPPED = False
+logger = logging.getLogger(__name__)
 
 
 def bootstrap_providers() -> None:
@@ -74,6 +77,28 @@ def bootstrap_exporters() -> None:
     # PDF exporter is not yet implemented (requires reportlab or weasyprint).
 
 
+def bootstrap_provider_credentials() -> list[dict[str, object]]:
+    """Hydrate active encrypted DB provider credentials into runtime settings."""
+    from novelai.config.settings import settings
+
+    if not settings.DATABASE_URL:
+        logger.info("Provider credential hydration skipped: database_not_configured")
+        return [{"hydrated": False, "reason": "database_not_configured"}]
+
+    from novelai.db.engine import session_scope
+    from novelai.runtime.container import container
+    from novelai.services.provider_credentials import hydrate_active_provider_credentials
+
+    try:
+        with session_scope() as session:
+            return hydrate_active_provider_credentials(db=session, preferences=container.preferences)
+    except Exception as exc:
+        if settings.ENV.strip().lower() not in {"development", "dev", "test", "testing", "local"}:
+            raise
+        logger.warning("Provider credential hydration skipped: %s", exc)
+        return [{"hydrated": False, "reason": "hydration_failed"}]
+
+
 def bootstrap() -> None:
     """Register all known providers, sources, and exporters (idempotent).
 
@@ -87,4 +112,5 @@ def bootstrap() -> None:
     bootstrap_sources()
     bootstrap_input_adapters()
     bootstrap_exporters()
+    bootstrap_provider_credentials()
     _BOOTSTRAPPED = True

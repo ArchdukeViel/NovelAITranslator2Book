@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -11,6 +12,9 @@ from sqlalchemy.orm import Session
 
 from novelai.config.settings import settings
 from novelai.db.models import ProviderCredential
+from novelai.services.preferences_service import PreferencesService
+
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -167,3 +171,70 @@ class ProviderCredentialService:
             "updated_at": credential.updated_at.isoformat().replace("+00:00", "Z") if credential.updated_at else None,
             "notes": credential.notes,
         }
+
+
+def _production_like() -> bool:
+    return settings.ENV.strip().lower() not in {"development", "dev", "test", "testing", "local"}
+
+
+def hydrate_active_provider_credentials(
+    *,
+    db: Session,
+    preferences: PreferencesService,
+    require_encryption_key: bool | None = None,
+) -> list[dict[str, Any]]:
+    """Decrypt active DB credentials into runtime provider settings.
+
+    Diagnostics never include secret values.
+    """
+    credential_service = ProviderCredentialService(db)
+    credentials = credential_service.list_credentials()
+    require_key = _production_like() if require_encryption_key is None else bool(require_encryption_key)
+    diagnostics: list[dict[str, Any]] = []
+    for credential in credentials:
+        diagnostic = {
+            "provider": credential.provider,
+            "credential_id": str(credential.provider),
+            "db_id": credential.id,
+            "label": credential.label,
+            "hydrated": False,
+            "reason": None,
+        }
+        if not credential.is_active:
+            diagnostic["reason"] = "disabled"
+            diagnostics.append(diagnostic)
+            continue
+        if credential.validation_status == "failed":
+            diagnostic["reason"] = "credential_invalid"
+            diagnostics.append(diagnostic)
+            continue
+        if not ProviderCredentialService.encryption_available():
+            diagnostic["reason"] = "encryption_key_missing"
+            diagnostics.append(diagnostic)
+            if require_key:
+                raise ValueError("PROVIDER_CREDENTIAL_ENCRYPTION_KEY is required to hydrate active provider credentials.")
+            continue
+        try:
+            api_key = credential_service.decrypt_api_key(credential)
+        except ValueError:
+            diagnostic["reason"] = "decrypt_failed"
+            diagnostics.append(diagnostic)
+            if require_key:
+                raise
+            continue
+
+        preferences.set_api_key(api_key, provider_key=credential.provider)
+        diagnostic["hydrated"] = True
+        diagnostic["reason"] = "active"
+        diagnostics.append(diagnostic)
+
+    for item in diagnostics:
+        logger.info(
+            "Provider credential hydration provider=%s credential_id=%s label=%s hydrated=%s reason=%s",
+            item["provider"],
+            item["credential_id"],
+            item["label"],
+            item["hydrated"],
+            item["reason"],
+        )
+    return diagnostics

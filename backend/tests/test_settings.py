@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from pydantic import SecretStr
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from novelai.config.settings import AppSettings
+from novelai.config.settings import AppSettings, settings
+from novelai.db.base import Base
+import novelai.db.models  # noqa: F401
+from novelai.services.preferences_service import PreferencesService
+from novelai.services.provider_credentials import ProviderCredentialService, hydrate_active_provider_credentials
 
 
 def test_default_settings() -> None:
@@ -68,3 +78,159 @@ def test_nvidia_api_key_alias(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert s.NVIDIA_API_KEY is not None
     assert s.NVIDIA_API_KEY.get_secret_value() == "nvidia-key"
+
+
+@pytest.fixture()
+def sqlite_session():
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=True)
+    session = SessionLocal()
+    yield session
+    session.close()
+    Base.metadata.drop_all(engine)
+    engine.dispose()
+
+
+def test_provider_credential_hydration_loads_active_encrypted_key(monkeypatch, sqlite_session, tmp_path, caplog) -> None:
+    monkeypatch.setattr(settings, "PROVIDER_CREDENTIAL_ENCRYPTION_KEY", SecretStr("bootstrap-test-encryption-key"))
+    monkeypatch.setattr(settings, "PROVIDER_GEMINI_API_KEY", None)
+    preferences = PreferencesService(tmp_path / "prefs")
+    credential_service = ProviderCredentialService(sqlite_session)
+    credential_service.upsert_credential(
+        provider="gemini",
+        api_key="AIza-bootstrap-secret",
+        label="Primary Gemini",
+        model="gemini-3.1-flash-lite",
+        is_active=True,
+        notes=None,
+    )
+
+    caplog.set_level("INFO")
+    diagnostics = hydrate_active_provider_credentials(db=sqlite_session, preferences=preferences)
+
+    assert preferences.get_api_key("gemini") == "AIza-bootstrap-secret"
+    assert diagnostics == [
+        {
+            "provider": "gemini",
+            "credential_id": "gemini",
+            "db_id": 1,
+            "label": "Primary Gemini",
+            "hydrated": True,
+            "reason": "active",
+        }
+    ]
+    assert "AIza-bootstrap-secret" not in caplog.text
+
+
+def test_provider_credential_hydration_skips_disabled_and_invalid(monkeypatch, sqlite_session, tmp_path) -> None:
+    monkeypatch.setattr(settings, "PROVIDER_CREDENTIAL_ENCRYPTION_KEY", SecretStr("bootstrap-test-encryption-key"))
+    monkeypatch.setattr(settings, "PROVIDER_GEMINI_API_KEY", None)
+    monkeypatch.setattr(settings, "NVIDIA_API_KEY", None)
+    preferences = PreferencesService(tmp_path / "prefs")
+    credential_service = ProviderCredentialService(sqlite_session)
+    gemini = credential_service.upsert_credential(
+        provider="gemini",
+        api_key="AIza-disabled-secret",
+        label="Disabled Gemini",
+        model="gemini-3.1-flash-lite",
+        is_active=False,
+        notes=None,
+    )
+    nvidia = credential_service.upsert_credential(
+        provider="nvidia",
+        api_key="nvapi-invalid-secret",
+        label="Invalid NVIDIA",
+        model="google/gemma-4-31b-it",
+        is_active=True,
+        notes=None,
+    )
+    credential_service.update_metadata(nvidia, validation_status="failed")
+
+    diagnostics = hydrate_active_provider_credentials(db=sqlite_session, preferences=preferences)
+
+    assert preferences.get_api_key("gemini") is None
+    assert preferences.get_api_key("nvidia") is None
+    assert {(item["provider"], item["reason"], item["hydrated"]) for item in diagnostics} == {
+        ("gemini", "disabled", False),
+        ("nvidia", "credential_invalid", False),
+    }
+    assert gemini.encrypted_api_key != "AIza-disabled-secret"
+
+
+def test_provider_credential_hydration_missing_key_fails_safely(monkeypatch, sqlite_session, tmp_path) -> None:
+    monkeypatch.setattr(settings, "PROVIDER_GEMINI_API_KEY", None)
+    monkeypatch.setattr(settings, "PROVIDER_CREDENTIAL_ENCRYPTION_KEY", SecretStr("bootstrap-test-encryption-key"))
+    credential_service = ProviderCredentialService(sqlite_session)
+    credential_service.upsert_credential(
+        provider="gemini",
+        api_key="AIza-needs-key",
+        label="Primary Gemini",
+        model="gemini-3.1-flash-lite",
+        is_active=True,
+        notes=None,
+    )
+    monkeypatch.setattr(settings, "PROVIDER_CREDENTIAL_ENCRYPTION_KEY", None)
+    preferences = PreferencesService(tmp_path / "prefs")
+
+    diagnostics = hydrate_active_provider_credentials(
+        db=sqlite_session,
+        preferences=preferences,
+        require_encryption_key=False,
+    )
+
+    assert diagnostics[0]["reason"] == "encryption_key_missing"
+    assert diagnostics[0]["hydrated"] is False
+    assert preferences.get_api_key("gemini") is None
+
+    with pytest.raises(ValueError, match="PROVIDER_CREDENTIAL_ENCRYPTION_KEY"):
+        hydrate_active_provider_credentials(
+            db=sqlite_session,
+            preferences=preferences,
+            require_encryption_key=True,
+        )
+
+
+def test_provider_credential_hydration_leaves_env_key_when_no_db_credential(monkeypatch, sqlite_session, tmp_path) -> None:
+    monkeypatch.setattr(settings, "PROVIDER_CREDENTIAL_ENCRYPTION_KEY", SecretStr("bootstrap-test-encryption-key"))
+    monkeypatch.setattr(settings, "PROVIDER_GEMINI_API_KEY", SecretStr("env-gemini-key"))
+    preferences = PreferencesService(tmp_path / "prefs")
+
+    diagnostics = hydrate_active_provider_credentials(db=sqlite_session, preferences=preferences)
+
+    assert diagnostics == []
+    assert preferences.get_api_key("gemini") == "env-gemini-key"
+
+
+def test_runtime_bootstrap_calls_provider_credential_hydration(monkeypatch) -> None:
+    bootstrap_module = importlib.import_module("novelai.runtime.bootstrap")
+
+    calls = []
+    monkeypatch.setattr(bootstrap_module, "_BOOTSTRAPPED", False)
+    monkeypatch.setattr(bootstrap_module, "bootstrap_providers", lambda: None)
+    monkeypatch.setattr(bootstrap_module, "bootstrap_sources", lambda: None)
+    monkeypatch.setattr(bootstrap_module, "bootstrap_input_adapters", lambda: None)
+    monkeypatch.setattr(bootstrap_module, "bootstrap_exporters", lambda: None)
+    monkeypatch.setattr(bootstrap_module, "bootstrap_provider_credentials", lambda: calls.append("hydrated") or [])
+
+    bootstrap_module.bootstrap()
+
+    assert calls == ["hydrated"]
+
+
+def test_rq_worker_startup_uses_shared_bootstrap(monkeypatch) -> None:
+    from novelai.worker import tasks
+
+    bootstrap_module = importlib.import_module("novelai.runtime.bootstrap")
+    container_module = importlib.import_module("novelai.runtime.container")
+    calls = []
+    runner = SimpleNamespace(worker=object())
+    monkeypatch.setattr(bootstrap_module, "bootstrap", lambda: calls.append("bootstrap"))
+    monkeypatch.setattr(container_module, "container", SimpleNamespace(activity_runner=runner, job_runner=None))
+
+    assert tasks._get_worker_service() is runner
+    assert calls == ["bootstrap"]
