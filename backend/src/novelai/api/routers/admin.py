@@ -11,6 +11,7 @@ from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.dependencies import (
     get_activity_runner,
+    get_db_session,
     get_preferences,
     get_translation_cache,
     get_usage,
@@ -19,6 +20,7 @@ from novelai.services.admin_service import AdminService
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
+from sqlalchemy.orm import Session
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
@@ -39,6 +41,35 @@ class ProviderApiKeyValidationRequest(BaseModel):
     api_key: str | None = None
     model: str | None = None
     provider_model: str | None = None
+
+
+class ProviderCredentialCreateRequest(BaseModel):
+    provider: str
+    api_key: str
+    label: str | None = None
+    model: str | None = None
+    provider_model: str | None = None
+    is_active: bool = True
+    notes: str | None = None
+    apply_globally: bool = False
+
+
+class ProviderCredentialUpdateRequest(BaseModel):
+    label: str | None = None
+    model: str | None = None
+    provider_model: str | None = None
+    is_active: bool | None = None
+    notes: str | None = None
+
+
+class ProviderFallbackPolicyRequest(BaseModel):
+    default_provider: str | None = None
+    default_model: str | None = None
+    default_credential_id: str | None = None
+    allow_cross_provider_fallback: bool | None = None
+    allow_run_overrides: bool | None = None
+    fallback_on_qa_failure: bool | None = None
+    candidates: list[dict[str, Any]] | None = None
 
 
 def _provider_credential_response(status: dict[str, Any]) -> dict[str, Any]:
@@ -62,6 +93,13 @@ def _provider_credential_response(status: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _model_payload(model: BaseModel) -> dict[str, Any]:
+    dump = getattr(model, "model_dump", None)
+    if callable(dump):
+        return dump(exclude_none=True)
+    return model.dict(exclude_none=True)
+
+
 def get_admin_service(
     preferences: PreferencesService = Depends(get_preferences),
     translation_cache: TranslationCache = Depends(get_translation_cache),
@@ -73,6 +111,22 @@ def get_admin_service(
         translation_cache=translation_cache,
         usage=usage,
         activity_runner=activity_runner,
+    )
+
+
+def get_admin_db_service(
+    preferences: PreferencesService = Depends(get_preferences),
+    translation_cache: TranslationCache = Depends(get_translation_cache),
+    usage: UsageService = Depends(get_usage),
+    activity_runner: BackgroundActivityRunner = Depends(get_activity_runner),
+    db_session: Session = Depends(get_db_session),
+) -> AdminService:
+    return AdminService(
+        preferences=preferences,
+        translation_cache=translation_cache,
+        usage=usage,
+        activity_runner=activity_runner,
+        db_session=db_session,
     )
 
 
@@ -101,6 +155,123 @@ async def get_provider_api_key_status(
 ) -> dict[str, Any]:
     try:
         return service.provider_api_key_status(provider)
+    except (KeyError, ValueError) as exc:
+        _raise_admin_error(exc)
+        raise AssertionError("unreachable")
+
+
+@router.get("/admin/providers")
+async def list_providers(
+    service: AdminService = Depends(get_admin_db_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    return service.provider_inventory()
+
+
+@router.get("/admin/providers/models")
+async def list_provider_models(
+    service: AdminService = Depends(get_admin_db_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    return service.provider_models()
+
+
+@router.get("/admin/providers/credentials")
+async def list_provider_credentials(
+    service: AdminService = Depends(get_admin_db_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    return service.list_provider_credentials()
+
+
+@router.post("/admin/providers/credentials")
+async def create_provider_credential(
+    body: ProviderCredentialCreateRequest,
+    service: AdminService = Depends(get_admin_db_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    try:
+        return service.create_provider_credential(
+            provider=body.provider,
+            api_key=body.api_key,
+            label=body.label,
+            model=body.provider_model or body.model,
+            is_active=body.is_active,
+            notes=body.notes,
+            apply_globally=body.apply_globally,
+        )
+    except (KeyError, ValueError) as exc:
+        _raise_admin_error(exc)
+        raise AssertionError("unreachable")
+
+
+@router.patch("/admin/providers/credentials/{credential_id}")
+async def update_provider_credential(
+    credential_id: str,
+    body: ProviderCredentialUpdateRequest,
+    service: AdminService = Depends(get_admin_db_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    try:
+        return service.update_provider_credential(
+            credential_id,
+            label=body.label,
+            model=body.provider_model or body.model,
+            is_active=body.is_active,
+            notes=body.notes,
+        )
+    except (KeyError, ValueError) as exc:
+        _raise_admin_error(exc)
+        raise AssertionError("unreachable")
+
+
+@router.delete("/admin/providers/credentials/{credential_id}")
+async def delete_provider_credential(
+    credential_id: str,
+    service: AdminService = Depends(get_admin_db_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    try:
+        return service.delete_provider_credential(credential_id)
+    except (KeyError, ValueError) as exc:
+        _raise_admin_error(exc)
+        raise AssertionError("unreachable")
+
+
+@router.post("/admin/providers/credentials/{credential_id}/test")
+async def test_provider_credential(
+    credential_id: str,
+    body: ProviderApiKeyValidationRequest | None = None,
+    service: AdminService = Depends(get_admin_db_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    try:
+        return await service.validate_provider_api_key(
+            provider=credential_id,
+            api_key=body.api_key if body else None,
+            model=(body.provider_model or body.model) if body else None,
+        )
+    except (KeyError, ValueError) as exc:
+        _raise_admin_error(exc)
+        raise AssertionError("unreachable")
+
+
+@router.get("/admin/providers/fallback-policy")
+async def get_provider_fallback_policy(
+    service: AdminService = Depends(get_admin_db_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    return service.get_provider_fallback_policy()
+
+
+@router.put("/admin/providers/fallback-policy")
+async def set_provider_fallback_policy(
+    body: ProviderFallbackPolicyRequest,
+    service: AdminService = Depends(get_admin_db_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    try:
+        return service.set_provider_fallback_policy(_model_payload(body))
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
         raise AssertionError("unreachable")

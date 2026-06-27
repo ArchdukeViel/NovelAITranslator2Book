@@ -355,6 +355,12 @@ class TranslateStage(PipelineStage):
         policy = normalize_policy(context.metadata.get("scheduler_policy") or settings.TRANSLATION_SCHEDULER_POLICY)
         raw_policy = context.metadata.get("scheduler_models")
         if not isinstance(raw_policy, list):
+            raw_policy = self._admin_provider_policy_models(
+                provider_key=provider_key,
+                model=model,
+                allow_cross_provider_fallback=context.metadata.get("allow_cross_provider_fallback", True) is not False,
+            )
+        if not isinstance(raw_policy, list):
             raw_policy = settings.TRANSLATION_MODEL_POLICY
         allow_cross_provider_fallback = context.metadata.get("allow_cross_provider_fallback", True) is not False
         filtered_count = 0
@@ -394,6 +400,70 @@ class TranslateStage(PipelineStage):
             if isinstance(stored, dict):
                 existing_state = stored
         return TranslationScheduler.from_configs(configs, policy=policy, existing_state=existing_state)
+
+    def _admin_provider_policy_models(
+        self,
+        *,
+        provider_key: str,
+        model: str,
+        allow_cross_provider_fallback: bool,
+    ) -> list[dict[str, Any]] | None:
+        management = self._settings.get_provider_management()
+        policy = management.get("fallback_policy") if isinstance(management.get("fallback_policy"), dict) else None
+        if not isinstance(policy, dict):
+            return None
+        raw_candidates = policy.get("candidates")
+        if not isinstance(raw_candidates, list):
+            return None
+        configs: list[dict[str, Any]] = []
+        skipped: list[dict[str, str]] = []
+        credentials = management.get("credentials") if isinstance(management.get("credentials"), dict) else {}
+        for index, item in enumerate(raw_candidates):
+            if not isinstance(item, dict):
+                continue
+            candidate_provider = item.get("provider_key") or item.get("provider") or provider_key
+            candidate_model = item.get("provider_model") or item.get("model") or model
+            credential_id = item.get("credential_id") or candidate_provider
+            if not isinstance(candidate_provider, str) or not isinstance(candidate_model, str):
+                continue
+            if item.get("enabled", True) is False:
+                skipped.append({"provider_key": candidate_provider, "provider_model": candidate_model, "reason": "disabled"})
+                continue
+            if not allow_cross_provider_fallback and candidate_provider != provider_key:
+                skipped.append({"provider_key": candidate_provider, "provider_model": candidate_model, "reason": "provider_locked"})
+                continue
+            credential = credentials.get(credential_id) if isinstance(credentials, dict) else None
+            if isinstance(credential, dict) and credential.get("is_active") is False:
+                skipped.append({"provider_key": candidate_provider, "provider_model": candidate_model, "reason": "credential_disabled"})
+                continue
+            if isinstance(credential, dict) and credential.get("validation_status") == "failed":
+                skipped.append({"provider_key": candidate_provider, "provider_model": candidate_model, "reason": "credential_invalid"})
+                continue
+            if isinstance(credential_id, str) and self._settings.get_api_key(credential_id) is None:
+                skipped.append({"provider_key": candidate_provider, "provider_model": candidate_model, "reason": "credential_missing"})
+                continue
+            configs.append(
+                {
+                    "provider_key": candidate_provider,
+                    "provider_model": candidate_model,
+                    "priority_order": self._nonnegative_int(item.get("priority_order"), default=index),
+                    "rpm_limit": item.get("rpm_limit"),
+                    "rpd_limit": item.get("rpd_limit"),
+                }
+            )
+        if skipped:
+            context_skips = getattr(self, "_last_admin_policy_skips", [])
+            context_skips.extend(skipped)
+            self._last_admin_policy_skips = context_skips
+        return configs or None
+
+    @staticmethod
+    def _nonnegative_int(value: Any, *, default: int) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return default
+        return parsed if parsed >= 0 else default
 
     def _save_chunk_records(self, context: PipelineContext, chunks: list[str | TranslationChunk]) -> None:
         novel_id = context.novel_id

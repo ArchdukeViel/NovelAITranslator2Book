@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -41,11 +41,13 @@ from novelai.db.base import Base
 import novelai.db.models  # noqa: F401
 from novelai.db.models.genre import Genre
 from novelai.db.models.novel import Novel
+from novelai.db.models.system import ProviderCredential
 from novelai.db.models.users import NovelRequest
 from novelai.providers.gemini_provider import GeminiProvider
 from novelai.providers.nvidia_provider import NVIDIAProvider
 from novelai.runtime.bootstrap import bootstrap
 from novelai.services.preferences_service import PreferencesService
+from novelai.services.provider_credentials import ProviderCredentialService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.storage.service import StorageService
@@ -225,9 +227,13 @@ def test_router_path_method_snapshot() -> None:
         (("GET",), "/activity/source-health"),
         (("GET",), "/activity/source-health/{source_key}"),
         (("GET",), "/activity/{activity_id}"),
-        (("GET",), "/admin"),
-        (("GET",), "/admin/providers/{provider}"),
-        (("GET",), "/admin/provider-api-key/{provider}"),
+            (("GET",), "/admin"),
+            (("GET",), "/admin/providers"),
+            (("GET",), "/admin/providers/credentials"),
+            (("GET",), "/admin/providers/fallback-policy"),
+            (("GET",), "/admin/providers/models"),
+            (("GET",), "/admin/providers/{provider}"),
+            (("GET",), "/admin/provider-api-key/{provider}"),
         (("GET",), "/admin/runtime-state"),
         (("GET",), "/admin/worker"),
         (("GET",), "/input-adapters"),
@@ -254,11 +260,13 @@ def test_router_path_method_snapshot() -> None:
         (("PATCH",), "/activity/{activity_id}"),
         (("PATCH",), "/jobs/{activity_id}"),
         (("PATCH",), "/requests/{request_id}"),
-        (("POST",), "/admin/worker/run-once"),
-        (("POST",), "/admin/worker/start"),
-        (("POST",), "/admin/worker/stop"),
-        (("POST",), "/admin/providers"),
-        (("POST",), "/admin/providers/{provider}/validate"),
+            (("POST",), "/admin/worker/run-once"),
+            (("POST",), "/admin/worker/start"),
+            (("POST",), "/admin/worker/stop"),
+            (("POST",), "/admin/providers"),
+            (("POST",), "/admin/providers/credentials"),
+            (("POST",), "/admin/providers/credentials/{credential_id}/test"),
+            (("POST",), "/admin/providers/{provider}/validate"),
         (("POST",), "/admin/provider-api-key"),
         (("POST",), "/admin/provider-api-key/validate"),
         (("POST",), "/admin/runtime-state/{state_key}/refresh"),
@@ -285,8 +293,11 @@ def test_router_path_method_snapshot() -> None:
         (("POST",), "/{novel_id}/scrape"),
         (("POST",), "/{novel_id}/translate"),
         (("POST",), "/{novel_id}/unpublish"),
-        (("PUT",), "/{novel_id}/chapters/{chapter_id}/translated"),
-        (("DELETE",), "/admin/providers/{provider}"),
+            (("PUT",), "/{novel_id}/chapters/{chapter_id}/translated"),
+            (("PUT",), "/admin/providers/fallback-policy"),
+            (("PATCH",), "/admin/providers/credentials/{credential_id}"),
+            (("DELETE",), "/admin/providers/credentials/{credential_id}"),
+            (("DELETE",), "/admin/providers/{provider}"),
         (("DELETE",), "/admin/provider-api-key/{provider}"),
         (("DELETE",), "/admin/runtime-state/{state_key}"),
     }
@@ -847,6 +858,7 @@ class _FakeGeminiClient:
 def _clean_tmp():
     old_gemini_key = settings.PROVIDER_GEMINI_API_KEY
     old_nvidia_key = settings.NVIDIA_API_KEY
+    old_provider_credential_key = settings.PROVIDER_CREDENTIAL_ENCRYPTION_KEY
     novels._hits.clear()
     if _TMP.exists():
         shutil.rmtree(_TMP, ignore_errors=True)
@@ -854,6 +866,7 @@ def _clean_tmp():
     yield
     settings.PROVIDER_GEMINI_API_KEY = old_gemini_key
     settings.NVIDIA_API_KEY = old_nvidia_key
+    settings.PROVIDER_CREDENTIAL_ENCRYPTION_KEY = old_provider_credential_key
     novels._hits.clear()
     shutil.rmtree(_TMP, ignore_errors=True)
 
@@ -2692,6 +2705,183 @@ class TestAdmin:
         openai_resp = c.get("/api/admin/provider-api-key/openai")
         assert openai_resp.status_code == 400
         assert "gemini, nvidia" in openai_resp.json()["detail"]
+
+    def test_provider_management_requires_owner_and_returns_safe_metadata(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        settings.PROVIDER_CREDENTIAL_ENCRYPTION_KEY = SecretStr("test-provider-credential-encryption-key")
+        storage = _fresh_storage()
+        owner_preferences = PreferencesService(_TMP / "prefs-owner")
+        user_preferences = PreferencesService(_TMP / "prefs-user")
+        owner = _make_app(storage, preferences=owner_preferences, db_session=isolated_db_session)
+        user = _make_app(storage, preferences=user_preferences, session_user=REGULAR_USER, db_session=isolated_db_session)
+
+        assert user.get("/api/admin/providers").status_code == 403
+        assert user.get("/api/admin/providers/credentials").status_code == 403
+        assert user.get("/api/admin/providers/fallback-policy").status_code == 403
+
+        created = owner.post(
+            "/api/admin/providers/credentials",
+            json={
+                "provider": "gemini",
+                "api_key": "AIza-admin-safe-key",
+                "label": "Primary Gemini",
+                "model": "gemini-3.1-flash-lite",
+                "is_active": True,
+            },
+            headers=_csrf_headers(owner),
+        )
+        assert created.status_code == 200
+        payload = created.json()
+        encoded = json.dumps(payload)
+        assert payload["id"] == "gemini"
+        assert payload["provider"] == "gemini"
+        assert payload["label"] == "Primary Gemini"
+        assert payload["last4"] == "-key"
+        assert "AIza-admin-safe-key" not in encoded
+        assert "api_key" not in payload
+        row = isolated_db_session.query(ProviderCredential).filter_by(provider="gemini").one()
+        assert row.encrypted_api_key != "AIza-admin-safe-key"
+        assert "AIza-admin-safe-key" not in row.encrypted_api_key
+        assert ProviderCredentialService(isolated_db_session).decrypt_api_key(row) == "AIza-admin-safe-key"
+
+        listed = owner.get("/api/admin/providers/credentials")
+        assert listed.status_code == 200
+        assert "AIza-admin-safe-key" not in json.dumps(listed.json())
+        assert listed.json()["credentials"][0]["configured"] is True
+
+    def test_provider_management_model_registry_keeps_provider_ids_separate(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        settings.PROVIDER_CREDENTIAL_ENCRYPTION_KEY = SecretStr("test-provider-credential-encryption-key")
+        c = _make_app(
+            _fresh_storage(),
+            preferences=PreferencesService(_TMP / "prefs-models"),
+            db_session=isolated_db_session,
+        )
+
+        models_resp = c.get("/api/admin/providers/models")
+        assert models_resp.status_code == 200
+        models = {(item["provider"], item["model"]) for item in models_resp.json()["models"]}
+        assert ("gemini", "gemma-4-31b-it") in models
+        assert ("gemini", "google/gemma-4-31b-it") not in models
+        assert ("nvidia", "google/gemma-4-31b-it") in models
+
+        rejected = c.put(
+            "/api/admin/providers/fallback-policy",
+            json={
+                "default_provider": "gemini",
+                "default_model": "google/gemma-4-31b-it",
+                "candidates": [
+                    {"provider": "gemini", "model": "google/gemma-4-31b-it", "credential_id": "gemini"},
+                ],
+            },
+            headers=_csrf_headers(c),
+        )
+        assert rejected.status_code == 400
+
+    def test_provider_management_requires_encryption_key_for_storage(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        settings.PROVIDER_CREDENTIAL_ENCRYPTION_KEY = None
+        c = _make_app(
+            _fresh_storage(),
+            preferences=PreferencesService(_TMP / "prefs-missing-encryption"),
+            db_session=isolated_db_session,
+        )
+
+        resp = c.post(
+            "/api/admin/providers/credentials",
+            json={"provider": "gemini", "api_key": "AIza-should-not-store"},
+            headers=_csrf_headers(c),
+        )
+
+        assert resp.status_code == 400
+        assert "PROVIDER_CREDENTIAL_ENCRYPTION_KEY" in resp.json()["detail"]
+        assert isolated_db_session.query(ProviderCredential).count() == 0
+
+    def test_provider_management_fallback_policy_order_and_safe_defaults(
+        self,
+        _no_api_key: None,
+        isolated_db_session: Session,
+    ) -> None:
+        bootstrap()
+        settings.PROVIDER_CREDENTIAL_ENCRYPTION_KEY = SecretStr("test-provider-credential-encryption-key")
+        preferences = PreferencesService(_TMP / "prefs-policy")
+        c = _make_app(_fresh_storage(), preferences=preferences, db_session=isolated_db_session)
+        headers = _csrf_headers(c)
+        for provider, key, model in [
+            ("gemini", "AIza-policy-key", "gemma-4-31b-it"),
+            ("nvidia", "nvapi-policy-key", "google/gemma-4-31b-it"),
+        ]:
+            resp = c.post(
+                "/api/admin/providers/credentials",
+                json={"provider": provider, "api_key": key, "model": model, "is_active": True},
+                headers=headers,
+            )
+            assert resp.status_code == 200
+
+        policy_resp = c.put(
+            "/api/admin/providers/fallback-policy",
+            json={
+                "default_provider": "gemini",
+                "default_model": "gemma-4-31b-it",
+                "default_credential_id": "gemini",
+                "allow_cross_provider_fallback": True,
+                "fallback_on_qa_failure": False,
+                "candidates": [
+                    {
+                        "priority_order": 1,
+                        "provider": "nvidia",
+                        "model": "google/gemma-4-31b-it",
+                        "credential_id": "nvidia",
+                        "enabled": True,
+                        "rpm_limit": 3,
+                        "tpm_limit": 1234,
+                        "rpd_limit": 5,
+                    },
+                    {
+                        "priority_order": 0,
+                        "provider": "gemini",
+                        "model": "gemma-4-31b-it",
+                        "credential_id": "gemini",
+                        "enabled": True,
+                    },
+                ],
+            },
+            headers=headers,
+        )
+        assert policy_resp.status_code == 200
+        policy = policy_resp.json()
+        assert policy["default_provider"] == "gemini"
+        assert policy["default_model"] == "gemma-4-31b-it"
+        assert policy["allow_cross_provider_fallback"] is True
+        assert policy["fallback_on_qa_failure"] is False
+        assert "qa_failure" in policy["disallowed_failure_reasons"]
+        assert [(item["provider"], item["model"]) for item in policy["candidates"]] == [
+            ("gemini", "gemma-4-31b-it"),
+            ("nvidia", "google/gemma-4-31b-it"),
+        ]
+        assert policy["candidates"][1]["rpm_limit"] == 3
+        assert policy["candidates"][1]["tpm_limit"] == 1234
+        assert policy["candidates"][1]["rpd_limit"] == 5
+
+        disabled = c.patch(
+            "/api/admin/providers/credentials/nvidia",
+            json={"is_active": False},
+            headers=headers,
+        )
+        assert disabled.status_code == 200
+        assert disabled.json()["is_active"] is False
 
     def test_admin_runtime_state_can_list_refresh_and_clear(self, _no_api_key: None) -> None:
         bootstrap()

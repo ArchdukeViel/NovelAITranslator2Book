@@ -23,6 +23,7 @@ dependencies = [
   "httpx>=0.28.1",
   "beautifulsoup4>=4.14.3",
   "lxml>=6.0.2",
+  "cryptography>=45.0.0",
   "google-genai>=1.36.0",
 ]
 
@@ -56,6 +57,7 @@ auth = [
 ]
 dev = [
   "argon2-cffi>=25.1.0",
+  "cryptography>=45.0.0",
   "google-genai>=1.36.0",
   "openai>=2.26.0",
   "pip-tools>=7.5.3",
