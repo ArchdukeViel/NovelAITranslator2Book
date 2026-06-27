@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from novelai.providers.base import TranslationProvider
+from novelai.providers.gemini_provider import GeminiProvider
 from novelai.providers.registry import (
     _PROVIDER_REGISTRY,
     available_providers,
@@ -66,3 +67,9 @@ class TestProviderRegistry:
         providers = set(available_providers())
         assert {"dummy", "gemini", "nvidia"}.issubset(providers)
         assert "openai" not in providers
+
+    def test_gemini_provider_lists_gemini_api_gemma_model_id(self) -> None:
+        models = GeminiProvider().available_models()
+
+        assert "gemma-4-31b-it" in models
+        assert "google/gemma-4-31b-it" not in models
