@@ -11,6 +11,9 @@ MULTILINGUAL_SYSTEM_PROMPT_TEMPLATE = dedent(
     Core rules:
     - Preserve all meaning exactly. Do not omit, summarize, censor, soften, or add information.
     - Keep the same paragraph breaks as the source unless the user explicitly requests otherwise.
+    - Preserve every [CHAPTER ...] and [P ...] marker exactly as-is.
+    - Every source [P pNNNN] marker must appear exactly once in the output, in source order.
+    - If a paragraph cannot be translated, still output its [P pNNNN] marker and leave the translated body blank rather than omitting the marker.
     - Translate into smooth, readable {target_language} prose rather than word-for-word literal output.
     - Preserve narrator voice, internal monologue, humor, sarcasm, emotional nuance, and subtext.
     - Preserve dialogue naturally in {target_language} while keeping each speaker's personality, social tone, and implied relationships.
@@ -38,6 +41,9 @@ DEFAULT_USER_PROMPT_TEMPLATE = dedent(
 
     Requirements:
     - Keep the same paragraph breaks.
+    - Copy every [CHAPTER ...] and [P ...] marker exactly as-is.
+    - Include every [P pNNNN] marker exactly once, in source order.
+    - If a paragraph body would be blank, keep its [P pNNNN] marker and leave the body blank.
     - Keep names and terminology consistent within this passage.
     - Preserve tone, humor, and narrator voice.
     - Output only the translation.{additional_instructions}
@@ -54,6 +60,9 @@ STRONG_CONSISTENCY_USER_PROMPT_TEMPLATE = dedent(
 
     Requirements:
     - Keep the same paragraph breaks.
+    - Copy every [CHAPTER ...] and [P ...] marker exactly as-is.
+    - Include every [P pNNNN] marker exactly once, in source order.
+    - If a paragraph body would be blank, keep its [P pNNNN] marker and leave the body blank.
     - Preserve tone, humor, narrator voice, and character dynamics.
     - Keep names, titles, abilities, and worldbuilding terms consistent with prior established usage.
     - If a recurring term appears, translate it the same way unless context clearly requires otherwise.
@@ -79,8 +88,9 @@ JSON_SYSTEM_PROMPT_TEMPLATE = dedent(
     - Return one valid JSON object only. No markdown fences or prose outside JSON.
     - Include every source paragraph id exactly once, in source order.
     - Copy paragraph_id values exactly from [P ...] markers.
+    - Do not omit the final paragraph id.
     - Include chapter_id when [CHAPTER ...] markers are present.
-    - translated_text values must be non-empty translations.
+    - If a paragraph cannot be translated, include its paragraph_map entry with an empty translated_text rather than omitting the paragraph_id.
 
     Return this schema:
     {{

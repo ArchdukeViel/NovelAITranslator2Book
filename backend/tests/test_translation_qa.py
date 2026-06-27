@@ -203,6 +203,36 @@ def test_translation_qa_missing_paragraph_id_fails():
 
     assert not result.passed
     assert "paragraph_missing" in result.errors
+    diagnostics = result.to_dict()["diagnostics"]["paragraph_map"]
+    assert diagnostics["expected_count"] == 2
+    assert diagnostics["output_count"] == 1
+    assert diagnostics["missing_ids"] == ["chapter_001:p0002"]
+    assert diagnostics["unexpected_ids"] == []
+
+
+def test_translation_qa_reports_final_marker_omission_without_text_excerpts():
+    refs = [("chapter_001", f"p{index:04d}") for index in range(1, 110)]
+    chunk = _chunk(paragraph_refs=refs)
+    translated = "\n".join(
+        line
+        for index in range(1, 109)
+        for line in (f"[P p{index:04d}]", "Translated paragraph.")
+    )
+
+    result = evaluate_translation_quality(
+        source_text=chunk.source_text,
+        translated_text=translated,
+        chunk=chunk,
+    )
+
+    assert not result.passed
+    assert "paragraph_missing" in result.errors
+    diagnostics = result.to_dict()["diagnostics"]["marker_coverage"]
+    assert diagnostics["expected_count"] == 109
+    assert diagnostics["output_count"] == 108
+    assert diagnostics["missing_ids"] == ["chapter_001:p0109"]
+    assert diagnostics["unexpected_ids"] == []
+    assert "Translated paragraph." not in str(diagnostics)
 
 
 def test_translation_qa_duplicate_paragraph_id_fails():
@@ -221,6 +251,8 @@ def test_translation_qa_duplicate_paragraph_id_fails():
 
     assert not result.passed
     assert "paragraph_duplicate" in result.errors
+    diagnostics = result.to_dict()["diagnostics"]["paragraph_map"]
+    assert diagnostics["duplicate_ids"] == ["chapter_001:p0001"]
 
 
 def test_translation_qa_unexpected_paragraph_id_fails():
@@ -240,6 +272,8 @@ def test_translation_qa_unexpected_paragraph_id_fails():
 
     assert not result.passed
     assert "paragraph_unexpected" in result.errors
+    diagnostics = result.to_dict()["diagnostics"]["paragraph_map"]
+    assert diagnostics["unexpected_ids"] == ["chapter_001:p9999"]
 
 
 def test_translation_qa_structured_paragraph_order_mismatch_fails():
@@ -333,6 +367,7 @@ async def test_translation_qa_stage_marks_failed_chunk_state():
     assert context.chunk_states["c0001"]["status"] == "qa_failed"
     assert context.chunk_states["c0001"]["error_code"] == "translation_empty"
     assert context.metadata["qa_result"]["passed"] is False
+    assert "qa_diagnostics" in context.chunk_states["c0001"]
 
 
 def test_translation_qa_normalizes_structured_output_text():

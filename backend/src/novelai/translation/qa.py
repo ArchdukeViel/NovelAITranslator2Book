@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from dataclasses import field
 from typing import Any
 
 from novelai.translation.pipeline.context import TranslationChunk
@@ -14,14 +15,18 @@ class TranslationQAResult:
     passed: bool
     warnings: list[str]
     errors: list[str]
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "score": self.score,
             "passed": self.passed,
             "warnings": list(self.warnings),
             "errors": list(self.errors),
         }
+        if self.diagnostics:
+            payload["diagnostics"] = dict(self.diagnostics)
+        return payload
 
 
 class TranslationQAError(Exception):
@@ -170,23 +175,38 @@ def evaluate_translation_quality(
     output_text = normalized.text
     warnings: list[str] = []
     errors: list[str] = []
+    diagnostics: dict[str, Any] = {}
 
     _check_basic_text(source_text, output_text, warnings=warnings, errors=errors)
     _check_placeholders(source_text, output_text, warnings=warnings, errors=errors)
-    _check_marker_coverage(source_text, output_text, chunk=chunk, warnings=warnings, errors=errors)
+    _check_marker_coverage(
+        source_text,
+        output_text,
+        chunk=chunk,
+        warnings=warnings,
+        errors=errors,
+        diagnostics=diagnostics,
+    )
     _check_paragraph_map(
         normalized.paragraph_map,
         chunk=chunk,
         structured_output=structured_output or normalized.structured,
         warnings=warnings,
         errors=errors,
+        diagnostics=diagnostics,
     )
 
     if _uses_multiple_provider_models(chunk):
         warnings.append("model_switch_warning")
 
     score = _score(warnings=warnings, errors=errors)
-    return TranslationQAResult(score=score, passed=not errors and score >= 0.75, warnings=warnings, errors=errors)
+    return TranslationQAResult(
+        score=score,
+        passed=not errors and score >= 0.75,
+        warnings=warnings,
+        errors=errors,
+        diagnostics=diagnostics,
+    )
 
 
 def normalized_translation_text(raw_output: str) -> str:
@@ -316,6 +336,42 @@ def _expected_refs(chunk: TranslationChunk | None) -> list[tuple[str, str]]:
     return []
 
 
+def _ref_id(ref: tuple[str, str]) -> str:
+    chapter_id, paragraph_id = ref
+    return f"{chapter_id}:{paragraph_id}" if chapter_id else paragraph_id
+
+
+def _duplicate_refs(refs: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    seen: set[tuple[str, str]] = set()
+    duplicates: list[tuple[str, str]] = []
+    for ref in refs:
+        if ref in seen and ref not in duplicates:
+            duplicates.append(ref)
+        seen.add(ref)
+    return duplicates
+
+
+def _paragraph_diagnostics(
+    *,
+    expected: list[tuple[str, str]],
+    actual: list[tuple[str, str]],
+) -> dict[str, Any]:
+    missing = [ref for ref in expected if ref not in actual]
+    unexpected = [ref for ref in actual if ref not in expected]
+    matching_order = [ref for ref in actual if ref in expected]
+    return {
+        "expected_count": len(expected),
+        "output_count": len(actual),
+        "missing_count": len(missing),
+        "unexpected_count": len(unexpected),
+        "duplicate_count": len(_duplicate_refs(actual)),
+        "missing_ids": [_ref_id(ref) for ref in missing],
+        "unexpected_ids": [_ref_id(ref) for ref in unexpected],
+        "duplicate_ids": [_ref_id(ref) for ref in _duplicate_refs(actual)],
+        "order_matches_expected": matching_order == expected,
+    }
+
+
 def _check_marker_coverage(
     source_text: str,
     output_text: str,
@@ -323,6 +379,7 @@ def _check_marker_coverage(
     chunk: TranslationChunk | None,
     warnings: list[str],
     errors: list[str],
+    diagnostics: dict[str, Any],
 ) -> None:
     expected = _expected_refs(chunk)
     output_refs = _marker_refs(output_text, chunk)
@@ -331,17 +388,18 @@ def _check_marker_coverage(
         return
     if not output_refs:
         warnings.append("paragraph_mapping_unavailable")
+        diagnostics["marker_coverage"] = _paragraph_diagnostics(expected=expected, actual=output_refs)
         return
 
-    if len(set(output_refs)) != len(output_refs):
+    marker_diagnostics = _paragraph_diagnostics(expected=expected, actual=output_refs)
+    diagnostics["marker_coverage"] = marker_diagnostics
+    if marker_diagnostics["duplicate_count"]:
         errors.append("paragraph_duplicate")
-    missing = [ref for ref in expected if ref not in output_refs]
-    unexpected = [ref for ref in output_refs if ref not in expected]
-    if missing:
+    if marker_diagnostics["missing_count"]:
         errors.append("paragraph_missing")
-    if unexpected:
+    if marker_diagnostics["unexpected_count"]:
         errors.append("paragraph_unexpected")
-    if [ref for ref in output_refs if ref in expected] != expected:
+    if not marker_diagnostics["order_matches_expected"]:
         warnings.append("paragraph_order_mismatch")
 
     expected_chapters = [chapter_id for chapter_id in dict.fromkeys(chapter_id for chapter_id, _ in expected)]
@@ -357,6 +415,7 @@ def _check_paragraph_map(
     structured_output: bool,
     warnings: list[str],
     errors: list[str],
+    diagnostics: dict[str, Any],
 ) -> None:
     expected = _expected_refs(chunk)
     if not expected:
@@ -366,6 +425,7 @@ def _check_paragraph_map(
     if not paragraph_map:
         if structured_output:
             errors.append("paragraph_missing")
+            diagnostics["paragraph_map"] = _paragraph_diagnostics(expected=expected, actual=[])
         elif multi_chapter:
             errors.append("chapter_mapping_invalid")
         return
@@ -383,18 +443,18 @@ def _check_paragraph_map(
             errors.append("translation_empty")
         normalized_refs.append((str(chapter_id), str(paragraph_id)))
 
-    if len(set(normalized_refs)) != len(normalized_refs):
+    map_diagnostics = _paragraph_diagnostics(expected=expected, actual=normalized_refs)
+    diagnostics["paragraph_map"] = map_diagnostics
+    if map_diagnostics["duplicate_count"]:
         errors.append("paragraph_duplicate")
-    if [ref for ref in normalized_refs if ref in expected] != expected:
+    if not map_diagnostics["order_matches_expected"]:
         if structured_output:
             errors.append("paragraph_order_mismatch")
         else:
             warnings.append("paragraph_order_mismatch")
-    missing = [ref for ref in expected if ref not in normalized_refs]
-    unexpected = [ref for ref in normalized_refs if ref not in expected]
-    if missing:
+    if map_diagnostics["missing_count"]:
         errors.append("paragraph_missing")
-    if unexpected:
+    if map_diagnostics["unexpected_count"]:
         errors.append("paragraph_unexpected")
     if multi_chapter and any(ref not in expected for ref in normalized_refs):
         errors.append("chapter_mapping_invalid")
