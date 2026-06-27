@@ -40,6 +40,8 @@ def test_build_user_prompt_includes_glossary_and_style_and_preserves_paragraphs(
     assert "- 公爵 = duke" in prompt
     assert "- 魔導具 = magic device" in prompt
     assert "Treat fantasy and worldbuilding terminology carefully." in prompt
+    assert "Copy every [CHAPTER ...] and [P ...] marker exactly as-is." in prompt
+    assert "Include every [P pNNNN] marker exactly once" in prompt
     assert "第一段落。\n\n第二段落。" in prompt
 
 
@@ -70,6 +72,8 @@ def test_build_json_translation_request_sets_json_mode_and_payload_schema() -> N
     assert "Return one valid JSON object only." in request.system_prompt
     assert "paragraph_map" in request.system_prompt
     assert "Include every source paragraph id exactly once" in request.system_prompt
+    assert "Do not omit the final paragraph id." in request.system_prompt
+    assert "empty translated_text rather than omitting the paragraph_id" in request.system_prompt
     assert payload["input"][0]["role"] == "system"
     assert payload["input"][1]["role"] == "user"
     assert payload["input"][1]["content"][0]["type"] == "input_text"

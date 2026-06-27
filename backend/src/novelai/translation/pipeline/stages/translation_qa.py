@@ -104,6 +104,7 @@ class TranslationQAStage(PipelineStage):
                 "qa_score": result.score,
                 "qa_warnings": list(result.warnings),
                 "qa_errors": list(result.errors),
+                "qa_diagnostics": dict(result.diagnostics),
             }
             if result.passed:
                 chunk_state["status"] = ChunkTranslationStatus.TRANSLATED.value
