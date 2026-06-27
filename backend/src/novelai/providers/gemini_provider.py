@@ -33,6 +33,7 @@ class GeminiProvider(TranslationProvider):
             "gemini-3.1-flash-preview",
             "gemini-3.1-pro-preview",
             "gemini-3.1-flash-lite-preview",
+            "gemma-4-31b-it",
             "gemini-flash-latest",
             "gemini-pro-latest",
             "gemini-2.0-flash",
