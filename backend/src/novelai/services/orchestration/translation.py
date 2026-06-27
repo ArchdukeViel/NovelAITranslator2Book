@@ -73,7 +73,13 @@ def _persist_chunk_qa_results_to_outputs(storage: Any, novel_id: str, chunk_stat
     for chunk_id, state in chunk_states.items():
         if not isinstance(chunk_id, str) or not chunk_id.strip() or not isinstance(state, dict):
             continue
-        outputs = storage.read_translation_output(novel_id, chunk_id=chunk_id)
+        outputs = storage.read_translation_output(
+            novel_id,
+            chunk_id=chunk_id,
+            translation_run_id=state.get("translation_run_id") if isinstance(state.get("translation_run_id"), str) else None,
+            chapter_ids=state.get("chapter_ids") if isinstance(state.get("chapter_ids"), list) else None,
+            chapter_id=state.get("chapter_id") if isinstance(state.get("chapter_id"), str) else None,
+        )
         if not isinstance(outputs, list) or not outputs:
             continue
         latest = outputs[-1]

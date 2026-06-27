@@ -16,7 +16,9 @@ from novelai.db.base import Base
 from novelai.db.models.novel import Novel
 from novelai.inputs.base import DocumentAdapter
 from novelai.inputs.models import ImportedDocument, ImportedUnit
-from novelai.translation.pipeline.context import PipelineResult, paragraph_source_hash
+from novelai.translation.pipeline.context import PipelineResult, PipelineState, paragraph_source_hash
+from novelai.translation.pipeline.pipeline import TranslationPipeline
+from novelai.translation.pipeline.stages.base import PipelineStage
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
 from novelai.storage.service import StorageService
@@ -163,6 +165,151 @@ class StubTranslationService(TranslationService):
             provider_key="mock",
             provider_model="mock-1.0",
         )
+
+
+class RuntimeSimulationTranslationService(TranslationService):
+    def __init__(self, storage: StorageService, *, fail_chapter_once: str | None = None) -> None:
+        self.storage = storage
+        self.fail_chapter_once = fail_chapter_once
+        self.failed_chapters: set[str] = set()
+        self.calls: list[dict[str, Any]] = []
+
+    async def translate_chapter(self, **kwargs: Any) -> PipelineResult:
+        self.calls.append(kwargs)
+        novel_id = str(kwargs.get("novel_id") or "novel1")
+        chapter_id = str(kwargs.get("chapter_id") or "1")
+        job_id = kwargs.get("job_id") if isinstance(kwargs.get("job_id"), str) else None
+        activity_id = kwargs.get("activity_id") if isinstance(kwargs.get("activity_id"), str) else None
+        translation_run_id = job_id or activity_id or f"manual_sim_{len(self.calls):04d}"
+        provider_key = str(kwargs.get("provider_key") or "mock")
+        provider_model = str(kwargs.get("provider_model") or "mock-1.0")
+        chunk_id = "c0001"
+        is_failure = self.fail_chapter_once == chapter_id and chapter_id not in self.failed_chapters
+        source_text = (
+            "[P p0001]\nsmall retry paragraph"
+            if not is_failure and chapter_id == self.fail_chapter_once
+            else str(kwargs.get("raw_text") or f"[P p0001]\nchapter {chapter_id} full text")
+        )
+        status = "needs_retry" if is_failure else "translated"
+        attempt_number = 2 if is_failure else 1
+
+        self.storage.save_translation_chunks(
+            novel_id,
+            [
+                {
+                    "chunk_id": chunk_id,
+                    "novel_id": novel_id,
+                    "translation_run_id": translation_run_id,
+                    "chapter_ids": [chapter_id],
+                    "paragraph_ids": ["p0001"],
+                    "source_text": source_text,
+                    "status": status,
+                    "attempt_count": attempt_number,
+                    "provider_key": provider_key,
+                    "provider_model": provider_model,
+                }
+            ],
+        )
+        self.storage.save_chunk_attempt_record(
+            {
+                "chunk_id": chunk_id,
+                "novel_id": novel_id,
+                "translation_run_id": translation_run_id,
+                "chapter_ids": [chapter_id],
+                "paragraph_ids": ["p0001"],
+                "attempt_number": attempt_number,
+                "provider_key": provider_key,
+                "provider_model": provider_model,
+                "status": "failed" if is_failure else "succeeded",
+                "error_code": "simulated_full_chunk_failure" if is_failure else None,
+            }
+        )
+        chunk_state = {
+            "chunk_id": chunk_id,
+            "novel_id": novel_id,
+            "translation_run_id": translation_run_id,
+            "chapter_ids": [chapter_id],
+            "paragraph_ids": ["p0001"],
+            "provider_key": provider_key,
+            "provider_model": provider_model,
+            "attempt_number": attempt_number,
+            "status": status,
+            "error_code": "simulated_full_chunk_failure" if is_failure else None,
+        }
+        self.storage.upsert_chunk_state(chunk_state)
+        event = {
+            "job_id": job_id,
+            "activity_id": activity_id,
+            "translation_run_id": translation_run_id,
+            "novel_id": novel_id,
+            "chapter_id": chapter_id,
+            "chunk_id": chunk_id,
+            "stage_name": "RuntimeSimulation",
+            "status_before": "running",
+            "status_after": "failed" if is_failure else "translated",
+            "error_code": "simulated_full_chunk_failure" if is_failure else None,
+        }
+        if is_failure:
+            self.failed_chapters.add(chapter_id)
+            failed_context = PipelineState(
+                chapter_url=str(kwargs.get("chapter_url") or ""),
+                job_id=job_id,
+                activity_id=activity_id,
+                novel_id=novel_id,
+                chapter_id=chapter_id,
+                provider_key=provider_key,
+                provider_model=provider_model,
+                metadata={"translation_run_id": translation_run_id},
+            )
+            failed_context.chunk_states[chunk_id] = chunk_state
+            failed_context.pipeline_events.append(event)
+            error = RuntimeError("simulated full chunk failure")
+            setattr(error, "pipeline_context", failed_context)
+            setattr(error, "pipeline_events", [event])
+            setattr(error, "details", {"chunk_id": chunk_id, "attempt_number": attempt_number})
+            raise error
+
+        translated = f"translated chapter {chapter_id}"
+        self.storage.save_translation_output(
+            {
+                "output_id": f"{chunk_id}:attempt_{attempt_number:04d}",
+                "chunk_id": chunk_id,
+                "novel_id": novel_id,
+                "translation_run_id": translation_run_id,
+                "chapter_ids": [chapter_id],
+                "paragraph_ids": ["p0001"],
+                "translated_text": translated,
+                "provider_key": provider_key,
+                "provider_model": provider_model,
+                "attempt_number": attempt_number,
+                "qa_status": status,
+            }
+        )
+        return PipelineResult(
+            final_text=translated,
+            chapter_url=str(kwargs.get("chapter_url") or ""),
+            job_id=job_id,
+            activity_id=activity_id,
+            novel_id=novel_id,
+            chapter_id=chapter_id,
+            provider_key=provider_key,
+            provider_model=provider_model,
+            pipeline_events=[event],
+            chunk_states={chunk_id: chunk_state},
+            metadata={"translation_run_id": translation_run_id},
+        )
+
+
+class RunIdCaptureStage(PipelineStage):
+    def __init__(self) -> None:
+        self.run_ids: list[str] = []
+
+    async def run(self, context: PipelineState) -> PipelineState:
+        run_id = context.metadata.get("translation_run_id")
+        if isinstance(run_id, str):
+            self.run_ids.append(run_id)
+        context.final_text = "translated"
+        return context
 
 
 class GlossarySchemaCaptureProvider(MockTranslationProvider):
@@ -517,6 +664,182 @@ async def test_translate_chapters_passes_provider_lock_to_translation_service(or
     assert translation.calls[0]["provider_key"] == "gemini"
     assert translation.calls[0]["provider_model"] == GEMINI_DEFAULT_MODEL
     assert translation.calls[0]["allow_cross_provider_fallback"] is False
+
+
+@pytest.mark.asyncio
+async def test_runtime_orchestration_sim_scopes_full_failure_and_small_retry(orchestration_env, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "runtime-scope-novel",
+        {
+            "title": "Runtime Scope Novel",
+            "source": "stub",
+            "source_language": "Japanese",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"},
+                {"id": "2", "num": 2, "title": "Chapter 2", "url": "https://example.com/2"},
+            ],
+        },
+    )
+    storage.save_chapter("runtime-scope-novel", "1", "[P p0001]\nchapter one", title="Chapter 1")
+    storage.save_chapter(
+        "runtime-scope-novel",
+        "2",
+        "[P p0001]\nchapter two first paragraph\n\n[P p0002]\nchapter two second paragraph",
+        title="Chapter 2",
+    )
+    translation = RuntimeSimulationTranslationService(storage, fail_chapter_once="2")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=translation,
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.translate_chapters(
+        "stub",
+        "runtime-scope-novel",
+        "1",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        job_id="job_chapter_1",
+        activity_id="activity_chapter_1",
+        source_language="Japanese",
+    )
+    with pytest.raises(RuntimeError, match="simulated full chunk failure"):
+        await orchestrator.translate_chapters(
+            "stub",
+            "runtime-scope-novel",
+            "2",
+            provider_key="mock",
+            provider_model="mock-1.0",
+            job_id="job_chapter_2_full",
+            activity_id="activity_chapter_2_full",
+            source_language="Japanese",
+        )
+    await orchestrator.translate_chapters(
+        "stub",
+        "runtime-scope-novel",
+        "2",
+        provider_key="mock",
+        provider_model="mock-1.0",
+        job_id="job_chapter_2_small_retry",
+        activity_id="activity_chapter_2_small_retry",
+        force=True,
+        source_language="Japanese",
+    )
+
+    chapter_1_chunk = storage.read_translation_chunks(
+        "runtime-scope-novel",
+        translation_run_id="job_chapter_1",
+        chapter_ids=["1"],
+    )[0]
+    chapter_2_full_chunk = storage.read_translation_chunks(
+        "runtime-scope-novel",
+        translation_run_id="job_chapter_2_full",
+        chapter_ids=["2"],
+    )[0]
+    chapter_2_retry_chunk = storage.read_translation_chunks(
+        "runtime-scope-novel",
+        translation_run_id="job_chapter_2_small_retry",
+        chapter_ids=["2"],
+    )[0]
+    assert {chapter_1_chunk["runtime_key"], chapter_2_full_chunk["runtime_key"], chapter_2_retry_chunk["runtime_key"]} == {
+        "runtime-scope-novel:job_chapter_1:1:c0001",
+        "runtime-scope-novel:job_chapter_2_full:2:c0001",
+        "runtime-scope-novel:job_chapter_2_small_retry:2:c0001",
+    }
+    assert chapter_2_full_chunk["status"] == "needs_retry"
+    assert chapter_2_retry_chunk["status"] == "translated"
+    assert chapter_2_retry_chunk["attempt_count"] == 1
+
+    full_attempt = storage.list_chunk_attempt_records(
+        novel_id="runtime-scope-novel",
+        chunk_id="c0001",
+        translation_run_id="job_chapter_2_full",
+        chapter_ids=["2"],
+    )[0]
+    retry_attempt = storage.list_chunk_attempt_records(
+        novel_id="runtime-scope-novel",
+        chunk_id="c0001",
+        translation_run_id="job_chapter_2_small_retry",
+        chapter_ids=["2"],
+    )[0]
+    assert full_attempt["attempt_number"] == 2
+    assert full_attempt["status"] == "failed"
+    assert retry_attempt["attempt_number"] == 1
+    assert retry_attempt["status"] == "succeeded"
+
+    chapter_1_output = storage.read_translation_output(
+        "runtime-scope-novel",
+        chunk_id="c0001",
+        translation_run_id="job_chapter_1",
+        chapter_ids=["1"],
+    )[0]
+    retry_output = storage.read_translation_output(
+        "runtime-scope-novel",
+        chunk_id="c0001",
+        translation_run_id="job_chapter_2_small_retry",
+        chapter_ids=["2"],
+    )[0]
+    assert chapter_1_output["translated_text"] == "translated chapter 1"
+    assert retry_output["translated_text"] == "translated chapter 2"
+    assert chapter_1_output["runtime_key"] != retry_output["runtime_key"]
+
+    retry_states = storage.load_chunk_states(
+        novel_id="runtime-scope-novel",
+        chapter_id="2",
+        translation_run_id="job_chapter_2_small_retry",
+    )
+    full_states = storage.load_chunk_states(
+        novel_id="runtime-scope-novel",
+        chapter_id="2",
+        translation_run_id="job_chapter_2_full",
+    )
+    assert retry_states[0]["attempt_number"] == 1
+    assert retry_states[0]["status"] == "translated"
+    assert full_states[0]["attempt_number"] == 2
+    assert full_states[0]["status"] == "needs_retry"
+
+    assert storage.list_pipeline_events(job_id="job_chapter_1")
+    assert storage.list_pipeline_events(job_id="job_chapter_2_full")
+    assert storage.list_pipeline_events(job_id="job_chapter_2_small_retry")
+    runtime_dir = storage._translation_runtime_dir()
+    trace_dir = storage._trace_dir()
+    assert (runtime_dir / "chunks.json").exists()
+    assert (runtime_dir / "chunk_attempts.json").exists()
+    assert (runtime_dir / "outputs.json").exists()
+    assert (trace_dir / "chunk_states.json").exists()
+    assert (trace_dir / "pipeline_events.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_translation_service_generates_isolated_manual_run_ids() -> None:
+    capture = RunIdCaptureStage()
+    service = TranslationService(TranslationPipeline([capture]))
+
+    first = await service.translate_chapter(source_adapter=None, chapter_url="manual-1")
+    second = await service.translate_chapter(source_adapter=None, chapter_url="manual-2")
+    stable = await service.translate_chapter(
+        source_adapter=None,
+        chapter_url="stable",
+        job_id="job_stable",
+        activity_id="activity_stable",
+    )
+
+    assert first.metadata["translation_run_id"].startswith("translation_run_")
+    assert second.metadata["translation_run_id"].startswith("translation_run_")
+    assert first.metadata["translation_run_id"] != second.metadata["translation_run_id"]
+    assert stable.metadata["translation_run_id"] == "job_stable"
+    assert capture.run_ids == [
+        first.metadata["translation_run_id"],
+        second.metadata["translation_run_id"],
+        "job_stable",
+    ]
 
 
 def test_gemini_model_candidates_default_to_stable_flash_lite() -> None:
