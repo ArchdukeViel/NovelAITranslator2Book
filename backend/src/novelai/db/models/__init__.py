@@ -11,7 +11,7 @@ from novelai.db.models.chapter import Chapter
 from novelai.db.models.genre import Genre, novel_genres
 from novelai.db.models.jobs import CrawlJob, ProviderRequest, TranslationJob
 from novelai.db.models.novel import Novel
-from novelai.db.models.system import AuditLog, SystemSetting
+from novelai.db.models.system import AuditLog, ProviderCredential, SystemSetting
 from novelai.db.models.tag import Tag, novel_tags
 from novelai.db.models.users import (
     EmailVerificationToken,
@@ -35,6 +35,7 @@ __all__ = [
     "NovelRequest",
     "PasswordResetToken",
     "ProviderRequest",
+    "ProviderCredential",
     "ReadingHistory",
     "ReadingProgress",
     "Review",

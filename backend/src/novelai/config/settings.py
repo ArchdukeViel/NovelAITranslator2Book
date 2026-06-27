@@ -60,6 +60,7 @@ class AppSettings(BaseSettings):
     # --- Provider / Model
     PROVIDER_DEFAULT: str = "dummy"
     PROVIDER_GEMINI_API_KEY: SecretStr | None = None
+    PROVIDER_CREDENTIAL_ENCRYPTION_KEY: SecretStr | None = None
     NVIDIA_API_KEY: SecretStr | None = Field(
         default=None,
         validation_alias=AliasChoices("NVIDIA_API_KEY", "PROVIDER_NVIDIA_API_KEY"),

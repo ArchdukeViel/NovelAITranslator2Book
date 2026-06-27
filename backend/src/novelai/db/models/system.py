@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, String, Text, func
+from sqlalchemy import DateTime, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from novelai.db.base import Base
@@ -62,3 +62,36 @@ class SystemSetting(Base):
 
     def __repr__(self) -> str:
         return f"<SystemSetting key={self.key!r}>"
+
+
+class ProviderCredential(Base):
+    """Encrypted owner-managed provider API credential.
+
+    Full keys are stored only as encrypted ciphertext. API responses expose
+    safe metadata such as fingerprint and last4 only.
+    """
+
+    __tablename__ = "provider_credentials"
+    __table_args__ = (UniqueConstraint("provider", name="uq_provider_credentials_provider"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    encrypted_api_key: Mapped[str] = mapped_column(Text, nullable=False)
+    key_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    last4: Mapped[str] = mapped_column(String(16), nullable=False)
+    is_active: Mapped[bool] = mapped_column(nullable=False, default=True)
+    validation_status: Mapped[str] = mapped_column(String(32), nullable=False, default="unchecked")
+    validation_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow, onupdate=_utcnow
+    )
+    last_validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<ProviderCredential id={self.id} provider={self.provider!r} active={self.is_active}>"

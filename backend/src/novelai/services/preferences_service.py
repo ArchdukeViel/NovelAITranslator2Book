@@ -38,6 +38,7 @@ class PreferencesService:
     LLM_ENDPOINT_PROFILES_KEY = "llm_endpoint_profiles"
     LLM_STEP_CONFIGS_KEY = "llm_step_configs"
     GLOSSARY_EXTRACTION_KEY = "glossary_extraction"
+    PROVIDER_MANAGEMENT_KEY = "provider_management"
 
     def __init__(self, storage_dir: Path | None = None) -> None:
         self.storage_dir = (storage_dir or settings.DATA_DIR).resolve()
@@ -162,6 +163,18 @@ class PreferencesService:
         """Set a preference value."""
         self._data[key] = value
         self._persist()
+
+    def get_provider_management(self) -> dict[str, Any]:
+        """Return non-secret provider-management preferences."""
+        payload = self.get(self.PROVIDER_MANAGEMENT_KEY, {})
+        return dict(payload) if isinstance(payload, dict) else {}
+
+    def set_provider_management(self, payload: dict[str, Any]) -> None:
+        """Persist non-secret provider-management preferences.
+
+        API keys remain runtime/env-backed and are never written here.
+        """
+        self.set(self.PROVIDER_MANAGEMENT_KEY, dict(payload))
 
     # ============================================================================
     # Strongly-typed preference methods (for IDE support and clarity)
