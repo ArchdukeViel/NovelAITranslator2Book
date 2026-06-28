@@ -67,6 +67,8 @@ export interface PublicChapterDetail {
   text: string;
   previous_chapter_id: string | null; // Req 5.4
   next_chapter_id: string | null; // Req 5.5
+  previous_chapter_unavailable?: boolean;
+  next_chapter_unavailable?: boolean;
 }
 
 // ---- Auth (from routers/auth.py) ----

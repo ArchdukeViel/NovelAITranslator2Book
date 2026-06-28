@@ -52,6 +52,10 @@ VALID_ORDER_VALUES = {"asc", "desc"}
 DEFAULT_SORT_BY = "added_at"
 DEFAULT_ORDER = "desc"
 PUBLIC_SLUG_MAX_LENGTH = 160
+PUBLIC_PROTOCOL_MARKER_RE = re.compile(
+    r"^\s*(?:\[CHAPTER[^\]]*\]|\[P\s+p\d{4}\])\s*",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +114,23 @@ class PublicTagSearchResult(BaseModel):
 
 def _optional_str(value: Any) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _public_reader_text(text: str) -> str:
+    """Remove internal translation protocol markers from public reader text."""
+    cleaned_lines: list[str] = []
+    for line in text.splitlines():
+        current = line
+        had_marker = False
+        while True:
+            current, replacements = PUBLIC_PROTOCOL_MARKER_RE.subn("", current, count=1)
+            if replacements == 0:
+                break
+            had_marker = True
+        if had_marker and not current.strip():
+            continue
+        cleaned_lines.append(current)
+    return "\n".join(cleaned_lines).strip("\n")
 
 
 def _parse_csv_filter(value: str | None) -> list[str]:
@@ -269,8 +290,28 @@ def _db_novel_summary(
     publication_status = normalize_publication_status(
         novel.publication_status or novel.status
     )
-    metadata = storage.load_metadata(novel.slug) if storage is not None else None
-    public_slug = _public_slug_from_metadata(novel.slug, metadata or {})
+    storage_summary: PublicNovelSummary | None = None
+    if storage is not None:
+        resolved = _resolve_storage_metadata_for_db_novel(
+            novel.slug,
+            storage,
+            allow_title_slug_scan=_db_title_is_placeholder(novel),
+        )
+        if resolved is not None:
+            storage_novel_id, metadata, _public_slug = resolved
+            storage_summary = _novel_summary(
+                storage_novel_id,
+                metadata,
+                storage,
+                genres=genres,
+                tags=tags,
+            )
+
+    if storage_summary is not None and _db_summary_needs_storage_hydration(novel, storage_summary):
+        storage_summary.added_at = _datetime_to_public_string(novel.created_at)
+        return storage_summary
+
+    public_slug = storage_summary.slug if storage_summary is not None else novel.slug
     return PublicNovelSummary(
         novel_id=novel.slug,
         slug=public_slug,
@@ -291,6 +332,46 @@ def _db_novel_summary(
         genres=genres,
         tags=tags,
     )
+
+
+def _resolve_storage_metadata_for_db_novel(
+    novel_slug: str,
+    storage: StorageService,
+    *,
+    allow_title_slug_scan: bool = False,
+) -> tuple[str, dict[str, Any], str] | None:
+    """Load storage metadata for a DB novel, including title-slug layout fallbacks."""
+    meta = storage.load_metadata(novel_slug)
+    if meta is not None:
+        source_id = _optional_str(meta.get("novel_id")) or novel_slug
+        return source_id, meta, _public_slug_from_metadata(source_id, meta)
+
+    if not allow_title_slug_scan:
+        return None
+
+    title_slug_root = getattr(storage, "base_dir", None)
+    if title_slug_root is not None:
+        title_slug_root = title_slug_root / "novel"
+    if title_slug_root is not None and title_slug_root.exists():
+        return _resolve_public_novel(novel_slug, storage)
+    return None
+
+
+def _db_summary_needs_storage_hydration(
+    novel: Novel,
+    storage_summary: PublicNovelSummary,
+) -> bool:
+    """Detect stale/underfed DB projections without abandoning DB pagination."""
+    title_is_placeholder = _db_title_is_placeholder(novel)
+    count_is_underfed = title_is_placeholder and (novel.chapter_count or 0) <= 0 and storage_summary.chapter_count > 0
+    translated_is_underfed = (novel.translated_count or 0) <= 0 and storage_summary.translated_count > 0
+    latest_is_underfed = not novel.latest_chapter_id and storage_summary.latest_chapter_id is not None
+    return title_is_placeholder or count_is_underfed or translated_is_underfed or latest_is_underfed
+
+
+def _db_title_is_placeholder(novel: Novel) -> bool:
+    title = (novel.title or "").strip()
+    return not title or title == novel.slug
 
 
 def _is_db_catalog_base_request(
@@ -738,6 +819,11 @@ async def get_chapter(
 
     index = chapter_ids.index(chapter_id)
     chapter = chapters[index]
+    translated_ids = set(storage.list_translated_chapters(novel_id))
+    previous_adjacent_id = chapter_ids[index - 1] if index > 0 else None
+    next_adjacent_id = chapter_ids[index + 1] if index + 1 < len(chapter_ids) else None
+    previous_chapter_id = previous_adjacent_id if previous_adjacent_id in translated_ids else None
+    next_chapter_id = next_adjacent_id if next_adjacent_id in translated_ids else None
     return {
         "novel_id": novel_id,
         "slug": public_slug,
@@ -745,9 +831,11 @@ async def get_chapter(
         "chapter_number": chapter.get("num") or (index + 1),
         "novel_title": reader_title(meta),
         "title": _optional_str(ch.get("translated_title") if (ch := chapter) else None) or _optional_str(chapter.get("title")),
-        "text": translated.get("text"),
-        "previous_chapter_id": chapter_ids[index - 1] if index > 0 else None,
-        "next_chapter_id": chapter_ids[index + 1] if index + 1 < len(chapter_ids) else None,
+        "text": _public_reader_text(translated.get("text")),
+        "previous_chapter_id": previous_chapter_id,
+        "next_chapter_id": next_chapter_id,
+        "previous_chapter_unavailable": previous_adjacent_id is not None and previous_chapter_id is None,
+        "next_chapter_unavailable": next_adjacent_id is not None and next_chapter_id is None,
     }
 
 

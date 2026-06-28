@@ -19,15 +19,38 @@ import { useReaderPrefsStore } from "@/lib/reader-prefs";
 
 import "../../../../reader.css";
 
+const protocolMarkerPattern = /^\s*(?:\[CHAPTER[^\]]*\]|\[P\s+p\d{4}\])\s*/i;
+
+function readerDisplayText(text: string): string {
+  const lines: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    let current = line;
+    let hadMarker = false;
+    while (protocolMarkerPattern.test(current)) {
+      current = current.replace(protocolMarkerPattern, "");
+      hadMarker = true;
+    }
+    if (hadMarker && current.trim() === "") {
+      continue;
+    }
+    lines.push(current);
+  }
+  return lines.join("\n").replace(/\n+$/, "");
+}
+
 function ChapterNav({
   slug,
   previousChapterId,
   nextChapterId,
+  previousChapterUnavailable = false,
+  nextChapterUnavailable = false,
   novelHref,
 }: {
   slug: string;
   previousChapterId: string | null;
   nextChapterId: string | null;
+  previousChapterUnavailable?: boolean;
+  nextChapterUnavailable?: boolean;
   novelHref: string;
 }) {
   return (
@@ -43,6 +66,8 @@ function ChapterNav({
           >
             ← Previous
           </Link>
+        ) : previousChapterUnavailable ? (
+          <span className="reader-nav-disabled">Previous unavailable</span>
         ) : (
           <span className="reader-nav-disabled">← First chapter</span>
         )}
@@ -58,6 +83,8 @@ function ChapterNav({
         >
           Next →
         </Link>
+      ) : nextChapterUnavailable ? (
+        <span className="reader-nav-disabled">Next unavailable</span>
       ) : (
         <span className="reader-nav-disabled">Latest chapter →</span>
       )}
@@ -191,6 +218,8 @@ export default function ChapterPage() {
           slug={publicSlug}
           previousChapterId={data.previous_chapter_id}
           nextChapterId={data.next_chapter_id}
+          previousChapterUnavailable={data.previous_chapter_unavailable}
+          nextChapterUnavailable={data.next_chapter_unavailable}
           novelHref={publicNovelHrefValue}
         />
 
@@ -208,7 +237,7 @@ export default function ChapterPage() {
             className="reader-text whitespace-pre-wrap font-literary"
             style={{ fontSize: `${fontSize}px` }}
           >
-            {data.text}
+            {readerDisplayText(data.text)}
           </div>
         </article>
 
@@ -231,6 +260,8 @@ export default function ChapterPage() {
             slug={publicSlug}
             previousChapterId={data.previous_chapter_id}
             nextChapterId={data.next_chapter_id}
+            previousChapterUnavailable={data.previous_chapter_unavailable}
+            nextChapterUnavailable={data.next_chapter_unavailable}
             novelHref={publicNovelHrefValue}
           />
         </div>

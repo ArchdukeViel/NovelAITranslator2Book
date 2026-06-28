@@ -257,6 +257,28 @@ describe("Reader — data honesty", () => {
     expect(document.body.textContent).toContain("The story text goes here.");
   });
 
+  it("does not render internal translation protocol markers", () => {
+    mocks.useChapterMock.mockReturnValue({
+      data: makeChapterData({
+        text: "[CHAPTER 7]\n[P p0001] First translated paragraph.\n\n[P p0002]\nSecond translated paragraph.",
+      }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    const { container } = renderPage();
+    const body = document.body.textContent ?? "";
+    expect(body).not.toContain("[CHAPTER 7]");
+    expect(body).not.toContain("[P p0001]");
+    expect(body).not.toContain("[P p0002]");
+    expect(body).toContain("First translated paragraph.");
+    expect(body).toContain("Second translated paragraph.");
+    expect(container.querySelector(".reader-text")?.textContent).toContain(
+      "First translated paragraph.\n\nSecond translated paragraph."
+    );
+  });
+
   it("renders novel title from API data", () => {
     renderPage();
     const body = document.body.textContent ?? "";
@@ -389,6 +411,24 @@ describe("Reader — navigation", () => {
       (el) => el.textContent?.includes("Latest chapter")
     );
     expect(disabled.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("shows unavailable next state without an active next href", () => {
+    mocks.useChapterMock.mockReturnValue({
+      data: makeChapterData({
+        previous_chapter_id: "6",
+        next_chapter_id: null,
+        next_chapter_unavailable: true,
+      }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    const { container } = renderPage();
+    expect(container.querySelectorAll('a[href*="/chapter/6"]').length).toBeGreaterThanOrEqual(1);
+    expect(container.querySelectorAll('a[href*="/chapter/8"]').length).toBe(0);
+    expect(container.textContent).toContain("Next unavailable");
   });
 
   it("All chapters link goes to novel detail page", () => {
