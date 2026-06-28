@@ -154,6 +154,56 @@ class StorageService:
 
 
     @staticmethod
+    def _normalize_source_blocks(blocks: Any) -> list[dict[str, Any]]:
+        if not isinstance(blocks, list):
+            return []
+
+        normalized: list[dict[str, Any]] = []
+        previous_type: str | None = None
+        line_index = 0
+        break_index = 0
+        source_order = 0
+        for item in blocks:
+            if not isinstance(item, dict):
+                continue
+            block_type = item.get("type")
+            if block_type == "break":
+                if previous_type == "break" or not normalized:
+                    continue
+                break_index += 1
+                source_order += 1
+                normalized.append(
+                    {
+                        "type": "break",
+                        "source_block_id": str(item.get("source_block_id") or f"b{break_index:04d}"),
+                        "source_order": source_order,
+                    }
+                )
+                previous_type = "break"
+                continue
+            if block_type != "line":
+                continue
+            text = item.get("text")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            line_index += 1
+            source_order += 1
+            normalized.append(
+                {
+                    "type": "line",
+                    "source_block_id": f"s{line_index:04d}",
+                    "paragraph_id": f"p{line_index:04d}",
+                    "text": text.strip("\n"),
+                    "source_order": source_order,
+                }
+            )
+            previous_type = "line"
+        if normalized and normalized[-1].get("type") == "break":
+            normalized.pop()
+        return normalized
+
+
+    @staticmethod
     def _clean_string(value: Any, default: str | None = None) -> str | None:
         if isinstance(value, str):
             stripped = value.strip()

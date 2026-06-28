@@ -66,13 +66,55 @@ def test_syosetu_fixture_preface_body_afterword_and_ruby() -> None:
     preface = source._parse_chapter_html(_fixture("syosetu", "chapter_with_preface.html"))
     afterword = source._parse_chapter_html(_fixture("syosetu", "chapter_with_afterword.html"))
     ruby = source._parse_chapter_html(_fixture("syosetu", "chapter_with_ruby.html"))
+    preface_payload = source._parse_chapter_payload(
+        _fixture("syosetu", "chapter_with_preface.html"),
+        "https://ncode.syosetu.com/n1234ab/1/",
+    )
+    afterword_payload = source._parse_chapter_payload(
+        _fixture("syosetu", "chapter_with_afterword.html"),
+        "https://ncode.syosetu.com/n1234ab/1/",
+    )
 
     assert preface == "Preface fixture note.\n\nMain body first line.\nMain body second line."
+    assert preface_payload["source_blocks"] == [
+        {
+            "type": "line",
+            "source_block_id": "s0001",
+            "paragraph_id": "p0001",
+            "text": "Preface fixture note.",
+            "source_order": 1,
+        },
+        {"type": "break", "source_block_id": "b0001", "source_order": 2},
+        {
+            "type": "line",
+            "source_block_id": "s0002",
+            "paragraph_id": "p0002",
+            "text": "Main body first line.\nMain body second line.",
+            "source_order": 3,
+        },
+    ]
     assert afterword == (
         "Main body paragraph.\n\n"
         "------------------------------------------------------------\n\n"
         "Afterword fixture note."
     )
+    assert afterword_payload["source_blocks"] == [
+        {
+            "type": "line",
+            "source_block_id": "s0001",
+            "paragraph_id": "p0001",
+            "text": "Main body paragraph.",
+            "source_order": 1,
+        },
+        {"type": "break", "source_block_id": "b0001", "source_order": 2},
+        {
+            "type": "line",
+            "source_block_id": "s0002",
+            "paragraph_id": "p0002",
+            "text": "Afterword fixture note.",
+            "source_order": 3,
+        },
+    ]
     assert ruby == "魔導具が光った。"
     assert "まどうぐ" not in ruby
 
@@ -85,6 +127,17 @@ def test_syosetu_fixture_image_extraction_and_placeholder() -> None:
     )
 
     assert payload["text"] == "Before image.\n\n[Image: Scene fixture]\n\nAfter image."
+    assert payload["source_blocks"] == [
+        {"type": "line", "source_block_id": "s0001", "paragraph_id": "p0001", "text": "Before image.", "source_order": 1},
+        {
+            "type": "line",
+            "source_block_id": "s0002",
+            "paragraph_id": "p0002",
+            "text": "[Image: Scene fixture]",
+            "source_order": 2,
+        },
+        {"type": "line", "source_block_id": "s0003", "paragraph_id": "p0003", "text": "After image.", "source_order": 3},
+    ]
     assert payload["images"] == [
         {
             "index": 0,
@@ -107,7 +160,7 @@ async def test_syosetu_fixture_paginated_toc_uses_offline_pages() -> None:
     }
 
     async def fake_fetch_page(url: str) -> str:
-        return pages[url]
+        return pages.get(url, pages[root_url])
 
     source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
     metadata = await source.fetch_metadata(root_url)
@@ -151,15 +204,26 @@ def test_kakuyomu_fixture_url_matching_and_work_metadata() -> None:
 def test_kakuyomu_fixture_episode_body_and_separator() -> None:
     source = KakuyomuSource()
 
-    episode = source._parse_chapter_html(_fixture("kakuyomu", "episode_page.html"))
-    with_hr = source._parse_chapter_html(_fixture("kakuyomu", "episode_with_hr.html"))
+    episode_payload = source._parse_chapter_payload(_fixture("kakuyomu", "episode_page.html"), "https://kakuyomu.jp/")
+    episode = str(episode_payload.get("text", ""))
+    with_hr_payload = source._parse_chapter_payload(_fixture("kakuyomu", "episode_with_hr.html"), "https://kakuyomu.jp/")
+    with_hr = str(with_hr_payload.get("text", ""))
 
     assert episode == "Episode first paragraph.\n\nEpisode second paragraph."
+    assert episode_payload["source_blocks"] == [
+        {"type": "line", "source_block_id": "s0001", "paragraph_id": "p0001", "text": "Episode first paragraph.", "source_order": 1},
+        {"type": "line", "source_block_id": "s0002", "paragraph_id": "p0002", "text": "Episode second paragraph.", "source_order": 2},
+    ]
     assert with_hr == (
         "Before separator.\n\n"
         "------------------------------------------------------------\n\n"
         "After separator."
     )
+    assert with_hr_payload["source_blocks"] == [
+        {"type": "line", "source_block_id": "s0001", "paragraph_id": "p0001", "text": "Before separator.", "source_order": 1},
+        {"type": "break", "source_block_id": "b0001", "source_order": 2},
+        {"type": "line", "source_block_id": "s0002", "paragraph_id": "p0002", "text": "After separator.", "source_order": 3},
+    ]
 
 
 def test_kakuyomu_fixture_image_extraction() -> None:

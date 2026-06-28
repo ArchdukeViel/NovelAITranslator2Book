@@ -52,6 +52,55 @@ def test_save_and_load_chapter_preserves_multiline_formatting(storage):
     assert payload["raw"]["paragraphs"] == ["Paragraph one.\nLine two.", "Paragraph two."]
 
 
+def test_save_and_load_chapter_persists_source_blocks(storage):
+    source_blocks = [
+        {"type": "line", "text": "Source line one."},
+        {"type": "break"},
+        {"type": "line", "paragraph_id": "p0002", "text": "Source line two."},
+    ]
+
+    storage.save_chapter("novel1", "ch-layout", "Source line one.\n\nSource line two.", source_blocks=source_blocks)
+
+    loaded = storage.load_chapter("novel1", "ch-layout")
+    assert loaded is not None
+    assert loaded["source_blocks"] == [
+        {
+            "type": "line",
+            "source_block_id": "s0001",
+            "paragraph_id": "p0001",
+            "text": "Source line one.",
+            "source_order": 1,
+        },
+        {"type": "break", "source_block_id": "b0001", "source_order": 2},
+        {
+            "type": "line",
+            "source_block_id": "s0002",
+            "paragraph_id": "p0002",
+            "text": "Source line two.",
+            "source_order": 3,
+        },
+    ]
+
+
+def test_save_chapter_source_blocks_merge_preserves_translated_payload(storage):
+    storage.save_chapter("novel1", "ch-layout", "Old source")
+    storage.save_translated_chapter("novel1", "ch-layout", "Translated output.")
+
+    storage.save_chapter(
+        "novel1",
+        "ch-layout",
+        "New source",
+        source_blocks=[{"type": "line", "paragraph_id": "p0001", "text": "New source"}],
+    )
+
+    translated = storage.load_translated_chapter("novel1", "ch-layout")
+    loaded = storage.load_chapter("novel1", "ch-layout")
+    assert translated is not None
+    assert translated["text"] == "Translated output."
+    assert loaded is not None
+    assert loaded["source_blocks"][0]["paragraph_id"] == "p0001"
+
+
 def test_save_chapter_image_asset_and_load_export_images(storage):
     stored_asset = storage.save_chapter_image_asset(
         "novel1",
