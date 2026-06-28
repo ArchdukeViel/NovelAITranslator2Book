@@ -713,6 +713,76 @@ class TestCatalog:
         assert data["total"] == 0
         assert data["novels"] == []
 
+    def test_db_catalog_hydrates_underfed_row_from_title_slug_storage(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+    ) -> None:
+        novel_id = "16817330655991571532"
+        source_title = "転生したら世界樹だった件"
+        translated_title = "That Time I Was Reincarnated as a World Tree: Comic Vol. 1 Now on Sale"
+        canonical_slug = "that-time-i-was-reincarnated-as-a-world-tree-comic-vol-1-now-on-sale"
+        chapters = [
+            {
+                "id": str(number),
+                "title": f"第{number}話",
+                "translated_title": f"Chapter {number}",
+                "num": number,
+            }
+            for number in range(1, 89)
+        ]
+        storage.save_metadata(
+            novel_id,
+            {
+                "title": source_title,
+                "translated_title": translated_title,
+                "translated_synopsis": "A translated public synopsis.",
+                "publication_status": "ongoing",
+                "chapters": chapters,
+            },
+        )
+        for chapter_id in ("1", "2", "3"):
+            _seed_translated_chapter(storage, novel_id, chapter_id, f"Translated chapter {chapter_id}.")
+        _seed_db_catalog_novel(
+            db_session,
+            novel_id,
+            title=novel_id,
+            chapter_count=0,
+            translated_count=0,
+            latest_chapter_id=None,
+            is_published=True,
+        )
+
+        catalog = client.get("/api/public/catalog").json()
+        novel = catalog["novels"][0]
+
+        assert catalog["total"] == 1
+        assert novel["novel_id"] == novel_id
+        assert novel["slug"] == canonical_slug
+        assert novel["title"] == translated_title
+        assert novel["source_title"] == source_title
+        assert novel["synopsis"] == "A translated public synopsis."
+        assert novel["chapter_count"] == 88
+        assert novel["translated_count"] == 3
+        assert novel["latest_chapter_id"] == "3"
+        assert novel["latest_chapter_number"] == 3
+        assert novel["latest_chapter_title"] == "Chapter 3"
+
+        detail = client.get(f"/api/public/novels/{canonical_slug}")
+        source_id_detail = client.get(f"/api/public/novels/{novel_id}")
+        chapter_three = client.get(f"/api/public/novels/{canonical_slug}/chapters/3")
+        chapter_four = client.get(f"/api/public/novels/{canonical_slug}/chapters/4")
+
+        assert detail.status_code == 200
+        assert source_id_detail.status_code == 200
+        assert detail.json()["slug"] == canonical_slug
+        assert detail.json()["chapter_count"] == 88
+        assert detail.json()["translated_count"] == 3
+        assert chapter_three.status_code == 200
+        assert chapter_three.json()["slug"] == canonical_slug
+        assert chapter_four.status_code == 404
+
 
 # ---------------------------------------------------------------------------
 # Novel detail endpoint
@@ -852,6 +922,30 @@ class TestGetChapter:
         assert data["chapter_id"] == "ch001"
         assert data["novel_id"] == "novel-001"
         assert data["chapter_number"] == 1
+        assert data["previous_chapter_unavailable"] is False
+        assert data["next_chapter_unavailable"] is False
+
+    def test_reader_strips_translation_protocol_markers(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        _seed_novel(storage, "novel-001", chapters=[{"id": "ch001", "title": "Ch 1", "num": 1}])
+        _seed_translated_chapter(
+            storage,
+            "novel-001",
+            "ch001",
+            "[CHAPTER 1]\n[P p0001] First translated paragraph.\n\n[P p0002]\nSecond translated paragraph.",
+        )
+
+        resp = client.get("/api/public/novels/novel-001/chapters/ch001")
+
+        assert resp.status_code == 200
+        text = resp.json()["text"]
+        assert "[CHAPTER 1]" not in text
+        assert "[P p0001]" not in text
+        assert "[P p0002]" not in text
+        assert "First translated paragraph." in text
+        assert "Second translated paragraph." in text
+        assert "\n\n" in text
 
     def test_returns_chapter_number_matches_stored(
         self, client: TestClient, storage: StorageService
@@ -909,6 +1003,27 @@ class TestGetChapter:
         data = resp.json()
         assert data["previous_chapter_id"] == "ch001"
         assert data["next_chapter_id"] == "ch003"
+        assert data["previous_chapter_unavailable"] is False
+        assert data["next_chapter_unavailable"] is False
+
+    def test_untranslated_adjacent_chapters_are_not_active_reader_links(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        _seed_novel(storage, "novel-001", chapters=[
+            {"id": "ch001", "title": "Ch 1", "num": 1},
+            {"id": "ch002", "title": "Ch 2", "num": 2},
+            {"id": "ch003", "title": "Ch 3", "num": 3},
+        ])
+        _seed_translated_chapter(storage, "novel-001", "ch002", "Text ch002")
+
+        resp = client.get("/api/public/novels/novel-001/chapters/ch002")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["previous_chapter_id"] is None
+        assert data["next_chapter_id"] is None
+        assert data["previous_chapter_unavailable"] is True
+        assert data["next_chapter_unavailable"] is True
 
     def test_first_chapter_has_no_prev(
         self, client: TestClient, storage: StorageService
