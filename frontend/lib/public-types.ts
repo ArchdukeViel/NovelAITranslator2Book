@@ -57,6 +57,13 @@ export interface PublicChapterSummary {
   translated: boolean; // false -> pending indicator (Req 4.5)
 }
 
+export type PublicReaderBlock =
+  | string
+  | {
+      type: "line" | "break";
+      text?: string;
+    };
+
 export interface PublicChapterDetail {
   novel_id: string;
   slug?: string | null;
@@ -65,6 +72,7 @@ export interface PublicChapterDetail {
   novel_title: string | null;
   title: string | null;
   text: string;
+  reader_blocks?: PublicReaderBlock[];
   previous_chapter_id: string | null; // Req 5.4
   next_chapter_id: string | null; // Req 5.5
   previous_chapter_unavailable?: boolean;

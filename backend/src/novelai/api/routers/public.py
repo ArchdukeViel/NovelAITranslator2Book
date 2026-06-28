@@ -56,6 +56,10 @@ PUBLIC_PROTOCOL_MARKER_RE = re.compile(
     r"^\s*(?:\[CHAPTER[^\]]*\]|\[P\s+p\d{4}\])\s*",
     re.IGNORECASE,
 )
+PUBLIC_PARAGRAPH_MARKER_RE = re.compile(
+    r"^\s*\[P\s+p\d{4}\]\s*",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +135,99 @@ def _public_reader_text(text: str) -> str:
             continue
         cleaned_lines.append(current)
     return "\n".join(cleaned_lines).strip("\n")
+
+
+def _reader_line_block(text: str) -> dict[str, str]:
+    return {"type": "line", "text": text}
+
+
+def _reader_break_block() -> dict[str, str]:
+    return {"type": "break"}
+
+
+def _append_reader_break(blocks: list[dict[str, str]]) -> None:
+    if blocks and blocks[-1].get("type") != "break":
+        blocks.append(_reader_break_block())
+
+
+def _with_conservative_reader_breaks(blocks: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Add readable group breaks when old storage has line order but no group metadata."""
+    if any(block.get("type") == "break" for block in blocks):
+        return blocks
+
+    line_blocks = [block for block in blocks if block.get("type") == "line"]
+    if len(line_blocks) < 8:
+        return blocks
+
+    grouped: list[dict[str, str]] = []
+    line_index = 0
+    for block in blocks:
+        grouped.append(block)
+        if block.get("type") != "line":
+            continue
+        line_index += 1
+        if line_index % 4 == 0 and line_index < len(line_blocks):
+            grouped.append(_reader_break_block())
+    return grouped
+
+
+def _public_reader_blocks(text: str) -> list[dict[str, str]]:
+    """Return source-layout-aware blocks without internal protocol markers."""
+    blocks: list[dict[str, str]] = []
+    current_lines: list[str] = []
+    saw_paragraph_marker = False
+    pending_blank_lines = 0
+
+    def flush_current() -> None:
+        block = "\n".join(line for line in current_lines).strip("\n")
+        current_lines.clear()
+        if block.strip():
+            blocks.append(_reader_line_block(block))
+
+    for line in text.splitlines():
+        stripped_line = line.strip()
+        if re.match(r"^\s*\[CHAPTER[^\]]*\]\s*$", line, flags=re.IGNORECASE):
+            flush_current()
+            continue
+
+        is_paragraph_marker = PUBLIC_PARAGRAPH_MARKER_RE.match(line) is not None
+        if is_paragraph_marker:
+            flush_current()
+            if saw_paragraph_marker and pending_blank_lines >= 2:
+                _append_reader_break(blocks)
+            saw_paragraph_marker = True
+            pending_blank_lines = 0
+
+        current = line
+        had_marker = False
+        while True:
+            current, replacements = PUBLIC_PROTOCOL_MARKER_RE.subn("", current, count=1)
+            if replacements == 0:
+                break
+            had_marker = True
+
+        if had_marker and not current.strip():
+            continue
+        if not stripped_line:
+            flush_current()
+            pending_blank_lines += 1
+            if not saw_paragraph_marker and pending_blank_lines >= 1:
+                _append_reader_break(blocks)
+            continue
+        pending_blank_lines = 0
+        current_lines.append(current)
+
+    flush_current()
+    if blocks:
+        return _with_conservative_reader_breaks(blocks)
+
+    clean_text = _public_reader_text(text)
+    fallback_blocks: list[dict[str, str]] = []
+    for index, block in enumerate(block.strip("\n") for block in re.split(r"\n{2,}", clean_text) if block.strip()):
+        if index > 0:
+            fallback_blocks.append(_reader_break_block())
+        fallback_blocks.append(_reader_line_block(block))
+    return fallback_blocks
 
 
 def _parse_csv_filter(value: str | None) -> list[str]:
@@ -832,6 +929,7 @@ async def get_chapter(
         "novel_title": reader_title(meta),
         "title": _optional_str(ch.get("translated_title") if (ch := chapter) else None) or _optional_str(chapter.get("title")),
         "text": _public_reader_text(translated.get("text")),
+        "reader_blocks": _public_reader_blocks(translated.get("text")),
         "previous_chapter_id": previous_chapter_id,
         "next_chapter_id": next_chapter_id,
         "previous_chapter_unavailable": previous_adjacent_id is not None and previous_chapter_id is None,

@@ -947,6 +947,96 @@ class TestGetChapter:
         assert "Second translated paragraph." in text
         assert "\n\n" in text
 
+    def test_reader_returns_source_layout_blocks_from_protocol_markers(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        _seed_novel(storage, "novel-001", chapters=[{"id": "ch001", "title": "Ch 1", "num": 1}])
+        _seed_translated_chapter(
+            storage,
+            "novel-001",
+            "ch001",
+            (
+                "[CHAPTER ch001]\n"
+                "[P p0001] \"A line of dialogue.\"\n"
+                "[P p0002] A short narration line.\n"
+                "[P p0003]\n"
+                "Another source paragraph unit."
+            ),
+        )
+
+        resp = client.get("/api/public/novels/novel-001/chapters/ch001")
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["reader_blocks"] == [
+            {"type": "line", "text": '"A line of dialogue."'},
+            {"type": "line", "text": "A short narration line."},
+            {"type": "line", "text": "Another source paragraph unit."},
+        ]
+        assert "[CHAPTER" not in payload["text"]
+        assert "[P p0001]" not in payload["text"]
+        assert all("[P " not in str(block) for block in payload["reader_blocks"])
+
+    def test_reader_blocks_preserve_explicit_group_breaks(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        _seed_novel(storage, "novel-001", chapters=[{"id": "ch001", "title": "Ch 1", "num": 1}])
+        _seed_translated_chapter(
+            storage,
+            "novel-001",
+            "ch001",
+            "[CHAPTER ch001]\n[P p0001]\nFirst line.\n\n\n[P p0002]\nSecond group line.",
+        )
+
+        resp = client.get("/api/public/novels/novel-001/chapters/ch001")
+
+        assert resp.status_code == 200
+        assert resp.json()["reader_blocks"] == [
+            {"type": "line", "text": "First line."},
+            {"type": "break"},
+            {"type": "line", "text": "Second group line."},
+        ]
+
+    def test_reader_adjacent_marker_units_remain_close_without_explicit_breaks(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        _seed_novel(storage, "novel-001", chapters=[{"id": "ch001", "title": "Ch 1", "num": 1}])
+        _seed_translated_chapter(
+            storage,
+            "novel-001",
+            "ch001",
+            "[CHAPTER ch001]\n[P p0001]\nFirst line.\n[P p0002]\nSecond line.\n[P p0003]\nThird line.",
+        )
+
+        resp = client.get("/api/public/novels/novel-001/chapters/ch001")
+
+        assert resp.status_code == 200
+        assert resp.json()["reader_blocks"] == [
+            {"type": "line", "text": "First line."},
+            {"type": "line", "text": "Second line."},
+            {"type": "line", "text": "Third line."},
+        ]
+
+    def test_reader_blocks_fallback_for_unmarked_text_splits_on_blank_breaks(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        _seed_novel(storage, "novel-001", chapters=[{"id": "ch001", "title": "Ch 1", "num": 1}])
+        _seed_translated_chapter(
+            storage,
+            "novel-001",
+            "ch001",
+            "First display block.\nStill first block.\n\nSecond display block.",
+        )
+
+        resp = client.get("/api/public/novels/novel-001/chapters/ch001")
+
+        assert resp.status_code == 200
+        assert resp.json()["reader_blocks"] == [
+            {"type": "line", "text": "First display block.\nStill first block."},
+            {"type": "break"},
+            {"type": "line", "text": "Second display block."},
+        ]
+
     def test_returns_chapter_number_matches_stored(
         self, client: TestClient, storage: StorageService
     ) -> None:

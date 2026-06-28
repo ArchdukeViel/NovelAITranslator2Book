@@ -15,6 +15,7 @@ import {
 import { ApiError } from "@/lib/api";
 import { widthClass } from "@/lib/public-format";
 import { publicChapterHref, publicNovelHref } from "@/lib/public-routes";
+import type { PublicReaderBlock } from "@/lib/public-types";
 import { useReaderPrefsStore } from "@/lib/reader-prefs";
 
 import "../../../../reader.css";
@@ -36,6 +37,42 @@ function readerDisplayText(text: string): string {
     lines.push(current);
   }
   return lines.join("\n").replace(/\n+$/, "");
+}
+
+type ReaderDisplayBlock =
+  | {
+      type: "line";
+      text: string;
+    }
+  | {
+      type: "break";
+    };
+
+function readerDisplayBlocks(data: { text: string; reader_blocks?: PublicReaderBlock[] }): ReaderDisplayBlock[] {
+  if (Array.isArray(data.reader_blocks)) {
+    const blocks = data.reader_blocks.flatMap((block): ReaderDisplayBlock[] => {
+      if (typeof block === "string") {
+        const text = readerDisplayText(block).trim();
+        return text ? [{ type: "line", text }] : [];
+      }
+      if (block?.type === "break") {
+        return [{ type: "break" }];
+      }
+      const text = readerDisplayText(String(block?.text ?? "")).trim();
+      return text ? [{ type: "line", text }] : [];
+    });
+    if (blocks.length > 0) {
+      return blocks;
+    }
+  }
+  const cleaned = readerDisplayText(data.text);
+  return cleaned
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter((block) => block.length > 0)
+    .flatMap((block, index): ReaderDisplayBlock[] =>
+      index === 0 ? [{ type: "line", text: block }] : [{ type: "break" }, { type: "line", text: block }]
+    );
 }
 
 function ChapterNav({
@@ -197,6 +234,7 @@ export default function ChapterPage() {
   const publicNovelHrefValue = publicNovelHref(publicSlug);
   const novelTitle = data.novel_title || slug;
   const chapterTitle = data.title || (data.chapter_number != null ? `Chapter ${data.chapter_number}` : "Untitled chapter");
+  const displayBlocks = readerDisplayBlocks(data);
 
   return (
     <div data-reader-theme={theme} className="reader-container">
@@ -234,10 +272,22 @@ export default function ChapterPage() {
           </header>
 
           <div
-            className="reader-text whitespace-pre-wrap font-literary"
+            className="reader-text font-literary"
             style={{ fontSize: `${fontSize}px` }}
           >
-            {readerDisplayText(data.text)}
+            {displayBlocks.map((block, index) =>
+              block.type === "break" ? (
+                <div
+                  key={`${data.chapter_id}-block-${index}`}
+                  className="reader-source-break"
+                  aria-hidden="true"
+                />
+              ) : (
+                <p key={`${data.chapter_id}-block-${index}`} className="reader-source-line whitespace-pre-wrap">
+                  {block.text}
+                </p>
+              )
+            )}
           </div>
         </article>
 
