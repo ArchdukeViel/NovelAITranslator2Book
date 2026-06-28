@@ -349,6 +349,7 @@ async def _scrape_chapters_impl(
                 source_key=source_key,
                 source_url=chapter.get("url"),
                 images=downloaded_images,
+                source_blocks=payload.get("source_blocks") if isinstance(payload.get("source_blocks"), list) else None,
                 input_adapter_key="web",
                 origin_type="url",
                 origin_uri_or_path=str(chapter.get("url") or meta.get("source_url") or novel_id),

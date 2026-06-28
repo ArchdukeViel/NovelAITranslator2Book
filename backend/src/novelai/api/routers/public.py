@@ -171,8 +171,75 @@ def _with_conservative_reader_breaks(blocks: list[dict[str, str]]) -> list[dict[
     return grouped
 
 
-def _public_reader_blocks(text: str) -> list[dict[str, str]]:
+def _translated_paragraph_map(text: str) -> dict[str, str]:
+    translations: dict[str, str] = {}
+    current_id: str | None = None
+    current_lines: list[str] = []
+
+    def flush_current() -> None:
+        nonlocal current_id
+        if current_id is not None:
+            translated = "\n".join(current_lines).strip("\n")
+            if translated.strip():
+                translations[current_id] = translated
+        current_id = None
+        current_lines.clear()
+
+    for line in text.splitlines():
+        if re.match(r"^\s*\[CHAPTER[^\]]*\]\s*$", line, flags=re.IGNORECASE):
+            flush_current()
+            continue
+        marker_match = re.match(r"^\s*\[P\s+(p\d{4})\]\s*(.*)$", line, flags=re.IGNORECASE)
+        if marker_match:
+            flush_current()
+            current_id = marker_match.group(1).lower()
+            remainder = marker_match.group(2)
+            if remainder.strip():
+                current_lines.append(remainder)
+            continue
+        if current_id is not None:
+            current_lines.append(line)
+
+    flush_current()
+    return translations
+
+
+def _source_layout_reader_blocks(text: str, source_blocks: Any) -> list[dict[str, str]]:
+    if not isinstance(source_blocks, list):
+        return []
+
+    translations = _translated_paragraph_map(text)
+    if not translations:
+        return []
+
+    blocks: list[dict[str, str]] = []
+    for source_block in source_blocks:
+        if not isinstance(source_block, dict):
+            continue
+        block_type = source_block.get("type")
+        if block_type == "break":
+            _append_reader_break(blocks)
+            continue
+        if block_type != "line":
+            continue
+        paragraph_id = source_block.get("paragraph_id")
+        if not isinstance(paragraph_id, str):
+            continue
+        translated = translations.get(paragraph_id.lower())
+        if translated and translated.strip():
+            blocks.append(_reader_line_block(_public_reader_text(translated)))
+
+    if blocks:
+        return _with_conservative_reader_breaks(blocks)
+    return []
+
+
+def _public_reader_blocks(text: str, source_blocks: Any = None) -> list[dict[str, str]]:
     """Return source-layout-aware blocks without internal protocol markers."""
+    layout_blocks = _source_layout_reader_blocks(text, source_blocks)
+    if layout_blocks:
+        return layout_blocks
+
     blocks: list[dict[str, str]] = []
     current_lines: list[str] = []
     saw_paragraph_marker = False
@@ -913,6 +980,7 @@ async def get_chapter(
     translated = storage.load_translated_chapter(novel_id, chapter_id)
     if translated is None or not isinstance(translated.get("text"), str):
         raise HTTPException(status_code=404, detail="Translated chapter not available.")
+    raw_chapter = storage.load_chapter(novel_id, chapter_id) or {}
 
     index = chapter_ids.index(chapter_id)
     chapter = chapters[index]
@@ -929,7 +997,7 @@ async def get_chapter(
         "novel_title": reader_title(meta),
         "title": _optional_str(ch.get("translated_title") if (ch := chapter) else None) or _optional_str(chapter.get("title")),
         "text": _public_reader_text(translated.get("text")),
-        "reader_blocks": _public_reader_blocks(translated.get("text")),
+        "reader_blocks": _public_reader_blocks(translated.get("text"), raw_chapter.get("source_blocks")),
         "previous_chapter_id": previous_chapter_id,
         "next_chapter_id": next_chapter_id,
         "previous_chapter_unavailable": previous_adjacent_id is not None and previous_chapter_id is None,

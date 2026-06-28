@@ -128,6 +128,7 @@ def save_chapter(
     source_key: str | None = None,
     source_url: str | None = None,
     images: list[dict[str, Any]] | None = None,
+    source_blocks: list[dict[str, Any]] | None = None,
     input_adapter_key: str | None = None,
     origin_type: str | None = None,
     origin_uri_or_path: str | None = None,
@@ -173,6 +174,10 @@ def save_chapter(
         if images is not None
         else self._normalize_image_manifest(existing_raw.get("images") if isinstance(existing_raw, dict) else None),
     }
+    if source_blocks is not None:
+        payload["raw"]["source_blocks"] = self._normalize_source_blocks(source_blocks)
+    elif isinstance(existing_raw, dict) and isinstance(existing_raw.get("source_blocks"), list):
+        payload["raw"]["source_blocks"] = self._normalize_source_blocks(existing_raw.get("source_blocks"))
     return self._persist_chapter_bundle(novel_id, safe_chapter_id, payload)
 
 
@@ -207,6 +212,7 @@ def load_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | 
         "ocr_artifacts": self._normalize_named_dict_items(payload.get("ocr_artifacts")),
         "scraped_at": raw.get("scraped_at"),
         "text": raw.get("text"),
+        "source_blocks": self._normalize_source_blocks(raw.get("source_blocks")),
         "images": self._normalize_image_manifest(raw.get("images") if isinstance(raw, dict) else None),
         "ocr_required": payload.get("ocr_required", False),
         "ocr_text": payload.get("ocr_text"),

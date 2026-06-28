@@ -19,6 +19,7 @@ from novelai.sources.base import SourceAdapter
 from novelai.sources.html_parsers import HTMLParserMixin
 from novelai.sources.quality import detect_age_gate_text, detect_block_page_text
 from novelai.sources.status import normalize_publication_status, publication_status_payload
+from novelai.sources.source_layout import source_blocks_from_text_blocks
 from novelai.sources.taxonomy import (
     KAKUYOMU_GENRE_MAP,
     map_genre,
@@ -651,6 +652,23 @@ class KakuyomuSource(SourceAdapter):
             return "\n\n".join(blocks)
         return self._extract_text_from_tag(section)
 
+    def _extract_source_blocks(self, section: Tag) -> list[dict[str, Any]]:
+        blocks: list[str] = []
+        for element in iter_story_blocks(section, ("p", "blockquote", "figure", "hr", "img")):
+            if not isinstance(element, Tag):
+                continue
+            if element.name.lower() == "hr":
+                blocks.append("")
+                continue
+            block = self._extract_text_from_tag(element)
+            if block:
+                blocks.append(block)
+
+        if blocks:
+            return source_blocks_from_text_blocks(blocks)
+        fallback = self._extract_text_from_tag(section)
+        return source_blocks_from_text_blocks([fallback] if fallback else [])
+
     def _parse_metadata_html(self, html: str, url: str) -> dict[str, Any]:
         soup = BeautifulSoup(html, "lxml")
         title = self._extract_work_title(soup)
@@ -692,11 +710,13 @@ class KakuyomuSource(SourceAdapter):
         images = extract_image_references(prepared, base_url=url)
         text = self._render_story_body(prepared)
         text = re.sub(r"\n{3,}", "\n\n", text)
+        source_blocks = self._extract_source_blocks(prepared)
         if not text:
             raise SourceError("Chapter text was empty on Kakuyomu page")
         return {
             "text": text,
             "images": images,
+            "source_blocks": source_blocks,
         }
 
     def _parse_chapter_html(self, html: str, url: str = "https://kakuyomu.jp/") -> str:

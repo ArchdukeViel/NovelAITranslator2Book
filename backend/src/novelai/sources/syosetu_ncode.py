@@ -18,6 +18,7 @@ from novelai.sources._helpers import (
 )
 from novelai.sources.base import SourceAdapter
 from novelai.sources.html_parsers import HTMLParserMixin
+from novelai.sources.source_layout import normalize_source_blocks, source_blocks_from_text_blocks
 from novelai.sources.taxonomy import (
     SYOSETU_GENRE_MAP,
     map_genre,
@@ -497,6 +498,23 @@ class SyosetuNcodeSource(SourceAdapter):
             return "\n\n".join(blocks)
         return self._extract_text_from_tag(section)
 
+    def _extract_source_blocks_from_section(self, section: Tag) -> list[dict[str, Any]]:
+        blocks: list[str] = []
+        for element in iter_story_blocks(section, ("p", "blockquote", "figure", "hr", "img")):
+            if not isinstance(element, Tag):
+                continue
+            if element.name.lower() == "hr":
+                blocks.append("")
+                continue
+            block = self._extract_text_from_tag(element)
+            if block:
+                blocks.append(block)
+
+        if blocks:
+            return source_blocks_from_text_blocks(blocks)
+        fallback = self._extract_text_from_tag(section)
+        return source_blocks_from_text_blocks([fallback] if fallback else [])
+
     def _find_story_section(self, soup: BeautifulSoup, selectors: tuple[str, ...]) -> Tag | None:
         for selector in selectors:
             for candidate in soup.select(selector):
@@ -706,11 +724,18 @@ class SyosetuNcodeSource(SourceAdapter):
             if rendered
         )
         text = re.sub(r"\n{3,}", "\n\n", text)
+        source_blocks: list[dict[str, Any]] = []
+        for index, section in enumerate(sections):
+            if index > 0:
+                source_blocks.append({"type": "break"})
+            source_blocks.extend(self._extract_source_blocks_from_section(section))
+        source_blocks = normalize_source_blocks(source_blocks)
         if not text:
             raise SourceError("Chapter text was empty on Syosetu page")
         return {
             "text": text,
             "images": images,
+            "source_blocks": source_blocks,
         }
 
     def _parse_chapter_html(self, html: str, url: str = "https://ncode.syosetu.com/") -> str:

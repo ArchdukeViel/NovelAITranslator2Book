@@ -997,6 +997,36 @@ class TestGetChapter:
             {"type": "line", "text": "Second group line."},
         ]
 
+    def test_reader_blocks_use_source_blocks_when_available(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        _seed_novel(storage, "novel-001", chapters=[{"id": "ch001", "title": "Ch 1", "num": 1}])
+        storage.save_chapter(
+            "novel-001",
+            "ch001",
+            "Source one.\n\nSource two.",
+            source_blocks=[
+                {"type": "line", "paragraph_id": "p0001", "text": "Source one."},
+                {"type": "break"},
+                {"type": "line", "paragraph_id": "p0002", "text": "Source two."},
+            ],
+        )
+        _seed_translated_chapter(
+            storage,
+            "novel-001",
+            "ch001",
+            "[CHAPTER ch001]\n[P p0001]\nTranslated one.\n[P p0002]\nTranslated two.",
+        )
+
+        resp = client.get("/api/public/novels/novel-001/chapters/ch001")
+
+        assert resp.status_code == 200
+        assert resp.json()["reader_blocks"] == [
+            {"type": "line", "text": "Translated one."},
+            {"type": "break"},
+            {"type": "line", "text": "Translated two."},
+        ]
+
     def test_reader_adjacent_marker_units_remain_close_without_explicit_breaks(
         self, client: TestClient, storage: StorageService
     ) -> None:
