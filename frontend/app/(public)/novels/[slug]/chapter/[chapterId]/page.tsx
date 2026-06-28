@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, BookOpen, Flag } from "lucide-react";
@@ -49,9 +49,17 @@ type ReaderDisplayBlock =
     };
 
 type ReaderDisplayGroup = {
-  type: "group";
-  lines: string[];
+  text: string;
 };
+
+function readerParagraphText(lines: string[]): string {
+  return lines
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line.length > 0)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function readerDisplayBlocks(data: { text: string; reader_blocks?: PublicReaderBlock[] }): ReaderDisplayBlock[] {
   if (Array.isArray(data.reader_blocks)) {
@@ -85,10 +93,12 @@ function readerDisplayGroups(data: { text: string; reader_blocks?: PublicReaderB
   let lines: string[] = [];
 
   const flush = () => {
-    if (lines.length === 0) {
+    const text = readerParagraphText(lines);
+    if (!text) {
+      lines = [];
       return;
     }
-    groups.push({ type: "group", lines });
+    groups.push({ text });
     lines = [];
   };
 
@@ -305,27 +315,13 @@ export default function ChapterPage() {
             style={{ fontSize: `${fontSize}px` }}
           >
             {displayGroups.map((group, groupIndex) => (
-              <Fragment key={`${data.chapter_id}-group-${groupIndex}`}>
-                {groupIndex > 0 ? (
-                  <div
-                    className="reader-source-break"
-                    aria-hidden="true"
-                  />
-                ) : null}
-                <div
-                  className="reader-source-group"
-                  data-reader-source-group="true"
-                >
-                  {group.lines.map((line, lineIndex) => (
-                    <p
-                      key={`${data.chapter_id}-group-${groupIndex}-line-${lineIndex}`}
-                      className="reader-source-line whitespace-pre-wrap"
-                    >
-                      {line}
-                    </p>
-                  ))}
-                </div>
-              </Fragment>
+              <p
+                key={`${data.chapter_id}-paragraph-${groupIndex}`}
+                className="reader-source-paragraph"
+                data-reader-source-group="true"
+              >
+                {group.text}
+              </p>
             ))}
           </div>
         </article>

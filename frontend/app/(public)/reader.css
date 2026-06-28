@@ -137,17 +137,12 @@
   overflow-wrap: break-word;
 }
 
-.reader-source-group {
-  display: grid;
-  gap: 0.16em;
-}
-
-.reader-source-line {
+.reader-source-paragraph {
   margin: 0;
 }
 
-.reader-source-break {
-  height: 1.8rem;
+.reader-source-paragraph + .reader-source-paragraph {
+  margin-top: 1.35em;
 }
 
 .reader-report {
@@ -185,12 +180,8 @@
     padding-top: 2.5rem;
   }
 
-  .reader-source-group {
-    gap: 0.14em;
-  }
-
-  .reader-source-break {
-    height: 1.45rem;
+  .reader-source-paragraph + .reader-source-paragraph {
+    margin-top: 1.2em;
   }
 
   .reader-nav {

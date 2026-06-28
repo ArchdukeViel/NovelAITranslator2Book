@@ -274,14 +274,14 @@ describe("Reader — data honesty", () => {
     expect(body).not.toContain("[P p0002]");
     expect(body).toContain("First translated paragraph.");
     expect(body).toContain("Second translated paragraph.");
-    const paragraphs = Array.from(container.querySelectorAll(".reader-source-line"));
+    const paragraphs = Array.from(container.querySelectorAll(".reader-source-paragraph"));
     expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual([
       "First translated paragraph.",
       "Second translated paragraph.",
     ]);
   });
 
-  it("groups consecutive API reader line blocks into one source paragraph group", () => {
+  it("joins consecutive API reader line blocks into one English paragraph", () => {
     mocks.useChapterMock.mockReturnValue({
       data: makeChapterData({
         text: "Fallback text should not drive block rendering.",
@@ -297,19 +297,16 @@ describe("Reader — data honesty", () => {
     });
 
     const { container } = renderPage();
-    const groups = Array.from(container.querySelectorAll(".reader-source-group"));
-    expect(groups).toHaveLength(1);
-    const paragraphs = Array.from(container.querySelectorAll(".reader-source-line"));
-    expect(paragraphs).toHaveLength(3);
+    const paragraphs = Array.from(container.querySelectorAll(".reader-source-paragraph"));
+    expect(paragraphs).toHaveLength(1);
     expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual([
-      "Dialogue line.",
-      "Short narration line.",
-      "Another source unit.",
+      "Dialogue line. Short narration line. Another source unit.",
     ]);
+    expect(container.querySelector(".reader-source-line")).toBeNull();
     expect(container.querySelector(".reader-source-break")).toBeNull();
   });
 
-  it("renders API reader break blocks as source group separation", () => {
+  it("renders API reader break blocks as paragraph separation", () => {
     mocks.useChapterMock.mockReturnValue({
       data: makeChapterData({
         text: "Fallback text should not drive block rendering.",
@@ -328,18 +325,15 @@ describe("Reader — data honesty", () => {
     const { container } = renderPage();
     const children = Array.from(container.querySelector(".reader-text")?.children ?? []);
     expect(children.map((child) => child.className)).toEqual([
-      expect.stringContaining("reader-source-group"),
-      "reader-source-break",
-      expect.stringContaining("reader-source-group"),
+      "reader-source-paragraph",
+      "reader-source-paragraph",
     ]);
-    const groups = Array.from(container.querySelectorAll(".reader-source-group"));
-    expect(groups).toHaveLength(2);
-    expect(
-      Array.from(groups[0].querySelectorAll(".reader-source-line")).map((line) => line.textContent)
-    ).toEqual(["First group line.", "Still first group."]);
-    expect(
-      Array.from(groups[1].querySelectorAll(".reader-source-line")).map((line) => line.textContent)
-    ).toEqual(["Second group line."]);
+    expect(container.querySelector(".reader-source-break")).toBeNull();
+    const paragraphs = Array.from(container.querySelectorAll(".reader-source-paragraph"));
+    expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual([
+      "First group line. Still first group.",
+      "Second group line.",
+    ]);
   });
 
   it("collapses repeated API reader breaks without noisy empty groups", () => {
@@ -361,8 +355,13 @@ describe("Reader — data honesty", () => {
     });
 
     const { container } = renderPage();
-    expect(container.querySelectorAll(".reader-source-group")).toHaveLength(2);
-    expect(container.querySelectorAll(".reader-source-break")).toHaveLength(1);
+    const paragraphs = Array.from(container.querySelectorAll(".reader-source-paragraph"));
+    expect(paragraphs).toHaveLength(2);
+    expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual([
+      "First group.",
+      "Second group.",
+    ]);
+    expect(container.querySelector(".reader-source-break")).toBeNull();
   });
 
   it("falls back to splitting clean text blocks when reader_blocks is absent", () => {
@@ -376,13 +375,13 @@ describe("Reader — data honesty", () => {
     });
 
     const { container } = renderPage();
-    expect(container.querySelectorAll(".reader-source-group")).toHaveLength(2);
-    const paragraphs = Array.from(container.querySelectorAll(".reader-source-line"));
+    const paragraphs = Array.from(container.querySelectorAll(".reader-source-paragraph"));
+    expect(paragraphs).toHaveLength(2);
     expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual([
-      "First display block.\nStill first block.",
+      "First display block. Still first block.",
       "Second display block.",
     ]);
-    expect(container.querySelectorAll(".reader-source-break")).toHaveLength(1);
+    expect(container.querySelector(".reader-source-break")).toBeNull();
   });
 
   it("renders novel title from API data", () => {
