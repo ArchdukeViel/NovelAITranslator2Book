@@ -137,20 +137,17 @@
   overflow-wrap: break-word;
 }
 
+.reader-source-group {
+  display: grid;
+  gap: 0.16em;
+}
+
 .reader-source-line {
   margin: 0;
 }
 
-.reader-source-line + .reader-source-line {
-  margin-top: 0.45rem;
-}
-
 .reader-source-break {
-  height: 1.55rem;
-}
-
-.reader-source-break + .reader-source-line {
-  margin-top: 0;
+  height: 1.8rem;
 }
 
 .reader-report {
@@ -188,12 +185,12 @@
     padding-top: 2.5rem;
   }
 
-  .reader-source-line + .reader-source-line {
-    margin-top: 0.4rem;
+  .reader-source-group {
+    gap: 0.14em;
   }
 
   .reader-source-break {
-    height: 1.25rem;
+    height: 1.45rem;
   }
 
   .reader-nav {
