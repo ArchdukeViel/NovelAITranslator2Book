@@ -281,7 +281,7 @@ describe("Reader — data honesty", () => {
     ]);
   });
 
-  it("renders API reader line blocks as source-rhythm lines", () => {
+  it("groups consecutive API reader line blocks into one source paragraph group", () => {
     mocks.useChapterMock.mockReturnValue({
       data: makeChapterData({
         text: "Fallback text should not drive block rendering.",
@@ -297,6 +297,8 @@ describe("Reader — data honesty", () => {
     });
 
     const { container } = renderPage();
+    const groups = Array.from(container.querySelectorAll(".reader-source-group"));
+    expect(groups).toHaveLength(1);
     const paragraphs = Array.from(container.querySelectorAll(".reader-source-line"));
     expect(paragraphs).toHaveLength(3);
     expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual([
@@ -326,11 +328,41 @@ describe("Reader — data honesty", () => {
     const { container } = renderPage();
     const children = Array.from(container.querySelector(".reader-text")?.children ?? []);
     expect(children.map((child) => child.className)).toEqual([
-      expect.stringContaining("reader-source-line"),
-      expect.stringContaining("reader-source-line"),
+      expect.stringContaining("reader-source-group"),
       "reader-source-break",
-      expect.stringContaining("reader-source-line"),
+      expect.stringContaining("reader-source-group"),
     ]);
+    const groups = Array.from(container.querySelectorAll(".reader-source-group"));
+    expect(groups).toHaveLength(2);
+    expect(
+      Array.from(groups[0].querySelectorAll(".reader-source-line")).map((line) => line.textContent)
+    ).toEqual(["First group line.", "Still first group."]);
+    expect(
+      Array.from(groups[1].querySelectorAll(".reader-source-line")).map((line) => line.textContent)
+    ).toEqual(["Second group line."]);
+  });
+
+  it("collapses repeated API reader breaks without noisy empty groups", () => {
+    mocks.useChapterMock.mockReturnValue({
+      data: makeChapterData({
+        text: "Fallback text should not drive block rendering.",
+        reader_blocks: [
+          { type: "break" },
+          { type: "line", text: "First group." },
+          { type: "break" },
+          { type: "break" },
+          { type: "line", text: "Second group." },
+          { type: "break" },
+        ],
+      }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    const { container } = renderPage();
+    expect(container.querySelectorAll(".reader-source-group")).toHaveLength(2);
+    expect(container.querySelectorAll(".reader-source-break")).toHaveLength(1);
   });
 
   it("falls back to splitting clean text blocks when reader_blocks is absent", () => {
@@ -344,6 +376,7 @@ describe("Reader — data honesty", () => {
     });
 
     const { container } = renderPage();
+    expect(container.querySelectorAll(".reader-source-group")).toHaveLength(2);
     const paragraphs = Array.from(container.querySelectorAll(".reader-source-line"));
     expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual([
       "First display block.\nStill first block.",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, BookOpen, Flag } from "lucide-react";
@@ -48,6 +48,11 @@ type ReaderDisplayBlock =
       type: "break";
     };
 
+type ReaderDisplayGroup = {
+  type: "group";
+  lines: string[];
+};
+
 function readerDisplayBlocks(data: { text: string; reader_blocks?: PublicReaderBlock[] }): ReaderDisplayBlock[] {
   if (Array.isArray(data.reader_blocks)) {
     const blocks = data.reader_blocks.flatMap((block): ReaderDisplayBlock[] => {
@@ -73,6 +78,30 @@ function readerDisplayBlocks(data: { text: string; reader_blocks?: PublicReaderB
     .flatMap((block, index): ReaderDisplayBlock[] =>
       index === 0 ? [{ type: "line", text: block }] : [{ type: "break" }, { type: "line", text: block }]
     );
+}
+
+function readerDisplayGroups(data: { text: string; reader_blocks?: PublicReaderBlock[] }): ReaderDisplayGroup[] {
+  const groups: ReaderDisplayGroup[] = [];
+  let lines: string[] = [];
+
+  const flush = () => {
+    if (lines.length === 0) {
+      return;
+    }
+    groups.push({ type: "group", lines });
+    lines = [];
+  };
+
+  for (const block of readerDisplayBlocks(data)) {
+    if (block.type === "break") {
+      flush();
+      continue;
+    }
+    lines.push(block.text);
+  }
+  flush();
+
+  return groups;
 }
 
 function ChapterNav({
@@ -234,7 +263,7 @@ export default function ChapterPage() {
   const publicNovelHrefValue = publicNovelHref(publicSlug);
   const novelTitle = data.novel_title || slug;
   const chapterTitle = data.title || (data.chapter_number != null ? `Chapter ${data.chapter_number}` : "Untitled chapter");
-  const displayBlocks = readerDisplayBlocks(data);
+  const displayGroups = readerDisplayGroups(data);
 
   return (
     <div data-reader-theme={theme} className="reader-container">
@@ -275,19 +304,29 @@ export default function ChapterPage() {
             className="reader-text font-literary"
             style={{ fontSize: `${fontSize}px` }}
           >
-            {displayBlocks.map((block, index) =>
-              block.type === "break" ? (
+            {displayGroups.map((group, groupIndex) => (
+              <Fragment key={`${data.chapter_id}-group-${groupIndex}`}>
+                {groupIndex > 0 ? (
+                  <div
+                    className="reader-source-break"
+                    aria-hidden="true"
+                  />
+                ) : null}
                 <div
-                  key={`${data.chapter_id}-block-${index}`}
-                  className="reader-source-break"
-                  aria-hidden="true"
-                />
-              ) : (
-                <p key={`${data.chapter_id}-block-${index}`} className="reader-source-line whitespace-pre-wrap">
-                  {block.text}
-                </p>
-              )
-            )}
+                  className="reader-source-group"
+                  data-reader-source-group="true"
+                >
+                  {group.lines.map((line, lineIndex) => (
+                    <p
+                      key={`${data.chapter_id}-group-${groupIndex}-line-${lineIndex}`}
+                      className="reader-source-line whitespace-pre-wrap"
+                    >
+                      {line}
+                    </p>
+                  ))}
+                </div>
+              </Fragment>
+            ))}
           </div>
         </article>
 
