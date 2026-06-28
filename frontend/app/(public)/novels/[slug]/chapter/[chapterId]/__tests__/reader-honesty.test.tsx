@@ -274,9 +274,82 @@ describe("Reader — data honesty", () => {
     expect(body).not.toContain("[P p0002]");
     expect(body).toContain("First translated paragraph.");
     expect(body).toContain("Second translated paragraph.");
-    expect(container.querySelector(".reader-text")?.textContent).toContain(
-      "First translated paragraph.\n\nSecond translated paragraph."
-    );
+    const paragraphs = Array.from(container.querySelectorAll(".reader-source-line"));
+    expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual([
+      "First translated paragraph.",
+      "Second translated paragraph.",
+    ]);
+  });
+
+  it("renders API reader line blocks as source-rhythm lines", () => {
+    mocks.useChapterMock.mockReturnValue({
+      data: makeChapterData({
+        text: "Fallback text should not drive block rendering.",
+        reader_blocks: [
+          { type: "line", text: "Dialogue line." },
+          { type: "line", text: "Short narration line." },
+          { type: "line", text: "Another source unit." },
+        ],
+      }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    const { container } = renderPage();
+    const paragraphs = Array.from(container.querySelectorAll(".reader-source-line"));
+    expect(paragraphs).toHaveLength(3);
+    expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual([
+      "Dialogue line.",
+      "Short narration line.",
+      "Another source unit.",
+    ]);
+    expect(container.querySelector(".reader-source-break")).toBeNull();
+  });
+
+  it("renders API reader break blocks as source group separation", () => {
+    mocks.useChapterMock.mockReturnValue({
+      data: makeChapterData({
+        text: "Fallback text should not drive block rendering.",
+        reader_blocks: [
+          { type: "line", text: "First group line." },
+          { type: "line", text: "Still first group." },
+          { type: "break" },
+          { type: "line", text: "Second group line." },
+        ],
+      }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    const { container } = renderPage();
+    const children = Array.from(container.querySelector(".reader-text")?.children ?? []);
+    expect(children.map((child) => child.className)).toEqual([
+      expect.stringContaining("reader-source-line"),
+      expect.stringContaining("reader-source-line"),
+      "reader-source-break",
+      expect.stringContaining("reader-source-line"),
+    ]);
+  });
+
+  it("falls back to splitting clean text blocks when reader_blocks is absent", () => {
+    mocks.useChapterMock.mockReturnValue({
+      data: makeChapterData({
+        text: "First display block.\nStill first block.\n\nSecond display block.",
+      }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    const { container } = renderPage();
+    const paragraphs = Array.from(container.querySelectorAll(".reader-source-line"));
+    expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual([
+      "First display block.\nStill first block.",
+      "Second display block.",
+    ]);
+    expect(container.querySelectorAll(".reader-source-break")).toHaveLength(1);
   });
 
   it("renders novel title from API data", () => {

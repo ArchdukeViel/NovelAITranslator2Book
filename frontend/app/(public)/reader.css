@@ -137,6 +137,22 @@
   overflow-wrap: break-word;
 }
 
+.reader-source-line {
+  margin: 0;
+}
+
+.reader-source-line + .reader-source-line {
+  margin-top: 0.45rem;
+}
+
+.reader-source-break {
+  height: 1.55rem;
+}
+
+.reader-source-break + .reader-source-line {
+  margin-top: 0;
+}
+
 .reader-report {
   margin-top: 3rem;
   display: flex;
@@ -170,6 +186,14 @@
 
   .reader-article {
     padding-top: 2.5rem;
+  }
+
+  .reader-source-line + .reader-source-line {
+    margin-top: 0.4rem;
+  }
+
+  .reader-source-break {
+    height: 1.25rem;
   }
 
   .reader-nav {
