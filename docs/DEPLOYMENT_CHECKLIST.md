@@ -23,6 +23,7 @@ See `.env.example` for full reference. Critical variables:
 | `AUTH_EMAIL_DELIVERY_MODE` | For auth email | `noop` by default; set `smtp` only after SMTP vars are configured |
 | `WEB_CORS_ORIGINS` | If cross-origin | Empty list (default) for same-origin behind Caddy |
 | `WEB_RATE_LIMITER_BACKEND` | Recommended | `redis` for multi-instance; `memory` for single |
+| `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` | If using admin-managed provider keys | Strong secret used to decrypt DB-backed provider credentials; never commit the real value |
 | `PROVIDER_GEMINI_API_KEY` | If using Gemini | Translation provider key |
 | `NVIDIA_API_KEY` | If using NVIDIA fallback | Translation provider key |
 

@@ -61,6 +61,7 @@ services:
     command: ["alembic", "-c", "/app/backend/alembic.ini", "upgrade", "head"]
     environment:
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-DEV_DEFAULT_REMOVED}@postgres:5432/${POSTGRES_DB:-novelai}
+      - PROVIDER_CREDENTIAL_ENCRYPTION_KEY=${PROVIDER_CREDENTIAL_ENCRYPTION_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,6 +87,7 @@ services:
       - NOVEL_LIBRARY_DIR=/app/storage/novel_library
       - PROVIDER_DEFAULT=${PROVIDER_DEFAULT:-gemini}
       - PROVIDER_GEMINI_API_KEY
+      - PROVIDER_CREDENTIAL_ENCRYPTION_KEY=${PROVIDER_CREDENTIAL_ENCRYPTION_KEY:-}
       - PROVIDER_OPENAI_API_KEY
       - TRANSLATION_TARGET_LANGUAGE=${TRANSLATION_TARGET_LANGUAGE:-English}
       - SESSION_SECRET_KEY=***
