@@ -286,7 +286,7 @@ describe("Reader — data honesty", () => {
       data: makeChapterData({
         text: "Fallback text should not drive block rendering.",
         reader_blocks: [
-          { type: "line", text: "Dialogue line." },
+          { type: "line", text: "Narration line." },
           { type: "line", text: "Short narration line." },
           { type: "line", text: "Another source unit." },
         ],
@@ -300,10 +300,47 @@ describe("Reader — data honesty", () => {
     const paragraphs = Array.from(container.querySelectorAll(".reader-source-paragraph"));
     expect(paragraphs).toHaveLength(1);
     expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual([
-      "Dialogue line. Short narration line. Another source unit.",
+      "Narration line. Short narration line. Another source unit.",
     ]);
+    expect(paragraphs[0]).toHaveClass("reader-source-paragraph--narration");
     expect(container.querySelector(".reader-source-line")).toBeNull();
     expect(container.querySelector(".reader-source-break")).toBeNull();
+  });
+
+  it("renders dialogue lines as standalone left-aligned paragraphs", () => {
+    mocks.useChapterMock.mockReturnValue({
+      data: makeChapterData({
+        text: "Fallback text should not drive block rendering.",
+        reader_blocks: [
+          { type: "line", text: "\"Ugh... I'm so thirsty...\"" },
+          { type: "break" },
+          { type: "line", text: "Several days had passed since I became a sapling." },
+          { type: "line", text: "Since there had been no rain and the scorching heat continued." },
+          { type: "line", text: "I was in an uninhabited forest." },
+          { type: "break" },
+          { type: "line", text: "「I wonder if that boy will come back to water me.」" },
+          { type: "break" },
+          { type: "line", text: "Still, having him build me a fence was more than enough." },
+          { type: "line", text: "It would be unreasonable to expect that much from the boy." },
+        ],
+      }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    const { container } = renderPage();
+    const paragraphs = Array.from(container.querySelectorAll(".reader-source-paragraph"));
+    expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual([
+      "\"Ugh... I'm so thirsty...\"",
+      "Several days had passed since I became a sapling. Since there had been no rain and the scorching heat continued. I was in an uninhabited forest.",
+      "「I wonder if that boy will come back to water me.」",
+      "Still, having him build me a fence was more than enough. It would be unreasonable to expect that much from the boy.",
+    ]);
+    expect(paragraphs[0]).toHaveClass("reader-source-paragraph--dialogue");
+    expect(paragraphs[1]).toHaveClass("reader-source-paragraph--narration");
+    expect(paragraphs[2]).toHaveClass("reader-source-paragraph--dialogue");
+    expect(paragraphs[3]).toHaveClass("reader-source-paragraph--narration");
   });
 
   it("renders API reader break blocks as paragraph separation", () => {
@@ -324,16 +361,17 @@ describe("Reader — data honesty", () => {
 
     const { container } = renderPage();
     const children = Array.from(container.querySelector(".reader-text")?.children ?? []);
-    expect(children.map((child) => child.className)).toEqual([
-      "reader-source-paragraph",
-      "reader-source-paragraph",
-    ]);
+    expect(children).toHaveLength(2);
+    expect(children[0]).toHaveClass("reader-source-paragraph");
+    expect(children[1]).toHaveClass("reader-source-paragraph");
     expect(container.querySelector(".reader-source-break")).toBeNull();
     const paragraphs = Array.from(container.querySelectorAll(".reader-source-paragraph"));
     expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual([
       "First group line. Still first group.",
       "Second group line.",
     ]);
+    expect(paragraphs[0]).toHaveClass("reader-source-paragraph--narration");
+    expect(paragraphs[1]).toHaveClass("reader-source-paragraph--narration");
   });
 
   it("collapses repeated API reader breaks without noisy empty groups", () => {

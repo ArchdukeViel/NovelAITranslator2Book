@@ -145,6 +145,16 @@
   margin-top: 1.35em;
 }
 
+.reader-source-paragraph--narration {
+  hyphens: auto;
+  text-align: justify;
+  text-align-last: left;
+}
+
+.reader-source-paragraph--dialogue {
+  text-align: left;
+}
+
 .reader-report {
   margin-top: 3rem;
   display: flex;
@@ -182,6 +192,11 @@
 
   .reader-source-paragraph + .reader-source-paragraph {
     margin-top: 1.2em;
+  }
+
+  .reader-source-paragraph--narration {
+    hyphens: manual;
+    text-align: left;
   }
 
   .reader-nav {
