@@ -374,6 +374,36 @@ describe("Reader — data honesty", () => {
     expect(paragraphs[1]).toHaveClass("reader-source-paragraph--narration");
   });
 
+  it("preserves one-sentence narration beats separated by source breaks", () => {
+    mocks.useChapterMock.mockReturnValue({
+      data: makeChapterData({
+        text: "Fallback text should not drive block rendering.",
+        reader_blocks: [
+          { type: "line", text: "The forest was quiet." },
+          { type: "break" },
+          { type: "line", text: "A cold wind passed through the leaves." },
+          { type: "break" },
+          { type: "line", text: "I waited." },
+        ],
+      }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    const { container } = renderPage();
+    const paragraphs = Array.from(container.querySelectorAll(".reader-source-paragraph"));
+    expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual([
+      "The forest was quiet.",
+      "A cold wind passed through the leaves.",
+      "I waited.",
+    ]);
+    for (const paragraph of paragraphs) {
+      expect(paragraph).toHaveClass("reader-source-paragraph--narration");
+      expect(paragraph).not.toHaveClass("reader-source-paragraph--dialogue");
+    }
+  });
+
   it("collapses repeated API reader breaks without noisy empty groups", () => {
     mocks.useChapterMock.mockReturnValue({
       data: makeChapterData({
