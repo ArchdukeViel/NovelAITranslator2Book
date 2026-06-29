@@ -118,8 +118,11 @@ _TEXT_PLACEHOLDER_RE = re.compile(r"(\{\{[^{}\n]{1,80}\}\}|\{[^{}\n]{1,80}\}|\[[
 _SCENE_BREAK_RE = re.compile(r"(?m)^\s*(?:\*\s*){3,}$|^\s*(?:-\s*){3,}$|^\s*(?:[◇◆]\s*){2,}$")
 _REFUSAL_RE = re.compile(
     r"\b("
-    r"as an ai language model|i can(?:not|'t)|i am unable|i'm unable|cannot comply|"
-    r"content policy|safety policy|blocked by safety|refuse to|refusal"
+    r"as an ai language model|"
+    r"(?:i\s+)?can(?:not|'t)\s+(?:comply|assist|help|provide|translate|fulfill|continue)|"
+    r"i\s+(?:am|['’]m)\s+unable\s+to\s+(?:comply|assist|help|provide|translate|fulfill|continue)|"
+    r"i\s+(?:must\s+)?refuse\s+to\s+(?:comply|assist|help|provide|translate|fulfill|continue)|"
+    r"cannot comply|content policy|safety policy|blocked by safety"
     r")\b",
     re.IGNORECASE,
 )

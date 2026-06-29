@@ -344,6 +344,32 @@ def test_translation_qa_rejects_provider_refusal_and_error_text():
     assert "provider_error_text_detected" in provider_error.errors
 
 
+def test_translation_qa_allows_refusal_like_story_prose():
+    source_text = "\n".join(
+        [
+            "[CHAPTER 2]",
+            "[P p0001]",
+            "兄たちは外で私と歩くのを嫌がった。",
+            "[P p0002]",
+            "それでも私は平気な顔をしていた。",
+        ]
+    )
+    translated_text = "\n".join(
+        [
+            "[CHAPTER 2]",
+            "[P p0001]",
+            "My brothers would refuse to walk next to me in public.",
+            "[P p0002]",
+            "Even so, I kept a calm expression.",
+        ]
+    )
+
+    result = evaluate_translation_quality(source_text=source_text, translated_text=translated_text)
+
+    assert result.passed
+    assert "provider_refusal_detected" not in result.errors
+
+
 @pytest.mark.asyncio
 async def test_translation_qa_stage_marks_failed_chunk_state():
     chunk = _chunk()
