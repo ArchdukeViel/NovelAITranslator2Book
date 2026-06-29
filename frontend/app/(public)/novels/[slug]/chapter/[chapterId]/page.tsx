@@ -48,7 +48,8 @@ type ReaderDisplayBlock =
       type: "break";
     };
 
-type ReaderDisplayGroup = {
+type ReaderDisplayParagraph = {
+  kind: "dialogue" | "narration";
   text: string;
 };
 
@@ -59,6 +60,28 @@ function readerParagraphText(lines: string[]): string {
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+const dialogueQuotePairs: Array<{ open: string; close: string }> = [
+  { open: '"', close: '"' },
+  { open: "'", close: "'" },
+  { open: "“", close: "”" },
+  { open: "‘", close: "’" },
+  { open: "「", close: "」" },
+  { open: "『", close: "』" },
+];
+
+function isDialogueLine(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const withoutTrailingPunctuation = trimmed.replace(/[.!?…。！？]*$/u, "").trimEnd();
+  return dialogueQuotePairs.some(
+    ({ open, close }) => withoutTrailingPunctuation.startsWith(open)
+      && withoutTrailingPunctuation.endsWith(close)
+      && withoutTrailingPunctuation.length > open.length + close.length
+  );
 }
 
 function readerDisplayBlocks(data: { text: string; reader_blocks?: PublicReaderBlock[] }): ReaderDisplayBlock[] {
@@ -88,8 +111,8 @@ function readerDisplayBlocks(data: { text: string; reader_blocks?: PublicReaderB
     );
 }
 
-function readerDisplayGroups(data: { text: string; reader_blocks?: PublicReaderBlock[] }): ReaderDisplayGroup[] {
-  const groups: ReaderDisplayGroup[] = [];
+function readerDisplayParagraphs(data: { text: string; reader_blocks?: PublicReaderBlock[] }): ReaderDisplayParagraph[] {
+  const paragraphs: ReaderDisplayParagraph[] = [];
   let lines: string[] = [];
 
   const flush = () => {
@@ -98,7 +121,7 @@ function readerDisplayGroups(data: { text: string; reader_blocks?: PublicReaderB
       lines = [];
       return;
     }
-    groups.push({ text });
+    paragraphs.push({ kind: "narration", text });
     lines = [];
   };
 
@@ -107,11 +130,20 @@ function readerDisplayGroups(data: { text: string; reader_blocks?: PublicReaderB
       flush();
       continue;
     }
-    lines.push(block.text);
+    const text = readerParagraphText([block.text]);
+    if (!text) {
+      continue;
+    }
+    if (isDialogueLine(text)) {
+      flush();
+      paragraphs.push({ kind: "dialogue", text });
+      continue;
+    }
+    lines.push(text);
   }
   flush();
 
-  return groups;
+  return paragraphs;
 }
 
 function ChapterNav({
@@ -273,7 +305,7 @@ export default function ChapterPage() {
   const publicNovelHrefValue = publicNovelHref(publicSlug);
   const novelTitle = data.novel_title || slug;
   const chapterTitle = data.title || (data.chapter_number != null ? `Chapter ${data.chapter_number}` : "Untitled chapter");
-  const displayGroups = readerDisplayGroups(data);
+  const displayParagraphs = readerDisplayParagraphs(data);
 
   return (
     <div data-reader-theme={theme} className="reader-container">
@@ -314,13 +346,13 @@ export default function ChapterPage() {
             className="reader-text font-literary"
             style={{ fontSize: `${fontSize}px` }}
           >
-            {displayGroups.map((group, groupIndex) => (
+            {displayParagraphs.map((paragraph, paragraphIndex) => (
               <p
-                key={`${data.chapter_id}-paragraph-${groupIndex}`}
-                className="reader-source-paragraph"
+                key={`${data.chapter_id}-paragraph-${paragraphIndex}`}
+                className={`reader-source-paragraph reader-source-paragraph--${paragraph.kind}`}
                 data-reader-source-group="true"
               >
-                {group.text}
+                {paragraph.text}
               </p>
             ))}
           </div>
