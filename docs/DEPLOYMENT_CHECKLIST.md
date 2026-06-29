@@ -202,16 +202,67 @@ cp deploy/Caddyfile.example deploy/Caddyfile
 # Edit with your domain
 
 # 3. Start services (migrations run automatically via the `migrate` service)
-docker compose -f deploy/compose.yml up -d
+docker compose --env-file .env -f deploy/compose.yml up -d
 
 # 4. Verify
 curl http://localhost/api/health
 # Should return: {"status":"ok"}
 ```
 
+### Compose Env File Rule
+
+Run Docker Compose from the repository root and pass the root `.env` explicitly:
+
+```bash
+docker compose --env-file .env -f deploy/compose.yml ...
+```
+
+In this repository, plain `docker compose -f deploy/compose.yml ...` may not
+load the root `.env` reliably. This matters for
+`PROVIDER_CREDENTIAL_ENCRYPTION_KEY`: encrypted DB-backed provider credentials
+cannot hydrate unless Docker receives the same key that encrypted them.
+
+Never commit `.env`. Never rotate `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` without
+re-encrypting or recreating the DB-backed provider credentials that depend on
+it.
+
+Windows PowerShell helper:
+
+```powershell
+.\scripts\docker-compose-dev.ps1 up -d postgres redis backend
+.\scripts\docker-compose-dev.ps1 run --rm migrate
+.\scripts\docker-compose-dev.ps1 logs -f backend
+.\scripts\docker-compose-dev.ps1 stop backend
+```
+
 If you need to run migrations manually (e.g., for troubleshooting):
 ```bash
-docker compose -f deploy/compose.yml run --rm migrate
+docker compose --env-file .env -f deploy/compose.yml run --rm migrate
+```
+
+Common Docker commands:
+
+```bash
+# Start PostgreSQL, Redis, and backend
+docker compose --env-file .env -f deploy/compose.yml up -d postgres redis backend
+
+# Run migrations
+docker compose --env-file .env -f deploy/compose.yml run --rm migrate
+
+# Rebuild backend and migration images
+docker compose --env-file .env -f deploy/compose.yml build backend migrate
+
+# Recreate backend after config changes
+docker compose --env-file .env -f deploy/compose.yml up -d backend
+
+# Health check
+curl http://localhost:8000/api/health
+
+# Stop backend without deleting volumes
+docker compose --env-file .env -f deploy/compose.yml stop backend
+
+# View backend logs
+docker compose --env-file .env -f deploy/compose.yml logs -f backend
 ```
 
 ---
