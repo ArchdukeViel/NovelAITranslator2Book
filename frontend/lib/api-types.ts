@@ -359,3 +359,240 @@ export type ProviderCredential = {
   validation_message?: string | null;
   model?: string | null;
 };
+
+export type GlossaryEntryStatus = "candidate" | "recommended" | "approved" | "rejected" | "deprecated";
+export type GlossaryTermType =
+  | "character"
+  | "family_house"
+  | "place"
+  | "organization"
+  | "title"
+  | "rank"
+  | "skill"
+  | "magic"
+  | "species"
+  | "item"
+  | "artifact"
+  | "concept"
+  | "phrase"
+  | "other";
+export type GlossaryEnforcementLevel = "none" | "info" | "warning" | "error" | "blocker";
+export type GlossaryReplacementPolicy =
+  | "never_auto_replace"
+  | "preview_required"
+  | "manual_only"
+  | "safe_exact"
+  | "no_replacement";
+export type GlossaryMatchingPolicy =
+  | "exact_phrase"
+  | "case_insensitive_phrase"
+  | "word_boundary"
+  | "source_text_only"
+  | "translated_text_only"
+  | "regex_reviewed"
+  | "manual_only"
+  | "custom";
+export type GlossaryAliasType = "allowed" | "rejected" | "banned" | "deprecated" | "observed" | "source_variant";
+export type GlossaryAliasAppliesTo = "source_text" | "translated_text" | "prompt" | "qa" | "public_display";
+export type GlossaryEvidenceQuality =
+  | "clean_source"
+  | "mojibake"
+  | "translated_only"
+  | "metadata_only"
+  | "manual_owner_decision";
+export type GlossaryQaSeverity = "info" | "warning" | "error" | "blocker";
+export type GlossaryQaFindingStatus = "open" | "accepted" | "dismissed" | "fixed";
+export type GlossaryQaFindingType =
+  | "banned_alias"
+  | "inconsistent_alias"
+  | "missing_canonical"
+  | "unresolved_term"
+  | "source_mismatch"
+  | "replacement_risk";
+
+export type GlossaryEntry = {
+  id: number;
+  novel_id: number;
+  canonical_term: string;
+  term_type: GlossaryTermType;
+  approved_translation: string | null;
+  status: GlossaryEntryStatus;
+  enforcement_level: GlossaryEnforcementLevel;
+  owner_locked: boolean;
+  public_visible: boolean;
+  public_description: string | null;
+  admin_notes: string | null;
+  confidence: number | null;
+  replacement_policy: GlossaryReplacementPolicy;
+  matching_policy: GlossaryMatchingPolicy;
+  first_seen_chapter_id: number | null;
+  first_seen_chapter_number: number | null;
+  last_seen_chapter_id: number | null;
+  last_seen_chapter_number: number | null;
+  created_by_user_id: number | null;
+  updated_by_user_id: number | null;
+  created_at: string;
+  updated_at: string;
+  deprecated_at: string | null;
+};
+
+export type GlossaryEntryCreatePayload = {
+  canonical_term: string;
+  term_type: GlossaryTermType;
+  approved_translation?: string | null;
+  status?: GlossaryEntryStatus;
+  enforcement_level?: GlossaryEnforcementLevel;
+  owner_locked?: boolean;
+  public_visible?: boolean;
+  public_description?: string | null;
+  admin_notes?: string | null;
+  confidence?: number | null;
+  replacement_policy?: GlossaryReplacementPolicy;
+  matching_policy?: GlossaryMatchingPolicy;
+  first_seen_chapter_id?: number | null;
+  first_seen_chapter_number?: number | null;
+  last_seen_chapter_id?: number | null;
+  last_seen_chapter_number?: number | null;
+  rationale?: string | null;
+};
+
+export type GlossaryEntryUpdatePayload = Partial<
+  Omit<
+    GlossaryEntryCreatePayload,
+    "status" | "owner_locked" | "rationale"
+  >
+>;
+
+export type GlossaryEntryStatusPayload = {
+  status: GlossaryEntryStatus;
+  rationale?: string | null;
+};
+
+export type GlossaryDecisionPayload = {
+  rationale?: string | null;
+};
+
+export type GlossaryEntryListFilters = {
+  status?: GlossaryEntryStatus;
+  term_type?: GlossaryTermType;
+  public_visible?: boolean;
+};
+
+export type GlossaryAlias = {
+  id: number;
+  glossary_entry_id: number;
+  novel_id: number;
+  alias_text: string;
+  alias_type: GlossaryAliasType;
+  language: string | null;
+  text_origin: string | null;
+  applies_to: GlossaryAliasAppliesTo | null;
+  matching_policy: GlossaryMatchingPolicy | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GlossaryAliasCreatePayload = {
+  alias_text: string;
+  alias_type?: GlossaryAliasType;
+  language?: string | null;
+  text_origin?: string | null;
+  applies_to?: GlossaryAliasAppliesTo | null;
+  matching_policy?: GlossaryMatchingPolicy | null;
+  notes?: string | null;
+  rationale?: string | null;
+};
+
+export type GlossaryAliasUpdatePayload = Partial<GlossaryAliasCreatePayload>;
+
+export type GlossaryProvenance = {
+  id: number;
+  glossary_entry_id: number | null;
+  novel_id: number;
+  source_site: string;
+  source_adapter: string;
+  source_novel_id: string | null;
+  source_url: string | null;
+  source_chapter_id: string | null;
+  source_chapter_number: number | null;
+  chapter_id: number | null;
+  raw_source_term: string | null;
+  observed_translated_term: string | null;
+  evidence_ref: string | null;
+  local_reference: string | null;
+  evidence_quality: GlossaryEvidenceQuality | null;
+  confidence: number | null;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GlossaryProvenanceCreatePayload = {
+  source_site: string;
+  source_adapter: string;
+  source_novel_id?: string | null;
+  source_url?: string | null;
+  source_chapter_id?: string | null;
+  source_chapter_number?: number | null;
+  chapter_id?: number | null;
+  raw_source_term?: string | null;
+  observed_translated_term?: string | null;
+  evidence_ref?: string | null;
+  local_reference?: string | null;
+  evidence_quality?: GlossaryEvidenceQuality | null;
+  confidence?: number | null;
+};
+
+export type GlossaryDecisionEvent = {
+  id: number;
+  novel_id: number;
+  glossary_entry_id: number | null;
+  alias_id: number | null;
+  actor_user_id: number | null;
+  event_type: string;
+  old_value_json: string | null;
+  new_value_json: string | null;
+  rationale: string | null;
+  decision_source: string;
+  created_at: string;
+};
+
+export type GlossaryQaFinding = {
+  id: number;
+  novel_id: number;
+  chapter_id: number | null;
+  glossary_entry_id: number | null;
+  finding_type: GlossaryQaFindingType;
+  severity: GlossaryQaSeverity;
+  matched_text: string | null;
+  suggested_text: string | null;
+  context_ref: string | null;
+  status: GlossaryQaFindingStatus;
+  reviewer_user_id: number | null;
+  reviewer_notes: string | null;
+  created_at: string;
+  resolved_at: string | null;
+};
+
+export type GlossaryQaFindingCreatePayload = {
+  finding_type: GlossaryQaFindingType;
+  severity?: GlossaryQaSeverity;
+  status?: GlossaryQaFindingStatus;
+  chapter_id?: number | null;
+  glossary_entry_id?: number | null;
+  matched_text?: string | null;
+  suggested_text?: string | null;
+  context_ref?: string | null;
+};
+
+export type GlossaryQaFindingStatusPayload = {
+  status: GlossaryQaFindingStatus;
+  reviewer_notes?: string | null;
+};
+
+export type GlossaryQaFindingListFilters = {
+  chapter_id?: number;
+  status?: GlossaryQaFindingStatus;
+};

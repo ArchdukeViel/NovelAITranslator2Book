@@ -5,6 +5,22 @@ import type {
   ChapterDetail,
   ChapterSummary,
   CreateTranslationActivityPayload,
+  GlossaryAlias,
+  GlossaryAliasCreatePayload,
+  GlossaryAliasUpdatePayload,
+  GlossaryDecisionEvent,
+  GlossaryDecisionPayload,
+  GlossaryEntry,
+  GlossaryEntryCreatePayload,
+  GlossaryEntryListFilters,
+  GlossaryEntryStatusPayload,
+  GlossaryEntryUpdatePayload,
+  GlossaryProvenance,
+  GlossaryProvenanceCreatePayload,
+  GlossaryQaFinding,
+  GlossaryQaFindingCreatePayload,
+  GlossaryQaFindingListFilters,
+  GlossaryQaFindingStatusPayload,
   JobProgress,
   ModelState,
   NovelMetadata,
@@ -203,6 +219,12 @@ export function apiErrorInlineMessage(error: unknown) {
 
 function progressNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+type RouteId = string | number;
+
+function routeId(value: RouteId): string {
+  return encodeURIComponent(String(value));
 }
 
 function metadataProgress(activity: ActivityRecord): Record<string, unknown> {
@@ -470,12 +492,108 @@ export const adminAuth = {
   logout: () => request<{ status: string }>("/auth/logout", { method: "POST" })
 };
 
+function appendQuery(path: string, search: URLSearchParams): string {
+  const query = search.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+function glossaryEntryPath(novelId: RouteId, entryId: RouteId): string {
+  return `/admin/novels/${routeId(novelId)}/glossary/entries/${routeId(entryId)}`;
+}
+
 // ===========================================
 // Admin API namespace (Task 3.3)
 // All admin endpoints targeting /api/admin/*
 // Sends session cookie, never a bearer key
 // ===========================================
 export const adminApi = {
+  listGlossaryEntries: (novelId: RouteId, filters: GlossaryEntryListFilters = {}) => {
+    const search = new URLSearchParams();
+    if (filters.status) search.set("status", filters.status);
+    if (filters.term_type) search.set("term_type", filters.term_type);
+    if (typeof filters.public_visible === "boolean") search.set("public_visible", String(filters.public_visible));
+    return request<GlossaryEntry[]>(appendQuery(`/admin/novels/${routeId(novelId)}/glossary`, search));
+  },
+  createGlossaryEntry: (novelId: RouteId, payload: GlossaryEntryCreatePayload) =>
+    request<GlossaryEntry>(`/admin/novels/${routeId(novelId)}/glossary`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  getGlossaryEntry: (novelId: RouteId, entryId: RouteId) =>
+    request<GlossaryEntry>(glossaryEntryPath(novelId, entryId)),
+  updateGlossaryEntry: (novelId: RouteId, entryId: RouteId, payload: GlossaryEntryUpdatePayload) =>
+    request<GlossaryEntry>(glossaryEntryPath(novelId, entryId), {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+  changeGlossaryEntryStatus: (novelId: RouteId, entryId: RouteId, payload: GlossaryEntryStatusPayload) =>
+    request<GlossaryEntry>(`${glossaryEntryPath(novelId, entryId)}/status`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  lockGlossaryEntry: (novelId: RouteId, entryId: RouteId, payload: GlossaryDecisionPayload = {}) =>
+    request<GlossaryEntry>(`${glossaryEntryPath(novelId, entryId)}/lock`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  unlockGlossaryEntry: (novelId: RouteId, entryId: RouteId, payload: GlossaryDecisionPayload = {}) =>
+    request<GlossaryEntry>(`${glossaryEntryPath(novelId, entryId)}/unlock`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  deprecateGlossaryEntry: (novelId: RouteId, entryId: RouteId, payload: GlossaryDecisionPayload = {}) =>
+    request<GlossaryEntry>(`${glossaryEntryPath(novelId, entryId)}/deprecate`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  listGlossaryAliases: (novelId: RouteId, entryId: RouteId) =>
+    request<GlossaryAlias[]>(`${glossaryEntryPath(novelId, entryId)}/aliases`),
+  addGlossaryAlias: (novelId: RouteId, entryId: RouteId, payload: GlossaryAliasCreatePayload) =>
+    request<GlossaryAlias>(`${glossaryEntryPath(novelId, entryId)}/aliases`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  updateGlossaryAlias: (novelId: RouteId, aliasId: RouteId, payload: GlossaryAliasUpdatePayload) =>
+    request<GlossaryAlias>(`/admin/novels/${routeId(novelId)}/glossary/aliases/${routeId(aliasId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+  deprecateGlossaryAlias: (novelId: RouteId, aliasId: RouteId, payload: GlossaryDecisionPayload = {}) =>
+    request<GlossaryAlias>(`/admin/novels/${routeId(novelId)}/glossary/aliases/${routeId(aliasId)}/deprecate`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  listGlossaryProvenanceForEntry: (novelId: RouteId, entryId: RouteId) =>
+    request<GlossaryProvenance[]>(`${glossaryEntryPath(novelId, entryId)}/provenance`),
+  listGlossaryProvenanceForNovel: (novelId: RouteId) =>
+    request<GlossaryProvenance[]>(`/admin/novels/${routeId(novelId)}/glossary/provenance`),
+  addGlossaryProvenance: (novelId: RouteId, entryId: RouteId, payload: GlossaryProvenanceCreatePayload) =>
+    request<GlossaryProvenance>(`${glossaryEntryPath(novelId, entryId)}/provenance`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  listGlossaryDecisionEvents: (novelId: RouteId, entryId?: RouteId) =>
+    request<GlossaryDecisionEvent[]>(
+      entryId === undefined
+        ? `/admin/novels/${routeId(novelId)}/glossary/events`
+        : `${glossaryEntryPath(novelId, entryId)}/events`
+    ),
+  listGlossaryQaFindings: (novelId: RouteId, filters: GlossaryQaFindingListFilters = {}) => {
+    const search = new URLSearchParams();
+    if (typeof filters.chapter_id === "number") search.set("chapter_id", String(filters.chapter_id));
+    if (filters.status) search.set("status", filters.status);
+    return request<GlossaryQaFinding[]>(appendQuery(`/admin/novels/${routeId(novelId)}/glossary/qa-findings`, search));
+  },
+  createGlossaryQaFinding: (novelId: RouteId, payload: GlossaryQaFindingCreatePayload) =>
+    request<GlossaryQaFinding>(`/admin/novels/${routeId(novelId)}/glossary/qa-findings`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  updateGlossaryQaFindingStatus: (novelId: RouteId, findingId: RouteId, payload: GlossaryQaFindingStatusPayload) =>
+    request<GlossaryQaFinding>(`/admin/novels/${routeId(novelId)}/glossary/qa-findings/${routeId(findingId)}/status`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
   // Active provider credential status used by the admin shell.
   providerCredential: (provider?: string) =>
     request<import("./api-types").ProviderCredential>(`/admin/providers/${provider ?? "gemini"}`)
