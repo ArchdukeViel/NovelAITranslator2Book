@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Eye, EyeOff, FileEdit, Languages, RefreshCw, Tags, Trash2 } from "lucide-react";
+import { BookMarked, BookOpen, Eye, EyeOff, FileEdit, Languages, RefreshCw, Tags, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
@@ -132,6 +132,15 @@ export function LibraryRowActions({
         >
           <FileEdit className="h-4 w-4" />
           Editor
+        </Link>
+        <Link
+          className={cn(
+            "inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+          )}
+          href={`/admin/novels/${encodeURIComponent(novel.novel_id)}/glossary`}
+        >
+          <BookMarked className="h-4 w-4" />
+          Glossary
         </Link>
         <Button size="sm" variant="outline" onClick={() => onEditTaxonomy(novel)} disabled={pending}>
           <Tags className="h-4 w-4" />
