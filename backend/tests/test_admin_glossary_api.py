@@ -100,7 +100,7 @@ def _seed_novel(db_session, slug: str = "glossary-api") -> Novel:
     return novel
 
 
-def _create_entry(owner_client: TestClient, novel_id: int, canonical_term: str = "Pocott") -> dict:
+def _create_entry(owner_client: TestClient, novel_id: int | str, canonical_term: str = "Pocott") -> dict:
     resp = owner_client.post(
         f"/api/admin/novels/{novel_id}/glossary",
         json={
@@ -114,7 +114,7 @@ def _create_entry(owner_client: TestClient, novel_id: int, canonical_term: str =
     return resp.json()
 
 
-def _create_alias(owner_client: TestClient, novel_id: int, entry_id: int, alias_text: str = "Pokot") -> dict:
+def _create_alias(owner_client: TestClient, novel_id: int | str, entry_id: int, alias_text: str = "Pokot") -> dict:
     resp = owner_client.post(
         f"/api/admin/novels/{novel_id}/glossary/entries/{entry_id}/aliases",
         json={"alias_text": alias_text, "alias_type": "banned", "applies_to": "qa"},
@@ -123,7 +123,7 @@ def _create_alias(owner_client: TestClient, novel_id: int, entry_id: int, alias_
     return resp.json()
 
 
-def _create_qa_finding(owner_client: TestClient, novel_id: int, entry_id: int) -> dict:
+def _create_qa_finding(owner_client: TestClient, novel_id: int | str, entry_id: int) -> dict:
     resp = owner_client.post(
         f"/api/admin/novels/{novel_id}/glossary/qa-findings",
         json={
@@ -188,6 +188,23 @@ def test_owner_can_create_list_and_update_glossary_entry(owner_client, db_sessio
     assert update_resp.status_code == 200
     assert update_resp.json()["approved_translation"] == "Pocott Village"
     assert update_resp.json()["public_visible"] is True
+
+
+def test_owner_can_use_admin_novel_slug_for_glossary_routes(owner_client, db_session) -> None:
+    novel = _seed_novel(db_session, "slug-route-novel")
+
+    created = _create_entry(owner_client, novel.slug, canonical_term="Pocott")
+    list_resp = owner_client.get(f"/api/admin/novels/{novel.slug}/glossary")
+    qa_resp = owner_client.get(f"/api/admin/novels/{novel.slug}/glossary/qa-findings")
+    events_resp = owner_client.get(f"/api/admin/novels/{novel.slug}/glossary/entries/{created['id']}/events")
+
+    assert created["novel_id"] == novel.id
+    assert list_resp.status_code == 200
+    assert [item["canonical_term"] for item in list_resp.json()] == ["Pocott"]
+    assert qa_resp.status_code == 200
+    assert qa_resp.json() == []
+    assert events_resp.status_code == 200
+    assert events_resp.json()[0]["novel_id"] == novel.id
 
 
 def test_entry_routes_reject_cross_novel_access(owner_client, db_session) -> None:
