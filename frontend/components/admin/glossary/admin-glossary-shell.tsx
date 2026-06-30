@@ -12,7 +12,7 @@ import { PageHeading } from "@/components/admin/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
-import { adminApi, ApiError } from "@/lib/api";
+import { adminApi, api, ApiError } from "@/lib/api";
 import type {
   GlossaryAlias,
   GlossaryAliasAppliesTo,
@@ -122,6 +122,8 @@ type ProvenanceFormValues = {
 type PendingAliasDeprecation = {
   alias: GlossaryAlias;
 } | null;
+
+type DetailTab = "aliases" | "evidence" | "history" | "qa";
 
 function emptyForm(): EntryFormValues {
   return {
@@ -265,6 +267,10 @@ function jsonSummary(value: string | null) {
   }
 }
 
+function translationFor(entry: GlossaryEntry) {
+  return entry.approved_translation || entry.canonical_term;
+}
+
 function statusTone(status: GlossaryEntryStatus) {
   if (status === "approved") return "green";
   if (status === "recommended") return "blue";
@@ -314,8 +320,8 @@ function authorizationMessage(error: unknown) {
   return null;
 }
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <label className="space-y-1 text-sm font-medium">{children}</label>;
+function FieldLabel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <label className={`space-y-1 text-sm font-medium ${className}`.trim()}>{children}</label>;
 }
 
 function SelectField<T extends string>({
@@ -376,7 +382,7 @@ function GlossaryEntryDialog({
     <DialogShell
       open={open}
       title={mode === "create" ? "Create glossary entry" : "Edit glossary entry"}
-      description="Entry ownership stays scoped to this novel. Source IDs belong in provenance later."
+      description="Entry ownership stays scoped to this novel. Source IDs belong in evidence."
       onClose={onClose}
       className="max-w-3xl"
       footer={
@@ -396,7 +402,7 @@ function GlossaryEntryDialog({
 
         <div className="grid gap-4 md:grid-cols-2">
           <FieldLabel>
-            <span>Canonical term</span>
+            <span>Term</span>
             <input
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               value={values.canonical_term}
@@ -404,46 +410,53 @@ function GlossaryEntryDialog({
             />
           </FieldLabel>
           <FieldLabel>
-            <span>Approved translation</span>
+            <span>Translation</span>
             <input
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               value={values.approved_translation}
               onChange={(event) => setValue("approved_translation", event.target.value)}
             />
           </FieldLabel>
-          <SelectField label="Term type" value={values.term_type} options={TERM_TYPES} onChange={(value) => setValue("term_type", value)} />
+          <SelectField label="Type" value={values.term_type} options={TERM_TYPES} onChange={(value) => setValue("term_type", value)} />
           {mode === "create" ? (
             <SelectField label="Status" value={values.status} options={STATUS_ORDER} onChange={(value) => setValue("status", value)} />
           ) : null}
-          <SelectField label="Enforcement level" value={values.enforcement_level} options={ENFORCEMENT_LEVELS} onChange={(value) => setValue("enforcement_level", value)} />
-          <SelectField label="Matching policy" value={values.matching_policy} options={MATCHING_POLICIES} onChange={(value) => setValue("matching_policy", value)} />
-          <SelectField label="Replacement policy" value={values.replacement_policy} options={REPLACEMENT_POLICIES} onChange={(value) => setValue("replacement_policy", value)} />
-          <label className="flex items-center gap-2 self-end text-sm">
-            <input
-              type="checkbox"
-              checked={values.public_visible}
-              onChange={(event) => setValue("public_visible", event.target.checked)}
-            />
-            Public visible
-          </label>
         </div>
 
-        <FieldLabel>
-          <span>Public description</span>
-          <textarea
-            className="min-h-20 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-            value={values.public_description}
-            onChange={(event) => setValue("public_description", event.target.value)}
-          />
-        </FieldLabel>
-        <FieldLabel>
-          <span>Admin notes</span>
-          <textarea
-            className="min-h-20 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-            value={values.admin_notes}
-            onChange={(event) => setValue("admin_notes", event.target.value)}
-          />
-        </FieldLabel>
+        <details className="rounded-md border px-3 py-2">
+          <summary className="cursor-pointer text-sm font-medium">More options</summary>
+          <div className="mt-4 space-y-4">
+            <FieldLabel>
+              <span>Notes</span>
+              <textarea
+                className="min-h-20 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={values.admin_notes}
+                onChange={(event) => setValue("admin_notes", event.target.value)}
+              />
+            </FieldLabel>
+            <div className="grid gap-4 md:grid-cols-2">
+              <SelectField label="Enforcement level" value={values.enforcement_level} options={ENFORCEMENT_LEVELS} onChange={(value) => setValue("enforcement_level", value)} />
+              <SelectField label="Matching policy" value={values.matching_policy} options={MATCHING_POLICIES} onChange={(value) => setValue("matching_policy", value)} />
+              <SelectField label="Replacement policy" value={values.replacement_policy} options={REPLACEMENT_POLICIES} onChange={(value) => setValue("replacement_policy", value)} />
+              <label className="flex items-center gap-2 self-end text-sm">
+                <input
+                  type="checkbox"
+                  checked={values.public_visible}
+                  onChange={(event) => setValue("public_visible", event.target.checked)}
+                />
+                Public visible
+              </label>
+            </div>
+            <FieldLabel>
+              <span>Public description</span>
+              <textarea
+                className="min-h-20 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={values.public_description}
+                onChange={(event) => setValue("public_description", event.target.value)}
+              />
+            </FieldLabel>
+          </div>
+        </details>
       </div>
     </DialogShell>
   );
@@ -585,7 +598,7 @@ function ProvenanceDialog({
   return (
     <DialogShell
       open={open}
-      title="Add provenance"
+      title="Add evidence"
       description="Source metadata is evidence only. Glossary ownership remains per novel."
       onClose={onClose}
       className="max-w-3xl"
@@ -595,14 +608,14 @@ function ProvenanceDialog({
             Cancel
           </Button>
           <Button onClick={onSubmit} disabled={pending}>
-            {pending ? "Saving..." : "Add provenance"}
+            {pending ? "Saving..." : "Add evidence"}
           </Button>
         </div>
       }
     >
       <div className="space-y-4 p-4">
         {validationError ? <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{validationError}</div> : null}
-        <ErrorBanner error={error} fallback="Failed to add provenance." className="border" />
+        <ErrorBanner error={error} fallback="Failed to add evidence." className="border" />
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
           Keep evidence compact. Do not paste large source excerpts here.
         </div>
@@ -673,6 +686,14 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
   const [provenanceValidationError, setProvenanceValidationError] = React.useState<string | null>(null);
   const [qaStatusFilter, setQaStatusFilter] = React.useState<"" | GlossaryQaFindingStatus>("");
   const [qaChapterFilter, setQaChapterFilter] = React.useState("");
+  const [entrySearch, setEntrySearch] = React.useState("");
+  const [entryTypeFilter, setEntryTypeFilter] = React.useState<"" | GlossaryTermType>("");
+  const [activeDetailTab, setActiveDetailTab] = React.useState<DetailTab>("aliases");
+
+  const novel = useQuery({
+    queryKey: ["admin-novel", novelId],
+    queryFn: () => api.novel(novelId),
+  });
 
   const glossary = useQuery({
     queryKey: ["admin-glossary", novelId],
@@ -718,6 +739,25 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
         chapter_id: typeof qaChapterId === "number" && Number.isFinite(qaChapterId) ? qaChapterId : undefined,
       }),
   });
+  const normalizedSearch = entrySearch.trim().toLowerCase();
+  const visibleEntries = entries.filter((entry) => {
+    if (entryTypeFilter && entry.term_type !== entryTypeFilter) return false;
+    if (!normalizedSearch) return true;
+    const aliasHit = selectedEntryId === entry.id
+      ? aliases.data?.some((alias) => alias.alias_text.toLowerCase().includes(normalizedSearch))
+      : false;
+    return (
+      entry.canonical_term.toLowerCase().includes(normalizedSearch)
+      || translationFor(entry).toLowerCase().includes(normalizedSearch)
+      || Boolean(aliasHit)
+    );
+  });
+  const novelTitle =
+    typeof novel.data?.translated_title === "string" && novel.data.translated_title.trim()
+      ? novel.data.translated_title
+      : typeof novel.data?.title === "string" && novel.data.title.trim()
+        ? novel.data.title
+        : null;
 
   const createEntry = useMutation({
     mutationFn: (payload: GlossaryEntryCreatePayload) => adminApi.createGlossaryEntry(novelId, payload),
@@ -895,7 +935,7 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
 
   const submitEntry = () => {
     if (!formValues.canonical_term.trim()) {
-      setFormValidationError("Canonical term is required.");
+      setFormValidationError("Term is required.");
       return;
     }
     setFormValidationError(null);
@@ -914,18 +954,24 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
   const decisionDescription = pendingDecision
     ? `${pendingDecision.action === "deprecate" ? "Deprecate" : pendingDecision.action === "lock" ? "Lock" : "Unlock"} "${pendingDecision.entry.canonical_term}"?`
     : undefined;
+  const detailTabs: Array<{ id: DetailTab; label: string }> = [
+    { id: "aliases", label: "Aliases" },
+    { id: "evidence", label: "Evidence" },
+    { id: "history", label: "History" },
+    { id: "qa", label: "QA findings" },
+  ];
 
   return (
     <>
       <PageHeading
-        title="Glossary"
-        description={`Novel ID: ${novelId}`}
+        title={novelTitle ?? "Glossary"}
+        description={novelTitle ? `Glossary - Novel: ${novelId}` : `Novel: ${novelId}`}
       />
 
       <Panel className="mb-4">
         <PanelBody className="space-y-2 text-sm text-muted-foreground">
-          <p>Glossary terms are owned by this novel. Source IDs are provenance only.</p>
-          <p>No global find/replace or chapter repair runs from this page. Prompt injection and QA enforcement are later phases.</p>
+          <p>Source IDs are evidence only. No global replace from this page. Saved chapter repair is a later explicit step.</p>
+          <p>Approved means this translation is the default glossary translation for this novel. Applying it to saved chapters will be handled by a separate repair step.</p>
         </PanelBody>
       </Panel>
 
@@ -966,48 +1012,64 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
             {authMessage}
           </div>
         ) : null}
-        <PanelBody className="p-0">
+        <PanelBody className="space-y-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+            <FieldLabel className="lg:flex-1">
+              <span>Search term or translation</span>
+              <input
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={entrySearch}
+                onChange={(event) => setEntrySearch(event.target.value)}
+                placeholder="Search term or translation"
+              />
+            </FieldLabel>
+            <OptionalSelectField
+              label="Type"
+              value={entryTypeFilter}
+              options={TERM_TYPES}
+              emptyLabel="All types"
+              onChange={setEntryTypeFilter}
+            />
+          </div>
           <div className="seamless-scrollbar overflow-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b bg-muted/55 text-xs uppercase text-muted-foreground">
                 <tr>
-                  <th className="min-w-[220px] px-4 py-3">Canonical term</th>
-                  <th className="px-4 py-3">Term type</th>
+                  <th className="min-w-[220px] px-4 py-3">Term</th>
+                  <th className="min-w-[220px] px-4 py-3">Translation</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Enforcement</th>
-                  <th className="px-4 py-3">Owner locked</th>
-                  <th className="px-4 py-3">Public visible</th>
-                  <th className="px-4 py-3">First/last seen</th>
+                  <th className="px-4 py-3">Locked</th>
                   <th className="px-4 py-3">Updated</th>
                   <th className="min-w-[300px] px-4 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {glossary.isLoading ? (
-                  <LoadingRows colSpan={9} label="Loading glossary entries..." />
+                  <LoadingRows colSpan={6} label="Loading glossary entries..." />
                 ) : glossary.error ? (
-                  <EmptyState title="Failed to load glossary entries." description={authMessage ?? "Try refreshing after confirming the owner session."} colSpan={9} />
-                ) : entries.length ? (
-                  entries.map((entry) => (
+                  <EmptyState title="Failed to load glossary entries." description={authMessage ?? "Try refreshing after confirming the owner session."} colSpan={6} />
+                ) : visibleEntries.length ? (
+                  visibleEntries.map((entry) => (
                     <tr className="border-b last:border-0" key={entry.id}>
                       <td className="px-4 py-3">
                         <div className="font-medium">{entry.canonical_term}</div>
-                        {entry.approved_translation ? (
-                          <div className="mt-1 text-xs text-muted-foreground">{entry.approved_translation}</div>
-                        ) : null}
                       </td>
-                      <td className="px-4 py-3">{formatStatus(entry.term_type)}</td>
+                      <td className="px-4 py-3">{translationFor(entry)}</td>
                       <td className="px-4 py-3">
                         <Badge tone={statusTone(entry.status)}>{formatStatus(entry.status)}</Badge>
                       </td>
-                      <td className="px-4 py-3">{formatStatus(entry.enforcement_level)}</td>
                       <td className="px-4 py-3">{entry.owner_locked ? "Yes" : "No"}</td>
-                      <td className="px-4 py-3">{entry.public_visible ? "Yes" : "No"}</td>
-                      <td className="px-4 py-3">{seenRange(entry)}</td>
                       <td className="px-4 py-3">{formatDate(entry.updated_at)}</td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-2">
-                          <Button size="sm" variant={selectedEntryId === entry.id ? "secondary" : "outline"} onClick={() => setSelectedEntryId(entry.id)}>
+                          <Button
+                            size="sm"
+                            variant={selectedEntryId === entry.id ? "secondary" : "outline"}
+                            onClick={() => {
+                              setSelectedEntryId(entry.id);
+                              setActiveDetailTab("aliases");
+                            }}
+                          >
                             {selectedEntryId === entry.id ? "Selected" : "Select"}
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => openEdit(entry)}>
@@ -1053,9 +1115,9 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
                   ))
                 ) : (
                   <EmptyState
-                    title="No glossary entries yet."
-                    description="Additions and decision workflows will arrive in later admin glossary phases."
-                    colSpan={9}
+                    title={entries.length ? "No glossary entries match your filters." : "No glossary entries yet."}
+                    description={entries.length ? "Try another term, translation, or type." : "Add terms and translations for this novel."}
+                    colSpan={6}
                   />
                 )}
               </tbody>
@@ -1066,18 +1128,47 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
 
       <Panel className="mt-4">
         <PanelHeader>
-          <PanelTitle>{selectedEntry ? `Aliases and provenance: ${selectedEntry.canonical_term}` : "Aliases and provenance"}</PanelTitle>
+          <PanelTitle>{selectedEntry ? `Entry details: ${selectedEntry.canonical_term}` : "Entry details"}</PanelTitle>
         </PanelHeader>
         <PanelBody className="space-y-4">
           {selectedEntry ? (
             <>
-              <div className="space-y-1 text-sm text-muted-foreground">
-                <p>Aliases are guidance and evidence, not automatic chapter rewrite instructions.</p>
-                <p>Source metadata is evidence only. Glossary ownership remains per novel.</p>
-                <p>No global find/replace, chapter repair, prompt injection, or QA enforcement runs from this screen.</p>
+              <div className="rounded-md border bg-muted/30 p-4">
+                <div className="grid gap-3 md:grid-cols-4">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Term</div>
+                    <div className="font-medium">{selectedEntry.canonical_term}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Translation</div>
+                    <div className="font-medium">{translationFor(selectedEntry)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Type</div>
+                    <div>{formatStatus(selectedEntry.term_type)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Status</div>
+                    <Badge tone={statusTone(selectedEntry.status)}>{formatStatus(selectedEntry.status)}</Badge>
+                  </div>
+                </div>
+                {selectedEntry.admin_notes ? <div className="mt-3 text-sm text-muted-foreground">{selectedEntry.admin_notes}</div> : null}
               </div>
 
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className="flex flex-wrap gap-2">
+                {detailTabs.map((tabItem) => (
+                  <Button
+                    key={tabItem.id}
+                    size="sm"
+                    variant={activeDetailTab === tabItem.id ? "secondary" : "outline"}
+                    onClick={() => setActiveDetailTab(tabItem.id)}
+                  >
+                    {tabItem.label}
+                  </Button>
+                ))}
+              </div>
+
+              {activeDetailTab === "aliases" ? (
                 <section className="rounded-md border">
                   <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
                     <h3 className="text-sm font-semibold">Aliases</h3>
@@ -1125,18 +1216,20 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
                     )}
                   </div>
                 </section>
+              ) : null}
 
+              {activeDetailTab === "evidence" ? (
                 <section className="rounded-md border">
                   <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-                    <h3 className="text-sm font-semibold">Source provenance</h3>
-                    <Button size="sm" onClick={openAddProvenance}>Add provenance</Button>
+                    <h3 className="text-sm font-semibold">Evidence</h3>
+                    <Button size="sm" onClick={openAddProvenance}>Add evidence</Button>
                   </div>
-                  <ErrorBanner error={provenance.error} fallback="Failed to load provenance." />
+                  <ErrorBanner error={provenance.error} fallback="Failed to load evidence." />
                   <div className="p-4">
                     {provenance.isLoading ? (
-                      <div className="text-sm text-muted-foreground">Loading provenance...</div>
+                      <div className="text-sm text-muted-foreground">Loading evidence...</div>
                     ) : provenance.error ? (
-                      <EmptyState title="Failed to load provenance." />
+                      <EmptyState title="Failed to load evidence." />
                     ) : provenance.data?.length ? (
                       <div className="space-y-3">
                         {provenance.data.map((item) => (
@@ -1159,127 +1252,131 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
                         ))}
                       </div>
                     ) : (
-                      <EmptyState title="No provenance yet." description="Add compact evidence rows for this selected entry." />
+                      <EmptyState title="No evidence yet." description="Add compact evidence rows for this selected entry." />
                     )}
                   </div>
                 </section>
-              </div>
+              ) : null}
 
-              <section className="rounded-md border">
-                <div className="border-b px-4 py-3">
-                  <h3 className="text-sm font-semibold">Decision history</h3>
-                </div>
-                <ErrorBanner error={decisionEvents.error} fallback="Failed to load decision history." />
-                <div className="p-4">
-                  {decisionEvents.isLoading ? (
-                    <div className="text-sm text-muted-foreground">Loading decision history...</div>
-                  ) : decisionEvents.error ? (
-                    <EmptyState title="Failed to load decision history." />
-                  ) : decisionEvents.data?.length ? (
-                    <div className="space-y-3">
-                      {decisionEvents.data.map((event: GlossaryDecisionEvent) => (
-                        <div key={event.id} className="rounded-md border px-3 py-2 text-sm">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="font-medium">{formatStatus(event.event_type)}</div>
-                            <div className="text-xs text-muted-foreground">{formatDate(event.created_at)}</div>
-                          </div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            Actor: {event.actor_user_id ?? "unknown"} - Source: {event.decision_source}
-                          </div>
-                          <div className="mt-2 text-sm">{event.rationale || "No rationale recorded."}</div>
-                          {jsonSummary(event.old_value_json) || jsonSummary(event.new_value_json) ? (
-                            <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-                              {jsonSummary(event.old_value_json) ? <div>Previous: {jsonSummary(event.old_value_json)}</div> : null}
-                              {jsonSummary(event.new_value_json) ? <div>New: {jsonSummary(event.new_value_json)}</div> : null}
+              {activeDetailTab === "history" ? (
+                <section className="rounded-md border">
+                  <div className="border-b px-4 py-3">
+                    <h3 className="text-sm font-semibold">History</h3>
+                  </div>
+                  <ErrorBanner error={decisionEvents.error} fallback="Failed to load history." />
+                  <div className="p-4">
+                    {decisionEvents.isLoading ? (
+                      <div className="text-sm text-muted-foreground">Loading history...</div>
+                    ) : decisionEvents.error ? (
+                      <EmptyState title="Failed to load history." />
+                    ) : decisionEvents.data?.length ? (
+                      <div className="space-y-3">
+                        {decisionEvents.data.map((event: GlossaryDecisionEvent) => (
+                          <div key={event.id} className="rounded-md border px-3 py-2 text-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="font-medium">{formatStatus(event.event_type)}</div>
+                              <div className="text-xs text-muted-foreground">{formatDate(event.created_at)}</div>
                             </div>
-                          ) : null}
-                        </div>
-                      ))}
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              Actor: {event.actor_user_id ?? "unknown"} - Source: {event.decision_source}
+                            </div>
+                            <div className="mt-2 text-sm">{event.rationale || "No rationale recorded."}</div>
+                            {jsonSummary(event.old_value_json) || jsonSummary(event.new_value_json) ? (
+                              <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                                {jsonSummary(event.old_value_json) ? <div>Previous: {jsonSummary(event.old_value_json)}</div> : null}
+                                {jsonSummary(event.new_value_json) ? <div>New: {jsonSummary(event.new_value_json)}</div> : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState title="No history yet." description="Meaningful owner/admin glossary changes will appear here when recorded by the backend." />
+                    )}
+                  </div>
+                </section>
+              ) : null}
+
+              {activeDetailTab === "qa" ? (
+                <section className="rounded-md border">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+                    <div>
+                      <h3 className="text-sm font-semibold">QA findings</h3>
+                      <p className="mt-1 text-xs text-muted-foreground">Data access only. No QA scan or automatic repair runs here.</p>
                     </div>
-                  ) : (
-                    <EmptyState title="No decision events yet." description="Meaningful owner/admin glossary changes will appear here when recorded by the backend." />
-                  )}
-                </div>
-              </section>
+                    <div className="flex flex-wrap gap-2">
+                      <select
+                        aria-label="Filter QA findings by status"
+                        className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                        value={qaStatusFilter}
+                        onChange={(event) => setQaStatusFilter(event.target.value as "" | GlossaryQaFindingStatus)}
+                      >
+                        <option value="">All statuses</option>
+                        {QA_STATUSES.map((status) => (
+                          <option key={status} value={status}>{formatStatus(status)}</option>
+                        ))}
+                      </select>
+                      <input
+                        aria-label="Filter QA findings by chapter id"
+                        className="h-8 w-32 rounded-md border border-border bg-background px-2 text-xs"
+                        placeholder="Chapter ID"
+                        value={qaChapterFilter}
+                        onChange={(event) => setQaChapterFilter(event.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <ErrorBanner error={qaFindings.error} fallback="Failed to load QA findings." />
+                  <ErrorBanner error={updateQaStatus.error} fallback="Failed to update QA finding status." />
+                  <div className="p-4">
+                    {qaFindings.isLoading ? (
+                      <div className="text-sm text-muted-foreground">Loading QA findings...</div>
+                    ) : qaFindings.error ? (
+                      <EmptyState title="Failed to load QA findings." />
+                    ) : qaFindings.data?.length ? (
+                      <div className="space-y-3">
+                        {qaFindings.data.map((finding: GlossaryQaFinding) => (
+                          <div key={finding.id} className="rounded-md border px-3 py-2 text-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <div className="font-medium">{formatStatus(finding.finding_type)}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  Severity: {formatStatus(finding.severity)}
+                                  {finding.chapter_id ? ` - Chapter ${finding.chapter_id}` : ""}
+                                  {finding.glossary_entry_id ? ` - Entry ${finding.glossary_entry_id}` : ""}
+                                </div>
+                              </div>
+                              <select
+                                aria-label={`Update QA finding ${finding.id} status`}
+                                className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                                value={finding.status}
+                                onChange={(event) => updateQaStatus.mutate({ findingId: finding.id, status: event.target.value as GlossaryQaFindingStatus })}
+                                disabled={updateQaStatus.isPending}
+                              >
+                                {QA_STATUSES.map((status) => (
+                                  <option key={status} value={status}>{formatStatus(status)}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                              {finding.matched_text ? <div>Matched: {finding.matched_text}</div> : null}
+                              {finding.suggested_text ? <div>Suggested: {finding.suggested_text}</div> : null}
+                              {finding.context_ref ? <div>Context: {finding.context_ref}</div> : null}
+                              {finding.reviewer_notes ? <div>Reviewer notes: {finding.reviewer_notes}</div> : null}
+                              <div>Created {formatDate(finding.created_at)}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState title="No QA findings yet." description="Existing findings will appear here after backend data exists. This page does not run QA scans." />
+                    )}
+                  </div>
+                </section>
+              ) : null}
             </>
           ) : (
-            <EmptyState title="Select an entry to manage aliases and provenance." description="Alias and evidence actions stay scoped to the selected entry and this novel." />
+            <EmptyState title="Select an entry to manage details." description="Aliases, evidence, history, and QA findings stay tucked away until an entry is selected." />
           )}
-
-          <section className="rounded-md border">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-              <div>
-                <h3 className="text-sm font-semibold">QA findings</h3>
-                <p className="mt-1 text-xs text-muted-foreground">Data access only. No QA scan, prompt injection, global replace, chapter rewrite, or automatic repair runs here.</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <select
-                  aria-label="Filter QA findings by status"
-                  className="h-8 rounded-md border border-border bg-background px-2 text-xs"
-                  value={qaStatusFilter}
-                  onChange={(event) => setQaStatusFilter(event.target.value as "" | GlossaryQaFindingStatus)}
-                >
-                  <option value="">All statuses</option>
-                  {QA_STATUSES.map((status) => (
-                    <option key={status} value={status}>{formatStatus(status)}</option>
-                  ))}
-                </select>
-                <input
-                  aria-label="Filter QA findings by chapter id"
-                  className="h-8 w-32 rounded-md border border-border bg-background px-2 text-xs"
-                  placeholder="Chapter ID"
-                  value={qaChapterFilter}
-                  onChange={(event) => setQaChapterFilter(event.target.value)}
-                />
-              </div>
-            </div>
-            <ErrorBanner error={qaFindings.error} fallback="Failed to load QA findings." />
-            <ErrorBanner error={updateQaStatus.error} fallback="Failed to update QA finding status." />
-            <div className="p-4">
-              {qaFindings.isLoading ? (
-                <div className="text-sm text-muted-foreground">Loading QA findings...</div>
-              ) : qaFindings.error ? (
-                <EmptyState title="Failed to load QA findings." />
-              ) : qaFindings.data?.length ? (
-                <div className="space-y-3">
-                  {qaFindings.data.map((finding: GlossaryQaFinding) => (
-                    <div key={finding.id} className="rounded-md border px-3 py-2 text-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <div className="font-medium">{formatStatus(finding.finding_type)}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            Severity: {formatStatus(finding.severity)}
-                            {finding.chapter_id ? ` - Chapter ${finding.chapter_id}` : ""}
-                            {finding.glossary_entry_id ? ` - Entry ${finding.glossary_entry_id}` : ""}
-                          </div>
-                        </div>
-                        <select
-                          aria-label={`Update QA finding ${finding.id} status`}
-                          className="h-8 rounded-md border border-border bg-background px-2 text-xs"
-                          value={finding.status}
-                          onChange={(event) => updateQaStatus.mutate({ findingId: finding.id, status: event.target.value as GlossaryQaFindingStatus })}
-                          disabled={updateQaStatus.isPending}
-                        >
-                          {QA_STATUSES.map((status) => (
-                            <option key={status} value={status}>{formatStatus(status)}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-                        {finding.matched_text ? <div>Matched: {finding.matched_text}</div> : null}
-                        {finding.suggested_text ? <div>Suggested: {finding.suggested_text}</div> : null}
-                        {finding.context_ref ? <div>Context: {finding.context_ref}</div> : null}
-                        {finding.reviewer_notes ? <div>Reviewer notes: {finding.reviewer_notes}</div> : null}
-                        <div>Created {formatDate(finding.created_at)}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState title="No QA findings yet." description="Existing findings will appear here after backend data exists. This page does not run QA scans." />
-              )}
-            </div>
-          </section>
         </PanelBody>
       </Panel>
 
