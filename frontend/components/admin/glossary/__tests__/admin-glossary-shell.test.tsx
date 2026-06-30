@@ -19,6 +19,7 @@ function renderWithQuery(ui: ReactElement) {
 }
 
 const mockListGlossaryEntries = vi.hoisted(() => vi.fn());
+const mockNovel = vi.hoisted(() => vi.fn());
 const mockCreateGlossaryEntry = vi.hoisted(() => vi.fn());
 const mockUpdateGlossaryEntry = vi.hoisted(() => vi.fn());
 const mockChangeGlossaryEntryStatus = vi.hoisted(() => vi.fn());
@@ -39,6 +40,12 @@ vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
   return {
     ...actual,
+    get api() {
+      return {
+        ...actual.api,
+        novel: (...args: unknown[]) => mockNovel(...args),
+      };
+    },
     get adminApi() {
       return {
         ...actual.adminApi,
@@ -159,11 +166,13 @@ const qaFinding: GlossaryQaFinding = {
 };
 
 beforeEach(() => {
+  mockNovel.mockResolvedValue({ novel_id: "42", title: "Test Novel", translated_title: "Test Novel" });
   mockListGlossaryDecisionEvents.mockResolvedValue([]);
   mockListGlossaryQaFindings.mockResolvedValue([]);
 });
 
 afterEach(() => {
+  mockNovel.mockReset();
   mockListGlossaryEntries.mockReset();
   mockCreateGlossaryEntry.mockReset();
   mockUpdateGlossaryEntry.mockReset();
@@ -195,8 +204,10 @@ describe("AdminGlossaryShell", () => {
       expect(screen.getAllByText("Ellen").length).toBeGreaterThan(0);
     });
     expect(screen.getAllByText("approved").length).toBeGreaterThan(0);
-    expect(screen.getByText("character")).toBeInTheDocument();
-    expect(screen.getByText("warning")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Term" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Translation" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Term type" })).not.toBeInTheDocument();
+    expect(screen.getByText("Approved means this translation is the default glossary translation for this novel. Applying it to saved chapters will be handled by a separate repair step.")).toBeInTheDocument();
   });
 
   it("renders empty state", async () => {
@@ -221,13 +232,17 @@ describe("AdminGlossaryShell", () => {
 
   it("uses novelId route scoping and source-agnostic copy", async () => {
     mockListGlossaryEntries.mockResolvedValue([]);
+    mockNovel.mockResolvedValue({ novel_id: "novel/with space", title: "Raw Title", translated_title: "Friendly Novel" });
 
     renderWithQuery(<AdminGlossaryShell novelId="novel/with space" />);
 
     await waitFor(() => {
       expect(mockListGlossaryEntries).toHaveBeenCalledWith("novel/with space");
     });
-    expect(screen.getByText("Glossary terms are owned by this novel. Source IDs are provenance only.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Friendly Novel" })).toBeInTheDocument();
+    expect(screen.getByText("Glossary - Novel: novel/with space")).toBeInTheDocument();
+    expect(screen.queryByText("Novel ID: novel/with space")).not.toBeInTheDocument();
+    expect(screen.getByText("Source IDs are evidence only. No global replace from this page. Saved chapter repair is a later explicit step.")).toBeInTheDocument();
   });
 
   it("creates an entry with novelId scope and form payload", async () => {
@@ -238,11 +253,16 @@ describe("AdminGlossaryShell", () => {
     renderWithQuery(<AdminGlossaryShell novelId="42" />);
 
     await user.click(screen.getByRole("button", { name: "Create entry" }));
-    await user.type(screen.getByLabelText("Canonical term"), "Lydia");
-    await user.type(screen.getByLabelText("Approved translation"), "Lydia");
-    await user.selectOptions(screen.getByLabelText("Term type"), "character");
-    await user.selectOptions(screen.getByLabelText("Status"), "recommended");
-    await user.selectOptions(screen.getByLabelText("Enforcement level"), "warning");
+    const dialog = screen.getByRole("dialog", { name: "Create glossary entry" });
+    expect(within(dialog).getByLabelText("Term")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Translation")).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Approved translation")).not.toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText("Term"), "Lydia");
+    await user.type(within(dialog).getByLabelText("Translation"), "Lydia");
+    await user.selectOptions(within(dialog).getByLabelText("Type"), "character");
+    await user.selectOptions(within(dialog).getByLabelText("Status"), "recommended");
+    await user.click(within(dialog).getByText("More options"));
+    await user.selectOptions(within(dialog).getByLabelText("Enforcement level"), "warning");
     await user.click(screen.getAllByRole("button", { name: "Create entry" }).at(-1)!);
 
     await waitFor(() => {
@@ -267,7 +287,7 @@ describe("AdminGlossaryShell", () => {
       expect(screen.getAllByText("Ellen").length).toBeGreaterThan(0);
     });
     await user.click(screen.getByRole("button", { name: "Edit" }));
-    const canonical = screen.getByLabelText("Canonical term");
+    const canonical = screen.getByLabelText("Term");
     await user.clear(canonical);
     await user.type(canonical, "Ellenora");
     await user.click(screen.getByRole("button", { name: "Save entry" }));
@@ -334,13 +354,13 @@ describe("AdminGlossaryShell", () => {
     renderWithQuery(<AdminGlossaryShell novelId="42" />);
 
     await user.click(screen.getByRole("button", { name: "Create entry" }));
-    await user.type(screen.getByLabelText("Canonical term"), "Ellen");
+    await user.type(screen.getByLabelText("Term"), "Ellen");
     await user.click(screen.getAllByRole("button", { name: "Create entry" }).at(-1)!);
 
     await waitFor(() => {
       expect(screen.getByText("Duplicate canonical term")).toBeInTheDocument();
     });
-    expect(screen.getByText("Glossary terms are owned by this novel. Source IDs are provenance only.")).toBeInTheDocument();
+    expect(screen.getByText("Source IDs are evidence only. No global replace from this page. Saved chapter repair is a later explicit step.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /alias/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /provenance/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /qa/i })).not.toBeInTheDocument();
@@ -366,8 +386,33 @@ describe("AdminGlossaryShell", () => {
       expect(mockListGlossaryProvenanceForEntry).toHaveBeenCalledWith("42", 1);
     });
     expect(screen.getByText("Alberto")).toBeInTheDocument();
+    expect(screen.queryByText("kakuyomu / kakuyomu")).not.toBeInTheDocument();
+    expect(screen.queryByText("No rationale recorded.")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Filter QA findings by status")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Evidence" }));
     expect(screen.getByText("kakuyomu / kakuyomu")).toBeInTheDocument();
-    expect(screen.getByText("Source metadata is evidence only. Glossary ownership remains per novel.")).toBeInTheDocument();
+  });
+
+  it("filters entries by search and type without showing type as a table column", async () => {
+    const user = userEvent.setup();
+    mockListGlossaryEntries.mockResolvedValue([
+      entry,
+      { ...entry, id: 2, canonical_term: "Pocott", approved_translation: "Pocott Village", term_type: "place" },
+    ]);
+
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await waitFor(() => expect(screen.getByText("Pocott")).toBeInTheDocument());
+    expect(screen.queryByRole("columnheader", { name: "Term type" })).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Search term or translation"), "Village");
+    expect(screen.getByText("Pocott")).toBeInTheDocument();
+    expect(screen.queryByText("Ellen")).not.toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("Search term or translation"));
+    await user.selectOptions(screen.getByLabelText("Type"), "character");
+    expect(screen.getAllByText("Ellen").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Pocott")).not.toBeInTheDocument();
   });
 
   it("loads selected-entry decision history without mutating glossary data", async () => {
@@ -385,6 +430,8 @@ describe("AdminGlossaryShell", () => {
     await waitFor(() => {
       expect(mockListGlossaryDecisionEvents).toHaveBeenCalledWith("42", 1);
     });
+    expect(screen.queryByText("No rationale recorded.")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "History" }));
     expect(screen.getByText("approve")).toBeInTheDocument();
     expect(screen.getByText("No rationale recorded.")).toBeInTheDocument();
     expect(screen.getByText('Previous: {"status":"candidate"}')).toBeInTheDocument();
@@ -403,7 +450,8 @@ describe("AdminGlossaryShell", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Select" })).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Select" }));
-    await waitFor(() => expect(screen.getByText("No decision events yet.")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "History" }));
+    await waitFor(() => expect(screen.getByText("No history yet.")).toBeInTheDocument());
 
     cleanup();
     mockListGlossaryEntries.mockResolvedValue([entry]);
@@ -414,17 +462,23 @@ describe("AdminGlossaryShell", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Select" })).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Select" }));
-    await waitFor(() => expect(screen.getAllByText("Failed to load decision history.").length).toBeGreaterThan(0));
+    await user.click(screen.getByRole("button", { name: "History" }));
+    await waitFor(() => expect(screen.getAllByText("Failed to load history.").length).toBeGreaterThan(0));
   });
 
   it("lists QA findings and updates only finding status", async () => {
     const user = userEvent.setup();
-    mockListGlossaryEntries.mockResolvedValue([]);
+    mockListGlossaryEntries.mockResolvedValue([entry]);
+    mockListGlossaryAliases.mockResolvedValue([]);
+    mockListGlossaryProvenanceForEntry.mockResolvedValue([]);
     mockListGlossaryQaFindings.mockResolvedValue([qaFinding]);
     mockUpdateGlossaryQaFindingStatus.mockResolvedValue({ ...qaFinding, status: "dismissed" });
 
     renderWithQuery(<AdminGlossaryShell novelId="42" />);
 
+    await waitFor(() => expect(screen.getByRole("button", { name: "Select" })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("button", { name: "QA findings" }));
     await waitFor(() => expect(screen.getByText("banned alias")).toBeInTheDocument());
     expect(screen.getByText("Matched: Alberto")).toBeInTheDocument();
     expect(screen.getByText("Suggested: Albert")).toBeInTheDocument();
@@ -441,11 +495,16 @@ describe("AdminGlossaryShell", () => {
 
   it("filters QA findings by status and chapter id", async () => {
     const user = userEvent.setup();
-    mockListGlossaryEntries.mockResolvedValue([]);
+    mockListGlossaryEntries.mockResolvedValue([entry]);
+    mockListGlossaryAliases.mockResolvedValue([]);
+    mockListGlossaryProvenanceForEntry.mockResolvedValue([]);
     mockListGlossaryQaFindings.mockResolvedValue([]);
 
     renderWithQuery(<AdminGlossaryShell novelId="42" />);
 
+    await waitFor(() => expect(screen.getByRole("button", { name: "Select" })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("button", { name: "QA findings" }));
     await waitFor(() => expect(screen.getByText("No QA findings yet.")).toBeInTheDocument());
     await user.selectOptions(screen.getByLabelText("Filter QA findings by status"), "open");
     await user.type(screen.getByLabelText("Filter QA findings by chapter id"), "4");
@@ -456,18 +515,29 @@ describe("AdminGlossaryShell", () => {
   });
 
   it("shows QA findings empty and error states", async () => {
-    mockListGlossaryEntries.mockResolvedValue([]);
+    const user = userEvent.setup();
+    mockListGlossaryEntries.mockResolvedValue([entry]);
+    mockListGlossaryAliases.mockResolvedValue([]);
+    mockListGlossaryProvenanceForEntry.mockResolvedValue([]);
     mockListGlossaryQaFindings.mockResolvedValueOnce([]);
 
     renderWithQuery(<AdminGlossaryShell novelId="42" />);
 
+    await waitFor(() => expect(screen.getByRole("button", { name: "Select" })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("button", { name: "QA findings" }));
     await waitFor(() => expect(screen.getByText("No QA findings yet.")).toBeInTheDocument());
 
     cleanup();
-    mockListGlossaryEntries.mockResolvedValue([]);
+    mockListGlossaryEntries.mockResolvedValue([entry]);
+    mockListGlossaryAliases.mockResolvedValue([]);
+    mockListGlossaryProvenanceForEntry.mockResolvedValue([]);
     mockListGlossaryQaFindings.mockRejectedValue(new Error("QA failure"));
     renderWithQuery(<AdminGlossaryShell novelId="42" />);
 
+    await waitFor(() => expect(screen.getByRole("button", { name: "Select" })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    await user.click(screen.getByRole("button", { name: "QA findings" }));
     await waitFor(() => expect(screen.getAllByText("Failed to load QA findings.").length).toBeGreaterThan(0));
   });
 
@@ -562,8 +632,9 @@ describe("AdminGlossaryShell", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Select" })).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Select" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Add provenance" })).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: "Add provenance" }));
+    await user.click(screen.getByRole("button", { name: "Evidence" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add evidence" })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Add evidence" }));
     await user.type(screen.getByLabelText("Source site"), "kakuyomu");
     await user.type(screen.getByLabelText("Source adapter"), "kakuyomu");
     await user.type(screen.getByLabelText("Source novel ID"), "16817330655991571532");
@@ -572,7 +643,7 @@ describe("AdminGlossaryShell", () => {
     await user.type(screen.getByLabelText("Observed translated term"), "Ellen");
     await user.selectOptions(screen.getByLabelText("Evidence quality"), "mojibake");
     await user.type(screen.getByLabelText("Confidence"), "0.8");
-    await user.click(screen.getAllByRole("button", { name: "Add provenance" }).at(-1)!);
+    await user.click(screen.getAllByRole("button", { name: "Add evidence" }).at(-1)!);
 
     await waitFor(() => {
       expect(mockAddGlossaryProvenance).toHaveBeenCalledWith("42", 1, expect.objectContaining({
