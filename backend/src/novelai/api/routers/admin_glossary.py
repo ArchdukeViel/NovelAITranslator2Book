@@ -8,10 +8,10 @@ or expose user display override management.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, constr
 from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
@@ -29,38 +29,79 @@ from novelai.services.glossary_repository import GlossaryRepository
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
+NonEmptyStr = constr(strip_whitespace=True, min_length=1)
+EntryStatus = Literal["candidate", "recommended", "approved", "rejected", "deprecated"]
+TermType = Literal[
+    "character",
+    "family_house",
+    "place",
+    "organization",
+    "title",
+    "rank",
+    "skill",
+    "magic",
+    "species",
+    "item",
+    "artifact",
+    "concept",
+    "phrase",
+    "other",
+]
+AliasType = Literal["allowed", "rejected", "banned", "deprecated", "observed", "source_variant"]
+AliasAppliesTo = Literal["source_text", "translated_text", "prompt", "qa", "public_display"]
+QASeverity = Literal["info", "warning", "error", "blocker"]
+QAFindingStatus = Literal["open", "accepted", "dismissed", "fixed"]
+
 
 class GlossaryEntryCreateRequest(BaseModel):
-    canonical_term: str
-    term_type: str
-    approved_translation: str | None = None
-    status: str = "candidate"
-    enforcement_level: str = "none"
+    canonical_term: NonEmptyStr
+    term_type: TermType
+    approved_translation: NonEmptyStr | None = None
+    status: EntryStatus = "candidate"
+    enforcement_level: Literal["none", "info", "warning", "error", "blocker"] = "none"
     owner_locked: bool = False
     public_visible: bool = False
-    public_description: str | None = None
-    admin_notes: str | None = None
+    public_description: NonEmptyStr | None = None
+    admin_notes: NonEmptyStr | None = None
     confidence: float | None = None
-    replacement_policy: str = "preview_required"
-    matching_policy: str = "exact_phrase"
+    replacement_policy: Literal["never_auto_replace", "preview_required", "manual_only", "safe_exact", "no_replacement"] = "preview_required"
+    matching_policy: Literal[
+        "exact_phrase",
+        "case_insensitive_phrase",
+        "word_boundary",
+        "source_text_only",
+        "translated_text_only",
+        "regex_reviewed",
+        "manual_only",
+        "custom",
+    ] = "exact_phrase"
     first_seen_chapter_id: int | None = None
     first_seen_chapter_number: int | None = None
     last_seen_chapter_id: int | None = None
     last_seen_chapter_number: int | None = None
-    rationale: str | None = None
+    rationale: NonEmptyStr | None = None
 
 
 class GlossaryEntryUpdateRequest(BaseModel):
-    canonical_term: str | None = None
-    term_type: str | None = None
-    approved_translation: str | None = None
-    enforcement_level: str | None = None
+    canonical_term: NonEmptyStr | None = None
+    term_type: TermType | None = None
+    approved_translation: NonEmptyStr | None = None
+    enforcement_level: Literal["none", "info", "warning", "error", "blocker"] | None = None
     public_visible: bool | None = None
-    public_description: str | None = None
-    admin_notes: str | None = None
+    public_description: NonEmptyStr | None = None
+    admin_notes: NonEmptyStr | None = None
     confidence: float | None = None
-    replacement_policy: str | None = None
-    matching_policy: str | None = None
+    replacement_policy: Literal["never_auto_replace", "preview_required", "manual_only", "safe_exact", "no_replacement"] | None = None
+    matching_policy: Literal[
+        "exact_phrase",
+        "case_insensitive_phrase",
+        "word_boundary",
+        "source_text_only",
+        "translated_text_only",
+        "regex_reviewed",
+        "manual_only",
+        "custom",
+    ] | None = None
     first_seen_chapter_id: int | None = None
     first_seen_chapter_number: int | None = None
     last_seen_chapter_id: int | None = None
@@ -68,12 +109,12 @@ class GlossaryEntryUpdateRequest(BaseModel):
 
 
 class GlossaryEntryStatusRequest(BaseModel):
-    status: str
-    rationale: str | None = None
+    status: EntryStatus
+    rationale: NonEmptyStr | None = None
 
 
 class GlossaryDecisionRequest(BaseModel):
-    rationale: str | None = None
+    rationale: NonEmptyStr | None = None
 
 
 class GlossaryEntryResponse(BaseModel):
@@ -103,25 +144,43 @@ class GlossaryEntryResponse(BaseModel):
 
 
 class GlossaryAliasCreateRequest(BaseModel):
-    alias_text: str
-    alias_type: str = "observed"
-    language: str | None = None
-    text_origin: str | None = None
-    applies_to: str | None = None
-    matching_policy: str | None = None
-    notes: str | None = None
-    rationale: str | None = None
+    alias_text: NonEmptyStr
+    alias_type: AliasType = "observed"
+    language: NonEmptyStr | None = None
+    text_origin: NonEmptyStr | None = None
+    applies_to: AliasAppliesTo | None = None
+    matching_policy: Literal[
+        "exact_phrase",
+        "case_insensitive_phrase",
+        "word_boundary",
+        "source_text_only",
+        "translated_text_only",
+        "regex_reviewed",
+        "manual_only",
+        "custom",
+    ] | None = None
+    notes: NonEmptyStr | None = None
+    rationale: NonEmptyStr | None = None
 
 
 class GlossaryAliasUpdateRequest(BaseModel):
-    alias_text: str | None = None
-    alias_type: str | None = None
-    language: str | None = None
-    text_origin: str | None = None
-    applies_to: str | None = None
-    matching_policy: str | None = None
-    notes: str | None = None
-    rationale: str | None = None
+    alias_text: NonEmptyStr | None = None
+    alias_type: AliasType | None = None
+    language: NonEmptyStr | None = None
+    text_origin: NonEmptyStr | None = None
+    applies_to: AliasAppliesTo | None = None
+    matching_policy: Literal[
+        "exact_phrase",
+        "case_insensitive_phrase",
+        "word_boundary",
+        "source_text_only",
+        "translated_text_only",
+        "regex_reviewed",
+        "manual_only",
+        "custom",
+    ] | None = None
+    notes: NonEmptyStr | None = None
+    rationale: NonEmptyStr | None = None
 
 
 class GlossaryAliasResponse(BaseModel):
@@ -140,18 +199,18 @@ class GlossaryAliasResponse(BaseModel):
 
 
 class GlossaryProvenanceCreateRequest(BaseModel):
-    source_site: str
-    source_adapter: str
-    source_novel_id: str | None = None
-    source_url: str | None = None
-    source_chapter_id: str | None = None
+    source_site: NonEmptyStr
+    source_adapter: NonEmptyStr
+    source_novel_id: NonEmptyStr | None = None
+    source_url: NonEmptyStr | None = None
+    source_chapter_id: NonEmptyStr | None = None
     source_chapter_number: int | None = None
     chapter_id: int | None = None
-    raw_source_term: str | None = None
-    observed_translated_term: str | None = None
-    evidence_ref: str | None = None
-    local_reference: str | None = None
-    evidence_quality: str | None = None
+    raw_source_term: NonEmptyStr | None = None
+    observed_translated_term: NonEmptyStr | None = None
+    evidence_ref: NonEmptyStr | None = None
+    local_reference: NonEmptyStr | None = None
+    evidence_quality: Literal["clean_source", "mojibake", "translated_only", "metadata_only", "manual_owner_decision"] | None = None
     confidence: float | None = None
 
 
@@ -193,19 +252,26 @@ class GlossaryDecisionEventResponse(BaseModel):
 
 
 class GlossaryQAFindingCreateRequest(BaseModel):
-    finding_type: str
-    severity: str = "warning"
-    status: str = "open"
+    finding_type: Literal[
+        "banned_alias",
+        "inconsistent_alias",
+        "missing_canonical",
+        "unresolved_term",
+        "source_mismatch",
+        "replacement_risk",
+    ]
+    severity: QASeverity = "warning"
+    status: QAFindingStatus = "open"
     chapter_id: int | None = None
     glossary_entry_id: int | None = None
-    matched_text: str | None = None
-    suggested_text: str | None = None
-    context_ref: str | None = None
+    matched_text: NonEmptyStr | None = None
+    suggested_text: NonEmptyStr | None = None
+    context_ref: NonEmptyStr | None = None
 
 
 class GlossaryQAFindingStatusRequest(BaseModel):
-    status: str
-    reviewer_notes: str | None = None
+    status: QAFindingStatus
+    reviewer_notes: NonEmptyStr | None = None
 
 
 class GlossaryQAFindingResponse(BaseModel):

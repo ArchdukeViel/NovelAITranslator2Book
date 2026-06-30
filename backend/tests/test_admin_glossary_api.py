@@ -21,7 +21,7 @@ from novelai.api.routers.admin_glossary import router as admin_glossary_router
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.dependencies import get_db_session
 from novelai.db.base import Base
-from novelai.db.models.glossary import NovelGlossaryDecisionEvent, NovelGlossaryEntry
+from novelai.db.models.glossary import NovelGlossaryAlias, NovelGlossaryDecisionEvent, NovelGlossaryEntry
 from novelai.db.models.novel import Novel
 from novelai.db.models.users import User
 
@@ -114,6 +114,30 @@ def _create_entry(owner_client: TestClient, novel_id: int, canonical_term: str =
     return resp.json()
 
 
+def _create_alias(owner_client: TestClient, novel_id: int, entry_id: int, alias_text: str = "Pokot") -> dict:
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel_id}/glossary/entries/{entry_id}/aliases",
+        json={"alias_text": alias_text, "alias_type": "banned", "applies_to": "qa"},
+    )
+    assert resp.status_code == 200
+    return resp.json()
+
+
+def _create_qa_finding(owner_client: TestClient, novel_id: int, entry_id: int) -> dict:
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel_id}/glossary/qa-findings",
+        json={
+            "glossary_entry_id": entry_id,
+            "finding_type": "banned_alias",
+            "severity": "warning",
+            "matched_text": "Pokot",
+            "suggested_text": "Pocott",
+        },
+    )
+    assert resp.status_code == 200
+    return resp.json()
+
+
 def test_guest_and_normal_user_cannot_manage_admin_glossary(client, app, db_session) -> None:
     novel = _seed_novel(db_session)
 
@@ -166,6 +190,51 @@ def test_owner_can_create_list_and_update_glossary_entry(owner_client, db_sessio
     assert update_resp.json()["public_visible"] is True
 
 
+def test_entry_routes_reject_cross_novel_access(owner_client, db_session) -> None:
+    novel_a = _seed_novel(db_session, "entry-scope-a")
+    novel_b = _seed_novel(db_session, "entry-scope-b")
+    entry = _create_entry(owner_client, novel_a.id)
+
+    requests = [
+        owner_client.get(f"/api/admin/novels/{novel_b.id}/glossary/entries/{entry['id']}"),
+        owner_client.patch(
+            f"/api/admin/novels/{novel_b.id}/glossary/entries/{entry['id']}",
+            json={"approved_translation": "Wrong Novel"},
+        ),
+        owner_client.post(
+            f"/api/admin/novels/{novel_b.id}/glossary/entries/{entry['id']}/status",
+            json={"status": "approved"},
+        ),
+        owner_client.post(f"/api/admin/novels/{novel_b.id}/glossary/entries/{entry['id']}/lock", json={}),
+        owner_client.post(f"/api/admin/novels/{novel_b.id}/glossary/entries/{entry['id']}/unlock", json={}),
+        owner_client.post(f"/api/admin/novels/{novel_b.id}/glossary/entries/{entry['id']}/deprecate", json={}),
+    ]
+
+    assert [resp.status_code for resp in requests] == [404, 404, 404, 404, 404, 404]
+    assert owner_client.get(f"/api/admin/novels/{novel_a.id}/glossary/entries/{entry['id']}").status_code == 200
+
+
+def test_not_found_behavior_for_missing_novel_entry_alias_and_qa(owner_client, db_session) -> None:
+    novel = _seed_novel(db_session, "missing-resources")
+
+    assert owner_client.get("/api/admin/novels/999999/glossary").status_code == 404
+    assert owner_client.get(f"/api/admin/novels/{novel.id}/glossary/entries/999999").status_code == 404
+    assert (
+        owner_client.patch(
+            f"/api/admin/novels/{novel.id}/glossary/aliases/999999",
+            json={"alias_text": "Missing"},
+        ).status_code
+        == 404
+    )
+    assert (
+        owner_client.patch(
+            f"/api/admin/novels/{novel.id}/glossary/qa-findings/999999/status",
+            json={"status": "dismissed"},
+        ).status_code
+        == 404
+    )
+
+
 def test_alias_add_list_and_deprecate_work(owner_client, db_session) -> None:
     novel = _seed_novel(db_session)
     entry = _create_entry(owner_client, novel.id, "Albert")
@@ -186,6 +255,29 @@ def test_alias_add_list_and_deprecate_work(owner_client, db_session) -> None:
     assert list_resp.json()[0]["alias_text"] == "Alberto"
     assert dep_resp.status_code == 200
     assert dep_resp.json()["alias_type"] == "deprecated"
+
+
+def test_alias_routes_reject_cross_novel_access(owner_client, db_session) -> None:
+    novel_a = _seed_novel(db_session, "alias-scope-a")
+    novel_b = _seed_novel(db_session, "alias-scope-b")
+    entry = _create_entry(owner_client, novel_a.id, "Albert")
+    alias = _create_alias(owner_client, novel_a.id, entry["id"], "Alberto")
+
+    responses = [
+        owner_client.get(f"/api/admin/novels/{novel_b.id}/glossary/entries/{entry['id']}/aliases"),
+        owner_client.post(
+            f"/api/admin/novels/{novel_b.id}/glossary/entries/{entry['id']}/aliases",
+            json={"alias_text": "Wrong Novel", "alias_type": "observed"},
+        ),
+        owner_client.patch(
+            f"/api/admin/novels/{novel_b.id}/glossary/aliases/{alias['id']}",
+            json={"alias_text": "Wrong Novel"},
+        ),
+        owner_client.post(f"/api/admin/novels/{novel_b.id}/glossary/aliases/{alias['id']}/deprecate", json={}),
+    ]
+
+    assert [resp.status_code for resp in responses] == [404, 404, 404, 404]
+    assert db_session.query(NovelGlossaryAlias).filter_by(novel_id=novel_b.id).count() == 0
 
 
 def test_provenance_add_and_list_treats_source_as_provenance_only(owner_client, db_session) -> None:
@@ -216,6 +308,24 @@ def test_provenance_add_and_list_treats_source_as_provenance_only(owner_client, 
     assert db_session.query(NovelGlossaryEntry).filter_by(novel_id=novel.id).count() == 1
 
 
+def test_provenance_routes_reject_cross_novel_entry_access(owner_client, db_session) -> None:
+    novel_a = _seed_novel(db_session, "provenance-scope-a")
+    novel_b = _seed_novel(db_session, "provenance-scope-b")
+    entry = _create_entry(owner_client, novel_a.id)
+
+    list_resp = owner_client.get(f"/api/admin/novels/{novel_b.id}/glossary/entries/{entry['id']}/provenance")
+    add_resp = owner_client.post(
+        f"/api/admin/novels/{novel_b.id}/glossary/entries/{entry['id']}/provenance",
+        json={"source_site": "kakuyomu", "source_adapter": "kakuyomu"},
+    )
+    novel_b_list = owner_client.get(f"/api/admin/novels/{novel_b.id}/glossary/provenance")
+
+    assert list_resp.status_code == 404
+    assert add_resp.status_code == 404
+    assert novel_b_list.status_code == 200
+    assert novel_b_list.json() == []
+
+
 def test_status_change_creates_decision_event_and_events_are_listed(owner_client, db_session) -> None:
     novel = _seed_novel(db_session)
     entry = _create_entry(owner_client, novel.id, "World Tree")
@@ -231,6 +341,55 @@ def test_status_change_creates_decision_event_and_events_are_listed(owner_client
     assert events_resp.status_code == 200
     assert [event["event_type"] for event in events_resp.json()] == ["create", "approve"]
     assert db_session.query(NovelGlossaryDecisionEvent).filter_by(event_type="approve").count() == 1
+
+
+def test_lock_unlock_deprecate_and_alias_updates_create_decision_events(owner_client, db_session) -> None:
+    novel = _seed_novel(db_session, "event-cases")
+    entry = _create_entry(owner_client, novel.id, "Order of Knights")
+    alias = _create_alias(owner_client, novel.id, entry["id"], "Kingdom Knights")
+
+    owner_client.post(f"/api/admin/novels/{novel.id}/glossary/entries/{entry['id']}/lock", json={})
+    owner_client.post(f"/api/admin/novels/{novel.id}/glossary/entries/{entry['id']}/unlock", json={})
+    owner_client.patch(
+        f"/api/admin/novels/{novel.id}/glossary/aliases/{alias['id']}",
+        json={"alias_type": "allowed"},
+    )
+    owner_client.post(f"/api/admin/novels/{novel.id}/glossary/aliases/{alias['id']}/deprecate", json={})
+    owner_client.post(f"/api/admin/novels/{novel.id}/glossary/entries/{entry['id']}/deprecate", json={})
+
+    events = owner_client.get(f"/api/admin/novels/{novel.id}/glossary/entries/{entry['id']}/events").json()
+    assert [event["event_type"] for event in events] == [
+        "create",
+        "alias_change",
+        "lock",
+        "unlock",
+        "alias_change",
+        "alias_change",
+        "deprecate",
+    ]
+
+
+def test_decision_event_listing_is_scoped_by_novel_and_entry(owner_client, db_session) -> None:
+    novel_a = _seed_novel(db_session, "event-scope-a")
+    novel_b = _seed_novel(db_session, "event-scope-b")
+    entry_a = _create_entry(owner_client, novel_a.id, "Pocott")
+    entry_b = _create_entry(owner_client, novel_b.id, "Pocott")
+
+    owner_client.post(
+        f"/api/admin/novels/{novel_a.id}/glossary/entries/{entry_a['id']}/status",
+        json={"status": "approved"},
+    )
+
+    novel_a_events = owner_client.get(f"/api/admin/novels/{novel_a.id}/glossary/events").json()
+    novel_b_events = owner_client.get(f"/api/admin/novels/{novel_b.id}/glossary/events").json()
+    wrong_entry_events = owner_client.get(
+        f"/api/admin/novels/{novel_b.id}/glossary/entries/{entry_a['id']}/events"
+    )
+
+    assert [event["novel_id"] for event in novel_a_events] == [novel_a.id, novel_a.id]
+    assert [event["novel_id"] for event in novel_b_events] == [novel_b.id]
+    assert [event["glossary_entry_id"] for event in novel_b_events] == [entry_b["id"]]
+    assert wrong_entry_events.status_code == 404
 
 
 def test_same_canonical_term_can_exist_in_different_novels(owner_client, db_session) -> None:
@@ -281,3 +440,105 @@ def test_manual_qa_finding_create_list_and_status_update(owner_client, db_sessio
     assert update_resp.status_code == 200
     assert update_resp.json()["status"] == "dismissed"
     assert update_resp.json()["resolved_at"] is not None
+
+
+def test_qa_finding_update_rejects_cross_novel_access(owner_client, db_session) -> None:
+    novel_a = _seed_novel(db_session, "qa-scope-a")
+    novel_b = _seed_novel(db_session, "qa-scope-b")
+    entry = _create_entry(owner_client, novel_a.id, "Pocott")
+    finding = _create_qa_finding(owner_client, novel_a.id, entry["id"])
+
+    update_resp = owner_client.patch(
+        f"/api/admin/novels/{novel_b.id}/glossary/qa-findings/{finding['id']}/status",
+        json={"status": "dismissed"},
+    )
+    novel_b_list = owner_client.get(f"/api/admin/novels/{novel_b.id}/glossary/qa-findings")
+
+    assert update_resp.status_code == 404
+    assert novel_b_list.status_code == 200
+    assert novel_b_list.json() == []
+
+
+@pytest.mark.parametrize(
+    ("payload", "field"),
+    [
+        ({"canonical_term": "", "term_type": "place"}, "canonical_term"),
+        ({"canonical_term": "Pocott", "term_type": "invalid"}, "term_type"),
+        ({"canonical_term": "Pocott", "term_type": "place", "status": "invalid"}, "status"),
+    ],
+)
+def test_entry_create_validation_errors(owner_client, db_session, payload, field) -> None:
+    novel = _seed_novel(db_session, f"entry-validation-{field}")
+
+    resp = owner_client.post(f"/api/admin/novels/{novel.id}/glossary", json=payload)
+
+    assert resp.status_code == 422
+    assert field in str(resp.json()["detail"])
+
+
+@pytest.mark.parametrize(
+    ("payload", "field"),
+    [
+        ({"alias_text": "", "alias_type": "observed"}, "alias_text"),
+        ({"alias_text": "Pokot", "alias_type": "invalid"}, "alias_type"),
+        ({"alias_text": "Pokot", "alias_type": "observed", "applies_to": "chapter"}, "applies_to"),
+    ],
+)
+def test_alias_create_validation_errors(owner_client, db_session, payload, field) -> None:
+    novel = _seed_novel(db_session, f"alias-validation-{field}")
+    entry = _create_entry(owner_client, novel.id)
+
+    resp = owner_client.post(f"/api/admin/novels/{novel.id}/glossary/entries/{entry['id']}/aliases", json=payload)
+
+    assert resp.status_code == 422
+    assert field in str(resp.json()["detail"])
+
+
+@pytest.mark.parametrize(
+    ("payload", "field"),
+    [
+        ({"source_site": "", "source_adapter": "kakuyomu"}, "source_site"),
+        ({"source_site": "kakuyomu", "source_adapter": ""}, "source_adapter"),
+        ({"source_site": "kakuyomu", "source_adapter": "kakuyomu", "evidence_quality": "unknown"}, "evidence_quality"),
+    ],
+)
+def test_provenance_validation_errors(owner_client, db_session, payload, field) -> None:
+    novel = _seed_novel(db_session, f"provenance-validation-{field}")
+    entry = _create_entry(owner_client, novel.id)
+
+    resp = owner_client.post(f"/api/admin/novels/{novel.id}/glossary/entries/{entry['id']}/provenance", json=payload)
+
+    assert resp.status_code == 422
+    assert field in str(resp.json()["detail"])
+
+
+@pytest.mark.parametrize(
+    ("payload", "field"),
+    [
+        ({"finding_type": "unknown", "severity": "warning"}, "finding_type"),
+        ({"finding_type": "banned_alias", "severity": "none"}, "severity"),
+        ({"finding_type": "banned_alias", "severity": "warning", "status": "closed"}, "status"),
+        ({"finding_type": "banned_alias", "severity": "warning", "matched_text": ""}, "matched_text"),
+    ],
+)
+def test_qa_finding_validation_errors(owner_client, db_session, payload, field) -> None:
+    novel = _seed_novel(db_session, f"qa-validation-{field}")
+
+    resp = owner_client.post(f"/api/admin/novels/{novel.id}/glossary/qa-findings", json=payload)
+
+    assert resp.status_code == 422
+    assert field in str(resp.json()["detail"])
+
+
+def test_qa_finding_status_validation_error(owner_client, db_session) -> None:
+    novel = _seed_novel(db_session, "qa-status-validation")
+    entry = _create_entry(owner_client, novel.id)
+    finding = _create_qa_finding(owner_client, novel.id, entry["id"])
+
+    resp = owner_client.patch(
+        f"/api/admin/novels/{novel.id}/glossary/qa-findings/{finding['id']}/status",
+        json={"status": "closed"},
+    )
+
+    assert resp.status_code == 422
+    assert "status" in str(resp.json()["detail"])
