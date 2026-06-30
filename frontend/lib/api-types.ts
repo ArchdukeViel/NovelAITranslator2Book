@@ -409,6 +409,8 @@ export type GlossaryQaFindingType =
   | "unresolved_term"
   | "source_mismatch"
   | "replacement_risk";
+export type GlossaryCandidateImportMode = "preview" | "apply";
+export type GlossaryCandidateImportAction = "preview" | "created" | "merged" | "skipped" | "conflict";
 
 export type GlossaryEntry = {
   id: number;
@@ -595,4 +597,33 @@ export type GlossaryQaFindingStatusPayload = {
 export type GlossaryQaFindingListFilters = {
   chapter_id?: number;
   status?: GlossaryQaFindingStatus;
+};
+
+export type GlossaryCandidateImportRequest = {
+  max_candidates?: number;
+};
+
+export type GlossaryCandidateSummary = {
+  term: string;
+  translation: string;
+  term_type: GlossaryTermType;
+  confidence: number;
+  frequency: number;
+  chapter_count: number;
+  chapter_numbers: number[];
+  chapter_refs: string[];
+  action: GlossaryCandidateImportAction;
+  notes: string | null;
+};
+
+export type GlossaryCandidateImportResult = {
+  novel_id: number;
+  mode: GlossaryCandidateImportMode;
+  candidates_found: number;
+  candidates_created: number;
+  candidates_merged: number;
+  candidates_skipped: number;
+  conflicts: string[];
+  warnings: string[];
+  candidates: GlossaryCandidateSummary[];
 };
