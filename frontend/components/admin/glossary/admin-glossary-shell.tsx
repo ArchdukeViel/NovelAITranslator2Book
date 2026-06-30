@@ -14,12 +14,18 @@ import { Button } from "@/components/ui/button";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { adminApi, ApiError } from "@/lib/api";
 import type {
+  GlossaryAlias,
+  GlossaryAliasAppliesTo,
+  GlossaryAliasCreatePayload,
+  GlossaryAliasType,
   GlossaryEnforcementLevel,
   GlossaryEntry,
   GlossaryEntryCreatePayload,
   GlossaryEntryStatus,
   GlossaryEntryUpdatePayload,
+  GlossaryEvidenceQuality,
   GlossaryMatchingPolicy,
+  GlossaryProvenanceCreatePayload,
   GlossaryReplacementPolicy,
   GlossaryTermType,
 } from "@/lib/api-types";
@@ -59,6 +65,15 @@ const REPLACEMENT_POLICIES: GlossaryReplacementPolicy[] = [
   "safe_exact",
   "no_replacement",
 ];
+const ALIAS_TYPES: GlossaryAliasType[] = ["allowed", "observed", "rejected", "banned", "deprecated", "source_variant"];
+const ALIAS_APPLIES_TO: GlossaryAliasAppliesTo[] = ["source_text", "translated_text", "prompt", "qa", "public_display"];
+const EVIDENCE_QUALITIES: GlossaryEvidenceQuality[] = [
+  "clean_source",
+  "mojibake",
+  "translated_only",
+  "metadata_only",
+  "manual_owner_decision",
+];
 
 type EntryFormValues = {
   canonical_term: string;
@@ -76,6 +91,32 @@ type EntryFormValues = {
 type PendingDecision = {
   entry: GlossaryEntry;
   action: "lock" | "unlock" | "deprecate";
+} | null;
+
+type AliasFormValues = {
+  alias_text: string;
+  alias_type: GlossaryAliasType;
+  applies_to: "" | GlossaryAliasAppliesTo;
+  matching_policy: "" | GlossaryMatchingPolicy;
+  notes: string;
+};
+
+type ProvenanceFormValues = {
+  source_site: string;
+  source_adapter: string;
+  source_novel_id: string;
+  source_chapter_id: string;
+  source_chapter_number: string;
+  raw_source_term: string;
+  observed_translated_term: string;
+  evidence_ref: string;
+  local_reference: string;
+  evidence_quality: "" | GlossaryEvidenceQuality;
+  confidence: string;
+};
+
+type PendingAliasDeprecation = {
+  alias: GlossaryAlias;
 } | null;
 
 function emptyForm(): EntryFormValues {
@@ -139,6 +180,75 @@ function updatePayload(values: EntryFormValues): GlossaryEntryUpdatePayload {
     admin_notes: optionalText(values.admin_notes),
     matching_policy: values.matching_policy,
     replacement_policy: values.replacement_policy,
+  };
+}
+
+function emptyAliasForm(): AliasFormValues {
+  return {
+    alias_text: "",
+    alias_type: "observed",
+    applies_to: "",
+    matching_policy: "",
+    notes: "",
+  };
+}
+
+function aliasFormFromAlias(alias: GlossaryAlias): AliasFormValues {
+  return {
+    alias_text: alias.alias_text,
+    alias_type: alias.alias_type,
+    applies_to: alias.applies_to ?? "",
+    matching_policy: alias.matching_policy ?? "",
+    notes: alias.notes ?? "",
+  };
+}
+
+function aliasPayload(values: AliasFormValues): GlossaryAliasCreatePayload {
+  return {
+    alias_text: values.alias_text.trim(),
+    alias_type: values.alias_type,
+    applies_to: values.applies_to || null,
+    matching_policy: values.matching_policy || null,
+    notes: optionalText(values.notes),
+  };
+}
+
+function emptyProvenanceForm(): ProvenanceFormValues {
+  return {
+    source_site: "",
+    source_adapter: "",
+    source_novel_id: "",
+    source_chapter_id: "",
+    source_chapter_number: "",
+    raw_source_term: "",
+    observed_translated_term: "",
+    evidence_ref: "",
+    local_reference: "",
+    evidence_quality: "",
+    confidence: "",
+  };
+}
+
+function numberOrNull(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function provenancePayload(values: ProvenanceFormValues): GlossaryProvenanceCreatePayload {
+  return {
+    source_site: values.source_site.trim(),
+    source_adapter: values.source_adapter.trim(),
+    source_novel_id: optionalText(values.source_novel_id),
+    source_chapter_id: optionalText(values.source_chapter_id),
+    source_chapter_number: numberOrNull(values.source_chapter_number),
+    raw_source_term: optionalText(values.raw_source_term),
+    observed_translated_term: optionalText(values.observed_translated_term),
+    evidence_ref: optionalText(values.evidence_ref),
+    local_reference: optionalText(values.local_reference),
+    evidence_quality: values.evidence_quality || null,
+    confidence: numberOrNull(values.confidence),
   };
 }
 
@@ -326,24 +436,257 @@ function GlossaryEntryDialog({
   );
 }
 
+function OptionalSelectField<T extends string>({
+  label,
+  value,
+  options,
+  emptyLabel,
+  onChange,
+}: {
+  label: string;
+  value: "" | T;
+  options: T[];
+  emptyLabel: string;
+  onChange: (value: "" | T) => void;
+}) {
+  return (
+    <FieldLabel>
+      <span>{label}</span>
+      <select
+        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+        value={value}
+        onChange={(event) => onChange(event.target.value as "" | T)}
+      >
+        <option value="">{emptyLabel}</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {formatStatus(option)}
+          </option>
+        ))}
+      </select>
+    </FieldLabel>
+  );
+}
+
+function AliasDialog({
+  mode,
+  open,
+  values,
+  pending,
+  error,
+  validationError,
+  onChange,
+  onSubmit,
+  onClose,
+}: {
+  mode: "add" | "edit";
+  open: boolean;
+  values: AliasFormValues;
+  pending: boolean;
+  error: unknown;
+  validationError: string | null;
+  onChange: (values: AliasFormValues) => void;
+  onSubmit: () => void;
+  onClose: () => void;
+}) {
+  const setValue = <K extends keyof AliasFormValues>(key: K, value: AliasFormValues[K]) => {
+    onChange({ ...values, [key]: value });
+  };
+  const caution = values.alias_type === "banned" || values.alias_type === "rejected";
+
+  return (
+    <DialogShell
+      open={open}
+      title={mode === "add" ? "Add alias" : "Edit alias"}
+      description="Aliases guide owner decisions and future QA. They do not rewrite chapters."
+      onClose={onClose}
+      className="max-w-2xl"
+      footer={
+        <div className="flex justify-end gap-3">
+          <Button variant="outline" onClick={onClose} disabled={pending}>
+            Cancel
+          </Button>
+          <Button onClick={onSubmit} disabled={pending}>
+            {pending ? "Saving..." : mode === "add" ? "Add alias" : "Save alias"}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4 p-4">
+        {validationError ? <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{validationError}</div> : null}
+        <ErrorBanner error={error} fallback={mode === "add" ? "Failed to add alias." : "Failed to update alias."} className="border" />
+        {caution ? (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            Rejected and banned aliases mark risky or forbidden variants. They are not replacement instructions.
+          </div>
+        ) : null}
+        <FieldLabel>
+          <span>Alias text</span>
+          <input
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            value={values.alias_text}
+            onChange={(event) => setValue("alias_text", event.target.value)}
+          />
+        </FieldLabel>
+        <div className="grid gap-4 md:grid-cols-2">
+          <SelectField label="Alias type" value={values.alias_type} options={ALIAS_TYPES} onChange={(value) => setValue("alias_type", value)} />
+          <OptionalSelectField label="Applies to" value={values.applies_to} options={ALIAS_APPLIES_TO} emptyLabel="No scope" onChange={(value) => setValue("applies_to", value)} />
+          <OptionalSelectField label="Matching policy override" value={values.matching_policy} options={MATCHING_POLICIES} emptyLabel="Use entry policy" onChange={(value) => setValue("matching_policy", value)} />
+        </div>
+        <FieldLabel>
+          <span>Notes</span>
+          <textarea
+            className="min-h-20 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            value={values.notes}
+            onChange={(event) => setValue("notes", event.target.value)}
+          />
+        </FieldLabel>
+      </div>
+    </DialogShell>
+  );
+}
+
+function ProvenanceDialog({
+  open,
+  values,
+  pending,
+  error,
+  validationError,
+  onChange,
+  onSubmit,
+  onClose,
+}: {
+  open: boolean;
+  values: ProvenanceFormValues;
+  pending: boolean;
+  error: unknown;
+  validationError: string | null;
+  onChange: (values: ProvenanceFormValues) => void;
+  onSubmit: () => void;
+  onClose: () => void;
+}) {
+  const setValue = <K extends keyof ProvenanceFormValues>(key: K, value: ProvenanceFormValues[K]) => {
+    onChange({ ...values, [key]: value });
+  };
+
+  return (
+    <DialogShell
+      open={open}
+      title="Add provenance"
+      description="Source metadata is evidence only. Glossary ownership remains per novel."
+      onClose={onClose}
+      className="max-w-3xl"
+      footer={
+        <div className="flex justify-end gap-3">
+          <Button variant="outline" onClick={onClose} disabled={pending}>
+            Cancel
+          </Button>
+          <Button onClick={onSubmit} disabled={pending}>
+            {pending ? "Saving..." : "Add provenance"}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4 p-4">
+        {validationError ? <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{validationError}</div> : null}
+        <ErrorBanner error={error} fallback="Failed to add provenance." className="border" />
+        <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          Keep evidence compact. Do not paste large source excerpts here.
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <FieldLabel>
+            <span>Source site</span>
+            <input className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" value={values.source_site} onChange={(event) => setValue("source_site", event.target.value)} />
+          </FieldLabel>
+          <FieldLabel>
+            <span>Source adapter</span>
+            <input className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" value={values.source_adapter} onChange={(event) => setValue("source_adapter", event.target.value)} />
+          </FieldLabel>
+          <FieldLabel>
+            <span>Source novel ID</span>
+            <input className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" value={values.source_novel_id} onChange={(event) => setValue("source_novel_id", event.target.value)} />
+          </FieldLabel>
+          <FieldLabel>
+            <span>Source chapter ID</span>
+            <input className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" value={values.source_chapter_id} onChange={(event) => setValue("source_chapter_id", event.target.value)} />
+          </FieldLabel>
+          <FieldLabel>
+            <span>Source chapter number</span>
+            <input className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" value={values.source_chapter_number} onChange={(event) => setValue("source_chapter_number", event.target.value)} />
+          </FieldLabel>
+          <OptionalSelectField label="Evidence quality" value={values.evidence_quality} options={EVIDENCE_QUALITIES} emptyLabel="Unknown quality" onChange={(value) => setValue("evidence_quality", value)} />
+          <FieldLabel>
+            <span>Raw source term</span>
+            <input className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" value={values.raw_source_term} onChange={(event) => setValue("raw_source_term", event.target.value)} />
+          </FieldLabel>
+          <FieldLabel>
+            <span>Observed translated term</span>
+            <input className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" value={values.observed_translated_term} onChange={(event) => setValue("observed_translated_term", event.target.value)} />
+          </FieldLabel>
+          <FieldLabel>
+            <span>Evidence reference</span>
+            <input className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" value={values.evidence_ref} onChange={(event) => setValue("evidence_ref", event.target.value)} />
+          </FieldLabel>
+          <FieldLabel>
+            <span>Local reference</span>
+            <input className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" value={values.local_reference} onChange={(event) => setValue("local_reference", event.target.value)} />
+          </FieldLabel>
+          <FieldLabel>
+            <span>Confidence</span>
+            <input className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm" value={values.confidence} onChange={(event) => setValue("confidence", event.target.value)} />
+          </FieldLabel>
+        </div>
+      </div>
+    </DialogShell>
+  );
+}
+
 export function AdminGlossaryShell({ novelId }: { novelId: string }) {
   const queryClient = useQueryClient();
+  const [selectedEntryId, setSelectedEntryId] = React.useState<number | null>(null);
   const [dialogMode, setDialogMode] = React.useState<"create" | "edit" | null>(null);
   const [editingEntry, setEditingEntry] = React.useState<GlossaryEntry | null>(null);
   const [formValues, setFormValues] = React.useState<EntryFormValues>(emptyForm());
   const [formValidationError, setFormValidationError] = React.useState<string | null>(null);
   const [pendingDecision, setPendingDecision] = React.useState<PendingDecision>(null);
   const [decisionError, setDecisionError] = React.useState<unknown>(null);
+  const [aliasDialogMode, setAliasDialogMode] = React.useState<"add" | "edit" | null>(null);
+  const [editingAlias, setEditingAlias] = React.useState<GlossaryAlias | null>(null);
+  const [aliasValues, setAliasValues] = React.useState<AliasFormValues>(emptyAliasForm());
+  const [aliasValidationError, setAliasValidationError] = React.useState<string | null>(null);
+  const [pendingAliasDeprecation, setPendingAliasDeprecation] = React.useState<PendingAliasDeprecation>(null);
+  const [provenanceDialogOpen, setProvenanceDialogOpen] = React.useState(false);
+  const [provenanceValues, setProvenanceValues] = React.useState<ProvenanceFormValues>(emptyProvenanceForm());
+  const [provenanceValidationError, setProvenanceValidationError] = React.useState<string | null>(null);
 
   const glossary = useQuery({
     queryKey: ["admin-glossary", novelId],
     queryFn: () => adminApi.listGlossaryEntries(novelId),
   });
   const entries = glossary.data ?? [];
+  const selectedEntry = entries.find((entry) => entry.id === selectedEntryId) ?? null;
   const authMessage = authorizationMessage(glossary.error);
   const invalidateGlossary = () => {
     void queryClient.invalidateQueries({ queryKey: ["admin-glossary", novelId] });
   };
+  const invalidateSelectedEntryResources = () => {
+    if (selectedEntryId !== null) {
+      void queryClient.invalidateQueries({ queryKey: ["admin-glossary-aliases", novelId, selectedEntryId] });
+      void queryClient.invalidateQueries({ queryKey: ["admin-glossary-provenance", novelId, selectedEntryId] });
+    }
+  };
+
+  const aliases = useQuery({
+    queryKey: ["admin-glossary-aliases", novelId, selectedEntryId],
+    queryFn: () => adminApi.listGlossaryAliases(novelId, selectedEntryId ?? 0),
+    enabled: selectedEntryId !== null,
+  });
+
+  const provenance = useQuery({
+    queryKey: ["admin-glossary-provenance", novelId, selectedEntryId],
+    queryFn: () => adminApi.listGlossaryProvenanceForEntry(novelId, selectedEntryId ?? 0),
+    enabled: selectedEntryId !== null,
+  });
 
   const createEntry = useMutation({
     mutationFn: (payload: GlossaryEntryCreatePayload) => adminApi.createGlossaryEntry(novelId, payload),
@@ -384,6 +727,44 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
     onError: (error) => setDecisionError(error),
   });
 
+  const addAlias = useMutation({
+    mutationFn: ({ entryId, payload }: { entryId: number; payload: GlossaryAliasCreatePayload }) =>
+      adminApi.addGlossaryAlias(novelId, entryId, payload),
+    onSuccess: () => {
+      setAliasDialogMode(null);
+      setAliasValues(emptyAliasForm());
+      invalidateSelectedEntryResources();
+    },
+  });
+
+  const updateAlias = useMutation({
+    mutationFn: ({ aliasId, payload }: { aliasId: number; payload: GlossaryAliasCreatePayload }) =>
+      adminApi.updateGlossaryAlias(novelId, aliasId, payload),
+    onSuccess: () => {
+      setAliasDialogMode(null);
+      setEditingAlias(null);
+      invalidateSelectedEntryResources();
+    },
+  });
+
+  const deprecateAlias = useMutation({
+    mutationFn: (alias: GlossaryAlias) => adminApi.deprecateGlossaryAlias(novelId, alias.id),
+    onSuccess: () => {
+      setPendingAliasDeprecation(null);
+      invalidateSelectedEntryResources();
+    },
+  });
+
+  const addProvenance = useMutation({
+    mutationFn: ({ entryId, payload }: { entryId: number; payload: GlossaryProvenanceCreatePayload }) =>
+      adminApi.addGlossaryProvenance(novelId, entryId, payload),
+    onSuccess: () => {
+      setProvenanceDialogOpen(false);
+      setProvenanceValues(emptyProvenanceForm());
+      invalidateSelectedEntryResources();
+    },
+  });
+
   const openCreate = () => {
     createEntry.reset();
     updateEntry.reset();
@@ -400,6 +781,70 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
     setEditingEntry(entry);
     setFormValues(formFromEntry(entry));
     setDialogMode("edit");
+  };
+
+  const openAddAlias = () => {
+    addAlias.reset();
+    updateAlias.reset();
+    setAliasValidationError(null);
+    setEditingAlias(null);
+    setAliasValues(emptyAliasForm());
+    setAliasDialogMode("add");
+  };
+
+  const openEditAlias = (alias: GlossaryAlias) => {
+    addAlias.reset();
+    updateAlias.reset();
+    setAliasValidationError(null);
+    setEditingAlias(alias);
+    setAliasValues(aliasFormFromAlias(alias));
+    setAliasDialogMode("edit");
+  };
+
+  const closeAliasDialog = () => {
+    if (addAlias.isPending || updateAlias.isPending) return;
+    setAliasDialogMode(null);
+    setEditingAlias(null);
+    setAliasValidationError(null);
+  };
+
+  const submitAlias = () => {
+    if (!aliasValues.alias_text.trim()) {
+      setAliasValidationError("Alias text is required.");
+      return;
+    }
+    if (!selectedEntry) return;
+    setAliasValidationError(null);
+    if (aliasDialogMode === "add") {
+      addAlias.mutate({ entryId: selectedEntry.id, payload: aliasPayload(aliasValues) });
+      return;
+    }
+    if (editingAlias) {
+      updateAlias.mutate({ aliasId: editingAlias.id, payload: aliasPayload(aliasValues) });
+    }
+  };
+
+  const openAddProvenance = () => {
+    addProvenance.reset();
+    setProvenanceValidationError(null);
+    setProvenanceValues(emptyProvenanceForm());
+    setProvenanceDialogOpen(true);
+  };
+
+  const closeProvenanceDialog = () => {
+    if (addProvenance.isPending) return;
+    setProvenanceDialogOpen(false);
+    setProvenanceValidationError(null);
+  };
+
+  const submitProvenance = () => {
+    if (!selectedEntry) return;
+    if (!provenanceValues.source_site.trim() || !provenanceValues.source_adapter.trim()) {
+      setProvenanceValidationError("Source site and source adapter are required evidence fields.");
+      return;
+    }
+    setProvenanceValidationError(null);
+    addProvenance.mutate({ entryId: selectedEntry.id, payload: provenancePayload(provenanceValues) });
   };
 
   const closeDialog = () => {
@@ -523,6 +968,9 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
                       <td className="px-4 py-3">{formatDate(entry.updated_at)}</td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant={selectedEntryId === entry.id ? "secondary" : "outline"} onClick={() => setSelectedEntryId(entry.id)}>
+                            {selectedEntryId === entry.id ? "Selected" : "Select"}
+                          </Button>
                           <Button size="sm" variant="outline" onClick={() => openEdit(entry)}>
                             Edit
                           </Button>
@@ -577,6 +1025,113 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
         </PanelBody>
       </Panel>
 
+      <Panel className="mt-4">
+        <PanelHeader>
+          <PanelTitle>{selectedEntry ? `Aliases and provenance: ${selectedEntry.canonical_term}` : "Aliases and provenance"}</PanelTitle>
+        </PanelHeader>
+        <PanelBody className="space-y-4">
+          {selectedEntry ? (
+            <>
+              <div className="space-y-1 text-sm text-muted-foreground">
+                <p>Aliases are guidance and evidence, not automatic chapter rewrite instructions.</p>
+                <p>Source metadata is evidence only. Glossary ownership remains per novel.</p>
+                <p>No global find/replace, chapter repair, prompt injection, or QA enforcement runs from this screen.</p>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <section className="rounded-md border">
+                  <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+                    <h3 className="text-sm font-semibold">Aliases</h3>
+                    <Button size="sm" onClick={openAddAlias}>Add alias</Button>
+                  </div>
+                  <ErrorBanner error={aliases.error} fallback="Failed to load aliases." />
+                  <ErrorBanner error={deprecateAlias.error} fallback="Failed to deprecate alias." />
+                  <div className="p-4">
+                    {aliases.isLoading ? (
+                      <div className="text-sm text-muted-foreground">Loading aliases...</div>
+                    ) : aliases.error ? (
+                      <EmptyState title="Failed to load aliases." />
+                    ) : aliases.data?.length ? (
+                      <div className="space-y-3">
+                        {aliases.data.map((alias) => (
+                          <div key={alias.id} className="rounded-md border px-3 py-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <div className="font-medium">{alias.alias_text}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {formatStatus(alias.alias_type)}
+                                  {alias.applies_to ? ` - ${formatStatus(alias.applies_to)}` : ""}
+                                  {alias.matching_policy ? ` - ${formatStatus(alias.matching_policy)}` : ""}
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button size="sm" variant="outline" onClick={() => openEditAlias(alias)}>Edit alias</Button>
+                                <Button size="sm" variant="destructive" onClick={() => setPendingAliasDeprecation({ alias })} disabled={alias.alias_type === "deprecated"}>
+                                  Deprecate alias
+                                </Button>
+                              </div>
+                            </div>
+                            {alias.alias_type === "banned" || alias.alias_type === "rejected" ? (
+                              <div className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                                Caution: this alias marks a risky or forbidden variant.
+                              </div>
+                            ) : null}
+                            {alias.notes ? <div className="mt-2 text-xs text-muted-foreground">{alias.notes}</div> : null}
+                            <div className="mt-2 text-xs text-muted-foreground">Updated {formatDate(alias.updated_at)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState title="No aliases yet." description="Add observed, allowed, rejected, banned, or source-variant aliases for this selected entry." />
+                    )}
+                  </div>
+                </section>
+
+                <section className="rounded-md border">
+                  <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+                    <h3 className="text-sm font-semibold">Source provenance</h3>
+                    <Button size="sm" onClick={openAddProvenance}>Add provenance</Button>
+                  </div>
+                  <ErrorBanner error={provenance.error} fallback="Failed to load provenance." />
+                  <div className="p-4">
+                    {provenance.isLoading ? (
+                      <div className="text-sm text-muted-foreground">Loading provenance...</div>
+                    ) : provenance.error ? (
+                      <EmptyState title="Failed to load provenance." />
+                    ) : provenance.data?.length ? (
+                      <div className="space-y-3">
+                        {provenance.data.map((item) => (
+                          <div key={item.id} className="rounded-md border px-3 py-2">
+                            <div className="font-medium">{item.source_site} / {item.source_adapter}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {item.source_novel_id ? `Novel ${item.source_novel_id}` : "No source novel ID"}
+                              {item.source_chapter_id ? ` - Chapter ID ${item.source_chapter_id}` : ""}
+                              {item.source_chapter_number ? ` - Ch. ${item.source_chapter_number}` : ""}
+                            </div>
+                            <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                              {item.raw_source_term ? <div>Raw: {item.raw_source_term}</div> : null}
+                              {item.observed_translated_term ? <div>Observed: {item.observed_translated_term}</div> : null}
+                              {item.evidence_quality ? <div>Quality: {formatStatus(item.evidence_quality)}</div> : null}
+                              {typeof item.confidence === "number" ? <div>Confidence: {item.confidence}</div> : null}
+                              {item.evidence_ref ? <div>Evidence: {item.evidence_ref}</div> : null}
+                              {item.local_reference ? <div>Reference: {item.local_reference}</div> : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState title="No provenance yet." description="Add compact evidence rows for this selected entry." />
+                    )}
+                  </div>
+                </section>
+              </div>
+            </>
+          ) : (
+            <EmptyState title="Select an entry to manage aliases and provenance." description="Alias and evidence actions stay scoped to the selected entry and this novel." />
+          )}
+        </PanelBody>
+      </Panel>
+
       <GlossaryEntryDialog
         mode={dialogMode ?? "create"}
         open={dialogMode !== null}
@@ -603,6 +1158,45 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
           if (!runDecision.isPending) setPendingDecision(null);
         }}
         auditNotice="This changes owner/admin glossary state for this novel only."
+      />
+
+      <AliasDialog
+        mode={aliasDialogMode ?? "add"}
+        open={aliasDialogMode !== null}
+        values={aliasValues}
+        pending={addAlias.isPending || updateAlias.isPending}
+        error={aliasDialogMode === "add" ? addAlias.error : updateAlias.error}
+        validationError={aliasValidationError}
+        onChange={setAliasValues}
+        onSubmit={submitAlias}
+        onClose={closeAliasDialog}
+      />
+
+      <ProvenanceDialog
+        open={provenanceDialogOpen}
+        values={provenanceValues}
+        pending={addProvenance.isPending}
+        error={addProvenance.error}
+        validationError={provenanceValidationError}
+        onChange={setProvenanceValues}
+        onSubmit={submitProvenance}
+        onClose={closeProvenanceDialog}
+      />
+
+      <ConfirmDialog
+        open={pendingAliasDeprecation !== null}
+        title="Deprecate alias"
+        description={pendingAliasDeprecation ? `Deprecate alias "${pendingAliasDeprecation.alias.alias_text}"?` : undefined}
+        confirmLabel="Deprecate alias"
+        destructive
+        pending={deprecateAlias.isPending}
+        onConfirm={() => {
+          if (pendingAliasDeprecation) deprecateAlias.mutate(pendingAliasDeprecation.alias);
+        }}
+        onCancel={() => {
+          if (!deprecateAlias.isPending) setPendingAliasDeprecation(null);
+        }}
+        auditNotice="This changes alias state for the selected novel-scoped glossary entry."
       />
     </>
   );
