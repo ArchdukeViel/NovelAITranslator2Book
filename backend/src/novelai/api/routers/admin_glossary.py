@@ -8,16 +8,16 @@ or expose user display override management.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, constr
+from pydantic import BaseModel, Field, constr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
-from novelai.api.routers.dependencies import get_db_session
+from novelai.api.routers.dependencies import get_db_session, get_storage
 from novelai.db.models.glossary import (
     NovelGlossaryAlias,
     NovelGlossaryDecisionEvent,
@@ -26,7 +26,9 @@ from novelai.db.models.glossary import (
     NovelGlossarySourceProvenance,
 )
 from novelai.db.models.novel import Novel
+from novelai.services.glossary_candidate_import import GlossaryCandidateImporter, GlossaryCandidateImportResult
 from novelai.services.glossary_repository import GlossaryRepository
+from novelai.storage.service import StorageService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
@@ -52,6 +54,8 @@ AliasType = Literal["allowed", "rejected", "banned", "deprecated", "observed", "
 AliasAppliesTo = Literal["source_text", "translated_text", "prompt", "qa", "public_display"]
 QASeverity = Literal["info", "warning", "error", "blocker"]
 QAFindingStatus = Literal["open", "accepted", "dismissed", "fixed"]
+CandidateImportMode = Literal["preview", "apply"]
+CandidateImportAction = Literal["preview", "created", "merged", "skipped", "conflict"]
 
 
 class GlossaryEntryCreateRequest(BaseModel):
@@ -292,6 +296,35 @@ class GlossaryQAFindingResponse(BaseModel):
     resolved_at: datetime | None
 
 
+class GlossaryCandidateImportRequest(BaseModel):
+    max_candidates: int = Field(default=100, ge=1, le=500)
+
+
+class GlossaryCandidateSummary(BaseModel):
+    term: str
+    translation: str
+    term_type: str
+    confidence: float
+    frequency: int
+    chapter_count: int
+    chapter_numbers: list[int]
+    chapter_refs: list[str]
+    action: CandidateImportAction
+    notes: str | None = None
+
+
+class GlossaryCandidateImportResponse(BaseModel):
+    novel_id: int
+    mode: CandidateImportMode
+    candidates_found: int
+    candidates_created: int
+    candidates_merged: int
+    candidates_skipped: int
+    conflicts: list[str]
+    warnings: list[str]
+    candidates: list[GlossaryCandidateSummary]
+
+
 def _body_fields(body: BaseModel) -> dict[str, Any]:
     fields = getattr(body, "model_fields_set", None)
     if fields is None:
@@ -431,6 +464,69 @@ def _qa_response(finding: NovelGlossaryQAFinding) -> GlossaryQAFindingResponse:
     )
 
 
+def _candidate_import_action(mode: CandidateImportMode, action: str | None) -> CandidateImportAction:
+    if mode == "preview":
+        return "preview"
+    if action in {"created", "merged", "skipped", "conflict"}:
+        return cast(CandidateImportAction, action)
+    return "skipped"
+
+
+def _candidate_import_note(action: CandidateImportAction, skipped_reason: str | None) -> str | None:
+    if skipped_reason == "blocked_alias_conflict":
+        return "Candidate matches a rejected or banned alias for this novel."
+    if skipped_reason == "approved_entry_exists":
+        return "An approved glossary entry already exists for this term."
+    if action == "created":
+        return "Created as a Reviewing candidate from saved chapters."
+    if action == "merged":
+        return "Merged into an existing non-approved glossary candidate."
+    return None
+
+
+def _candidate_import_response(
+    novel_id: int,
+    mode: CandidateImportMode,
+    result: GlossaryCandidateImportResult,
+) -> GlossaryCandidateImportResponse:
+    candidates: list[GlossaryCandidateSummary] = []
+    for candidate in result.candidates:
+        action = _candidate_import_action(mode, candidate.action)
+        chapter_numbers = sorted(
+            {
+                occurrence.chapter_number
+                for occurrence in candidate.occurrences
+                if occurrence.chapter_number is not None
+            }
+        )
+        chapter_refs = sorted({occurrence.chapter_storage_id for occurrence in candidate.occurrences})
+        candidates.append(
+            GlossaryCandidateSummary(
+                term=candidate.canonical_term,
+                translation=candidate.approved_translation,
+                term_type=candidate.term_type,
+                confidence=candidate.confidence,
+                frequency=candidate.occurrence_count,
+                chapter_count=candidate.chapter_count,
+                chapter_numbers=chapter_numbers,
+                chapter_refs=chapter_refs,
+                action=action,
+                notes=_candidate_import_note(action, candidate.skipped_reason),
+            )
+        )
+    return GlossaryCandidateImportResponse(
+        novel_id=novel_id,
+        mode=mode,
+        candidates_found=result.candidates_found,
+        candidates_created=result.candidates_created,
+        candidates_merged=result.candidates_merged,
+        candidates_skipped=result.candidates_skipped,
+        conflicts=result.conflicts,
+        warnings=result.warnings,
+        candidates=candidates,
+    )
+
+
 @router.get("/novels/{novel_id}/glossary", response_model=list[GlossaryEntryResponse])
 async def list_glossary_entries(
     novel_id: str,
@@ -485,6 +581,46 @@ async def create_glossary_entry(
     except (LookupError, ValueError) as exc:
         _raise_repo_error(exc)
         raise AssertionError("unreachable") from exc
+
+
+@router.post(
+    "/novels/{novel_id}/glossary/candidates/import/preview",
+    response_model=GlossaryCandidateImportResponse,
+)
+async def preview_glossary_candidate_import(
+    novel_id: str,
+    body: GlossaryCandidateImportRequest,
+    session: Session = Depends(get_db_session),
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> GlossaryCandidateImportResponse:
+    novel = _require_novel(session, novel_id)
+    result = GlossaryCandidateImporter(session, storage).import_from_saved_chapters(
+        novel.id,
+        dry_run=True,
+        max_candidates=body.max_candidates,
+    )
+    return _candidate_import_response(novel.id, "preview", result)
+
+
+@router.post(
+    "/novels/{novel_id}/glossary/candidates/import/apply",
+    response_model=GlossaryCandidateImportResponse,
+)
+async def apply_glossary_candidate_import(
+    novel_id: str,
+    body: GlossaryCandidateImportRequest,
+    session: Session = Depends(get_db_session),
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> GlossaryCandidateImportResponse:
+    novel = _require_novel(session, novel_id)
+    result = GlossaryCandidateImporter(session, storage).import_from_saved_chapters(
+        novel.id,
+        dry_run=False,
+        max_candidates=body.max_candidates,
+    )
+    return _candidate_import_response(novel.id, "apply", result)
 
 
 @router.get("/novels/{novel_id}/glossary/entries/{entry_id}", response_model=GlossaryEntryResponse)

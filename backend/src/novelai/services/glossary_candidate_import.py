@@ -60,6 +60,7 @@ class GlossaryCandidateSuggestion:
     source: str = "saved_chapters"
     skipped_reason: str | None = None
     existing_entry_id: int | None = None
+    action: str | None = None
 
 
 @dataclass
@@ -415,6 +416,7 @@ class GlossaryCandidateImporter:
             if key in blocked_aliases:
                 result.candidates_skipped += 1
                 suggestion.skipped_reason = "blocked_alias_conflict"
+                suggestion.action = "conflict"
                 conflict = f"{suggestion.canonical_term} matches a rejected/banned alias for this novel."
                 result.conflicts.append(conflict)
                 continue
@@ -424,6 +426,7 @@ class GlossaryCandidateImporter:
                 result.candidates_skipped += 1
                 suggestion.skipped_reason = "approved_entry_exists"
                 suggestion.existing_entry_id = existing.id
+                suggestion.action = "skipped"
                 continue
 
             if existing is None:
@@ -442,6 +445,7 @@ class GlossaryCandidateImporter:
                 entries_by_term[key] = entry
                 suggestion.existing_entry_id = entry.id
                 result.candidates_created += 1
+                suggestion.action = "created"
             else:
                 entry = existing
                 suggestion.existing_entry_id = entry.id
@@ -452,6 +456,7 @@ class GlossaryCandidateImporter:
                         confidence=max(existing.confidence or 0.0, suggestion.confidence),
                     )
                     result.candidates_merged += 1
+                    suggestion.action = "merged"
 
             self._add_provenance_for_suggestion(novel_id, entry.id, suggestion)
 
