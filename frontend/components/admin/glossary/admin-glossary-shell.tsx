@@ -34,6 +34,7 @@ import type {
 } from "@/lib/api-types";
 
 const STATUS_ORDER: GlossaryEntryStatus[] = ["candidate", "recommended", "approved", "rejected", "deprecated"];
+const OWNER_STATUS_OPTIONS: GlossaryEntryStatus[] = ["candidate", "approved"];
 const TERM_TYPES: GlossaryTermType[] = [
   "character",
   "family_house",
@@ -123,8 +124,6 @@ type PendingAliasDeprecation = {
   alias: GlossaryAlias;
 } | null;
 
-type DetailTab = "aliases" | "evidence" | "history" | "qa";
-
 function emptyForm(): EntryFormValues {
   return {
     canonical_term: "",
@@ -145,7 +144,7 @@ function formFromEntry(entry: GlossaryEntry): EntryFormValues {
     canonical_term: entry.canonical_term,
     term_type: entry.term_type,
     approved_translation: entry.approved_translation ?? "",
-    status: entry.status,
+    status: ownerStatusFromBackend(entry.status),
     enforcement_level: entry.enforcement_level,
     public_visible: entry.public_visible,
     public_description: entry.public_description ?? "",
@@ -165,7 +164,7 @@ function createPayload(values: EntryFormValues): GlossaryEntryCreatePayload {
     canonical_term: values.canonical_term.trim(),
     term_type: values.term_type,
     approved_translation: optionalText(values.approved_translation),
-    status: values.status,
+    status: ownerStatusFromBackend(values.status),
     enforcement_level: values.enforcement_level,
     public_visible: values.public_visible,
     public_description: optionalText(values.public_description),
@@ -271,6 +270,18 @@ function translationFor(entry: GlossaryEntry) {
   return entry.approved_translation || entry.canonical_term;
 }
 
+function ownerStatusFromBackend(status: GlossaryEntryStatus): GlossaryEntryStatus {
+  return status === "approved" ? "approved" : "candidate";
+}
+
+function ownerStatusLabel(status: GlossaryEntryStatus) {
+  return ownerStatusFromBackend(status) === "approved" ? "Approved" : "Reviewing";
+}
+
+function ownerStatusTone(status: GlossaryEntryStatus) {
+  return ownerStatusFromBackend(status) === "approved" ? "green" : "amber";
+}
+
 function statusTone(status: GlossaryEntryStatus) {
   if (status === "approved") return "green";
   if (status === "recommended") return "blue";
@@ -303,10 +314,10 @@ function seenRange(entry: GlossaryEntry) {
   return "-";
 }
 
-function countByStatus(entries: GlossaryEntry[]) {
-  return STATUS_ORDER.map((status) => ({
+function countByOwnerStatus(entries: GlossaryEntry[]) {
+  return OWNER_STATUS_OPTIONS.map((status) => ({
     status,
-    count: entries.filter((entry) => entry.status === status).length,
+    count: entries.filter((entry) => ownerStatusFromBackend(entry.status) === status).length,
   }));
 }
 
@@ -346,6 +357,31 @@ function SelectField<T extends string>({
         {options.map((option) => (
           <option key={option} value={option}>
             {formatStatus(option)}
+          </option>
+        ))}
+      </select>
+    </FieldLabel>
+  );
+}
+
+function OwnerStatusSelect({
+  value,
+  onChange,
+}: {
+  value: GlossaryEntryStatus;
+  onChange: (value: GlossaryEntryStatus) => void;
+}) {
+  return (
+    <FieldLabel>
+      <span>Status</span>
+      <select
+        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+        value={ownerStatusFromBackend(value)}
+        onChange={(event) => onChange(event.target.value as GlossaryEntryStatus)}
+      >
+        {OWNER_STATUS_OPTIONS.map((status) => (
+          <option key={status} value={status}>
+            {ownerStatusLabel(status)}
           </option>
         ))}
       </select>
@@ -418,9 +454,7 @@ function GlossaryEntryDialog({
             />
           </FieldLabel>
           <SelectField label="Type" value={values.term_type} options={TERM_TYPES} onChange={(value) => setValue("term_type", value)} />
-          {mode === "create" ? (
-            <SelectField label="Status" value={values.status} options={STATUS_ORDER} onChange={(value) => setValue("status", value)} />
-          ) : null}
+          <OwnerStatusSelect value={values.status} onChange={(value) => setValue("status", value)} />
         </div>
 
         <details className="rounded-md border px-3 py-2">
@@ -688,7 +722,6 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
   const [qaChapterFilter, setQaChapterFilter] = React.useState("");
   const [entrySearch, setEntrySearch] = React.useState("");
   const [entryTypeFilter, setEntryTypeFilter] = React.useState<"" | GlossaryTermType>("");
-  const [activeDetailTab, setActiveDetailTab] = React.useState<DetailTab>("aliases");
 
   const novel = useQuery({
     queryKey: ["admin-novel", novelId],
@@ -715,19 +748,19 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
   const aliases = useQuery({
     queryKey: ["admin-glossary-aliases", novelId, selectedEntryId],
     queryFn: () => adminApi.listGlossaryAliases(novelId, selectedEntryId ?? 0),
-    enabled: selectedEntryId !== null,
+    enabled: false,
   });
 
   const provenance = useQuery({
     queryKey: ["admin-glossary-provenance", novelId, selectedEntryId],
     queryFn: () => adminApi.listGlossaryProvenanceForEntry(novelId, selectedEntryId ?? 0),
-    enabled: selectedEntryId !== null,
+    enabled: false,
   });
 
   const decisionEvents = useQuery({
     queryKey: ["admin-glossary-decisions", novelId, selectedEntryId],
     queryFn: () => adminApi.listGlossaryDecisionEvents(novelId, selectedEntryId ?? undefined),
-    enabled: selectedEntryId !== null,
+    enabled: false,
   });
 
   const qaChapterId = qaChapterFilter.trim() ? Number(qaChapterFilter.trim()) : undefined;
@@ -738,18 +771,15 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
         status: qaStatusFilter || undefined,
         chapter_id: typeof qaChapterId === "number" && Number.isFinite(qaChapterId) ? qaChapterId : undefined,
       }),
+    enabled: false,
   });
   const normalizedSearch = entrySearch.trim().toLowerCase();
   const visibleEntries = entries.filter((entry) => {
     if (entryTypeFilter && entry.term_type !== entryTypeFilter) return false;
     if (!normalizedSearch) return true;
-    const aliasHit = selectedEntryId === entry.id
-      ? aliases.data?.some((alias) => alias.alias_text.toLowerCase().includes(normalizedSearch))
-      : false;
     return (
       entry.canonical_term.toLowerCase().includes(normalizedSearch)
       || translationFor(entry).toLowerCase().includes(normalizedSearch)
-      || Boolean(aliasHit)
     );
   });
   const novelTitle =
@@ -769,8 +799,13 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
   });
 
   const updateEntry = useMutation({
-    mutationFn: ({ entryId, payload }: { entryId: number; payload: GlossaryEntryUpdatePayload }) =>
-      adminApi.updateGlossaryEntry(novelId, entryId, payload),
+    mutationFn: async ({ entryId, payload, status }: { entryId: number; payload: GlossaryEntryUpdatePayload; status?: GlossaryEntryStatus }) => {
+      const updated = await adminApi.updateGlossaryEntry(novelId, entryId, payload);
+      if (status) {
+        return adminApi.changeGlossaryEntryStatus(novelId, entryId, { status });
+      }
+      return updated;
+    },
     onSuccess: () => {
       setDialogMode(null);
       setEditingEntry(null);
@@ -944,7 +979,13 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
       return;
     }
     if (editingEntry) {
-      updateEntry.mutate({ entryId: editingEntry.id, payload: updatePayload(formValues) });
+      const nextStatus = ownerStatusFromBackend(formValues.status);
+      const currentStatus = ownerStatusFromBackend(editingEntry.status);
+      updateEntry.mutate({
+        entryId: editingEntry.id,
+        payload: updatePayload(formValues),
+        status: nextStatus !== currentStatus ? nextStatus : undefined,
+      });
     }
   };
 
@@ -954,13 +995,6 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
   const decisionDescription = pendingDecision
     ? `${pendingDecision.action === "deprecate" ? "Deprecate" : pendingDecision.action === "lock" ? "Lock" : "Unlock"} "${pendingDecision.entry.canonical_term}"?`
     : undefined;
-  const detailTabs: Array<{ id: DetailTab; label: string }> = [
-    { id: "aliases", label: "Aliases" },
-    { id: "evidence", label: "Evidence" },
-    { id: "history", label: "History" },
-    { id: "qa", label: "QA findings" },
-  ];
-
   return (
     <>
       <PageHeading
@@ -985,10 +1019,10 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
           ) : glossary.error ? (
             <div className="text-sm text-muted-foreground">Summary unavailable.</div>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              {countByStatus(entries).map(({ status, count }) => (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {countByOwnerStatus(entries).map(({ status, count }) => (
                 <div key={status} className="rounded-md border px-3 py-2">
-                  <div className="text-xs uppercase text-muted-foreground">{formatStatus(status)}</div>
+                  <div className="text-xs uppercase text-muted-foreground">{ownerStatusLabel(status)}</div>
                   <div className="mt-1 text-2xl font-semibold">{count}</div>
                 </div>
               ))}
@@ -1006,7 +1040,6 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
         </PanelHeader>
         <ErrorBanner error={glossary.error} fallback="Failed to load glossary entries." />
         <ErrorBanner error={changeStatus.error} fallback="Failed to update glossary entry status." />
-        <ErrorBanner error={decisionError} fallback="Failed to update glossary entry." />
         {authMessage ? (
           <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
             {authMessage}
@@ -1031,6 +1064,9 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
               onChange={setEntryTypeFilter}
             />
           </div>
+          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+            More review candidates can be imported from saved raw/translated chapters in a later step.
+          </div>
           <div className="seamless-scrollbar overflow-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b bg-muted/55 text-xs uppercase text-muted-foreground">
@@ -1038,77 +1074,57 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
                   <th className="min-w-[220px] px-4 py-3">Term</th>
                   <th className="min-w-[220px] px-4 py-3">Translation</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Locked</th>
-                  <th className="px-4 py-3">Updated</th>
-                  <th className="min-w-[300px] px-4 py-3">Actions</th>
+                  <th className="min-w-[180px] px-4 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {glossary.isLoading ? (
-                  <LoadingRows colSpan={6} label="Loading glossary entries..." />
+                  <LoadingRows colSpan={4} label="Loading glossary entries..." />
                 ) : glossary.error ? (
-                  <EmptyState title="Failed to load glossary entries." description={authMessage ?? "Try refreshing after confirming the owner session."} colSpan={6} />
+                  <EmptyState title="Failed to load glossary entries." description={authMessage ?? "Try refreshing after confirming the owner session."} colSpan={4} />
                 ) : visibleEntries.length ? (
                   visibleEntries.map((entry) => (
-                    <tr className="border-b last:border-0" key={entry.id}>
+                    <tr
+                      className={`cursor-pointer border-b transition-colors hover:bg-muted/45 last:border-0 ${selectedEntryId === entry.id ? "bg-muted/55" : ""}`}
+                      key={entry.id}
+                      tabIndex={0}
+                      onClick={() => setSelectedEntryId(entry.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedEntryId(entry.id);
+                        }
+                      }}
+                    >
                       <td className="px-4 py-3">
                         <div className="font-medium">{entry.canonical_term}</div>
                       </td>
                       <td className="px-4 py-3">{translationFor(entry)}</td>
                       <td className="px-4 py-3">
-                        <Badge tone={statusTone(entry.status)}>{formatStatus(entry.status)}</Badge>
+                        <Badge tone={ownerStatusTone(entry.status)}>{ownerStatusLabel(entry.status)}</Badge>
                       </td>
-                      <td className="px-4 py-3">{entry.owner_locked ? "Yes" : "No"}</td>
-                      <td className="px-4 py-3">{formatDate(entry.updated_at)}</td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
-                            variant={selectedEntryId === entry.id ? "secondary" : "outline"}
-                            onClick={() => {
-                              setSelectedEntryId(entry.id);
-                              setActiveDetailTab("aliases");
-                            }}
-                          >
-                            {selectedEntryId === entry.id ? "Selected" : "Select"}
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => openEdit(entry)}>
+                          <Button size="sm" variant="outline" onClick={(event) => {
+                            event.stopPropagation();
+                            openEdit(entry);
+                          }}>
                             Edit
                           </Button>
-                          <select
-                            aria-label={`Change status for ${entry.canonical_term}`}
-                            className="h-8 rounded-md border border-border bg-background px-2 text-xs"
-                            value={entry.status}
-                            onChange={(event) => changeStatus.mutate({ entryId: entry.id, status: event.target.value as GlossaryEntryStatus })}
-                            disabled={changeStatus.isPending}
-                          >
-                            {STATUS_ORDER.map((status) => (
-                              <option key={status} value={status}>
-                                {formatStatus(status)}
-                              </option>
-                            ))}
-                          </select>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setDecisionError(null);
-                              setPendingDecision({ entry, action: entry.owner_locked ? "unlock" : "lock" });
-                            }}
-                          >
-                            {entry.owner_locked ? "Unlock" : "Lock"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => {
-                              setDecisionError(null);
-                              setPendingDecision({ entry, action: "deprecate" });
-                            }}
-                            disabled={entry.status === "deprecated"}
-                          >
-                            Deprecate
-                          </Button>
+                          {ownerStatusFromBackend(entry.status) === "approved" ? (
+                            <Button size="sm" variant="secondary" disabled>Approved</Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                changeStatus.mutate({ entryId: entry.id, status: "approved" });
+                              }}
+                              disabled={changeStatus.isPending}
+                            >
+                              Approve
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1116,267 +1132,13 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
                 ) : (
                   <EmptyState
                     title={entries.length ? "No glossary entries match your filters." : "No glossary entries yet."}
-                    description={entries.length ? "Try another term, translation, or type." : "Add terms and translations for this novel."}
-                    colSpan={6}
+                    description={entries.length ? "Try another term, translation, or type." : "Add terms and translations for this novel. More review candidates can be imported from saved raw/translated chapters in a later step."}
+                    colSpan={4}
                   />
                 )}
               </tbody>
             </table>
           </div>
-        </PanelBody>
-      </Panel>
-
-      <Panel className="mt-4">
-        <PanelHeader>
-          <PanelTitle>{selectedEntry ? `Entry details: ${selectedEntry.canonical_term}` : "Entry details"}</PanelTitle>
-        </PanelHeader>
-        <PanelBody className="space-y-4">
-          {selectedEntry ? (
-            <>
-              <div className="rounded-md border bg-muted/30 p-4">
-                <div className="grid gap-3 md:grid-cols-4">
-                  <div>
-                    <div className="text-xs text-muted-foreground">Term</div>
-                    <div className="font-medium">{selectedEntry.canonical_term}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Translation</div>
-                    <div className="font-medium">{translationFor(selectedEntry)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Type</div>
-                    <div>{formatStatus(selectedEntry.term_type)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Status</div>
-                    <Badge tone={statusTone(selectedEntry.status)}>{formatStatus(selectedEntry.status)}</Badge>
-                  </div>
-                </div>
-                {selectedEntry.admin_notes ? <div className="mt-3 text-sm text-muted-foreground">{selectedEntry.admin_notes}</div> : null}
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {detailTabs.map((tabItem) => (
-                  <Button
-                    key={tabItem.id}
-                    size="sm"
-                    variant={activeDetailTab === tabItem.id ? "secondary" : "outline"}
-                    onClick={() => setActiveDetailTab(tabItem.id)}
-                  >
-                    {tabItem.label}
-                  </Button>
-                ))}
-              </div>
-
-              {activeDetailTab === "aliases" ? (
-                <section className="rounded-md border">
-                  <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-                    <h3 className="text-sm font-semibold">Aliases</h3>
-                    <Button size="sm" onClick={openAddAlias}>Add alias</Button>
-                  </div>
-                  <ErrorBanner error={aliases.error} fallback="Failed to load aliases." />
-                  <ErrorBanner error={deprecateAlias.error} fallback="Failed to deprecate alias." />
-                  <div className="p-4">
-                    {aliases.isLoading ? (
-                      <div className="text-sm text-muted-foreground">Loading aliases...</div>
-                    ) : aliases.error ? (
-                      <EmptyState title="Failed to load aliases." />
-                    ) : aliases.data?.length ? (
-                      <div className="space-y-3">
-                        {aliases.data.map((alias) => (
-                          <div key={alias.id} className="rounded-md border px-3 py-2">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div>
-                                <div className="font-medium">{alias.alias_text}</div>
-                                <div className="mt-1 text-xs text-muted-foreground">
-                                  {formatStatus(alias.alias_type)}
-                                  {alias.applies_to ? ` - ${formatStatus(alias.applies_to)}` : ""}
-                                  {alias.matching_policy ? ` - ${formatStatus(alias.matching_policy)}` : ""}
-                                </div>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button size="sm" variant="outline" onClick={() => openEditAlias(alias)}>Edit alias</Button>
-                                <Button size="sm" variant="destructive" onClick={() => setPendingAliasDeprecation({ alias })} disabled={alias.alias_type === "deprecated"}>
-                                  Deprecate alias
-                                </Button>
-                              </div>
-                            </div>
-                            {alias.alias_type === "banned" || alias.alias_type === "rejected" ? (
-                              <div className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                                Caution: this alias marks a risky or forbidden variant.
-                              </div>
-                            ) : null}
-                            {alias.notes ? <div className="mt-2 text-xs text-muted-foreground">{alias.notes}</div> : null}
-                            <div className="mt-2 text-xs text-muted-foreground">Updated {formatDate(alias.updated_at)}</div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <EmptyState title="No aliases yet." description="Add observed, allowed, rejected, banned, or source-variant aliases for this selected entry." />
-                    )}
-                  </div>
-                </section>
-              ) : null}
-
-              {activeDetailTab === "evidence" ? (
-                <section className="rounded-md border">
-                  <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-                    <h3 className="text-sm font-semibold">Evidence</h3>
-                    <Button size="sm" onClick={openAddProvenance}>Add evidence</Button>
-                  </div>
-                  <ErrorBanner error={provenance.error} fallback="Failed to load evidence." />
-                  <div className="p-4">
-                    {provenance.isLoading ? (
-                      <div className="text-sm text-muted-foreground">Loading evidence...</div>
-                    ) : provenance.error ? (
-                      <EmptyState title="Failed to load evidence." />
-                    ) : provenance.data?.length ? (
-                      <div className="space-y-3">
-                        {provenance.data.map((item) => (
-                          <div key={item.id} className="rounded-md border px-3 py-2">
-                            <div className="font-medium">{item.source_site} / {item.source_adapter}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {item.source_novel_id ? `Novel ${item.source_novel_id}` : "No source novel ID"}
-                              {item.source_chapter_id ? ` - Chapter ID ${item.source_chapter_id}` : ""}
-                              {item.source_chapter_number ? ` - Ch. ${item.source_chapter_number}` : ""}
-                            </div>
-                            <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-                              {item.raw_source_term ? <div>Raw: {item.raw_source_term}</div> : null}
-                              {item.observed_translated_term ? <div>Observed: {item.observed_translated_term}</div> : null}
-                              {item.evidence_quality ? <div>Quality: {formatStatus(item.evidence_quality)}</div> : null}
-                              {typeof item.confidence === "number" ? <div>Confidence: {item.confidence}</div> : null}
-                              {item.evidence_ref ? <div>Evidence: {item.evidence_ref}</div> : null}
-                              {item.local_reference ? <div>Reference: {item.local_reference}</div> : null}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <EmptyState title="No evidence yet." description="Add compact evidence rows for this selected entry." />
-                    )}
-                  </div>
-                </section>
-              ) : null}
-
-              {activeDetailTab === "history" ? (
-                <section className="rounded-md border">
-                  <div className="border-b px-4 py-3">
-                    <h3 className="text-sm font-semibold">History</h3>
-                  </div>
-                  <ErrorBanner error={decisionEvents.error} fallback="Failed to load history." />
-                  <div className="p-4">
-                    {decisionEvents.isLoading ? (
-                      <div className="text-sm text-muted-foreground">Loading history...</div>
-                    ) : decisionEvents.error ? (
-                      <EmptyState title="Failed to load history." />
-                    ) : decisionEvents.data?.length ? (
-                      <div className="space-y-3">
-                        {decisionEvents.data.map((event: GlossaryDecisionEvent) => (
-                          <div key={event.id} className="rounded-md border px-3 py-2 text-sm">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="font-medium">{formatStatus(event.event_type)}</div>
-                              <div className="text-xs text-muted-foreground">{formatDate(event.created_at)}</div>
-                            </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              Actor: {event.actor_user_id ?? "unknown"} - Source: {event.decision_source}
-                            </div>
-                            <div className="mt-2 text-sm">{event.rationale || "No rationale recorded."}</div>
-                            {jsonSummary(event.old_value_json) || jsonSummary(event.new_value_json) ? (
-                              <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-                                {jsonSummary(event.old_value_json) ? <div>Previous: {jsonSummary(event.old_value_json)}</div> : null}
-                                {jsonSummary(event.new_value_json) ? <div>New: {jsonSummary(event.new_value_json)}</div> : null}
-                              </div>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <EmptyState title="No history yet." description="Meaningful owner/admin glossary changes will appear here when recorded by the backend." />
-                    )}
-                  </div>
-                </section>
-              ) : null}
-
-              {activeDetailTab === "qa" ? (
-                <section className="rounded-md border">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-                    <div>
-                      <h3 className="text-sm font-semibold">QA findings</h3>
-                      <p className="mt-1 text-xs text-muted-foreground">Data access only. No QA scan or automatic repair runs here.</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <select
-                        aria-label="Filter QA findings by status"
-                        className="h-8 rounded-md border border-border bg-background px-2 text-xs"
-                        value={qaStatusFilter}
-                        onChange={(event) => setQaStatusFilter(event.target.value as "" | GlossaryQaFindingStatus)}
-                      >
-                        <option value="">All statuses</option>
-                        {QA_STATUSES.map((status) => (
-                          <option key={status} value={status}>{formatStatus(status)}</option>
-                        ))}
-                      </select>
-                      <input
-                        aria-label="Filter QA findings by chapter id"
-                        className="h-8 w-32 rounded-md border border-border bg-background px-2 text-xs"
-                        placeholder="Chapter ID"
-                        value={qaChapterFilter}
-                        onChange={(event) => setQaChapterFilter(event.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <ErrorBanner error={qaFindings.error} fallback="Failed to load QA findings." />
-                  <ErrorBanner error={updateQaStatus.error} fallback="Failed to update QA finding status." />
-                  <div className="p-4">
-                    {qaFindings.isLoading ? (
-                      <div className="text-sm text-muted-foreground">Loading QA findings...</div>
-                    ) : qaFindings.error ? (
-                      <EmptyState title="Failed to load QA findings." />
-                    ) : qaFindings.data?.length ? (
-                      <div className="space-y-3">
-                        {qaFindings.data.map((finding: GlossaryQaFinding) => (
-                          <div key={finding.id} className="rounded-md border px-3 py-2 text-sm">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div>
-                                <div className="font-medium">{formatStatus(finding.finding_type)}</div>
-                                <div className="mt-1 text-xs text-muted-foreground">
-                                  Severity: {formatStatus(finding.severity)}
-                                  {finding.chapter_id ? ` - Chapter ${finding.chapter_id}` : ""}
-                                  {finding.glossary_entry_id ? ` - Entry ${finding.glossary_entry_id}` : ""}
-                                </div>
-                              </div>
-                              <select
-                                aria-label={`Update QA finding ${finding.id} status`}
-                                className="h-8 rounded-md border border-border bg-background px-2 text-xs"
-                                value={finding.status}
-                                onChange={(event) => updateQaStatus.mutate({ findingId: finding.id, status: event.target.value as GlossaryQaFindingStatus })}
-                                disabled={updateQaStatus.isPending}
-                              >
-                                {QA_STATUSES.map((status) => (
-                                  <option key={status} value={status}>{formatStatus(status)}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-                              {finding.matched_text ? <div>Matched: {finding.matched_text}</div> : null}
-                              {finding.suggested_text ? <div>Suggested: {finding.suggested_text}</div> : null}
-                              {finding.context_ref ? <div>Context: {finding.context_ref}</div> : null}
-                              {finding.reviewer_notes ? <div>Reviewer notes: {finding.reviewer_notes}</div> : null}
-                              <div>Created {formatDate(finding.created_at)}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <EmptyState title="No QA findings yet." description="Existing findings will appear here after backend data exists. This page does not run QA scans." />
-                    )}
-                  </div>
-                </section>
-              ) : null}
-            </>
-          ) : (
-            <EmptyState title="Select an entry to manage details." description="Aliases, evidence, history, and QA findings stay tucked away until an entry is selected." />
-          )}
         </PanelBody>
       </Panel>
 
@@ -1390,22 +1152,6 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
         onChange={setFormValues}
         onSubmit={submitEntry}
         onClose={closeDialog}
-      />
-
-      <ConfirmDialog
-        open={pendingDecision !== null}
-        title={decisionTitle}
-        description={decisionDescription}
-        confirmLabel={pendingDecision?.action === "deprecate" ? "Deprecate" : "Confirm"}
-        destructive={pendingDecision?.action === "deprecate"}
-        pending={runDecision.isPending}
-        onConfirm={() => {
-          if (pendingDecision) runDecision.mutate(pendingDecision);
-        }}
-        onCancel={() => {
-          if (!runDecision.isPending) setPendingDecision(null);
-        }}
-        auditNotice="This changes owner/admin glossary state for this novel only."
       />
 
       <AliasDialog
