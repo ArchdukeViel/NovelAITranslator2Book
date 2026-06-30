@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+from typing import Any
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -19,8 +22,9 @@ import novelai.db.models.tag  # noqa: F401
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.admin_glossary import router as admin_glossary_router
 from novelai.api.routers.auth import router as auth_router
-from novelai.api.routers.dependencies import get_db_session
+from novelai.api.routers.dependencies import get_db_session, get_storage
 from novelai.db.base import Base
+from novelai.db.models.chapter import Chapter
 from novelai.db.models.glossary import NovelGlossaryAlias, NovelGlossaryDecisionEvent, NovelGlossaryEntry
 from novelai.db.models.novel import Novel
 from novelai.db.models.users import User
@@ -47,7 +51,12 @@ def db_session(db_engine):
 
 
 @pytest.fixture()
-def app(db_session):
+def chapter_storage():
+    return FakeChapterStorage()
+
+
+@pytest.fixture()
+def app(db_session, chapter_storage):
     test_app = FastAPI()
     test_app.add_middleware(SessionMiddleware, secret_key="test", https_only=False)
     current: dict = {"user": None}
@@ -60,6 +69,7 @@ def app(db_session):
         db_session.commit()
 
     test_app.dependency_overrides[get_db_session] = _db_override
+    test_app.dependency_overrides[get_storage] = lambda: chapter_storage
     test_app.dependency_overrides[get_current_user] = _user_override
     test_app.include_router(auth_router)
     test_app.include_router(admin_glossary_router, prefix="/api/admin")
@@ -93,11 +103,63 @@ def set_user(app: FastAPI, user_id: int | None = None, role: str = "guest") -> N
     )
 
 
+class FakeChapterStorage:
+    def __init__(self) -> None:
+        self.raw: dict[tuple[str, str], dict[str, Any]] = {}
+        self.translated: dict[tuple[str, str], dict[str, Any]] = {}
+
+    def add_raw(self, novel_id: str, chapter_id: str, text: str) -> None:
+        self.raw[(novel_id, chapter_id)] = {
+            "id": chapter_id,
+            "text": text,
+            "source_key": "kakuyomu",
+            "input_adapter_key": "kakuyomu",
+        }
+
+    def add_translated(self, novel_id: str, chapter_id: str, text: str) -> None:
+        self.translated[(novel_id, chapter_id)] = {
+            "id": chapter_id,
+            "text": text,
+        }
+
+    def list_stored_chapters(self, novel_id: str) -> list[str]:
+        chapter_ids = {
+            chapter_id
+            for stored_novel_id, chapter_id in {*self.raw.keys(), *self.translated.keys()}
+            if stored_novel_id == novel_id
+        }
+        return sorted(chapter_ids)
+
+    def load_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
+        item = self.raw.get((novel_id, chapter_id))
+        return deepcopy(item) if item is not None else None
+
+    def load_translated_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
+        item = self.translated.get((novel_id, chapter_id))
+        return deepcopy(item) if item is not None else None
+
+
 def _seed_novel(db_session, slug: str = "glossary-api") -> Novel:
     novel = Novel(slug=slug, title=f"Novel {slug}", language="ja", status="ongoing")
     db_session.add(novel)
     db_session.flush()
     return novel
+
+
+def _seed_chapter(db_session, novel: Novel, number: int) -> Chapter:
+    chapter = Chapter(novel_id=novel.id, chapter_number=number, title=f"Chapter {number}")
+    db_session.add(chapter)
+    db_session.flush()
+    return chapter
+
+
+def _seed_candidate_chapter_text(chapter_storage: FakeChapterStorage, novel: Novel) -> None:
+    chapter_storage.add_raw(novel.slug, "1", "ポコットで会った。ポコットは村です。")
+    chapter_storage.add_translated(
+        novel.slug,
+        "1",
+        "Pocott Village welcomed travelers. Pocott Village remained peaceful.",
+    )
 
 
 def _create_entry(owner_client: TestClient, novel_id: int | str, canonical_term: str = "Pocott") -> dict:
@@ -205,6 +267,98 @@ def test_owner_can_use_admin_novel_slug_for_glossary_routes(owner_client, db_ses
     assert qa_resp.json() == []
     assert events_resp.status_code == 200
     assert events_resp.json()[0]["novel_id"] == novel.id
+
+
+def test_owner_can_preview_glossary_candidate_import_without_writing(
+    owner_client,
+    db_session,
+    chapter_storage,
+) -> None:
+    novel = _seed_novel(db_session, "candidate-preview")
+    _seed_chapter(db_session, novel, 1)
+    _seed_candidate_chapter_text(chapter_storage, novel)
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel.slug}/glossary/candidates/import/preview",
+        json={"max_candidates": 1},
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["novel_id"] == novel.id
+    assert payload["mode"] == "preview"
+    assert payload["candidates_found"] == 1
+    assert payload["candidates_created"] == 0
+    assert payload["candidates"][0]["term"] == "Pocott Village"
+    assert payload["candidates"][0]["action"] == "preview"
+    assert payload["candidates"][0]["chapter_numbers"] == [1]
+    assert payload["candidates"][0]["chapter_refs"] == ["1"]
+    assert "welcomed travelers" not in str(payload)
+    assert db_session.query(NovelGlossaryEntry).filter_by(novel_id=novel.id).count() == 0
+
+
+def test_owner_can_apply_glossary_candidate_import_as_reviewing_entries(
+    owner_client,
+    db_session,
+    chapter_storage,
+) -> None:
+    novel = _seed_novel(db_session, "candidate-apply")
+    _seed_chapter(db_session, novel, 1)
+    _seed_candidate_chapter_text(chapter_storage, novel)
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel.id}/glossary/candidates/import/apply",
+        json={"max_candidates": 1},
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["mode"] == "apply"
+    assert payload["candidates_created"] == 1
+    assert payload["candidates_merged"] == 0
+    assert payload["candidates_skipped"] == 0
+    assert payload["candidates"][0]["action"] == "created"
+    assert payload["candidates"][0]["notes"] == "Created as a Reviewing candidate from saved chapters."
+
+    entry = db_session.query(NovelGlossaryEntry).filter_by(novel_id=novel.id, canonical_term="Pocott Village").one()
+    assert entry.status == "candidate"
+    assert entry.enforcement_level == "none"
+    assert entry.owner_locked is False
+    event = db_session.query(NovelGlossaryDecisionEvent).filter_by(glossary_entry_id=entry.id, event_type="create").one()
+    assert event.decision_source == "candidate_import"
+
+
+def test_candidate_import_is_scoped_to_requested_novel(
+    owner_client,
+    db_session,
+    chapter_storage,
+) -> None:
+    novel_a = _seed_novel(db_session, "candidate-scope-a")
+    novel_b = _seed_novel(db_session, "candidate-scope-b")
+    _seed_chapter(db_session, novel_a, 1)
+    _seed_chapter(db_session, novel_b, 1)
+    _seed_candidate_chapter_text(chapter_storage, novel_a)
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel_a.id}/glossary/candidates/import/apply",
+        json={"max_candidates": 1},
+    )
+
+    assert resp.status_code == 200
+    assert db_session.query(NovelGlossaryEntry).filter_by(novel_id=novel_a.id).count() == 1
+    assert db_session.query(NovelGlossaryEntry).filter_by(novel_id=novel_b.id).count() == 0
+
+
+def test_candidate_import_request_validation_errors(owner_client, db_session) -> None:
+    novel = _seed_novel(db_session, "candidate-validation")
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel.id}/glossary/candidates/import/preview",
+        json={"max_candidates": 0},
+    )
+
+    assert resp.status_code == 422
+    assert "max_candidates" in str(resp.json()["detail"])
 
 
 def test_entry_routes_reject_cross_novel_access(owner_client, db_session) -> None:
