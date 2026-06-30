@@ -468,6 +468,28 @@ class GlossaryRepository:
         self.db.flush()
         return event
 
+    def list_decision_events_for_novel(self, novel_id: int) -> list[NovelGlossaryDecisionEvent]:
+        stmt = (
+            select(NovelGlossaryDecisionEvent)
+            .where(NovelGlossaryDecisionEvent.novel_id == novel_id)
+            .order_by(NovelGlossaryDecisionEvent.created_at, NovelGlossaryDecisionEvent.id)
+        )
+        return list(self.db.scalars(stmt))
+
+    def list_decision_events_for_entry(
+        self,
+        entry_id: int,
+        *,
+        novel_id: int | None = None,
+    ) -> list[NovelGlossaryDecisionEvent]:
+        entry = self._require_entry(entry_id, novel_id=novel_id)
+        stmt = (
+            select(NovelGlossaryDecisionEvent)
+            .where(NovelGlossaryDecisionEvent.glossary_entry_id == entry.id)
+            .order_by(NovelGlossaryDecisionEvent.created_at, NovelGlossaryDecisionEvent.id)
+        )
+        return list(self.db.scalars(stmt))
+
     def create_qa_finding(
         self,
         *,
