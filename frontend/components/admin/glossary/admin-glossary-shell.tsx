@@ -18,6 +18,7 @@ import type {
   GlossaryAliasAppliesTo,
   GlossaryAliasCreatePayload,
   GlossaryAliasType,
+  GlossaryDecisionEvent,
   GlossaryEnforcementLevel,
   GlossaryEntry,
   GlossaryEntryCreatePayload,
@@ -26,6 +27,8 @@ import type {
   GlossaryEvidenceQuality,
   GlossaryMatchingPolicy,
   GlossaryProvenanceCreatePayload,
+  GlossaryQaFinding,
+  GlossaryQaFindingStatus,
   GlossaryReplacementPolicy,
   GlossaryTermType,
 } from "@/lib/api-types";
@@ -74,6 +77,7 @@ const EVIDENCE_QUALITIES: GlossaryEvidenceQuality[] = [
   "metadata_only",
   "manual_owner_decision",
 ];
+const QA_STATUSES: GlossaryQaFindingStatus[] = ["open", "accepted", "dismissed", "fixed"];
 
 type EntryFormValues = {
   canonical_term: string;
@@ -250,6 +254,15 @@ function provenancePayload(values: ProvenanceFormValues): GlossaryProvenanceCrea
     evidence_quality: values.evidence_quality || null,
     confidence: numberOrNull(values.confidence),
   };
+}
+
+function jsonSummary(value: string | null) {
+  if (!value) return null;
+  try {
+    return JSON.stringify(JSON.parse(value));
+  } catch {
+    return value;
+  }
 }
 
 function statusTone(status: GlossaryEntryStatus) {
@@ -658,6 +671,8 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
   const [provenanceDialogOpen, setProvenanceDialogOpen] = React.useState(false);
   const [provenanceValues, setProvenanceValues] = React.useState<ProvenanceFormValues>(emptyProvenanceForm());
   const [provenanceValidationError, setProvenanceValidationError] = React.useState<string | null>(null);
+  const [qaStatusFilter, setQaStatusFilter] = React.useState<"" | GlossaryQaFindingStatus>("");
+  const [qaChapterFilter, setQaChapterFilter] = React.useState("");
 
   const glossary = useQuery({
     queryKey: ["admin-glossary", novelId],
@@ -686,6 +701,22 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
     queryKey: ["admin-glossary-provenance", novelId, selectedEntryId],
     queryFn: () => adminApi.listGlossaryProvenanceForEntry(novelId, selectedEntryId ?? 0),
     enabled: selectedEntryId !== null,
+  });
+
+  const decisionEvents = useQuery({
+    queryKey: ["admin-glossary-decisions", novelId, selectedEntryId],
+    queryFn: () => adminApi.listGlossaryDecisionEvents(novelId, selectedEntryId ?? undefined),
+    enabled: selectedEntryId !== null,
+  });
+
+  const qaChapterId = qaChapterFilter.trim() ? Number(qaChapterFilter.trim()) : undefined;
+  const qaFindings = useQuery({
+    queryKey: ["admin-glossary-qa-findings", novelId, qaStatusFilter, qaChapterId],
+    queryFn: () =>
+      adminApi.listGlossaryQaFindings(novelId, {
+        status: qaStatusFilter || undefined,
+        chapter_id: typeof qaChapterId === "number" && Number.isFinite(qaChapterId) ? qaChapterId : undefined,
+      }),
   });
 
   const createEntry = useMutation({
@@ -762,6 +793,14 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
       setProvenanceDialogOpen(false);
       setProvenanceValues(emptyProvenanceForm());
       invalidateSelectedEntryResources();
+    },
+  });
+
+  const updateQaStatus = useMutation({
+    mutationFn: ({ findingId, status }: { findingId: number; status: GlossaryQaFindingStatus }) =>
+      adminApi.updateGlossaryQaFindingStatus(novelId, findingId, { status }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin-glossary-qa-findings", novelId] });
     },
   });
 
@@ -1125,10 +1164,122 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
                   </div>
                 </section>
               </div>
+
+              <section className="rounded-md border">
+                <div className="border-b px-4 py-3">
+                  <h3 className="text-sm font-semibold">Decision history</h3>
+                </div>
+                <ErrorBanner error={decisionEvents.error} fallback="Failed to load decision history." />
+                <div className="p-4">
+                  {decisionEvents.isLoading ? (
+                    <div className="text-sm text-muted-foreground">Loading decision history...</div>
+                  ) : decisionEvents.error ? (
+                    <EmptyState title="Failed to load decision history." />
+                  ) : decisionEvents.data?.length ? (
+                    <div className="space-y-3">
+                      {decisionEvents.data.map((event: GlossaryDecisionEvent) => (
+                        <div key={event.id} className="rounded-md border px-3 py-2 text-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="font-medium">{formatStatus(event.event_type)}</div>
+                            <div className="text-xs text-muted-foreground">{formatDate(event.created_at)}</div>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Actor: {event.actor_user_id ?? "unknown"} - Source: {event.decision_source}
+                          </div>
+                          <div className="mt-2 text-sm">{event.rationale || "No rationale recorded."}</div>
+                          {jsonSummary(event.old_value_json) || jsonSummary(event.new_value_json) ? (
+                            <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                              {jsonSummary(event.old_value_json) ? <div>Previous: {jsonSummary(event.old_value_json)}</div> : null}
+                              {jsonSummary(event.new_value_json) ? <div>New: {jsonSummary(event.new_value_json)}</div> : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState title="No decision events yet." description="Meaningful owner/admin glossary changes will appear here when recorded by the backend." />
+                  )}
+                </div>
+              </section>
             </>
           ) : (
             <EmptyState title="Select an entry to manage aliases and provenance." description="Alias and evidence actions stay scoped to the selected entry and this novel." />
           )}
+
+          <section className="rounded-md border">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+              <div>
+                <h3 className="text-sm font-semibold">QA findings</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Data access only. No QA scan, prompt injection, global replace, chapter rewrite, or automatic repair runs here.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <select
+                  aria-label="Filter QA findings by status"
+                  className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                  value={qaStatusFilter}
+                  onChange={(event) => setQaStatusFilter(event.target.value as "" | GlossaryQaFindingStatus)}
+                >
+                  <option value="">All statuses</option>
+                  {QA_STATUSES.map((status) => (
+                    <option key={status} value={status}>{formatStatus(status)}</option>
+                  ))}
+                </select>
+                <input
+                  aria-label="Filter QA findings by chapter id"
+                  className="h-8 w-32 rounded-md border border-border bg-background px-2 text-xs"
+                  placeholder="Chapter ID"
+                  value={qaChapterFilter}
+                  onChange={(event) => setQaChapterFilter(event.target.value)}
+                />
+              </div>
+            </div>
+            <ErrorBanner error={qaFindings.error} fallback="Failed to load QA findings." />
+            <ErrorBanner error={updateQaStatus.error} fallback="Failed to update QA finding status." />
+            <div className="p-4">
+              {qaFindings.isLoading ? (
+                <div className="text-sm text-muted-foreground">Loading QA findings...</div>
+              ) : qaFindings.error ? (
+                <EmptyState title="Failed to load QA findings." />
+              ) : qaFindings.data?.length ? (
+                <div className="space-y-3">
+                  {qaFindings.data.map((finding: GlossaryQaFinding) => (
+                    <div key={finding.id} className="rounded-md border px-3 py-2 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="font-medium">{formatStatus(finding.finding_type)}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Severity: {formatStatus(finding.severity)}
+                            {finding.chapter_id ? ` - Chapter ${finding.chapter_id}` : ""}
+                            {finding.glossary_entry_id ? ` - Entry ${finding.glossary_entry_id}` : ""}
+                          </div>
+                        </div>
+                        <select
+                          aria-label={`Update QA finding ${finding.id} status`}
+                          className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                          value={finding.status}
+                          onChange={(event) => updateQaStatus.mutate({ findingId: finding.id, status: event.target.value as GlossaryQaFindingStatus })}
+                          disabled={updateQaStatus.isPending}
+                        >
+                          {QA_STATUSES.map((status) => (
+                            <option key={status} value={status}>{formatStatus(status)}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                        {finding.matched_text ? <div>Matched: {finding.matched_text}</div> : null}
+                        {finding.suggested_text ? <div>Suggested: {finding.suggested_text}</div> : null}
+                        {finding.context_ref ? <div>Context: {finding.context_ref}</div> : null}
+                        {finding.reviewer_notes ? <div>Reviewer notes: {finding.reviewer_notes}</div> : null}
+                        <div>Created {formatDate(finding.created_at)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState title="No QA findings yet." description="Existing findings will appear here after backend data exists. This page does not run QA scans." />
+              )}
+            </div>
+          </section>
         </PanelBody>
       </Panel>
 
