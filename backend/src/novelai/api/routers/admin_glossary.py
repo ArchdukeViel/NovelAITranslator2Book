@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, constr
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
@@ -300,8 +301,10 @@ def _body_fields(body: BaseModel) -> dict[str, Any]:
     return {name: payload[name] for name in fields if name in payload}
 
 
-def _require_novel(session: Session, novel_id: int) -> Novel:
-    novel = session.get(Novel, novel_id)
+def _require_novel(session: Session, novel_ref: str) -> Novel:
+    novel = session.execute(select(Novel).where(Novel.slug == novel_ref)).scalar_one_or_none()
+    if novel is None and novel_ref.isdigit():
+        novel = session.get(Novel, int(novel_ref))
     if novel is None:
         raise HTTPException(status_code=404, detail="Novel not found")
     return novel
@@ -430,14 +433,14 @@ def _qa_response(finding: NovelGlossaryQAFinding) -> GlossaryQAFindingResponse:
 
 @router.get("/novels/{novel_id}/glossary", response_model=list[GlossaryEntryResponse])
 async def list_glossary_entries(
-    novel_id: int,
+    novel_id: str,
     status: str | None = None,
     term_type: str | None = None,
     public_visible: bool | None = None,
     session: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryEntryResponse]:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     entries = _repo(session).list_glossary_entries_for_novel(
         novel_id,
         status=status,
@@ -449,12 +452,12 @@ async def list_glossary_entries(
 
 @router.post("/novels/{novel_id}/glossary", response_model=GlossaryEntryResponse)
 async def create_glossary_entry(
-    novel_id: int,
+    novel_id: str,
     body: GlossaryEntryCreateRequest,
     session: Session = Depends(get_db_session),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     try:
         entry = _repo(session).create_glossary_entry(
             novel_id=novel_id,
@@ -486,12 +489,12 @@ async def create_glossary_entry(
 
 @router.get("/novels/{novel_id}/glossary/entries/{entry_id}", response_model=GlossaryEntryResponse)
 async def get_glossary_entry(
-    novel_id: int,
+    novel_id: str,
     entry_id: int,
     session: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     entry = _repo(session).get_glossary_entry(entry_id, novel_id=novel_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Glossary entry not found")
@@ -500,13 +503,13 @@ async def get_glossary_entry(
 
 @router.patch("/novels/{novel_id}/glossary/entries/{entry_id}", response_model=GlossaryEntryResponse)
 async def update_glossary_entry(
-    novel_id: int,
+    novel_id: str,
     entry_id: int,
     body: GlossaryEntryUpdateRequest,
     session: Session = Depends(get_db_session),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     try:
         entry = _repo(session).update_glossary_entry(
             entry_id,
@@ -522,13 +525,13 @@ async def update_glossary_entry(
 
 @router.post("/novels/{novel_id}/glossary/entries/{entry_id}/status", response_model=GlossaryEntryResponse)
 async def change_glossary_entry_status(
-    novel_id: int,
+    novel_id: str,
     entry_id: int,
     body: GlossaryEntryStatusRequest,
     session: Session = Depends(get_db_session),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     try:
         entry = _repo(session).change_glossary_entry_status(
             entry_id,
@@ -546,13 +549,13 @@ async def change_glossary_entry_status(
 
 @router.post("/novels/{novel_id}/glossary/entries/{entry_id}/lock", response_model=GlossaryEntryResponse)
 async def lock_glossary_entry(
-    novel_id: int,
+    novel_id: str,
     entry_id: int,
     body: GlossaryDecisionRequest | None = None,
     session: Session = Depends(get_db_session),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     try:
         entry = _repo(session).lock_glossary_entry(
             entry_id,
@@ -568,13 +571,13 @@ async def lock_glossary_entry(
 
 @router.post("/novels/{novel_id}/glossary/entries/{entry_id}/unlock", response_model=GlossaryEntryResponse)
 async def unlock_glossary_entry(
-    novel_id: int,
+    novel_id: str,
     entry_id: int,
     body: GlossaryDecisionRequest | None = None,
     session: Session = Depends(get_db_session),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     try:
         entry = _repo(session).unlock_glossary_entry(
             entry_id,
@@ -590,13 +593,13 @@ async def unlock_glossary_entry(
 
 @router.post("/novels/{novel_id}/glossary/entries/{entry_id}/deprecate", response_model=GlossaryEntryResponse)
 async def deprecate_glossary_entry(
-    novel_id: int,
+    novel_id: str,
     entry_id: int,
     body: GlossaryDecisionRequest | None = None,
     session: Session = Depends(get_db_session),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     try:
         entry = _repo(session).deprecate_glossary_entry(
             entry_id,
@@ -612,12 +615,12 @@ async def deprecate_glossary_entry(
 
 @router.get("/novels/{novel_id}/glossary/entries/{entry_id}/aliases", response_model=list[GlossaryAliasResponse])
 async def list_glossary_aliases(
-    novel_id: int,
+    novel_id: str,
     entry_id: int,
     session: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryAliasResponse]:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     try:
         return [_alias_response(alias) for alias in _repo(session).list_aliases_for_entry(entry_id, novel_id=novel_id)]
     except (LookupError, ValueError) as exc:
@@ -627,13 +630,13 @@ async def list_glossary_aliases(
 
 @router.post("/novels/{novel_id}/glossary/entries/{entry_id}/aliases", response_model=GlossaryAliasResponse)
 async def add_glossary_alias(
-    novel_id: int,
+    novel_id: str,
     entry_id: int,
     body: GlossaryAliasCreateRequest,
     session: Session = Depends(get_db_session),
     owner=Depends(require_role("owner")),
 ) -> GlossaryAliasResponse:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     try:
         alias = _repo(session).add_glossary_alias(
             entry_id=entry_id,
@@ -656,13 +659,13 @@ async def add_glossary_alias(
 
 @router.patch("/novels/{novel_id}/glossary/aliases/{alias_id}", response_model=GlossaryAliasResponse)
 async def update_glossary_alias(
-    novel_id: int,
+    novel_id: str,
     alias_id: int,
     body: GlossaryAliasUpdateRequest,
     session: Session = Depends(get_db_session),
     owner=Depends(require_role("owner")),
 ) -> GlossaryAliasResponse:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     fields = _body_fields(body)
     rationale = fields.pop("rationale", None)
     try:
@@ -681,13 +684,13 @@ async def update_glossary_alias(
 
 @router.post("/novels/{novel_id}/glossary/aliases/{alias_id}/deprecate", response_model=GlossaryAliasResponse)
 async def deprecate_glossary_alias(
-    novel_id: int,
+    novel_id: str,
     alias_id: int,
     body: GlossaryDecisionRequest | None = None,
     session: Session = Depends(get_db_session),
     owner=Depends(require_role("owner")),
 ) -> GlossaryAliasResponse:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     try:
         alias = _repo(session).remove_or_deprecate_glossary_alias(
             alias_id,
@@ -703,22 +706,22 @@ async def deprecate_glossary_alias(
 
 @router.get("/novels/{novel_id}/glossary/provenance", response_model=list[GlossaryProvenanceResponse])
 async def list_novel_glossary_provenance(
-    novel_id: int,
+    novel_id: str,
     session: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryProvenanceResponse]:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     return [_provenance_response(item) for item in _repo(session).list_source_provenance_for_novel(novel_id)]
 
 
 @router.get("/novels/{novel_id}/glossary/entries/{entry_id}/provenance", response_model=list[GlossaryProvenanceResponse])
 async def list_entry_glossary_provenance(
-    novel_id: int,
+    novel_id: str,
     entry_id: int,
     session: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryProvenanceResponse]:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     try:
         return [
             _provenance_response(item)
@@ -731,13 +734,13 @@ async def list_entry_glossary_provenance(
 
 @router.post("/novels/{novel_id}/glossary/entries/{entry_id}/provenance", response_model=GlossaryProvenanceResponse)
 async def add_glossary_provenance(
-    novel_id: int,
+    novel_id: str,
     entry_id: int,
     body: GlossaryProvenanceCreateRequest,
     session: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> GlossaryProvenanceResponse:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     try:
         item = _repo(session).add_source_provenance(
             novel_id=novel_id,
@@ -764,22 +767,22 @@ async def add_glossary_provenance(
 
 @router.get("/novels/{novel_id}/glossary/events", response_model=list[GlossaryDecisionEventResponse])
 async def list_novel_glossary_decision_events(
-    novel_id: int,
+    novel_id: str,
     session: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryDecisionEventResponse]:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     return [_event_response(event) for event in _repo(session).list_decision_events_for_novel(novel_id)]
 
 
 @router.get("/novels/{novel_id}/glossary/entries/{entry_id}/events", response_model=list[GlossaryDecisionEventResponse])
 async def list_entry_glossary_decision_events(
-    novel_id: int,
+    novel_id: str,
     entry_id: int,
     session: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryDecisionEventResponse]:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     try:
         return [
             _event_response(event)
@@ -792,13 +795,13 @@ async def list_entry_glossary_decision_events(
 
 @router.get("/novels/{novel_id}/glossary/qa-findings", response_model=list[GlossaryQAFindingResponse])
 async def list_glossary_qa_findings(
-    novel_id: int,
+    novel_id: str,
     chapter_id: int | None = None,
     status: str | None = None,
     session: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryQAFindingResponse]:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     repo = _repo(session)
     if chapter_id is not None:
         findings = repo.list_qa_findings_for_chapter(chapter_id, novel_id=novel_id, status=status)
@@ -809,12 +812,12 @@ async def list_glossary_qa_findings(
 
 @router.post("/novels/{novel_id}/glossary/qa-findings", response_model=GlossaryQAFindingResponse)
 async def create_manual_glossary_qa_finding(
-    novel_id: int,
+    novel_id: str,
     body: GlossaryQAFindingCreateRequest,
     session: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> GlossaryQAFindingResponse:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     try:
         finding = _repo(session).create_qa_finding(
             novel_id=novel_id,
@@ -835,13 +838,13 @@ async def create_manual_glossary_qa_finding(
 
 @router.patch("/novels/{novel_id}/glossary/qa-findings/{finding_id}/status", response_model=GlossaryQAFindingResponse)
 async def update_glossary_qa_finding_status(
-    novel_id: int,
+    novel_id: str,
     finding_id: int,
     body: GlossaryQAFindingStatusRequest,
     session: Session = Depends(get_db_session),
     owner=Depends(require_role("owner")),
 ) -> GlossaryQAFindingResponse:
-    _require_novel(session, novel_id)
+    novel_id = _require_novel(session, novel_id).id
     try:
         finding = _repo(session).update_qa_finding_status(
             finding_id,
