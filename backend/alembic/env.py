@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import os
 import sys
+from importlib import import_module
 from logging.config import fileConfig
 from pathlib import Path
 
-from sqlalchemy import engine_from_config, pool
-
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 
 # Ensure backend/src is on sys.path so novelai imports resolve when running
 # alembic directly (e.g. `alembic upgrade head` from the repo root).
@@ -24,13 +24,18 @@ if str(_BACKEND_SRC) not in sys.path:
 # Import Base and ALL models so their tables are registered in metadata
 # before autogenerate inspects it.  Add new models here as they are created.
 from novelai.db.base import Base  # noqa: E402
-import novelai.db.models.novel     # noqa: E402, F401
-import novelai.db.models.chapter   # noqa: E402, F401
-import novelai.db.models.genre     # noqa: E402, F401
-import novelai.db.models.tag       # noqa: E402, F401
-import novelai.db.models.jobs      # noqa: E402, F401
-import novelai.db.models.users     # noqa: E402, F401
-import novelai.db.models.system    # noqa: E402, F401
+
+for _model_module in (
+    "novelai.db.models.chapter",
+    "novelai.db.models.genre",
+    "novelai.db.models.glossary",
+    "novelai.db.models.jobs",
+    "novelai.db.models.novel",
+    "novelai.db.models.system",
+    "novelai.db.models.tag",
+    "novelai.db.models.users",
+):
+    import_module(_model_module)
 
 # Alembic Config object for .ini values.
 config = context.config

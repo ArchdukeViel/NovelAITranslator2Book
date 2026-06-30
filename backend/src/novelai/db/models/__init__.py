@@ -9,6 +9,14 @@ from __future__ import annotations
 
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.genre import Genre, novel_genres
+from novelai.db.models.glossary import (
+    NovelGlossaryAlias,
+    NovelGlossaryDecisionEvent,
+    NovelGlossaryEntry,
+    NovelGlossaryQAFinding,
+    NovelGlossarySourceProvenance,
+    UserGlossaryDisplayOverride,
+)
 from novelai.db.models.jobs import CrawlJob, ProviderRequest, TranslationJob
 from novelai.db.models.novel import Novel
 from novelai.db.models.system import AuditLog, ProviderCredential, SystemSetting
@@ -32,10 +40,15 @@ __all__ = [
     "Genre",
     "LibraryItem",
     "Novel",
+    "NovelGlossaryAlias",
+    "NovelGlossaryDecisionEvent",
+    "NovelGlossaryEntry",
+    "NovelGlossaryQAFinding",
+    "NovelGlossarySourceProvenance",
     "NovelRequest",
     "PasswordResetToken",
-    "ProviderRequest",
     "ProviderCredential",
+    "ProviderRequest",
     "ReadingHistory",
     "ReadingProgress",
     "Review",
@@ -43,6 +56,7 @@ __all__ = [
     "Tag",
     "TranslationJob",
     "User",
+    "UserGlossaryDisplayOverride",
     "novel_genres",
     "novel_tags",
 ]
