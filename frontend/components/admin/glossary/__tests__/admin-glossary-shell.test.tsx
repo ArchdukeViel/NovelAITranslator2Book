@@ -3,10 +3,10 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdminGlossaryShell } from "@/components/admin/glossary/admin-glossary-shell";
-import type { GlossaryAlias, GlossaryEntry, GlossaryProvenance } from "@/lib/api-types";
+import type { GlossaryAlias, GlossaryDecisionEvent, GlossaryEntry, GlossaryProvenance, GlossaryQaFinding } from "@/lib/api-types";
 
 function renderWithQuery(ui: ReactElement) {
   const queryClient = new QueryClient({
@@ -31,6 +31,9 @@ const mockUpdateGlossaryAlias = vi.hoisted(() => vi.fn());
 const mockDeprecateGlossaryAlias = vi.hoisted(() => vi.fn());
 const mockListGlossaryProvenanceForEntry = vi.hoisted(() => vi.fn());
 const mockAddGlossaryProvenance = vi.hoisted(() => vi.fn());
+const mockListGlossaryDecisionEvents = vi.hoisted(() => vi.fn());
+const mockListGlossaryQaFindings = vi.hoisted(() => vi.fn());
+const mockUpdateGlossaryQaFindingStatus = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
@@ -52,6 +55,9 @@ vi.mock("@/lib/api", async (importOriginal) => {
         deprecateGlossaryAlias: (...args: unknown[]) => mockDeprecateGlossaryAlias(...args),
         listGlossaryProvenanceForEntry: (...args: unknown[]) => mockListGlossaryProvenanceForEntry(...args),
         addGlossaryProvenance: (...args: unknown[]) => mockAddGlossaryProvenance(...args),
+        listGlossaryDecisionEvents: (...args: unknown[]) => mockListGlossaryDecisionEvents(...args),
+        listGlossaryQaFindings: (...args: unknown[]) => mockListGlossaryQaFindings(...args),
+        updateGlossaryQaFindingStatus: (...args: unknown[]) => mockUpdateGlossaryQaFindingStatus(...args),
       };
     },
   };
@@ -121,6 +127,42 @@ const provenance: GlossaryProvenance = {
   updated_at: "2026-01-04T00:00:00Z",
 };
 
+const decisionEvent: GlossaryDecisionEvent = {
+  id: 20,
+  novel_id: 42,
+  glossary_entry_id: 1,
+  alias_id: null,
+  actor_user_id: 1,
+  event_type: "approve",
+  old_value_json: '{"status":"candidate"}',
+  new_value_json: '{"status":"approved"}',
+  rationale: null,
+  decision_source: "owner",
+  created_at: "2026-01-05T00:00:00Z",
+};
+
+const qaFinding: GlossaryQaFinding = {
+  id: 30,
+  novel_id: 42,
+  chapter_id: 4,
+  glossary_entry_id: 1,
+  finding_type: "banned_alias",
+  severity: "warning",
+  matched_text: "Alberto",
+  suggested_text: "Albert",
+  context_ref: "p0001",
+  status: "open",
+  reviewer_user_id: null,
+  reviewer_notes: null,
+  created_at: "2026-01-06T00:00:00Z",
+  resolved_at: null,
+};
+
+beforeEach(() => {
+  mockListGlossaryDecisionEvents.mockResolvedValue([]);
+  mockListGlossaryQaFindings.mockResolvedValue([]);
+});
+
 afterEach(() => {
   mockListGlossaryEntries.mockReset();
   mockCreateGlossaryEntry.mockReset();
@@ -135,6 +177,9 @@ afterEach(() => {
   mockDeprecateGlossaryAlias.mockReset();
   mockListGlossaryProvenanceForEntry.mockReset();
   mockAddGlossaryProvenance.mockReset();
+  mockListGlossaryDecisionEvents.mockReset();
+  mockListGlossaryQaFindings.mockReset();
+  mockUpdateGlossaryQaFindingStatus.mockReset();
   vi.restoreAllMocks();
   cleanup();
 });
@@ -299,6 +344,8 @@ describe("AdminGlossaryShell", () => {
     expect(screen.queryByRole("button", { name: /alias/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /provenance/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /qa/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /scan/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /prompt injection/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /replace/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /repair/i })).not.toBeInTheDocument();
   });
@@ -321,6 +368,107 @@ describe("AdminGlossaryShell", () => {
     expect(screen.getByText("Alberto")).toBeInTheDocument();
     expect(screen.getByText("kakuyomu / kakuyomu")).toBeInTheDocument();
     expect(screen.getByText("Source metadata is evidence only. Glossary ownership remains per novel.")).toBeInTheDocument();
+  });
+
+  it("loads selected-entry decision history without mutating glossary data", async () => {
+    const user = userEvent.setup();
+    mockListGlossaryEntries.mockResolvedValue([entry]);
+    mockListGlossaryAliases.mockResolvedValue([]);
+    mockListGlossaryProvenanceForEntry.mockResolvedValue([]);
+    mockListGlossaryDecisionEvents.mockResolvedValue([decisionEvent]);
+
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Select" })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Select" }));
+
+    await waitFor(() => {
+      expect(mockListGlossaryDecisionEvents).toHaveBeenCalledWith("42", 1);
+    });
+    expect(screen.getByText("approve")).toBeInTheDocument();
+    expect(screen.getByText("No rationale recorded.")).toBeInTheDocument();
+    expect(screen.getByText('Previous: {"status":"candidate"}')).toBeInTheDocument();
+    expect(screen.getByText('New: {"status":"approved"}')).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /decision/i })).not.toBeInTheDocument();
+  });
+
+  it("shows decision history empty and error states", async () => {
+    const user = userEvent.setup();
+    mockListGlossaryEntries.mockResolvedValue([entry]);
+    mockListGlossaryAliases.mockResolvedValue([]);
+    mockListGlossaryProvenanceForEntry.mockResolvedValue([]);
+    mockListGlossaryDecisionEvents.mockResolvedValueOnce([]);
+
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Select" })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    await waitFor(() => expect(screen.getByText("No decision events yet.")).toBeInTheDocument());
+
+    cleanup();
+    mockListGlossaryEntries.mockResolvedValue([entry]);
+    mockListGlossaryAliases.mockResolvedValue([]);
+    mockListGlossaryProvenanceForEntry.mockResolvedValue([]);
+    mockListGlossaryDecisionEvents.mockRejectedValue(new Error("Decision failure"));
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Select" })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Select" }));
+    await waitFor(() => expect(screen.getAllByText("Failed to load decision history.").length).toBeGreaterThan(0));
+  });
+
+  it("lists QA findings and updates only finding status", async () => {
+    const user = userEvent.setup();
+    mockListGlossaryEntries.mockResolvedValue([]);
+    mockListGlossaryQaFindings.mockResolvedValue([qaFinding]);
+    mockUpdateGlossaryQaFindingStatus.mockResolvedValue({ ...qaFinding, status: "dismissed" });
+
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await waitFor(() => expect(screen.getByText("banned alias")).toBeInTheDocument());
+    expect(screen.getByText("Matched: Alberto")).toBeInTheDocument();
+    expect(screen.getByText("Suggested: Albert")).toBeInTheDocument();
+    expect(screen.getByText("Context: p0001")).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Update QA finding 30 status"), "dismissed");
+
+    await waitFor(() => {
+      expect(mockUpdateGlossaryQaFindingStatus).toHaveBeenCalledWith("42", 30, { status: "dismissed" });
+    });
+    expect(screen.queryByRole("button", { name: /scan/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /repair/i })).not.toBeInTheDocument();
+  });
+
+  it("filters QA findings by status and chapter id", async () => {
+    const user = userEvent.setup();
+    mockListGlossaryEntries.mockResolvedValue([]);
+    mockListGlossaryQaFindings.mockResolvedValue([]);
+
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await waitFor(() => expect(screen.getByText("No QA findings yet.")).toBeInTheDocument());
+    await user.selectOptions(screen.getByLabelText("Filter QA findings by status"), "open");
+    await user.type(screen.getByLabelText("Filter QA findings by chapter id"), "4");
+
+    await waitFor(() => {
+      expect(mockListGlossaryQaFindings).toHaveBeenCalledWith("42", { status: "open", chapter_id: 4 });
+    });
+  });
+
+  it("shows QA findings empty and error states", async () => {
+    mockListGlossaryEntries.mockResolvedValue([]);
+    mockListGlossaryQaFindings.mockResolvedValueOnce([]);
+
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await waitFor(() => expect(screen.getByText("No QA findings yet.")).toBeInTheDocument());
+
+    cleanup();
+    mockListGlossaryEntries.mockResolvedValue([]);
+    mockListGlossaryQaFindings.mockRejectedValue(new Error("QA failure"));
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await waitFor(() => expect(screen.getAllByText("Failed to load QA findings.").length).toBeGreaterThan(0));
   });
 
   it("adds an alias with selected entry scope", async () => {
