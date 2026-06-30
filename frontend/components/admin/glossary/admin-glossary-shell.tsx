@@ -18,6 +18,7 @@ import type {
   GlossaryAliasAppliesTo,
   GlossaryAliasCreatePayload,
   GlossaryAliasType,
+  GlossaryCandidateImportResult,
   GlossaryDecisionEvent,
   GlossaryEnforcementLevel,
   GlossaryEntry,
@@ -123,6 +124,8 @@ type ProvenanceFormValues = {
 type PendingAliasDeprecation = {
   alias: GlossaryAlias;
 } | null;
+
+const DEFAULT_IMPORT_MAX_CANDIDATES = 50;
 
 function emptyForm(): EntryFormValues {
   return {
@@ -312,6 +315,14 @@ function seenRange(entry: GlossaryEntry) {
   if (first && last && first !== last) return `${first} to ${last}`;
   if (first || last) return String(first ?? last);
   return "-";
+}
+
+function candidateActionLabel(action: string) {
+  return formatStatus(action);
+}
+
+function formatConfidence(value: number) {
+  return `${Math.round(value * 100)}%`;
 }
 
 function countByOwnerStatus(entries: GlossaryEntry[]) {
@@ -701,6 +712,182 @@ function ProvenanceDialog({
   );
 }
 
+function CandidateImportDialog({
+  open,
+  maxCandidates,
+  previewResult,
+  applyResult,
+  validationError,
+  previewPending,
+  applyPending,
+  previewError,
+  applyError,
+  onMaxCandidatesChange,
+  onPreview,
+  onApply,
+  onClose,
+}: {
+  open: boolean;
+  maxCandidates: number;
+  previewResult: GlossaryCandidateImportResult | null;
+  applyResult: GlossaryCandidateImportResult | null;
+  validationError: string | null;
+  previewPending: boolean;
+  applyPending: boolean;
+  previewError: unknown;
+  applyError: unknown;
+  onMaxCandidatesChange: (value: number) => void;
+  onPreview: () => void;
+  onApply: () => void;
+  onClose: () => void;
+}) {
+  const result = applyResult ?? previewResult;
+  const hasPreviewCandidates = Boolean(previewResult && previewResult.candidates.length > 0 && !applyResult);
+  const pending = previewPending || applyPending;
+
+  return (
+    <DialogShell
+      open={open}
+      title="Import review candidates"
+      description="Find possible terms from saved raw/translated chapters. Imported terms stay Reviewing until approved."
+      onClose={onClose}
+      className="max-w-5xl"
+      footer={
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-xs text-muted-foreground">
+            This imports the previewed candidate set using the same max candidate limit.
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={onClose} disabled={pending}>
+              Cancel
+            </Button>
+            <Button variant="secondary" onClick={onPreview} disabled={pending}>
+              {previewPending ? "Previewing..." : "Preview candidates"}
+            </Button>
+            {hasPreviewCandidates ? (
+              <Button onClick={onApply} disabled={pending}>
+                {applyPending ? "Importing..." : "Import as Reviewing"}
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      }
+    >
+      <div className="space-y-4 p-4">
+        <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          Imported candidates are Reviewing. Approving is manual. Saved chapter rewriting is a separate future step. This import uses saved chapters only.
+        </div>
+        <FieldLabel className="max-w-xs">
+          <span>Max candidates</span>
+          <input
+            type="number"
+            min={1}
+            max={500}
+            aria-label="Max candidates"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            value={maxCandidates}
+            onChange={(event) => onMaxCandidatesChange(Number(event.target.value))}
+          />
+          <span className="block text-xs font-normal text-muted-foreground">
+            Limits how many candidate terms are previewed or imported.
+          </span>
+        </FieldLabel>
+        {validationError ? (
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {validationError}
+          </div>
+        ) : null}
+        <ErrorBanner error={previewError} fallback="Failed to preview glossary candidates." className="border" />
+        <ErrorBanner error={applyError} fallback="Failed to import glossary candidates." className="border" />
+
+        {result ? (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="rounded-md border px-3 py-2">
+                <div className="text-xs uppercase text-muted-foreground">Found</div>
+                <div className="mt-1 text-xl font-semibold">{result.candidates_found}</div>
+              </div>
+              <div className="rounded-md border px-3 py-2">
+                <div className="text-xs uppercase text-muted-foreground">Created</div>
+                <div className="mt-1 text-xl font-semibold">{result.candidates_created}</div>
+              </div>
+              <div className="rounded-md border px-3 py-2">
+                <div className="text-xs uppercase text-muted-foreground">Merged</div>
+                <div className="mt-1 text-xl font-semibold">{result.candidates_merged}</div>
+              </div>
+              <div className="rounded-md border px-3 py-2">
+                <div className="text-xs uppercase text-muted-foreground">Skipped</div>
+                <div className="mt-1 text-xl font-semibold">{result.candidates_skipped}</div>
+              </div>
+            </div>
+
+            {applyResult ? (
+              <div className="rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-900 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
+                Import complete. Created {applyResult.candidates_created}, merged {applyResult.candidates_merged}, skipped {applyResult.candidates_skipped}.
+              </div>
+            ) : null}
+            {previewResult && !previewResult.candidates.length ? (
+              <EmptyState title="No new review candidates found from saved chapters." description="Try again after more saved raw or translated chapters are available." />
+            ) : null}
+
+            {result.warnings.length ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                <div className="font-medium">Warnings</div>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  {result.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {result.conflicts.length ? (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <div className="font-medium">Conflicts</div>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  {result.conflicts.map((conflict) => (
+                    <li key={conflict}>{conflict}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {result.candidates.length ? (
+              <div className="seamless-scrollbar overflow-auto rounded-md border">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b bg-muted/55 text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="min-w-[180px] px-3 py-2">Term</th>
+                      <th className="min-w-[180px] px-3 py-2">Translation</th>
+                      <th className="px-3 py-2">Type</th>
+                      <th className="px-3 py-2">Confidence</th>
+                      <th className="px-3 py-2">Frequency</th>
+                      <th className="px-3 py-2">Action</th>
+                      <th className="min-w-[180px] px-3 py-2">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.candidates.map((candidate) => (
+                      <tr key={`${candidate.term}-${candidate.translation}`} className="border-b last:border-0">
+                        <td className="px-3 py-2 font-medium">{candidate.term}</td>
+                        <td className="px-3 py-2">{candidate.translation}</td>
+                        <td className="px-3 py-2">{formatStatus(candidate.term_type)}</td>
+                        <td className="px-3 py-2">{formatConfidence(candidate.confidence)}</td>
+                        <td className="px-3 py-2">{candidate.frequency}</td>
+                        <td className="px-3 py-2">{candidateActionLabel(candidate.action)}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{candidate.notes ?? "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </DialogShell>
+  );
+}
+
 export function AdminGlossaryShell({ novelId }: { novelId: string }) {
   const queryClient = useQueryClient();
   const [selectedEntryId, setSelectedEntryId] = React.useState<number | null>(null);
@@ -722,6 +909,11 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
   const [qaChapterFilter, setQaChapterFilter] = React.useState("");
   const [entrySearch, setEntrySearch] = React.useState("");
   const [entryTypeFilter, setEntryTypeFilter] = React.useState<"" | GlossaryTermType>("");
+  const [candidateImportOpen, setCandidateImportOpen] = React.useState(false);
+  const [candidateImportMax, setCandidateImportMax] = React.useState(DEFAULT_IMPORT_MAX_CANDIDATES);
+  const [candidateImportValidationError, setCandidateImportValidationError] = React.useState<string | null>(null);
+  const [candidateImportPreview, setCandidateImportPreview] = React.useState<GlossaryCandidateImportResult | null>(null);
+  const [candidateImportApply, setCandidateImportApply] = React.useState<GlossaryCandidateImportResult | null>(null);
 
   const novel = useQuery({
     queryKey: ["admin-novel", novelId],
@@ -879,6 +1071,61 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
     },
   });
 
+  const previewCandidateImport = useMutation({
+    mutationFn: (maxCandidates: number) =>
+      adminApi.previewGlossaryCandidateImport(novelId, { max_candidates: maxCandidates }),
+    onSuccess: (result) => {
+      setCandidateImportPreview(result);
+      setCandidateImportApply(null);
+    },
+  });
+
+  const applyCandidateImport = useMutation({
+    mutationFn: (maxCandidates: number) =>
+      adminApi.applyGlossaryCandidateImport(novelId, { max_candidates: maxCandidates }),
+    onSuccess: (result) => {
+      setCandidateImportApply(result);
+      invalidateGlossary();
+    },
+  });
+
+  const validateCandidateImportMax = () => {
+    if (!Number.isInteger(candidateImportMax) || candidateImportMax < 1 || candidateImportMax > 500) {
+      setCandidateImportValidationError("Max candidates must be between 1 and 500.");
+      return null;
+    }
+    setCandidateImportValidationError(null);
+    return candidateImportMax;
+  };
+
+  const openCandidateImport = () => {
+    previewCandidateImport.reset();
+    applyCandidateImport.reset();
+    setCandidateImportValidationError(null);
+    setCandidateImportPreview(null);
+    setCandidateImportApply(null);
+    setCandidateImportMax(DEFAULT_IMPORT_MAX_CANDIDATES);
+    setCandidateImportOpen(true);
+  };
+
+  const closeCandidateImport = () => {
+    if (previewCandidateImport.isPending || applyCandidateImport.isPending) return;
+    setCandidateImportOpen(false);
+  };
+
+  const runCandidateImportPreview = () => {
+    const maxCandidates = validateCandidateImportMax();
+    if (maxCandidates === null) return;
+    setCandidateImportApply(null);
+    previewCandidateImport.mutate(maxCandidates);
+  };
+
+  const runCandidateImportApply = () => {
+    const maxCandidates = validateCandidateImportMax();
+    if (maxCandidates === null) return;
+    applyCandidateImport.mutate(maxCandidates);
+  };
+
   const openCreate = () => {
     createEntry.reset();
     updateEntry.reset();
@@ -1004,8 +1251,8 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
 
       <Panel className="mb-4">
         <PanelBody className="space-y-2 text-sm text-muted-foreground">
-          <p>Source IDs are evidence only. No global replace from this page. Saved chapter repair is a later explicit step.</p>
-          <p>Approved means this translation is the default glossary translation for this novel. Applying it to saved chapters will be handled by a separate repair step.</p>
+          <p>Source IDs are evidence only. No global replace from this page. Saved chapter rewriting is a separate future step.</p>
+          <p>Approved means this translation is the default glossary translation for this novel. Imported candidates remain Reviewing until manually approved.</p>
         </PanelBody>
       </Panel>
 
@@ -1034,9 +1281,14 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
       <Panel>
         <PanelHeader className="flex flex-row items-center justify-between gap-3">
           <PanelTitle>Entries</PanelTitle>
-          <Button size="sm" onClick={openCreate}>
-            Create entry
-          </Button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={openCandidateImport}>
+              Import review candidates
+            </Button>
+            <Button size="sm" onClick={openCreate}>
+              Create entry
+            </Button>
+          </div>
         </PanelHeader>
         <ErrorBanner error={glossary.error} fallback="Failed to load glossary entries." />
         <ErrorBanner error={changeStatus.error} fallback="Failed to update glossary entry status." />
@@ -1065,7 +1317,7 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
             />
           </div>
           <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-            More review candidates can be imported from saved raw/translated chapters in a later step.
+            Find possible terms from saved raw/translated chapters. Imported terms stay Reviewing until approved.
           </div>
           <div className="seamless-scrollbar overflow-auto">
             <table className="w-full text-left text-sm">
@@ -1132,7 +1384,7 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
                 ) : (
                   <EmptyState
                     title={entries.length ? "No glossary entries match your filters." : "No glossary entries yet."}
-                    description={entries.length ? "Try another term, translation, or type." : "Add terms and translations for this novel. More review candidates can be imported from saved raw/translated chapters in a later step."}
+                    description={entries.length ? "Try another term, translation, or type." : "Add terms manually or import review candidates from saved raw/translated chapters."}
                     colSpan={4}
                   />
                 )}
@@ -1141,6 +1393,27 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
           </div>
         </PanelBody>
       </Panel>
+
+      <CandidateImportDialog
+        open={candidateImportOpen}
+        maxCandidates={candidateImportMax}
+        previewResult={candidateImportPreview}
+        applyResult={candidateImportApply}
+        validationError={candidateImportValidationError}
+        previewPending={previewCandidateImport.isPending}
+        applyPending={applyCandidateImport.isPending}
+        previewError={previewCandidateImport.error}
+        applyError={applyCandidateImport.error}
+        onMaxCandidatesChange={(value) => {
+          setCandidateImportMax(value);
+          setCandidateImportValidationError(null);
+          setCandidateImportPreview(null);
+          setCandidateImportApply(null);
+        }}
+        onPreview={runCandidateImportPreview}
+        onApply={runCandidateImportApply}
+        onClose={closeCandidateImport}
+      />
 
       <GlossaryEntryDialog
         mode={dialogMode ?? "create"}
