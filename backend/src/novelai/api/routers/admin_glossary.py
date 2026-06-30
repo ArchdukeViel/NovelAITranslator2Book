@@ -7,6 +7,7 @@ or expose user display override management.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Literal, cast
 
@@ -18,6 +19,7 @@ from sqlalchemy.orm import Session
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.dependencies import get_db_session, get_storage
+from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.db.models.glossary import (
     NovelGlossaryAlias,
     NovelGlossaryDecisionEvent,
@@ -26,7 +28,13 @@ from novelai.db.models.glossary import (
     NovelGlossarySourceProvenance,
 )
 from novelai.db.models.novel import Novel
+from novelai.providers.base import TranslationProvider
+from novelai.providers.registry import get_provider
 from novelai.services.glossary_candidate_import import GlossaryCandidateImporter, GlossaryCandidateImportResult
+from novelai.services.glossary_provider_suggestion import (
+    GlossaryProviderSuggestionService,
+    ProviderGlossarySuggestionResult,
+)
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.storage.service import StorageService
 
@@ -300,6 +308,14 @@ class GlossaryCandidateImportRequest(BaseModel):
     max_candidates: int = Field(default=100, ge=1, le=500)
 
 
+class GlossaryProviderSuggestionRequest(BaseModel):
+    max_candidates: int = Field(default=50, ge=1, le=100)
+    max_chapters: int = Field(default=3, ge=1, le=20)
+    max_chars: int = Field(default=8000, ge=1000, le=50000)
+    provider: NonEmptyStr | None = None
+    provider_model: NonEmptyStr | None = None
+
+
 class GlossaryCandidateSummary(BaseModel):
     term: str
     translation: str
@@ -323,6 +339,69 @@ class GlossaryCandidateImportResponse(BaseModel):
     conflicts: list[str]
     warnings: list[str]
     candidates: list[GlossaryCandidateSummary]
+
+
+class GlossaryProviderCandidateSummary(BaseModel):
+    raw_term: str
+    term: str
+    translation: str
+    term_type: str
+    confidence: float
+    aliases: list[str]
+    alias_count: int
+    chapter_refs: list[str]
+    action: CandidateImportAction
+    rationale: str | None = None
+    notes: str | None = None
+
+
+class GlossaryProviderSuggestionResponse(BaseModel):
+    novel_id: int
+    mode: CandidateImportMode
+    provider_mode: str
+    provider_label: str
+    candidates_found: int
+    candidates_created: int
+    candidates_merged: int
+    candidates_skipped: int
+    conflicts: list[str]
+    warnings: list[str]
+    provider_warnings: list[str]
+    candidates: list[GlossaryProviderCandidateSummary]
+
+
+class _TranslationProviderGlossarySuggestionAdapter:
+    def __init__(self, provider: TranslationProvider, *, provider_model: str | None = None) -> None:
+        self.provider = provider
+        self.provider_model = provider_model
+        self.provider_label = provider.key
+
+    async def suggest_glossary_candidates(self, prompt: str) -> str:
+        try:
+            result = await self.provider.translate(
+                prompt,
+                model=self.provider_model,
+                max_tokens=4096,
+                expect_json=True,
+            )
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderError(
+                ProviderErrorCode.UNKNOWN,
+                provider_key=self.provider.key,
+                provider_model=self.provider_model,
+                message="Provider suggestion request failed",
+            ) from exc
+        text = result.get("text") if isinstance(result, Mapping) else None
+        if not isinstance(text, str) or not text.strip():
+            raise ProviderError(
+                ProviderErrorCode.EMPTY_OUTPUT,
+                provider_key=self.provider.key,
+                provider_model=self.provider_model,
+                message="Provider returned empty output",
+            )
+        return text
 
 
 def _body_fields(body: BaseModel) -> dict[str, Any]:
@@ -527,6 +606,101 @@ def _candidate_import_response(
     )
 
 
+def _provider_suggestion_action(mode: CandidateImportMode, action: str | None) -> CandidateImportAction:
+    if mode == "preview":
+        return "preview"
+    if action in {"created", "merged", "skipped", "conflict"}:
+        return cast(CandidateImportAction, action)
+    return "skipped"
+
+
+def _provider_suggestion_note(action: CandidateImportAction, skipped_reason: str | None) -> str | None:
+    if skipped_reason == "blocked_alias_conflict":
+        return "Candidate matches a rejected or banned alias for this novel."
+    if skipped_reason == "approved_entry_exists":
+        return "An approved glossary entry already exists for this term."
+    if action == "created":
+        return "Created as a Reviewing candidate from provider-assisted saved chapter suggestions."
+    if action == "merged":
+        return "Merged into an existing non-approved glossary candidate."
+    return None
+
+
+def _provider_suggestion_response(
+    novel_id: int,
+    mode: CandidateImportMode,
+    result: ProviderGlossarySuggestionResult,
+    *,
+    provider_label: str,
+) -> GlossaryProviderSuggestionResponse:
+    candidates: list[GlossaryProviderCandidateSummary] = []
+    for candidate in result.candidates:
+        action = _provider_suggestion_action(mode, candidate.action)
+        aliases = [alias.alias_text for alias in candidate.aliases[:5]]
+        candidates.append(
+            GlossaryProviderCandidateSummary(
+                raw_term=candidate.raw_term,
+                term=candidate.raw_term,
+                translation=candidate.suggested_translation,
+                term_type=candidate.term_type,
+                confidence=candidate.confidence,
+                aliases=aliases,
+                alias_count=len(candidate.aliases),
+                chapter_refs=candidate.chapter_refs,
+                action=action,
+                rationale=candidate.rationale,
+                notes=_provider_suggestion_note(action, candidate.skipped_reason),
+            )
+        )
+    return GlossaryProviderSuggestionResponse(
+        novel_id=novel_id,
+        mode=mode,
+        provider_mode="configured_translation_provider",
+        provider_label=provider_label,
+        candidates_found=result.candidates_found,
+        candidates_created=result.candidates_created,
+        candidates_merged=result.candidates_merged,
+        candidates_skipped=result.candidates_skipped,
+        conflicts=result.conflicts,
+        warnings=result.warnings,
+        provider_warnings=result.provider_warnings,
+        candidates=candidates,
+    )
+
+
+def _provider_error_status(exc: ProviderError) -> int:
+    if exc.provider_error_code == ProviderErrorCode.CONTEXT_TOO_LARGE:
+        return 400
+    if exc.provider_error_code == ProviderErrorCode.RATE_LIMITED:
+        return 429
+    if exc.provider_error_code == ProviderErrorCode.TIMEOUT:
+        return 504
+    if exc.provider_error_code in {
+        ProviderErrorCode.QUOTA_EXHAUSTED,
+        ProviderErrorCode.MODEL_UNAVAILABLE,
+        ProviderErrorCode.MODEL_DEPRECATED,
+    }:
+        return 503
+    return 502
+
+
+def _safe_provider_error_detail(exc: ProviderError) -> str:
+    messages = {
+        ProviderErrorCode.RATE_LIMITED: "Provider rate limit reached.",
+        ProviderErrorCode.QUOTA_EXHAUSTED: "Provider quota exhausted.",
+        ProviderErrorCode.MODEL_UNAVAILABLE: "Provider model unavailable.",
+        ProviderErrorCode.MODEL_DEPRECATED: "Provider model deprecated.",
+        ProviderErrorCode.CONTEXT_TOO_LARGE: "Provider context window exceeded.",
+        ProviderErrorCode.SAFETY_BLOCKED: "Provider safety filter blocked the response.",
+        ProviderErrorCode.TIMEOUT: "Provider request timed out.",
+        ProviderErrorCode.EMPTY_OUTPUT: "Provider returned empty output.",
+        ProviderErrorCode.PARTIAL_OUTPUT: "Provider returned partial output.",
+        ProviderErrorCode.INVALID_JSON: "Provider returned invalid JSON.",
+        ProviderErrorCode.UNKNOWN: "Provider suggestion request failed.",
+    }
+    return messages.get(exc.provider_error_code, "Provider suggestion request failed.")
+
+
 @router.get("/novels/{novel_id}/glossary", response_model=list[GlossaryEntryResponse])
 async def list_glossary_entries(
     novel_id: str,
@@ -621,6 +795,64 @@ async def apply_glossary_candidate_import(
         max_candidates=body.max_candidates,
     )
     return _candidate_import_response(novel.id, "apply", result)
+
+
+@router.post(
+    "/novels/{novel_id}/glossary/candidates/provider/preview",
+    response_model=GlossaryProviderSuggestionResponse,
+)
+async def preview_glossary_provider_suggestions(
+    novel_id: str,
+    body: GlossaryProviderSuggestionRequest,
+    session: Session = Depends(get_db_session),
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> GlossaryProviderSuggestionResponse:
+    novel = _require_novel(session, novel_id)
+    try:
+        provider = get_provider(body.provider)
+        adapter = _TranslationProviderGlossarySuggestionAdapter(provider, provider_model=body.provider_model)
+        result = await GlossaryProviderSuggestionService(session, storage, adapter).suggest_from_saved_chapters_async(
+            novel.id,
+            dry_run=True,
+            max_candidates=body.max_candidates,
+            max_chapters=body.max_chapters,
+            max_prompt_chars=body.max_chars,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=503, detail="Provider is not configured.") from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=_provider_error_status(exc), detail=_safe_provider_error_detail(exc)) from exc
+    return _provider_suggestion_response(novel.id, "preview", result, provider_label=adapter.provider_label)
+
+
+@router.post(
+    "/novels/{novel_id}/glossary/candidates/provider/apply",
+    response_model=GlossaryProviderSuggestionResponse,
+)
+async def apply_glossary_provider_suggestions(
+    novel_id: str,
+    body: GlossaryProviderSuggestionRequest,
+    session: Session = Depends(get_db_session),
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> GlossaryProviderSuggestionResponse:
+    novel = _require_novel(session, novel_id)
+    try:
+        provider = get_provider(body.provider)
+        adapter = _TranslationProviderGlossarySuggestionAdapter(provider, provider_model=body.provider_model)
+        result = await GlossaryProviderSuggestionService(session, storage, adapter).suggest_from_saved_chapters_async(
+            novel.id,
+            dry_run=False,
+            max_candidates=body.max_candidates,
+            max_chapters=body.max_chapters,
+            max_prompt_chars=body.max_chars,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=503, detail="Provider is not configured.") from exc
+    except ProviderError as exc:
+        raise HTTPException(status_code=_provider_error_status(exc), detail=_safe_provider_error_detail(exc)) from exc
+    return _provider_suggestion_response(novel.id, "apply", result, provider_label=adapter.provider_label)
 
 
 @router.get("/novels/{novel_id}/glossary/entries/{entry_id}", response_model=GlossaryEntryResponse)

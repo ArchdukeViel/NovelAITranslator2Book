@@ -9,7 +9,9 @@ routes, or run automatically.
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
+from inspect import isawaitable
 from typing import Any, Protocol
 
 from sqlalchemy import select
@@ -31,7 +33,7 @@ from novelai.services.glossary_repository import GlossaryRepository
 class GlossarySuggestionProvider(Protocol):
     """Injected provider/client contract for provider-assisted suggestions."""
 
-    def suggest_glossary_candidates(self, prompt: str) -> str: ...
+    def suggest_glossary_candidates(self, prompt: str) -> str | Awaitable[str]: ...
 
 
 @dataclass(frozen=True)
@@ -159,6 +161,13 @@ class GlossaryProviderSuggestionService:
             max_chapter_chars=max_chapter_chars,
             warnings=warnings,
         )
+        if not chapters:
+            return ProviderGlossarySuggestionResult(
+                dry_run=dry_run,
+                candidates=[],
+                candidates_found=0,
+                warnings=warnings,
+            )
         prompt = self._build_prompt(
             novel_id,
             storage_key,
@@ -168,6 +177,70 @@ class GlossaryProviderSuggestionService:
             warnings=warnings,
         )
         response_text = self.provider.suggest_glossary_candidates(prompt)
+        candidates = self._parse_provider_response(
+            response_text,
+            chapters,
+            max_candidates=max_candidates,
+            warnings=warnings,
+            provider_warnings=provider_warnings,
+        )
+        result = ProviderGlossarySuggestionResult(
+            dry_run=dry_run,
+            candidates=candidates,
+            candidates_found=len(candidates),
+            warnings=warnings,
+            provider_warnings=provider_warnings,
+        )
+        if dry_run:
+            return result
+        self._apply_candidates(novel_id, result, chapters)
+        return result
+
+    async def suggest_from_saved_chapters_async(
+        self,
+        novel_id: int,
+        *,
+        storage_novel_id: str | None = None,
+        dry_run: bool = True,
+        max_candidates: int = 50,
+        max_chapters: int = 3,
+        max_prompt_chars: int = 8000,
+        max_chapter_chars: int = 1200,
+    ) -> ProviderGlossarySuggestionResult:
+        """Async variant for API routes using async translation providers."""
+
+        max_candidates = _bounded_int(max_candidates, minimum=1, maximum=100)
+        max_chapters = _bounded_int(max_chapters, minimum=1, maximum=20)
+        max_prompt_chars = _bounded_int(max_prompt_chars, minimum=1000, maximum=50000)
+        max_chapter_chars = _bounded_int(max_chapter_chars, minimum=200, maximum=10000)
+
+        storage_key = storage_novel_id or self._storage_key_for_novel(novel_id)
+        warnings: list[str] = []
+        provider_warnings: list[str] = []
+        chapters = self._load_chapter_contexts(
+            novel_id,
+            storage_key,
+            max_chapters=max_chapters,
+            max_chapter_chars=max_chapter_chars,
+            warnings=warnings,
+        )
+        if not chapters:
+            return ProviderGlossarySuggestionResult(
+                dry_run=dry_run,
+                candidates=[],
+                candidates_found=0,
+                warnings=warnings,
+            )
+        prompt = self._build_prompt(
+            novel_id,
+            storage_key,
+            chapters,
+            max_candidates=max_candidates,
+            max_prompt_chars=max_prompt_chars,
+            warnings=warnings,
+        )
+        maybe_response = self.provider.suggest_glossary_candidates(prompt)
+        response_text = await maybe_response if isawaitable(maybe_response) else maybe_response
         candidates = self._parse_provider_response(
             response_text,
             chapters,

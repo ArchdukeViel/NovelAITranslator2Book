@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from typing import Any
 
@@ -13,6 +14,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
 
+import novelai.api.routers.admin_glossary as admin_glossary
+
 # Import all DB models so Base.metadata.create_all sees FK targets.
 import novelai.db.models.chapter
 import novelai.db.models.genre
@@ -23,11 +26,18 @@ from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.admin_glossary import router as admin_glossary_router
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.dependencies import get_db_session, get_storage
+from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.db.base import Base
 from novelai.db.models.chapter import Chapter
-from novelai.db.models.glossary import NovelGlossaryAlias, NovelGlossaryDecisionEvent, NovelGlossaryEntry
+from novelai.db.models.glossary import (
+    NovelGlossaryAlias,
+    NovelGlossaryDecisionEvent,
+    NovelGlossaryEntry,
+    NovelGlossarySourceProvenance,
+)
 from novelai.db.models.novel import Novel
 from novelai.db.models.users import User
+from novelai.services.glossary_repository import GlossaryRepository
 
 
 @pytest.fixture()
@@ -139,6 +149,28 @@ class FakeChapterStorage:
         return deepcopy(item) if item is not None else None
 
 
+class FakeGlossaryProvider:
+    key = "fake-provider"
+
+    def __init__(self, payload: dict[str, Any] | str | BaseException) -> None:
+        self.payload = payload
+        self.prompts: list[str] = []
+
+    async def translate(
+        self,
+        prompt: str,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        self.prompts.append(prompt)
+        if isinstance(self.payload, BaseException):
+            raise self.payload
+        if isinstance(self.payload, str):
+            return {"text": self.payload, "provider": self.key, "model": model or "fake-model"}
+        return {"text": json.dumps(self.payload), "provider": self.key, "model": model or "fake-model"}
+
+
 def _seed_novel(db_session, slug: str = "glossary-api") -> Novel:
     novel = Novel(slug=slug, title=f"Novel {slug}", language="ja", status="ongoing")
     db_session.add(novel)
@@ -160,6 +192,28 @@ def _seed_candidate_chapter_text(chapter_storage: FakeChapterStorage, novel: Nov
         "1",
         "Pocott Village welcomed travelers. Pocott Village remained peaceful.",
     )
+
+
+def _provider_payload(*, confidence: float = 0.86) -> dict[str, Any]:
+    return {
+        "candidates": [
+            {
+                "raw_term": "ポコット村",
+                "suggested_translation": "Pocott Village",
+                "term_type": "place",
+                "confidence": confidence,
+                "aliases": [{"alias_text": "Pokot Village", "alias_type": "observed"}],
+                "evidence": [{"source_chapter_id": "1", "context_ref": "chapter:1"}],
+                "rationale": "Repeated place name with one observed spelling variant.",
+            }
+        ],
+        "warnings": [{"message": "Fixture warning."}],
+    }
+
+
+def _patch_provider(monkeypatch: pytest.MonkeyPatch, provider: FakeGlossaryProvider) -> FakeGlossaryProvider:
+    monkeypatch.setattr(admin_glossary, "get_provider", lambda _key=None: provider)
+    return provider
 
 
 def _create_entry(owner_client: TestClient, novel_id: int | str, canonical_term: str = "Pocott") -> dict:
@@ -359,6 +413,242 @@ def test_candidate_import_request_validation_errors(owner_client, db_session) ->
 
     assert resp.status_code == 422
     assert "max_candidates" in str(resp.json()["detail"])
+
+
+def test_owner_can_preview_provider_suggestions_without_writing(
+    owner_client,
+    db_session,
+    chapter_storage,
+    monkeypatch,
+) -> None:
+    novel = _seed_novel(db_session, "provider-preview")
+    _seed_chapter(db_session, novel, 1)
+    _seed_candidate_chapter_text(chapter_storage, novel)
+    provider = _patch_provider(monkeypatch, FakeGlossaryProvider(_provider_payload()))
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel.slug}/glossary/candidates/provider/preview",
+        json={"max_candidates": 1, "max_chapters": 1, "max_chars": 2000, "provider": "fake-provider"},
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["novel_id"] == novel.id
+    assert payload["mode"] == "preview"
+    assert payload["provider_label"] == "fake-provider"
+    assert payload["candidates_found"] == 1
+    assert payload["candidates_created"] == 0
+    assert payload["provider_warnings"] == ["Fixture warning"]
+    assert payload["candidates"][0]["raw_term"] == "ポコット村"
+    assert payload["candidates"][0]["translation"] == "Pocott Village"
+    assert payload["candidates"][0]["action"] == "preview"
+    assert payload["candidates"][0]["aliases"] == ["Pokot Village"]
+    assert payload["candidates"][0]["chapter_refs"] == ["1"]
+    assert "Return strict JSON" not in str(payload)
+    assert "welcomed travelers" not in str(payload)
+    assert "secret" not in str(payload).casefold()
+    assert len(provider.prompts) == 1
+    assert db_session.query(NovelGlossaryEntry).filter_by(novel_id=novel.id).count() == 0
+    assert db_session.query(NovelGlossarySourceProvenance).filter_by(novel_id=novel.id).count() == 0
+
+
+def test_owner_can_apply_provider_suggestions_as_reviewing_entries(
+    owner_client,
+    db_session,
+    chapter_storage,
+    monkeypatch,
+) -> None:
+    novel = _seed_novel(db_session, "provider-apply")
+    _seed_chapter(db_session, novel, 1)
+    _seed_candidate_chapter_text(chapter_storage, novel)
+    _patch_provider(monkeypatch, FakeGlossaryProvider(_provider_payload()))
+    before_translated = deepcopy(chapter_storage.translated)
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel.id}/glossary/candidates/provider/apply",
+        json={"max_candidates": 1},
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["mode"] == "apply"
+    assert payload["candidates_created"] == 1
+    assert payload["candidates_merged"] == 0
+    assert payload["candidates_skipped"] == 0
+    assert payload["candidates"][0]["action"] == "created"
+    assert payload["candidates"][0]["notes"] == (
+        "Created as a Reviewing candidate from provider-assisted saved chapter suggestions."
+    )
+
+    entry = db_session.query(NovelGlossaryEntry).filter_by(novel_id=novel.id, canonical_term="ポコット村").one()
+    assert entry.status == "candidate"
+    assert entry.approved_translation == "Pocott Village"
+    assert entry.enforcement_level == "none"
+    assert entry.owner_locked is False
+    assert db_session.query(NovelGlossarySourceProvenance).filter_by(glossary_entry_id=entry.id).count() == 1
+    assert chapter_storage.translated == before_translated
+
+
+def test_provider_suggestion_apply_never_overwrites_approved_entries(
+    owner_client,
+    db_session,
+    chapter_storage,
+    monkeypatch,
+) -> None:
+    novel = _seed_novel(db_session, "provider-approved")
+    _seed_candidate_chapter_text(chapter_storage, novel)
+    approved = GlossaryRepository(db_session).create_glossary_entry(
+        novel_id=novel.id,
+        canonical_term="ポコット村",
+        term_type="place",
+        approved_translation="Owner Pocott",
+        status="approved",
+        owner_locked=True,
+        admin_notes="Owner note.",
+    )
+    _patch_provider(monkeypatch, FakeGlossaryProvider(_provider_payload(confidence=1.0)))
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel.id}/glossary/candidates/provider/apply",
+        json={"max_candidates": 1},
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["candidates_skipped"] == 1
+    assert payload["candidates"][0]["action"] == "skipped"
+    db_session.refresh(approved)
+    assert approved.status == "approved"
+    assert approved.approved_translation == "Owner Pocott"
+    assert approved.owner_locked is True
+    assert approved.admin_notes == "Owner note."
+    assert db_session.query(NovelGlossaryEntry).filter_by(novel_id=novel.id, canonical_term="ポコット村").count() == 1
+
+
+def test_provider_invalid_json_returns_safe_warning_and_writes_nothing(
+    owner_client,
+    db_session,
+    chapter_storage,
+    monkeypatch,
+) -> None:
+    novel = _seed_novel(db_session, "provider-invalid-json")
+    _seed_candidate_chapter_text(chapter_storage, novel)
+    _patch_provider(monkeypatch, FakeGlossaryProvider("not-json"))
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel.id}/glossary/candidates/provider/apply",
+        json={"max_candidates": 1},
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["candidates_found"] == 0
+    assert any("invalid JSON" in warning for warning in payload["warnings"])
+    assert "not-json" not in str(payload)
+    assert db_session.query(NovelGlossaryEntry).filter_by(novel_id=novel.id).count() == 0
+    assert db_session.query(NovelGlossarySourceProvenance).filter_by(novel_id=novel.id).count() == 0
+
+
+def test_provider_suggestion_slug_route_resolves_platform_novel_id(
+    owner_client,
+    db_session,
+    chapter_storage,
+    monkeypatch,
+) -> None:
+    novel = _seed_novel(db_session, "provider-slug")
+    _seed_chapter(db_session, novel, 1)
+    _seed_candidate_chapter_text(chapter_storage, novel)
+    _patch_provider(monkeypatch, FakeGlossaryProvider(_provider_payload()))
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel.slug}/glossary/candidates/provider/apply",
+        json={"max_candidates": 1},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["novel_id"] == novel.id
+    assert db_session.query(NovelGlossaryEntry).filter_by(novel_id=novel.id, canonical_term="ポコット村").count() == 1
+
+
+def test_provider_suggestion_routes_reject_guest_user_and_missing_csrf(
+    client,
+    app,
+    db_session,
+    monkeypatch,
+) -> None:
+    novel = _seed_novel(db_session, "provider-auth")
+    provider = _patch_provider(monkeypatch, FakeGlossaryProvider(_provider_payload()))
+
+    guest_resp = client.post(
+        f"/api/admin/novels/{novel.id}/glossary/candidates/provider/preview",
+        json={"max_candidates": 1},
+    )
+    assert guest_resp.status_code == 401
+
+    user = User(email="provider-user@example.com", role="user")
+    db_session.add(user)
+    db_session.flush()
+    set_user(app, user_id=user.id, role="user")
+    user_resp = client.post(
+        f"/api/admin/novels/{novel.id}/glossary/candidates/provider/apply",
+        json={"max_candidates": 1},
+    )
+    assert user_resp.status_code == 403
+
+    owner = User(email="provider-owner-no-csrf@example.com", role="owner")
+    db_session.add(owner)
+    db_session.flush()
+    set_user(app, user_id=owner.id, role="owner")
+    owner_no_csrf = TestClient(app, raise_server_exceptions=True)
+    csrf_resp = owner_no_csrf.post(
+        f"/api/admin/novels/{novel.id}/glossary/candidates/provider/preview",
+        json={"max_candidates": 1},
+    )
+    assert csrf_resp.status_code == 403
+    assert provider.prompts == []
+
+
+def test_provider_suggestion_route_handles_missing_provider_config(owner_client, db_session, monkeypatch) -> None:
+    novel = _seed_novel(db_session, "provider-missing")
+    monkeypatch.setattr(admin_glossary, "get_provider", lambda _key=None: (_ for _ in ()).throw(KeyError("missing")))
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel.id}/glossary/candidates/provider/preview",
+        json={"provider": "missing"},
+    )
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == "Provider is not configured."
+
+
+def test_provider_suggestion_route_handles_provider_timeout_safely(
+    owner_client,
+    db_session,
+    chapter_storage,
+    monkeypatch,
+) -> None:
+    novel = _seed_novel(db_session, "provider-timeout")
+    _seed_candidate_chapter_text(chapter_storage, novel)
+    _patch_provider(
+        monkeypatch,
+        FakeGlossaryProvider(
+            ProviderError(
+                ProviderErrorCode.TIMEOUT,
+                provider_key="fake-provider",
+                provider_model="fake-model",
+                message="timeout with internal detail",
+            )
+        ),
+    )
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel.id}/glossary/candidates/provider/preview",
+        json={"max_candidates": 1},
+    )
+
+    assert resp.status_code == 504
+    assert resp.json()["detail"] == "Provider request timed out."
+    assert "internal detail" not in str(resp.json())
 
 
 def test_entry_routes_reject_cross_novel_access(owner_client, db_session) -> None:
