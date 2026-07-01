@@ -30,6 +30,15 @@ from novelai.db.models.glossary import (
 from novelai.db.models.novel import Novel
 from novelai.providers.base import TranslationProvider
 from novelai.providers.registry import get_provider
+from novelai.services.glossary_apply_preview import (
+    GlossaryApplyPreviewRequest as ApplyPreviewServiceRequest,
+)
+from novelai.services.glossary_apply_preview import (
+    GlossaryApplyPreviewResult as ApplyPreviewServiceResult,
+)
+from novelai.services.glossary_apply_preview import (
+    GlossaryApplyPreviewService,
+)
 from novelai.services.glossary_candidate_import import GlossaryCandidateImporter, GlossaryCandidateImportResult
 from novelai.services.glossary_provider_suggestion import (
     GlossaryProviderSuggestionService,
@@ -319,6 +328,16 @@ class GlossaryProviderSuggestionRequest(BaseModel):
     provider_model: NonEmptyStr | None = None
 
 
+class GlossaryApplyPreviewRequest(BaseModel):
+    entry_ids: list[int] | None = None
+    include_all_approved: bool = False
+    chapter_numbers: list[int] | None = None
+    chapter_start: int | None = Field(default=None, ge=1)
+    chapter_end: int | None = Field(default=None, ge=1)
+    max_chapters: int = Field(default=20, ge=1, le=200)
+    max_matches: int = Field(default=100, ge=1, le=1000)
+
+
 class GlossaryCandidateSummary(BaseModel):
     term: str
     translation: str
@@ -373,6 +392,45 @@ class GlossaryProviderSuggestionResponse(BaseModel):
     scanned_chapter_count: int
     highest_scanned_chapter_number: int | None
     candidates: list[GlossaryProviderCandidateSummary]
+
+
+class GlossaryReplacementPreviewResponse(BaseModel):
+    glossary_entry_id: int
+    canonical_term: str
+    old_text: str
+    new_text: str
+    risk_status: Literal["safe", "needs_review", "blocked"]
+    reason_codes: list[str]
+    note: str
+    start_offset: int
+    end_offset: int
+    before_snippet: str
+    after_snippet: str
+
+
+class GlossaryChapterApplyPreviewResponse(BaseModel):
+    chapter_storage_id: str
+    chapter_id: int | None
+    chapter_number: int | None
+    replacement_count: int
+    safe_count: int
+    needs_review_count: int
+    blocked_count: int
+    replacements: list[GlossaryReplacementPreviewResponse]
+
+
+class GlossaryApplyPreviewResponse(BaseModel):
+    novel_id: int
+    scanned_chapter_count: int
+    matched_chapter_count: int
+    skipped_chapter_count: int
+    total_match_count: int
+    safe_match_count: int
+    needs_review_match_count: int
+    blocked_match_count: int
+    entry_count: int
+    warnings: list[str]
+    chapters: list[GlossaryChapterApplyPreviewResponse]
 
 
 class _TranslationProviderGlossarySuggestionAdapter:
@@ -675,6 +733,49 @@ def _provider_suggestion_response(
     )
 
 
+def _apply_preview_response(result: ApplyPreviewServiceResult) -> GlossaryApplyPreviewResponse:
+    return GlossaryApplyPreviewResponse(
+        novel_id=result.novel_id,
+        scanned_chapter_count=result.scanned_chapter_count,
+        matched_chapter_count=result.matched_chapter_count,
+        skipped_chapter_count=result.skipped_chapter_count,
+        total_match_count=result.total_match_count,
+        safe_match_count=result.safe_match_count,
+        needs_review_match_count=result.needs_review_match_count,
+        blocked_match_count=result.blocked_match_count,
+        entry_count=result.entry_count,
+        warnings=result.warnings,
+        chapters=[
+            GlossaryChapterApplyPreviewResponse(
+                chapter_storage_id=chapter.chapter_storage_id,
+                chapter_id=chapter.chapter_id,
+                chapter_number=chapter.chapter_number,
+                replacement_count=chapter.replacement_count,
+                safe_count=chapter.safe_count,
+                needs_review_count=chapter.needs_review_count,
+                blocked_count=chapter.blocked_count,
+                replacements=[
+                    GlossaryReplacementPreviewResponse(
+                        glossary_entry_id=replacement.glossary_entry_id,
+                        canonical_term=replacement.canonical_term,
+                        old_text=replacement.old_text,
+                        new_text=replacement.new_text,
+                        risk_status=replacement.risk_status,
+                        reason_codes=replacement.reason_codes,
+                        note=replacement.note,
+                        start_offset=replacement.start_offset,
+                        end_offset=replacement.end_offset,
+                        before_snippet=replacement.before_snippet,
+                        after_snippet=replacement.after_snippet,
+                    )
+                    for replacement in chapter.replacements
+                ],
+            )
+            for chapter in result.chapters
+        ],
+    )
+
+
 def _provider_error_status(exc: ProviderError) -> int:
     if exc.provider_error_code == ProviderErrorCode.CONTEXT_TOO_LARGE:
         return 400
@@ -802,6 +903,38 @@ async def apply_glossary_candidate_import(
         max_candidates=body.max_candidates,
     )
     return _candidate_import_response(novel.id, "apply", result)
+
+
+@router.post(
+    "/novels/{novel_id}/glossary/apply/preview",
+    response_model=GlossaryApplyPreviewResponse,
+)
+async def preview_glossary_apply(
+    novel_id: str,
+    body: GlossaryApplyPreviewRequest,
+    session: Session = Depends(get_db_session),
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> GlossaryApplyPreviewResponse:
+    if not body.entry_ids and not body.include_all_approved:
+        raise HTTPException(status_code=422, detail="entry_ids or include_all_approved is required.")
+    novel = _require_novel(session, novel_id)
+    try:
+        result = GlossaryApplyPreviewService(session, storage).preview(
+            novel.id,
+            ApplyPreviewServiceRequest(
+                entry_ids=body.entry_ids,
+                include_all_approved=body.include_all_approved,
+                chapter_numbers=body.chapter_numbers,
+                chapter_start=body.chapter_start,
+                chapter_end=body.chapter_end,
+                max_chapters=body.max_chapters,
+                max_matches=body.max_matches,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _apply_preview_response(result)
 
 
 @router.post(
