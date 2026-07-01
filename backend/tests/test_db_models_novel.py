@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 from hypothesis import HealthCheck, given, settings, strategies as st
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
