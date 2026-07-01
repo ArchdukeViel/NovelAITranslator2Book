@@ -5,15 +5,21 @@ from collections.abc import Mapping
 from typing import Any
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from novelai.config.settings import settings
 from novelai.core.errors import ProviderError, ProviderErrorCode
+from novelai.db.base import Base
+from novelai.db.models.novel import Novel
+from novelai.prompts.models import TranslationRequest
 from novelai.providers.base import TranslationProvider
+from novelai.services.glossary_prompt_injection import GlossaryPromptInjectionService
+from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.storage.service import StorageService
-from novelai.translation.scheduler import SchedulerPausedError
 from novelai.translation.pipeline.context import PipelineState, TranslationChunk, paragraph_source_hash
 from novelai.translation.pipeline.pipeline import TranslationPipeline
 from novelai.translation.pipeline.stages.base import PipelineStage
@@ -21,6 +27,7 @@ from novelai.translation.pipeline.stages.fetch import FetchStage
 from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.segment import SegmentStage, SmartSegmentStage
 from novelai.translation.pipeline.stages.translate import TranslateStage
+from novelai.translation.scheduler import SchedulerPausedError
 from tests.conftest import MockSourceAdapter
 
 
@@ -54,6 +61,31 @@ class _FallbackContractProvider(TranslationProvider):
                 provider_model=model or "unknown",
                 message=self.error_code.value,
             )
+        return {"text": "Translated paragraph.", "metadata": {"usage": {"total_tokens": 3}}}
+
+
+class _PromptCaptureProvider(TranslationProvider):
+    def __init__(self) -> None:
+        self.requests: list[TranslationRequest | None] = []
+        self.prompts: list[str] = []
+
+    @property
+    def key(self) -> str:
+        return "dummy"
+
+    def available_models(self) -> list[str]:
+        return ["dummy"]
+
+    async def translate(
+        self,
+        prompt: str,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> Mapping[str, Any]:
+        self.prompts.append(prompt)
+        request = kwargs.get("request")
+        self.requests.append(request if isinstance(request, TranslationRequest) else None)
         return {"text": "Translated paragraph.", "metadata": {"usage": {"total_tokens": 3}}}
 
 
@@ -92,6 +124,237 @@ def _fallback_context() -> PipelineState:
     )
 
 
+def _glossary_test_service():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    novel = Novel(slug="glossary-pipeline", title="Glossary Pipeline", language="ja", status="ongoing")
+    session.add(novel)
+    session.flush()
+    repo = GlossaryRepository(session)
+    service = GlossaryPromptInjectionService(repo)
+    return engine, session, novel, repo, service
+
+
+def _create_pipeline_glossary_entry(
+    repo: GlossaryRepository,
+    novel_id: int,
+    term: str,
+    translation: str | None,
+    *,
+    status: str = "approved",
+):
+    return repo.create_glossary_entry(
+        novel_id=novel_id,
+        canonical_term=term,
+        term_type="other",
+        approved_translation=translation,
+        status=status,
+    )
+
+
+def _glossary_pipeline_context(platform_novel_id: int, source_text: str = "seireikai and maso") -> PipelineState:
+    return PipelineState(
+        chapter_url="test",
+        novel_id="storage-novel-id",
+        chapter_id="chapter_001",
+        provider_key="dummy",
+        provider_model="dummy",
+        translation_chunks=[
+            TranslationChunk(
+                chunk_id="c0001",
+                novel_id="storage-novel-id",
+                chapter_ids=["chapter_001"],
+                paragraph_ids=["p0001"],
+                source_text=source_text,
+                char_count=len(source_text),
+            )
+        ],
+        metadata={
+            "source_language": "Japanese",
+            "target_language": "English",
+            "platform_novel_id": platform_novel_id,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_injects_approved_db_glossary_block_once(tmp_path):
+    engine, session, novel, repo, service = _glossary_test_service()
+    try:
+        approved = _create_pipeline_glossary_entry(repo, novel.id, "seireikai", "Spirit Realm")
+        _create_pipeline_glossary_entry(repo, novel.id, "candidate-term", "Candidate Translation", status="candidate")
+        _create_pipeline_glossary_entry(repo, novel.id, "recommended-term", "Recommended Translation", status="recommended")
+        _create_pipeline_glossary_entry(repo, novel.id, "rejected-term", "Rejected Translation", status="rejected")
+        _create_pipeline_glossary_entry(repo, novel.id, "deprecated-term", "Deprecated Translation", status="deprecated")
+        _create_pipeline_glossary_entry(repo, novel.id, "blank-translation", None)
+        repo.add_glossary_alias(
+            entry_id=approved.id,
+            novel_id=novel.id,
+            alias_text="Spirit World",
+            alias_type="banned",
+        )
+        repo.add_glossary_alias(
+            entry_id=approved.id,
+            novel_id=novel.id,
+            alias_text="spirit-world-source",
+            alias_type="source_variant",
+        )
+        session.commit()
+        env = _fallback_stage_env(tmp_path)
+        provider = _PromptCaptureProvider()
+        stage = TranslateStage(
+            provider_factory=lambda _key: provider,
+            cache=env["cache"],
+            settings_service=env["prefs"],
+            usage_service=env["usage"],
+            storage=env["storage"],
+            glossary_prompt_service=service,
+        )
+
+        result = await stage.run(_glossary_pipeline_context(novel.id, "spirit-world-source appears."))
+
+        assert result.translations == ["Translated paragraph."]
+        assert len(provider.requests) == 1
+        request = provider.requests[0]
+        assert request is not None
+        assert request.user_prompt.count("GLOSSARY FOR THIS NOVEL") == 1
+        assert "- seireikai => Spirit Realm" in request.user_prompt
+        assert 'seireikai: avoid "Spirit World"' in request.user_prompt
+        assert "candidate-term" not in request.user_prompt
+        assert "recommended-term" not in request.user_prompt
+        assert "rejected-term" not in request.user_prompt
+        assert "deprecated-term" not in request.user_prompt
+        assert "blank-translation" not in request.user_prompt
+        assert "spirit-world-source =>" not in request.user_prompt
+        records = result.metadata["glossary_prompt_blocks"]
+        assert records == [
+            {
+                "chunk_id": "c0001",
+                "terms_injected": 1,
+                "skipped_count": 1,
+                "truncated": False,
+                "conflict_warning_count": 0,
+                "empty": False,
+                "glossary_hash": records[0]["glossary_hash"],
+            }
+        ]
+        output = env["storage"].read_translation_output(
+            "storage-novel-id",
+            chunk_id="c0001",
+            translation_run_id="run_manual",
+            chapter_ids=["chapter_001"],
+        )[-1]
+        assert output["translated_text"] == "Translated paragraph."
+        assert output["glossary_hash"] == records[0]["glossary_hash"]
+    finally:
+        session.close()
+        Base.metadata.drop_all(engine)
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_uses_safe_empty_behavior_without_approved_glossary(tmp_path):
+    engine, session, novel, repo, service = _glossary_test_service()
+    try:
+        _create_pipeline_glossary_entry(repo, novel.id, "candidate-term", "Candidate Translation", status="candidate")
+        session.commit()
+        env = _fallback_stage_env(tmp_path)
+        provider = _PromptCaptureProvider()
+        stage = TranslateStage(
+            provider_factory=lambda _key: provider,
+            cache=env["cache"],
+            settings_service=env["prefs"],
+            usage_service=env["usage"],
+            storage=env["storage"],
+            glossary_prompt_service=service,
+        )
+
+        result = await stage.run(_glossary_pipeline_context(novel.id))
+
+        request = provider.requests[0]
+        assert request is not None
+        assert "GLOSSARY FOR THIS NOVEL" not in request.user_prompt
+        assert result.metadata["glossary_prompt_blocks"][0]["empty"] is True
+        assert result.translations == ["Translated paragraph."]
+    finally:
+        session.close()
+        Base.metadata.drop_all(engine)
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_preserves_budget_warnings_without_breaking_call(tmp_path):
+    engine, session, novel, repo, service = _glossary_test_service()
+    try:
+        _create_pipeline_glossary_entry(repo, novel.id, "Alpha", "A")
+        _create_pipeline_glossary_entry(repo, novel.id, "Beta", "B")
+        session.commit()
+        env = _fallback_stage_env(tmp_path)
+        provider = _PromptCaptureProvider()
+        stage = TranslateStage(
+            provider_factory=lambda _key: provider,
+            cache=env["cache"],
+            settings_service=env["prefs"],
+            usage_service=env["usage"],
+            storage=env["storage"],
+            glossary_prompt_service=service,
+        )
+        context = _glossary_pipeline_context(novel.id, "Alpha Beta")
+        context.metadata["glossary_prompt_max_terms"] = 1
+
+        result = await stage.run(context)
+
+        assert result.translations == ["Translated paragraph."]
+        assert result.metadata["glossary_prompt_blocks"][0]["terms_injected"] == 1
+        assert result.metadata["glossary_prompt_blocks"][0]["skipped_count"] == 1
+        assert result.metadata["glossary_prompt_blocks"][0]["truncated"] is True
+        assert "glossary_prompt_truncated" in result.metadata["glossary_prompt_warnings"]
+    finally:
+        session.close()
+        Base.metadata.drop_all(engine)
+
+
+def test_translate_stage_glossary_hash_changes_only_for_approved_prompt_rules():
+    engine, session, novel, repo, service = _glossary_test_service()
+    try:
+        _create_pipeline_glossary_entry(repo, novel.id, "seireikai", "Spirit Realm")
+        session.commit()
+        stage = TranslateStage(provider_factory=lambda _key: _PromptCaptureProvider(), glossary_prompt_service=service)
+        context = _glossary_pipeline_context(novel.id, "seireikai candidate-term")
+
+        first = stage._build_prompt_glossary_block(context, "seireikai candidate-term")
+        first_hash = stage._glossary_hash(context, first.rendered_text if first is not None else "")
+        second = stage._build_prompt_glossary_block(context, "seireikai candidate-term")
+        second_hash = stage._glossary_hash(context, second.rendered_text if second is not None else "")
+        candidate = _create_pipeline_glossary_entry(
+            repo,
+            novel.id,
+            "candidate-term",
+            "Candidate Translation",
+            status="candidate",
+        )
+        session.commit()
+        candidate_only = stage._build_prompt_glossary_block(context, "seireikai candidate-term")
+        candidate_only_hash = stage._glossary_hash(
+            context,
+            candidate_only.rendered_text if candidate_only is not None else "",
+        )
+        repo.change_glossary_entry_status(candidate.id, novel_id=novel.id, status="approved")
+        session.commit()
+        approved_changed = stage._build_prompt_glossary_block(context, "seireikai candidate-term")
+        approved_changed_hash = stage._glossary_hash(
+            context,
+            approved_changed.rendered_text if approved_changed is not None else "",
+        )
+
+        assert first_hash == second_hash
+        assert candidate_only_hash == first_hash
+        assert approved_changed_hash != first_hash
+    finally:
+        session.close()
+        Base.metadata.drop_all(engine)
+
+
 def test_translate_stage_scopes_existing_output_by_run_and_chapter(tmp_path):
     env = _fallback_stage_env(tmp_path)
     storage = env["storage"]
@@ -104,7 +367,7 @@ def test_translate_stage_scopes_existing_output_by_run_and_chapter(tmp_path):
     )
     source_text = "[P p0001]\nこんにちは。"
     source_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
-    empty_glossary_hash = hashlib.sha256("".encode("utf-8")).hexdigest()
+    empty_glossary_hash = hashlib.sha256(b"").hexdigest()
     storage.save_translation_output(
         {
             "output_id": "c0001:attempt_0001",

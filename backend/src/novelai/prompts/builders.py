@@ -66,12 +66,16 @@ def _format_style_block(style_preset: str | None, target_language: str) -> str:
 def _format_additional_instructions(
     *,
     glossary_entries: Iterable[GlossaryEntryLike] | Glossary | None = None,
+    prompt_glossary_block: str | None = None,
     style_preset: str | None = None,
     target_language: str,
     json_output: bool = False,
     consistency_mode: bool = False,
 ) -> str:
     blocks: list[str] = []
+
+    if isinstance(prompt_glossary_block, str) and prompt_glossary_block.strip():
+        blocks.append(prompt_glossary_block.strip())
 
     glossary_block = format_glossary_block(glossary_entries)
     if glossary_block:
@@ -101,6 +105,7 @@ def build_user_prompt(
     source_language: str,
     target_language: str,
     glossary_entries: Iterable[GlossaryEntryLike] | Glossary | None = None,
+    prompt_glossary_block: str | None = None,
     style_preset: str | None = None,
     consistency_mode: bool = False,
 ) -> str:
@@ -118,6 +123,7 @@ def build_user_prompt(
         text=raw_text,
         additional_instructions=_format_additional_instructions(
             glossary_entries=glossary_entries,
+            prompt_glossary_block=prompt_glossary_block,
             style_preset=style_preset,
             target_language=normalized_target_language,
         ),
@@ -136,6 +142,7 @@ def build_json_user_prompt(
     source_language: str,
     target_language: str,
     glossary_entries: Iterable[GlossaryEntryLike] | Glossary | None = None,
+    prompt_glossary_block: str | None = None,
     style_preset: str | None = None,
     consistency_mode: bool = False,
 ) -> str:
@@ -148,6 +155,7 @@ def build_json_user_prompt(
         text=raw_text,
         additional_instructions=_format_additional_instructions(
             glossary_entries=glossary_entries,
+            prompt_glossary_block=prompt_glossary_block,
             style_preset=style_preset,
             target_language=normalized_target_language,
             json_output=True,
@@ -162,6 +170,7 @@ def build_translation_request(
     source_language: str,
     target_language: str,
     glossary_entries: Iterable[GlossaryEntryLike] | Glossary | None = None,
+    prompt_glossary_block: str | None = None,
     style_preset: str | None = None,
     consistency_mode: bool = False,
     json_output: bool = False,
@@ -176,6 +185,7 @@ def build_translation_request(
             source_language,
             target_language,
             glossary_entries=entries,
+            prompt_glossary_block=prompt_glossary_block,
             style_preset=normalized_style_preset,
             consistency_mode=consistency_mode,
         )
@@ -186,6 +196,7 @@ def build_translation_request(
             source_language,
             target_language,
             glossary_entries=entries,
+            prompt_glossary_block=prompt_glossary_block,
             style_preset=normalized_style_preset,
             consistency_mode=consistency_mode,
         )
@@ -197,6 +208,9 @@ def build_translation_request(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         glossary_entries=entries,
+        prompt_glossary_block=prompt_glossary_block.strip()
+        if isinstance(prompt_glossary_block, str) and prompt_glossary_block.strip()
+        else None,
         style_preset=normalized_style_preset,
         consistency_mode=consistency_mode,
         json_output=json_output,
@@ -209,6 +223,7 @@ def build_json_translation_request(
     source_language: str,
     target_language: str,
     glossary_entries: Iterable[GlossaryEntryLike] | Glossary | None = None,
+    prompt_glossary_block: str | None = None,
     style_preset: str | None = None,
     consistency_mode: bool = False,
 ) -> TranslationRequest:
@@ -217,6 +232,7 @@ def build_json_translation_request(
         source_language=source_language,
         target_language=target_language,
         glossary_entries=glossary_entries,
+        prompt_glossary_block=prompt_glossary_block,
         style_preset=style_preset,
         consistency_mode=consistency_mode,
         json_output=True,

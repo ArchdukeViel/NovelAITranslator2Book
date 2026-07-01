@@ -14,6 +14,7 @@ class TranslationRequest:
     system_prompt: str
     user_prompt: str
     glossary_entries: tuple[GlossaryTerm, ...] = field(default_factory=tuple)
+    prompt_glossary_block: str | None = None
     style_preset: str | None = None
     consistency_mode: bool = False
     json_output: bool = False
@@ -25,6 +26,7 @@ class TranslationRequest:
             "text": self.text,
             "system_prompt": self.system_prompt,
             "user_prompt": self.user_prompt,
+            "prompt_glossary_block": self.prompt_glossary_block,
             "glossary_entries": [
                 {
                     "source": entry.source,
