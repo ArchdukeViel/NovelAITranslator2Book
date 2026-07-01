@@ -49,6 +49,10 @@ def _translated_payload_to_version(self: Any, translated: dict[str, Any], fallba
         version["glossary_revision"] = translated["glossary_revision"]
     if isinstance(translated.get("glossary_injected_term_count"), int):
         version["glossary_injected_term_count"] = translated["glossary_injected_term_count"]
+    if isinstance(translated.get("prompt_template_version"), str) and translated["prompt_template_version"]:
+        version["prompt_template_version"] = translated["prompt_template_version"]
+    if isinstance(translated.get("glossary_hash"), str) and translated["glossary_hash"]:
+        version["glossary_hash"] = translated["glossary_hash"]
     return version
 
 
@@ -117,6 +121,8 @@ def _set_active_translation_version(self: Any, payload: dict[str, Any], version:
         "confidence_score",
         "polish_needed",
         "confidence_details",
+        "prompt_template_version",
+        "glossary_hash",
     ):
         if optional_key in version:
             payload["translated"][optional_key] = version[optional_key]
@@ -162,6 +168,8 @@ def save_translated_chapter(
     glossary_revision: int | None = None,
     glossary_injected_term_count: int | None = None,
     version_kind: ChapterVersionKind = ChapterVersionKind.MACHINE_TRANSLATION,
+    prompt_template_version: str | None = None,
+    glossary_hash: str | None = None,
 ) -> Path:
     """Save a translated chapter as structured JSON and append a version."""
     payload = self._load_chapter_bundle(novel_id, chapter_id) or {"id": chapter_id}
@@ -189,7 +197,13 @@ def save_translated_chapter(
         translated_payload["glossary_revision"] = glossary_revision
     if isinstance(glossary_injected_term_count, int) and glossary_injected_term_count >= 0:
         translated_payload["glossary_injected_term_count"] = glossary_injected_term_count
+    if isinstance(prompt_template_version, str) and prompt_template_version.strip():
+        translated_payload["prompt_template_version"] = prompt_template_version.strip()
+    if isinstance(glossary_hash, str) and glossary_hash.strip():
+        translated_payload["glossary_hash"] = glossary_hash.strip()
     versions.append(translated_payload)
+    payload["prompt_template_version"] = translated_payload.get("prompt_template_version", "")
+    payload["glossary_hash"] = translated_payload.get("glossary_hash", "")
     payload["translation_versions"] = versions
     self._set_active_translation_version(payload, translated_payload)
     return self._persist_chapter_bundle(novel_id, chapter_id, payload)
@@ -231,6 +245,8 @@ def load_translated_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[s
             if isinstance(translated.get("glossary_injected_term_count"), int)
             else 0
         ),
+        "prompt_template_version": translated.get("prompt_template_version", None),
+        "glossary_hash": translated.get("glossary_hash", None),
         "input_adapter_key": payload.get("input_adapter_key"),
         "origin_type": payload.get("origin_type"),
         "origin_uri_or_path": payload.get("origin_uri_or_path"),

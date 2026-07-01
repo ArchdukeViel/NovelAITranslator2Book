@@ -18,6 +18,9 @@ class TranslationRequest:
     style_preset: str | None = None
     consistency_mode: bool = False
     json_output: bool = False
+    honorific_policy: str | None = None
+    prompt_template_version: str = ""
+    runtime_glossary_conflict_warnings: tuple[str, ...] = ()
 
     def cache_key(self) -> str:
         payload = {
@@ -44,5 +47,8 @@ class TranslationRequest:
             "style_preset": self.style_preset,
             "consistency_mode": self.consistency_mode,
             "json_output": self.json_output,
+            "honorific_policy": self.honorific_policy,
+            "prompt_template_version": self.prompt_template_version,
+            "runtime_glossary_conflict_warnings": list(self.runtime_glossary_conflict_warnings),
         }
         return json.dumps(payload, ensure_ascii=False, sort_keys=True)

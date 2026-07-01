@@ -1936,6 +1936,14 @@ async def translate_chapters(
     effective_provider_key = provider_key or profile_provider
     effective_provider_model = provider_model or profile_model
 
+    # Read workflow defaults from metadata and apply as fallbacks.
+    workflow_defaults = meta.get("translation_defaults") if isinstance(meta, dict) else {}
+    if not isinstance(workflow_defaults, dict):
+        workflow_defaults = {}
+    effective_style_preset = style_preset if style_preset is not None else workflow_defaults.get("style_preset")
+    effective_consistency_mode = consistency_mode if consistency_mode else bool(workflow_defaults.get("consistency_mode", False))
+    effective_honorific_policy = workflow_defaults.get("honorific_policy")
+
     # Auto-load stored glossary when none was explicitly provided.
     if glossary is None:
         stored_entries = self.storage.load_glossary(novel_id)
@@ -2021,8 +2029,8 @@ async def translate_chapters(
                     source_language=effective_source_language,
                     target_language=effective_target_language,
                     glossary=glossary,
-                    style_preset=style_preset,
-                    consistency_mode=consistency_mode,
+                    style_preset=effective_style_preset,
+                    consistency_mode=effective_consistency_mode,
                     job_id=job_id,
                     activity_id=activity_id,
                     allow_cross_provider_fallback=allow_cross_provider_fallback,
@@ -2043,7 +2051,7 @@ async def translate_chapters(
                             "threshold": normalized_threshold,
                             "source_length": len((raw_text or "").strip()),
                             "translated_length": len(translated.strip()),
-                            "style_preset": style_preset,
+                            "style_preset": effective_style_preset,
                             "delta": dict(delta_result.get("provenance") or {}),
                         },
                         glossary_revision=glossary_revision,
@@ -2079,8 +2087,9 @@ async def translate_chapters(
                 source_language=effective_source_language,
                 target_language=effective_target_language,
                 glossary=glossary,
-                style_preset=style_preset,
-                consistency_mode=consistency_mode,
+                style_preset=effective_style_preset,
+                consistency_mode=effective_consistency_mode,
+                honorific_policy=effective_honorific_policy,
                 json_output=json_output,
                 allow_cross_provider_fallback=allow_cross_provider_fallback,
                 force_retranslate=force,
@@ -2088,7 +2097,6 @@ async def translate_chapters(
                 raw_text=raw_text,
                 raw_images=raw_images,
             )
-            translated = result.final_text or ""
             glossary_injected_term_count = int(result.metadata.get("glossary_injected_term_count", 0) or 0)
             confidence_score = self._score_translation_confidence(raw_text or "", translated)
             polish_needed = mark_polish_needed and confidence_score < normalized_threshold
@@ -2104,7 +2112,7 @@ async def translate_chapters(
                     "threshold": normalized_threshold,
                     "source_length": len((raw_text or "").strip()),
                     "translated_length": len(translated.strip()),
-                    "style_preset": style_preset,
+                    "style_preset": effective_style_preset,
                     "delta": {
                         "delta_retranslation": False,
                         "mode": "full",

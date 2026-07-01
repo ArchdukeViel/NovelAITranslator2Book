@@ -1,17 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
 import shutil
-import hashlib
 import unicodedata
 from pathlib import Path
 from typing import Any
 
-from novelai.core.security import safe_child_path
-from novelai.config.workflow_profiles import normalize_workflow_profiles
-from novelai.core.security import validate_storage_identifier
+from novelai.config.workflow_profiles import normalize_workflow_defaults, normalize_workflow_profiles
+from novelai.core.security import safe_child_path, validate_storage_identifier
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.common import _utc_now_iso
 from novelai.utils import atomic_write
@@ -290,7 +289,7 @@ def _compute_folder_name(self: Any, novel_id: str, metadata: dict[str, Any]) -> 
         return folder_name
 
     source_hash = hashlib.sha256(
-        f"{novel_id}:{metadata.get('source_url') or ''}".encode("utf-8")
+        f"{novel_id}:{metadata.get('source_url') or ''}".encode()
     ).hexdigest()[:8]
     storage_slug = f"{storage_slug}--{source_hash}"[:STORAGE_SLUG_MAX_LENGTH].strip("-._ ")
     return f"{TITLE_SLUG_DIRNAME}/{storage_slug}"
@@ -397,7 +396,8 @@ def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
     merged["document_type"] = self._clean_string(merged.get("document_type"), "web_novel")
     merged["input_adapter_key"] = self._clean_string(merged.get("input_adapter_key"))
     merged["context_group_id"] = self._clean_string(merged.get("context_group_id"), novel_id)
-    merged["translation_profiles"] = normalize_workflow_profiles(merged.get("translation_profiles", existing.get("translation_profiles")))
+    merged["translation_profiles"] = normalize_workflow_profiles(merged.get("translation_profiles", existing.get("translation_profiles")))["steps"]
+    merged["translation_defaults"] = normalize_workflow_defaults(merged.get("translation_defaults", existing.get("translation_defaults")))
     publication_status = normalize_publication_status(merged.get("publication_status") or merged.get("status"))
     merged["publication_status"] = publication_status
     merged["status"] = publication_status
@@ -443,7 +443,8 @@ def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
         payload = json.loads(content)
         if not isinstance(payload, dict):
             return None
-        payload["translation_profiles"] = normalize_workflow_profiles(payload.get("translation_profiles"))
+        payload["translation_profiles"] = normalize_workflow_profiles(payload.get("translation_profiles"))["steps"]
+        payload["translation_defaults"] = normalize_workflow_defaults(payload.get("translation_defaults"))
         source_url_text = self._clean_string(payload.get("source_url"))
         payload["origin_type"] = self._clean_string(payload.get("origin_type"), "url" if source_url_text else "library")
         payload["origin_uri_or_path"] = self._clean_string(payload.get("origin_uri_or_path"))

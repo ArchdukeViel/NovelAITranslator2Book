@@ -125,7 +125,7 @@ class PreferencesService:
                     }
                 )
 
-        legacy_profiles = normalize_workflow_profiles(self._data.get("workflow_profiles", {}))
+        legacy_profiles = normalize_workflow_profiles(self._data.get("workflow_profiles", {}))["steps"]
         for step in WORKFLOW_PROFILE_STEPS:
             profile = legacy_profiles[step]
             if merged_step_configs[step].get("provider") is None and profile.get("provider") is not None:
@@ -223,16 +223,17 @@ class PreferencesService:
 
     def get_workflow_profiles(self) -> dict[str, dict[str, str | None]]:
         """Return per-step provider/model preferences."""
-        normalized_profiles = normalize_workflow_profiles(self.get("workflow_profiles", {}))
+        result = normalize_workflow_profiles(self.get("workflow_profiles", {}))
         step_configs = self.get_llm_step_configs()
+        profiles = result["steps"]
         for step in WORKFLOW_PROFILE_STEPS:
             provider = step_configs[step].get("provider")
             model = step_configs[step].get("model")
             if isinstance(provider, str) and provider.strip():
-                normalized_profiles[step]["provider"] = provider.strip()
+                profiles[step]["provider"] = provider.strip()
             if isinstance(model, str) and model.strip():
-                normalized_profiles[step]["model"] = model.strip()
-        return normalized_profiles
+                profiles[step]["model"] = model.strip()
+        return profiles
 
     def get_workflow_profile(self, step: str) -> dict[str, str | None]:
         normalized_step = normalize_workflow_profile_step(step)
@@ -371,7 +372,7 @@ class PreferencesService:
             raise ValueError(f"Unsupported workflow profile step: {step}")
 
         global_step = self.get_llm_step_config(normalized_step)
-        novel_profiles = normalize_workflow_profiles(metadata.get("translation_profiles")) if isinstance(metadata, dict) else normalize_workflow_profiles(None)
+        novel_profiles = normalize_workflow_profiles(metadata.get("translation_profiles"))["steps"] if isinstance(metadata, dict) else normalize_workflow_profiles(None)["steps"]
         endpoint_profiles = self.get_llm_endpoint_profiles()
 
         resolved = {

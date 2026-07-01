@@ -58,6 +58,7 @@ class PromptGlossaryBlock:
     conflict_warnings: tuple[str, ...]
     empty: bool
     truncated: bool
+    locked_term_count: int = 0
 
 
 class GlossaryPromptInjectionService:
@@ -125,9 +126,11 @@ class GlossaryPromptInjectionService:
             matched_translated = _any_contains(translated_text, match_terms)
             avoid_variants = tuple(
                 _dedupe(
-                    alias.alias_text
-                    for alias in aliases
-                    if alias.alias_type in AVOID_ALIAS_TYPES and _clean(alias.alias_text)
+                    list(
+                        alias.alias_text
+                        for alias in aliases
+                        if alias.alias_type in AVOID_ALIAS_TYPES and _clean(alias.alias_text)
+                    )
                 )
             )
             prompt_term = PromptGlossaryTerm(
@@ -205,6 +208,7 @@ class GlossaryPromptInjectionService:
             conflict_warnings=tuple(conflicts),
             empty=not bool(rendered),
             truncated=truncated,
+            locked_term_count=sum(1 for t in selected if t.owner_locked),
         )
 
     def _conflict_warnings(self, entries: list[NovelGlossaryEntry]) -> list[str]:
@@ -249,10 +253,24 @@ def _render_text(terms: list[PromptGlossaryTerm], *, options: GlossaryPromptInje
     lines = [
         "GLOSSARY FOR THIS NOVEL",
         "These are approved owner glossary rules. Use them consistently when the source term appears.",
+        "The glossary is authoritative. If a source term appears below you MUST use its approved translation.",
         "",
-        "Use these approved translations consistently:",
     ]
-    lines.extend(f"- {term.term} => {term.translation}" for term in terms)
+
+    locked_terms = [t for t in terms if t.owner_locked]
+    advisory_terms = [t for t in terms if not t.owner_locked]
+
+    if locked_terms:
+        lines.append("LOCKED (override any other translation):")
+        for term in locked_terms:
+            lines.append(f"- {term.term} => {term.translation}")
+        lines.append("")
+
+    if advisory_terms:
+        lines.append("APPROVED (preferred translation):")
+        for term in advisory_terms:
+            lines.append(f"- {term.term} => {term.translation}")
+        lines.append("")
 
     avoid_lines: list[str] = []
     for term in terms:
@@ -260,9 +278,9 @@ def _render_text(terms: list[PromptGlossaryTerm], *, options: GlossaryPromptInje
             avoid_lines.append(f"- {term.term}: avoid \"{variant}\"")
 
     if avoid_lines:
-        lines.extend(["", "Avoid these rejected variants:", *avoid_lines])
+        lines.extend(["Avoid these rejected variants:", *avoid_lines])
 
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip()
 
 
 def _clean(value: object) -> str:
@@ -283,9 +301,9 @@ def _clean_aliases(aliases: list[NovelGlossaryAlias]) -> list[NovelGlossaryAlias
     return [alias for alias in aliases if _clean(alias.alias_text)]
 
 
-def _dedupe(values: object) -> tuple:
-    seen: set[object] = set()
-    result: list[object] = []
+def _dedupe(values: list[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    result: list[str] = []
     for value in values:
         key = value.casefold() if isinstance(value, str) else value
         if key in seen:

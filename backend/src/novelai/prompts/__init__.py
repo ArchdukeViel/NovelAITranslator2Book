@@ -8,12 +8,12 @@ from novelai.prompts.builders import (
     format_glossary_block,
     normalize_style_preset,
 )
-from novelai.prompts.models import TranslationRequest
 from novelai.prompts.metadata import (
     METADATA_TRANSLATION_PROMPT_VERSION,
     build_metadata_batch_translation_prompt,
     build_metadata_translation_prompt,
 )
+from novelai.prompts.models import TranslationRequest
 from novelai.prompts.responses_api import (
     JSON_TRANSLATION_SCHEMA,
     build_basic_responses_payload,

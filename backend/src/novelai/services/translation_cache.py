@@ -31,6 +31,8 @@ def build_translation_cache_key(
     temperature: float | None = None,
     top_p: float | None = None,
     structured_output_schema_version: str | None = None,
+    prompt_template_version: str | None = None,
+    honorific_policy: str | None = None,
 ) -> str:
     """Build an exact translation cache key from prompt- and model-affecting inputs."""
     payload: dict[str, Any] = {
@@ -51,6 +53,8 @@ def build_translation_cache_key(
         "temperature": temperature,
         "top_p": top_p,
         "structured_output_schema_version": structured_output_schema_version,
+        "prompt_template_version": prompt_template_version,
+        "honorific_policy": honorific_policy,
     }
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()

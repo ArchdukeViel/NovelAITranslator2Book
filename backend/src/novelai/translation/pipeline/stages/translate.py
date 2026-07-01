@@ -728,6 +728,9 @@ class TranslateStage(PipelineStage):
         style_preset = context.metadata.get("style_preset")
         consistency_mode = bool(context.metadata.get("consistency_mode", False))
         json_output = bool(context.metadata.get("json_output", False))
+        honorific_policy = context.metadata.get("honorific_policy")
+        if not isinstance(honorific_policy, str) or not honorific_policy.strip():
+            honorific_policy = None
         return build_translation_request(
             text=chunk,
             source_language=source_language,
@@ -737,6 +740,7 @@ class TranslateStage(PipelineStage):
             style_preset=style_preset if isinstance(style_preset, str) else None,
             consistency_mode=consistency_mode,
             json_output=json_output,
+            honorific_policy=honorific_policy,
         )
 
     @staticmethod
@@ -814,6 +818,7 @@ class TranslateStage(PipelineStage):
                     "conflict_warning_count": len(block.conflict_warnings) if block is not None else 0,
                     "empty": True if block is None else block.empty,
                     "glossary_hash": glossary_hash,
+                    "prompt_template_version": context.metadata.get("prompt_template_version", ""),
                 }
             )
         if block is None:
@@ -1067,6 +1072,10 @@ class TranslateStage(PipelineStage):
                     chunk_glossary=selected_glossary,
                     prompt_glossary_block=prompt_glossary_text,
                 )
+                if request is not None:
+                    context.metadata["prompt_template_version"] = request.prompt_template_version
+                    if request.honorific_policy:
+                        context.metadata["applied_honorific_policy"] = request.honorific_policy
                 attempted_models: set[tuple[str, str]] = set()
                 qa_failed = context.chunk_states.get(chunk_id, {}).get("status") == ChunkTranslationStatus.QA_FAILED.value
                 last_provider_error_code: str | None = None
