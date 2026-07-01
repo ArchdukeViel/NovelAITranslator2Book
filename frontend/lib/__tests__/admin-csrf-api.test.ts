@@ -163,4 +163,39 @@ describe("admin API CSRF wiring", () => {
     expect(mutationInit?.method).toBe("POST");
     expect(headers.get("X-CSRF-Token")).toBe("admin-csrf");
   });
+
+  it("sends translation activity glossary gate override through the shared CSRF request path", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ csrf_token: "admin-csrf" }))
+      .mockResolvedValueOnce(jsonResponse({
+        id: "activity-translation",
+        type: "translation",
+        kind: "translation",
+        novel_id: "novel-1",
+        status: "pending",
+        retry_count: 0,
+      }));
+    const { api } = await loadApi();
+
+    await api.createTranslationActivity({
+      novel_id: "novel-1",
+      source_key: "kakuyomu",
+      chapters: "1",
+      skip_glossary_gate: true,
+    });
+
+    const [, mutationInit] = fetchMock.mock.calls[1];
+    const headers = new Headers(mutationInit?.headers);
+    const body = JSON.parse(String(mutationInit?.body)) as Record<string, unknown>;
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/admin/activity/translation");
+    expect(mutationInit?.method).toBe("POST");
+    expect(headers.get("X-CSRF-Token")).toBe("admin-csrf");
+    expect(body).toEqual({
+      novel_id: "novel-1",
+      source_key: "kakuyomu",
+      chapters: "1",
+      skip_glossary_gate: true,
+    });
+  });
 });

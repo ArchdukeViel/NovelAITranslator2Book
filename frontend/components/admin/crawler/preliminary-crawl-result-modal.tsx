@@ -5,6 +5,7 @@ import {
   ChapterSelectionTable,
   chapterRowId
 } from "@/components/admin/crawler/chapter-selection-table";
+import { GlossaryOnboardingActions } from "@/components/admin/glossary/onboarding-actions";
 import { Button } from "@/components/ui/button";
 import type { PreliminaryCrawlResult } from "@/lib/api";
 
@@ -16,9 +17,13 @@ export type PreliminaryCrawlResultModalProps = {
   allSelected: boolean;
   pending: boolean;
   error: unknown;
+  glossaryActionPending?: boolean;
   onToggleAll: () => void;
   onToggleChapter: (chapterId: string) => void;
   onConfirm: () => void;
+  onReviewGlossary?: () => void;
+  onApproveGlossary?: () => void;
+  onSkipGlossary?: () => void;
   onCancel: () => void;
 };
 
@@ -34,9 +39,13 @@ export function PreliminaryCrawlResultModal({
   allSelected,
   pending,
   error,
+  glossaryActionPending = false,
   onToggleAll,
   onToggleChapter,
   onConfirm,
+  onReviewGlossary,
+  onApproveGlossary,
+  onSkipGlossary,
   onCancel
 }: PreliminaryCrawlResultModalProps) {
   if (!open || !result) {
@@ -50,6 +59,7 @@ export function PreliminaryCrawlResultModal({
   const resultOriginalAuthor =
     result.translated_author && result.author && result.translated_author !== result.author ? result.author : null;
   const resultSynopsis = result.translated_synopsis || result.synopsis || "";
+  const bootstrapCandidateCount = Math.max(0, Number(result.bootstrap_candidate_count ?? 0) || 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
@@ -94,6 +104,14 @@ export function PreliminaryCrawlResultModal({
               Metadata translation failed: {result.metadata_translation_error || "check the Gemini key in Settings."}
             </div>
           ) : null}
+          <GlossaryOnboardingActions
+            novelId={result.novel_id}
+            bootstrapCandidateCount={bootstrapCandidateCount}
+            actionPending={glossaryActionPending}
+            onReviewGlossary={onReviewGlossary}
+            onApproveGlossary={onApproveGlossary}
+            onSkipGlossary={onSkipGlossary}
+          />
         </div>
 
         <div className="seamless-scrollbar min-h-0 flex-1 overflow-auto">

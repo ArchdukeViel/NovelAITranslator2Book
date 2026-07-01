@@ -42,6 +42,9 @@ class TranslateRequest(BaseModel):
     source_language: str | None = None
     target_language: str | None = "English"
     allow_cross_provider_fallback: bool = True
+    # When True, bypasses the glossary gate even if glossary_status is
+    # "glossary_pending". Allows translation to proceed without a vetted glossary.
+    skip_glossary_gate: bool = False
 
 
 class ExportRequest(BaseModel):
@@ -158,6 +161,7 @@ async def translate_novel(
             source_language=body.source_language,
             target_language=body.target_language,
             allow_cross_provider_fallback=body.allow_cross_provider_fallback,
+            skip_glossary_gate=body.skip_glossary_gate,
         )
     except OperationError as exc:
         _raise_operation_error(exc)

@@ -84,3 +84,4 @@ def _make_state_data(
 class PreflightIssue:
     code: str
     reason: str
+    details: dict[str, Any] | None = None

@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+from hypothesis import HealthCheck, given, strategies as st
+from hypothesis import settings as hypothesis_settings
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -20,6 +23,7 @@ from novelai.inputs.models import ImportedDocument, ImportedUnit
 from novelai.providers.base import TranslationProvider
 from novelai.providers.model_fallbacks import model_candidates
 from novelai.services.glossary_repository import GlossaryRepository
+from novelai.services.orchestration import crawler as crawler_module
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
@@ -90,12 +94,12 @@ class StubDocumentAdapter(DocumentAdapter):
     def key(self) -> str:
         return "text"
 
-    def probe(self, source: str) -> bool:
+    def probe(self, source: str | Path) -> bool:
         return True
 
     async def import_document(
         self,
-        source: str,
+        source: str | Path,
         *,
         max_units: int | None = None,
     ) -> ImportedDocument:
@@ -105,7 +109,7 @@ class StubDocumentAdapter(DocumentAdapter):
                 import_order=1,
                 title="Part 1",
                 text="Hero Aria entered the city.",
-                source_ref=source,
+                source_ref=str(source),
                 unit_type="chapter",
                 context_group_id="stub-doc",
             ),
@@ -114,7 +118,7 @@ class StubDocumentAdapter(DocumentAdapter):
                 import_order=2,
                 title="Part 2",
                 text="Hero Aria returned.",
-                source_ref=source,
+                source_ref=str(source),
                 unit_type="chapter",
                 context_group_id="stub-doc",
             ),
@@ -122,7 +126,7 @@ class StubDocumentAdapter(DocumentAdapter):
         return ImportedDocument(
             adapter_key=self.key,
             origin_type="file",
-            origin_uri_or_path=source,
+            origin_uri_or_path=str(source),
             document_type="text",
             title="Imported Story",
             source_language="Japanese",
@@ -306,6 +310,13 @@ class RuntimeSimulationTranslationService(TranslationService):
             chunk_states={chunk_id: chunk_state},
             metadata={"translation_run_id": translation_run_id},
         )
+
+
+class _BootstrapCandidate:
+    def __init__(self, source: str, context_summary: str | None = None, notes: str | None = None) -> None:
+        self.source = source
+        self.context_summary = context_summary
+        self.notes = notes
 
 
 class RunIdCaptureStage(PipelineStage):
@@ -594,6 +605,230 @@ async def test_scrape_write_paths_refresh_catalog_projection(orchestration_env) 
 
 
 @pytest.mark.asyncio
+async def test_scrape_metadata_bootstraps_glossary_candidates_nonfatally(orchestration_env) -> None:
+    SessionLocal = orchestration_env["catalog_sessionmaker"]
+    source = StubSource()
+    storage = orchestration_env["storage"]
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: MockTranslationProvider(key="dummy", model="dummy"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    result = await orchestrator.scrape_metadata("syosetu_ncode", "bootstrap-novel", mode="update")
+
+    assert result["bootstrap_candidate_count"] > 0
+    with SessionLocal() as session:
+        novel = session.query(Novel).filter_by(slug="bootstrap-novel").one()
+        assert novel.glossary_status == "glossary_pending"
+        entries = GlossaryRepository(session).list_glossary_entries_for_novel(novel.id)
+        assert entries
+        assert {entry.status for entry in entries} == {"candidate"}
+
+
+@pytest.mark.asyncio
+@hypothesis_settings(suppress_health_check=[HealthCheck.function_scoped_fixture], database=None, deadline=None)
+@given(st.integers(min_value=0, max_value=3))
+async def test_scrape_metadata_bootstrap_exception_isolation(orchestration_env, candidate_count: int) -> None:
+    SessionLocal = orchestration_env["catalog_sessionmaker"]
+    source = StubSource()
+    storage = orchestration_env["storage"]
+    slug = uuid4().hex
+    storage.save_metadata(
+        slug,
+        {
+            "title": "Bootstrap Exception",
+            "source_language": "Japanese",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter One", "url": f"https://example.com/{slug}/1"}],
+        },
+    )
+    with SessionLocal() as session:
+        novel = Novel(slug=slug, title="Bootstrap Exception", language="ja", status="ongoing", glossary_status="glossary_skipped")
+        session.add(novel)
+        session.commit()
+
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: MockTranslationProvider(key="dummy", model="dummy"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    with patch.object(crawler_module, "extract_candidate_glossary_terms", side_effect=RuntimeError("boom")):
+        result = await orchestrator.scrape_metadata("syosetu_ncode", slug, mode="update")
+
+    assert result["bootstrap_candidate_count"] == 0
+    with SessionLocal() as session:
+        novel = session.query(Novel).filter_by(slug=slug).one()
+        assert novel.glossary_status == "glossary_skipped"
+
+
+@pytest.mark.asyncio
+@hypothesis_settings(suppress_health_check=[HealthCheck.function_scoped_fixture], database=None, deadline=None)
+@given(st.sampled_from(["glossary_ready", "glossary_pending", "glossary_skipped"]))
+async def test_bootstrap_invocation_gate(orchestration_env, glossary_status: str) -> None:
+    SessionLocal = orchestration_env["catalog_sessionmaker"]
+    storage = orchestration_env["storage"]
+    slug = uuid4().hex
+    storage.save_metadata(
+        slug,
+        {
+            "title": "Bootstrap Gate",
+            "source_language": "Japanese",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter One", "url": f"https://example.com/{slug}/1"}],
+        },
+    )
+    with SessionLocal() as session:
+        novel = Novel(
+            slug=slug,
+            title="Bootstrap Gate",
+            language="ja",
+            status="ongoing",
+            glossary_status=glossary_status,
+        )
+        session.add(novel)
+        session.commit()
+
+    calls: list[list[str]] = []
+
+    def _extract(texts, max_terms=50):
+        calls.append(list(texts))
+        return [_BootstrapCandidate("Pocott", "Pocott", "note")]
+
+    source = StubSource()
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: MockTranslationProvider(key="dummy", model="dummy"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    with patch.object(crawler_module, "extract_candidate_glossary_terms", side_effect=_extract):
+        result = await crawler_module.bootstrap_glossary_if_needed(orchestrator, slug, {"title": "Bootstrap Gate"})
+
+    if glossary_status == "glossary_ready":
+        assert result == 0
+        # extract runs before status check — calls populated regardless
+    else:
+        assert result == 1
+        assert calls
+
+
+@pytest.mark.asyncio
+@hypothesis_settings(suppress_health_check=[HealthCheck.function_scoped_fixture], database=None, deadline=None)
+@given(st.integers(min_value=1, max_value=3))
+async def test_bootstrap_produces_pending_status(orchestration_env, candidate_count: int) -> None:
+    SessionLocal = orchestration_env["catalog_sessionmaker"]
+    storage = orchestration_env["storage"]
+    slug = uuid4().hex
+    storage.save_metadata(
+        slug,
+        {
+            "title": "Bootstrap Pending",
+            "source_language": "Japanese",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter One", "url": f"https://example.com/{slug}/1"}],
+        },
+    )
+    with SessionLocal() as session:
+        novel = Novel(slug=slug, title="Bootstrap Pending", language="ja", status="ongoing", glossary_status="glossary_skipped")
+        session.add(novel)
+        session.commit()
+
+    candidates = [_BootstrapCandidate(f"Term {index}", f"Term {index}", None) for index in range(candidate_count)]
+
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="dummy", model="dummy"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    with patch.object(crawler_module, "extract_candidate_glossary_terms", return_value=candidates):
+        added = await crawler_module.bootstrap_glossary_if_needed(orchestrator, slug, {"title": "Bootstrap Pending"})
+
+    assert added == candidate_count
+    with SessionLocal() as session:
+        novel = session.query(Novel).filter_by(slug=slug).one()
+        assert novel.glossary_status == "glossary_pending"
+        entries = GlossaryRepository(session).list_glossary_entries_for_novel(novel.id)
+        assert len(entries) == candidate_count
+
+
+@pytest.mark.asyncio
+@hypothesis_settings(suppress_health_check=[HealthCheck.function_scoped_fixture], database=None, deadline=None)
+@given(st.sampled_from(["glossary_pending", "glossary_ready", "glossary_skipped"]), st.booleans())
+async def test_translate_guard_glossary_gate_properties(orchestration_env, glossary_status: str, skip_glossary_gate: bool) -> None:
+    SessionLocal = orchestration_env["catalog_sessionmaker"]
+    storage = orchestration_env["storage"]
+    slug = uuid4().hex
+    storage.save_metadata(
+        slug,
+        {
+            "title": "Guard Novel",
+            "source_language": "Japanese",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter One", "url": f"https://example.com/{slug}/1"}],
+        },
+    )
+    with SessionLocal() as session:
+        novel = Novel(slug=slug, title="Guard Novel", language="ja", status="ongoing", glossary_status=glossary_status)
+        session.add(novel)
+        session.flush()
+        if glossary_status == "glossary_pending":
+            GlossaryRepository(session).create_glossary_entry(
+                novel_id=novel.id,
+                canonical_term="Pocott",
+                term_type="place",
+                status="candidate",
+            )
+        session.commit()
+
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=UnusedTranslationService(),
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="dummy", model="dummy"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    issues = orchestrator._preflight_translation(
+        novel_id=slug,
+        source_key="stub",
+        meta={"chapters": [{"id": "1", "title": "Chapter One", "url": f"https://example.com/{slug}/1"}]},
+        selected_numbers=[1],
+        force=False,
+        source_language="Japanese",
+        target_language="English",
+        glossary=None,
+        skip_glossary_gate=skip_glossary_gate,
+    )
+
+    gate_issues = [issue for issue in issues if issue.code == "glossary_gate_pending"]
+    if glossary_status == "glossary_pending" and not skip_glossary_gate:
+        assert len(gate_issues) == 1
+        assert gate_issues[0].details is not None
+        assert gate_issues[0].details["glossary_status"] == "glossary_pending"
+        assert gate_issues[0].details["glossary_pending_count"] == 1
+        assert gate_issues[0].details["glossary_review_url"] == f"/admin/novels/{slug}/glossary"
+    else:
+        assert gate_issues == []
+
+
+@pytest.mark.asyncio
 async def test_import_write_paths_refresh_catalog_projection(orchestration_env) -> None:
     SessionLocal = orchestration_env["catalog_sessionmaker"]
     storage = orchestration_env["storage"]
@@ -720,7 +955,7 @@ async def test_translate_chapters_passes_platform_db_novel_id_to_translation_ser
     )
     storage.save_chapter("glossary-owned", "1", "Pocott arrives.", title="Chapter 1")
     with SessionLocal() as session:
-        novel = Novel(slug="glossary-owned", title="Glossary Owned", language="ja", status="ongoing")
+        novel = Novel(slug="glossary-owned", title="Glossary Owned", language="ja", status="ongoing", glossary_status="glossary_skipped")
         session.add(novel)
         session.commit()
         platform_novel_id = novel.id
@@ -798,7 +1033,14 @@ async def test_translate_chapters_injects_approved_db_glossary_through_real_pipe
         title="Chapter 1",
     )
     with SessionLocal() as session:
-        novel = Novel(slug="glossary-pipeline", title="Glossary Pipeline", language="ja", status="ongoing")
+        novel = Novel(
+            slug="glossary-pipeline",
+            title="Glossary Pipeline",
+            language="ja",
+            status="ongoing",
+            glossary_status="glossary_skipped",
+            glossary_revision=7,
+        )
         session.add(novel)
         session.flush()
         repo = GlossaryRepository(session)
@@ -867,6 +1109,12 @@ async def test_translate_chapters_injects_approved_db_glossary_through_real_pipe
     )
     output = outputs[-1]
     assert output["glossary_hash"]
+    assert output["glossary_revision"] == 7
+    assert output["glossary_injected_term_count"] == 1
+    translated = storage.load_translated_chapter("glossary-pipeline", "1")
+    assert translated is not None
+    assert translated["glossary_revision"] == 7
+    assert translated["glossary_injected_term_count"] == 1
 
 
 @pytest.mark.asyncio
@@ -885,7 +1133,7 @@ async def test_retranslate_chapter_preserves_platform_db_novel_id(orchestration_
     )
     storage.save_chapter("retry-glossary", "1", "Pocott arrives.", title="Chapter 1")
     with SessionLocal() as session:
-        novel = Novel(slug="retry-glossary", title="Retry Glossary", language="ja", status="ongoing")
+        novel = Novel(slug="retry-glossary", title="Retry Glossary", language="ja", status="ongoing", glossary_status="glossary_skipped")
         session.add(novel)
         session.commit()
         platform_novel_id = novel.id
@@ -1986,6 +2234,7 @@ async def test_delta_disabled_preserves_full_translation_behavior(orchestration_
     storage, translation = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="full translation"))
 
     saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
     assert saved["text"] == "full translation"
     assert len(translation.calls) == 1
     assert saved["confidence_details"]["delta"]["fallback_reason"] == "delta_disabled"
@@ -2003,6 +2252,7 @@ async def test_delta_unchanged_chapter_reuses_whole_old_output(orchestration_env
     storage, translation = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="full translation"))
 
     saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
     assert saved["text"] == "old whole chapter"
     assert translation.calls == []
     assert saved["confidence_details"]["delta"]["mode"] == "whole_chapter_unchanged"
@@ -2020,6 +2270,7 @@ async def test_delta_changed_paragraph_translates_window_and_reassembles(orchest
     storage, translation = await _run_delta_translate(orchestration_env, StubTranslationService(paragraph_prefix="new:"))
 
     saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
     assert saved["text"] == "new:A.\n\nnew:Bee.\n\nnew:C."
     assert len(translation.calls) == 1
     assert translation.calls[0]["json_output"] is True
@@ -2038,7 +2289,9 @@ async def test_delta_inserted_paragraph_reassembles_correctly(orchestration_env)
 
     storage, _ = await _run_delta_translate(orchestration_env, StubTranslationService(paragraph_prefix="new:"))
 
-    assert storage.load_translated_chapter("novel-delta", "1")["text"] == "new:A.\n\nnew:B.\n\nnew:C."
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    assert saved["text"] == "new:A.\n\nnew:B.\n\nnew:C."
 
 
 @pytest.mark.asyncio
@@ -2052,7 +2305,9 @@ async def test_delta_deleted_paragraph_reassembles_without_stale_translation(orc
 
     storage, _ = await _run_delta_translate(orchestration_env, StubTranslationService(paragraph_prefix="new:"))
 
-    text = storage.load_translated_chapter("novel-delta", "1")["text"]
+    saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
+    text = saved["text"]
     assert "old:B." not in text
     assert text == "new:A.\n\nnew:C."
 
@@ -2069,6 +2324,7 @@ async def test_delta_ambiguous_region_falls_back_to_full_translation(orchestrati
     storage, translation = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="full fallback"))
 
     saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
     assert saved["text"] == "full fallback"
     assert len(translation.calls) == 1
     assert saved["confidence_details"]["delta"]["fallback_reason"] == "ambiguous_or_moved_region"
@@ -2090,6 +2346,7 @@ async def test_delta_missing_lineage_falls_back_to_full_translation(orchestratio
     storage, _ = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="full fallback"))
 
     saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
     assert saved["text"] == "full fallback"
     assert saved["confidence_details"]["delta"]["fallback_reason"] == "missing_lineage"
 
@@ -2106,6 +2363,7 @@ async def test_delta_missing_structured_map_falls_back_for_changed_chapter(orche
     storage, _ = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="full fallback"))
 
     saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
     assert saved["text"] == "full fallback"
     assert saved["confidence_details"]["delta"]["fallback_reason"] == "missing_structured_paragraph_map"
 
@@ -2122,6 +2380,7 @@ async def test_delta_window_missing_structured_output_falls_back(orchestration_e
     storage, _ = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="plain window"))
 
     saved = storage.load_translated_chapter("novel-delta", "1")
+    assert saved is not None
     assert saved["text"] == "plain window"
     assert saved["confidence_details"]["delta"]["fallback_reason"] == "changed_window_qa_failed"
 
@@ -2582,6 +2841,101 @@ async def test_translate_chapters_preflight_blocks_pending_glossary_terms(orches
 
     with pytest.raises(RuntimeError, match="pending_glossary_terms"):
         await orchestrator.translate_chapters("stub", "novel-1", "1")
+
+
+@pytest.mark.asyncio
+async def test_translate_chapters_preflight_blocks_pending_db_glossary_status(orchestration_env) -> None:
+    source = StubSource()
+    SessionLocal = orchestration_env["catalog_sessionmaker"]
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "glossary-gate",
+        {
+            "title": "Glossary Gate",
+            "source_language": "Japanese",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "Chapter One", "url": "https://example.com/glossary-gate/1"},
+            ],
+        },
+    )
+    with SessionLocal() as session:
+        novel = Novel(slug="glossary-gate", title="Glossary Gate", language="ja", status="ongoing")
+        session.add(novel)
+        session.flush()
+        GlossaryRepository(session).create_glossary_entry(
+            novel_id=novel.id,
+            canonical_term="Pocott",
+            term_type="place",
+            status="candidate",
+        )
+        session.commit()
+
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=StubTranslationService(),
+        source_factory=lambda key: source,
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    with pytest.raises(RuntimeError, match="glossary_gate_pending"):
+        await orchestrator.translate_chapters("stub", "glossary-gate", "1")
+
+
+@pytest.mark.asyncio
+async def test_translate_chapters_allows_ready_status_and_skip_override(orchestration_env) -> None:
+    source = StubSource()
+    SessionLocal = orchestration_env["catalog_sessionmaker"]
+    storage = orchestration_env["storage"]
+    for novel_id in ("glossary-ready", "glossary-override"):
+        storage.save_metadata(
+            novel_id,
+            {
+                "title": novel_id,
+                "source_language": "Japanese",
+                "chapters": [
+                    {"id": "1", "num": 1, "title": "Chapter One", "url": f"https://example.com/{novel_id}/1"},
+                ],
+            },
+        )
+    with SessionLocal() as session:
+        session.add(
+            Novel(
+                slug="glossary-ready",
+                title="Glossary Ready",
+                language="ja",
+                status="ongoing",
+                glossary_status="glossary_ready",
+            )
+        )
+        session.add(
+            Novel(
+                slug="glossary-override",
+                title="Glossary Override",
+                language="ja",
+                status="ongoing",
+                glossary_status="glossary_pending",
+            )
+        )
+        session.commit()
+
+    translation = StubTranslationService(final_text="translated ok")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=translation,
+        source_factory=lambda key: source,
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.translate_chapters("stub", "glossary-ready", "1")
+    await orchestrator.translate_chapters("stub", "glossary-override", "1", skip_glossary_gate=True)
+
+    assert [call["novel_id"] for call in translation.calls] == ["glossary-ready", "glossary-override"]
 
 
 @pytest.mark.asyncio

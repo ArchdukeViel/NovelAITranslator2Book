@@ -61,6 +61,7 @@ class TranslationService:
         json_output: bool = False,
         allow_cross_provider_fallback: bool = True,
         force_retranslate: bool = False,
+        glossary_revision: int = 0,
         raw_text: str | None = None,
         raw_images: list[dict[str, Any]] | None = None,
     ) -> PipelineResult:
@@ -112,6 +113,7 @@ class TranslationService:
             state.metadata["target_language"] = target_language
         if glossary is not None:
             state.metadata["glossary"] = glossary
+        state.metadata["glossary_revision"] = max(0, int(glossary_revision or 0))
         if style_preset is not None:
             state.metadata["style_preset"] = style_preset
         if consistency_mode:

@@ -268,6 +268,59 @@ describe("admin glossary API client", () => {
     expect(fetchMock.mock.calls[1][0]).toBe("/api/admin/novels/42/glossary/entries/entry%2F3/events");
   });
 
+  it("transitions glossary readiness status through encoded owner route with CSRF", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ csrf_token: "admin-csrf" }))
+      .mockResolvedValueOnce(jsonResponse({ novel_id: 12, glossary_status: "glossary_skipped", glossary_revision: 0 }));
+    const { adminApi } = await loadApi();
+
+    await adminApi.transitionGlossaryStatus("novel/one", {
+      target_status: "glossary_skipped",
+      rationale: "Owner chose to translate now.",
+    });
+
+    const [, mutationInit] = fetchMock.mock.calls[1];
+    const headers = new Headers(mutationInit?.headers);
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/admin/novels/novel%2Fone/glossary-status");
+    expect(mutationInit?.method).toBe("PATCH");
+    expect(headers.get("X-CSRF-Token")).toBe("admin-csrf");
+    expect(mutationInit?.body).toBe(
+      JSON.stringify({
+        target_status: "glossary_skipped",
+        rationale: "Owner chose to translate now.",
+      }),
+    );
+  });
+
+  it("batch approves onboarding candidates through encoded owner route with CSRF", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ csrf_token: "admin-csrf" }))
+      .mockResolvedValueOnce(jsonResponse({
+        novel_id: 12,
+        approved_count: 2,
+        glossary_status: "glossary_ready",
+        glossary_revision: 3,
+      }));
+    const { adminApi } = await loadApi();
+
+    await adminApi.batchApproveGlossaryCandidates("novel one", {
+      rationale: "Ready for first translation.",
+    });
+
+    const [, mutationInit] = fetchMock.mock.calls[1];
+    const headers = new Headers(mutationInit?.headers);
+    const body = JSON.parse(String(mutationInit?.body)) as Record<string, unknown>;
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/admin/novels/novel%20one/glossary/batch-approve");
+    expect(mutationInit?.method).toBe("POST");
+    expect(headers.get("X-CSRF-Token")).toBe("admin-csrf");
+    expect(body).toEqual({ rationale: "Ready for first translation." });
+    expect(body).not.toHaveProperty("provider");
+    expect(body).not.toHaveProperty("rewrite_chapters");
+    expect(body).not.toHaveProperty("repair_chapters");
+  });
+
   it("updates QA finding status with encoded IDs and JSON body", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock

@@ -23,6 +23,9 @@ export type NovelSummary = {
   latest_chapter_id?: string | null;
   latest_chapter_number?: number | null;
   latest_chapter_title?: string | null;
+  glossary_status?: GlossaryReadinessStatus;
+  glossary_revision?: number;
+  glossary_pending_count?: number;
 };
 
 export type NovelPublicationSummary = {
@@ -52,6 +55,9 @@ export type NovelMetadata = Record<string, unknown> & {
   author?: string | null;
   translated_author?: string | null;
   chapters?: Array<Record<string, unknown>>;
+  glossary_status?: GlossaryReadinessStatus;
+  glossary_revision?: number;
+  glossary_pending_count?: number;
 };
 
 export type ChapterDetail = {
@@ -256,6 +262,7 @@ export type PreliminaryCrawlResult = {
   translated_synopsis?: string | null;
   metadata_translation_status?: string | null;
   metadata_translation_error?: string | null;
+  bootstrap_candidate_count?: number;
   activity_log_job_id?: string | null;
   detected_at?: string | null;
   chapters: number;
@@ -318,6 +325,7 @@ export type CreateTranslationActivityPayload = {
   provider_model?: string;
   provider?: string;
   model?: string;
+  skip_glossary_gate?: boolean;
   metadata?: Record<string, unknown>;
 };
 
@@ -361,6 +369,18 @@ export type ProviderCredential = {
 };
 
 export type GlossaryEntryStatus = "candidate" | "recommended" | "approved" | "rejected" | "deprecated";
+export type GlossaryReadinessStatus = "glossary_pending" | "glossary_ready" | "glossary_skipped";
+export type GlossaryStatusTransitionPayload = {
+  target_status: GlossaryReadinessStatus;
+};
+export type GlossaryStatusTransitionResult = {
+  novel_id: string;
+  glossary_status: GlossaryReadinessStatus;
+  glossary_revision: number;
+};
+export type GlossaryBatchApproveResult = GlossaryStatusTransitionResult & {
+  approved_count: number;
+};
 export type GlossaryTermType =
   | "character"
   | "family_house"

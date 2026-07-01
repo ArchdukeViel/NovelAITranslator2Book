@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Index, Integer, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from novelai.db.base import Base
 
@@ -19,6 +19,13 @@ if TYPE_CHECKING:
     from novelai.db.models.chapter import Chapter
     from novelai.db.models.genre import Genre
     from novelai.db.models.tag import Tag
+
+
+GLOSSARY_STATUS_VALUES: frozenset[str] = frozenset({
+    "glossary_pending",
+    "glossary_ready",
+    "glossary_skipped",
+})
 
 
 def _utcnow() -> datetime:
@@ -63,6 +70,12 @@ class Novel(Base):
     synopsis: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     is_published: Mapped[bool] = mapped_column(nullable=False, default=False)
+    glossary_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="glossary_pending"
+    )
+    glossary_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -91,6 +104,15 @@ class Novel(Base):
         secondary="novel_tags",
         lazy="selectin",
     )
+
+    @validates("glossary_status")
+    def _validate_glossary_status(self, key: str, value: str) -> str:
+        if value not in GLOSSARY_STATUS_VALUES:
+            raise ValueError(
+                f"Invalid glossary_status {value!r}. "
+                f"Must be one of {sorted(GLOSSARY_STATUS_VALUES)}."
+            )
+        return value
 
     def __repr__(self) -> str:
         return f"<Novel id={self.id} slug={self.slug!r} title={self.title!r}>"

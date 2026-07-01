@@ -25,6 +25,9 @@ import type {
   GlossaryQaFindingCreatePayload,
   GlossaryQaFindingListFilters,
   GlossaryQaFindingStatusPayload,
+  GlossaryBatchApproveResult,
+  GlossaryStatusTransitionPayload,
+  GlossaryStatusTransitionResult,
   JobProgress,
   ModelState,
   NovelMetadata,
@@ -466,6 +469,7 @@ export const api = {
       force?: boolean;
       source_language?: string;
       target_language?: string;
+      skip_glossary_gate?: boolean;
     }
   ) =>
     apiFetch<{ novel_id: string; status: string }>(`/admin/novels/${encodeURIComponent(novelId)}/translate`, {
@@ -628,6 +632,16 @@ export const adminApi = {
   updateGlossaryQaFindingStatus: (novelId: RouteId, findingId: RouteId, payload: GlossaryQaFindingStatusPayload) =>
     request<GlossaryQaFinding>(`/admin/novels/${routeId(novelId)}/glossary/qa-findings/${routeId(findingId)}/status`, {
       method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+  transitionGlossaryStatus: (novelId: RouteId, payload: GlossaryStatusTransitionPayload) =>
+    request<GlossaryStatusTransitionResult>(`/admin/novels/${routeId(novelId)}/glossary-status`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+  batchApproveGlossaryCandidates: (novelId: RouteId, payload: GlossaryDecisionPayload = {}) =>
+    request<GlossaryBatchApproveResult>(`/admin/novels/${routeId(novelId)}/glossary/batch-approve`, {
+      method: "POST",
       body: JSON.stringify(payload)
     }),
   // Active provider credential status used by the admin shell.

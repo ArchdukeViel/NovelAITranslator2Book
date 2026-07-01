@@ -199,6 +199,7 @@ class OperationsService:
             "translated_synopsis": meta.get("translated_synopsis"),
             "metadata_translation_status": meta.get("metadata_translation_status"),
             "metadata_translation_error": meta.get("metadata_translation_error"),
+            "bootstrap_candidate_count": int(meta.get("bootstrap_candidate_count") or 0),
             "activity_log_job_id": activity_job.get("id") if activity_job else None,
             "detected_at": detected_at,
             "chapters": chapter_count(meta),
@@ -261,6 +262,7 @@ class OperationsService:
         source_language: str | None,
         target_language: str | None,
         allow_cross_provider_fallback: bool = True,
+        skip_glossary_gate: bool = False,
     ) -> dict[str, str]:
         try:
             await asyncio.wait_for(
@@ -274,6 +276,7 @@ class OperationsService:
                     source_language=source_language,
                     target_language=target_language or settings.TRANSLATION_TARGET_LANGUAGE,
                     allow_cross_provider_fallback=allow_cross_provider_fallback,
+                    skip_glossary_gate=skip_glossary_gate,
                 ),
                 timeout=settings.WEB_REQUEST_TIMEOUT_SECONDS,
             )

@@ -165,9 +165,15 @@ class GlossaryRepository:
         unknown = set(fields) - allowed
         if unknown:
             raise ValueError(f"Unsupported glossary entry field(s): {', '.join(sorted(unknown))}")
+        # Capture status before any mutations so the increment check is accurate.
+        entry_status_before_update = entry.status
         for name, value in fields.items():
             setattr(entry, name, value)
         entry.updated_by_user_id = actor_user_id
+        # Only increment when the entry is currently approved — candidate/recommended changes
+        # do not affect the vetted glossary set (Req 8.2, 8.4).
+        if entry_status_before_update == "approved":
+            self._increment_glossary_revision(novel_id)
         self.db.flush()
         return entry
 
@@ -204,6 +210,10 @@ class GlossaryRepository:
             rationale=rationale,
             decision_source=decision_source,
         )
+        # Increment glossary_revision when approving an entry, or when an
+        # approved entry is deprecated or rejected (the active set changed).
+        if status == "approved" or (old_status == "approved" and status in {"deprecated", "rejected"}):
+            self._increment_glossary_revision(novel_id)
         self.db.flush()
         return entry
 
@@ -638,6 +648,21 @@ class GlossaryRepository:
         override.enabled = False
         self.db.flush()
         return override
+
+    def _increment_glossary_revision(self, novel_id: int) -> None:
+        """Increment novels.glossary_revision within the current transaction.
+
+        Raises LookupError if the novel row is not found so that the entire
+        caller's transaction is rolled back rather than silently leaving the
+        revision out of sync.
+        """
+        from novelai.db.models.novel import Novel
+
+        novel = self.db.get(Novel, novel_id)
+        if novel is None:
+            raise LookupError(f"Novel {novel_id} not found during revision increment")
+        novel.glossary_revision += 1
+        self.db.flush()
 
     def _require_entry(self, entry_id: int, *, novel_id: int | None = None) -> NovelGlossaryEntry:
         entry = self.get_glossary_entry(entry_id, novel_id=novel_id)

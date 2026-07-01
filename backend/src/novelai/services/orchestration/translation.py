@@ -68,6 +68,19 @@ def _resolve_platform_novel_id(novel_id: str, meta: dict[str, Any]) -> int | Non
     return None
 
 
+def _resolve_glossary_revision(novel_id: str, platform_novel_id: int | None) -> int:
+    try:
+        with session_scope() as session:
+            novel = session.get(Novel, platform_novel_id) if platform_novel_id is not None else None
+            if novel is None:
+                novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+            if novel is not None:
+                return int(novel.glossary_revision or 0)
+    except Exception:
+        return 0
+    return 0
+
+
 def _pipeline_events_from_exception(exc: BaseException) -> list[dict[str, Any]]:
     events = getattr(exc, "pipeline_events", None)
     if not isinstance(events, list):
@@ -200,6 +213,32 @@ def _metadata_translation_is_usable(source_text: str, translated: str, field: st
     return True
 
 
+def _count_pending_glossary_entries(novel_id: str) -> int:
+    """Return the count of glossary entries awaiting review for *novel_id*.
+
+    Counts ``novel_glossary_entries`` rows whose status is ``"candidate"``
+    or ``"recommended"`` for the novel identified by the given slug.  Returns
+    ``0`` if the novel is not found or no pending entries exist.
+    """
+    from sqlalchemy import func, select
+
+    from novelai.db.models.glossary import NovelGlossaryEntry
+
+    with session_scope() as session:
+        novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+        if novel is None:
+            return 0
+        stmt = (
+            select(func.count())
+            .select_from(NovelGlossaryEntry)
+            .where(
+                NovelGlossaryEntry.novel_id == novel.id,
+                NovelGlossaryEntry.status.in_(("candidate", "recommended")),
+            )
+        )
+        return session.scalar(stmt) or 0
+
+
 def _preflight_translation(
     self: Any,
     *,
@@ -211,6 +250,7 @@ def _preflight_translation(
     source_language: str | None,
     target_language: str | None,
     glossary: Any | None,
+    skip_glossary_gate: bool = False,
 ) -> list[PreflightIssue]:
     issues: list[PreflightIssue] = []
 
@@ -315,6 +355,33 @@ def _preflight_translation(
                     f"Pending terms: {preview}."
                 ),
             )
+        )
+
+    # --- Glossary gate ---
+    if not skip_glossary_gate:
+        _novel_is_pending = False
+        with session_scope() as session:
+            _novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+            if _novel is not None:
+                _novel_is_pending = _novel.glossary_status == "glossary_pending"
+        if _novel_is_pending:
+            pending_count = _count_pending_glossary_entries(novel_id)
+            review_path = f"/admin/novels/{novel_id}/glossary"
+            issues.append(
+                PreflightIssue(
+                    code="glossary_gate_pending",
+                    reason="Glossary review required before translation.",
+                    details={
+                        "glossary_status": "glossary_pending",
+                        "glossary_pending_count": pending_count,
+                        "glossary_review_url": review_path,
+                    },
+                )
+            )
+    else:
+        logger.info(
+            "Glossary gate bypassed via skip_glossary_gate override for novel %r.",
+            novel_id,
         )
 
     chapters_missing_ocr_review: list[str] = []
@@ -1845,6 +1912,7 @@ async def translate_chapters(
     consistency_mode: bool = False,
     json_output: bool = False,
     allow_cross_provider_fallback: bool = True,
+    skip_glossary_gate: bool = False,
 ) -> None:
     """Translate selected chapters through the pipeline.
 
@@ -1860,6 +1928,7 @@ async def translate_chapters(
     if not meta:
         raise RuntimeError("Metadata not found; run scrape-metadata first.")
     platform_novel_id = _resolve_platform_novel_id(novel_id, meta)
+    glossary_revision = _resolve_glossary_revision(novel_id, platform_novel_id)
 
     effective_source_language = source_language or self._infer_source_language(source_key, meta)
     effective_target_language = target_language or settings.TRANSLATION_TARGET_LANGUAGE
@@ -1886,6 +1955,7 @@ async def translate_chapters(
         source_language=effective_source_language,
         target_language=effective_target_language,
         glossary=glossary,
+        skip_glossary_gate=skip_glossary_gate,
     )
     if preflight_issues:
         details = "; ".join(f"{issue.code}: {issue.reason}" for issue in preflight_issues)
@@ -1976,6 +2046,8 @@ async def translate_chapters(
                             "style_preset": style_preset,
                             "delta": dict(delta_result.get("provenance") or {}),
                         },
+                        glossary_revision=glossary_revision,
+                        glossary_injected_term_count=0,
                     )
                     safely_refresh_catalog_projection_after_storage_write(
                         novel_id,
@@ -2012,10 +2084,12 @@ async def translate_chapters(
                 json_output=json_output,
                 allow_cross_provider_fallback=allow_cross_provider_fallback,
                 force_retranslate=force,
+                glossary_revision=glossary_revision,
                 raw_text=raw_text,
                 raw_images=raw_images,
             )
             translated = result.final_text or ""
+            glossary_injected_term_count = int(result.metadata.get("glossary_injected_term_count", 0) or 0)
             confidence_score = self._score_translation_confidence(raw_text or "", translated)
             polish_needed = mark_polish_needed and confidence_score < normalized_threshold
             self.storage.save_translated_chapter(
@@ -2037,6 +2111,8 @@ async def translate_chapters(
                         "fallback_reason": delta_fallback_reason,
                     } if delta_fallback_reason else None,
                 },
+                glossary_revision=glossary_revision,
+                glossary_injected_term_count=glossary_injected_term_count,
             )
             safely_refresh_catalog_projection_after_storage_write(
                 novel_id,

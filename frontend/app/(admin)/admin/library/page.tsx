@@ -546,6 +546,9 @@ export default function LibraryPage() {
         title={dialogTitle}
         author={dialogAuthor}
         synopsis={dialogSynopsis}
+        glossaryStatus={translationMetadata.data?.glossary_status}
+        glossaryRevision={translationMetadata.data?.glossary_revision}
+        glossaryPendingCount={translationMetadata.data?.glossary_pending_count}
         language={translationLanguage}
         languages={TRANSLATION_LANGUAGES}
         chapters={translationChapterRows}

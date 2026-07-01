@@ -5,7 +5,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, object_session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
@@ -19,6 +20,7 @@ from novelai.api.routers.dependencies import (
     reader_title,
 )
 from novelai.core.security import redact_sensitive
+from novelai.db.models.glossary import NovelGlossaryEntry
 from novelai.db.models.novel import Novel
 from novelai.services.catalog_service import CatalogService
 from novelai.sources.status import normalize_publication_status
@@ -43,6 +45,9 @@ class NovelSummary(BaseModel):
     latest_chapter_id: str | None = None
     latest_chapter_number: int | None = None
     latest_chapter_title: str | None = None
+    glossary_status: str = "glossary_pending"
+    glossary_revision: int = 0
+    glossary_pending_count: int = 0
 
 
 class SourceMetadataExtraction(BaseModel):
@@ -430,7 +435,25 @@ def _db_novel_summary(novel: Novel) -> NovelSummary:
         latest_chapter_id=novel.latest_chapter_id,
         latest_chapter_number=novel.latest_chapter_number,
         latest_chapter_title=novel.latest_chapter_title,
+        glossary_status=novel.glossary_status,
+        glossary_revision=novel.glossary_revision,
+        glossary_pending_count=_pending_glossary_count(novel),
     )
+
+
+def _pending_glossary_count(novel: Novel) -> int:
+    session = object_session(novel)
+    if session is None or novel.id is None:
+        return 0
+    stmt = (
+        select(func.count())
+        .select_from(NovelGlossaryEntry)
+        .where(
+            NovelGlossaryEntry.novel_id == novel.id,
+            NovelGlossaryEntry.status.in_(("candidate", "recommended")),
+        )
+    )
+    return int(session.scalar(stmt) or 0)
 
 
 def _catalog_publication_response(
@@ -721,11 +744,22 @@ async def get_novel(
     novel_id: str,
     storage: StorageService = Depends(get_storage),
     _owner=Depends(require_role("owner")),
+    db: Session = Depends(get_db_session),
 ) -> dict[str, Any]:
     meta = storage.load_metadata(novel_id)
     if meta is None:
         raise HTTPException(status_code=404, detail="Novel not found")
-    return meta
+    payload = dict(meta)
+    novel = db.query(Novel).filter_by(slug=novel_id).one_or_none()
+    if novel is not None:
+        payload["glossary_status"] = novel.glossary_status
+        payload["glossary_revision"] = novel.glossary_revision
+        payload["glossary_pending_count"] = _pending_glossary_count(novel)
+    else:
+        payload.setdefault("glossary_status", "glossary_pending")
+        payload.setdefault("glossary_revision", 0)
+        payload.setdefault("glossary_pending_count", 0)
+    return payload
 
 
 @router.delete("/{novel_id}", status_code=204)

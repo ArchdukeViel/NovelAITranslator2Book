@@ -45,6 +45,10 @@ def _translated_payload_to_version(self: Any, translated: dict[str, Any], fallba
         version["polish_needed"] = translated["polish_needed"]
     if isinstance(translated.get("confidence_details"), dict):
         version["confidence_details"] = dict(translated["confidence_details"])
+    if isinstance(translated.get("glossary_revision"), int):
+        version["glossary_revision"] = translated["glossary_revision"]
+    if isinstance(translated.get("glossary_injected_term_count"), int):
+        version["glossary_injected_term_count"] = translated["glossary_injected_term_count"]
     return version
 
 
@@ -155,6 +159,8 @@ def save_translated_chapter(
     polish_needed: bool | None = None,
     confidence_details: dict[str, Any] | None = None,
     source_hash: str | None = None,
+    glossary_revision: int | None = None,
+    glossary_injected_term_count: int | None = None,
     version_kind: ChapterVersionKind = ChapterVersionKind.MACHINE_TRANSLATION,
 ) -> Path:
     """Save a translated chapter as structured JSON and append a version."""
@@ -179,6 +185,10 @@ def save_translated_chapter(
         translated_payload["polish_needed"] = polish_needed
     if isinstance(confidence_details, dict):
         translated_payload["confidence_details"] = dict(confidence_details)
+    if isinstance(glossary_revision, int) and glossary_revision >= 0:
+        translated_payload["glossary_revision"] = glossary_revision
+    if isinstance(glossary_injected_term_count, int) and glossary_injected_term_count >= 0:
+        translated_payload["glossary_injected_term_count"] = glossary_injected_term_count
     versions.append(translated_payload)
     payload["translation_versions"] = versions
     self._set_active_translation_version(payload, translated_payload)
@@ -215,6 +225,12 @@ def load_translated_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[s
         "confidence_score": translated.get("confidence_score"),
         "polish_needed": translated.get("polish_needed"),
         "confidence_details": translated.get("confidence_details") if isinstance(translated.get("confidence_details"), dict) else {},
+        "glossary_revision": translated.get("glossary_revision") if isinstance(translated.get("glossary_revision"), int) else 0,
+        "glossary_injected_term_count": (
+            translated.get("glossary_injected_term_count")
+            if isinstance(translated.get("glossary_injected_term_count"), int)
+            else 0
+        ),
         "input_adapter_key": payload.get("input_adapter_key"),
         "origin_type": payload.get("origin_type"),
         "origin_uri_or_path": payload.get("origin_uri_or_path"),

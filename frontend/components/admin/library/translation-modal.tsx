@@ -6,6 +6,7 @@ import { DialogShell } from "@/components/admin/dialog-shell";
 import { EmptyState } from "@/components/admin/empty-state";
 import { ErrorBanner } from "@/components/admin/error-banner";
 import { LoadingRows } from "@/components/admin/loading-rows";
+import { ReadinessBadge } from "@/components/admin/glossary/readiness-badge";
 import { TableCheckbox } from "@/components/admin/table-checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,9 @@ export type TranslationModalProps = {
   title: string;
   author: string;
   synopsis: string;
+  glossaryStatus?: string | null;
+  glossaryRevision?: number | null;
+  glossaryPendingCount?: number | null;
   language: string;
   languages: readonly string[];
   chapters: ChapterSummary[];
@@ -40,6 +44,9 @@ export function TranslationModal({
   title,
   author,
   synopsis,
+  glossaryStatus,
+  glossaryRevision,
+  glossaryPendingCount,
   language,
   languages,
   chapters,
@@ -68,6 +75,17 @@ export function TranslationModal({
             <div>
               <div className="text-xs uppercase text-muted-foreground">Translated Author</div>
               <div className="mt-1 text-sm">{author}</div>
+            </div>
+            <div>
+              <div className="text-xs uppercase text-muted-foreground">Glossary readiness</div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <ReadinessBadge
+                  novelId={novelId}
+                  glossaryStatus={glossaryStatus}
+                  glossaryRevision={glossaryRevision}
+                  glossaryPendingCount={glossaryPendingCount}
+                />
+              </div>
             </div>
             <div>
               <div className="text-xs uppercase text-muted-foreground">Translated Synopsis</div>

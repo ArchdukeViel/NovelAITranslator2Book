@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Callable
 from typing import Any
 
 from novelai.core.errors import SourceError
+from novelai.db.engine import session_scope
+from novelai.db.models.novel import Novel
+from novelai.glossary import extract_candidate_glossary_terms
 from novelai.prompts import METADATA_TRANSLATION_PROMPT_VERSION
 from novelai.sources.quality import (
     chapter_content_hash,
@@ -13,6 +17,7 @@ from novelai.sources.quality import (
     evaluate_metadata_quality,
 )
 from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
+from novelai.services.glossary_repository import GlossaryRepository
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +121,78 @@ def _stored_chapter_hashes(storage: Any, novel_id: str, *, exclude_chapter_id: s
             hashes.add(chapter_content_hash(text))
     return hashes
 
+
+def _bootstrap_source_texts(storage: Any, novel_id: str, meta: dict[str, Any]) -> list[str]:
+    texts: list[str] = []
+    list_chapters = getattr(storage, "list_stored_chapters", None)
+    load_chapter = getattr(storage, "load_chapter", None)
+    if callable(list_chapters) and callable(load_chapter):
+        with contextlib.suppress(Exception):
+            for chapter_id in list_chapters(novel_id):
+                chapter = load_chapter(novel_id, str(chapter_id))
+                text = chapter.get("text") if isinstance(chapter, dict) else None
+                if isinstance(text, str) and text.strip():
+                    texts.append(text)
+    if texts:
+        return texts
+
+    for key in ("title", "translated_title", "author", "synopsis", "description", "summary"):
+        value = meta.get(key)
+        if isinstance(value, str) and value.strip():
+            texts.append(value)
+    for chapter in meta.get("chapters") or []:
+        if not isinstance(chapter, dict):
+            continue
+        title = chapter.get("title") or chapter.get("translated_title")
+        if isinstance(title, str) and title.strip():
+            texts.append(title)
+    return texts
+
+
+async def bootstrap_glossary_if_needed(self: Any, novel_id: str, meta: dict[str, Any]) -> int:
+    """Seed DB glossary candidates during onboarding without making it fatal."""
+    try:
+        texts = _bootstrap_source_texts(self.storage, novel_id, meta)
+        candidates = extract_candidate_glossary_terms(texts, max_terms=50) if texts else []
+        added = 0
+        with session_scope() as session:
+            novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+            if novel is None:
+                return 0
+            if novel.glossary_status == "glossary_ready":
+                return 0
+            novel.glossary_status = "glossary_pending"
+            repository = GlossaryRepository(session)
+            existing = {
+                entry.canonical_term.casefold()
+                for entry in repository.list_glossary_entries_for_novel(novel.id)
+            }
+            for candidate in candidates:
+                canonical = candidate.source.strip()
+                if not canonical or canonical.casefold() in existing:
+                    continue
+                repository.create_glossary_entry(
+                    novel_id=novel.id,
+                    canonical_term=canonical,
+                    term_type="other",
+                    approved_translation=None,
+                    status="candidate",
+                    confidence=None,
+                    admin_notes=candidate.context_summary or candidate.notes,
+                    actor_user_id=None,
+                    decision_source="glossary_bootstrap",
+                    rationale="Automatic glossary bootstrap during novel onboarding.",
+                )
+                existing.add(canonical.casefold())
+                added += 1
+            if added == 0:
+                logger.warning("Glossary bootstrap found no candidates for %s.", novel_id)
+        return added
+    except Exception as exc:
+        logger.warning("Glossary bootstrap failed for %s: %s", novel_id, exc.__class__.__name__)
+        return 0
+
+
 async def scrape_metadata(
     self: Any,
     source_key: str,
@@ -159,6 +236,7 @@ async def scrape_metadata(
         self.storage,
         context="scrape_metadata",
     )
+    meta["bootstrap_candidate_count"] = await bootstrap_glossary_if_needed(self, novel_id, meta)
     logger.info(f"Metadata scraped: {len(meta)} fields saved")
     if progress_callback:
         progress_callback(f"Metadata saved ({len(meta)} fields).")
