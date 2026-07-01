@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Mapping
 from typing import Any
 from unittest.mock import patch
 from uuid import uuid4
@@ -16,17 +17,24 @@ from novelai.db.base import Base
 from novelai.db.models.novel import Novel
 from novelai.inputs.base import DocumentAdapter
 from novelai.inputs.models import ImportedDocument, ImportedUnit
+from novelai.providers.base import TranslationProvider
+from novelai.providers.model_fallbacks import model_candidates
+from novelai.services.glossary_repository import GlossaryRepository
+from novelai.services.novel_orchestration_service import NovelOrchestrationService
+from novelai.services.preferences_service import PreferencesService
+from novelai.services.translation_cache import TranslationCache
+from novelai.services.usage_service import UsageService
+from novelai.sources.base import SourceAdapter
+from novelai.storage.service import StorageService
 from novelai.translation.pipeline.context import PipelineResult, PipelineState, paragraph_source_hash
 from novelai.translation.pipeline.pipeline import TranslationPipeline
 from novelai.translation.pipeline.stages.base import PipelineStage
-from novelai.services.novel_orchestration_service import NovelOrchestrationService
-from novelai.services.preferences_service import PreferencesService
-from novelai.storage.service import StorageService
-from novelai.services.translation_cache import TranslationCache
+from novelai.translation.pipeline.stages.fetch import FetchStage
+from novelai.translation.pipeline.stages.parse import ParseStage
+from novelai.translation.pipeline.stages.post_process import PostProcessStage
+from novelai.translation.pipeline.stages.segment import SmartSegmentStage
+from novelai.translation.pipeline.stages.translate import TranslateStage
 from novelai.translation.service import TranslationService
-from novelai.services.usage_service import UsageService
-from novelai.sources.base import SourceAdapter
-from novelai.providers.model_fallbacks import model_candidates
 from tests.conftest import TESTS_TMP_ROOT, MockTranslationProvider
 
 
@@ -264,9 +272,9 @@ class RuntimeSimulationTranslationService(TranslationService):
             failed_context.chunk_states[chunk_id] = chunk_state
             failed_context.pipeline_events.append(event)
             error = RuntimeError("simulated full chunk failure")
-            setattr(error, "pipeline_context", failed_context)
-            setattr(error, "pipeline_events", [event])
-            setattr(error, "details", {"chunk_id": chunk_id, "attempt_number": attempt_number})
+            error.pipeline_context = failed_context  # type: ignore[attr-defined]
+            error.pipeline_events = [event]  # type: ignore[attr-defined]
+            error.details = {"chunk_id": chunk_id, "attempt_number": attempt_number}  # type: ignore[attr-defined]
             raise error
 
         translated = f"translated chapter {chapter_id}"
@@ -340,6 +348,33 @@ class GlossarySchemaCaptureProvider(MockTranslationProvider):
                     "total_tokens": 42,
                 },
             },
+        }
+
+
+class PromptInjectionCaptureProvider(TranslationProvider):
+    def __init__(self) -> None:
+        self.user_prompts: list[str] = []
+
+    @property
+    def key(self) -> str:
+        return "mock"
+
+    def available_models(self) -> list[str]:
+        return ["mock-1.0"]
+
+    async def translate(
+        self,
+        prompt: str,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> Mapping[str, Any]:
+        request = kwargs.get("request")
+        user_prompt = getattr(request, "user_prompt", "") if request is not None else ""
+        self.user_prompts.append(str(user_prompt))
+        return {
+            "text": "[CHAPTER 1]\n[P p0001]\nTranslated Pocott.",
+            "metadata": {"usage": {"total_tokens": 3}},
         }
 
 
@@ -664,6 +699,210 @@ async def test_translate_chapters_passes_provider_lock_to_translation_service(or
     assert translation.calls[0]["provider_key"] == "gemini"
     assert translation.calls[0]["provider_model"] == GEMINI_DEFAULT_MODEL
     assert translation.calls[0]["allow_cross_provider_fallback"] is False
+
+
+@pytest.mark.asyncio
+async def test_translate_chapters_passes_platform_db_novel_id_to_translation_service(
+    orchestration_env,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+    SessionLocal = orchestration_env["catalog_sessionmaker"]
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "glossary-owned",
+        {
+            "title": "Glossary Owned",
+            "source": "stub",
+            "source_language": "Japanese",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"}],
+        },
+    )
+    storage.save_chapter("glossary-owned", "1", "Pocott arrives.", title="Chapter 1")
+    with SessionLocal() as session:
+        novel = Novel(slug="glossary-owned", title="Glossary Owned", language="ja", status="ongoing")
+        session.add(novel)
+        session.commit()
+        platform_novel_id = novel.id
+    translation = StubTranslationService(final_text="translated body")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=translation,
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.translate_chapters("stub", "glossary-owned", "1", source_language="Japanese")
+
+    assert translation.calls[0]["platform_novel_id"] == platform_novel_id
+
+
+@pytest.mark.asyncio
+async def test_translate_chapters_does_not_treat_source_id_as_platform_novel_id(
+    orchestration_env,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "16817330655991571532",
+        {
+            "title": "Source ID Only",
+            "source": "kakuyomu",
+            "source_language": "Japanese",
+            "source_novel_id": "16817330655991571532",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"}],
+        },
+    )
+    storage.save_chapter("16817330655991571532", "1", "Pocott arrives.", title="Chapter 1")
+    translation = StubTranslationService(final_text="translated body")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=translation,
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.translate_chapters("stub", "16817330655991571532", "1", source_language="Japanese")
+
+    assert translation.calls[0]["platform_novel_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_translate_chapters_injects_approved_db_glossary_through_real_pipeline(
+    orchestration_env,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+    SessionLocal = orchestration_env["catalog_sessionmaker"]
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "glossary-pipeline",
+        {
+            "title": "Glossary Pipeline",
+            "source": "stub",
+            "source_language": "Japanese",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"}],
+        },
+    )
+    storage.save_chapter(
+        "glossary-pipeline",
+        "1",
+        "Pocott and SMOKE_REVIEWING_CANDIDATE arrive.",
+        title="Chapter 1",
+    )
+    with SessionLocal() as session:
+        novel = Novel(slug="glossary-pipeline", title="Glossary Pipeline", language="ja", status="ongoing")
+        session.add(novel)
+        session.flush()
+        repo = GlossaryRepository(session)
+        approved = repo.create_glossary_entry(
+            novel_id=novel.id,
+            canonical_term="Pocott",
+            term_type="place",
+            approved_translation="Pocott",
+            status="approved",
+        )
+        repo.add_glossary_alias(
+            entry_id=approved.id,
+            novel_id=novel.id,
+            alias_text="Pokot",
+            alias_type="banned",
+        )
+        repo.create_glossary_entry(
+            novel_id=novel.id,
+            canonical_term="SMOKE_REVIEWING_CANDIDATE",
+            term_type="other",
+            approved_translation="Do Not Inject",
+            status="candidate",
+        )
+        session.commit()
+    provider = PromptInjectionCaptureProvider()
+    translate_stage = TranslateStage(
+        provider_factory=lambda key: provider,
+        cache=orchestration_env["cache"],
+        settings_service=orchestration_env["settings"],
+        usage_service=orchestration_env["usage"],
+        storage=storage,
+    )
+    translation = TranslationService(
+        TranslationPipeline(
+            [
+                FetchStage(),
+                ParseStage(),
+                SmartSegmentStage(),
+                translate_stage,
+                PostProcessStage(),
+            ]
+        )
+    )
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=translation,
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: provider,
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.translate_chapters("stub", "glossary-pipeline", "1", source_language="Japanese")
+
+    prompt = provider.user_prompts[0]
+    assert prompt.count("GLOSSARY FOR THIS NOVEL") == 1
+    assert "- Pocott => Pocott" in prompt
+    assert 'Pocott: avoid "Pokot"' in prompt
+    assert "SMOKE_REVIEWING_CANDIDATE =>" not in prompt
+    assert "Do Not Inject" not in prompt
+    outputs = storage.read_translation_output(
+        "glossary-pipeline",
+        chunk_id="c0001",
+        chapter_ids=["1"],
+    )
+    output = outputs[-1]
+    assert output["glossary_hash"]
+
+
+@pytest.mark.asyncio
+async def test_retranslate_chapter_preserves_platform_db_novel_id(orchestration_env, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
+    SessionLocal = orchestration_env["catalog_sessionmaker"]
+    storage = orchestration_env["storage"]
+    storage.save_metadata(
+        "retry-glossary",
+        {
+            "title": "Retry Glossary",
+            "source": "stub",
+            "source_language": "Japanese",
+            "chapters": [{"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"}],
+        },
+    )
+    storage.save_chapter("retry-glossary", "1", "Pocott arrives.", title="Chapter 1")
+    with SessionLocal() as session:
+        novel = Novel(slug="retry-glossary", title="Retry Glossary", language="ja", status="ongoing")
+        session.add(novel)
+        session.commit()
+        platform_novel_id = novel.id
+    translation = StubTranslationService(final_text="translated body")
+    orchestrator = NovelOrchestrationService(
+        storage=storage,
+        translation=translation,
+        source_factory=lambda key: StubSource(),
+        provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
+        settings_service=orchestration_env["settings"],
+        translation_cache=orchestration_env["cache"],
+        usage_service=orchestration_env["usage"],
+    )
+
+    await orchestrator.retranslate_chapter("stub", "retry-glossary", "1", source_language="Japanese")
+
+    assert translation.calls[0]["platform_novel_id"] == platform_novel_id
 
 
 @pytest.mark.asyncio

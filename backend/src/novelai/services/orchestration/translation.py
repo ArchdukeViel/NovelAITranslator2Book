@@ -6,10 +6,13 @@ import json
 import logging
 import math
 import re
+from itertools import pairwise
 from typing import Any
 
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState
+from novelai.db.engine import session_scope
+from novelai.db.models.novel import Novel
 from novelai.glossary import glossary_status_counts, normalize_glossary_entries
 from novelai.prompts import (
     METADATA_TRANSLATION_PROMPT_VERSION,
@@ -41,6 +44,28 @@ _GENERIC_TITLE_RE = re.compile(
 def _pipeline_context_from_exception(exc: BaseException) -> Any | None:
     context = getattr(exc, "pipeline_context", None)
     return context if context is not None else None
+
+
+def _metadata_platform_novel_id(meta: dict[str, Any]) -> int | None:
+    for key in ("platform_novel_id", "db_novel_id", "glossary_novel_id"):
+        value = meta.get(key)
+        if isinstance(value, int) and value > 0:
+            return value
+    return None
+
+
+def _resolve_platform_novel_id(novel_id: str, meta: dict[str, Any]) -> int | None:
+    explicit = _metadata_platform_novel_id(meta)
+    if explicit is not None:
+        return explicit
+    try:
+        with session_scope() as session:
+            novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+            if novel is not None:
+                return int(novel.id)
+    except Exception:
+        return None
+    return None
 
 
 def _pipeline_events_from_exception(exc: BaseException) -> list[dict[str, Any]]:
@@ -1041,7 +1066,7 @@ def _old_lineage_by_chapter(storage: Any, novel_id: str) -> tuple[dict[str, list
         if chapter_id is None:
             saw_record_without_hashes = True
             continue
-        for fallback_index, (paragraph_id, source_hash) in enumerate(zip(raw_ids, raw_hashes), start=1):
+        for fallback_index, (paragraph_id, source_hash) in enumerate(zip(raw_ids, raw_hashes, strict=False), start=1):
             normalized = _normalize_lineage_item(
                 {
                     "chapter_id": chapter_id,
@@ -1137,7 +1162,7 @@ def _compare_lineage(old_items: list[dict[str, Any]], new_items: list[dict[str, 
     ambiguous: set[int] = set()
     deleted_old: set[int] = set()
     boundaries = [(-1, -1), *anchors, (len(old_items), len(new_items))]
-    for (old_start, new_start), (old_end, new_end) in zip(boundaries, boundaries[1:]):
+    for (old_start, new_start), (old_end, new_end) in pairwise(boundaries):
         old_gap = list(range(old_start + 1, old_end))
         new_gap = list(range(new_start + 1, new_end))
         if not old_gap and not new_gap:
@@ -1154,7 +1179,7 @@ def _compare_lineage(old_items: list[dict[str, Any]], new_items: list[dict[str, 
             deleted_old.update(old_gap)
             continue
         if len(old_gap) == len(new_gap):
-            for old_index, new_index in zip(old_gap, new_gap):
+            for old_index, new_index in zip(old_gap, new_gap, strict=True):
                 old_hash = str(old_items[old_index].get("source_hash") or "")
                 new_hash = str(new_items[new_index].get("source_hash") or "")
                 if old_hash == new_hash:
@@ -1404,6 +1429,7 @@ async def _try_delta_translate_chapter(
     raw_text: str,
     provider_key: str,
     provider_model: str,
+    platform_novel_id: int | None,
     source_language: str | None,
     target_language: str | None,
     glossary: Any | None,
@@ -1488,6 +1514,7 @@ async def _try_delta_translate_chapter(
                 source_key=source_key,
                 provider_key=provider_key,
                 provider_model=provider_model,
+                platform_novel_id=platform_novel_id,
                 source_language=source_language,
                 target_language=target_language,
                 glossary=glossary,
@@ -1832,6 +1859,7 @@ async def translate_chapters(
     meta = self.storage.load_metadata(novel_id)
     if not meta:
         raise RuntimeError("Metadata not found; run scrape-metadata first.")
+    platform_novel_id = _resolve_platform_novel_id(novel_id, meta)
 
     effective_source_language = source_language or self._infer_source_language(source_key, meta)
     effective_target_language = target_language or settings.TRANSLATION_TARGET_LANGUAGE
@@ -1919,6 +1947,7 @@ async def translate_chapters(
                     raw_text=raw_text,
                     provider_key=effective_provider_key,
                     provider_model=effective_provider_model,
+                    platform_novel_id=platform_novel_id,
                     source_language=effective_source_language,
                     target_language=effective_target_language,
                     glossary=glossary,
@@ -1974,6 +2003,7 @@ async def translate_chapters(
                 source_key=source_key,
                 provider_key=effective_provider_key,
                 provider_model=effective_provider_model,
+                platform_novel_id=platform_novel_id,
                 source_language=effective_source_language,
                 target_language=effective_target_language,
                 glossary=glossary,

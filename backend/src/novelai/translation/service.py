@@ -4,15 +4,15 @@ import logging
 from typing import Any
 from uuid import uuid4
 
+from novelai.sources.base import SourceAdapter
 from novelai.translation.pipeline.context import PipelineResult, PipelineState
 from novelai.translation.pipeline.pipeline import TranslationPipeline
 from novelai.translation.pipeline.stages.fetch import FetchStage
 from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.post_process import PostProcessStage
 from novelai.translation.pipeline.stages.segment import SmartSegmentStage
-from novelai.translation.pipeline.stages.translation_qa import TranslationQAStage
 from novelai.translation.pipeline.stages.translate import TranslateStage
-from novelai.sources.base import SourceAdapter
+from novelai.translation.pipeline.stages.translation_qa import TranslationQAStage
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,7 @@ class TranslationService:
         source_key: str | None = None,
         provider_key: str | None = None,
         provider_model: str | None = None,
+        platform_novel_id: int | None = None,
         source_language: str | None = None,
         target_language: str | None = None,
         glossary: Any | None = None,
@@ -99,6 +100,8 @@ class TranslationService:
         state.metadata["translation_run_id"] = job_id or activity_id or f"translation_run_{uuid4().hex}"
         if novel_id is not None:
             state.metadata["novel_id"] = novel_id
+        if platform_novel_id is not None:
+            state.metadata["platform_novel_id"] = platform_novel_id
         if chapter_id is not None:
             state.metadata["chapter_id"] = chapter_id
         if source_key is not None:
