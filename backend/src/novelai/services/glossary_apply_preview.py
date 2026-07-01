@@ -42,6 +42,7 @@ class GlossaryApplyPreviewRequest:
     chapter_end: int | None = None
     max_chapters: int = _DEFAULT_MAX_CHAPTERS
     max_matches: int = _DEFAULT_MAX_MATCHES
+    max_delta_fraction: float = 0.15
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,7 @@ class GlossaryChapterPreview:
     needs_review_count: int
     blocked_count: int
     replacements: list[GlossaryReplacementPreview]
+    delta_fraction: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -169,6 +171,15 @@ class GlossaryApplyPreviewService:
                         blocked_matches += 1
                 if capped:
                     break
+            delta_fraction = 0.0
+            if replacements and chapter.text:
+                safe_repls = [r for r in replacements if r.risk_status == "safe"]
+                if safe_repls:
+                    simulated = chapter.text
+                    for r in reversed(safe_repls):
+                        simulated = simulated[: r.start_offset] + r.new_text + simulated[r.end_offset :]
+                    df = (len(simulated) - len(chapter.text)) / max(1, len(chapter.text))
+                    delta_fraction = abs(df)
             if replacements:
                 chapter_previews.append(
                     GlossaryChapterPreview(
@@ -180,6 +191,7 @@ class GlossaryApplyPreviewService:
                         needs_review_count=sum(1 for item in replacements if item.risk_status == "needs_review"),
                         blocked_count=sum(1 for item in replacements if item.risk_status == "blocked"),
                         replacements=replacements,
+                        delta_fraction=delta_fraction,
                     )
                 )
             if capped:

@@ -3,9 +3,20 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
+from sqlalchemy import select
+
+from novelai.core.platform import ChapterVersionKind
+from novelai.db.engine import session_scope as _session_scope
+from novelai.db.models.novel import Novel
 from novelai.glossary import extract_candidate_glossary_terms
+from novelai.services.glossary_apply_preview import (
+    GlossaryApplyPreviewRequest,
+    GlossaryApplyPreviewService,
+)
+from novelai.services.glossary_rewrite import apply_glossary_replacements
 from novelai.services.orchestration.common import (
     DEFAULT_GLOSSARY_EXTRACTION_PROMPT,
     GLOSSARY_EXTRACTION_JSON_SCHEMA,
@@ -471,4 +482,296 @@ async def review_glossary_terms(
         model=profile_model,
         db_sync=db_sync,
     )
+
+
+@dataclass
+class ChapterApplyResult:
+    chapter_id: str
+    status: Literal["applied", "skipped", "blocked", "failed"]
+    replacements_made: int
+    delta_fraction: float
+    new_version_id: str | None = None
+    previous_version_id: str | None = None
+    block_reason: str | None = None
+    error: str | None = None
+
+
+@dataclass
+class ApplyGlossaryResult:
+    novel_id: str
+    dry_run: bool
+    batch_id: str | None
+    glossary_revision: int
+    chapters: list[ChapterApplyResult]
+    total_applied: int
+    total_skipped: int
+    total_blocked: int
+    total_failed: int
+
+
+async def apply_glossary_to_chapters(
+    self: Any,
+    novel_id: str,
+    *,
+    entry_ids: list[int] | None = None,
+    include_all_approved: bool = False,
+    chapter_numbers: list[int] | None = None,
+    chapter_start: int | None = None,
+    chapter_end: int | None = None,
+    max_chapters: int | None = None,
+    dry_run: bool = True,
+    max_delta_fraction: float = 0.15,
+    force_needs_review: bool = False,
+    batch_id: str | None = None,
+) -> ApplyGlossaryResult:
+    """Apply glossary replacements to translated chapters.
+
+    Delegates classification to ``GlossaryApplyPreviewService``, then
+    writes new chapter versions using storage functions.
+    """
+    meta = self.storage.load_metadata(novel_id)
+    if not meta:
+        raise RuntimeError("Metadata not found; import or scrape a novel first.")
+    return self._run_apply_glossary(
+        novel_id=novel_id,
+        meta=meta,
+        entry_ids=entry_ids,
+        include_all_approved=include_all_approved,
+        chapter_numbers=chapter_numbers,
+        chapter_start=chapter_start,
+        chapter_end=chapter_end,
+        max_chapters=max_chapters,
+        dry_run=dry_run,
+        max_delta_fraction=max_delta_fraction,
+        force_needs_review=force_needs_review,
+        batch_id=batch_id,
+    )
+
+
+def _run_apply_glossary(
+    self: Any,
+    *,
+    novel_id: str,
+    meta: dict[str, Any],
+    entry_ids: list[int] | None,
+    include_all_approved: bool,
+    chapter_numbers: list[int] | None,
+    chapter_start: int | None,
+    chapter_end: int | None,
+    max_chapters: int | None,
+    dry_run: bool,
+    max_delta_fraction: float,
+    force_needs_review: bool,
+    batch_id: str | None,
+) -> ApplyGlossaryResult:
+    """Synchronous body of apply_glossary_to_chapters."""
+    effective_max = max_chapters if isinstance(max_chapters, int) else 200
+
+    with _session_scope() as db_session:
+        # Resolve DB novel
+        novel_db = db_session.execute(
+            select(Novel).where(Novel.slug == novel_id)
+        ).scalar_one_or_none()
+        if novel_db is None and novel_id.isdigit():
+            novel_db = db_session.get(Novel, int(novel_id))
+        if novel_db is None:
+            raise RuntimeError(f"Novel not found in DB: {novel_id}")
+        db_novel_id = novel_db.id
+        glossary_revision = getattr(novel_db, "glossary_revision", 0) or 0
+        preview_request = GlossaryApplyPreviewRequest(
+            entry_ids=entry_ids,
+            include_all_approved=include_all_approved,
+            chapter_numbers=chapter_numbers,
+            chapter_start=chapter_start,
+            chapter_end=chapter_end,
+            max_chapters=effective_max,
+            max_delta_fraction=max_delta_fraction,
+        )
+        service = GlossaryApplyPreviewService(db_session, self.storage)
+        preview = service.preview(db_novel_id, preview_request)
+
+        if dry_run:
+            chapters_result = [
+                ChapterApplyResult(
+                    chapter_id=ch.chapter_storage_id,
+                    status="skipped"
+                    if ch.safe_count == 0
+                    else "applied",
+                    replacements_made=max(ch.safe_count, ch.needs_review_count),
+                    delta_fraction=ch.delta_fraction,
+                )
+                for ch in preview.chapters
+            ]
+            total_applied = sum(
+                1 for c in chapters_result if c.status == "applied"
+            )
+            return ApplyGlossaryResult(
+                novel_id=novel_id,
+                dry_run=True,
+                batch_id=batch_id,
+                glossary_revision=glossary_revision,
+                chapters=chapters_result,
+                total_applied=total_applied,
+                total_skipped=len(preview.chapters) - total_applied,
+                total_blocked=0,
+                total_failed=0,
+            )
+
+        # Non-dry-run: apply replacements
+        chapters_result: list[ChapterApplyResult] = []
+        total_applied = 0
+        total_skipped = 0
+        total_blocked = 0
+        total_failed = 0
+
+        for ch in preview.chapters:
+            # Determine safe replacements to apply
+            safe_repls = [
+                r for r in ch.replacements
+                if r.risk_status == "safe" or (force_needs_review and r.risk_status == "needs_review")
+            ]
+            has_needs_review = any(r.risk_status == "needs_review" for r in ch.replacements)
+            has_blocked = any(r.risk_status == "blocked" for r in ch.replacements)
+
+            if has_blocked:
+                chapters_result.append(
+                    ChapterApplyResult(
+                        chapter_id=ch.chapter_storage_id,
+                        status="blocked",
+                        replacements_made=0,
+                        delta_fraction=ch.delta_fraction,
+                        block_reason="chapter_contains_blocked_replacements",
+                    )
+                )
+                total_blocked += 1
+                continue
+
+            if has_needs_review and not force_needs_review:
+                chapters_result.append(
+                    ChapterApplyResult(
+                        chapter_id=ch.chapter_storage_id,
+                        status="skipped",
+                        replacements_made=0,
+                        delta_fraction=ch.delta_fraction,
+                        block_reason="needs_review",
+                    )
+                )
+                total_skipped += 1
+                continue
+
+            if not safe_repls:
+                chapters_result.append(
+                    ChapterApplyResult(
+                        chapter_id=ch.chapter_storage_id,
+                        status="skipped",
+                        replacements_made=0,
+                        delta_fraction=0.0,
+                    )
+                )
+                total_skipped += 1
+                continue
+
+            # Load active translation
+            active = self.storage.load_translated_chapter(novel_id, ch.chapter_storage_id)
+            if not active:
+                chapters_result.append(
+                    ChapterApplyResult(
+                        chapter_id=ch.chapter_storage_id,
+                        status="failed",
+                        replacements_made=0,
+                        delta_fraction=0.0,
+                        error="active_translation_not_found",
+                    )
+                )
+                total_failed += 1
+                continue
+
+            original_text = active.get("text", "")
+            previous_version_id = active.get("version_id")
+
+            try:
+                new_text, applied_count = apply_glossary_replacements(
+                    original_text,
+                    safe_repls,
+                )
+            except Exception as exc:
+                chapters_result.append(
+                    ChapterApplyResult(
+                        chapter_id=ch.chapter_storage_id,
+                        status="failed",
+                        replacements_made=0,
+                        delta_fraction=0.0,
+                        error=str(exc),
+                    )
+                )
+                total_failed += 1
+                continue
+
+            # Final delta_fraction re-check
+            df = (len(new_text) - len(original_text)) / max(1, len(original_text))
+            final_delta = abs(df)
+            if final_delta > max_delta_fraction:
+                chapters_result.append(
+                    ChapterApplyResult(
+                        chapter_id=ch.chapter_storage_id,
+                        status="blocked",
+                        replacements_made=0,
+                        delta_fraction=final_delta,
+                        block_reason="delta_fraction_exceeded",
+                    )
+                )
+                total_blocked += 1
+                continue
+
+            # Write new version
+            try:
+                path = self.storage.save_translated_chapter(
+                    novel_id,
+                    ch.chapter_storage_id,
+                    new_text,
+                    version_kind=ChapterVersionKind.GLOSSARY_APPLY,
+                    glossary_revision=glossary_revision,
+                    glossary_injected_term_count=applied_count,
+                    base_version_id=previous_version_id,
+                    batch_id=batch_id,
+                )
+            except Exception as exc:
+                chapters_result.append(
+                    ChapterApplyResult(
+                        chapter_id=ch.chapter_storage_id,
+                        status="failed",
+                        replacements_made=0,
+                        delta_fraction=final_delta,
+                        error=str(exc),
+                    )
+                )
+                total_failed += 1
+                continue
+
+            new_version_id = str(
+                getattr(path, "stem", None) or ch.chapter_storage_id
+            )
+            chapters_result.append(
+                ChapterApplyResult(
+                    chapter_id=ch.chapter_storage_id,
+                    status="applied",
+                    replacements_made=applied_count,
+                    delta_fraction=final_delta,
+                    new_version_id=new_version_id,
+                    previous_version_id=previous_version_id,
+                )
+            )
+            total_applied += 1
+
+        return ApplyGlossaryResult(
+            novel_id=novel_id,
+            dry_run=False,
+            batch_id=batch_id,
+            glossary_revision=glossary_revision,
+            chapters=chapters_result,
+            total_applied=total_applied,
+            total_skipped=total_skipped,
+            total_blocked=total_blocked,
+            total_failed=total_failed,
+        )
 

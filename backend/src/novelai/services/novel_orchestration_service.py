@@ -14,6 +14,7 @@ from novelai.services.orchestration.crawler import scrape_chapters, scrape_metad
 from novelai.services.orchestration.glossary import (
     _extract_glossary_terms_with_llm,
     _parse_llm_glossary_terms,
+    apply_glossary_to_chapters,
     extract_glossary_terms,
     review_glossary_terms,
     translate_glossary_terms,
@@ -326,6 +327,7 @@ class NovelOrchestrationService:
     _parse_llm_glossary_terms = staticmethod(_parse_llm_glossary_terms)
     translate_glossary_terms = translate_glossary_terms
     review_glossary_terms = review_glossary_terms
+    apply_glossary_to_chapters = apply_glossary_to_chapters
 
     # Translation workflows
     _preflight_translation = _preflight_translation

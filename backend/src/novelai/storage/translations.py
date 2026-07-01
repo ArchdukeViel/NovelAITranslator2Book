@@ -53,6 +53,8 @@ def _translated_payload_to_version(self: Any, translated: dict[str, Any], fallba
         version["prompt_template_version"] = translated["prompt_template_version"]
     if isinstance(translated.get("glossary_hash"), str) and translated["glossary_hash"]:
         version["glossary_hash"] = translated["glossary_hash"]
+    if isinstance(translated.get("batch_id"), str) and translated["batch_id"]:
+        version["batch_id"] = translated["batch_id"]
     return version
 
 
@@ -123,6 +125,7 @@ def _set_active_translation_version(self: Any, payload: dict[str, Any], version:
         "confidence_details",
         "prompt_template_version",
         "glossary_hash",
+        "batch_id",
     ):
         if optional_key in version:
             payload["translated"][optional_key] = version[optional_key]
@@ -137,6 +140,7 @@ def _append_edit_history(
     previous_version_id: str | None = None,
     editor: str | None = None,
     note: str | None = None,
+    batch_id: str | None = None,
 ) -> None:
     entries = self._normalize_named_dict_items(payload.get("edit_history"))
     entry: dict[str, Any] = {
@@ -150,6 +154,8 @@ def _append_edit_history(
         entry["editor"] = editor
     if note:
         entry["note"] = note
+    if isinstance(batch_id, str) and batch_id.strip():
+        entry["batch_id"] = batch_id.strip()
     entries.append(entry)
     payload["edit_history"] = entries
 
@@ -170,6 +176,8 @@ def save_translated_chapter(
     version_kind: ChapterVersionKind = ChapterVersionKind.MACHINE_TRANSLATION,
     prompt_template_version: str | None = None,
     glossary_hash: str | None = None,
+    batch_id: str | None = None,
+    base_version_id: str | None = None,
 ) -> Path:
     """Save a translated chapter as structured JSON and append a version."""
     payload = self._load_chapter_bundle(novel_id, chapter_id) or {"id": chapter_id}
@@ -201,6 +209,10 @@ def save_translated_chapter(
         translated_payload["prompt_template_version"] = prompt_template_version.strip()
     if isinstance(glossary_hash, str) and glossary_hash.strip():
         translated_payload["glossary_hash"] = glossary_hash.strip()
+    if isinstance(batch_id, str) and batch_id.strip():
+        translated_payload["batch_id"] = batch_id.strip()
+    if isinstance(base_version_id, str) and base_version_id.strip():
+        translated_payload["base_version_id"] = base_version_id.strip()
     versions.append(translated_payload)
     payload["prompt_template_version"] = translated_payload.get("prompt_template_version", "")
     payload["glossary_hash"] = translated_payload.get("glossary_hash", "")
@@ -247,6 +259,7 @@ def load_translated_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[s
         ),
         "prompt_template_version": translated.get("prompt_template_version", None),
         "glossary_hash": translated.get("glossary_hash", None),
+        "batch_id": translated.get("batch_id", None),
         "input_adapter_key": payload.get("input_adapter_key"),
         "origin_type": payload.get("origin_type"),
         "origin_uri_or_path": payload.get("origin_uri_or_path"),
