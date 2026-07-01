@@ -29,6 +29,8 @@ const mockListGlossaryDecisionEvents = vi.hoisted(() => vi.fn());
 const mockListGlossaryQaFindings = vi.hoisted(() => vi.fn());
 const mockPreviewGlossaryCandidateImport = vi.hoisted(() => vi.fn());
 const mockApplyGlossaryCandidateImport = vi.hoisted(() => vi.fn());
+const mockPreviewGlossaryProviderCandidates = vi.hoisted(() => vi.fn());
+const mockApplyGlossaryProviderCandidates = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
@@ -53,6 +55,8 @@ vi.mock("@/lib/api", async (importOriginal) => {
         listGlossaryQaFindings: (...args: unknown[]) => mockListGlossaryQaFindings(...args),
         previewGlossaryCandidateImport: (...args: unknown[]) => mockPreviewGlossaryCandidateImport(...args),
         applyGlossaryCandidateImport: (...args: unknown[]) => mockApplyGlossaryCandidateImport(...args),
+        previewGlossaryProviderCandidates: (...args: unknown[]) => mockPreviewGlossaryProviderCandidates(...args),
+        applyGlossaryProviderCandidates: (...args: unknown[]) => mockApplyGlossaryProviderCandidates(...args),
       };
     },
   };
@@ -103,6 +107,15 @@ const importedReviewingEntry: GlossaryEntry = {
   status: "candidate",
 };
 
+const providerImportedReviewingEntry: GlossaryEntry = {
+  ...reviewingEntry,
+  id: 4,
+  canonical_term: "Kotoba Sekai",
+  approved_translation: "Word World",
+  term_type: "other",
+  status: "candidate",
+};
+
 const candidatePreviewResult = {
   novel_id: 42,
   mode: "preview",
@@ -141,6 +154,48 @@ const candidateApplyResult = {
   ],
 };
 
+const providerPreviewResult = {
+  novel_id: 42,
+  mode: "preview",
+  provider_mode: "configured_translation_provider",
+  provider_label: "gemini",
+  candidates_found: 1,
+  candidates_created: 0,
+  candidates_merged: 0,
+  candidates_skipped: 0,
+  conflicts: [] as string[],
+  warnings: ["Raw chapter text was unavailable; provider context uses translated text only."],
+  provider_warnings: ["Candidate 1 used an unsupported term_type and was normalized to other."],
+  candidates: [
+    {
+      raw_term: "言葉世界",
+      term: "言葉世界",
+      translation: "Kotoba Sekai",
+      term_type: "other",
+      confidence: 0.95,
+      aliases: ["Word World"],
+      alias_count: 1,
+      chapter_refs: ["1"],
+      action: "preview",
+      rationale: "Compact rationale for review.",
+      notes: null,
+    },
+  ],
+};
+
+const providerApplyResult = {
+  ...providerPreviewResult,
+  mode: "apply",
+  candidates_created: 1,
+  candidates: [
+    {
+      ...providerPreviewResult.candidates[0],
+      action: "created",
+      notes: "Created as a Reviewing candidate from provider-assisted saved chapter suggestions.",
+    },
+  ],
+};
+
 beforeEach(() => {
   mockNovel.mockResolvedValue({ novel_id: "42", title: "Test Novel", translated_title: "Test Novel" });
   mockListGlossaryAliases.mockResolvedValue([]);
@@ -161,6 +216,8 @@ afterEach(() => {
   mockListGlossaryQaFindings.mockReset();
   mockPreviewGlossaryCandidateImport.mockReset();
   mockApplyGlossaryCandidateImport.mockReset();
+  mockPreviewGlossaryProviderCandidates.mockReset();
+  mockApplyGlossaryProviderCandidates.mockReset();
   vi.restoreAllMocks();
   cleanup();
 });
@@ -345,6 +402,156 @@ describe("AdminGlossaryShell", () => {
     await user.click(await screen.findByRole("button", { name: "Import review candidates" }));
     const dialog = screen.getByRole("dialog", { name: "Import review candidates" });
     expect(within(dialog).queryByText(/\b(provider|ai|model)\b/i)).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /repair/i })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /rewrite/i })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /prompt injection/i })).not.toBeInTheDocument();
+  });
+
+  it("opens the provider suggestion dialog with default limits and collapsed advanced fields", async () => {
+    const user = userEvent.setup();
+    mockListGlossaryEntries.mockResolvedValue([]);
+
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Suggest with provider" })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Suggest with provider" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Suggest with provider" });
+    expect(within(dialog).getByText("Ask the configured translation provider to suggest possible glossary terms from saved chapters. Suggestions stay Reviewing until approved.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Suggestions stay Reviewing. Approval is manual. Saved chapter rewriting is a separate future step. Provider output can be wrong and should be reviewed.")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Max candidates")).toHaveValue(5);
+    expect(within(dialog).getByLabelText("Max chapters")).toHaveValue(1);
+    expect(within(dialog).getByLabelText("Max characters")).toHaveValue(4000);
+    expect(within(dialog).getByText("Advanced")).toBeInTheDocument();
+    expect(within(dialog).getByText("Advanced").closest("details")).not.toHaveAttribute("open");
+    expect(within(dialog).queryByRole("button", { name: "Import as Reviewing" })).not.toBeInTheDocument();
+  });
+
+  it("previews provider suggestions and renders compact candidates and warnings", async () => {
+    const user = userEvent.setup();
+    mockListGlossaryEntries.mockResolvedValue([]);
+    mockPreviewGlossaryProviderCandidates.mockResolvedValue(providerPreviewResult);
+
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await user.click(await screen.findByRole("button", { name: "Suggest with provider" }));
+    const dialog = screen.getByRole("dialog", { name: "Suggest with provider" });
+    await user.clear(within(dialog).getByLabelText("Max candidates"));
+    await user.type(within(dialog).getByLabelText("Max candidates"), "6");
+    await user.clear(within(dialog).getByLabelText("Max chapters"));
+    await user.type(within(dialog).getByLabelText("Max chapters"), "2");
+    await user.clear(within(dialog).getByLabelText("Max characters"));
+    await user.type(within(dialog).getByLabelText("Max characters"), "3000");
+    await user.click(within(dialog).getByText("Advanced"));
+    await user.type(within(dialog).getByLabelText("Provider"), "gemini");
+    await user.type(within(dialog).getByLabelText("Provider model"), "gemini-test");
+    await user.click(within(dialog).getByRole("button", { name: "Preview suggestions" }));
+
+    await waitFor(() => {
+      expect(mockPreviewGlossaryProviderCandidates).toHaveBeenCalledWith("42", {
+        max_candidates: 6,
+        max_chapters: 2,
+        max_chars: 3000,
+        provider: "gemini",
+        provider_model: "gemini-test",
+      });
+    });
+    expect(within(dialog).getByText("Found")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("言葉世界").length).toBeGreaterThan(0);
+    expect(within(dialog).getByText("Kotoba Sekai")).toBeInTheDocument();
+    expect(within(dialog).getByText("95%")).toBeInTheDocument();
+    expect(within(dialog).getByText("Word World")).toBeInTheDocument();
+    expect(within(dialog).getByText("preview")).toBeInTheDocument();
+    expect(within(dialog).getByText("Compact rationale for review.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Raw chapter text was unavailable; provider context uses translated text only.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Candidate 1 used an unsupported term_type and was normalized to other.")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Import as Reviewing" })).toBeInTheDocument();
+    expect(within(dialog).queryByText("Return strict JSON")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("raw provider json")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/api[_-]?key|authorization|bearer|secret/i)).not.toBeInTheDocument();
+  });
+
+  it("hides provider apply when preview finds no candidates", async () => {
+    const user = userEvent.setup();
+    mockListGlossaryEntries.mockResolvedValue([]);
+    mockPreviewGlossaryProviderCandidates.mockResolvedValue({
+      ...providerPreviewResult,
+      candidates_found: 0,
+      candidates: [],
+      warnings: [],
+      provider_warnings: [],
+    });
+
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await user.click(await screen.findByRole("button", { name: "Suggest with provider" }));
+    const dialog = screen.getByRole("dialog", { name: "Suggest with provider" });
+    await user.click(within(dialog).getByRole("button", { name: "Preview suggestions" }));
+
+    expect(await within(dialog).findByText("No provider suggestions found with these limits.")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Import as Reviewing" })).not.toBeInTheDocument();
+  });
+
+  it("renders provider preview errors safely", async () => {
+    const user = userEvent.setup();
+    mockListGlossaryEntries.mockResolvedValue([]);
+    mockPreviewGlossaryProviderCandidates.mockRejectedValue(new Error("Provider unavailable"));
+
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await user.click(await screen.findByRole("button", { name: "Suggest with provider" }));
+    const dialog = screen.getByRole("dialog", { name: "Suggest with provider" });
+    await user.click(within(dialog).getByRole("button", { name: "Preview suggestions" }));
+
+    expect(await within(dialog).findByText("Provider unavailable")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Return strict JSON")).not.toBeInTheDocument();
+  });
+
+  it("applies provider suggestions and refreshes glossary entries as Reviewing", async () => {
+    const user = userEvent.setup();
+    mockListGlossaryEntries
+      .mockResolvedValueOnce([approvedEntry])
+      .mockResolvedValueOnce([approvedEntry, providerImportedReviewingEntry]);
+    mockPreviewGlossaryProviderCandidates.mockResolvedValue(providerPreviewResult);
+    mockApplyGlossaryProviderCandidates.mockResolvedValue(providerApplyResult);
+
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await waitFor(() => expect(screen.getAllByText("Ellen").length).toBeGreaterThan(0));
+    await user.click(screen.getByRole("button", { name: "Suggest with provider" }));
+    const dialog = screen.getByRole("dialog", { name: "Suggest with provider" });
+    await user.click(within(dialog).getByRole("button", { name: "Preview suggestions" }));
+    await user.click(await within(dialog).findByRole("button", { name: "Import as Reviewing" }));
+
+    await waitFor(() => {
+      expect(mockApplyGlossaryProviderCandidates).toHaveBeenCalledWith("42", {
+        max_candidates: 5,
+        max_chapters: 1,
+        max_chars: 4000,
+        provider: undefined,
+        provider_model: undefined,
+      });
+    });
+    expect(await within(dialog).findByText("Import complete. Created 1, merged 0, skipped 0.")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockListGlossaryEntries).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("Kotoba Sekai").length).toBeGreaterThan(0);
+    });
+    expect(screen.getAllByText("Reviewing").length).toBeGreaterThan(0);
+  });
+
+  it("keeps provider suggestion UI free of auto-approval, repair, rewrite, and prompt-injection controls", async () => {
+    const user = userEvent.setup();
+    mockListGlossaryEntries.mockResolvedValue([]);
+
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await user.click(await screen.findByRole("button", { name: "Suggest with provider" }));
+    const dialog = screen.getByRole("dialog", { name: "Suggest with provider" });
+    expect(within(dialog).queryByRole("button", { name: /approve/i })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /auto/i })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: /repair/i })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: /rewrite/i })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: /prompt injection/i })).not.toBeInTheDocument();

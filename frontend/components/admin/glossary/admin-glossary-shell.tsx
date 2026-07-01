@@ -28,6 +28,8 @@ import type {
   GlossaryEvidenceQuality,
   GlossaryMatchingPolicy,
   GlossaryProvenanceCreatePayload,
+  GlossaryProviderCandidateRequest,
+  GlossaryProviderCandidateResult,
   GlossaryQaFinding,
   GlossaryQaFindingStatus,
   GlossaryReplacementPolicy,
@@ -80,6 +82,10 @@ const EVIDENCE_QUALITIES: GlossaryEvidenceQuality[] = [
   "manual_owner_decision",
 ];
 const QA_STATUSES: GlossaryQaFindingStatus[] = ["open", "accepted", "dismissed", "fixed"];
+const DEFAULT_IMPORT_MAX_CANDIDATES = 50;
+const DEFAULT_PROVIDER_MAX_CANDIDATES = 5;
+const DEFAULT_PROVIDER_MAX_CHAPTERS = 1;
+const DEFAULT_PROVIDER_MAX_CHARS = 4000;
 
 type EntryFormValues = {
   canonical_term: string;
@@ -121,11 +127,17 @@ type ProvenanceFormValues = {
   confidence: string;
 };
 
+type ProviderSuggestionValues = {
+  maxCandidates: number;
+  maxChapters: number;
+  maxChars: number;
+  provider: string;
+  providerModel: string;
+};
+
 type PendingAliasDeprecation = {
   alias: GlossaryAlias;
 } | null;
-
-const DEFAULT_IMPORT_MAX_CANDIDATES = 50;
 
 function emptyForm(): EntryFormValues {
   return {
@@ -257,6 +269,26 @@ function provenancePayload(values: ProvenanceFormValues): GlossaryProvenanceCrea
     local_reference: optionalText(values.local_reference),
     evidence_quality: values.evidence_quality || null,
     confidence: numberOrNull(values.confidence),
+  };
+}
+
+function emptyProviderSuggestionValues(): ProviderSuggestionValues {
+  return {
+    maxCandidates: DEFAULT_PROVIDER_MAX_CANDIDATES,
+    maxChapters: DEFAULT_PROVIDER_MAX_CHAPTERS,
+    maxChars: DEFAULT_PROVIDER_MAX_CHARS,
+    provider: "",
+    providerModel: "",
+  };
+}
+
+function providerSuggestionPayload(values: ProviderSuggestionValues): GlossaryProviderCandidateRequest {
+  return {
+    max_candidates: values.maxCandidates,
+    max_chapters: values.maxChapters,
+    max_chars: values.maxChars,
+    provider: optionalText(values.provider) ?? undefined,
+    provider_model: optionalText(values.providerModel) ?? undefined,
   };
 }
 
@@ -888,6 +920,244 @@ function CandidateImportDialog({
   );
 }
 
+function ProviderSuggestionDialog({
+  open,
+  values,
+  previewResult,
+  applyResult,
+  validationError,
+  previewPending,
+  applyPending,
+  previewError,
+  applyError,
+  onValuesChange,
+  onPreview,
+  onApply,
+  onClose,
+}: {
+  open: boolean;
+  values: ProviderSuggestionValues;
+  previewResult: GlossaryProviderCandidateResult | null;
+  applyResult: GlossaryProviderCandidateResult | null;
+  validationError: string | null;
+  previewPending: boolean;
+  applyPending: boolean;
+  previewError: unknown;
+  applyError: unknown;
+  onValuesChange: (values: ProviderSuggestionValues) => void;
+  onPreview: () => void;
+  onApply: () => void;
+  onClose: () => void;
+}) {
+  const result = applyResult ?? previewResult;
+  const hasPreviewCandidates = Boolean(previewResult && previewResult.candidates.length > 0 && !applyResult);
+  const pending = previewPending || applyPending;
+  const setValue = <K extends keyof ProviderSuggestionValues>(key: K, value: ProviderSuggestionValues[K]) => {
+    onValuesChange({ ...values, [key]: value });
+  };
+
+  return (
+    <DialogShell
+      open={open}
+      title="Suggest with provider"
+      description="Ask the configured translation provider to suggest possible glossary terms from saved chapters. Suggestions stay Reviewing until approved."
+      onClose={onClose}
+      className="max-w-5xl"
+      footer={
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-xs text-muted-foreground">
+            This may call the provider again using the same limits. It will create or merge Reviewing glossary entries only. It will not approve terms or rewrite saved chapters.
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={onClose} disabled={pending}>
+              Cancel
+            </Button>
+            <Button variant="secondary" onClick={onPreview} disabled={pending}>
+              {previewPending ? "Previewing..." : "Preview suggestions"}
+            </Button>
+            {hasPreviewCandidates ? (
+              <Button onClick={onApply} disabled={pending}>
+                {applyPending ? "Importing..." : "Import as Reviewing"}
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      }
+    >
+      <div className="space-y-4 p-4">
+        <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+          Suggestions stay Reviewing. Approval is manual. Saved chapter rewriting is a separate future step. Provider output can be wrong and should be reviewed.
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <FieldLabel>
+            <span>Max candidates</span>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              aria-label="Max candidates"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              value={values.maxCandidates}
+              onChange={(event) => setValue("maxCandidates", Number(event.target.value))}
+            />
+          </FieldLabel>
+          <FieldLabel>
+            <span>Max chapters</span>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              aria-label="Max chapters"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              value={values.maxChapters}
+              onChange={(event) => setValue("maxChapters", Number(event.target.value))}
+            />
+          </FieldLabel>
+          <FieldLabel>
+            <span>Max characters</span>
+            <input
+              type="number"
+              min={1000}
+              max={50000}
+              aria-label="Max characters"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              value={values.maxChars}
+              onChange={(event) => setValue("maxChars", Number(event.target.value))}
+            />
+          </FieldLabel>
+        </div>
+
+        <details className="rounded-md border px-3 py-2 text-sm">
+          <summary className="cursor-pointer font-medium">Advanced</summary>
+          <div className="mt-3 grid gap-4 md:grid-cols-2">
+            <FieldLabel>
+              <span>Provider</span>
+              <input
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={values.provider}
+                onChange={(event) => setValue("provider", event.target.value)}
+                placeholder="Use configured default"
+              />
+            </FieldLabel>
+            <FieldLabel>
+              <span>Provider model</span>
+              <input
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={values.providerModel}
+                onChange={(event) => setValue("providerModel", event.target.value)}
+                placeholder="Use provider default"
+              />
+            </FieldLabel>
+          </div>
+        </details>
+
+        {validationError ? (
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {validationError}
+          </div>
+        ) : null}
+        <ErrorBanner error={previewError} fallback="Failed to preview provider suggestions." className="border" />
+        <ErrorBanner error={applyError} fallback="Failed to import provider suggestions." className="border" />
+
+        {result ? (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="rounded-md border px-3 py-2">
+                <div className="text-xs uppercase text-muted-foreground">Found</div>
+                <div className="mt-1 text-xl font-semibold">{result.candidates_found}</div>
+              </div>
+              <div className="rounded-md border px-3 py-2">
+                <div className="text-xs uppercase text-muted-foreground">Created</div>
+                <div className="mt-1 text-xl font-semibold">{result.candidates_created}</div>
+              </div>
+              <div className="rounded-md border px-3 py-2">
+                <div className="text-xs uppercase text-muted-foreground">Merged</div>
+                <div className="mt-1 text-xl font-semibold">{result.candidates_merged}</div>
+              </div>
+              <div className="rounded-md border px-3 py-2">
+                <div className="text-xs uppercase text-muted-foreground">Skipped</div>
+                <div className="mt-1 text-xl font-semibold">{result.candidates_skipped}</div>
+              </div>
+            </div>
+
+            {applyResult ? (
+              <div className="rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-900 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
+                Import complete. Created {applyResult.candidates_created}, merged {applyResult.candidates_merged}, skipped {applyResult.candidates_skipped}.
+              </div>
+            ) : null}
+            {previewResult && !previewResult.candidates.length ? (
+              <EmptyState title="No provider suggestions found with these limits." description="Try a larger chapter or character limit after confirming saved chapters are available." />
+            ) : null}
+
+            {result.warnings.length ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                <div className="font-medium">Warnings</div>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  {result.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {result.provider_warnings.length ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                <div className="font-medium">Provider warnings</div>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  {result.provider_warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {result.conflicts.length ? (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <div className="font-medium">Conflicts</div>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  {result.conflicts.map((conflict) => (
+                    <li key={conflict}>{conflict}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {result.candidates.length ? (
+              <div className="seamless-scrollbar overflow-auto rounded-md border">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b bg-muted/55 text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="min-w-[160px] px-3 py-2">Term</th>
+                      <th className="min-w-[160px] px-3 py-2">Translation</th>
+                      <th className="px-3 py-2">Type</th>
+                      <th className="px-3 py-2">Confidence</th>
+                      <th className="min-w-[160px] px-3 py-2">Aliases</th>
+                      <th className="px-3 py-2">Action</th>
+                      <th className="min-w-[220px] px-3 py-2">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.candidates.map((candidate) => (
+                      <tr key={`${candidate.raw_term}-${candidate.translation}`} className="border-b last:border-0">
+                        <td className="px-3 py-2 font-medium">{candidate.term}</td>
+                        <td className="px-3 py-2">{candidate.translation}</td>
+                        <td className="px-3 py-2">{formatStatus(candidate.term_type)}</td>
+                        <td className="px-3 py-2">{formatConfidence(candidate.confidence)}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{candidate.aliases.length ? candidate.aliases.join(", ") : "-"}</td>
+                        <td className="px-3 py-2">{candidateActionLabel(candidate.action)}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{candidate.notes ?? candidate.rationale ?? "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </DialogShell>
+  );
+}
+
 export function AdminGlossaryShell({ novelId }: { novelId: string }) {
   const queryClient = useQueryClient();
   const [selectedEntryId, setSelectedEntryId] = React.useState<number | null>(null);
@@ -914,6 +1184,11 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
   const [candidateImportValidationError, setCandidateImportValidationError] = React.useState<string | null>(null);
   const [candidateImportPreview, setCandidateImportPreview] = React.useState<GlossaryCandidateImportResult | null>(null);
   const [candidateImportApply, setCandidateImportApply] = React.useState<GlossaryCandidateImportResult | null>(null);
+  const [providerSuggestionOpen, setProviderSuggestionOpen] = React.useState(false);
+  const [providerSuggestionValues, setProviderSuggestionValues] = React.useState<ProviderSuggestionValues>(emptyProviderSuggestionValues());
+  const [providerSuggestionValidationError, setProviderSuggestionValidationError] = React.useState<string | null>(null);
+  const [providerSuggestionPreview, setProviderSuggestionPreview] = React.useState<GlossaryProviderCandidateResult | null>(null);
+  const [providerSuggestionApply, setProviderSuggestionApply] = React.useState<GlossaryProviderCandidateResult | null>(null);
 
   const novel = useQuery({
     queryKey: ["admin-novel", novelId],
@@ -1089,6 +1364,24 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
     },
   });
 
+  const previewProviderSuggestions = useMutation({
+    mutationFn: (payload: GlossaryProviderCandidateRequest) =>
+      adminApi.previewGlossaryProviderCandidates(novelId, payload),
+    onSuccess: (result) => {
+      setProviderSuggestionPreview(result);
+      setProviderSuggestionApply(null);
+    },
+  });
+
+  const applyProviderSuggestions = useMutation({
+    mutationFn: (payload: GlossaryProviderCandidateRequest) =>
+      adminApi.applyGlossaryProviderCandidates(novelId, payload),
+    onSuccess: (result) => {
+      setProviderSuggestionApply(result);
+      invalidateGlossary();
+    },
+  });
+
   const validateCandidateImportMax = () => {
     if (!Number.isInteger(candidateImportMax) || candidateImportMax < 1 || candidateImportMax > 500) {
       setCandidateImportValidationError("Max candidates must be between 1 and 500.");
@@ -1124,6 +1417,51 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
     const maxCandidates = validateCandidateImportMax();
     if (maxCandidates === null) return;
     applyCandidateImport.mutate(maxCandidates);
+  };
+
+  const validateProviderSuggestionValues = () => {
+    if (!Number.isInteger(providerSuggestionValues.maxCandidates) || providerSuggestionValues.maxCandidates < 1 || providerSuggestionValues.maxCandidates > 100) {
+      setProviderSuggestionValidationError("Max candidates must be between 1 and 100.");
+      return null;
+    }
+    if (!Number.isInteger(providerSuggestionValues.maxChapters) || providerSuggestionValues.maxChapters < 1 || providerSuggestionValues.maxChapters > 20) {
+      setProviderSuggestionValidationError("Max chapters must be between 1 and 20.");
+      return null;
+    }
+    if (!Number.isInteger(providerSuggestionValues.maxChars) || providerSuggestionValues.maxChars < 1000 || providerSuggestionValues.maxChars > 50000) {
+      setProviderSuggestionValidationError("Max characters must be between 1000 and 50000.");
+      return null;
+    }
+    setProviderSuggestionValidationError(null);
+    return providerSuggestionPayload(providerSuggestionValues);
+  };
+
+  const openProviderSuggestions = () => {
+    previewProviderSuggestions.reset();
+    applyProviderSuggestions.reset();
+    setProviderSuggestionValidationError(null);
+    setProviderSuggestionPreview(null);
+    setProviderSuggestionApply(null);
+    setProviderSuggestionValues(emptyProviderSuggestionValues());
+    setProviderSuggestionOpen(true);
+  };
+
+  const closeProviderSuggestions = () => {
+    if (previewProviderSuggestions.isPending || applyProviderSuggestions.isPending) return;
+    setProviderSuggestionOpen(false);
+  };
+
+  const runProviderSuggestionPreview = () => {
+    const payload = validateProviderSuggestionValues();
+    if (payload === null) return;
+    setProviderSuggestionApply(null);
+    previewProviderSuggestions.mutate(payload);
+  };
+
+  const runProviderSuggestionApply = () => {
+    const payload = validateProviderSuggestionValues();
+    if (payload === null) return;
+    applyProviderSuggestions.mutate(payload);
   };
 
   const openCreate = () => {
@@ -1285,6 +1623,9 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
             <Button size="sm" variant="outline" onClick={openCandidateImport}>
               Import review candidates
             </Button>
+            <Button size="sm" variant="secondary" onClick={openProviderSuggestions}>
+              Suggest with provider
+            </Button>
             <Button size="sm" onClick={openCreate}>
               Create entry
             </Button>
@@ -1318,6 +1659,9 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
           </div>
           <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
             Find possible terms from saved raw/translated chapters. Imported terms stay Reviewing until approved.
+          </div>
+          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+            Ask the configured translation provider to suggest possible glossary terms from saved chapters. Suggestions stay Reviewing until approved.
           </div>
           <div className="seamless-scrollbar overflow-auto">
             <table className="w-full text-left text-sm">
@@ -1413,6 +1757,27 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
         onPreview={runCandidateImportPreview}
         onApply={runCandidateImportApply}
         onClose={closeCandidateImport}
+      />
+
+      <ProviderSuggestionDialog
+        open={providerSuggestionOpen}
+        values={providerSuggestionValues}
+        previewResult={providerSuggestionPreview}
+        applyResult={providerSuggestionApply}
+        validationError={providerSuggestionValidationError}
+        previewPending={previewProviderSuggestions.isPending}
+        applyPending={applyProviderSuggestions.isPending}
+        previewError={previewProviderSuggestions.error}
+        applyError={applyProviderSuggestions.error}
+        onValuesChange={(values) => {
+          setProviderSuggestionValues(values);
+          setProviderSuggestionValidationError(null);
+          setProviderSuggestionPreview(null);
+          setProviderSuggestionApply(null);
+        }}
+        onPreview={runProviderSuggestionPreview}
+        onApply={runProviderSuggestionApply}
+        onClose={closeProviderSuggestions}
       />
 
       <GlossaryEntryDialog
