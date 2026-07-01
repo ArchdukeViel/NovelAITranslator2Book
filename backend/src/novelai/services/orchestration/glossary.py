@@ -633,7 +633,7 @@ def _run_apply_glossary(
             has_needs_review = any(r.risk_status == "needs_review" for r in ch.replacements)
             has_blocked = any(r.risk_status == "blocked" for r in ch.replacements)
 
-            if has_blocked:
+            if has_blocked and not force_needs_review:
                 chapters_result.append(
                     ChapterApplyResult(
                         chapter_id=ch.chapter_storage_id,
