@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
-from novelai.api.routers.dependencies import get_db_session, get_storage
+from novelai.api.routers.dependencies import get_db_session, get_orchestrator, get_storage
 from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.db.models.glossary import (
     NovelGlossaryAlias,
@@ -434,6 +434,7 @@ class GlossaryChapterApplyPreviewResponse(BaseModel):
     needs_review_count: int
     blocked_count: int
     replacements: list[GlossaryReplacementPreviewResponse]
+    delta_fraction: float = 0.0
 
 
 class GlossaryApplyPreviewResponse(BaseModel):
@@ -448,6 +449,63 @@ class GlossaryApplyPreviewResponse(BaseModel):
     entry_count: int
     warnings: list[str]
     chapters: list[GlossaryChapterApplyPreviewResponse]
+
+
+class GlossaryApplyCommitRequest(BaseModel):
+    entry_ids: list[int] | None = None
+    include_all_approved: bool = False
+    chapter_numbers: list[int] | None = None
+    chapter_start: int | None = Field(default=None, ge=1)
+    chapter_end: int | None = Field(default=None, ge=1)
+    max_chapters: int = Field(default=20, ge=1, le=200)
+    dry_run: bool = False
+    max_delta_fraction: float = 0.15
+    force_needs_review: bool = False
+    batch_id: str | None = None
+
+
+class ChapterApplyResultResponse(BaseModel):
+    chapter_id: str
+    status: str
+    replacements_made: int
+    delta_fraction: float
+    new_version_id: str | None = None
+    previous_version_id: str | None = None
+    block_reason: str | None = None
+    error: str | None = None
+
+
+class GlossaryApplyCommitResponse(BaseModel):
+    novel_id: str
+    dry_run: bool
+    batch_id: str | None
+    glossary_revision: int
+    chapters: list[ChapterApplyResultResponse]
+    total_applied: int
+    total_skipped: int
+    total_blocked: int
+    total_failed: int
+    message: str
+
+
+class GlossaryApplyRollbackRequest(BaseModel):
+    batch_id: str
+
+
+class GlossaryApplyRollbackResponse(BaseModel):
+    novel_id: str
+    batch_id: str
+    reverted_chapters: list[ChapterApplyResultResponse]
+    total_reverted: int
+    message: str
+
+
+class ChapterVersionActivateResponse(BaseModel):
+    novel_id: str
+    chapter_storage_id: str
+    version_id: str
+    activated: bool
+    message: str
 
 
 class _TranslationProviderGlossarySuggestionAdapter:
@@ -787,6 +845,7 @@ def _apply_preview_response(result: ApplyPreviewServiceResult) -> GlossaryApplyP
                     )
                     for replacement in chapter.replacements
                 ],
+                delta_fraction=chapter.delta_fraction,
             )
             for chapter in result.chapters
         ],
@@ -952,6 +1011,197 @@ async def preview_glossary_apply(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _apply_preview_response(result)
+
+
+@router.post(
+    "/novels/{novel_id}/glossary/apply/commit",
+    response_model=GlossaryApplyCommitResponse,
+)
+async def commit_glossary_apply(
+    novel_id: str,
+    body: GlossaryApplyCommitRequest,
+    session: Session = Depends(get_db_session),
+    storage: StorageService = Depends(get_storage),
+    orchestrator=Depends(get_orchestrator),
+    _owner=Depends(require_role("owner")),
+) -> GlossaryApplyCommitResponse:
+    if not body.entry_ids and not body.include_all_approved:
+        raise HTTPException(status_code=422, detail="entry_ids or include_all_approved is required.")
+    novel = _require_novel(session, novel_id)
+    try:
+        result = GlossaryApplyPreviewService(session, storage).preview(
+            novel.id,
+            ApplyPreviewServiceRequest(
+                entry_ids=body.entry_ids,
+                include_all_approved=body.include_all_approved,
+                chapter_numbers=body.chapter_numbers,
+                chapter_start=body.chapter_start,
+                chapter_end=body.chapter_end,
+                max_chapters=body.max_chapters,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Prevent dry-run from making changes
+    if body.dry_run:
+        return GlossaryApplyCommitResponse(
+            novel_id=novel_id,
+            dry_run=True,
+            batch_id=body.batch_id,
+            glossary_revision=getattr(novel, "glossary_revision", 0) or 0,
+            chapters=[
+                ChapterApplyResultResponse(
+                    chapter_id=ch.chapter_storage_id,
+                    status="skipped" if ch.safe_count == 0 else "applied",
+                    replacements_made=max(ch.safe_count, ch.needs_review_count),
+                    delta_fraction=ch.delta_fraction,
+                )
+                for ch in result.chapters
+            ],
+            total_applied=sum(1 for ch in result.chapters if ch.safe_count > 0),
+            total_skipped=sum(1 for ch in result.chapters if ch.safe_count == 0),
+            total_blocked=0,
+            total_failed=0,
+            message="Dry-run completed. Set dry_run=false to apply.",
+        )
+
+    # Apply via orchestration
+    apply_result = await orchestrator.apply_glossary_to_chapters(
+        novel_id,
+        entry_ids=body.entry_ids,
+        include_all_approved=body.include_all_approved,
+        chapter_numbers=body.chapter_numbers,
+        chapter_start=body.chapter_start,
+        chapter_end=body.chapter_end,
+        max_chapters=body.max_chapters,
+        dry_run=False,
+        max_delta_fraction=body.max_delta_fraction,
+        force_needs_review=body.force_needs_review,
+        batch_id=body.batch_id,
+    )
+
+    return GlossaryApplyCommitResponse(
+        novel_id=apply_result.novel_id,
+        dry_run=False,
+        batch_id=apply_result.batch_id,
+        glossary_revision=apply_result.glossary_revision,
+        chapters=[
+            ChapterApplyResultResponse(
+                chapter_id=ch.chapter_id,
+                status=ch.status,
+                replacements_made=ch.replacements_made,
+                delta_fraction=ch.delta_fraction,
+                new_version_id=ch.new_version_id,
+                previous_version_id=ch.previous_version_id,
+                block_reason=ch.block_reason,
+                error=ch.error,
+            )
+            for ch in apply_result.chapters
+        ],
+        total_applied=apply_result.total_applied,
+        total_skipped=apply_result.total_skipped,
+        total_blocked=apply_result.total_blocked,
+        total_failed=apply_result.total_failed,
+        message="Glossary apply completed.",
+    )
+
+
+@router.post(
+    "/novels/{novel_id}/glossary/apply/rollback",
+    response_model=GlossaryApplyRollbackResponse,
+)
+async def rollback_glossary_apply(
+    novel_id: str,
+    body: GlossaryApplyRollbackRequest,
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> GlossaryApplyRollbackResponse:
+    """Revert all glossary-apply versions created in a given batch.
+
+    Uses batch_id that was recorded when the apply was committed.
+    """
+    from novelai.core.platform import ChapterVersionKind
+
+    meta = storage.load_metadata(novel_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="Novel metadata not found.")
+
+    chapter_ids = meta.get("chapter_ids", []) if isinstance(meta, dict) else []
+    reverted: list[ChapterApplyResultResponse] = []
+
+    for ch_id in chapter_ids:
+        translated = storage.load_translated_chapter(novel_id, ch_id)
+        if not translated:
+            continue
+        batch_id = translated.get("batch_id")
+        if batch_id != body.batch_id:
+            continue
+        version_kind = translated.get("version_kind")
+        if version_kind != ChapterVersionKind.GLOSSARY_APPLY.value:
+            continue
+        # Activate the previous version
+        prev_version_id = translated.get("base_version_id") or translated.get("previous_version_id")
+        if prev_version_id:
+            try:
+                storage.activate_translated_chapter_version(
+                    novel_id,
+                    ch_id,
+                    prev_version_id,
+                )
+                reverted.append(
+                    ChapterApplyResultResponse(
+                        chapter_id=ch_id,
+                        status="reverted",
+                        replacements_made=0,
+                        delta_fraction=0.0,
+                        new_version_id=prev_version_id,
+                        previous_version_id=translated.get("version_id"),
+                    )
+                )
+            except Exception as exc:
+                reverted.append(
+                    ChapterApplyResultResponse(
+                        chapter_id=ch_id,
+                        status="failed",
+                        replacements_made=0,
+                        delta_fraction=0.0,
+                        error=str(exc),
+                    )
+                )
+
+    return GlossaryApplyRollbackResponse(
+        novel_id=novel_id,
+        batch_id=body.batch_id,
+        reverted_chapters=reverted,
+        total_reverted=len(reverted),
+        message=f"Rollback completed. {len(reverted)} chapters reverted.",
+    )
+
+
+@router.post(
+    "/novels/{novel_id}/glossary/apply/chapters/{chapter_id}/versions/{version_id}/activate",
+    response_model=ChapterVersionActivateResponse,
+)
+async def activate_chapter_version(
+    novel_id: str,
+    chapter_id: str,
+    version_id: str,
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> ChapterVersionActivateResponse:
+    """Activate a specific translation version for a chapter."""
+    try:
+        storage.activate_translated_chapter_version(novel_id, chapter_id, version_id)
+        return ChapterVersionActivateResponse(
+            novel_id=novel_id,
+            chapter_storage_id=chapter_id,
+            version_id=version_id,
+            activated=True,
+            message="Version activated.",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post(

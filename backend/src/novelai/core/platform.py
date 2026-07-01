@@ -46,6 +46,7 @@ class ChapterVersionKind(StrEnum):
     MACHINE_TRANSLATION = "machine_translation"
     MANUAL_EDIT = "manual_edit"
     ROLLBACK = "rollback"
+    GLOSSARY_APPLY = "glossary_apply"
 
 
 @dataclass(frozen=True)
