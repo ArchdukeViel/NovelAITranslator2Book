@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 from collections.abc import Mapping
-from pathlib import Path
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -19,6 +19,7 @@ from novelai.storage.service import StorageService
 from novelai.translation.pipeline.context import PipelineState, TranslationChunk
 from novelai.translation.pipeline.stages.translate import TranslateStage
 from novelai.translation.scheduler import (
+    FAILED_MODEL_STATE_TTL_SECONDS,
     SchedulerModelConfig,
     SchedulerPausedError,
     SchedulerPolicy,
@@ -228,6 +229,80 @@ def test_scheduler_provider_errors_update_only_one_model() -> None:
     assert scheduler.model_states[("mock", "strong")].status == SchedulerModelStatus.AVAILABLE.value
 
 
+def test_scheduler_fresh_failed_model_state_blocks_initially() -> None:
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    scheduler = TranslationScheduler.from_configs(
+        [SchedulerModelConfig(provider_key="mock", provider_model="fast")],
+        existing_state={
+            "model_states": [
+                {
+                    "provider_key": "mock",
+                    "provider_model": "fast",
+                    "status": SchedulerModelStatus.FAILED.value,
+                    "failed_at": now.isoformat().replace("+00:00", "Z"),
+                    "last_error_code": ProviderErrorCode.MODEL_UNAVAILABLE.value,
+                }
+            ]
+        },
+    )
+
+    selection = scheduler.select_model(chapter_id="chapter_001", now=now + timedelta(minutes=5))
+
+    assert selection.paused
+    assert selection.paused_reason == SelectionReason.NO_MODEL_AVAILABLE.value
+
+
+def test_scheduler_stale_failed_model_state_expires() -> None:
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    stale_failed_at = now - timedelta(seconds=FAILED_MODEL_STATE_TTL_SECONDS + 1)
+    scheduler = TranslationScheduler.from_configs(
+        [SchedulerModelConfig(provider_key="mock", provider_model="fast")],
+        existing_state={
+            "model_states": [
+                {
+                    "provider_key": "mock",
+                    "provider_model": "fast",
+                    "status": SchedulerModelStatus.FAILED.value,
+                    "failed_at": stale_failed_at.isoformat().replace("+00:00", "Z"),
+                    "last_error_code": ProviderErrorCode.MODEL_UNAVAILABLE.value,
+                    "last_error_message": "model unavailable",
+                }
+            ]
+        },
+    )
+
+    selection = scheduler.select_model(chapter_id="chapter_001", now=now)
+
+    assert selection.provider_model == "fast"
+    state = scheduler.model_states[("mock", "fast")]
+    assert state.status == SchedulerModelStatus.AVAILABLE.value
+    assert state.failed_at is None
+    assert state.last_error_code is None
+
+
+def test_scheduler_legacy_failed_state_expires_from_window_timestamp() -> None:
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    stale_window = now - timedelta(seconds=FAILED_MODEL_STATE_TTL_SECONDS + 1)
+    scheduler = TranslationScheduler.from_configs(
+        [SchedulerModelConfig(provider_key="mock", provider_model="fast")],
+        existing_state={
+            "model_states": [
+                {
+                    "provider_key": "mock",
+                    "provider_model": "fast",
+                    "status": SchedulerModelStatus.FAILED.value,
+                    "window_started_at": stale_window.isoformat().replace("+00:00", "Z"),
+                    "last_error_code": ProviderErrorCode.MODEL_UNAVAILABLE.value,
+                }
+            ]
+        },
+    )
+
+    selection = scheduler.select_model(chapter_id="chapter_001", now=now)
+
+    assert selection.provider_model == "fast"
+
+
 @pytest.mark.asyncio
 async def test_translate_stage_records_provider_request_and_chunk_output(
     scheduler_storage: StorageService,
@@ -260,6 +335,53 @@ async def test_translate_stage_records_provider_request_and_chunk_output(
     assert outputs[0]["source_text_hash"] == _hash_text(_chunk().source_text)
     attempts = scheduler_storage.list_chunk_attempt_records(novel_id="novel1", chunk_id="c0001")
     assert [attempt["status"] for attempt in attempts] == [ChunkAttemptStatus.SUCCEEDED.value]
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_prunes_stale_novel_scoped_failed_scheduler_state(
+    scheduler_storage: StorageService,
+    scheduler_services: tuple[TranslationCache, PreferencesService, UsageService],
+) -> None:
+    cache, preferences, usage = scheduler_services
+    provider = ScheduledProvider(models=["fast"])
+    stale_failed_at = (datetime.now(UTC) - timedelta(seconds=FAILED_MODEL_STATE_TTL_SECONDS + 1)).isoformat().replace(
+        "+00:00",
+        "Z",
+    )
+    scheduler_storage.save_scheduler_state(
+        "novel1",
+        [
+            {
+                "provider_key": "mock",
+                "provider_model": "fast",
+                "status": SchedulerModelStatus.FAILED.value,
+                "failed_at": stale_failed_at,
+                "last_error_code": ProviderErrorCode.MODEL_UNAVAILABLE.value,
+            }
+        ],
+    )
+    context = _context()
+    context.job_id = None
+    context.activity_id = None
+    context.metadata["scheduler_models"] = [
+        {"provider_key": "mock", "provider_model": "fast", "priority_order": 0},
+    ]
+    stage = TranslateStage(
+        provider_factory=lambda key: provider,
+        cache=cache,
+        settings_service=preferences,
+        usage_service=usage,
+        storage=scheduler_storage,
+    )
+
+    result = await stage.run(context)
+
+    assert provider.calls == ["fast"]
+    assert result.chunk_states["c0001"]["provider_model"] == "fast"
+    stored = scheduler_storage.load_scheduler_state("novel1")
+    assert stored is not None
+    [state] = stored["model_states"]
+    assert state["status"] == SchedulerModelStatus.AVAILABLE.value
 
 
 @pytest.mark.asyncio
@@ -617,8 +739,8 @@ async def test_translate_stage_stops_after_max_retriable_attempts(
     with pytest.raises(PipelineStageError) as caught:
         await stage.run(_context())
 
-    assert getattr(caught.value, "error_code") == "max_attempts_exceeded"
-    assert getattr(caught.value, "details") == {
+    assert caught.value.error_code == "max_attempts_exceeded"
+    assert caught.value.details == {
         "chunk_id": "c0001",
         "attempt_count": 2,
         "max_attempts": 2,
@@ -628,7 +750,7 @@ async def test_translate_stage_stops_after_max_retriable_attempts(
         "latest_error_message": "still rate limited",
     }
     assert provider.calls == ["fast", "strong"]
-    context = getattr(caught.value, "pipeline_context")
+    context = caught.value.pipeline_context
     assert context is not None
     assert context.chunk_states["c0001"]["status"] == ChunkTranslationStatus.FAILED.value
     assert context.chunk_states["c0001"]["error_code"] == "max_attempts_exceeded"
@@ -674,11 +796,11 @@ async def test_translate_stage_resume_counts_persisted_failed_attempts_toward_ce
         await stage.run(_context())
 
     assert provider.calls == []
-    assert getattr(caught.value, "error_code") == "max_attempts_exceeded"
-    details = getattr(caught.value, "details")
+    assert caught.value.error_code == "max_attempts_exceeded"
+    details = caught.value.details
     assert details["attempt_count"] == 3
     assert details["max_attempts"] == 3
-    context = getattr(caught.value, "pipeline_context")
+    context = caught.value.pipeline_context
     assert context.chunk_states["c0001"]["attempt_number"] == 3
     assert context.chunk_states["c0001"]["error_code"] == "max_attempts_exceeded"
 
@@ -805,8 +927,8 @@ async def test_translate_stage_force_retranslate_obeys_max_attempt_ceiling(
         await stage.run(context)
 
     assert provider.calls == ["fast"]
-    assert getattr(caught.value, "error_code") == "max_attempts_exceeded"
-    assert getattr(caught.value, "details")["attempt_count"] == 1
+    assert caught.value.error_code == "max_attempts_exceeded"
+    assert caught.value.details["attempt_count"] == 1
 
 
 @pytest.mark.asyncio
