@@ -634,6 +634,9 @@ export type GlossaryProviderCandidateRequest = {
   max_candidates?: number;
   max_chapters?: number;
   max_chars?: number;
+  chapter_scope?: "latest" | "all" | "range";
+  chapter_start?: number | null;
+  chapter_end?: number | null;
   provider?: string;
   provider_model?: string;
 };
@@ -664,5 +667,7 @@ export type GlossaryProviderCandidateResult = {
   conflicts: string[];
   warnings: string[];
   provider_warnings: string[];
+  scanned_chapter_count: number;
+  highest_scanned_chapter_number: number | null;
   candidates: GlossaryProviderCandidateSummary[];
 };

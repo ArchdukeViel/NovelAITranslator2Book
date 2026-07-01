@@ -129,6 +129,9 @@ describe("admin glossary API client", () => {
       max_candidates: 5,
       max_chapters: 1,
       max_chars: 4000,
+      chapter_scope: "range",
+      chapter_start: 10,
+      chapter_end: 12,
       provider: "gemini",
       provider_model: "model-one",
     });
@@ -146,6 +149,9 @@ describe("admin glossary API client", () => {
       max_candidates: 5,
       max_chapters: 1,
       max_chars: 4000,
+      chapter_scope: "range",
+      chapter_start: 10,
+      chapter_end: 12,
       provider: "gemini",
       provider_model: "model-one",
     });

@@ -165,7 +165,9 @@ const providerPreviewResult = {
   candidates_skipped: 0,
   conflicts: [] as string[],
   warnings: ["Raw chapter text was unavailable; provider context uses translated text only."],
-  provider_warnings: ["Candidate 1 used an unsupported term_type and was normalized to other."],
+  provider_warnings: ["Candidate 1 used term_type 'village'; normalized to 'place'."],
+  scanned_chapter_count: 1,
+  highest_scanned_chapter_number: 1,
   candidates: [
     {
       raw_term: "言葉世界",
@@ -233,11 +235,13 @@ describe("AdminGlossaryShell", () => {
 
     expect(screen.getByRole("columnheader", { name: "Term" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Translation" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Type" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Updated" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Locked" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Term type" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("place").length).toBeGreaterThan(0);
     expect(screen.queryByLabelText("Change status for Ellen")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Select" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Lock" })).not.toBeInTheDocument();
@@ -407,7 +411,7 @@ describe("AdminGlossaryShell", () => {
     expect(within(dialog).queryByRole("button", { name: /prompt injection/i })).not.toBeInTheDocument();
   });
 
-  it("opens the provider suggestion dialog with default limits and collapsed advanced fields", async () => {
+  it("opens the provider suggestion dialog with scope choices and collapsed advanced fields", async () => {
     const user = userEvent.setup();
     mockListGlossaryEntries.mockResolvedValue([]);
 
@@ -418,12 +422,17 @@ describe("AdminGlossaryShell", () => {
 
     const dialog = screen.getByRole("dialog", { name: "Suggest with provider" });
     expect(within(dialog).getByText("Ask the configured translation provider to suggest possible glossary terms from saved chapters. Suggestions stay Reviewing until approved.")).toBeInTheDocument();
-    expect(within(dialog).getByText("Suggestions stay Reviewing. Approval is manual. Saved chapter rewriting is a separate future step. Provider output can be wrong and should be reviewed.")).toBeInTheDocument();
-    expect(within(dialog).getByLabelText("Max candidates")).toHaveValue(5);
-    expect(within(dialog).getByLabelText("Max chapters")).toHaveValue(1);
-    expect(within(dialog).getByLabelText("Max characters")).toHaveValue(4000);
-    expect(within(dialog).getByText("Advanced")).toBeInTheDocument();
-    expect(within(dialog).getByText("Advanced").closest("details")).not.toHaveAttribute("open");
+    expect(within(dialog).getByText("Suggestions stay Reviewing until approved. Provider suggestions may be wrong. Saved chapter rewriting is a separate future step. Large novels are scanned in safe batches.")).toBeInTheDocument();
+    expect(within(dialog).getByText("New saved chapters only")).toBeInTheDocument();
+    expect(within(dialog).getByText("All saved chapters")).toBeInTheDocument();
+    expect(within(dialog).getByText("Selected chapter range")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Max candidates")).not.toBeVisible();
+    expect(within(dialog).getByLabelText("Max chapters")).not.toBeVisible();
+    expect(within(dialog).getByLabelText("Max characters")).not.toBeVisible();
+    expect(within(dialog).getByText("Advanced safety caps")).toBeInTheDocument();
+    expect(within(dialog).getByText("Advanced safety caps").closest("details")).not.toHaveAttribute("open");
+    expect(within(dialog).getByText("Advanced provider override")).toBeInTheDocument();
+    expect(within(dialog).getByText("Advanced provider override").closest("details")).not.toHaveAttribute("open");
     expect(within(dialog).queryByRole("button", { name: "Import as Reviewing" })).not.toBeInTheDocument();
   });
 
@@ -436,13 +445,14 @@ describe("AdminGlossaryShell", () => {
 
     await user.click(await screen.findByRole("button", { name: "Suggest with provider" }));
     const dialog = screen.getByRole("dialog", { name: "Suggest with provider" });
+    await user.click(within(dialog).getByText("Advanced safety caps"));
     await user.clear(within(dialog).getByLabelText("Max candidates"));
     await user.type(within(dialog).getByLabelText("Max candidates"), "6");
     await user.clear(within(dialog).getByLabelText("Max chapters"));
     await user.type(within(dialog).getByLabelText("Max chapters"), "2");
     await user.clear(within(dialog).getByLabelText("Max characters"));
     await user.type(within(dialog).getByLabelText("Max characters"), "3000");
-    await user.click(within(dialog).getByText("Advanced"));
+    await user.click(within(dialog).getByText("Advanced provider override"));
     await user.type(within(dialog).getByLabelText("Provider"), "gemini");
     await user.type(within(dialog).getByLabelText("Provider model"), "gemini-test");
     await user.click(within(dialog).getByRole("button", { name: "Preview suggestions" }));
@@ -452,6 +462,9 @@ describe("AdminGlossaryShell", () => {
         max_candidates: 6,
         max_chapters: 2,
         max_chars: 3000,
+        chapter_scope: "latest",
+        chapter_start: undefined,
+        chapter_end: undefined,
         provider: "gemini",
         provider_model: "gemini-test",
       });
@@ -463,12 +476,42 @@ describe("AdminGlossaryShell", () => {
     expect(within(dialog).getByText("Word World")).toBeInTheDocument();
     expect(within(dialog).getByText("preview")).toBeInTheDocument();
     expect(within(dialog).getByText("Compact rationale for review.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Scanned")).toBeInTheDocument();
+    expect(within(dialog).getByText("Highest scanned chapter: 1")).toBeInTheDocument();
     expect(within(dialog).getByText("Raw chapter text was unavailable; provider context uses translated text only.")).toBeInTheDocument();
-    expect(within(dialog).getByText("Candidate 1 used an unsupported term_type and was normalized to other.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Candidate 1 used term_type 'village'; normalized to 'place'.")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Import as Reviewing" })).toBeInTheDocument();
     expect(within(dialog).queryByText("Return strict JSON")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("raw provider json")).not.toBeInTheDocument();
     expect(within(dialog).queryByText(/api[_-]?key|authorization|bearer|secret/i)).not.toBeInTheDocument();
+  });
+
+  it("sends selected chapter range for provider suggestions", async () => {
+    const user = userEvent.setup();
+    mockListGlossaryEntries.mockResolvedValue([]);
+    mockPreviewGlossaryProviderCandidates.mockResolvedValue(providerPreviewResult);
+
+    renderWithQuery(<AdminGlossaryShell novelId="42" />);
+
+    await user.click(await screen.findByRole("button", { name: "Suggest with provider" }));
+    const dialog = screen.getByRole("dialog", { name: "Suggest with provider" });
+    await user.click(within(dialog).getByText("Selected chapter range"));
+    await user.type(within(dialog).getByLabelText("Start chapter"), "10");
+    await user.type(within(dialog).getByLabelText("End chapter"), "12");
+    await user.click(within(dialog).getByRole("button", { name: "Preview suggestions" }));
+
+    await waitFor(() => {
+      expect(mockPreviewGlossaryProviderCandidates).toHaveBeenCalledWith("42", {
+        max_candidates: 5,
+        max_chapters: 1,
+        max_chars: 4000,
+        chapter_scope: "range",
+        chapter_start: 10,
+        chapter_end: 12,
+        provider: undefined,
+        provider_model: undefined,
+      });
+    });
   });
 
   it("hides provider apply when preview finds no candidates", async () => {
@@ -528,6 +571,9 @@ describe("AdminGlossaryShell", () => {
         max_candidates: 5,
         max_chapters: 1,
         max_chars: 4000,
+        chapter_scope: "latest",
+        chapter_start: undefined,
+        chapter_end: undefined,
         provider: undefined,
         provider_model: undefined,
       });
