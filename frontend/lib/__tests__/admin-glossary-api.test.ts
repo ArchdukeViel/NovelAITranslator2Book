@@ -118,16 +118,117 @@ describe("admin glossary API client", () => {
     expect(String(fetchMock.mock.calls[1][0])).not.toContain("rewrite");
   });
 
-  it("does not expose glossary candidate chapter repair or rewrite client methods", async () => {
+  it("previews provider-assisted glossary candidates through the provider route with CSRF and full payload", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ csrf_token: "admin-csrf" }))
+      .mockResolvedValueOnce(jsonResponse({ novel_id: 12, mode: "preview", candidates: [] }));
+    const { adminApi } = await loadApi();
+
+    await adminApi.previewGlossaryProviderCandidates("novel/one", {
+      max_candidates: 5,
+      max_chapters: 1,
+      max_chars: 4000,
+      provider: "gemini",
+      provider_model: "model-one",
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/auth/csrf");
+    const [, mutationInit] = fetchMock.mock.calls[1];
+    const headers = new Headers(mutationInit?.headers);
+    const body = JSON.parse(String(mutationInit?.body)) as Record<string, unknown>;
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "/api/admin/novels/novel%2Fone/glossary/candidates/provider/preview",
+    );
+    expect(mutationInit?.method).toBe("POST");
+    expect(headers.get("X-CSRF-Token")).toBe("admin-csrf");
+    expect(body).toEqual({
+      max_candidates: 5,
+      max_chapters: 1,
+      max_chars: 4000,
+      provider: "gemini",
+      provider_model: "model-one",
+    });
+    expect(body).not.toHaveProperty("prompt_injection");
+    expect(body).not.toHaveProperty("rewrite_chapters");
+    expect(body).not.toHaveProperty("repair_chapters");
+    expect(body).not.toHaveProperty("approve_candidates");
+  });
+
+  it("applies provider-assisted glossary candidates through the provider route with encoded novel_id", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ csrf_token: "admin-csrf" }))
+      .mockResolvedValueOnce(jsonResponse({ novel_id: 12, mode: "apply", candidates: [] }));
+    const { adminApi } = await loadApi();
+
+    await adminApi.applyGlossaryProviderCandidates("novel one", {
+      max_candidates: 3,
+      max_chapters: 2,
+      max_chars: 3000,
+      provider: "nvidia",
+      provider_model: "model two",
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/auth/csrf");
+    const [, mutationInit] = fetchMock.mock.calls[1];
+    const headers = new Headers(mutationInit?.headers);
+    const body = JSON.parse(String(mutationInit?.body)) as Record<string, unknown>;
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "/api/admin/novels/novel%20one/glossary/candidates/provider/apply",
+    );
+    expect(mutationInit?.method).toBe("POST");
+    expect(headers.get("X-CSRF-Token")).toBe("admin-csrf");
+    expect(body).toEqual({
+      max_candidates: 3,
+      max_chapters: 2,
+      max_chars: 3000,
+      provider: "nvidia",
+      provider_model: "model two",
+    });
+    expect(String(fetchMock.mock.calls[1][0])).not.toContain("/import/");
+    expect(String(fetchMock.mock.calls[1][0])).not.toContain("repair");
+    expect(String(fetchMock.mock.calls[1][0])).not.toContain("rewrite");
+  });
+
+  it("keeps no-provider import routes separate from provider-assisted routes", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ csrf_token: "admin-csrf" }))
+      .mockResolvedValueOnce(jsonResponse({ novel_id: 12, mode: "preview", candidates: [] }))
+      .mockResolvedValueOnce(jsonResponse({ novel_id: 12, mode: "apply", candidates: [] }))
+      .mockResolvedValueOnce(jsonResponse({ novel_id: 12, mode: "preview", candidates: [] }))
+      .mockResolvedValueOnce(jsonResponse({ novel_id: 12, mode: "apply", candidates: [] }));
+    const { adminApi } = await loadApi();
+
+    await adminApi.previewGlossaryCandidateImport(12, { max_candidates: 1 });
+    await adminApi.applyGlossaryCandidateImport(12, { max_candidates: 1 });
+    await adminApi.previewGlossaryProviderCandidates(12, { max_candidates: 1 });
+    await adminApi.applyGlossaryProviderCandidates(12, { max_candidates: 1 });
+
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/admin/novels/12/glossary/candidates/import/preview");
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/admin/novels/12/glossary/candidates/import/apply");
+    expect(fetchMock.mock.calls[3][0]).toBe("/api/admin/novels/12/glossary/candidates/provider/preview");
+    expect(fetchMock.mock.calls[4][0]).toBe("/api/admin/novels/12/glossary/candidates/provider/apply");
+  });
+
+  it("does not expose glossary candidate repair, rewrite, prompt injection, or auto-approval client methods", async () => {
     const { adminApi } = await loadApi();
     const methods = Object.keys(adminApi);
 
     expect(methods).toContain("previewGlossaryCandidateImport");
     expect(methods).toContain("applyGlossaryCandidateImport");
+    expect(methods).toContain("previewGlossaryProviderCandidates");
+    expect(methods).toContain("applyGlossaryProviderCandidates");
     expect(methods).not.toContain("repairGlossaryCandidateImport");
     expect(methods).not.toContain("rewriteGlossaryCandidateImport");
     expect(methods).not.toContain("repairGlossaryChapters");
     expect(methods).not.toContain("rewriteGlossaryChapters");
+    expect(methods).not.toContain("injectGlossaryPrompt");
+    expect(methods).not.toContain("previewGlossaryPromptInjection");
+    expect(methods).not.toContain("applyGlossaryPromptInjection");
+    expect(methods).not.toContain("approveGlossaryProviderCandidates");
+    expect(methods).not.toContain("autoApproveGlossaryCandidates");
   });
 
   it("uses backend alias routes scoped by novel_id, not source identifiers", async () => {

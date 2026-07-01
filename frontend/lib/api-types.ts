@@ -411,6 +411,8 @@ export type GlossaryQaFindingType =
   | "replacement_risk";
 export type GlossaryCandidateImportMode = "preview" | "apply";
 export type GlossaryCandidateImportAction = "preview" | "created" | "merged" | "skipped" | "conflict";
+export type GlossaryProviderCandidateMode = "preview" | "apply";
+export type GlossaryProviderCandidateAction = "preview" | "created" | "merged" | "skipped" | "conflict";
 
 export type GlossaryEntry = {
   id: number;
@@ -626,4 +628,41 @@ export type GlossaryCandidateImportResult = {
   conflicts: string[];
   warnings: string[];
   candidates: GlossaryCandidateSummary[];
+};
+
+export type GlossaryProviderCandidateRequest = {
+  max_candidates?: number;
+  max_chapters?: number;
+  max_chars?: number;
+  provider?: string;
+  provider_model?: string;
+};
+
+export type GlossaryProviderCandidateSummary = {
+  raw_term: string;
+  term: string;
+  translation: string;
+  term_type: GlossaryTermType;
+  confidence: number;
+  aliases: string[];
+  alias_count: number;
+  chapter_refs: string[];
+  action: GlossaryProviderCandidateAction;
+  rationale: string | null;
+  notes: string | null;
+};
+
+export type GlossaryProviderCandidateResult = {
+  novel_id: number;
+  mode: GlossaryProviderCandidateMode;
+  provider_mode: string;
+  provider_label: string;
+  candidates_found: number;
+  candidates_created: number;
+  candidates_merged: number;
+  candidates_skipped: number;
+  conflicts: string[];
+  warnings: string[];
+  provider_warnings: string[];
+  candidates: GlossaryProviderCandidateSummary[];
 };
