@@ -140,6 +140,9 @@ class FakeChapterStorage:
         }
         return sorted(chapter_ids)
 
+    def list_translated_chapters(self, novel_id: str) -> list[str]:
+        return sorted({chapter_id for stored_novel_id, chapter_id in self.translated if stored_novel_id == novel_id})
+
     def load_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
         item = self.raw.get((novel_id, chapter_id))
         return deepcopy(item) if item is not None else None
@@ -652,6 +655,147 @@ def test_provider_suggestion_route_handles_provider_timeout_safely(
     assert resp.status_code == 504
     assert resp.json()["detail"] == "Provider request timed out."
     assert "internal detail" not in str(resp.json())
+
+
+def test_owner_can_preview_glossary_apply_without_mutating_storage(owner_client, db_session, chapter_storage) -> None:
+    novel = _seed_novel(db_session, "apply-preview")
+    _seed_chapter(db_session, novel, 1)
+    repo = GlossaryRepository(db_session)
+    entry = repo.create_glossary_entry(
+        novel_id=novel.id,
+        canonical_term="Pocott",
+        term_type="place",
+        approved_translation="Pocott",
+        status="approved",
+    )
+    repo.add_glossary_alias(entry_id=entry.id, novel_id=novel.id, alias_text="Pokot", alias_type="rejected")
+    chapter_storage.add_translated(novel.slug, "1", "Pokot arrived. Pocott watched.")
+    before_translated = deepcopy(chapter_storage.translated)
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel.id}/glossary/apply/preview",
+        json={"entry_ids": [entry.id], "max_chapters": 5, "max_matches": 10},
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["novel_id"] == novel.id
+    assert payload["scanned_chapter_count"] == 1
+    assert payload["matched_chapter_count"] == 1
+    assert payload["total_match_count"] == 1
+    assert payload["needs_review_match_count"] == 1
+    replacement = payload["chapters"][0]["replacements"][0]
+    assert replacement["old_text"] == "Pokot"
+    assert replacement["new_text"] == "Pocott"
+    assert replacement["risk_status"] == "needs_review"
+    assert "before_snippet" in replacement
+    assert "after_snippet" in replacement
+    assert "Pokot arrived" in replacement["before_snippet"]
+    assert "Pocott arrived" in replacement["after_snippet"]
+    assert "chapter_already_contains_new_text" in replacement["reason_codes"]
+    assert chapter_storage.translated == before_translated
+
+
+def test_glossary_apply_preview_resolves_slug_and_numeric_novel_id(owner_client, db_session, chapter_storage) -> None:
+    novel = _seed_novel(db_session, "apply-preview-slug")
+    _seed_chapter(db_session, novel, 1)
+    repo = GlossaryRepository(db_session)
+    entry = repo.create_glossary_entry(
+        novel_id=novel.id,
+        canonical_term="Gurd",
+        term_type="character",
+        approved_translation="Gurd",
+        status="approved",
+    )
+    repo.add_glossary_alias(entry_id=entry.id, novel_id=novel.id, alias_text="Guld", alias_type="banned")
+    chapter_storage.add_translated(novel.slug, "1", "Guld arrived.")
+
+    slug_resp = owner_client.post(
+        f"/api/admin/novels/{novel.slug}/glossary/apply/preview",
+        json={"entry_ids": [entry.id]},
+    )
+    numeric_resp = owner_client.post(
+        f"/api/admin/novels/{novel.id}/glossary/apply/preview",
+        json={"entry_ids": [entry.id]},
+    )
+
+    assert slug_resp.status_code == 200
+    assert numeric_resp.status_code == 200
+    assert slug_resp.json()["novel_id"] == novel.id
+    assert numeric_resp.json()["novel_id"] == novel.id
+    assert slug_resp.json()["total_match_count"] == 1
+    assert numeric_resp.json()["total_match_count"] == 1
+
+
+def test_glossary_apply_preview_requires_owner_and_csrf(client, app, db_session) -> None:
+    novel = _seed_novel(db_session, "apply-preview-auth")
+
+    guest_resp = client.post(
+        f"/api/admin/novels/{novel.id}/glossary/apply/preview",
+        json={"include_all_approved": True},
+    )
+    assert guest_resp.status_code == 401
+
+    user = User(email="apply-preview-user@example.com", role="user")
+    db_session.add(user)
+    db_session.flush()
+    set_user(app, user_id=user.id, role="user")
+    user_resp = client.post(
+        f"/api/admin/novels/{novel.id}/glossary/apply/preview",
+        json={"include_all_approved": True},
+    )
+    assert user_resp.status_code == 403
+
+    owner = User(email="apply-preview-owner@example.com", role="owner")
+    db_session.add(owner)
+    db_session.flush()
+    set_user(app, user_id=owner.id, role="owner")
+    owner_no_csrf = TestClient(app, raise_server_exceptions=True)
+    csrf_resp = owner_no_csrf.post(
+        f"/api/admin/novels/{novel.id}/glossary/apply/preview",
+        json={"include_all_approved": True},
+    )
+    assert csrf_resp.status_code == 403
+
+
+def test_glossary_apply_preview_rejects_missing_entry_selection(owner_client, db_session) -> None:
+    novel = _seed_novel(db_session, "apply-preview-validation")
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel.id}/glossary/apply/preview",
+        json={},
+    )
+
+    assert resp.status_code == 422
+    assert "entry_ids or include_all_approved" in resp.json()["detail"]
+
+
+def test_glossary_apply_preview_warns_for_non_approved_entry(owner_client, db_session, chapter_storage) -> None:
+    novel = _seed_novel(db_session, "apply-preview-ineligible")
+    _seed_chapter(db_session, novel, 1)
+    repo = GlossaryRepository(db_session)
+    candidate = repo.create_glossary_entry(
+        novel_id=novel.id,
+        canonical_term="Candidate",
+        term_type="other",
+        approved_translation="Candidate",
+        status="candidate",
+    )
+    repo.add_glossary_alias(entry_id=candidate.id, novel_id=novel.id, alias_text="Old Candidate", alias_type="rejected")
+    chapter_storage.add_translated(novel.slug, "1", "Old Candidate appears.")
+    before_translated = deepcopy(chapter_storage.translated)
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel.id}/glossary/apply/preview",
+        json={"entry_ids": [candidate.id]},
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["entry_count"] == 0
+    assert payload["total_match_count"] == 0
+    assert any("non-approved" in warning for warning in payload["warnings"])
+    assert chapter_storage.translated == before_translated
 
 
 def test_entry_routes_reject_cross_novel_access(owner_client, db_session) -> None:
