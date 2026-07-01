@@ -156,5 +156,5 @@ for estimate in comparison.estimates:
 ## Related Docs
 
 - [../guides/GETTING_STARTED.md](../guides/GETTING_STARTED.md)
-- [DATA_OUTPUT_STRUCTURE.md](DATA_OUTPUT_STRUCTURE.md)
+- [data-output-structure.md](data-output-structure.md)
 - [../architecture/architecture.md](../architecture/architecture.md)
