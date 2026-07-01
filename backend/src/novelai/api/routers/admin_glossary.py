@@ -1478,3 +1478,141 @@ async def transition_glossary_status(
         glossary_status=novel.glossary_status,
         glossary_revision=novel.glossary_revision,
     )
+
+
+# ── Glossary Sync Bridge ─────────────────────────────────────────────
+
+_LAST_SYNC_TIMESTAMPS: dict[str, str] = {}
+
+
+class GlossarySyncRequest(BaseModel):
+    dry_run: bool = False
+
+
+class GlossarySyncResponse(BaseModel):
+    novel_id: str
+    dry_run: bool
+    created: int
+    updated: int
+    skipped: int
+    errors: list[dict[str, str]]
+    synced_terms: list[str]
+
+
+class GlossarySyncStatusResponse(BaseModel):
+    novel_id: str
+    file_approved_count: int
+    db_approved_count: int
+    in_sync: bool
+    last_sync_at: str | None
+    recommendation: str
+
+
+@router.post(
+    "/novels/{novel_id}/glossary/sync-to-db",
+    response_model=GlossarySyncResponse,
+)
+async def sync_glossary_to_db(
+    novel_id: str,
+    body: GlossarySyncRequest,
+    session: Session = Depends(get_db_session),
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> GlossarySyncResponse:
+    """Sync file-glossary entries into the DB glossary table (owner-only).
+
+    Returns HTTP 404 when the novel does not exist in storage.
+    Returns HTTP 422 with ``"novel_not_in_db"`` when the novel slug has
+    no corresponding rows table row.
+    """
+    from novelai.services.glossary_sync_service import GlossarySyncService
+
+    if storage.load_metadata(novel_id) is None:
+        raise HTTPException(status_code=404, detail="Novel not found in storage")
+
+    try:
+        result = GlossarySyncService(
+            GlossaryRepository(session), storage
+        ).sync_from_file(novel_id, dry_run=body.dry_run)
+    except ValueError as exc:
+        msg = str(exc)
+        if "novel_not_in_db" in msg:
+            raise HTTPException(
+                status_code=422,
+                detail="Novel slug has no corresponding database row (cannot resolve platform_novel_id).",
+            ) from exc
+        raise HTTPException(status_code=422, detail=msg) from exc
+
+    if not body.dry_run:
+        from datetime import UTC, datetime
+
+        _LAST_SYNC_TIMESTAMPS[novel_id] = datetime.now(UTC).isoformat().replace(
+            "+00:00", "Z"
+        )
+
+    return GlossarySyncResponse(
+        novel_id=result.novel_id,
+        dry_run=result.dry_run,
+        created=result.created,
+        updated=result.updated,
+        skipped=result.skipped,
+        errors=result.errors,
+        synced_terms=result.synced_terms,
+    )
+
+
+@router.get(
+    "/novels/{novel_id}/glossary/sync-status",
+    response_model=GlossarySyncStatusResponse,
+)
+async def get_glossary_sync_status(
+    novel_id: str,
+    session: Session = Depends(get_db_session),
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> GlossarySyncStatusResponse:
+    """Return sync status between file and DB glossaries (owner-only, read-only)."""
+    from novelai.db.models.novel import Novel
+
+    # Count file approved entries
+    file_entries = storage.load_glossary(novel_id)
+    file_approved_count = sum(
+        1
+        for e in file_entries
+        if isinstance(e, dict) and str(e.get("status") or "").strip().lower() == "approved"
+    )
+
+    # Count DB approved entries
+    novel_row: Novel | None = (
+        session.query(Novel).filter(Novel.slug == novel_id).one_or_none()
+    )
+    db_approved_count = 0
+    if novel_row is not None:
+        db_approved_count = len(
+            [
+                e
+                for e in GlossaryRepository(session).list_glossary_entries_for_novel(
+                    novel_row.id, status="approved"
+                )
+            ]
+        )
+
+    in_sync = file_approved_count == db_approved_count and db_approved_count > 0
+
+    if in_sync:
+        recommendation = "healthy"
+    elif file_approved_count > 0 and db_approved_count == 0:
+        recommendation = "sync_required"
+    elif file_approved_count == 0 and db_approved_count == 0:
+        recommendation = "empty"
+    else:
+        recommendation = "sync_required"
+
+    return GlossarySyncStatusResponse(
+        novel_id=novel_id,
+        file_approved_count=file_approved_count,
+        db_approved_count=db_approved_count,
+        in_sync=in_sync,
+        last_sync_at=_LAST_SYNC_TIMESTAMPS.get(novel_id),
+        recommendation=recommendation,
+    )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 from typing import Any
 
 from novelai.glossary import extract_candidate_glossary_terms
@@ -9,6 +10,8 @@ from novelai.services.orchestration.common import (
     DEFAULT_GLOSSARY_EXTRACTION_PROMPT,
     GLOSSARY_EXTRACTION_JSON_SCHEMA,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def extract_glossary_terms(
@@ -424,6 +427,37 @@ async def review_glossary_terms(
             ),
         ),
     )
+
+    # Best-effort sync to DB glossary
+    db_sync: dict[str, Any] = {"skipped": True, "reason": "sync_not_run"}
+    try:
+        from novelai.db.engine import session_scope
+        from novelai.services.glossary_repository import GlossaryRepository
+        from novelai.services.glossary_sync_service import GlossarySyncService
+
+        with session_scope() as session:
+            repo = GlossaryRepository(session)
+            sync_result = GlossarySyncService(repo, self.storage).sync_from_file(
+                novel_id, actor_user_id=None
+            )
+        db_sync = {
+            "created": sync_result.created,
+            "updated": sync_result.updated,
+            "skipped": sync_result.skipped,
+            "error_count": len(sync_result.errors),
+        }
+    except ValueError as exc:
+        if "novel_not_in_db" in str(exc):
+            db_sync = {"skipped": True, "reason": "novel_not_in_db"}
+        else:
+            logger.warning("Glossary DB sync failed: %s", exc)
+            db_sync = {"skipped": True, "reason": "sync_error"}
+    except Exception as exc:
+        logger.warning(
+            "Glossary DB sync failed after review: %s", exc.__class__.__name__
+        )
+        db_sync = {"skipped": True, "reason": "sync_error"}
+
     return self._phase_payload(
         phase="phase1c_glossary_review",
         status="completed",
@@ -435,5 +469,6 @@ async def review_glossary_terms(
         ignored=ignored,
         provider=profile_provider,
         model=profile_model,
+        db_sync=db_sync,
     )
 

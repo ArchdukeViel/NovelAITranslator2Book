@@ -965,6 +965,25 @@ class TranslateStage(PipelineStage):
         self._save_chunk_records(context, chunks)
         self._save_scheduler_state(context, scheduler)
 
+        # Resolve platform_novel_id once if not already in context
+        if self._platform_novel_id(context) is None and isinstance(context.novel_id, str) and context.novel_id.strip():
+            try:
+                from novelai.db.engine import session_scope
+                from novelai.db.models.novel import Novel as NovelModel
+
+                with session_scope() as session:
+                    novel_row = session.query(NovelModel).filter_by(
+                        slug=context.novel_id.strip()
+                    ).one_or_none()
+                    if novel_row is not None:
+                        context.metadata["platform_novel_id"] = novel_row.id
+            except Exception as exc:
+                logger.debug(
+                    "Could not resolve platform_novel_id for %s: %s",
+                    context.novel_id,
+                    exc.__class__.__name__,
+                )
+
         glossary_state = self._normalize_runtime_glossary(context)
         max_glossary_entries = int(context.metadata.get("glossary_max_entries", 12) or 12)
         max_glossary_context_chars = int(context.metadata.get("glossary_max_context_chars", 1200) or 1200)
