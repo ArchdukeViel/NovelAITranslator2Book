@@ -456,10 +456,10 @@ storage/novel_library
 This includes novel metadata, chapter bundles, translation versions, edit history, jobs, requests, usage logs, assets, and exports.
 Scheduler state, provider request records, chunk output records, fetch cache entries, and other runtime traceability records are also stored under this runtime root.
 
-See [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md) for the file-level reference.
+See [../reference/data-output-structure.md](../reference/data-output-structure.md) for the file-level reference.
 
 ## 14. Next Reading
 
 - [../architecture/architecture.md](../architecture/architecture.md)
-- [../reference/DATA_OUTPUT_STRUCTURE.md](../reference/DATA_OUTPUT_STRUCTURE.md)
-- [../reference/PYTHON_COMMANDS.md](../reference/PYTHON_COMMANDS.md)
+- [../reference/data-output-structure.md](../reference/data-output-structure.md)
+- [../reference/python-commands.md](../reference/python-commands.md)

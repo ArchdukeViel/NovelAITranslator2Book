@@ -11,6 +11,6 @@ These runtime subfolders are ignored by git. Configure `NOVEL_LIBRARY_DIR` when 
 
 Do not commit runtime data from this folder unless it has been intentionally sanitized and documented as a fixture or example. `storage/novel_library` is private backend runtime data and should not be served directly by the frontend or static file hosting.
 
-See `docs/reference/DATA_OUTPUT_STRUCTURE.md` for the detailed JSON layout,
+See `docs/reference/data-output-structure.md` for the detailed JSON layout,
 deletion-safety table, backup/restore guidance, and notes about translated
 metadata and public `/novels/{slug}` routes.
