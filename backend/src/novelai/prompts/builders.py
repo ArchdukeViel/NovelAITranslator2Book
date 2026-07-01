@@ -6,11 +6,14 @@ from novelai.glossary.glossary import Glossary, GlossaryEntryLike, GlossaryTerm,
 from novelai.prompts.models import TranslationRequest
 from novelai.prompts.templates import (
     DEFAULT_USER_PROMPT_TEMPLATE,
+    HONORIFIC_POLICY_BLOCKS,
     JSON_CONSISTENCY_BLOCK_TEMPLATE,
     JSON_SYSTEM_PROMPT_TEMPLATE,
     JSON_USER_PROMPT_TEMPLATE,
     MULTILINGUAL_SYSTEM_PROMPT_TEMPLATE,
+    PROMPT_TEMPLATE_VERSION,
     STRONG_CONSISTENCY_USER_PROMPT_TEMPLATE,
+    STYLE_PRESET_SYSTEM_SUFFIX_TEMPLATES,
     STYLE_PRESET_TEMPLATES,
 )
 
@@ -63,6 +66,15 @@ def _format_style_block(style_preset: str | None, target_language: str) -> str:
     return STYLE_PRESET_TEMPLATES[normalized].format(target_language=target_language)
 
 
+def _normalize_honorific_policy(honorific_policy: str | None) -> str | None:
+    if honorific_policy is None:
+        return None
+    normalized = honorific_policy.strip().lower()
+    if normalized not in HONORIFIC_POLICY_BLOCKS:
+        supported = ", ".join(sorted(HONORIFIC_POLICY_BLOCKS))
+        raise ValueError(f"Unsupported honorific policy '{honorific_policy}'. Supported: {supported}.")
+    return normalized
+
 def _format_additional_instructions(
     *,
     glossary_entries: Iterable[GlossaryEntryLike] | Glossary | None = None,
@@ -71,33 +83,52 @@ def _format_additional_instructions(
     target_language: str,
     json_output: bool = False,
     consistency_mode: bool = False,
-) -> str:
+    honorific_policy: str | None = None,
+) -> tuple[str, list[str]]:
     blocks: list[str] = []
+    conflict_warnings: list[str] = []
 
     if isinstance(prompt_glossary_block, str) and prompt_glossary_block.strip():
         blocks.append(prompt_glossary_block.strip())
 
     glossary_block = format_glossary_block(glossary_entries)
     if glossary_block:
-        blocks.append(glossary_block)
+        if prompt_glossary_block and prompt_glossary_block.strip():
+            conflict_warnings.append("conflict_suppressed_db_glossary_block")
+        else:
+            blocks.append(glossary_block)
 
     style_block = _format_style_block(style_preset, target_language)
     if style_block:
         blocks.append(style_block)
 
+    hon_block = _format_honorific_block(honorific_policy)
+    if hon_block:
+        blocks.append(hon_block)
+
     if json_output and consistency_mode:
         blocks.append(JSON_CONSISTENCY_BLOCK_TEMPLATE)
 
     if not blocks:
+        return ("", conflict_warnings)
+    return ("\n\n" + "\n\n".join(blocks), conflict_warnings)
+
+def _format_honorific_block(honorific_policy: str | None) -> str:
+    normalized = _normalize_honorific_policy(honorific_policy)
+    if normalized is None:
         return ""
-    return "\n\n" + "\n\n".join(blocks)
+    return HONORIFIC_POLICY_BLOCKS[normalized]
 
 
-def build_system_prompt(source_language: str, target_language: str) -> str:
-    return MULTILINGUAL_SYSTEM_PROMPT_TEMPLATE.format(
+def build_system_prompt(source_language: str, target_language: str, style_preset: str | None = None) -> str:
+    base = MULTILINGUAL_SYSTEM_PROMPT_TEMPLATE.format(
         source_language=_normalize_language(source_language, "source_language"),
         target_language=_normalize_language(target_language, "target_language"),
     )
+    normalized = normalize_style_preset(style_preset)
+    if normalized and normalized in STYLE_PRESET_SYSTEM_SUFFIX_TEMPLATES:
+        base = base + "\n\n" + STYLE_PRESET_SYSTEM_SUFFIX_TEMPLATES[normalized]
+    return base
 
 
 def build_user_prompt(
@@ -108,6 +139,7 @@ def build_user_prompt(
     prompt_glossary_block: str | None = None,
     style_preset: str | None = None,
     consistency_mode: bool = False,
+    honorific_policy: str | None = None,
 ) -> str:
     raw_text = _require_non_empty_text(text, "text")
     normalized_source_language = _normalize_language(source_language, "source_language")
@@ -117,24 +149,30 @@ def build_user_prompt(
         if consistency_mode
         else DEFAULT_USER_PROMPT_TEMPLATE
     )
+    additional, _ = _format_additional_instructions(
+        glossary_entries=glossary_entries,
+        prompt_glossary_block=prompt_glossary_block,
+        style_preset=style_preset,
+        target_language=normalized_target_language,
+        honorific_policy=honorific_policy,
+    )
     return template.format(
         source_language=normalized_source_language,
         target_language=normalized_target_language,
         text=raw_text,
-        additional_instructions=_format_additional_instructions(
-            glossary_entries=glossary_entries,
-            prompt_glossary_block=prompt_glossary_block,
-            style_preset=style_preset,
-            target_language=normalized_target_language,
-        ),
+        additional_instructions=additional,
     )
 
 
-def build_json_system_prompt(source_language: str, target_language: str) -> str:
-    return JSON_SYSTEM_PROMPT_TEMPLATE.format(
+def build_json_system_prompt(source_language: str, target_language: str, style_preset: str | None = None) -> str:
+    base = JSON_SYSTEM_PROMPT_TEMPLATE.format(
         source_language=_normalize_language(source_language, "source_language"),
         target_language=_normalize_language(target_language, "target_language"),
     )
+    normalized = normalize_style_preset(style_preset)
+    if normalized and normalized in STYLE_PRESET_SYSTEM_SUFFIX_TEMPLATES:
+        base = base + "\n\n" + STYLE_PRESET_SYSTEM_SUFFIX_TEMPLATES[normalized]
+    return base
 
 
 def build_json_user_prompt(
@@ -145,22 +183,25 @@ def build_json_user_prompt(
     prompt_glossary_block: str | None = None,
     style_preset: str | None = None,
     consistency_mode: bool = False,
+    honorific_policy: str | None = None,
 ) -> str:
     raw_text = _require_non_empty_text(text, "text")
     normalized_source_language = _normalize_language(source_language, "source_language")
     normalized_target_language = _normalize_language(target_language, "target_language")
+    additional, _ = _format_additional_instructions(
+        glossary_entries=glossary_entries,
+        prompt_glossary_block=prompt_glossary_block,
+        style_preset=style_preset,
+        target_language=normalized_target_language,
+        json_output=True,
+        consistency_mode=consistency_mode,
+        honorific_policy=honorific_policy,
+    )
     return JSON_USER_PROMPT_TEMPLATE.format(
         source_language=normalized_source_language,
         target_language=normalized_target_language,
         text=raw_text,
-        additional_instructions=_format_additional_instructions(
-            glossary_entries=glossary_entries,
-            prompt_glossary_block=prompt_glossary_block,
-            style_preset=style_preset,
-            target_language=normalized_target_language,
-            json_output=True,
-            consistency_mode=consistency_mode,
-        ),
+        additional_instructions=additional,
     )
 
 
@@ -174,12 +215,13 @@ def build_translation_request(
     style_preset: str | None = None,
     consistency_mode: bool = False,
     json_output: bool = False,
+    honorific_policy: str | None = None,
 ) -> TranslationRequest:
     entries = tuple(_coerce_glossary_entries(glossary_entries))
     normalized_style_preset = normalize_style_preset(style_preset)
 
     if json_output:
-        system_prompt = build_json_system_prompt(source_language, target_language)
+        system_prompt = build_json_system_prompt(source_language, target_language, style_preset=normalized_style_preset)
         user_prompt = build_json_user_prompt(
             text,
             source_language,
@@ -188,9 +230,10 @@ def build_translation_request(
             prompt_glossary_block=prompt_glossary_block,
             style_preset=normalized_style_preset,
             consistency_mode=consistency_mode,
+            honorific_policy=honorific_policy,
         )
     else:
-        system_prompt = build_system_prompt(source_language, target_language)
+        system_prompt = build_system_prompt(source_language, target_language, style_preset=normalized_style_preset)
         user_prompt = build_user_prompt(
             text,
             source_language,
@@ -199,7 +242,18 @@ def build_translation_request(
             prompt_glossary_block=prompt_glossary_block,
             style_preset=normalized_style_preset,
             consistency_mode=consistency_mode,
+            honorific_policy=honorific_policy,
         )
+
+    _additional, conflict_warnings = _format_additional_instructions(
+        glossary_entries=glossary_entries,
+        prompt_glossary_block=prompt_glossary_block,
+        style_preset=style_preset,
+        target_language=_normalize_language(target_language, "target_language"),
+        json_output=json_output,
+        consistency_mode=consistency_mode,
+        honorific_policy=honorific_policy,
+    )
 
     return TranslationRequest(
         source_language=_normalize_language(source_language, "source_language"),
@@ -214,6 +268,9 @@ def build_translation_request(
         style_preset=normalized_style_preset,
         consistency_mode=consistency_mode,
         json_output=json_output,
+        honorific_policy=_normalize_honorific_policy(honorific_policy),
+        prompt_template_version=PROMPT_TEMPLATE_VERSION,
+        runtime_glossary_conflict_warnings=tuple(conflict_warnings),
     )
 
 
@@ -226,6 +283,7 @@ def build_json_translation_request(
     prompt_glossary_block: str | None = None,
     style_preset: str | None = None,
     consistency_mode: bool = False,
+    honorific_policy: str | None = None,
 ) -> TranslationRequest:
     return build_translation_request(
         text=text,
@@ -236,4 +294,5 @@ def build_json_translation_request(
         style_preset=style_preset,
         consistency_mode=consistency_mode,
         json_output=True,
+        honorific_policy=honorific_policy,
     )

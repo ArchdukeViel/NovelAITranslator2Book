@@ -58,6 +58,7 @@ class TranslationService:
         glossary: Any | None = None,
         style_preset: str | None = None,
         consistency_mode: bool = False,
+        honorific_policy: str | None = None,
         json_output: bool = False,
         allow_cross_provider_fallback: bool = True,
         force_retranslate: bool = False,
@@ -114,6 +115,8 @@ class TranslationService:
         if glossary is not None:
             state.metadata["glossary"] = glossary
         state.metadata["glossary_revision"] = max(0, int(glossary_revision or 0))
+        if honorific_policy is not None:
+            state.metadata["honorific_policy"] = honorific_policy
         if style_preset is not None:
             state.metadata["style_preset"] = style_preset
         if consistency_mode:
