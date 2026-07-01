@@ -343,6 +343,102 @@ No real translation output:
 - Check `PROVIDER_DEFAULT`.
 - Use dummy provider only for UI and workflow testing.
 
+---
+
+## 13. Production Deployment Appendix
+
+### Required Production Environment Variables
+
+See `.env.example` for full reference.
+
+| Variable | Required | Notes |
+|---|---|---|
+| `ENV=production` | Yes | Enables `https_only` cookies, session secret fail-closed |
+| `SESSION_SECRET_KEY` | **Yes** | Strong random secret; app refuses to start if default |
+| `OWNER_BOOTSTRAP_SECRET` | Yes | Owner login secret; never commit real value |
+| `DATABASE_URL` | Yes | `postgresql+psycopg://user:***@host:5432/dbname` |
+| `REDIS_URL` | Yes | `redis://host:6379/0` |
+| `PROVIDER_GEMINI_API_KEY` | If using Gemini | Translation provider key |
+| `WEB_API_KEY` | Recommended | Bearer token for admin API |
+
+### Google OAuth Setup
+
+**Google Cloud Console**: Create OAuth 2.0 Client ID (Web application). Add redirect URIs:
+- Dev: `http://127.0.0.1:8000/api/auth/google/callback`
+- Prod: `https://yourdomain.com/api/auth/google/callback`
+
+URI must match `GOOGLE_OAUTH_REDIRECT_URI` exactly.
+
+### Auth Email Modes
+
+| Mode | What happens |
+|---|---|
+| `AUTH_EMAIL_DELIVERY_MODE=noop` (default) | Tokens created but no email sent. Safe for dev. |
+| `AUTH_EMAIL_DELIVERY_MODE=smtp` | Real email. Requires SMTP_HOST, SMTP_PORT, SMTP_FROM_EMAIL. |
+
+### Session & CSRF
+
+- `ENV=production` → session cookies are HTTPS-only
+- `SESSION_SECRET_KEY` must be strong and secret
+- CSRF: `GET /api/auth/csrf` → token, send as `X-CSRF-Token` header on mutations
+- `WEB_CORS_ORIGINS=[]` (default) for same-origin behind Caddy
+
+### Database Migrations
+
+```bash
+cd backend
+alembic upgrade head
+alembic current   # verify current revision: bb48b53baff5_initial_schema
+```
+
+### Service Startup Order (Docker Compose)
+
+```text
+postgres → redis → migrate → backend → frontend → caddy
+```
+
+The `migrate` service runs `alembic upgrade head` automatically.
+
+### Quick Production Start
+
+```bash
+cp .env.example .env
+# Edit .env with production values
+cp deploy/Caddyfile.example deploy/Caddyfile
+# Edit Caddyfile with your domain
+docker compose --env-file .env -f deploy/compose.yml up -d
+```
+
+### Health Checks
+
+```bash
+curl http://localhost/api/health
+# Expected: {"status":"ok"}
+curl http://localhost/
+curl http://localhost/api/auth/me
+# Expected: {"user_id":null,"email":null,"role":"guest","is_authenticated":false,"is_owner":false}
+```
+
+### Smoke Test Checklist
+
+**Public flow**: Browse catalog → novel detail → read chapter → login (Google OAuth) → add to library → track progress → review → logout.
+
+**Admin flow**: Login → dashboard → create crawl → create translation → edit chapter → export.
+
+### Rollback
+
+```bash
+docker compose down
+docker compose pull      # revert to previous image
+docker compose up -d
+# Database: cd backend && alembic downgrade -1
+```
+
+### Known Limitations
+
+- No separate worker service in Compose — use in-process worker or run manually
+- No worker health endpoint
+
 Docker command missing:
 
 - Install Docker Desktop.
