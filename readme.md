@@ -186,6 +186,7 @@ npm run build
 ## Documentation
 
 - [AGENTS.md](AGENTS.md): agent-neutral onboarding and operating rules for AI assistants
+- [docs/glossary/glossary-system.md](docs/glossary/glossary-system.md): current glossary system — file-glossary, DB glossary, and sync bridge
 - [docs/guides/GETTING_STARTED.md](docs/guides/GETTING_STARTED.md): comprehensive setup, workflow, and troubleshooting guide
 - [docs/architecture/architecture.md](docs/architecture/architecture.md): canonical architecture, current status, runtime flow, blocked phases, debt register, and roadmap
 - [docs/architecture/public-auth-contract.md](docs/architecture/public-auth-contract.md): public auth and user data contract design
