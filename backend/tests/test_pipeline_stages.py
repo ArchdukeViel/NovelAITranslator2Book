@@ -3,8 +3,10 @@
 import hashlib
 from collections.abc import Mapping
 from typing import Any
+from uuid import uuid4
 
 import pytest
+from hypothesis import HealthCheck, given, settings as hypothesis_settings, strategies as st
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -350,6 +352,46 @@ def test_translate_stage_glossary_hash_changes_only_for_approved_prompt_rules():
         assert first_hash == second_hash
         assert candidate_only_hash == first_hash
         assert approved_changed_hash != first_hash
+    finally:
+        session.close()
+        Base.metadata.drop_all(engine)
+
+
+@pytest.mark.asyncio
+@hypothesis_settings(suppress_health_check=[HealthCheck.function_scoped_fixture], database=None, deadline=None)
+@given(st.integers(min_value=0, max_value=10), st.integers(min_value=0, max_value=4))
+async def test_translate_stage_audit_metadata_matches_db_state(tmp_path, revision: int, term_count: int) -> None:
+    engine, session, novel, repo, service = _glossary_test_service()
+    try:
+        novel.glossary_revision = revision
+        source_terms = [f"Term {index}" for index in range(term_count)]
+        for term in source_terms:
+            _create_pipeline_glossary_entry(repo, novel.id, term, term)
+        session.commit()
+
+        env = _fallback_stage_env(tmp_path / uuid4().hex)
+        stage = TranslateStage(
+            provider_factory=lambda _key: _PromptCaptureProvider(),
+            cache=env["cache"],
+            settings_service=env["prefs"],
+            usage_service=env["usage"],
+            storage=env["storage"],
+            glossary_prompt_service=service,
+        )
+        context = _glossary_pipeline_context(novel.id, " ".join(source_terms) or "fallback text")
+        context.metadata["glossary_revision"] = revision
+
+        result = await stage.run(context)
+
+        output = env["storage"].read_translation_output(
+            "storage-novel-id",
+            chunk_id="c0001",
+            translation_run_id="run_manual",
+            chapter_ids=["chapter_001"],
+        )[-1]
+        prompt_block = result.metadata["glossary_prompt_blocks"][0]
+        assert output["glossary_revision"] == revision
+        assert output["glossary_injected_term_count"] == prompt_block["terms_injected"]
     finally:
         session.close()
         Base.metadata.drop_all(engine)

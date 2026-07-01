@@ -8,6 +8,8 @@ import { AddNovelForm } from "@/components/admin/crawler/add-novel-form";
 import { AddNovelRunDialog } from "@/components/admin/crawler/add-novel-run-dialog";
 import { ImportNowPanel } from "@/components/admin/crawler/import-now-panel";
 import { PreliminaryCrawlResultModal } from "@/components/admin/crawler/preliminary-crawl-result-modal";
+import { ReadinessBadge } from "@/components/admin/glossary/readiness-badge";
+import { TranslationModal } from "@/components/admin/library/translation-modal";
 import CrawlerPage from "@/app/(admin)/admin/crawler/page";
 import { ApiError } from "@/lib/api";
 
@@ -149,6 +151,146 @@ describe("crawler error UX", () => {
 
       const confirmButton = screen.getByRole("button", { name: /add novel/i });
       expect(confirmButton).not.toBeDisabled();
+    });
+
+    it("shows glossary-first onboarding actions when bootstrap candidates exist", async () => {
+      const user = userEvent.setup();
+      const onApproveGlossary = vi.fn();
+      const onSkipGlossary = vi.fn();
+
+      render(
+        <PreliminaryCrawlResultModal
+          open={true}
+          result={{ ...mockResult, bootstrap_candidate_count: 3 }}
+          selectedChapterIds={new Set(["1"])}
+          selectedCount={1}
+          allSelected={false}
+          pending={false}
+          error={null}
+          onToggleAll={() => {}}
+          onToggleChapter={() => {}}
+          onConfirm={() => {}}
+          onCancel={() => {}}
+          onApproveGlossary={onApproveGlossary}
+          onSkipGlossary={onSkipGlossary}
+        />
+      );
+
+      expect(screen.getByText(/glossary readiness/i)).toBeInTheDocument();
+      expect(screen.getByText(/3 candidate term\(s\) detected/i)).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /review glossary before translating/i })).toHaveAttribute(
+        "href",
+        "/admin/novels/test-novel/glossary"
+      );
+
+      await user.click(screen.getByRole("button", { name: /approve all and set ready/i }));
+      await user.click(screen.getByRole("button", { name: /skip glossary for now/i }));
+
+      expect(onApproveGlossary).toHaveBeenCalledTimes(1);
+      expect(onSkipGlossary).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows only skip button and no-candidates notice when zero bootstrap candidates", () => {
+      render(
+        <PreliminaryCrawlResultModal
+          open={true}
+          result={{ ...mockResult, bootstrap_candidate_count: 0 }}
+          selectedChapterIds={new Set(["1"])}
+          selectedCount={1}
+          allSelected={false}
+          pending={false}
+          error={null}
+          onToggleAll={() => {}}
+          onToggleChapter={() => {}}
+          onConfirm={() => {}}
+          onCancel={() => {}}
+        />
+      );
+
+      expect(screen.getByText(/glossary readiness/i)).toBeInTheDocument();
+      expect(screen.getByText(/no candidate terms were detected during onboarding/i)).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: /review glossary before translating/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /approve all and set ready/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /skip glossary for now/i })).toBeInTheDocument();
+    });
+  });
+
+  describe("ReadinessBadge", () => {
+    it("links pending novels to the novel-scoped glossary route", () => {
+      render(
+        <ReadinessBadge
+          novelId="novel/with space"
+          glossaryStatus="glossary_pending"
+          glossaryRevision={2}
+          glossaryPendingCount={4}
+        />
+      );
+
+      const link = screen.getByRole("link", { name: /glossary pending/i });
+      expect(link).toHaveAttribute("href", "/admin/novels/novel%2Fwith%20space/glossary");
+      expect(link).toHaveTextContent("4 to review");
+    });
+
+    it("shows ready and skipped states without review links", () => {
+      const { rerender } = render(
+        <ReadinessBadge
+          novelId="novel-ready"
+          glossaryStatus="glossary_ready"
+          glossaryRevision={5}
+          glossaryPendingCount={0}
+        />
+      );
+
+      expect(screen.getByText("Glossary r5")).toBeInTheDocument();
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+
+      rerender(
+        <ReadinessBadge
+          novelId="novel-skipped"
+          glossaryStatus="glossary_skipped"
+          glossaryRevision={0}
+          glossaryPendingCount={0}
+        />
+      );
+
+      expect(screen.getByText("Glossary skipped")).toBeInTheDocument();
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("TranslationModal", () => {
+    it("shows glossary readiness in the novel detail modal", () => {
+      render(
+        <TranslationModal
+          open={true}
+          novelId="novel/with space"
+          title="Translated Title"
+          author="Translated Author"
+          synopsis="Translated synopsis"
+          glossaryStatus="glossary_pending"
+          glossaryRevision={7}
+          glossaryPendingCount={3}
+          language="English"
+          languages={["English", "Indonesian"]}
+          chapters={[]}
+          selectedChapterIds={new Set()}
+          selectedCount={0}
+          allSelected={false}
+          loading={false}
+          loadError={null}
+          runError={null}
+          pending={false}
+          onLanguageChange={() => {}}
+          onToggleAll={() => {}}
+          onToggleChapter={() => {}}
+          onCancel={() => {}}
+          onConfirm={() => {}}
+        />
+      );
+
+      const link = screen.getByRole("link", { name: /glossary pending/i });
+      expect(link).toHaveAttribute("href", "/admin/novels/novel%2Fwith%20space/glossary");
+      expect(screen.getByText(/3 to review/i)).toBeInTheDocument();
     });
   });
 

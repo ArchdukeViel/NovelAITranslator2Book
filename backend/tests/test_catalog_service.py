@@ -6,12 +6,14 @@ Uses SQLite in-memory + temp dir StorageService; no Postgres required.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import uuid4
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from alembic import command
 from alembic.config import Config
+from hypothesis import HealthCheck, given, settings, strategies as st
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
@@ -165,6 +167,30 @@ class TestGetOrCreateNovel:
         assert result.latest_chapter_title == "Fourth Chapter"
         assert result.latest_chapter_updated_at is not None
         assert result.latest_chapter_updated_at.replace(tzinfo=timezone.utc) == scraped_at
+
+    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture], database=None)
+    @given(
+        st.sampled_from(["glossary_pending", "glossary_ready", "glossary_skipped"]),
+        st.integers(min_value=0, max_value=10_000),
+    )
+    def test_catalog_projection_carries_glossary_fields(self, storage, db_session, glossary_status: str, glossary_revision: int) -> None:
+        slug = f"projected-glossary-{uuid4().hex}"
+        novel = Novel(
+            slug=slug,
+            title="Projected Glossary Novel",
+            language="ja",
+            status="ongoing",
+            glossary_status=glossary_status,
+            glossary_revision=glossary_revision,
+        )
+        db_session.add(novel)
+        db_session.commit()
+
+        result = CatalogService(storage=storage, session=db_session).reconcile_catalog_projection(novel.slug)
+
+        assert result is not None
+        assert result.after["glossary_status"] == glossary_status
+        assert result.after["glossary_revision"] == glossary_revision
 
     def test_normalizes_publication_status_from_metadata(self, catalog, db_session) -> None:
         catalog.get_or_create_novel(
@@ -751,6 +777,39 @@ def test_catalog_projection_migration_upgrade_backfill_and_downgrade(
     engine.dispose()
 
     command.upgrade(alembic_cfg, "head")
+
+
+def test_glossary_status_fields_migration_smoke(tmp_path, monkeypatch) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    alembic_cfg = Config(str(repo_root / "alembic.ini"))
+    db_path = tmp_path / "glossary_status.sqlite"
+    database_url = f"sqlite:///{db_path.as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    alembic_cfg.set_main_option("sqlalchemy.url", database_url)
+
+    command.upgrade(alembic_cfg, "head")
+    engine = create_engine(f"sqlite:///{db_path.as_posix()}")
+    columns = inspect(engine).get_columns("novels")
+    column_types = {column["name"]: type(column["type"]).__name__ for column in columns}
+    assert column_types["glossary_status"].lower() == "varchar"
+    assert column_types["glossary_revision"].lower() == "integer"
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO novels (slug, title, language, status, is_published)
+                VALUES ('smoke-novel', 'Smoke Novel', 'ja', 'ongoing', 0)
+                """
+            )
+        )
+        row = conn.execute(
+            text("SELECT glossary_status, glossary_revision FROM novels WHERE slug = 'smoke-novel'")
+        ).mappings().one()
+
+    assert row["glossary_status"] == "glossary_pending"
+    assert row["glossary_revision"] == 0
+    engine.dispose()
 
 
 def test_safe_projection_refresh_logs_failure_without_raising(storage) -> None:

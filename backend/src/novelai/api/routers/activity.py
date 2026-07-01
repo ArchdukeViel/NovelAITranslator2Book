@@ -36,6 +36,7 @@ class TranslationActivityRequest(BaseModel):
     provider: str | None = None
     model: str | None = None
     allow_cross_provider_fallback: bool = True
+    skip_glossary_gate: bool = False
     metadata: dict[str, Any] | None = None
 
 
@@ -150,6 +151,8 @@ async def create_translation_activity(
         metadata = dict(body.metadata or {})
         if not body.allow_cross_provider_fallback:
             metadata["allow_cross_provider_fallback"] = False
+        if body.skip_glossary_gate:
+            metadata["skip_glossary_gate"] = True
         return activity_record_response(activity_log.create_translation_activity(
             novel_id=body.novel_id,
             source_key=body.source_key,

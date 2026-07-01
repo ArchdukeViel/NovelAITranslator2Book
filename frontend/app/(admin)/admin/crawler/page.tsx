@@ -16,7 +16,7 @@ import { SourceHealthPanel } from "@/components/admin/crawler/source-health-pane
 import { DialogShell } from "@/components/admin/dialog-shell";
 import { PageHeading } from "@/components/admin/page-heading";
 import { Button } from "@/components/ui/button";
-import { ApiError, api, apiErrorKey, describeApiError } from "@/lib/api";
+import { ApiError, adminApi, api, apiErrorKey, describeApiError } from "@/lib/api";
 import type { ActivityRecord } from "@/lib/api";
 import { cleanNovelInput, deriveNovelId, detectSourceOrigin } from "@/lib/novel-input";
 
@@ -98,6 +98,7 @@ async function recoverScrapeActivityAfterRunError(activityId: string, originalEr
 }
 
 export default function CrawlerPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [novelInput, setNovelInput] = React.useState("");
   const [crawlProgress, setCrawlProgress] = React.useState(0);
@@ -213,6 +214,42 @@ export default function CrawlerPage() {
         max_units: maxUnits ? Number(maxUnits) : null
       }),
     onSuccess: invalidateCrawler
+  });
+
+  const approveGlossary = useMutation({
+    mutationFn: async () => {
+      if (!addNovel.data) {
+        throw new Error("Preliminary crawl result is missing.");
+      }
+      return adminApi.batchApproveGlossaryCandidates(addNovel.data.novel_id, {
+        rationale: "Owner approved all glossary candidates during novel onboarding."
+      });
+    },
+    onSuccess: () => {
+      invalidateCrawler();
+      if (addNovel.data?.novel_id) {
+        void queryClient.invalidateQueries({ queryKey: ["admin-glossary", addNovel.data.novel_id] });
+        void queryClient.invalidateQueries({ queryKey: ["admin-novel", addNovel.data.novel_id] });
+      }
+    }
+  });
+
+  const skipGlossary = useMutation({
+    mutationFn: async () => {
+      if (!addNovel.data) {
+        throw new Error("Preliminary crawl result is missing.");
+      }
+      return adminApi.transitionGlossaryStatus(addNovel.data.novel_id, {
+        target_status: "glossary_skipped"
+      });
+    },
+    onSuccess: () => {
+      invalidateCrawler();
+      if (addNovel.data?.novel_id) {
+        void queryClient.invalidateQueries({ queryKey: ["admin-glossary", addNovel.data.novel_id] });
+        void queryClient.invalidateQueries({ queryKey: ["admin-novel", addNovel.data.novel_id] });
+      }
+    }
   });
 
   React.useEffect(() => {
@@ -335,7 +372,7 @@ export default function CrawlerPage() {
   };
 
   const resultTitle = addNovel.data?.translated_title || addNovel.data?.title || addNovel.data?.novel_id || "-";
-  const activeError = queueSelectedChapters.error || addNovel.error || importNow.error;
+  const activeError = queueSelectedChapters.error || addNovel.error || importNow.error || approveGlossary.error || skipGlossary.error;
   const activeErrorKey = activeError ? apiErrorKey(activeError) : null;
   const activeErrorDescription = activeError ? describeApiError(activeError) : null;
   const showErrorDialog = Boolean(activeError && activeErrorKey && activeErrorKey !== dismissedErrorKey);
@@ -418,11 +455,25 @@ export default function CrawlerPage() {
         allSelected={allChaptersSelected}
         pending={queueSelectedChapters.isPending}
         error={queueSelectedChapters.error}
+        glossaryActionPending={approveGlossary.isPending || skipGlossary.isPending}
         onToggleAll={handleToggleAllChapters}
         onToggleChapter={handleToggleChapter}
         onConfirm={() => {
           setDismissedErrorKey(null);
           queueSelectedChapters.mutate();
+        }}
+        onReviewGlossary={() => {
+          if (addNovel.data?.novel_id) {
+            router.push(`/admin/novels/${encodeURIComponent(addNovel.data.novel_id)}/glossary`);
+          }
+        }}
+        onApproveGlossary={() => {
+          setDismissedErrorKey(null);
+          approveGlossary.mutate();
+        }}
+        onSkipGlossary={() => {
+          setDismissedErrorKey(null);
+          skipGlossary.mutate();
         }}
         onCancel={handleCancelResult}
       />

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from hypothesis import HealthCheck, given, settings, strategies as st
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -125,6 +126,107 @@ def test_status_change_creates_decision_event(session, repo, user) -> None:
     assert json.loads(approve_event.old_value_json) == {"status": "candidate"}
     assert json.loads(approve_event.new_value_json) == {"status": "approved"}
     assert entry.status == "approved"
+    assert novel.glossary_revision == 1
+
+
+def test_approved_entry_changes_increment_glossary_revision(session, repo, user) -> None:
+    novel = _make_novel(session, "revision-approved")
+    entry = repo.create_glossary_entry(
+        novel_id=novel.id,
+        canonical_term="Pocott",
+        term_type="place",
+        approved_translation="Pocott",
+        status="approved",
+    )
+    assert novel.glossary_revision == 0
+
+    repo.update_glossary_entry(
+        entry.id,
+        novel_id=novel.id,
+        approved_translation="Pocott Village",
+        actor_user_id=user.id,
+    )
+    assert novel.glossary_revision == 1
+
+    repo.change_glossary_entry_status(
+        entry.id,
+        novel_id=novel.id,
+        status="deprecated",
+        actor_user_id=user.id,
+    )
+    assert novel.glossary_revision == 2
+
+
+def test_non_approved_entry_changes_do_not_increment_glossary_revision(session, repo, user) -> None:
+    novel = _make_novel(session, "revision-candidate")
+    entry = repo.create_glossary_entry(
+        novel_id=novel.id,
+        canonical_term="Gurd",
+        term_type="character",
+        status="candidate",
+    )
+
+    repo.update_glossary_entry(
+        entry.id,
+        novel_id=novel.id,
+        admin_notes="still under review",
+        actor_user_id=user.id,
+    )
+
+    assert novel.glossary_revision == 0
+
+
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture], database=None)
+@given(st.integers(min_value=0, max_value=1_000))
+def test_approved_entry_changes_increment_glossary_revision_property(session, repo, user, revision: int) -> None:
+    novel = _make_novel(session, f"revision-approved-{revision}")
+    novel.glossary_revision = revision
+    session.flush()
+
+    entry = repo.create_glossary_entry(
+        novel_id=novel.id,
+        canonical_term="Pocott",
+        term_type="place",
+        approved_translation="Pocott",
+        status="approved",
+    )
+
+    repo.update_glossary_entry(
+        entry.id,
+        novel_id=novel.id,
+        approved_translation="Pocott Village",
+        actor_user_id=user.id,
+    )
+    assert novel.glossary_revision == revision + 1
+
+    repo.change_glossary_entry_status(
+        entry.id,
+        novel_id=novel.id,
+        status="deprecated",
+        actor_user_id=user.id,
+    )
+    assert novel.glossary_revision == revision + 2
+
+
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture], database=None)
+@given(st.sampled_from(["candidate", "recommended"]))
+def test_non_approved_entry_changes_do_not_increment_glossary_revision_property(session, repo, status: str) -> None:
+    novel = _make_novel(session, f"revision-{status}")
+    entry = repo.create_glossary_entry(
+        novel_id=novel.id,
+        canonical_term="Gurd",
+        term_type="character",
+        status=status,
+    )
+
+    repo.update_glossary_entry(
+        entry.id,
+        novel_id=novel.id,
+        admin_notes="still under review",
+        actor_user_id=None,
+    )
+
+    assert novel.glossary_revision == 0
 
 
 def test_lock_unlock_and_deprecate_entry_create_owner_events(session, repo, user) -> None:

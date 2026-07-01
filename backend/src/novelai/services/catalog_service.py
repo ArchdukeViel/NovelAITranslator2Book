@@ -41,6 +41,8 @@ CATALOG_PROJECTION_FIELDS = (
     "latest_chapter_number",
     "latest_chapter_title",
     "latest_chapter_updated_at",
+    "glossary_status",
+    "glossary_revision",
 )
 
 

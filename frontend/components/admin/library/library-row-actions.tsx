@@ -3,6 +3,7 @@
 import { BookMarked, BookOpen, Eye, EyeOff, FileEdit, Languages, RefreshCw, Tags, Trash2 } from "lucide-react";
 import Link from "next/link";
 
+import { ReadinessBadge } from "@/components/admin/glossary/readiness-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { NovelSummary } from "@/lib/api";
@@ -65,6 +66,13 @@ export function LibraryRowActions({
         <Badge tone={published ? "green" : "neutral"}>
           {published ? "Published" : "Unpublished"}
         </Badge>
+        <ReadinessBadge
+          novelId={novel.novel_id}
+          glossaryStatus={novel.glossary_status}
+          glossaryRevision={novel.glossary_revision}
+          glossaryPendingCount={novel.glossary_pending_count}
+          compact
+        />
         {novel.publication_status ? (
           <span className="text-xs text-muted-foreground">
             Source status: {novel.publication_status}

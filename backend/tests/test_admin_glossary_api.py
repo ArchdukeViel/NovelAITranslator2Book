@@ -326,6 +326,95 @@ def test_owner_can_use_admin_novel_slug_for_glossary_routes(owner_client, db_ses
     assert events_resp.json()[0]["novel_id"] == novel.id
 
 
+def test_owner_can_transition_glossary_status(owner_client, db_session) -> None:
+    novel = _seed_novel(db_session, "status-transition")
+
+    resp = owner_client.patch(
+        f"/api/admin/novels/{novel.slug}/glossary-status",
+        json={"target_status": "glossary_skipped"},
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["novel_id"] == novel.id
+    assert payload["glossary_status"] == "glossary_skipped"
+    assert payload["glossary_revision"] == 0
+    db_session.refresh(novel)
+    assert novel.glossary_status == "glossary_skipped"
+    events = db_session.query(NovelGlossaryDecisionEvent).filter_by(novel_id=novel.id).all()
+    assert [event.event_type for event in events] == ["novel_glossary_status_change"]
+
+
+def test_glossary_status_endpoint_rejects_non_owner(client, db_session) -> None:
+    novel = _seed_novel(db_session, "status-forbidden")
+
+    resp = client.patch(
+        f"/api/admin/novels/{novel.slug}/glossary-status",
+        json={"target_status": "glossary_skipped"},
+    )
+
+    assert resp.status_code == 403
+
+
+def test_glossary_status_endpoint_returns_404_for_missing_novel(owner_client) -> None:
+    resp = owner_client.patch(
+        "/api/admin/novels/missing-novel/glossary-status",
+        json={"target_status": "glossary_ready"},
+    )
+
+    assert resp.status_code == 404
+
+
+def test_glossary_status_endpoint_rejects_invalid_target_status(owner_client, db_session) -> None:
+    novel = _seed_novel(db_session, "status-invalid")
+
+    resp = owner_client.patch(
+        f"/api/admin/novels/{novel.slug}/glossary-status",
+        json={"target_status": "ready"},
+    )
+
+    assert resp.status_code == 422
+
+
+def test_batch_approve_candidates_sets_ready(owner_client, db_session) -> None:
+    novel = _seed_novel(db_session, "batch-approve")
+    repo = GlossaryRepository(db_session)
+    repo.create_glossary_entry(
+        novel_id=novel.id,
+        canonical_term="Pocott",
+        term_type="place",
+        status="candidate",
+    )
+    repo.create_glossary_entry(
+        novel_id=novel.id,
+        canonical_term="Gurd",
+        term_type="character",
+        approved_translation="Gurd",
+        status="recommended",
+    )
+    db_session.commit()
+
+    resp = owner_client.post(
+        f"/api/admin/novels/{novel.slug}/glossary/batch-approve",
+        json={"rationale": "Ready for first translation."},
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["novel_id"] == novel.id
+    assert payload["approved_count"] == 2
+    assert payload["glossary_status"] == "glossary_ready"
+    db_session.refresh(novel)
+    assert novel.glossary_status == "glossary_ready"
+    assert novel.glossary_revision >= 1
+    entries = repo.list_glossary_entries_for_novel(novel.id)
+    by_term = {entry.canonical_term: entry for entry in entries}
+    assert by_term["Pocott"].status == "approved"
+    assert by_term["Pocott"].approved_translation == "Pocott"
+    assert by_term["Gurd"].status == "approved"
+    assert by_term["Gurd"].approved_translation == "Gurd"
+
+
 def test_owner_can_preview_glossary_candidate_import_without_writing(
     owner_client,
     db_session,

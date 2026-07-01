@@ -328,6 +328,23 @@ class GlossaryProviderSuggestionRequest(BaseModel):
     provider_model: NonEmptyStr | None = None
 
 
+class GlossaryStatusTransitionRequest(BaseModel):
+    target_status: Literal["glossary_pending", "glossary_ready", "glossary_skipped"]
+
+
+class GlossaryStatusTransitionResponse(BaseModel):
+    novel_id: str
+    glossary_status: str
+    glossary_revision: int
+
+
+class GlossaryBatchApproveResponse(BaseModel):
+    novel_id: str
+    approved_count: int
+    glossary_status: str
+    glossary_revision: int
+
+
 class GlossaryApplyPreviewRequest(BaseModel):
     entry_ids: list[int] | None = None
     include_all_approved: bool = False
@@ -1371,3 +1388,93 @@ async def update_glossary_qa_finding_status(
     except (LookupError, ValueError) as exc:
         _raise_repo_error(exc)
         raise AssertionError("unreachable") from exc
+
+
+@router.post(
+    "/novels/{novel_id}/glossary/batch-approve",
+    response_model=GlossaryBatchApproveResponse,
+)
+async def batch_approve_glossary_candidates(
+    novel_id: str,
+    body: GlossaryDecisionRequest,
+    session: Session = Depends(get_db_session),
+    owner=Depends(require_role("owner")),
+) -> GlossaryBatchApproveResponse:
+    """Approve all non-approved glossary candidates and mark the novel ready."""
+    from novelai.services.glossary_status_service import GlossaryStatusService
+
+    novel = _require_novel(session, novel_id)
+    repo = _repo(session)
+    actor_user_id = _owner_user_id(owner)
+    approved_count = 0
+    for entry in repo.list_glossary_entries_for_novel(novel.id):
+        if entry.status not in {"candidate", "recommended"}:
+            continue
+        if not isinstance(entry.approved_translation, str) or not entry.approved_translation.strip():
+            repo.update_glossary_entry(
+                entry.id,
+                novel_id=novel.id,
+                approved_translation=entry.canonical_term,
+                actor_user_id=actor_user_id,
+            )
+        repo.change_glossary_entry_status(
+            entry.id,
+            novel_id=novel.id,
+            status="approved",
+            actor_user_id=actor_user_id,
+            rationale=body.rationale or "Owner approved all glossary candidates during onboarding.",
+            decision_source="owner",
+        )
+        approved_count += 1
+    updated = GlossaryStatusService(session).transition_status(
+        novel.slug,
+        target_status="glossary_ready",
+        actor_user_id=actor_user_id,
+    )
+    return GlossaryBatchApproveResponse(
+        novel_id=updated.slug,
+        approved_count=approved_count,
+        glossary_status=updated.glossary_status,
+        glossary_revision=updated.glossary_revision,
+    )
+
+
+@router.patch(
+    "/novels/{novel_id}/glossary-status",
+    response_model=GlossaryStatusTransitionResponse,
+)
+async def transition_glossary_status(
+    novel_id: str,
+    body: GlossaryStatusTransitionRequest,
+    session: Session = Depends(get_db_session),
+    owner=Depends(require_role("owner")),
+) -> GlossaryStatusTransitionResponse:
+    """Transition a novel's glossary_status to a new value.
+
+    - Requires ``owner`` role (HTTP 403 otherwise).
+    - Returns HTTP 404 when the novel does not exist.
+    - Returns HTTP 422 when ``target_status`` is not a recognised value
+      (Pydantic ``Literal`` rejects it before the handler is invoked).
+    - Increments ``glossary_revision`` when ``target_status`` is
+      ``glossary_ready``; leaves it unchanged otherwise.
+    - Writes a ``NovelGlossaryDecisionEvent`` audit record for every
+      successful transition.
+    """
+    from novelai.services.glossary_status_service import GlossaryStatusService
+
+    try:
+        novel = GlossaryStatusService(session).transition_status(
+            novel_id,
+            target_status=body.target_status,
+            actor_user_id=_owner_user_id(owner),
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return GlossaryStatusTransitionResponse(
+        novel_id=novel.slug,
+        glossary_status=novel.glossary_status,
+        glossary_revision=novel.glossary_revision,
+    )

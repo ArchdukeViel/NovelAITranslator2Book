@@ -198,6 +198,7 @@ class ActivityWorkerService:
             TranslationJobKind.BATCH_RETRANSLATE.value,
         }
         allow_cross_provider_fallback = metadata.get("allow_cross_provider_fallback", True) is not False
+        skip_glossary_gate = metadata.get("skip_glossary_gate") is True
 
         await self.orchestrator.translate_chapters(
             self._resolve_translation_source_key(activity),
@@ -211,6 +212,7 @@ class ActivityWorkerService:
             source_language=source_language,
             target_language=target_language,
             allow_cross_provider_fallback=allow_cross_provider_fallback,
+            skip_glossary_gate=skip_glossary_gate,
         )
         return {"chapters": chapters, "force": force, "target_language": target_language or "English"}
 

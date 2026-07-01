@@ -653,6 +653,10 @@ class TranslateStage(PipelineStage):
                 "provider_model": provider_model,
                 "prompt_version": self._prompt_version(context),
                 "glossary_hash": glossary_hash or self._glossary_hash(context),
+                "glossary_revision": int(context.metadata.get("glossary_revision", 0) or 0),
+                "glossary_injected_term_count": int(
+                    context.metadata.get("glossary_injected_term_count", 0) or 0
+                ),
                 "style_preset": context.metadata.get("style_preset"),
                 "json_output": bool(context.metadata.get("json_output", False)),
                 "consistency_mode": bool(context.metadata.get("consistency_mode", False)),
@@ -796,6 +800,9 @@ class TranslateStage(PipelineStage):
         block: PromptGlossaryBlock | None,
         glossary_hash: str,
     ) -> None:
+        context.metadata["glossary_injected_term_count"] = int(
+            context.metadata.get("glossary_injected_term_count", 0) or 0
+        ) + (len(block.included_terms) if block is not None else 0)
         records = context.metadata.setdefault("glossary_prompt_blocks", [])
         if isinstance(records, list):
             records.append(
