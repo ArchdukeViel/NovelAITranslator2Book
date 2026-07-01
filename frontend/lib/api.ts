@@ -10,6 +10,8 @@ import type {
   GlossaryAliasUpdatePayload,
   GlossaryCandidateImportRequest,
   GlossaryCandidateImportResult,
+  GlossaryProviderCandidateRequest,
+  GlossaryProviderCandidateResult,
   GlossaryDecisionEvent,
   GlossaryDecisionPayload,
   GlossaryEntry,
@@ -532,6 +534,22 @@ export const adminApi = {
   applyGlossaryCandidateImport: (novelId: RouteId, payload: GlossaryCandidateImportRequest = {}) =>
     request<GlossaryCandidateImportResult>(
       `/admin/novels/${routeId(novelId)}/glossary/candidates/import/apply`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }
+    ),
+  previewGlossaryProviderCandidates: (novelId: RouteId, payload: GlossaryProviderCandidateRequest = {}) =>
+    request<GlossaryProviderCandidateResult>(
+      `/admin/novels/${routeId(novelId)}/glossary/candidates/provider/preview`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }
+    ),
+  applyGlossaryProviderCandidates: (novelId: RouteId, payload: GlossaryProviderCandidateRequest = {}) =>
+    request<GlossaryProviderCandidateResult>(
+      `/admin/novels/${routeId(novelId)}/glossary/candidates/provider/apply`,
       {
         method: "POST",
         body: JSON.stringify(payload)
