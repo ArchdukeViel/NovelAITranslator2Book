@@ -439,6 +439,8 @@ def test_owner_can_preview_provider_suggestions_without_writing(
     assert payload["candidates_found"] == 1
     assert payload["candidates_created"] == 0
     assert payload["provider_warnings"] == ["Fixture warning"]
+    assert payload["scanned_chapter_count"] == 1
+    assert payload["highest_scanned_chapter_number"] == 1
     assert payload["candidates"][0]["raw_term"] == "ポコット村"
     assert payload["candidates"][0]["translation"] == "Pocott Village"
     assert payload["candidates"][0]["action"] == "preview"
@@ -448,6 +450,7 @@ def test_owner_can_preview_provider_suggestions_without_writing(
     assert "welcomed travelers" not in str(payload)
     assert "secret" not in str(payload).casefold()
     assert len(provider.prompts) == 1
+    assert "Allowed term_type values are exactly:" in provider.prompts[0]
     assert db_session.query(NovelGlossaryEntry).filter_by(novel_id=novel.id).count() == 0
     assert db_session.query(NovelGlossarySourceProvenance).filter_by(novel_id=novel.id).count() == 0
 

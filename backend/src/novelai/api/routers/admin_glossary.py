@@ -312,6 +312,9 @@ class GlossaryProviderSuggestionRequest(BaseModel):
     max_candidates: int = Field(default=50, ge=1, le=100)
     max_chapters: int = Field(default=3, ge=1, le=20)
     max_chars: int = Field(default=8000, ge=1000, le=50000)
+    chapter_scope: Literal["latest", "all", "range"] = "latest"
+    chapter_start: int | None = Field(default=None, ge=1)
+    chapter_end: int | None = Field(default=None, ge=1)
     provider: NonEmptyStr | None = None
     provider_model: NonEmptyStr | None = None
 
@@ -367,6 +370,8 @@ class GlossaryProviderSuggestionResponse(BaseModel):
     conflicts: list[str]
     warnings: list[str]
     provider_warnings: list[str]
+    scanned_chapter_count: int
+    highest_scanned_chapter_number: int | None
     candidates: list[GlossaryProviderCandidateSummary]
 
 
@@ -664,6 +669,8 @@ def _provider_suggestion_response(
         conflicts=result.conflicts,
         warnings=result.warnings,
         provider_warnings=result.provider_warnings,
+        scanned_chapter_count=result.scanned_chapter_count,
+        highest_scanned_chapter_number=result.highest_scanned_chapter_number,
         candidates=candidates,
     )
 
@@ -818,6 +825,9 @@ async def preview_glossary_provider_suggestions(
             max_candidates=body.max_candidates,
             max_chapters=body.max_chapters,
             max_prompt_chars=body.max_chars,
+            chapter_scope=body.chapter_scope,
+            chapter_start=body.chapter_start,
+            chapter_end=body.chapter_end,
         )
     except KeyError as exc:
         raise HTTPException(status_code=503, detail="Provider is not configured.") from exc
@@ -847,6 +857,9 @@ async def apply_glossary_provider_suggestions(
             max_candidates=body.max_candidates,
             max_chapters=body.max_chapters,
             max_prompt_chars=body.max_chars,
+            chapter_scope=body.chapter_scope,
+            chapter_start=body.chapter_start,
+            chapter_end=body.chapter_end,
         )
     except KeyError as exc:
         raise HTTPException(status_code=503, detail="Provider is not configured.") from exc

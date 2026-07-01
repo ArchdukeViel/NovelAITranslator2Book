@@ -156,6 +156,11 @@ def test_dry_run_calls_fake_provider_and_writes_no_entries(session, storage) -> 
     assert len(provider.prompts) == 1
     assert "Return strict JSON only" in provider.prompts[0]
     assert "Do not translate, rewrite, repair" in provider.prompts[0]
+    assert "Allowed term_type values are exactly:" in provider.prompts[0]
+    assert "character" in provider.prompts[0]
+    assert "species" in provider.prompts[0]
+    assert result.scanned_chapter_count == 1
+    assert result.highest_scanned_chapter_number == 1
     assert session.query(NovelGlossaryEntry).count() == 0
 
 
@@ -289,7 +294,78 @@ def test_invalid_candidate_fields_are_skipped_and_confidence_is_clamped(session,
     assert candidate.confidence == 1.0
     assert any("blank" in warning for warning in result.provider_warnings)
     assert any("generic" in warning for warning in result.provider_warnings)
+    assert any("mystery-kind" in warning and "other" in warning for warning in result.provider_warnings)
     assert any("confidence" in warning for warning in result.provider_warnings)
+
+
+def test_provider_term_type_aliases_are_normalized_with_specific_warnings(session, storage) -> None:
+    novel = _make_novel(session, "term-type-provider")
+    _seed_chapter(storage, novel.slug)
+    provider = FakeProvider(
+        {
+            "candidates": [
+                {
+                    "raw_term": "ãƒã‚³ãƒƒãƒˆ",
+                    "suggested_translation": "Pocott",
+                    "term_type": "village",
+                    "confidence": 0.9,
+                    "aliases": [],
+                    "evidence": [{"source_chapter_id": "1"}],
+                },
+                {
+                    "raw_term": "ã‚°ãƒ«ãƒ‰",
+                    "suggested_translation": "Gurd",
+                    "term_type": "person",
+                    "confidence": 0.8,
+                    "aliases": [],
+                    "evidence": [{"source_chapter_id": "1"}],
+                },
+                {
+                    "raw_term": "ä¸–ç•Œæ¨¹ã®åŠ è­·",
+                    "suggested_translation": "Blessing of the World Tree",
+                    "term_type": "blessing",
+                    "confidence": 0.7,
+                    "aliases": [],
+                    "evidence": [{"source_chapter_id": "1"}],
+                },
+                {
+                    "raw_term": "ã‚¨ãƒ«ãƒ•",
+                    "suggested_translation": "Elf",
+                    "term_type": "race",
+                    "confidence": 0.6,
+                    "aliases": [],
+                    "evidence": [{"source_chapter_id": "1"}],
+                },
+            ],
+        }
+    )
+
+    result = GlossaryProviderSuggestionService(session, storage, provider).suggest_from_saved_chapters(novel.id)
+
+    assert [candidate.term_type for candidate in result.candidates] == ["place", "character", "concept", "species"]
+    assert any("'village'" in warning and "'place'" in warning for warning in result.provider_warnings)
+    assert any("'person'" in warning and "'character'" in warning for warning in result.provider_warnings)
+    assert any("'blessing'" in warning and "'concept'" in warning for warning in result.provider_warnings)
+    assert any("'race'" in warning and "'species'" in warning for warning in result.provider_warnings)
+
+
+def test_provider_chapter_scope_reports_scan_count_and_safety_cap(session, storage) -> None:
+    novel = _make_novel(session, "scope-provider")
+    for number in range(1, 4):
+        _make_chapter(session, novel, number)
+        storage.add_raw(novel.slug, str(number), f"raw {number} ãƒã‚³ãƒƒãƒˆ")
+        storage.add_translated(novel.slug, str(number), f"translated {number} Pocott")
+
+    result = GlossaryProviderSuggestionService(
+        session,
+        storage,
+        FakeProvider(_provider_payload()),
+    ).suggest_from_saved_chapters(novel.id, max_chapters=2, chapter_scope="latest")
+
+    assert result.scanned_chapter_count == 2
+    assert result.highest_scanned_chapter_number == 3
+    assert any("scanned 2 of 3 saved chapters" in warning for warning in result.warnings)
+    assert "Chapter ref: 3" in result.candidates[0].chapter_refs or result.highest_scanned_chapter_number == 3
 
 
 def test_aliases_store_only_safe_alias_types(session, storage) -> None:

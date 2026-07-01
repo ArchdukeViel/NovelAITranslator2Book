@@ -86,6 +86,11 @@ const DEFAULT_IMPORT_MAX_CANDIDATES = 50;
 const DEFAULT_PROVIDER_MAX_CANDIDATES = 5;
 const DEFAULT_PROVIDER_MAX_CHAPTERS = 1;
 const DEFAULT_PROVIDER_MAX_CHARS = 4000;
+const PROVIDER_SCOPE_OPTIONS = [
+  { value: "latest", label: "New saved chapters only", description: "Scan the newest saved chapters first." },
+  { value: "all", label: "All saved chapters", description: "Scan saved chapters up to the backend safety cap." },
+  { value: "range", label: "Selected chapter range", description: "Scan saved chapters with chapter numbers in the selected range." },
+] as const;
 
 type EntryFormValues = {
   canonical_term: string;
@@ -128,6 +133,9 @@ type ProvenanceFormValues = {
 };
 
 type ProviderSuggestionValues = {
+  chapterScope: "latest" | "all" | "range";
+  chapterStart: string;
+  chapterEnd: string;
   maxCandidates: number;
   maxChapters: number;
   maxChars: number;
@@ -274,6 +282,9 @@ function provenancePayload(values: ProvenanceFormValues): GlossaryProvenanceCrea
 
 function emptyProviderSuggestionValues(): ProviderSuggestionValues {
   return {
+    chapterScope: "latest",
+    chapterStart: "",
+    chapterEnd: "",
     maxCandidates: DEFAULT_PROVIDER_MAX_CANDIDATES,
     maxChapters: DEFAULT_PROVIDER_MAX_CHAPTERS,
     maxChars: DEFAULT_PROVIDER_MAX_CHARS,
@@ -283,10 +294,15 @@ function emptyProviderSuggestionValues(): ProviderSuggestionValues {
 }
 
 function providerSuggestionPayload(values: ProviderSuggestionValues): GlossaryProviderCandidateRequest {
+  const chapterStart = numberOrNull(values.chapterStart);
+  const chapterEnd = numberOrNull(values.chapterEnd);
   return {
     max_candidates: values.maxCandidates,
     max_chapters: values.maxChapters,
     max_chars: values.maxChars,
+    chapter_scope: values.chapterScope,
+    chapter_start: values.chapterScope === "range" ? chapterStart : undefined,
+    chapter_end: values.chapterScope === "range" ? chapterEnd : undefined,
     provider: optionalText(values.provider) ?? undefined,
     provider_model: optionalText(values.providerModel) ?? undefined,
   };
@@ -986,50 +1002,107 @@ function ProviderSuggestionDialog({
     >
       <div className="space-y-4 p-4">
         <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-          Suggestions stay Reviewing. Approval is manual. Saved chapter rewriting is a separate future step. Provider output can be wrong and should be reviewed.
+          Suggestions stay Reviewing until approved. Provider suggestions may be wrong. Saved chapter rewriting is a separate future step. Large novels are scanned in safe batches.
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <FieldLabel>
-            <span>Max candidates</span>
-            <input
-              type="number"
-              min={1}
-              max={100}
-              aria-label="Max candidates"
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              value={values.maxCandidates}
-              onChange={(event) => setValue("maxCandidates", Number(event.target.value))}
-            />
-          </FieldLabel>
-          <FieldLabel>
-            <span>Max chapters</span>
-            <input
-              type="number"
-              min={1}
-              max={20}
-              aria-label="Max chapters"
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              value={values.maxChapters}
-              onChange={(event) => setValue("maxChapters", Number(event.target.value))}
-            />
-          </FieldLabel>
-          <FieldLabel>
-            <span>Max characters</span>
-            <input
-              type="number"
-              min={1000}
-              max={50000}
-              aria-label="Max characters"
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              value={values.maxChars}
-              onChange={(event) => setValue("maxChars", Number(event.target.value))}
-            />
-          </FieldLabel>
-        </div>
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">Scope</legend>
+          <div className="grid gap-2 md:grid-cols-3">
+            {PROVIDER_SCOPE_OPTIONS.map((option) => (
+              <label key={option.value} className="flex cursor-pointer gap-2 rounded-md border px-3 py-2 text-sm">
+                <input
+                  type="radio"
+                  name="provider-chapter-scope"
+                  value={option.value}
+                  checked={values.chapterScope === option.value}
+                  onChange={() => {
+                    onValuesChange({
+                      ...values,
+                      chapterScope: option.value,
+                      maxChapters: option.value === "all" ? 20 : DEFAULT_PROVIDER_MAX_CHAPTERS,
+                    });
+                  }}
+                />
+                <span>
+                  <span className="block font-medium">{option.label}</span>
+                  <span className="block text-xs text-muted-foreground">{option.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        {values.chapterScope === "range" ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            <FieldLabel>
+              <span>Start chapter</span>
+              <input
+                type="number"
+                min={1}
+                aria-label="Start chapter"
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={values.chapterStart}
+                onChange={(event) => setValue("chapterStart", event.target.value)}
+              />
+            </FieldLabel>
+            <FieldLabel>
+              <span>End chapter</span>
+              <input
+                type="number"
+                min={1}
+                aria-label="End chapter"
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={values.chapterEnd}
+                onChange={(event) => setValue("chapterEnd", event.target.value)}
+              />
+            </FieldLabel>
+          </div>
+        ) : null}
 
         <details className="rounded-md border px-3 py-2 text-sm">
-          <summary className="cursor-pointer font-medium">Advanced</summary>
+          <summary className="cursor-pointer font-medium">Advanced safety caps</summary>
+          <div className="mt-3 grid gap-4 md:grid-cols-3">
+            <FieldLabel>
+              <span>Max candidates</span>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                aria-label="Max candidates"
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={values.maxCandidates}
+                onChange={(event) => setValue("maxCandidates", Number(event.target.value))}
+              />
+            </FieldLabel>
+            <FieldLabel>
+              <span>Max chapters</span>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                aria-label="Max chapters"
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={values.maxChapters}
+                onChange={(event) => setValue("maxChapters", Number(event.target.value))}
+              />
+            </FieldLabel>
+            <FieldLabel>
+              <span>Max characters</span>
+              <input
+                type="number"
+                min={1000}
+                max={50000}
+                aria-label="Max characters"
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={values.maxChars}
+                onChange={(event) => setValue("maxChars", Number(event.target.value))}
+              />
+            </FieldLabel>
+          </div>
+        </details>
+
+        <details className="rounded-md border px-3 py-2 text-sm">
+          <summary className="cursor-pointer font-medium">Advanced provider override</summary>
           <div className="mt-3 grid gap-4 md:grid-cols-2">
             <FieldLabel>
               <span>Provider</span>
@@ -1064,6 +1137,10 @@ function ProviderSuggestionDialog({
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-4">
               <div className="rounded-md border px-3 py-2">
+                <div className="text-xs uppercase text-muted-foreground">Scanned</div>
+                <div className="mt-1 text-xl font-semibold">{result.scanned_chapter_count}</div>
+              </div>
+              <div className="rounded-md border px-3 py-2">
                 <div className="text-xs uppercase text-muted-foreground">Found</div>
                 <div className="mt-1 text-xl font-semibold">{result.candidates_found}</div>
               </div>
@@ -1080,6 +1157,11 @@ function ProviderSuggestionDialog({
                 <div className="mt-1 text-xl font-semibold">{result.candidates_skipped}</div>
               </div>
             </div>
+            {result.highest_scanned_chapter_number !== null ? (
+              <div className="text-xs text-muted-foreground">
+                Highest scanned chapter: {result.highest_scanned_chapter_number}
+              </div>
+            ) : null}
 
             {applyResult ? (
               <div className="rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-900 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
@@ -1432,6 +1514,14 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
       setProviderSuggestionValidationError("Max characters must be between 1000 and 50000.");
       return null;
     }
+    if (providerSuggestionValues.chapterScope === "range") {
+      const start = numberOrNull(providerSuggestionValues.chapterStart);
+      const end = numberOrNull(providerSuggestionValues.chapterEnd);
+      if (start === null || end === null || start < 1 || end < 1) {
+        setProviderSuggestionValidationError("Selected chapter range requires a start and end chapter.");
+        return null;
+      }
+    }
     setProviderSuggestionValidationError(null);
     return providerSuggestionPayload(providerSuggestionValues);
   };
@@ -1669,15 +1759,16 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
                 <tr>
                   <th className="min-w-[220px] px-4 py-3">Term</th>
                   <th className="min-w-[220px] px-4 py-3">Translation</th>
+                  <th className="px-4 py-3">Type</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="min-w-[180px] px-4 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {glossary.isLoading ? (
-                  <LoadingRows colSpan={4} label="Loading glossary entries..." />
+                  <LoadingRows colSpan={5} label="Loading glossary entries..." />
                 ) : glossary.error ? (
-                  <EmptyState title="Failed to load glossary entries." description={authMessage ?? "Try refreshing after confirming the owner session."} colSpan={4} />
+                  <EmptyState title="Failed to load glossary entries." description={authMessage ?? "Try refreshing after confirming the owner session."} colSpan={5} />
                 ) : visibleEntries.length ? (
                   visibleEntries.map((entry) => (
                     <tr
@@ -1696,6 +1787,7 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
                         <div className="font-medium">{entry.canonical_term}</div>
                       </td>
                       <td className="px-4 py-3">{translationFor(entry)}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{formatStatus(entry.term_type)}</td>
                       <td className="px-4 py-3">
                         <Badge tone={ownerStatusTone(entry.status)}>{ownerStatusLabel(entry.status)}</Badge>
                       </td>
@@ -1729,7 +1821,7 @@ export function AdminGlossaryShell({ novelId }: { novelId: string }) {
                   <EmptyState
                     title={entries.length ? "No glossary entries match your filters." : "No glossary entries yet."}
                     description={entries.length ? "Try another term, translation, or type." : "Add terms manually or import review candidates from saved raw/translated chapters."}
-                    colSpan={4}
+                    colSpan={5}
                   />
                 )}
               </tbody>

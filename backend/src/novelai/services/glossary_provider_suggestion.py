@@ -76,6 +76,8 @@ class ProviderGlossarySuggestionResult:
     conflicts: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     provider_warnings: list[str] = field(default_factory=list)
+    scanned_chapter_count: int = 0
+    highest_scanned_chapter_number: int | None = None
 
 
 @dataclass(frozen=True)
@@ -96,11 +98,45 @@ _SUPPORTED_TERM_TYPES = {
     "organization",
     "family_house",
     "title",
+    "rank",
     "skill",
+    "magic",
+    "species",
     "concept",
     "item",
+    "artifact",
+    "phrase",
     "other",
 }
+_TERM_TYPE_ALIASES = {
+    "location": "place",
+    "place_name": "place",
+    "village": "place",
+    "town": "place",
+    "city": "place",
+    "country": "place",
+    "kingdom": "place",
+    "person": "character",
+    "name": "character",
+    "character_name": "character",
+    "protagonist": "character",
+    "npc": "character",
+    "ability": "concept",
+    "skill": "concept",
+    "spell": "concept",
+    "blessing": "concept",
+    "title": "concept",
+    "magic": "concept",
+    "concept_term": "concept",
+    "group": "organization",
+    "clan": "organization",
+    "guild": "organization",
+    "faction": "organization",
+    "race": "species",
+    "monster": "species",
+    "creature": "species",
+}
+_ALLOWED_TERM_TYPE_TEXT = ", ".join(sorted(_SUPPORTED_TERM_TYPES))
 _SAFE_ALIAS_TYPES = {"observed", "source_variant", "rejected"}
 _GENERIC_TERMS = {
     "chapter",
@@ -143,6 +179,9 @@ class GlossaryProviderSuggestionService:
         max_chapters: int = 3,
         max_prompt_chars: int = 8000,
         max_chapter_chars: int = 1200,
+        chapter_scope: str = "latest",
+        chapter_start: int | None = None,
+        chapter_end: int | None = None,
     ) -> ProviderGlossarySuggestionResult:
         """Run provider-assisted glossary suggestion from saved chapter context."""
 
@@ -159,14 +198,20 @@ class GlossaryProviderSuggestionService:
             storage_key,
             max_chapters=max_chapters,
             max_chapter_chars=max_chapter_chars,
+            chapter_scope=chapter_scope,
+            chapter_start=chapter_start,
+            chapter_end=chapter_end,
             warnings=warnings,
         )
+        highest_scanned = _highest_chapter_number(chapters)
         if not chapters:
             return ProviderGlossarySuggestionResult(
                 dry_run=dry_run,
                 candidates=[],
                 candidates_found=0,
                 warnings=warnings,
+                scanned_chapter_count=0,
+                highest_scanned_chapter_number=None,
             )
         prompt = self._build_prompt(
             novel_id,
@@ -190,6 +235,8 @@ class GlossaryProviderSuggestionService:
             candidates_found=len(candidates),
             warnings=warnings,
             provider_warnings=provider_warnings,
+            scanned_chapter_count=len(chapters),
+            highest_scanned_chapter_number=highest_scanned,
         )
         if dry_run:
             return result
@@ -206,6 +253,9 @@ class GlossaryProviderSuggestionService:
         max_chapters: int = 3,
         max_prompt_chars: int = 8000,
         max_chapter_chars: int = 1200,
+        chapter_scope: str = "latest",
+        chapter_start: int | None = None,
+        chapter_end: int | None = None,
     ) -> ProviderGlossarySuggestionResult:
         """Async variant for API routes using async translation providers."""
 
@@ -222,14 +272,20 @@ class GlossaryProviderSuggestionService:
             storage_key,
             max_chapters=max_chapters,
             max_chapter_chars=max_chapter_chars,
+            chapter_scope=chapter_scope,
+            chapter_start=chapter_start,
+            chapter_end=chapter_end,
             warnings=warnings,
         )
+        highest_scanned = _highest_chapter_number(chapters)
         if not chapters:
             return ProviderGlossarySuggestionResult(
                 dry_run=dry_run,
                 candidates=[],
                 candidates_found=0,
                 warnings=warnings,
+                scanned_chapter_count=0,
+                highest_scanned_chapter_number=None,
             )
         prompt = self._build_prompt(
             novel_id,
@@ -254,6 +310,8 @@ class GlossaryProviderSuggestionService:
             candidates_found=len(candidates),
             warnings=warnings,
             provider_warnings=provider_warnings,
+            scanned_chapter_count=len(chapters),
+            highest_scanned_chapter_number=highest_scanned,
         )
         if dry_run:
             return result
@@ -273,10 +331,21 @@ class GlossaryProviderSuggestionService:
         *,
         max_chapters: int,
         max_chapter_chars: int,
+        chapter_scope: str,
+        chapter_start: int | None,
+        chapter_end: int | None,
         warnings: list[str],
     ) -> list[_ChapterPromptContext]:
-        chapter_ids = self._stored_chapter_ids(storage_novel_id)[:max_chapters]
         chapter_meta = self._chapter_metadata(novel_id)
+        chapter_ids = self._select_chapter_ids(
+            self._stored_chapter_ids(storage_novel_id),
+            chapter_meta=chapter_meta,
+            max_chapters=max_chapters,
+            chapter_scope=chapter_scope,
+            chapter_start=chapter_start,
+            chapter_end=chapter_end,
+            warnings=warnings,
+        )
         contexts: list[_ChapterPromptContext] = []
         raw_seen = False
         translated_seen = False
@@ -311,6 +380,53 @@ class GlossaryProviderSuggestionService:
         if not contexts:
             warnings.append("No saved raw or translated chapter text was available for provider suggestions.")
         return contexts
+
+    def _select_chapter_ids(
+        self,
+        chapter_ids: list[str],
+        *,
+        chapter_meta: dict[str, tuple[int | None, int | None]],
+        max_chapters: int,
+        chapter_scope: str,
+        chapter_start: int | None,
+        chapter_end: int | None,
+        warnings: list[str],
+    ) -> list[str]:
+        def chapter_number(storage_id: str) -> int | None:
+            return chapter_meta.get(storage_id, (None, _int_or_none(storage_id)))[1]
+
+        scope = chapter_scope if chapter_scope in {"latest", "all", "range"} else "latest"
+        candidates = list(chapter_ids)
+        if scope == "range":
+            start = chapter_start if chapter_start is not None else chapter_end
+            end = chapter_end if chapter_end is not None else chapter_start
+            if start is not None and end is not None:
+                low, high = sorted((start, end))
+                candidates = [
+                    storage_id
+                    for storage_id in candidates
+                    if (number := chapter_number(storage_id)) is not None and low <= number <= high
+                ]
+            else:
+                warnings.append("Selected chapter range was incomplete; provider suggestion used latest saved chapters.")
+                scope = "latest"
+
+        if scope == "latest":
+            candidates.sort(
+                key=lambda storage_id: (
+                    chapter_number(storage_id) is not None,
+                    chapter_number(storage_id) or 0,
+                    storage_id,
+                ),
+                reverse=True,
+            )
+        else:
+            candidates.sort(key=lambda storage_id: (chapter_number(storage_id) is None, chapter_number(storage_id) or 0, storage_id))
+        if len(candidates) > max_chapters:
+            warnings.append(
+                f"Provider context scanned {max_chapters} of {len(candidates)} saved chapters due to the safety cap."
+            )
+        return candidates[:max_chapters]
 
     def _stored_chapter_ids(self, storage_novel_id: str) -> list[str]:
         list_stored = getattr(self.storage, "list_stored_chapters", None)
@@ -351,6 +467,7 @@ class GlossaryProviderSuggestionService:
             "Return strict JSON only with a top-level candidates array and optional warnings array.",
             "Suggest glossary candidates only. Do not translate, rewrite, repair, summarize, or approve chapters.",
             "Each candidate must include raw_term, suggested_translation, term_type, confidence, aliases, evidence, and rationale.",
+            f"Allowed term_type values are exactly: {_ALLOWED_TERM_TYPE_TEXT}. Normalize near matches to this list.",
             "Use Reviewing candidates only. Avoid common words, duplicates, long excerpts, provider/model names, and uncertain invented source terms.",
             "Use compact chapter references instead of copyrighted excerpts. Return an empty candidates array if there are no good candidates.",
             f"Novel id: {novel_id}; storage novel id: {storage_novel_id}; max candidates: {max_candidates}.",
@@ -450,9 +567,12 @@ class GlossaryProviderSuggestionService:
         if confidence is None:
             provider_warnings.append(f"Candidate {index} was skipped because confidence was not numeric.")
             return None
-        term_type = _normalize_term_type(item.get("term_type"))
-        if term_type == "other" and _clean_text(item.get("term_type"), max_chars=64) not in {None, "", "other"}:
-            provider_warnings.append(f"Candidate {index} used an unsupported term_type and was normalized to other.")
+        original_term_type = _clean_text(item.get("term_type"), max_chars=64)
+        term_type = _normalize_term_type(original_term_type)
+        if original_term_type and original_term_type.casefold().replace("-", "_").replace(" ", "_") != term_type:
+            provider_warnings.append(
+                f"Candidate {index} used term_type {original_term_type!r}; normalized to {term_type!r}."
+            )
 
         aliases = self._aliases_from_payload(item.get("aliases"), provider_warnings=provider_warnings, index=index)
         evidence, chapter_refs = self._evidence_from_payload(
@@ -705,7 +825,13 @@ def _normalize_term_type(value: Any) -> str:
     if text is None:
         return "other"
     normalized = text.casefold().replace("-", "_").replace(" ", "_")
+    normalized = _TERM_TYPE_ALIASES.get(normalized, normalized)
     return normalized if normalized in _SUPPORTED_TERM_TYPES else "other"
+
+
+def _highest_chapter_number(chapters: list[_ChapterPromptContext]) -> int | None:
+    numbers = [chapter.chapter_number for chapter in chapters if chapter.chapter_number is not None]
+    return max(numbers) if numbers else None
 
 
 def _is_generic_or_excerpt(value: str) -> bool:
