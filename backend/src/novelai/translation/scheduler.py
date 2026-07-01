@@ -8,6 +8,8 @@ from typing import Any
 from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.shared.pipeline import SchedulerModelStatus
 
+FAILED_MODEL_STATE_TTL_SECONDS = 60 * 60
+
 
 class SchedulerPolicy(StrEnum):
     VOLUME_FIRST = "volume_first"
@@ -83,6 +85,7 @@ class SchedulerModelRuntimeState:
     day_started_at: str | None = None
     cooldown_until: str | None = None
     exhausted_until: str | None = None
+    failed_at: str | None = None
     last_error_code: str | None = None
     last_error_message: str | None = None
     status: str = SchedulerModelStatus.AVAILABLE.value
@@ -106,6 +109,7 @@ class SchedulerModelRuntimeState:
             day_started_at=_optional_str(payload.get("day_started_at")),
             cooldown_until=_optional_str(payload.get("cooldown_until")),
             exhausted_until=_optional_str(payload.get("exhausted_until")),
+            failed_at=_optional_str(payload.get("failed_at")),
             last_error_code=_optional_str(payload.get("last_error_code")),
             last_error_message=_optional_str(payload.get("last_error_message")),
             status=_optional_str(payload.get("status")) or SchedulerModelStatus.AVAILABLE.value,
@@ -116,6 +120,12 @@ class SchedulerModelRuntimeState:
 
     def refresh_windows(self, now: datetime | None = None) -> None:
         current = now or utc_now()
+        if self.status == SchedulerModelStatus.FAILED.value and self._failed_state_expired(current):
+            self.status = SchedulerModelStatus.AVAILABLE.value
+            self.failed_at = None
+            self.last_error_code = None
+            self.last_error_message = None
+
         window_start = parse_iso(self.window_started_at)
         if window_start is None or current - window_start >= timedelta(minutes=1):
             self.window_started_at = current.isoformat().replace("+00:00", "Z")
@@ -134,6 +144,14 @@ class SchedulerModelRuntimeState:
         if self.status == SchedulerModelStatus.DAILY_EXHAUSTED.value and exhausted is not None and exhausted <= current:
             self.exhausted_until = None
             self.status = SchedulerModelStatus.AVAILABLE.value
+
+    def _failed_state_expired(self, current: datetime) -> bool:
+        failed_at = parse_iso(self.failed_at)
+        if failed_at is None:
+            failed_at = parse_iso(self.window_started_at) or parse_iso(self.day_started_at)
+        if failed_at is None:
+            return False
+        return current - failed_at >= timedelta(seconds=FAILED_MODEL_STATE_TTL_SECONDS)
 
     def is_available(self, now: datetime | None = None) -> bool:
         self.refresh_windows(now)
@@ -173,9 +191,11 @@ class SchedulerModelRuntimeState:
             ProviderErrorCode.MODEL_DEPRECATED,
         }:
             self.status = SchedulerModelStatus.FAILED.value
+            self.failed_at = current.isoformat().replace("+00:00", "Z")
             return
         if error.provider_error_code == ProviderErrorCode.CONTEXT_TOO_LARGE:
             self.status = SchedulerModelStatus.FAILED.value
+            self.failed_at = current.isoformat().replace("+00:00", "Z")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -190,6 +210,7 @@ class SchedulerModelRuntimeState:
             "day_started_at": self.day_started_at,
             "cooldown_until": self.cooldown_until,
             "exhausted_until": self.exhausted_until,
+            "failed_at": self.failed_at,
             "last_error_code": self.last_error_code,
             "last_error_message": self.last_error_message,
             "status": self.status,

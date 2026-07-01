@@ -223,6 +223,13 @@ class TranslateStage(PipelineStage):
                 return value.strip()
         return "run_manual"
 
+    @staticmethod
+    def _explicit_translation_run_id(context: PipelineContext) -> bool:
+        return any(
+            isinstance(context.metadata.get(key), str) and context.metadata[key].strip()
+            for key in ("translation_run_id", "run_id")
+        )
+
     def _max_attempts_exceeded_error(
         self,
         context: PipelineContext,
@@ -502,11 +509,17 @@ class TranslateStage(PipelineStage):
         novel_id = context.novel_id
         if not isinstance(novel_id, str) or not novel_id.strip():
             return
-        for stored in self._storage.load_chunk_states(
+        stored_states = self._storage.load_chunk_states(
             novel_id=novel_id,
             chapter_id=context.chapter_id,
             translation_run_id=self._translation_run_id(context),
-        ):
+        )
+        if not stored_states and not self._explicit_translation_run_id(context):
+            stored_states = self._storage.load_chunk_states(
+                novel_id=novel_id,
+                chapter_id=context.chapter_id,
+            )
+        for stored in stored_states:
             chunk_id = stored.get("chunk_id") if isinstance(stored, dict) else None
             if isinstance(chunk_id, str) and chunk_id.strip():
                 context.chunk_states[chunk_id] = {
@@ -535,6 +548,12 @@ class TranslateStage(PipelineStage):
             translation_run_id=self._translation_run_id(context),
             chapter_ids=chapter_ids,
         )
+        if not stored and not self._explicit_translation_run_id(context):
+            stored = self._storage.read_translation_output(
+                novel_id,
+                chunk_id=chunk_id,
+                chapter_ids=chapter_ids,
+            )
         if not isinstance(stored, list) or not stored:
             return None
         latest = stored[-1]
