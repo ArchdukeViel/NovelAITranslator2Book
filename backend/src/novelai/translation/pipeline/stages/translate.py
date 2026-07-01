@@ -16,6 +16,17 @@ from novelai.glossary import (
     rank_glossary_terms_for_text,
     summarize_term_context,
 )
+from novelai.prompts import build_translation_request
+from novelai.prompts.models import TranslationRequest
+from novelai.providers.base import TranslationProvider
+from novelai.providers.model_fallbacks import model_candidates
+from novelai.services.glossary_prompt_injection import GlossaryPromptInjectionService, PromptGlossaryBlock
+from novelai.services.glossary_repository import GlossaryRepository
+from novelai.services.preferences_service import PreferencesService
+from novelai.services.translation_cache import TranslationCache
+from novelai.services.usage_service import UsageService
+from novelai.shared.pipeline import ChunkAttemptStatus, ChunkTranslationStatus
+from novelai.storage.service import StorageService
 from novelai.translation.pipeline.context import PipelineContext, TranslationChunk
 from novelai.translation.pipeline.stages.base import PipelineStage
 from novelai.translation.scheduler import (
@@ -27,15 +38,6 @@ from novelai.translation.scheduler import (
     utc_now,
     utc_now_iso,
 )
-from novelai.prompts import build_translation_request
-from novelai.prompts.models import TranslationRequest
-from novelai.shared.pipeline import ChunkAttemptStatus, ChunkTranslationStatus
-from novelai.providers.base import TranslationProvider
-from novelai.providers.model_fallbacks import model_candidates
-from novelai.services.preferences_service import PreferencesService
-from novelai.services.translation_cache import TranslationCache
-from novelai.services.usage_service import UsageService
-from novelai.storage.service import StorageService
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +73,7 @@ class TranslateStage(PipelineStage):
         settings_service: PreferencesService | None = None,
         usage_service: UsageService | None = None,
         storage: StorageService | None = None,
+        glossary_prompt_service: GlossaryPromptInjectionService | None = None,
     ) -> None:
         if provider_factory is None:
             # Default: import and use registry
@@ -83,6 +86,7 @@ class TranslateStage(PipelineStage):
         self._settings = settings_service or PreferencesService()
         self._usage = usage_service or UsageService()
         self._storage = storage or StorageService()
+        self._glossary_prompt_service = glossary_prompt_service
         configured_max_attempts = settings.TRANSLATION_MAX_ATTEMPTS_PER_CHUNK
         self._max_attempts_per_chunk = configured_max_attempts if configured_max_attempts > 0 else 3
 
@@ -192,7 +196,9 @@ class TranslateStage(PipelineStage):
         return value if isinstance(value, str) and value.strip() else "translation_request_v1"
 
     @staticmethod
-    def _glossary_hash(context: PipelineContext) -> str:
+    def _glossary_hash(context: PipelineContext, glossary_block_text: str | None = None) -> str:
+        if isinstance(glossary_block_text, str):
+            return _hash_text(glossary_block_text)
         return _hash_text(str(context.metadata.get("glossary") or ""))
 
     @staticmethod
@@ -241,9 +247,9 @@ class TranslateStage(PipelineStage):
             f"Translation max attempts exceeded for chunk {chunk_id}: "
             f"{attempt_count}/{self._max_attempts_per_chunk} attempts."
         )
-        setattr(error, "error_code", MAX_ATTEMPTS_EXCEEDED_ERROR_CODE)
-        setattr(error, "details", details)
-        setattr(error, "pipeline_context", context)
+        error.error_code = MAX_ATTEMPTS_EXCEEDED_ERROR_CODE
+        error.details = details
+        error.pipeline_context = context
         return error
 
     @staticmethod
@@ -255,6 +261,7 @@ class TranslateStage(PipelineStage):
         request: TranslationRequest | None,
         provider_key: str,
         provider_model: str,
+        glossary_hash: str | None = None,
         chapter_ids: list[str] | None = None,
         paragraph_ids: list[str] | None = None,
         attempt_number: int | None = None,
@@ -281,7 +288,7 @@ class TranslateStage(PipelineStage):
             "prompt_version": TranslateStage._prompt_version(context),
             "source_text_hash": _hash_text(chunk_text),
             "prompt_hash": _hash_text(prompt_text),
-            "glossary_hash": TranslateStage._glossary_hash(context),
+            "glossary_hash": glossary_hash or TranslateStage._glossary_hash(context),
             "style_preset": context.metadata.get("style_preset"),
             "json_output": bool(context.metadata.get("json_output", False)),
             "consistency_mode": bool(context.metadata.get("consistency_mode", False)),
@@ -514,6 +521,7 @@ class TranslateStage(PipelineStage):
         chunk_id: str,
         chunk_text: str,
         chapter_ids: list[str],
+        glossary_hash: str | None = None,
     ) -> str | None:
         novel_id = context.novel_id
         if not isinstance(novel_id, str) or not novel_id.strip():
@@ -535,7 +543,7 @@ class TranslateStage(PipelineStage):
         expected = {
             "source_text_hash": _hash_text(chunk_text),
             "prompt_version": self._prompt_version(context),
-            "glossary_hash": self._glossary_hash(context),
+            "glossary_hash": glossary_hash or self._glossary_hash(context),
             "style_preset": context.metadata.get("style_preset"),
             "json_output": bool(context.metadata.get("json_output", False)),
             "consistency_mode": bool(context.metadata.get("consistency_mode", False)),
@@ -602,6 +610,7 @@ class TranslateStage(PipelineStage):
         attempt_number: int,
         scheduler_policy: str | None,
         selection_reason: str | None,
+        glossary_hash: str | None = None,
     ) -> None:
         novel_id = context.novel_id
         if not isinstance(novel_id, str) or not novel_id.strip():
@@ -624,7 +633,7 @@ class TranslateStage(PipelineStage):
                 "provider_key": provider_key,
                 "provider_model": provider_model,
                 "prompt_version": self._prompt_version(context),
-                "glossary_hash": self._glossary_hash(context),
+                "glossary_hash": glossary_hash or self._glossary_hash(context),
                 "style_preset": context.metadata.get("style_preset"),
                 "json_output": bool(context.metadata.get("json_output", False)),
                 "consistency_mode": bool(context.metadata.get("consistency_mode", False)),
@@ -684,6 +693,7 @@ class TranslateStage(PipelineStage):
         chunk: str,
         *,
         chunk_glossary: list[GlossaryTerm],
+        prompt_glossary_block: str | None = None,
     ) -> TranslationRequest | None:
         source_language = self._infer_source_language(context)
         target_language = context.metadata.get("target_language") or settings.TRANSLATION_TARGET_LANGUAGE
@@ -700,10 +710,92 @@ class TranslateStage(PipelineStage):
             source_language=source_language,
             target_language=target_language,
             glossary_entries=chunk_glossary,
+            prompt_glossary_block=prompt_glossary_block,
             style_preset=style_preset if isinstance(style_preset, str) else None,
             consistency_mode=consistency_mode,
             json_output=json_output,
         )
+
+    @staticmethod
+    def _platform_novel_id(context: PipelineContext) -> int | None:
+        for key in ("platform_novel_id", "db_novel_id", "glossary_novel_id"):
+            value = context.metadata.get(key)
+            if isinstance(value, int) and value > 0:
+                return value
+        if isinstance(context.novel_id, int) and context.novel_id > 0:
+            return context.novel_id
+        return None
+
+    def _build_prompt_glossary_block(
+        self,
+        context: PipelineContext,
+        chunk_text: str,
+    ) -> PromptGlossaryBlock | None:
+        novel_id = self._platform_novel_id(context)
+        if novel_id is None:
+            return None
+
+        options = self._glossary_prompt_options(context)
+        service = self._glossary_prompt_service
+        if service is not None:
+            return service.build_for_chapter(novel_id, raw_chapter_text=chunk_text, options=options)
+
+        try:
+            from novelai.db.engine import session_scope
+
+            with session_scope() as session:
+                repository = GlossaryRepository(session)
+                return GlossaryPromptInjectionService(repository).build_for_chapter(
+                    novel_id,
+                    raw_chapter_text=chunk_text,
+                    options=options,
+                )
+        except Exception as exc:
+            warnings = context.metadata.setdefault("glossary_prompt_warnings", [])
+            if isinstance(warnings, list):
+                warnings.append("glossary_prompt_build_failed")
+            logger.warning("Glossary prompt block could not be built: %s", exc.__class__.__name__)
+            return None
+
+    @staticmethod
+    def _glossary_prompt_options(context: PipelineContext):
+        from novelai.services.glossary_prompt_injection import GlossaryPromptInjectionOptions
+
+        return GlossaryPromptInjectionOptions(
+            max_terms=int(context.metadata.get("glossary_prompt_max_terms", 20) or 20),
+            max_block_chars=int(context.metadata.get("glossary_prompt_max_block_chars", 2000) or 2000),
+            max_avoid_variants_per_term=int(
+                context.metadata.get("glossary_prompt_max_avoid_variants_per_term", 3) or 3
+            ),
+        )
+
+    @staticmethod
+    def _record_prompt_glossary_metadata(
+        context: PipelineContext,
+        *,
+        chunk_id: str,
+        block: PromptGlossaryBlock | None,
+        glossary_hash: str,
+    ) -> None:
+        records = context.metadata.setdefault("glossary_prompt_blocks", [])
+        if isinstance(records, list):
+            records.append(
+                {
+                    "chunk_id": chunk_id,
+                    "terms_injected": len(block.included_terms) if block is not None else 0,
+                    "skipped_count": len(block.skipped_terms) if block is not None else 0,
+                    "truncated": bool(block.truncated) if block is not None else False,
+                    "conflict_warning_count": len(block.conflict_warnings) if block is not None else 0,
+                    "empty": True if block is None else block.empty,
+                    "glossary_hash": glossary_hash,
+                }
+            )
+        if block is None:
+            return
+        warnings = context.metadata.setdefault("glossary_prompt_warnings", [])
+        if isinstance(warnings, list):
+            warnings.extend(block.warnings)
+            warnings.extend(block.conflict_warnings)
 
     def _cached_translation(
         self,
@@ -735,6 +827,7 @@ class TranslateStage(PipelineStage):
         selection_reason: str,
         chunk: str,
         request: TranslationRequest | None = None,
+        glossary_hash: str | None = None,
     ) -> tuple[str, str, str, bool]:
         provider_key, provider_model = self._resolve_provider_and_model(provider_key, provider_model)
         provider = self._provider_factory(provider_key)
@@ -753,6 +846,7 @@ class TranslateStage(PipelineStage):
                     request=request,
                     provider_key=exc.provider_key,
                     provider_model=exc.provider_model,
+                    glossary_hash=glossary_hash,
                     chapter_ids=chapter_ids,
                     paragraph_ids=paragraph_ids,
                     attempt_number=attempt_number,
@@ -776,6 +870,7 @@ class TranslateStage(PipelineStage):
                     request=request,
                     provider_key=provider.key,
                     provider_model=provider_model,
+                    glossary_hash=glossary_hash,
                     chapter_ids=chapter_ids,
                     paragraph_ids=paragraph_ids,
                     attempt_number=attempt_number,
@@ -814,6 +909,7 @@ class TranslateStage(PipelineStage):
                 request=request,
                 provider_key=provider.key,
                 provider_model=provider_model,
+                glossary_hash=glossary_hash,
                 chapter_ids=chapter_ids,
                 paragraph_ids=paragraph_ids,
                 attempt_number=attempt_number,
@@ -880,11 +976,21 @@ class TranslateStage(PipelineStage):
             chunk_text = self._chunk_text(chunk)
             chunk_id = self._chunk_id(chunk, chunk_index)
             chapter_ids = self._chapter_ids(context, chunk)
+            prompt_glossary = self._build_prompt_glossary_block(context, chunk_text)
+            prompt_glossary_text = prompt_glossary.rendered_text if prompt_glossary is not None else ""
+            prompt_glossary_hash = self._glossary_hash(context, prompt_glossary_text)
+            self._record_prompt_glossary_metadata(
+                context,
+                chunk_id=chunk_id,
+                block=prompt_glossary,
+                glossary_hash=prompt_glossary_hash,
+            )
             existing = self._load_existing_chunk_output(
                 context,
                 chunk_id=chunk_id,
                 chunk_text=chunk_text,
                 chapter_ids=chapter_ids,
+                glossary_hash=prompt_glossary_hash,
             )
             if existing is not None and not self._force_retranslate(context):
                 existing_state = context.chunk_states.get(chunk_id, {})
@@ -910,7 +1016,12 @@ class TranslateStage(PipelineStage):
                         max_entries=max_glossary_entries,
                         max_context_chars=max_glossary_context_chars,
                     )
-                request = self._build_prompt_request(context, chunk_text, chunk_glossary=selected_glossary)
+                request = self._build_prompt_request(
+                    context,
+                    chunk_text,
+                    chunk_glossary=selected_glossary,
+                    prompt_glossary_block=prompt_glossary_text,
+                )
                 attempted_models: set[tuple[str, str]] = set()
                 qa_failed = context.chunk_states.get(chunk_id, {}).get("status") == ChunkTranslationStatus.QA_FAILED.value
                 last_provider_error_code: str | None = None
@@ -941,7 +1052,7 @@ class TranslateStage(PipelineStage):
                                     model_states=scheduler.to_model_state_list(),
                                     error_code=last_provider_error_code,
                                 )
-                                setattr(paused, "pipeline_context", context)
+                                paused.pipeline_context = context
                                 raise paused
                             used_provider_key = str(selection.provider_key)
                             used_provider_model = str(selection.provider_model)
@@ -995,6 +1106,7 @@ class TranslateStage(PipelineStage):
                                 attempt_number=int(context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0),
                                 scheduler_policy=scheduler.policy.value,
                                 selection_reason=selection.reason,
+                                glossary_hash=prompt_glossary_hash,
                             )
                             break
 
@@ -1072,6 +1184,7 @@ class TranslateStage(PipelineStage):
                                 selection_reason=selection.reason,
                                 chunk=chunk_text,
                                 request=request,
+                                glossary_hash=prompt_glossary_hash,
                             )
                         except ProviderError as exc:
                             last_provider_error_code = exc.provider_error_code.value
@@ -1157,9 +1270,10 @@ class TranslateStage(PipelineStage):
                             attempt_number=attempt_number,
                             scheduler_policy=scheduler.policy.value,
                             selection_reason=selection.reason,
+                            glossary_hash=prompt_glossary_hash,
                         )
                         break
-                except ProviderError as exc:
+                except ProviderError:
                     raise
                 async with glossary_lock:
                     self._observe_chunk_context(chunk_text, glossary_state, chunk_index=chunk_index)
