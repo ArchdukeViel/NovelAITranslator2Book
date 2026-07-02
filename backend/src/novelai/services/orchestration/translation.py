@@ -2000,6 +2000,7 @@ async def translate_chapters(
                 f"Translation is already in progress for {novel_id}/{chapter_id}"
             ) from None
 
+        prev_state: dict[str, Any] | None = None
         try:
             state_before = self.storage.load_chapter_state(novel_id, chapter_id)
             checkpoint_restored = False
@@ -2121,6 +2122,7 @@ async def translate_chapters(
                 raw_text=raw_text,
                 raw_images=raw_images,
             )
+            translated = result.final_text
             glossary_injected_term_count = int(result.metadata.get("glossary_injected_term_count", 0) or 0)
             confidence_score = self._score_translation_confidence(raw_text or "", translated)
             polish_needed = mark_polish_needed and confidence_score < normalized_threshold
