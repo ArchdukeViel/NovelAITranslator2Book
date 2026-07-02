@@ -82,6 +82,20 @@ class OperationsService:
             )
         except TimeoutError as exc:
             raise OperationError(504, "Operation timed out") from exc
+
+        # Best-effort post-scrape DB reconciliation (REQ-2.1)
+        try:
+            from novelai.db.engine import session_scope
+
+            with session_scope() as session:
+                CatalogService(storage=self.storage, session=session).reconcile_catalog_projection(novel_id)
+        except Exception:
+            logger.warning(
+                "Post-scrape catalog projection reconciliation failed for %s",
+                novel_id,
+                exc_info=True,
+            )
+
         return {"novel_id": novel_id, "source_key": resolved_source_key, "chapters": len(meta.get("chapters", []))}
 
     async def preliminary_crawl_novel(
@@ -187,6 +201,20 @@ class OperationsService:
             )
         except Exception:
             logger.warning("Failed to record preliminary crawl success activity.", exc_info=True)
+
+        # Best-effort post-preliminary-crawl DB reconciliation (REQ-2.3)
+        try:
+            from novelai.db.engine import session_scope
+
+            with session_scope() as session:
+                CatalogService(storage=self.storage, session=session).reconcile_catalog_projection(novel_id)
+        except Exception:
+            logger.warning(
+                "Post-preliminary-crawl catalog projection reconciliation failed for %s",
+                novel_id,
+                exc_info=True,
+            )
+
         return {
             "novel_id": novel_id,
             "source_key": source_key,
@@ -264,6 +292,9 @@ class OperationsService:
         allow_cross_provider_fallback: bool = True,
         skip_glossary_gate: bool = False,
     ) -> dict[str, str]:
+        # Guard: novel must exist before translation (REQ-3.1, REQ-3.2)
+        if self.storage.load_metadata(novel_id) is None:
+            raise OperationError(404, {"error": "Novel not found", "novel_id": novel_id})
         try:
             await asyncio.wait_for(
                 self.orchestrator.translate_chapters(

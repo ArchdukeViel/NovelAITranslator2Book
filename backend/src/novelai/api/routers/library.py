@@ -478,6 +478,43 @@ def _catalog_publication_response(
     )
 
 
+class NovelCreateRequest(BaseModel):
+    novel_id: str
+    title: str
+    source_url: str | None = None
+    source_key: str | None = None
+    language: str = "ja"
+
+
+class NovelCreateResponse(BaseModel):
+    novel_id: str
+    title: str
+    source_url: str | None = None
+    source_key: str | None = None
+    language: str
+    created_at: str
+    db_id: int
+
+
+def _validate_novel_id(novel_id: str) -> str:
+    """Validate and normalise a novel_id slug.
+
+    Allows lowercase alphanumeric, hyphens, and underscores.
+    Rejects: empty, path traversal attempts, uppercase, special chars.
+    """
+    cleaned = novel_id.strip()
+    if not cleaned:
+        raise ValueError("novel_id must not be empty")
+    import re
+
+    if not re.match(r"^[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?$", cleaned):
+        raise ValueError(
+            "novel_id must be lowercase alphanumeric, may contain hyphens and underscores, "
+            "and must not start or end with a hyphen or underscore"
+        )
+    return cleaned
+
+
 def _storage_novel_summary(
     novel_id: str,
     meta: dict[str, Any],
@@ -526,6 +563,50 @@ async def list_novels(
     start = offset
     end = start + limit if limit is not None else None
     return summaries[start:end]
+
+
+@router.post("/", response_model=NovelCreateResponse, status_code=201)
+async def create_novel(
+    body: NovelCreateRequest,
+    storage: StorageService = Depends(get_storage),
+    db: Session = Depends(get_db_session),
+    _owner=Depends(require_role("owner")),
+) -> NovelCreateResponse:
+    """Create a new novel with minimal metadata (REQ-1.1)."""
+    try:
+        novel_id = _validate_novel_id(body.novel_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    existing_meta = storage.load_metadata(novel_id)
+    existing_db = db.query(Novel).filter_by(slug=novel_id).one_or_none()
+    if existing_meta is not None or existing_db is not None:
+        raise HTTPException(status_code=409, detail="Novel already exists")
+
+    minimal_meta: dict[str, Any] = {
+        "title": body.title.strip(),
+        "source_url": body.source_url,
+        "source_key": body.source_key,
+        "language": body.language,
+        "origin_type": "url" if body.source_url else "library",
+        "chapters": [],
+    }
+    storage.save_metadata(novel_id, minimal_meta)
+
+    novel = CatalogService(storage=storage, session=db).get_or_create_novel(
+        novel_id, minimal_meta
+    )
+    db.flush()
+
+    return NovelCreateResponse(
+        novel_id=novel_id,
+        title=novel.title or body.title,
+        source_url=body.source_url,
+        source_key=body.source_key,
+        language=novel.language,
+        created_at=novel.created_at.isoformat(),
+        db_id=novel.id,
+    )
 
 
 @router.post(
