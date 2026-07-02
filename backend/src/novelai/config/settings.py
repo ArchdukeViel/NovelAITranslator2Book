@@ -7,8 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 GEMINI_DEFAULT_MODEL = "gemini-3.1-flash-lite"
-NVIDIA_DEFAULT_MODEL = "google/gemma-4-31b-it"
-NVIDIA_DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
+GEMINI_FALLBACK_MODEL = "gemma-4-31b-it"
 
 
 def _default_novel_library_dir() -> Path:
@@ -28,6 +27,7 @@ class AppSettings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",
     )
 
     # --- Runtime
@@ -58,22 +58,15 @@ class AppSettings(BaseSettings):
     JOB_WORKER_POLL_SECONDS: float = 2.0
 
     # --- Provider / Model
-    PROVIDER_DEFAULT: str = "dummy"
+    PROVIDER_DEFAULT: str = "gemini"
     PROVIDER_GEMINI_API_KEY: SecretStr | None = None
     PROVIDER_CREDENTIAL_ENCRYPTION_KEY: SecretStr | None = None
-    NVIDIA_API_KEY: SecretStr | None = Field(
-        default=None,
-        validation_alias=AliasChoices("NVIDIA_API_KEY", "PROVIDER_NVIDIA_API_KEY"),
-    )
-    NVIDIA_BASE_URL: str = NVIDIA_DEFAULT_BASE_URL
-    NVIDIA_DEFAULT_MODEL: str = NVIDIA_DEFAULT_MODEL
-    NVIDIA_TIMEOUT_SECONDS: float = 60.0
     PROVIDER_GEMINI_DEFAULT_MODEL: str = GEMINI_DEFAULT_MODEL
     PROVIDER_GEMINI_MODEL_FALLBACKS: list[str] = Field(
-        default_factory=list,
+        default_factory=lambda: [GEMINI_FALLBACK_MODEL],
         description=(
-            "Optional Gemini-only text model fallback order. Defaults empty so the standard "
-            "cross-provider fallback can try NVIDIA before older Gemini models."
+            "Gemini-only text model fallback order. Default: Gemma 4 31B as the "
+            "fallback/alternative to the primary Gemini 3.1 Flash Lite."
         ),
     )
 

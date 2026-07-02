@@ -25,14 +25,10 @@ def test_default_settings() -> None:
     )
     assert s.ENV == "development"
     assert s.LOG_LEVEL == "INFO"
-    assert s.PROVIDER_DEFAULT == "dummy"
+    assert s.PROVIDER_DEFAULT == "gemini"
     assert s.PROVIDER_GEMINI_API_KEY is None
-    assert s.NVIDIA_API_KEY is None
-    assert s.NVIDIA_BASE_URL == "https://integrate.api.nvidia.com/v1"
-    assert s.NVIDIA_DEFAULT_MODEL == "google/gemma-4-31b-it"
-    assert s.NVIDIA_TIMEOUT_SECONDS == 60.0
     assert s.PROVIDER_GEMINI_DEFAULT_MODEL == "gemini-3.1-flash-lite"
-    assert s.PROVIDER_GEMINI_MODEL_FALLBACKS == []
+    assert s.PROVIDER_GEMINI_MODEL_FALLBACKS == ["gemma-4-31b-it"]
     assert s.TRANSLATION_CONCURRENCY == 4
     assert s.COST_PER_TOKEN_USD > 0
     assert s.SCRAPE_DELAY_SECONDS == 1.0
@@ -71,13 +67,7 @@ def test_gemini_default_model_env_override(monkeypatch: pytest.MonkeyPatch) -> N
     assert s.PROVIDER_GEMINI_DEFAULT_MODEL == "gemini-custom-model"
 
 
-def test_nvidia_api_key_alias(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PROVIDER_NVIDIA_API_KEY", "nvidia-key")
 
-    s = AppSettings(_env_file=None)  # type: ignore[call-arg]
-
-    assert s.NVIDIA_API_KEY is not None
-    assert s.NVIDIA_API_KEY.get_secret_value() == "nvidia-key"
 
 
 @pytest.fixture()
@@ -130,10 +120,9 @@ def test_provider_credential_hydration_loads_active_encrypted_key(monkeypatch, s
 def test_provider_credential_hydration_skips_disabled_and_invalid(monkeypatch, sqlite_session, tmp_path) -> None:
     monkeypatch.setattr(settings, "PROVIDER_CREDENTIAL_ENCRYPTION_KEY", SecretStr("bootstrap-test-encryption-key"))
     monkeypatch.setattr(settings, "PROVIDER_GEMINI_API_KEY", None)
-    monkeypatch.setattr(settings, "NVIDIA_API_KEY", None)
     preferences = PreferencesService(tmp_path / "prefs")
     credential_service = ProviderCredentialService(sqlite_session)
-    gemini = credential_service.upsert_credential(
+    credential_service.upsert_credential(
         provider="gemini",
         api_key="AIza-disabled-secret",
         label="Disabled Gemini",
@@ -141,25 +130,13 @@ def test_provider_credential_hydration_skips_disabled_and_invalid(monkeypatch, s
         is_active=False,
         notes=None,
     )
-    nvidia = credential_service.upsert_credential(
-        provider="nvidia",
-        api_key="nvapi-invalid-secret",
-        label="Invalid NVIDIA",
-        model="google/gemma-4-31b-it",
-        is_active=True,
-        notes=None,
-    )
-    credential_service.update_metadata(nvidia, validation_status="failed")
 
     diagnostics = hydrate_active_provider_credentials(db=sqlite_session, preferences=preferences)
 
     assert preferences.get_api_key("gemini") is None
-    assert preferences.get_api_key("nvidia") is None
-    assert {(item["provider"], item["reason"], item["hydrated"]) for item in diagnostics} == {
-        ("gemini", "disabled", False),
-        ("nvidia", "credential_invalid", False),
-    }
-    assert gemini.encrypted_api_key != "AIza-disabled-secret"
+    assert diagnostics == [
+        {"provider": "gemini", "credential_id": "gemini", "db_id": 1, "label": "Disabled Gemini", "hydrated": False, "reason": "disabled"},
+    ]
 
 
 def test_provider_credential_hydration_missing_key_fails_safely(monkeypatch, sqlite_session, tmp_path) -> None:
