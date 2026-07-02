@@ -483,3 +483,11 @@ async def invalidate_novel_cache(
         return {"status": "success", "invalidated": count}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to invalidate cache: {exc}") from exc
+
+
+@router.get("/admin/health/errors")
+async def health_errors(
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    from novelai.api.errors import get_error_metrics
+    return get_error_metrics()
