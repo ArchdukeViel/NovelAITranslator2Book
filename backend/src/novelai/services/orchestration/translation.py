@@ -2064,6 +2064,10 @@ async def translate_chapters(
                     translated = str(delta_result.get("text") or "")
                     confidence_score = self._score_translation_confidence(raw_text or "", translated)
                     polish_needed = mark_polish_needed and confidence_score < normalized_threshold
+                    auto_activate = (
+                        confidence_score is None
+                        or confidence_score >= settings.TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD
+                    )
                     self.storage.save_translated_chapter(
                         novel_id,
                         chapter_id,
@@ -2081,6 +2085,7 @@ async def translate_chapters(
                         },
                         glossary_revision=glossary_revision,
                         glossary_injected_term_count=0,
+                        auto_activate=auto_activate,
                     )
                     safely_refresh_catalog_projection_after_storage_write(
                         novel_id,
@@ -2126,6 +2131,10 @@ async def translate_chapters(
             glossary_injected_term_count = int(result.metadata.get("glossary_injected_term_count", 0) or 0)
             confidence_score = self._score_translation_confidence(raw_text or "", translated)
             polish_needed = mark_polish_needed and confidence_score < normalized_threshold
+            auto_activate = (
+                confidence_score is None
+                or confidence_score >= settings.TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD
+            )
             self.storage.save_translated_chapter(
                 novel_id,
                 chapter_id,
@@ -2147,6 +2156,7 @@ async def translate_chapters(
                 },
                 glossary_revision=glossary_revision,
                 glossary_injected_term_count=glossary_injected_term_count,
+                auto_activate=auto_activate,
             )
             safely_refresh_catalog_projection_after_storage_write(
                 novel_id,

@@ -16,6 +16,14 @@ from novelai.translation.qa import (
 logger = logging.getLogger(__name__)
 
 
+def _extract_glossary_terms(context: PipelineContext) -> list[dict] | None:
+    """Extract approved glossary terms from context metadata (REQ-5.5)."""
+    terms = context.metadata.get("glossary_approved_terms")
+    if isinstance(terms, list) and terms:
+        return terms
+    return None
+
+
 class TranslationQAStage(PipelineStage):
     """Deterministic validation of translated chunks before final post-processing."""
 
@@ -75,6 +83,7 @@ class TranslationQAStage(PipelineStage):
         failed_chunk_ids: list[str] = []
 
         multi_model_warning = len(self._provider_models(context)) > 1
+        approved_glossary = _extract_glossary_terms(context)
 
         for index, translated in enumerate(raw_translations):
             chunk = self._chunk_for_index(context, index)
@@ -84,6 +93,7 @@ class TranslationQAStage(PipelineStage):
                 translated_text=translated,
                 chunk=chunk,
                 structured_output=structured_output,
+                approved_glossary=approved_glossary,
             )
             if multi_model_warning and "model_switch_warning" not in result.warnings:
                 result = TranslationQAResult(
@@ -108,8 +118,10 @@ class TranslationQAStage(PipelineStage):
             }
             if result.passed:
                 chunk_state["status"] = ChunkTranslationStatus.TRANSLATED.value
+                chunk_state["qa_status"] = "passed"
             else:
                 chunk_state["status"] = ChunkTranslationStatus.QA_FAILED.value
+                chunk_state["qa_status"] = "qa_failed"
                 chunk_state["error_code"] = result.errors[0] if result.errors else "translation_qa_failed"
                 failed_chunk_ids.append(chunk_id)
             context.chunk_states[chunk_id] = chunk_state

@@ -113,6 +113,7 @@ class AppSettings(BaseSettings):
     )
     COST_PER_TOKEN_USD: float = 0.000002
     TRANSLATION_TARGET_LANGUAGE: str = "English"
+    TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD: float = 0.55
 
     # --- Database
     DATABASE_URL: str | None = None

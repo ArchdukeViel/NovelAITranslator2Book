@@ -55,6 +55,17 @@ def _translated_payload_to_version(self: Any, translated: dict[str, Any], fallba
         version["glossary_hash"] = translated["glossary_hash"]
     if isinstance(translated.get("batch_id"), str) and translated["batch_id"]:
         version["batch_id"] = translated["batch_id"]
+    # QA fields (REQ-6.1, REQ-6.2)
+    if isinstance(translated.get("qa_status"), str):
+        version["qa_status"] = translated["qa_status"]
+    if isinstance(translated.get("qa_score"), (int, float)):
+        version["qa_score"] = translated["qa_score"]
+    qa_warnings = translated.get("qa_warnings")
+    if isinstance(qa_warnings, list):
+        version["qa_warnings"] = list(qa_warnings)
+    qa_errors = translated.get("qa_errors")
+    if isinstance(qa_errors, list):
+        version["qa_errors"] = list(qa_errors)
     return version
 
 
@@ -178,6 +189,7 @@ def save_translated_chapter(
     glossary_hash: str | None = None,
     batch_id: str | None = None,
     base_version_id: str | None = None,
+    auto_activate: bool = True,
 ) -> Path:
     """Save a translated chapter as structured JSON and append a version."""
     payload = self._load_chapter_bundle(novel_id, chapter_id) or {"id": chapter_id}
@@ -217,7 +229,16 @@ def save_translated_chapter(
     payload["prompt_template_version"] = translated_payload.get("prompt_template_version", "")
     payload["glossary_hash"] = translated_payload.get("glossary_hash", "")
     payload["translation_versions"] = versions
-    self._set_active_translation_version(payload, translated_payload)
+    if auto_activate:
+        self._set_active_translation_version(payload, translated_payload)
+    else:
+        logger.warning(
+            "Chapter %s/%s saved with low confidence (%.2f), not activated. "
+            "Use activate endpoint to promote.",
+            novel_id,
+            chapter_id,
+            confidence_score or 0.0,
+        )
     return self._persist_chapter_bundle(novel_id, chapter_id, payload)
 
 
