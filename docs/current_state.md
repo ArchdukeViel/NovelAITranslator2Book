@@ -1,6 +1,6 @@
 # NovelAI Current State
 
-**Last updated**: 2026-06-18 (post-AUTH-SMOKE-1)
+**Last updated**: 2026-07-02 (post-OPS-SAFETY-1)
 **Source of truth**: `docs/architecture/architecture.md`
 
 ## Verdict
@@ -85,9 +85,9 @@ Backend: 150+ tests pass (pytest, 2026-06-18)
   - test_translation_qa.py: 21 passed
   - test_source_quality.py: 8 passed
   - test_storage_service.py: 31 passed
-  - (full suite: 713+ total)
+  - (full suite: 730+ total)
 
-Frontend: 411 tests pass (vitest, 2026-06-17)
+Frontend: 411 tests pass (vitest, 2026-06-17) — unchanged
   - 40 test files
   - taxonomy-contract.test.tsx: 9 passed
   - browse-page.test.tsx: 42 passed
@@ -97,6 +97,24 @@ Auth smoke: PASS (2026-06-18) after email/password backend, public auth UI, and 
 
 **CI gates**: pytest + pyright on Python 3.13 only
 **Local-only**: ruff lint, frontend typecheck/build
+
+---
+
+## Current Spec Burndown (`.kiro/specs/`)
+
+All 8 specs are 100% complete:
+
+| Spec | Tasks | Status |
+|------|-------|--------|
+| create-novel-lifecycle | 28/28 | ✅ Done |
+| glossary-apply-safety | 55/55 | ✅ Done |
+| glossary-first-onboarding | 53/53 | ✅ Done |
+| glossary-sync-bridge | 49/49 | ✅ Done |
+| operational-safety-observability | 53/53 | ✅ Done |
+| prompt-translation-hardening | 57/57 | ✅ Done |
+| public-path-performance | 49/49 | ✅ Done |
+| translation-qa-hardening | 52/52 | ✅ Done |
+| translation-resume-hardening | 46/46 | ✅ Done |
 
 ---
 
@@ -266,7 +284,7 @@ backend/src/novelai/
 
 ## Next Milestones
 
-### Completed (2026-06-17)
+### Completed (2026-07-02)
 
 **Translation optimization stack (TR-OPT-1 through TR-OPT-6C)**:
 1. ✅ Request estimator / dry run
@@ -328,21 +346,58 @@ backend/src/novelai/
 5. ✅ NovelCard `DiscoveryNovel` simplified (source_title/synopsis now in base type)
 6. ✅ Adult/R18 safety preserved: no `is_adult` in public responses, no `include_adult=true` calls
 
+**Translation resume hardening (TR-RESUME-*)**:
+1. ✅ Scheduler resume hardening — paused/resumed translation jobs survive process restart
+2. ✅ Runtime state persistence for in-flight translation chunks
+3. ✅ Chunk attempt tracking across scheduler cycles
+4. ✅ Chunk attempt tracking across scheduler cycles (46/46 tasks)
+
+**Public path performance (PUBLIC-PATH-PERF-*)**:
+1. ✅ Frontend bundle size audit & reduction
+2. ✅ Image optimization pipeline
+3. ✅ Chapter reader lazy loading
+4. ✅ Catalog page pagination / virtualisation
+5. ✅ Backend response caching for public endpoints (49/49 tasks)
+
+**Glossary system (GLOSSARY-FIRST-*, GLOSSARY-SYNC-*, GLOSSARY-APPLY-*)**:
+1. ✅ Glossary-first onboarding — glossary readiness gate on Novel model + API + frontend
+2. ✅ Glossary sync bridge — background glossary sync between storage and DB
+3. ✅ Glossary apply safety — preview, validation, rollback for glossary application
+4. ✅ 3 specs fully implemented (157/157 tasks)
+
+**Operational safety & observability (OPS-SAFETY-*)**:
+1. ✅ atomic_write for BackupManager manifest
+2. ✅ Logging on parse failure in runtime contracts
+3. ✅ Catalog refresh hook after backup restore
+4. ✅ request_id correlation in TranslateStage
+5. ✅ Runtime state definitions expandable via AdminService
+6. ✅ Malformed artifact recovery tests (16 tests)
+7. ✅ Backup restore catalog refresh tests (3 tests)
+8. ✅ 53/53 tasks complete
+
+**Create-novel-lifecycle**:
+1. ✅ End-to-end novel creation flow through all layers (28/28 tasks)
+
+**Prompt translation hardening**:
+1. ✅ Prompt structure hardening, injection resistance, test coverage (57/57 tasks)
+
+**Translation QA hardening**:
+1. ✅ QA stage hardening, quality metrics, threshold enforcement (52/52 tasks)
+
 ### Next
 
 1. Implement object storage boundary (S3/R2/B2)
-2. Scheduler resume hardening
-3. Production deployment (DEP1)
-4. Monitor Gemini metadata batch structured output on broader real inputs
-5. TAXONOMY-5C: tag `name_ja` display (frontend-only)
-6. TAXONOMY-5D: public genre enrichment / label payload decision
-7. PUBLIC-LATEST-1: latest updates time grouping
-8. PUBLIC-COPY-1: de-AI public copy polish
-9. SOURCE-PIPELINE-FIX-4: novel status extraction (ongoing/completed/hiatus)
-10. SOURCE-PIPELINE-FIX-5: storage safety (cache TTL, metadata backup, event pruning)
-11. GenericSource live smoke (once a safe public disposable URL is identified)
-12. Admin provider credential UI (currently env-based only)
-13. Broader real-source smoke / manual verification
+2. Production deployment (DEP1)
+3. Monitor Gemini metadata batch structured output on broader real inputs
+4. TAXONOMY-5C: tag `name_ja` display (frontend-only)
+5. TAXONOMY-5D: public genre enrichment / label payload decision
+6. PUBLIC-LATEST-1: latest updates time grouping
+7. PUBLIC-COPY-1: de-AI public copy polish
+8. SOURCE-PIPELINE-FIX-4: novel status extraction (ongoing/completed/hiatus)
+9. SOURCE-PIPELINE-FIX-5: storage safety (cache TTL, metadata backup, event pruning)
+10. GenericSource live smoke (once a safe public disposable URL is identified)
+11. Admin provider credential UI (currently env-based only)
+12. Broader real-source smoke / manual verification
 
 ---
 
