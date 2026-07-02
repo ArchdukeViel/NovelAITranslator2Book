@@ -13,8 +13,17 @@ from novelai.services.export_service import ExportService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.sources.registry import detect_source
 from novelai.storage.service import StorageService
+from novelai.core.errors import TranslationInProgressError
 
 logger = logging.getLogger(__name__)
+
+# Novel-level concurrency guard – prevents concurrent translation runs per novel
+_novel_translation_locks: dict[str, asyncio.Lock] = {}
+
+def _get_novel_translation_lock(novel_id: str) -> asyncio.Lock:
+    if novel_id not in _novel_translation_locks:
+        _novel_translation_locks[novel_id] = asyncio.Lock()
+    return _novel_translation_locks[novel_id]
 
 NCODE_ID_PATTERN = r"^n\d{4}[a-z]{2}$"
 SYOSETU_SOURCE_PAIR = ("novel18_syosetu", "syosetu_ncode")
@@ -295,6 +304,13 @@ class OperationsService:
         # Guard: novel must exist before translation (REQ-3.1, REQ-3.2)
         if self.storage.load_metadata(novel_id) is None:
             raise OperationError(404, {"error": "Novel not found", "novel_id": novel_id})
+
+        # Novel-level concurrency guard
+        novel_lock = _get_novel_translation_lock(novel_id)
+        if novel_lock.locked():
+            raise OperationError(409, f"Translation already in progress for novel {novel_id}")
+        await novel_lock.acquire()
+
         try:
             await asyncio.wait_for(
                 self.orchestrator.translate_chapters(
@@ -313,7 +329,42 @@ class OperationsService:
             )
         except TimeoutError as exc:
             raise OperationError(504, "Operation timed out") from exc
+        except TranslationInProgressError as exc:
+            raise OperationError(409, str(exc)) from exc
+        finally:
+            novel_lock.release()
         return {"novel_id": novel_id, "status": "ok"}
+
+    def get_translation_status(
+        self,
+        *,
+        novel_id: str,
+    ) -> dict[str, Any]:
+        """Return per-chapter translation state summary."""
+        meta = self.storage.load_metadata(novel_id)
+        if meta is None:
+            raise OperationError(404, {"error": "Novel not found", "novel_id": novel_id})
+
+        chapters: list[dict[str, Any]] = []
+        for chapter in meta.get("chapters", []):
+            chapter_id = str(chapter.get("id"))
+            state = self.storage.load_chapter_state(novel_id, chapter_id)
+            translated = self.storage.load_translated_chapter(novel_id, chapter_id)
+            chapters.append({
+                "id": chapter_id,
+                "title": chapter.get("title"),
+                "translated": translated is not None,
+                "state": state["current_state"].value if state else "unknown",
+                "error_count": state.get("error_count", 0) if state else 0,
+            })
+
+        translated_count = sum(1 for c in chapters if c["translated"])
+        return {
+            "novel_id": novel_id,
+            "total_chapters": len(chapters),
+            "translated_chapters": translated_count,
+            "chapters": chapters,
+        }
 
     def export_novel(self, *, novel_id: str, export_format: str) -> ExportOperationResult:
         meta = self.storage.load_metadata(novel_id)

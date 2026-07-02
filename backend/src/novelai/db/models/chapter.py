@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from novelai.core.chapter_state import TranslationState
 from novelai.db.base import Base
 
 
@@ -42,6 +43,12 @@ class Chapter(Base):
     # Status fields
     raw_status: Mapped[str] = mapped_column(String(64), nullable=False, default="pending")
     translation_status: Mapped[str] = mapped_column(String(64), nullable=False, default="pending")
+
+    # Translation pipeline state (tracked by TranslationService)
+    translation_state: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=TranslationState.PENDING.value
+    )
+    translation_error: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     word_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
