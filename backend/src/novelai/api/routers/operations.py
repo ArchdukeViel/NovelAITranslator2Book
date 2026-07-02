@@ -168,6 +168,20 @@ async def translate_novel(
         raise AssertionError("unreachable")
 
 
+@router.get("/{novel_id}/translate-status")
+async def translate_status(
+    novel_id: str,
+    service: OperationsService = Depends(get_operations_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    """Return per-chapter translation status summary."""
+    try:
+        return service.get_translation_status(novel_id=novel_id)
+    except OperationError as exc:
+        _raise_operation_error(exc)
+        raise AssertionError("unreachable")
+
+
 @router.post("/{novel_id}/export")
 async def export_novel(
     novel_id: str,

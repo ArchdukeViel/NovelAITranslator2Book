@@ -7,6 +7,23 @@ from datetime import UTC, datetime
 from enum import Enum
 
 
+class TranslationState(str, Enum):
+    """Fine-grained translation pipeline state for DB tracking.
+
+    Mirrors the pipeline stage sequence.
+    """
+
+    PENDING = "pending"
+    FETCHING = "fetching"
+    PARSING = "parsing"
+    SEGMENTING = "segmenting"
+    TRANSLATING = "translating"
+    QA = "qa"
+    POST_PROCESSING = "post_processing"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
 def _utc_now() -> datetime:
     """Return a timezone-aware UTC timestamp."""
     return datetime.now(UTC)

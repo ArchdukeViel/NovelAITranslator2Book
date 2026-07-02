@@ -21,6 +21,7 @@ from novelai.api.routers.dependencies import (
     reader_title,
 )
 from novelai.core.security import redact_sensitive
+from novelai.db.models.chapter import Chapter as ChapterModel
 from novelai.db.models.glossary import NovelGlossaryEntry
 from novelai.db.models.novel import Novel
 from novelai.services.catalog_service import CatalogService, get_projection_refresh_failures
@@ -872,6 +873,23 @@ async def get_novel(
         payload["glossary_status"] = novel.glossary_status
         payload["glossary_revision"] = novel.glossary_revision
         payload["glossary_pending_count"] = _pending_glossary_count(novel)
+
+        # Enrich chapters with DB-level translation state
+        chapter_records = {
+            c.chapter_number: c
+            for c in db.query(ChapterModel).filter(
+                ChapterModel.novel_id == novel.id
+            ).all()
+        }
+        enriched_chapters = []
+        for ch in payload.get("chapters", []):
+            ch_id = ch.get("id")
+            if ch_id is not None and int(ch_id) in chapter_records:
+                rec = chapter_records[int(ch_id)]
+                ch["translation_state"] = rec.translation_state
+                ch["translation_error"] = rec.translation_error
+            enriched_chapters.append(ch)
+        payload["chapters"] = enriched_chapters
     else:
         payload.setdefault("glossary_status", "glossary_pending")
         payload.setdefault("glossary_revision", 0)
