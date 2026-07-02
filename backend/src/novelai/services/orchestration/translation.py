@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import hashlib
 import json
@@ -11,6 +12,7 @@ from typing import Any
 
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState
+from novelai.core.errors import TranslationInProgressError
 from novelai.db.engine import session_scope
 from novelai.db.models.novel import Novel
 from novelai.glossary import glossary_status_counts, normalize_glossary_entries
@@ -39,6 +41,15 @@ _GENERIC_TITLE_RE = re.compile(
     r"^\s*(?:episode|chapter|part|volume|section|arc)(?:\s+[\w.-]+)?\s*$",
     flags=re.IGNORECASE,
 )
+
+# Per-chapter lock to prevent concurrent translation of the same chapter
+_translation_locks: dict[str, asyncio.Lock] = {}
+
+def _get_translation_lock(novel_id: str, chapter_id: str) -> asyncio.Lock:
+    key = f"{novel_id}:{chapter_id}"
+    if key not in _translation_locks:
+        _translation_locks[key] = asyncio.Lock()
+    return _translation_locks[key]
 
 
 def _pipeline_context_from_exception(exc: BaseException) -> Any | None:
@@ -1980,21 +1991,34 @@ async def translate_chapters(
         if existing and not force and not settings.TRANSLATION_DELTA_RETRANSLATION_ENABLED:
             continue
 
-        state_before = self.storage.load_chapter_state(novel_id, chapter_id)
-        if state_before and state_before.get("error_count", 0) > 0:
-            self._restore_latest_checkpoint_for_resume(novel_id, chapter_id)
-
-        # Persist an explicit resume point before making changes.
-        self.storage.create_checkpoint(novel_id, chapter_id, "before_translate")
-
-        # Checkpoint: mark chapter as in-progress
-        prev_state = self.storage.load_chapter_state(novel_id, chapter_id)
-        self.storage.save_chapter_state(
-            novel_id, chapter_id,
-            _make_state_data(ChapterState.TRANSLATING, previous=prev_state),
-        )
+        # Acquire per-chapter lock to prevent concurrent translation
+        lock = _get_translation_lock(novel_id, chapter_id)
+        try:
+            await asyncio.wait_for(lock.acquire(), timeout=0.0)
+        except TimeoutError:
+            raise TranslationInProgressError(
+                f"Translation is already in progress for {novel_id}/{chapter_id}"
+            ) from None
 
         try:
+            state_before = self.storage.load_chapter_state(novel_id, chapter_id)
+            checkpoint_restored = False
+            if state_before is None or state_before.get("error_count", 0) > 0:
+                checkpoint_restored = self._restore_latest_checkpoint_for_resume(novel_id, chapter_id)
+
+            # Persist an explicit resume point before making changes.
+            self.storage.create_checkpoint(novel_id, chapter_id, "before_translate")
+
+            # Checkpoint: mark chapter as in-progress
+            prev_state = self.storage.load_chapter_state(novel_id, chapter_id)
+            state_data = _make_state_data(ChapterState.TRANSLATING, previous=prev_state)
+            state_data["metadata"] = dict(state_data.get("metadata") or {})
+            state_data["metadata"]["checkpoint_restored"] = checkpoint_restored
+            self.storage.save_chapter_state(
+                novel_id, chapter_id,
+                state_data,
+            )
+
             raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
             media_state = self.storage.load_chapter_media_state(novel_id, chapter_id) or {}
             raw_text = None
@@ -2200,6 +2224,8 @@ async def translate_chapters(
                 )
             self.storage.create_checkpoint(novel_id, chapter_id, "failed")
             raise
+        finally:
+            lock.release()
 
 
 async def retranslate_chapter(
