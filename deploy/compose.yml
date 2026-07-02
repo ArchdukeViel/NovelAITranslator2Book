@@ -2,6 +2,8 @@ name: novel-ai
 
 services:
   postgres:
+    networks:
+      - novelai-net
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-novelai}
@@ -27,6 +29,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - novelai-net
     restart: unless-stopped
 
   caddy:
@@ -42,16 +46,22 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks:
+      - novelai-net
     restart: unless-stopped
 
   frontend:
     build:
       context: ..
       dockerfile: deploy/frontend.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://backend:8000
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_BASE_URL: /api
       BACKEND_API_URL: http://backend:8000
+    networks:
+      - novelai-net
     restart: unless-stopped
 
   migrate:
@@ -66,9 +76,19 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - novelai-net
     restart: "no"
 
   backend:
+    networks:
+      - novelai-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/public/catalog"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     build:
       context: ..
       dockerfile: deploy/backend.Dockerfile
@@ -146,6 +166,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - novelai-net
     restart: unless-stopped
 
 volumes:
@@ -153,3 +175,7 @@ volumes:
   caddy_config:
   postgres_data:
   redis_data:
+
+networks:
+  novelai-net:
+    driver: bridge
