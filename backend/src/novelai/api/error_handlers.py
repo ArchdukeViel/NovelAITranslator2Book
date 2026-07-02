@@ -570,6 +570,17 @@ def add_error_handlers(app: FastAPI) -> None:
         app = FastAPI()
         add_error_handlers(app)
     """
+    from novelai.api.errors import StructuredHTTPException, record_error
+
+    @app.exception_handler(StructuredHTTPException)
+    async def structured_exception_handler(request: Request, exc: StructuredHTTPException):
+        """Convert StructuredHTTPException to canonical ErrorResponse JSON."""
+        record_error(exc.category.value)
+        resp = exc.to_response()
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=resp.model_dump(exclude_none=True),
+        )
 
     @app.exception_handler(HTTPException)
     async def fastapi_http_exception_handler(request: Request, exc: HTTPException):
