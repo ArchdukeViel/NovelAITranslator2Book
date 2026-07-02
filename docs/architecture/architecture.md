@@ -366,6 +366,11 @@ owner  - authenticated single owner; dangerous operations
 | CSRF enforcement for cookie-auth mutations | Implemented. |
 | Basic public rate limits | Implemented. |
 | Production session secret fail-closed | Implemented. |
+| Structured error handling + logging system | Implemented. StructuredHTTPException, PipelineContext, JsonFormatter, /health/errors endpoint, trace_id propagation. |
+| Glossary auto-population | Implemented. SuggestionExtractor, GlossarySuggestionService, review/reject/apply API, pipeline integration. |
+| Microservice-split readiness | Implemented. main_reader/main_admin entry points, DEPLOY_MODE dispatch (monolith/split), novelai_core facade package, Docker Compose + Caddy split routing, 14 contract tests. |
+| Advanced translation caching | Implemented. TranslationCacheService (SHA-256 keys, sharded file storage, TTL), pipeline integration, glossary invalidation, /api/admin/cache/* endpoints. |
+| Adapter plugin system | Implemented. SourceAdapter ABC, AdapterRegistry (pkgutil auto-discovery, get_by_key, list_adapters), all adapters refactored, bootstrap registration. |
 | Public contribution credential backend lifecycle | Deferred. |
 | Server-side encryption/revocation/validation/usage ledger for contributed credentials | Deferred. |
 | Admin user-management backend/UI | Deferred. |
@@ -467,6 +472,14 @@ cookies, or frontend-only flags.
 - Public `/api/user/*` frontend API/hooks quarantined.
 - Future admin API surface quarantined.
 - Tests protect these gates.
+
+**Phase A2 — Infrastructure & platform features: complete**
+
+- Adapter plugin system with SourceAdapter ABC and pkgutil auto-discovery.
+- Structured error handling/logging with trace_id propagation and JsonFormatter.
+- Advanced translation caching with SHA-256 sharded file storage.
+- Glossary auto-population with suggestion/review/apply workflow.
+- Microservice-split readiness: dual entry points, DEPLOY_MODE dispatch, Docker Compose + Caddy split routing, novelai_core facade package.
 
 **Phase B — Public auth contract design: complete for current public auth**
 
