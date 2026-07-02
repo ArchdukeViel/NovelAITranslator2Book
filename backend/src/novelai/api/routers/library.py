@@ -175,6 +175,18 @@ class NovelProjectionHealthResponse(BaseModel):
     in_sync: bool
     recommended_action: str
 
+class ChapterCheckpointFile(BaseModel):
+    name: str
+    timestamp: str | None = None
+
+class ChapterCheckpoints(BaseModel):
+    chapter_id: str
+    checkpoints: list[ChapterCheckpointFile]
+
+class NovelCheckpointsResponse(BaseModel):
+    novel_id: str
+    chapters: list[ChapterCheckpoints]
+
 
 class CatalogPublicationResponse(BaseModel):
     novel_id: str
@@ -1099,3 +1111,26 @@ async def novel_projection_health(
         in_sync=in_sync,
         recommended_action=recommended_action,
     )
+
+
+@router.get("/{novel_id}/checkpoints", response_model=NovelCheckpointsResponse)
+async def list_novel_checkpoints(
+    novel_id: str,
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> NovelCheckpointsResponse:
+    """List all checkpoints per chapter for a novel. Read-only."""
+    chapters: list[ChapterCheckpoints] = []
+    for chapter_id in storage.list_stored_chapters(novel_id):
+        cps = storage.list_checkpoints(novel_id, chapter_id)
+        if cps:
+            chapters.append(
+                ChapterCheckpoints(
+                    chapter_id=chapter_id,
+                    checkpoints=[
+                        ChapterCheckpointFile(name=cp["checkpoint_name"], timestamp=cp.get("timestamp"))
+                        for cp in cps
+                    ],
+                )
+            )
+    return NovelCheckpointsResponse(novel_id=novel_id, chapters=chapters)

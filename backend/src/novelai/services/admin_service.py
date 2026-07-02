@@ -79,6 +79,36 @@ RUNTIME_STATE_DEFINITIONS = {
         "description": "Token/request usage history used for reporting and cost tracking.",
         "affects_process": False,
     },
+    "runtime_chunks": {
+        "label": "Translation Chunks",
+        "filename": "translation_chunks.json",
+        "description": "Translation chunk records saved during pipeline execution.",
+        "affects_process": True,
+    },
+    "runtime_chunk_attempts": {
+        "label": "Chunk Attempts",
+        "filename": "chunk_attempt_records.json",
+        "description": "Per-attempt records for each translation chunk.",
+        "affects_process": True,
+    },
+    "runtime_bundles": {
+        "label": "Translation Bundles",
+        "filename": "translation_bundles.json",
+        "description": "Translation bundle records for chapter-level grouping.",
+        "affects_process": True,
+    },
+    "runtime_outputs": {
+        "label": "Translation Outputs",
+        "filename": "translation_outputs.json",
+        "description": "Translation output records from completed pipeline runs.",
+        "affects_process": True,
+    },
+    "backup_manifest": {
+        "label": "Backup Manifest",
+        "filename": "manifest.json",
+        "description": "Manifest of all backups stored on disk.",
+        "affects_process": False,
+    },
 }
 
 
@@ -858,6 +888,8 @@ class AdminService:
             self.translation_cache.reload()
         elif key == "usage":
             self.usage.reload()
+        elif key in ("runtime_chunks", "runtime_chunk_attempts", "runtime_bundles", "runtime_outputs", "backup_manifest"):
+            pass  # File-backed — no in-memory state to reload.
         else:
             raise KeyError(f"Unknown runtime state file: {state_key}")
         return self.runtime_state_record(key)
@@ -870,6 +902,10 @@ class AdminService:
             self.translation_cache.clear()
         elif key == "usage":
             self.usage.clear()
+        elif key in ("runtime_chunks", "runtime_chunk_attempts", "runtime_bundles", "runtime_outputs", "backup_manifest"):
+            path = self.runtime_state_path(key)
+            if path.exists():
+                path.unlink()
         else:
             raise KeyError(f"Unknown runtime state file: {state_key}")
         return self.runtime_state_record(key)
@@ -898,6 +934,16 @@ class AdminService:
             return self.translation_cache.cache_file
         if key == "usage":
             return self.usage.usage_path
+        if key == "runtime_chunks":
+            return settings.DATA_DIR / "runtime" / "translation" / "chunks.json"
+        if key == "runtime_chunk_attempts":
+            return settings.DATA_DIR / "runtime" / "translation" / "chunk_attempts.json"
+        if key == "runtime_bundles":
+            return settings.DATA_DIR / "runtime" / "translation" / "bundles.json"
+        if key == "runtime_outputs":
+            return settings.DATA_DIR / "runtime" / "translation" / "outputs.json"
+        if key == "backup_manifest":
+            return settings.DATA_DIR / "backups" / "manifest.json"
         raise KeyError(f"Unknown runtime state file: {key}")
 
     def worker_status(self) -> dict[str, Any]:

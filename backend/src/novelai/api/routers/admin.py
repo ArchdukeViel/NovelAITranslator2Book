@@ -427,6 +427,11 @@ async def clear_runtime_state(
     service: AdminService = Depends(get_admin_service),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
+    if state_key.strip().lower() == "backup_manifest":
+        raise HTTPException(
+            status_code=422,
+            detail="backup_manifest cannot be cleared via this endpoint.",
+        )
     try:
         return service.clear_runtime_state(state_key)
     except KeyError as exc:

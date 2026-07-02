@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -245,6 +246,7 @@ class TranslateStage(PipelineStage):
             "chunk_id": chunk_id,
             "attempt_count": attempt_count,
             "max_attempts": self._max_attempts_per_chunk,
+            "request_id": context.metadata.get("request_id"),
             "provider_key": provider_key,
             "provider_model": provider_model,
             "latest_error_code": latest_error_code,
@@ -491,6 +493,7 @@ class TranslateStage(PipelineStage):
                 {
                     "chunk_id": chunk_id,
                     "novel_id": novel_id,
+                    "request_id": context.metadata.get("request_id"),
                     "translation_run_id": self._translation_run_id(context),
                     "chapter_ids": self._chapter_ids(context, chunk),
                     "paragraph_ids": self._paragraph_ids(chunk),
@@ -598,6 +601,7 @@ class TranslateStage(PipelineStage):
             {
                 "chunk_id": chunk_id,
                 "novel_id": novel_id,
+                "request_id": context.metadata.get("request_id"),
                 "translation_run_id": self._translation_run_id(context),
                 "chapter_ids": self._chapter_ids(context, chunk),
                 "paragraph_ids": self._paragraph_ids(chunk),
@@ -964,6 +968,10 @@ class TranslateStage(PipelineStage):
 
     async def run(self, context: PipelineContext) -> PipelineContext:
         chunks: list[str | TranslationChunk] = list(context.translation_chunks or context.chunks)
+        request_id = context.metadata.get("request_id")
+        if not request_id or not isinstance(request_id, str) or not request_id.strip():
+            request_id = str(uuid.uuid4())
+            context.metadata["request_id"] = request_id
         provider_key = context.provider_key or self._settings.get_provider_key()
         model = context.provider_model or self._settings.get_provider_model()
         provider_key, model = self._resolve_provider_and_model(provider_key, model)

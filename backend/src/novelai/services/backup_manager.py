@@ -6,10 +6,17 @@ import gzip
 import json
 import logging
 import tarfile
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
+
+from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
+from novelai.utils import atomic_write
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -76,16 +83,25 @@ def _parse_manifest_entry(value: object) -> BackupManifestEntry | None:
 class BackupManager:
     """Manages backups and restoration."""
 
-    def __init__(self, base_dir: Path):
+    def __init__(
+        self,
+        base_dir: Path,
+        storage: Any | None = None,
+        session_scope_factory: Callable[[], AbstractContextManager[Any]] | None = None,
+    ):
         """Initialize backup manager.
 
         Args:
             base_dir: Base directory for backups
+            storage: Optional StorageService for catalog refresh after restore
+            session_scope_factory: Optional session scope factory for DB access
         """
         self.base_dir = base_dir
         self.backups_dir = base_dir / "backups"
         self.backups_dir.mkdir(parents=True, exist_ok=True)
         self._backup_manifest = self.backups_dir / "manifest.json"
+        self._storage: Any | None = storage
+        self._session_scope_factory = session_scope_factory
 
     def _load_manifest(self) -> dict[str, BackupManifestEntry]:
         """Load backup manifest."""
@@ -109,8 +125,9 @@ class BackupManager:
 
     def _save_manifest(self, manifest: dict[str, BackupManifestEntry]) -> None:
         """Save backup manifest."""
-        self._backup_manifest.write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+        atomic_write(
+            self._backup_manifest,
+            json.dumps(manifest, ensure_ascii=False, indent=2),
         )
 
     def _get_backup_path(self, backup_id: str, compressed: bool = True) -> Path:
@@ -366,11 +383,28 @@ class BackupManager:
                     tar.extractall(target_dir.parent, filter="data")
 
             logger.info(f"Backup restored: {backup_id}")
-            return True
 
         except Exception as e:
             logger.error(f"Backup restoration failed: {e}")
             return False
+
+        # Attempt catalog projection refresh after successful restore.
+        if self._storage is not None:
+            novel_id = manifest[backup_id]["novel_id"]
+            try:
+                kwargs: dict[str, Any] = {}
+                if self._session_scope_factory is not None:
+                    kwargs["session_scope_factory"] = self._session_scope_factory
+                safely_refresh_catalog_projection_after_storage_write(
+                    novel_id,
+                    self._storage,
+                    context="backup_restore",
+                    **kwargs,
+                )
+            except Exception as exc:
+                logger.warning("Catalog refresh after backup restore failed (non-fatal): %s", exc)
+
+        return True
 
     def list_backups(self, novel_id: str | None = None) -> list[BackupInfo]:
         """List all available backups.

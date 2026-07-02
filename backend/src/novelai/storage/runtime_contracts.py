@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from typing import Any
 
 from novelai.infrastructure.http.cache import FetchCacheEntry
 from novelai.storage.common import _utc_now_iso
 from novelai.utils import atomic_write
+
+logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
 _SENSITIVE_KEY_PARTS = ("api_key", "authorization", "cookie", "secret", "token")
@@ -74,8 +77,15 @@ def _read_json_file(path: Any, default: Any) -> Any:
     if not path.exists():
         return default
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+        text = path.read_text(encoding="utf-8")
+        if not text.strip():
+            logger.debug("Empty/whitespace file: %s — returning default.", path.name)
+            return default
+        return json.loads(text)
+    except json.JSONDecodeError:
+        logger.warning("Corrupt JSON file: %s — returning default.", path.name)
+        return default
+    except OSError:
         return default
 
 
