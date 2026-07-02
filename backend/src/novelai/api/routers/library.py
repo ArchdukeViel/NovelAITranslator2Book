@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -22,12 +23,14 @@ from novelai.api.routers.dependencies import (
 from novelai.core.security import redact_sensitive
 from novelai.db.models.glossary import NovelGlossaryEntry
 from novelai.db.models.novel import Novel
-from novelai.services.catalog_service import CatalogService
+from novelai.services.catalog_service import CatalogService, get_projection_refresh_failures
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 logger = logging.getLogger(__name__)
+
+_last_bulk_reconciliation_at: str | None = None
 
 
 class NovelSummary(BaseModel):
@@ -153,6 +156,24 @@ class CatalogProjectionBulkRefreshResponse(BaseModel):
     changed: list[CatalogProjectionBulkChangedResponse]
     failures: list[CatalogProjectionFailureResponse]
     details_truncated: bool = False
+
+
+class CatalogHealthResponse(BaseModel):
+    total_novels: int
+    projection_stale_count: int
+    missing_projection_count: int
+    last_bulk_reconciliation_at: str | None = None
+    recommendations: list[str]
+    projection_refresh_errors: list[dict]
+
+
+class NovelProjectionHealthResponse(BaseModel):
+    novel_id: str
+    db_has_row: bool
+    db_chapter_count: int
+    storage_translated_count: int
+    in_sync: bool
+    recommended_action: str
 
 
 class CatalogPublicationResponse(BaseModel):
@@ -626,6 +647,9 @@ async def refresh_catalog_projections(
         limit=limit,
         offset=offset,
     )
+    if not dry_run:
+        global _last_bulk_reconciliation_at
+        _last_bulk_reconciliation_at = datetime.utcnow().isoformat()
     return CatalogProjectionBulkRefreshResponse(
         dry_run=result.dry_run,
         scanned=result.scanned,
@@ -994,3 +1018,84 @@ async def get_progress(
     scraped = storage.count_stored_chapters(novel_id)
     translated = storage.count_translated_chapters(novel_id)
     return {"novel_id": novel_id, "total": total, "scraped": scraped, "translated": translated}
+
+
+@router.get("/catalog-health", response_model=CatalogHealthResponse)
+async def catalog_health(
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+    db: Session = Depends(get_db_session),
+) -> CatalogHealthResponse:
+    """Read-only catalog health inspection. No storage writes."""
+    total_novels = db.query(func.count(Novel.id)).scalar() or 0
+    stale_threshold = datetime.utcnow() - timedelta(hours=24)
+    stale_count = db.query(func.count(Novel.id)).filter(
+        Novel.updated_at < stale_threshold
+    ).scalar() or 0
+
+    storage_ids = set(storage.list_novels())
+    db_slugs = {row[0] for row in db.query(Novel.slug).all()}
+    missing_projection_count = len(storage_ids - db_slugs)
+
+    recommendations: list[str] = []
+    if missing_projection_count > 0:
+        recommendations.append(
+            f"POST /refresh-catalog-projections?dry_run=false "
+            f"to create projections for {missing_projection_count} novel(s)"
+        )
+    if stale_count > 0:
+        recommendations.append(
+            f"{stale_count} stale projection(s) — run bulk reconciliation"
+        )
+    if not recommendations:
+        recommendations.append("All catalog projections healthy")
+
+    errors = get_projection_refresh_failures()
+
+    return CatalogHealthResponse(
+        total_novels=total_novels,
+        projection_stale_count=stale_count,
+        missing_projection_count=missing_projection_count,
+        last_bulk_reconciliation_at=_last_bulk_reconciliation_at,
+        recommendations=recommendations,
+        projection_refresh_errors=errors,
+    )
+
+
+@router.get("/{novel_id}/catalog-projection-health", response_model=NovelProjectionHealthResponse)
+async def novel_projection_health(
+    novel_id: str,
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+    db: Session = Depends(get_db_session),
+) -> NovelProjectionHealthResponse:
+    """Per-novel projection health check. Read-only."""
+    novel = db.query(Novel).filter_by(slug=novel_id).one_or_none()
+    if novel is None:
+        raise HTTPException(status_code=404, detail="Novel not found in DB")
+
+    storage_count = storage.count_translated_chapters(novel_id)
+    db_count = novel.translated_count or 0
+    in_sync = storage_count == db_count
+
+    if in_sync:
+        recommended_action = "None — in sync"
+    elif storage_count > db_count:
+        recommended_action = (
+            f"Refresh projection: storage has {storage_count} translated, "
+            f"DB shows {db_count}"
+        )
+    else:
+        recommended_action = (
+            f"Investigate: DB has {db_count} translated but storage has "
+            f"{storage_count} — possible orphaned DB records"
+        )
+
+    return NovelProjectionHealthResponse(
+        novel_id=novel_id,
+        db_has_row=True,
+        db_chapter_count=db_count,
+        storage_translated_count=storage_count,
+        in_sync=in_sync,
+        recommended_action=recommended_action,
+    )

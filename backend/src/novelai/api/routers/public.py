@@ -99,6 +99,7 @@ class PublicCatalogResponse(BaseModel):
     total: int
     page: int
     page_size: int
+    degraded: bool = False
 
 
 class PublicGenreResponse(BaseModel):
@@ -367,14 +368,15 @@ def _latest_translated_chapter(
         chapter_id = str(chapter.get("id", "")).strip()
         if not chapter_id or chapter_id not in translated_ids:
             continue
-        translated = storage.load_translated_chapter(novel_id, chapter_id)
-        if translated is None or not isinstance(translated.get("text"), str):
-            continue
         latest = {
             "id": chapter_id,
             "number": chapter.get("num") or (index + 1),
             "title": _optional_str(chapter.get("translated_title")) or _optional_str(chapter.get("title")),
-            "updated_at": _optional_str(translated.get("translated_at")) or _optional_str(translated.get("created_at")),
+            "updated_at": (
+                _optional_str(chapter.get("translated_at"))
+                or _optional_str(chapter.get("updated_at"))
+                or _optional_str(chapter.get("scraped_at"))
+            ),
         }
 
     return latest
@@ -718,12 +720,25 @@ def _load_taxonomy_for_novel(
 def _resolve_public_novel(
     slug: str,
     storage: StorageService,
+    db: Session | None = None,
 ) -> tuple[str, dict[str, Any], str] | None:
-    """Resolve a public slug or legacy source id to canonical storage metadata."""
+    """Resolve a public slug or legacy source id to canonical storage metadata.
+
+    Checks direct storage key first, then optional DB slug lookup, then falls
+    back to scanning all storage metadata.
+    """
     meta = storage.load_metadata(slug)
     if meta is not None:
         source_id = _optional_str(meta.get("novel_id")) or slug
         return source_id, meta, _public_slug_from_metadata(source_id, meta)
+
+    # DB slug lookup avoids scanning storage when the slug is a known novel.
+    if db is not None:
+        novel = db.query(Novel).filter_by(slug=slug).one_or_none()
+        if novel is not None:
+            meta = storage.load_metadata(novel.slug) or {}
+            source_id = _optional_str(meta.get("novel_id")) or novel.slug
+            return source_id, meta, _public_slug_from_metadata(source_id, meta)
 
     for novel_id in storage.list_novels():
         candidate_meta = storage.load_metadata(novel_id) or {}
@@ -816,6 +831,7 @@ def _catalog_from_storage(
         total=total,
         page=page,
         page_size=page_size,
+        degraded=True,
     )
 
 
@@ -900,6 +916,7 @@ async def catalog(
         )
         if db_response is not None:
             return db_response
+        logger.warning("DB catalog fell back to storage scan — no DB projection found")
 
     return _catalog_from_storage(
         q=q,
@@ -965,9 +982,10 @@ async def get_chapter(
     slug: str,
     chapter_id: str,
     storage: StorageService = Depends(get_storage),
+    db: Session = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Public translated chapter reader."""
-    resolved = _resolve_public_novel(slug, storage)
+    resolved = _resolve_public_novel(slug, storage, db=db)
     if resolved is None:
         raise HTTPException(status_code=404, detail="Novel not found.")
     novel_id, meta, public_slug = resolved
@@ -978,9 +996,17 @@ async def get_chapter(
         raise HTTPException(status_code=404, detail="Chapter not found.")
 
     translated = storage.load_translated_chapter(novel_id, chapter_id)
-    if translated is None or not isinstance(translated.get("text"), str):
+    if translated is None:
         raise HTTPException(status_code=404, detail="Translated chapter not available.")
-    raw_chapter = storage.load_chapter(novel_id, chapter_id) or {}
+    translated_text: str | None = translated.get("text")  # type: ignore[no-untyped-call]
+    if translated_text is None:
+        raise HTTPException(status_code=404, detail="Translated chapter not available.")
+
+    # Skip loading raw chapter when paragraph_map exists (source blocks not needed).
+    paragraph_map = translated.get("paragraph_map")
+    raw_chapter: dict[str, Any] = {}
+    if not paragraph_map or not isinstance(paragraph_map, list) or not paragraph_map:
+        raw_chapter = storage.load_chapter(novel_id, chapter_id) or {}
 
     index = chapter_ids.index(chapter_id)
     chapter = chapters[index]
@@ -995,9 +1021,9 @@ async def get_chapter(
         "chapter_id": chapter_id,
         "chapter_number": chapter.get("num") or (index + 1),
         "novel_title": reader_title(meta),
-        "title": _optional_str(ch.get("translated_title") if (ch := chapter) else None) or _optional_str(chapter.get("title")),
-        "text": _public_reader_text(translated.get("text")),
-        "reader_blocks": _public_reader_blocks(translated.get("text"), raw_chapter.get("source_blocks")),
+        "title": _optional_str(chapter.get("translated_title")) or _optional_str(chapter.get("title")),
+        "text": _public_reader_text(translated_text),
+        "reader_blocks": _public_reader_blocks(translated_text, raw_chapter.get("source_blocks")),
         "previous_chapter_id": previous_chapter_id,
         "next_chapter_id": next_chapter_id,
         "previous_chapter_unavailable": previous_adjacent_id is not None and previous_chapter_id is None,
