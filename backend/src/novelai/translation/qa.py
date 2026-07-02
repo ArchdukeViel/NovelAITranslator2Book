@@ -2,11 +2,31 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
-from dataclasses import field
+from dataclasses import dataclass, field
 from typing import Any
 
 from novelai.translation.pipeline.context import TranslationChunk
+
+# --- CJK residue thresholds (REQ-3.7)
+CJK_RESIDUE_ERROR_THRESHOLD: float = 0.10
+CJK_RESIDUE_WARNING_THRESHOLD: float = 0.03
+
+# --- Repetition thresholds (REQ-4.3, REQ-4.4, REQ-4.5)
+REPETITION_ERROR_THRESHOLD: float = 0.30
+REPETITION_WARNING_THRESHOLD: float = 0.15
+REPETITION_MIN_LINES: int = 5
+
+# --- Glossary check cap (REQ-5.4)
+_GLOSSARY_MAX_TERMS = 20
+
+_CJK_RANGES = [
+    (0x4E00, 0x9FFF),   # CJK Unified Ideographs
+    (0x3040, 0x309F),   # Hiragana
+    (0x30A0, 0x30FF),   # Katakana
+    (0xF900, 0xFAFF),   # CJK Compatibility Ideographs
+]
+
+_MARKER_LINE_PATTERN = re.compile(r'^\s*\[(?:CHAPTER|P\s+p\d+)', re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -27,6 +47,73 @@ class TranslationQAResult:
         if self.diagnostics:
             payload["diagnostics"] = dict(self.diagnostics)
         return payload
+
+
+def _is_cjk(ch: str) -> bool:
+    """Return True if *ch* falls in any CJK range (REQ-3.5)."""
+    cp = ord(ch)
+    return any(lo <= cp <= hi for lo, hi in _CJK_RANGES)
+
+
+def _check_source_language_residue(
+    output_text: str,
+    *,
+    warnings: list[str],
+    errors: list[str],
+) -> None:
+    """Flag translated text with high CJK residue (REQ-3.1..REQ-3.4)."""
+    if len(output_text) <= 50:
+        return
+    cjk_count = sum(1 for ch in output_text if _is_cjk(ch))
+    ratio = cjk_count / max(1, len(output_text))
+    if ratio > CJK_RESIDUE_ERROR_THRESHOLD:
+        errors.append("cjk_residue_high")
+    elif ratio > CJK_RESIDUE_WARNING_THRESHOLD:
+        warnings.append("cjk_residue_moderate")
+
+
+def _check_repetition(
+    output_text: str,
+    *,
+    warnings: list[str],
+    errors: list[str],
+) -> None:
+    """Flag output with excessive duplicated lines (REQ-4.1..REQ-4.5)."""
+    lines = [ln for ln in output_text.splitlines() if ln.strip()]
+    content_lines = [ln for ln in lines if not _MARKER_LINE_PATTERN.match(ln)]
+    total = len(content_lines)
+    if total < REPETITION_MIN_LINES:
+        return
+    unique = len(set(ln.strip() for ln in content_lines))
+    dup_fraction = (total - unique) / total
+    if dup_fraction > REPETITION_ERROR_THRESHOLD:
+        errors.append("repetition_high")
+    elif dup_fraction > REPETITION_WARNING_THRESHOLD:
+        warnings.append("repetition_moderate")
+
+
+def _check_glossary_terms(
+    source_text: str,
+    output_text: str,
+    approved_glossary: list[dict],
+    *,
+    warnings: list[str],
+) -> None:
+    """Warn when approved glossary terms are missing from output (REQ-5.2)."""
+    output_lower = output_text.casefold()
+    checked = 0
+    for entry in approved_glossary:
+        if checked >= _GLOSSARY_MAX_TERMS:
+            break
+        source_term = entry.get("source", "")
+        target_term = entry.get("target", "")
+        if not source_term or not target_term:
+            continue
+        if source_term.casefold() not in source_text.casefold():
+            continue  # term not in source — skip
+        if target_term.casefold() not in output_lower:
+            warnings.append(f"glossary_term_missing:{source_term}")
+        checked += 1
 
 
 class TranslationQAError(Exception):
@@ -173,6 +260,7 @@ def evaluate_translation_quality(
     translated_text: str,
     chunk: TranslationChunk | None = None,
     structured_output: bool = False,
+    approved_glossary: list[dict] | None = None,
 ) -> TranslationQAResult:
     normalized = normalize_translation_output(translated_text)
     output_text = normalized.text
@@ -181,6 +269,8 @@ def evaluate_translation_quality(
     diagnostics: dict[str, Any] = {}
 
     _check_basic_text(source_text, output_text, warnings=warnings, errors=errors)
+    _check_source_language_residue(output_text, warnings=warnings, errors=errors)
+    _check_repetition(output_text, warnings=warnings, errors=errors)
     _check_placeholders(source_text, output_text, warnings=warnings, errors=errors)
     _check_marker_coverage(
         source_text,
@@ -201,6 +291,9 @@ def evaluate_translation_quality(
 
     if _uses_multiple_provider_models(chunk):
         warnings.append("model_switch_warning")
+
+    if approved_glossary:
+        _check_glossary_terms(source_text, output_text, approved_glossary, warnings=warnings)
 
     score = _score(warnings=warnings, errors=errors)
     return TranslationQAResult(

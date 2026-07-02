@@ -821,6 +821,14 @@ class TranslateStage(PipelineStage):
                     "prompt_template_version": context.metadata.get("prompt_template_version", ""),
                 }
             )
+        # Accumulate approved glossary terms for later QA stage (REQ-5.5, REQ-6.1)
+        if block is not None and block.included_terms:
+            existing = context.metadata.get("glossary_approved_terms")
+            if not isinstance(existing, list):
+                existing = []
+            for term in block.included_terms:
+                existing.append({"source": term.term, "target": term.translation})
+            context.metadata["glossary_approved_terms"] = existing
         if block is None:
             return
         warnings = context.metadata.setdefault("glossary_prompt_warnings", [])
