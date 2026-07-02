@@ -1,0 +1,43 @@
+"""Public reader service — serves guest-accessible endpoints only.
+
+Port 8001.  No auth, no session middleware, no CSRF.
+Reads from the same DB and filesystem as the admin service.
+"""
+
+from __future__ import annotations
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from novelai.api.error_handlers import add_error_handlers
+from novelai.api.routers.public import router as public_router
+from novelai.api.routers.user_data import router as user_data_router
+from novelai.config.settings import settings
+from novelai.runtime.bootstrap import bootstrap
+
+bootstrap()
+
+app = FastAPI(title="NovelAI Reader", version="1.0.0")
+
+if settings.WEB_CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.WEB_CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
+    )
+
+add_error_handlers(app)
+
+# Public endpoints (guest-accessible)
+app.include_router(public_router)
+
+# User data endpoints (auth'd, but auth is per-request — reader has no session)
+app.include_router(user_data_router)
+
+
+# Health
+@app.get("/api/public/health", tags=["health"])
+async def reader_health() -> dict[str, str]:
+    return {"status": "ok"}

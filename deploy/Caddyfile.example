@@ -20,7 +20,23 @@
     Referrer-Policy "strict-origin-when-cross-origin"
   }
 
-  handle /api/* {
+  handle /api/admin/* {
+    reverse_proxy backend:8000
+  }
+
+  handle /api/auth/* {
+    reverse_proxy backend:8000
+  }
+
+  handle /api/novels/* {
+    reverse_proxy backend:8000
+  }
+
+  handle /api/public/* {
+    reverse_proxy reader:8001
+  }
+
+  handle /novels/* {
     reverse_proxy backend:8000
   }
 

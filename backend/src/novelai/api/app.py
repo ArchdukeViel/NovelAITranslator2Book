@@ -123,6 +123,10 @@ def create_app() -> FastAPI:
     async def api_health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/health", tags=["health"], include_in_schema=False)
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
     return app
 
 

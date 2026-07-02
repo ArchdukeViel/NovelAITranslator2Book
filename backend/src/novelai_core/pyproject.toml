@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=82.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "novelai-core"
+version = "0.1.0"
+description = "Shared library for Novel AI reader & admin services."
+requires-python = ">=3.13"
+dependencies = [
+    "novel-ai>=0.1.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["novelai_core*"]
