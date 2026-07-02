@@ -100,9 +100,9 @@ Auth smoke: PASS (2026-06-18) after email/password backend, public auth UI, and 
 
 ---
 
-## Current Spec Burndown (`.kiro/specs/`)
+## Current Spec Burndown (`docs/archive/specs/`)
 
-All 8 specs are 100% complete:
+All 8 specs are 100% complete — archived at `docs/archive/specs/`:
 
 | Spec | Tasks | Status |
 |------|-------|--------|
