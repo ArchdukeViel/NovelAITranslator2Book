@@ -150,7 +150,9 @@ class AppSettings(BaseSettings):
     SMTP_TIMEOUT_SECONDS: float = 10.0
 
     # --- Cache
-    TRANSLATION_CACHE_MAX_ENTRIES: int = 50_000
+    TRANSLATION_CACHE_ENABLED: bool = True
+    TRANSLATION_CACHE_MAX_ENTRIES: int = 100_000
+    TRANSLATION_CACHE_TTL_SECONDS: int = 0
     USAGE_LOG_MAX_ENTRIES: int = 10_000
 
 

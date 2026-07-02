@@ -469,3 +469,17 @@ async def run_worker_once(
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     return await service.run_worker_once()
+
+
+@router.post("/admin/novels/{novel_id}/cache/invalidate")
+async def invalidate_novel_cache(
+    novel_id: str,
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    from novelai.services.cache.translation_cache import TranslationCacheService
+    try:
+        service = TranslationCacheService()
+        count = service.invalidate(novel_id)
+        return {"status": "success", "invalidated": count}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to invalidate cache: {exc}") from exc

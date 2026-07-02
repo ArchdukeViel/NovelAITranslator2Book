@@ -25,6 +25,7 @@ from novelai.services.glossary_prompt_injection import GlossaryPromptInjectionSe
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
+from novelai.services.cache.translation_cache import TranslationCacheService
 from novelai.services.usage_service import UsageService
 from novelai.shared.pipeline import ChunkAttemptStatus, ChunkTranslationStatus
 from novelai.storage.service import StorageService
@@ -75,6 +76,7 @@ class TranslateStage(PipelineStage):
         usage_service: UsageService | None = None,
         storage: StorageService | None = None,
         glossary_prompt_service: GlossaryPromptInjectionService | None = None,
+        cache_service: TranslationCacheService | None = None,
     ) -> None:
         if provider_factory is None:
             # Default: import and use registry
@@ -84,6 +86,7 @@ class TranslateStage(PipelineStage):
         self._provider_factory = provider_factory
         self._concurrency = concurrency or settings.TRANSLATION_CONCURRENCY
         self._cache = cache or TranslationCache()
+        self._cache_service = cache_service or TranslationCacheService()
         self._settings = settings_service or PreferencesService()
         self._usage = usage_service or UsageService()
         self._storage = storage or StorageService()
@@ -842,14 +845,31 @@ class TranslateStage(PipelineStage):
 
     def _cached_translation(
         self,
+        context: PipelineContext,
         *,
         provider_key: str,
         provider_model: str,
         chunk: str,
         request: TranslationRequest | None,
+        glossary_hash: str | None = None,
     ) -> tuple[str, str, str] | None:
         provider_key, provider_model = self._resolve_provider_and_model(provider_key, provider_model)
         provider = self._provider_factory(provider_key)
+
+        if settings.TRANSLATION_CACHE_ENABLED:
+            try:
+                from novelai.services.cache.translation_cache import make_cache_key
+                source_language = self._infer_source_language(context)
+                target_language = context.metadata.get("target_language") or settings.TRANSLATION_TARGET_LANGUAGE
+                g_hash = glossary_hash or ""
+                cache_key = make_cache_key(chunk, source_language, target_language, g_hash)
+                entry = self._cache_service.get(cache_key)
+                if entry is not None:
+                    logger.debug("Cache hit for chunk: key=%s, cache_hit=True", cache_key[:16])
+                    return entry.translated_text, provider.key, provider_model
+            except Exception as exc:
+                logger.warning("Cache read error: %s", exc)
+
         cache_key = request.cache_key() if request is not None else chunk
         cached = self._cache.get(cache_key, provider.key, provider_model)
         if cached is None:
@@ -942,6 +962,32 @@ class TranslateStage(PipelineStage):
             logger.debug("Translation tokens: %s", usage_entry["tokens"])
 
         self._usage.record(usage_entry)
+
+        if settings.TRANSLATION_CACHE_ENABLED:
+            try:
+                from novelai.services.cache.translation_cache import make_cache_key, CacheEntry
+                source_language = self._infer_source_language(context)
+                target_language = context.metadata.get("target_language") or settings.TRANSLATION_TARGET_LANGUAGE
+                g_hash = glossary_hash or ""
+                cache_key = make_cache_key(chunk, source_language, target_language, g_hash)
+                entry = CacheEntry(
+                    key=cache_key,
+                    source_text=chunk,
+                    translated_text=text,
+                    source_language=source_language,
+                    target_language=target_language,
+                    glossary_hash=g_hash,
+                    provider_key=provider.key,
+                    provider_model=provider_model,
+                    created_at=datetime.now(UTC).isoformat(),
+                    ttl_seconds=settings.TRANSLATION_CACHE_TTL_SECONDS,
+                    novel_id=context.novel_id,
+                )
+                self._cache_service.set(cache_key, entry)
+                logger.debug("Cache miss for chunk: key=%s, cache_hit=False", cache_key[:16])
+            except Exception as exc:
+                logger.warning("Cache write error: %s", exc)
+
         cache_key = request.cache_key() if request is not None else chunk
         self._cache.set(cache_key, provider.key, provider_model, text)
         self._storage.save_provider_request_record(
@@ -1129,10 +1175,12 @@ class TranslateStage(PipelineStage):
 
                         attempted_models.add((used_provider_key, used_provider_model))
                         cached = self._cached_translation(
+                            context,
                             provider_key=used_provider_key,
                             provider_model=used_provider_model,
                             chunk=chunk_text,
                             request=request,
+                            glossary_hash=prompt_glossary_hash,
                         )
                         if cached is not None:
                             translated, used_provider_key, used_provider_model = cached
