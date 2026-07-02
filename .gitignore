@@ -109,6 +109,7 @@ SESSION_EXPORT_*.json
 # Agent working directory (Hermes plans/scratch live here; promote keepers to docs/)
 .hermes/
 .kiro/
+.qoder/
 
 # Documentation (tracking)
 # Note: All .md files are tracked in git for documentation history
