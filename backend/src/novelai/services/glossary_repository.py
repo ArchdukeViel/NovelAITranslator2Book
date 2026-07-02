@@ -135,6 +135,8 @@ class GlossaryRepository:
             rationale=rationale,
             decision_source=decision_source,
         )
+        if status == "approved":
+            self._increment_glossary_revision(novel_id)
         return entry
 
     def update_glossary_entry(
@@ -657,12 +659,16 @@ class GlossaryRepository:
         revision out of sync.
         """
         from novelai.db.models.novel import Novel
+        from novelai.services.glossary_service import GlossaryService
 
         novel = self.db.get(Novel, novel_id)
         if novel is None:
             raise LookupError(f"Novel {novel_id} not found during revision increment")
         novel.glossary_revision += 1
         self.db.flush()
+
+        # Invalidate translation cache for this novel
+        GlossaryService.invalidate(str(novel_id))
 
     def _require_entry(self, entry_id: int, *, novel_id: int | None = None) -> NovelGlossaryEntry:
         entry = self.get_glossary_entry(entry_id, novel_id=novel_id)
