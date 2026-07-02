@@ -1,6 +1,6 @@
 # NovelAI Current State
 
-**Last updated**: 2026-07-02 (post-OPS-SAFETY-1)
+**Last updated**: 2026-07-02 (post-OPS-SAFETY-1, +5 .kiro specs completed)
 **Source of truth**: `docs/architecture/architecture.md`
 
 ## Verdict
@@ -34,6 +34,11 @@
 | Multi-model scheduler | ✅ | Admin-owned provider/model routing, RPM/RPD tracking, pause/resume |
 | Source ingestion | ✅ | FetchService, SSRF protection, per-domain throttle, fetch cache |
 | Source adapters | ✅ | Syosetu, Novel18, Kakuyomu, Generic with offline fixtures; Syosetu live smoke confirmed; Kakuyomu trailing-slash URL canonicalization fixed |
+| Adapter plugin system | ✅ | SourceAdapter ABC, AdapterRegistry (pkgutil auto-discovery, get_by_key, list_adapters), all adapters refactored, bootstrap registration |
+| Structured error handling + logging | ✅ | StructuredHTTPException, PipelineContext, JsonFormatter, /health/errors endpoint, trace_id propagation |
+| Advanced translation caching | ✅ | TranslationCacheService (SHA-256 keys, sharded file storage, TTL), pipeline integration, glossary invalidation, /api/admin/cache/* endpoints |
+| Glossary auto-population | ✅ | SuggestionExtractor, GlossarySuggestionService, review/reject/apply API, pipeline integration |
+| Microservice-split readiness | ✅ | main_reader/main_admin entry points, DEPLOY_MODE dispatch, novelai_core facade, Docker Compose + Caddy split routing, 14 contract tests |
 | Source pipeline hardening | ✅ | GenericSource ruby/preflight/confidence, KakuyomuSource preflight/UTF-8/UA/Kakuyomu URL canonicalization, per-chapter partial failure, in-process crawl lock, block-page regex refined |
 | Storage layer | ✅ | File-backed, chapter-based, runtime contracts |
 | Provider errors | ✅ | `ProviderError` / `ProviderErrorCode` classification, API error mapping |
@@ -76,7 +81,7 @@
 ## Test Baseline
 
 ```
-Backend: 150+ tests pass (pytest, 2026-06-18)
+Backend: 170+ tests pass (pytest, 2026-07-02)
   - test_crawl_resilience_contracts.py: 21 passed (contract tests for crawl behavior)
   - test_novel_orchestration_service.py: 56 passed
   - test_taxonomy.py: 37 passed
@@ -85,7 +90,10 @@ Backend: 150+ tests pass (pytest, 2026-06-18)
   - test_translation_qa.py: 21 passed
   - test_source_quality.py: 8 passed
   - test_storage_service.py: 31 passed
-  - (full suite: 730+ total)
+  - test_microservice_split.py: 14 passed (route registration contract tests)
+  - test_cache_service.py: 18 passed (TranslationCacheService unit + integration)
+  - test_glossary_suggestion.py: 12 passed (SuggestionExtractor + GlossarySuggestionService)
+  - (full suite: 780+ total)
 
 Frontend: 411 tests pass (vitest, 2026-06-17) — unchanged
   - 40 test files
