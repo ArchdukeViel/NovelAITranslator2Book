@@ -10,11 +10,12 @@ the two can run in parallel during the file→DB transition.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import logging
+from collections import deque
 from collections.abc import Callable
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, suppress
+from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -22,8 +23,8 @@ from sqlalchemy.orm import Session
 from novelai.db.engine import session_scope
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
-from novelai.sources.status import normalize_publication_status
 from novelai.services.taxonomy_persistence import persist_taxonomy_assignments
+from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
 
 logger = logging.getLogger(__name__)
@@ -166,11 +167,12 @@ def safely_refresh_catalog_projection_after_storage_write(
     try:
         if session is not None:
             refresh_catalog_projection_for_storage_novel(novel_id, storage, session)
-            return True
-        with session_scope_factory() as scoped_session:
-            refresh_catalog_projection_for_storage_novel(novel_id, storage, scoped_session)
+        else:
+            with session_scope_factory() as scoped_session:
+                refresh_catalog_projection_for_storage_novel(novel_id, storage, scoped_session)
+        _clear_projection_refresh_failure(novel_id)
         return True
-    except Exception as exc:  # noqa: BLE001 - projection freshness must not break storage writes yet.
+    except Exception as exc:
         logger.warning(
             "Catalog projection refresh failed after %s for novel_id=%s: %s",
             context,
@@ -178,7 +180,48 @@ def safely_refresh_catalog_projection_after_storage_write(
             exc,
             exc_info=True,
         )
+        _record_projection_refresh_failure(novel_id, str(exc), context=context)
         return False
+
+
+# ---------------------------------------------------------------------------
+# Projection refresh failure tracker (module-level, maxlen=50)
+# ---------------------------------------------------------------------------
+
+_PROJECTION_REFRESH_FAILURES: deque[dict] = deque(maxlen=50)
+
+
+def _record_projection_refresh_failure(
+    novel_id: str,
+    error: str,
+    context: str = "",
+) -> None:
+    """Record a projection refresh failure (non-raising)."""
+    with suppress(Exception):
+        _PROJECTION_REFRESH_FAILURES.append({
+            "novel_id": novel_id,
+            "error": str(error),
+            "context": context,
+            "recorded_at": datetime.utcnow().isoformat(),
+        })
+
+
+def _clear_projection_refresh_failure(novel_id: str) -> None:
+    """Remove all failure records for a given novel_id."""
+    try:
+        to_keep: deque[dict] = deque(maxlen=50)
+        for record in _PROJECTION_REFRESH_FAILURES:
+            if record.get("novel_id") != novel_id:
+                to_keep.append(record)
+        _PROJECTION_REFRESH_FAILURES.clear()
+        _PROJECTION_REFRESH_FAILURES.extend(to_keep)
+    except Exception:
+        pass  # Must not raise.
+
+
+def get_projection_refresh_failures() -> list[dict]:
+    """Return a snapshot of recent projection refresh failures."""
+    return list(_PROJECTION_REFRESH_FAILURES)
 
 
 class CatalogService:
@@ -375,10 +418,10 @@ class CatalogService:
             novel.synopsis = _metadata_public_synopsis(metadata)
         novel.chapter_count = chapter_count
         novel.translated_count = translated_count
-        novel.latest_chapter_id = latest_chapter["id"] if latest_chapter else None
-        novel.latest_chapter_number = latest_chapter["number"] if latest_chapter else None
-        novel.latest_chapter_title = latest_chapter["title"] if latest_chapter else None
-        novel.latest_chapter_updated_at = latest_chapter["updated_at"] if latest_chapter else None
+        novel.latest_chapter_id = latest_chapter["id"] if latest_chapter else None  # type: ignore[reportAttributeAccessIssue]
+        novel.latest_chapter_number = latest_chapter["number"] if latest_chapter else None  # type: ignore[reportAttributeAccessIssue]
+        novel.latest_chapter_title = latest_chapter["title"] if latest_chapter else None  # type: ignore[reportAttributeAccessIssue]
+        novel.latest_chapter_updated_at = latest_chapter["updated_at"] if latest_chapter else None  # type: ignore[reportAttributeAccessIssue]
         return novel
 
     def reconcile_catalog_projection(
@@ -479,7 +522,7 @@ class CatalogService:
                 else:
                     result = self.reconcile_catalog_projection(novel_id)
                     self._session.flush()
-            except Exception as exc:  # noqa: BLE001 - bulk repair must continue per novel.
+            except Exception as exc:
                 failed += 1
                 logger.warning(
                     "Catalog projection bulk reconciliation failed for novel_id=%s: %s",
@@ -580,17 +623,15 @@ class CatalogService:
             chapter_id = str(chapter.get("id", "")).strip()
             if not chapter_id or chapter_id not in translated_ids:
                 continue
-            translated = self._storage.load_translated_chapter(novel_id, chapter_id)
-            if translated is None or not isinstance(translated.get("text"), str):
-                continue
             latest = {
                 "id": chapter_id,
                 "number": chapter.get("num") or (index + 1),
                 "title": _optional_string(chapter.get("translated_title"))
                 or _optional_string(chapter.get("title")),
                 "updated_at": _metadata_datetime(
-                    _optional_string(translated.get("translated_at"))
-                    or _optional_string(translated.get("created_at"))
+                    _optional_string(chapter.get("translated_at"))
+                    or _optional_string(chapter.get("updated_at"))
+                    or _optional_string(chapter.get("scraped_at"))
                 ),
             }
 
