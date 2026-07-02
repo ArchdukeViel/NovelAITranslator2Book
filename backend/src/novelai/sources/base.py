@@ -95,6 +95,10 @@ class SourceAdapter(ABC):
         """Return True if this adapter can handle the pasted novel URL."""
         return False
 
+    def can_handle(self, identifier_or_url: str) -> bool:
+        """Public alias for :meth:`matches_url`."""
+        return self.matches_url(identifier_or_url)
+
     def normalize_novel_id(self, identifier_or_url: str) -> str:
         """Convert a URL or loose identifier into the stable library key."""
         return identifier_or_url.strip()

@@ -65,6 +65,18 @@ class NovelOrchestrationService:
             # Default: import and use registry
             from novelai.sources.registry import get_source
             source_factory = get_source
+
+        # Wrap to produce a clear OperationError on unknown source key.
+        _raw_source_factory = source_factory
+
+        def _source_factory_with_error(key: str) -> SourceAdapter:
+            try:
+                return _raw_source_factory(key)
+            except KeyError:
+                from novelai.services.orchestration.operations import OperationError
+
+                raise OperationError(400, f"No adapter found for source: {key}") from None
+
         if input_adapter_factory is None:
             from novelai.inputs.registry import get_input_adapter
             input_adapter_factory = get_input_adapter
@@ -74,7 +86,7 @@ class NovelOrchestrationService:
 
         self.storage = storage
         self.translation = translation
-        self._source_factory = source_factory
+        self._source_factory = _source_factory_with_error
         self._input_adapter_factory = input_adapter_factory
         self._provider_factory = provider_factory
         self._settings = settings_service or PreferencesService()
