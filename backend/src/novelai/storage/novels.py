@@ -4,7 +4,6 @@ import hashlib
 import json
 import logging
 import re
-import shutil
 import unicodedata
 from pathlib import Path
 from typing import Any
@@ -13,7 +12,6 @@ from novelai.config.workflow_profiles import normalize_workflow_defaults, normal
 from novelai.core.security import safe_child_path, validate_storage_identifier
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.common import _utc_now_iso
-from novelai.utils import atomic_write
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +36,10 @@ def _index_path(self: Any) -> Path:
 
 def _load_index(self: Any) -> dict[str, dict[str, Any]]:
     path = self._index_path()
-    if not path.exists():
+    if not self._path_exists(path):
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(self._read_text(path))
     except (json.JSONDecodeError, OSError):
         logger.warning("Corrupted novel index at %s; resetting to empty.", path)
         return {}
@@ -49,46 +47,45 @@ def _load_index(self: Any) -> dict[str, dict[str, Any]]:
 
 def _persist_index(self: Any, index: dict[str, dict[str, Any]]) -> None:
     path = self._index_path()
-    atomic_write(path, json.dumps(index, ensure_ascii=False, indent=2))
+    self._write_text(path, json.dumps(index, ensure_ascii=False, indent=2))
 
 
 def _metadata_backup_dir(novel_dir: Path) -> Path:
     return novel_dir / METADATA_BACKUP_DIRNAME
 
 
-def _backup_metadata_file(metadata_path: Path, *, keep: int = METADATA_BACKUP_RETENTION) -> Path | None:
-    if keep <= 0 or not metadata_path.exists():
+def _backup_metadata_file(self: Any, metadata_path: Path, *, keep: int = METADATA_BACKUP_RETENTION) -> Path | None:
+    if keep <= 0 or not self._path_exists(metadata_path):
         return None
 
     try:
-        existing_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        existing_payload = json.loads(self._read_text(metadata_path))
     except (json.JSONDecodeError, OSError):
         return None
 
     backup_dir = _metadata_backup_dir(metadata_path.parent)
-    backup_dir.mkdir(parents=True, exist_ok=True)
+    self._mkdirs(backup_dir)
     updated_at = str(existing_payload.get("updated_at") or _utc_now_iso()) if isinstance(existing_payload, dict) else _utc_now_iso()
     safe_stamp = re.sub(r"[^0-9A-Za-z_\-.]+", "_", updated_at).strip("._") or "metadata"
     backup_path = backup_dir / f"{safe_stamp}.json"
     suffix = 1
-    while backup_path.exists():
+    while self._path_exists(backup_path):
         backup_path = backup_dir / f"{safe_stamp}_{suffix}.json"
         suffix += 1
-    shutil.copy2(metadata_path, backup_path)
+    self._write_text(backup_path, self._read_text(metadata_path))
 
-    backups = sorted(backup_dir.glob("*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+    backups = sorted(self._glob(backup_dir, "*.json"), key=lambda path: path.name, reverse=True)
     for stale_backup in backups[keep:]:
         try:
-            stale_backup.unlink()
+            self._unlink_path(stale_backup)
         except OSError:
             logger.warning("Could not prune stale metadata backup at %s.", stale_backup)
     return backup_path
 
 
-def _metadata_history_entry(path: Path, *, snapshot_id: str, is_current: bool) -> dict[str, Any] | None:
+def _metadata_history_entry(self: Any, path: Path, *, snapshot_id: str, is_current: bool) -> dict[str, Any] | None:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        stat = path.stat()
+        payload = json.loads(self._read_text(path))
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning("Could not read metadata history snapshot at %s: %s", path, exc)
         return None
@@ -99,7 +96,7 @@ def _metadata_history_entry(path: Path, *, snapshot_id: str, is_current: bool) -
     return {
         "snapshot_id": snapshot_id,
         "created_at": payload.get("updated_at") if isinstance(payload.get("updated_at"), str) else None,
-        "size_bytes": stat.st_size,
+        "size_bytes": len(json.dumps(payload)),
         "is_current": is_current,
         "publication_status": publication_status,
         "title": payload.get("translated_title") if isinstance(payload.get("translated_title"), str) else payload.get("title"),
@@ -116,8 +113,8 @@ def list_metadata_history(self: Any, novel_id: str, *, limit: int = 10) -> list[
     entries: list[dict[str, Any]] = []
 
     current_path = novel_dir / "metadata.json"
-    if current_path.exists():
-        current_entry = _metadata_history_entry(
+    if self._path_exists(current_path):
+        current_entry = self._metadata_history_entry(
             current_path,
             snapshot_id="current",
             is_current=True,
@@ -126,16 +123,16 @@ def list_metadata_history(self: Any, novel_id: str, *, limit: int = 10) -> list[
             entries.append(current_entry)
 
     backup_dir = _metadata_backup_dir(novel_dir)
-    if backup_dir.exists():
+    if self._path_exists(backup_dir):
         backups = sorted(
-            backup_dir.glob("*.json"),
-            key=lambda path: path.stat().st_mtime,
+            self._glob(backup_dir, "*.json"),
+            key=lambda path: path.name,
             reverse=True,
         )
         for backup_path in backups:
             if len(entries) >= limit:
                 break
-            backup_entry = _metadata_history_entry(
+            backup_entry = self._metadata_history_entry(
                 backup_path,
                 snapshot_id=backup_path.name,
                 is_current=False,
@@ -171,21 +168,21 @@ def load_metadata_snapshot(self: Any, novel_id: str, snapshot_id: str) -> dict[s
             snapshot_path.resolve().relative_to(backup_dir.resolve())
         except ValueError as exc:
             raise ValueError("snapshot_id must stay within metadata_backups.") from exc
-        if snapshot_id not in {path.name for path in backup_dir.glob("*.json")}:
+        if snapshot_id not in {path.name for path in self._glob(backup_dir, "*.json")}:
             return None
 
-    if not snapshot_path.exists() or not snapshot_path.is_file():
+    if not self._path_exists(snapshot_path):
         return None
 
     try:
-        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        payload = json.loads(self._read_text(snapshot_path))
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning("Could not read metadata snapshot at %s: %s", snapshot_path, exc)
         return None
     if not isinstance(payload, dict):
         return None
 
-    entry = _metadata_history_entry(snapshot_path, snapshot_id=snapshot_id, is_current=is_current)
+    entry = self._metadata_history_entry(snapshot_path, snapshot_id=snapshot_id, is_current=is_current)
     if entry is None:
         return None
     return {
@@ -250,13 +247,13 @@ def _folder_in_use_by_other_novel(self: Any, folder_name: str, novel_id: str, in
             return True
 
     folder_path = self._folder_path(folder_name)
-    if not folder_path.exists():
+    if not self._path_exists(folder_path):
         return False
     metadata_path = folder_path / "metadata.json"
-    if not metadata_path.exists():
+    if not self._path_exists(metadata_path):
         return True
     try:
-        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        payload = json.loads(self._read_text(metadata_path))
     except (json.JSONDecodeError, OSError):
         return True
     if not isinstance(payload, dict):
@@ -273,7 +270,7 @@ def _compute_folder_name(self: Any, novel_id: str, metadata: dict[str, Any]) -> 
         return self._validate_folder_name(existing_folder)
 
     current_folder = self._get_folder_name(novel_id)
-    if self._folder_path(current_folder).exists():
+    if self._path_exists(self._folder_path(current_folder)):
         return self._validate_folder_name(current_folder)
 
     source = _storage_slug_source(novel_id, metadata)
@@ -327,11 +324,11 @@ def _get_folder_name(self: Any, novel_id: str) -> str:
         except ValueError:
             logger.warning("Ignoring unsafe folder name in novel index for %s.", normalized_id)
             folder_name = None
-    if folder_name and self._folder_path(folder_name).exists():
+    if folder_name and self._path_exists(self._folder_path(folder_name)):
         return folder_name
 
     for candidate in self._legacy_folder_candidates(normalized_id):
-        if self._folder_path(candidate).exists():
+        if self._path_exists(self._folder_path(candidate)):
             return candidate
     if folder_name:
         return folder_name
@@ -355,7 +352,7 @@ def _ensure_novel_dir(self: Any, novel_id: str, folder_name: str) -> Path:
         folder_name = self._validate_folder_name(folder_name)
 
     novel_dir = self._folder_path(folder_name)
-    novel_dir.mkdir(parents=True, exist_ok=True)
+    self._mkdirs(novel_dir)
 
     index[novel_id] = {
         "folder_name": folder_name,
@@ -369,8 +366,8 @@ def delete_novel(self: Any, novel_id: str) -> None:
     """Delete stored data for a novel (used for full re-scrapes)."""
     folder_name = self._get_folder_name(novel_id)
     novel_dir = self._folder_path(folder_name)
-    if novel_dir.exists():
-        shutil.rmtree(novel_dir)
+    if self._path_exists(novel_dir):
+        self._rmtree(novel_dir)
 
     index = self._load_index()
     if novel_id in index:
@@ -428,17 +425,17 @@ def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
 
     novel_dir = self._ensure_novel_dir(novel_id, folder_name)
     path = novel_dir / "metadata.json"
-    _backup_metadata_file(path)
-    atomic_write(path, json.dumps(merged, ensure_ascii=False, indent=2))
+    self._backup_metadata_file(path)
+    self._write_text(path, json.dumps(merged, ensure_ascii=False, indent=2))
     return path
 
 
 def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
     novel_id = self._normalize_library_novel_id(novel_id) or novel_id
     path = self._novel_dir(novel_id) / "metadata.json"
-    if not path.exists():
+    if not self._path_exists(path):
         return None
-    content = path.read_text(encoding="utf-8")
+    content = self._read_text(path)
     try:
         payload = json.loads(content)
         if not isinstance(payload, dict):
@@ -465,18 +462,18 @@ def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
 # ---- Glossary persistence -------------------------------------------------
 
 
-def _folder_has_novel_data(novel_dir: Path) -> bool:
-    if (novel_dir / "metadata.json").exists():
+def _folder_has_novel_data(self: Any, novel_dir: Path) -> bool:
+    if self._path_exists(novel_dir / "metadata.json"):
         return True
     for dirname in ("chapters", "raw", "translated"):
         data_dir = novel_dir / dirname
-        if data_dir.exists() and any(path.is_file() for path in data_dir.iterdir()):
+        if self._path_exists(data_dir) and any(self._path_exists(path) for path in self._list_dir(data_dir)):
             return True
     return False
 
 
 def list_novels(self: Any) -> list[str]:
-    if not self.novels_dir.exists():
+    if not self._path_exists(self.novels_dir):
         logger.warning("Novel storage path does not exist: %s", self.novels_dir)
         return []
 
@@ -509,9 +506,9 @@ def list_novels(self: Any) -> list[str]:
             logger.warning("Ignoring unsafe folder name in novel index for %s.", novel_id)
             continue
         resolved_id = novel_id
-        if metadata_path.exists():
+        if self._path_exists(metadata_path):
             try:
-                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                metadata = json.loads(self._read_text(metadata_path))
                 if isinstance(metadata, dict):
                     resolved_id = self._clean_string(metadata.get("novel_id"), novel_id) or novel_id
             except json.JSONDecodeError as exc:
@@ -520,17 +517,17 @@ def list_novels(self: Any) -> list[str]:
                 logger.warning("Failed to read metadata for novel folder %s at %s: %s", folder_name, metadata_path, exc)
         add_novel(resolved_id, folder_name)
 
-    for novel_dir in sorted(self.novels_dir.iterdir(), key=lambda path: path.name.lower()):
+    for novel_dir in sorted(self._list_dir(self.novels_dir), key=lambda path: path.name.lower()):
         if not novel_dir.is_dir():
             continue
-        if not _folder_has_novel_data(novel_dir):
+        if not self._folder_has_novel_data(novel_dir):
             continue
         metadata_path = novel_dir / "metadata.json"
-        if not metadata_path.exists():
+        if not self._path_exists(metadata_path):
             add_novel(novel_dir.name, novel_dir.name)
             continue
         try:
-            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            metadata = json.loads(self._read_text(metadata_path))
         except json.JSONDecodeError as exc:
             logger.warning("Corrupted metadata for novel folder %s at %s: %s", novel_dir.name, metadata_path, exc)
             add_novel(novel_dir.name, novel_dir.name)
@@ -547,19 +544,19 @@ def list_novels(self: Any) -> list[str]:
         add_novel(resolved_id, novel_dir.name)
 
     title_slug_root = self.base_dir / TITLE_SLUG_DIRNAME
-    if title_slug_root.exists():
-        for novel_dir in sorted(title_slug_root.iterdir(), key=lambda path: path.name.lower()):
+    if self._path_exists(title_slug_root):
+        for novel_dir in sorted(self._list_dir(title_slug_root), key=lambda path: path.name.lower()):
             if not novel_dir.is_dir():
                 continue
             folder_name = f"{TITLE_SLUG_DIRNAME}/{novel_dir.name}"
-            if not _folder_has_novel_data(novel_dir):
+            if not self._folder_has_novel_data(novel_dir):
                 continue
             metadata_path = novel_dir / "metadata.json"
-            if not metadata_path.exists():
+            if not self._path_exists(metadata_path):
                 add_novel(novel_dir.name, folder_name)
                 continue
             try:
-                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                metadata = json.loads(self._read_text(metadata_path))
             except json.JSONDecodeError as exc:
                 logger.warning("Corrupted metadata for novel folder %s at %s: %s", folder_name, metadata_path, exc)
                 add_novel(novel_dir.name, folder_name)

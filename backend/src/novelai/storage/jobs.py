@@ -9,7 +9,6 @@ from typing import Any
 from novelai.core.chapter_state import ChapterState, ChapterStateTransition
 from novelai.core.security import validate_storage_identifier
 from novelai.storage.common import CheckpointInfo, _utc_now, _utc_now_iso
-from novelai.utils import atomic_write
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +16,7 @@ def _get_state_dir(self: Any, novel_id: str) -> Path:
     """Get the directory for chapter state files."""
     novel_dir = self._novel_dir(novel_id)
     state_dir = novel_dir / "state"
-    state_dir.mkdir(parents=True, exist_ok=True)
+    self._mkdirs(state_dir)
     return state_dir
 
 
@@ -74,7 +73,7 @@ def save_chapter_state(self: Any, novel_id: str, chapter_id: str, state_data: di
     }
 
     path = state_dir / f"{safe_chapter_id}.json"
-    atomic_write(path, json.dumps(payload, ensure_ascii=False, indent=2))
+    self._write_text(path, json.dumps(payload, ensure_ascii=False, indent=2))
     return path
 
 
@@ -84,11 +83,11 @@ def load_chapter_state(self: Any, novel_id: str, chapter_id: str) -> dict[str, A
     safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
     path = state_dir / f"{safe_chapter_id}.json"
 
-    if not path.exists():
+    if not self._path_exists(path):
         return None
 
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(self._read_text(path))
 
         # Deserialize to proper types
         transitions = []
@@ -165,7 +164,7 @@ def _get_checkpoints_dir(self: Any, novel_id: str) -> Path:
     """Get directory for chapter checkpoints."""
     novel_dir = self._novel_dir(novel_id)
     checkpoints_dir = novel_dir / "checkpoints"
-    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    self._mkdirs(checkpoints_dir)
     return checkpoints_dir
 
 
@@ -206,7 +205,7 @@ def create_checkpoint(self: Any, novel_id: str, chapter_id: str, checkpoint_name
         filename = f"{safe_chapter_id}__{safe_checkpoint_name}.json"
 
     path = checkpoints_dir / filename
-    atomic_write(path, json.dumps(checkpoint_data, ensure_ascii=False, indent=2))
+    self._write_text(path, json.dumps(checkpoint_data, ensure_ascii=False, indent=2))
     logger.info(f"Checkpoint created: {safe_checkpoint_name} for {novel_id}/{safe_chapter_id}")
     return path
 
@@ -223,13 +222,13 @@ def list_checkpoints(self: Any, novel_id: str, chapter_id: str) -> list[Checkpoi
     """
     checkpoints_dir = self._get_checkpoints_dir(novel_id)
     safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
-    if not checkpoints_dir.exists():
+    if not self._path_exists(checkpoints_dir):
         return []
 
     checkpoints: list[CheckpointInfo] = []
-    for checkpoint_file in sorted(checkpoints_dir.glob(f"{safe_chapter_id}__*.json")):
+    for checkpoint_file in sorted(self._glob(checkpoints_dir, f"{safe_chapter_id}__*.json")):
         try:
-            data = json.loads(checkpoint_file.read_text(encoding="utf-8"))
+            data = json.loads(self._read_text(checkpoint_file))
             if not isinstance(data, dict):
                 continue
             timestamp = data.get("timestamp")
@@ -271,9 +270,9 @@ def restore_from_checkpoint(
     safe_checkpoint_name = validate_storage_identifier(str(checkpoint_name), "checkpoint_name")
     checkpoint_file = None
 
-    for cf in checkpoints_dir.glob(f"{safe_chapter_id}__*.json"):
+    for cf in self._glob(checkpoints_dir, f"{safe_chapter_id}__*.json"):
         try:
-            data = json.loads(cf.read_text(encoding="utf-8"))
+            data = json.loads(self._read_text(cf))
             if data.get("checkpoint_name") == safe_checkpoint_name:
                 checkpoint_file = cf
                 break
@@ -286,7 +285,7 @@ def restore_from_checkpoint(
         return False
 
     try:
-        checkpoint_data = json.loads(checkpoint_file.read_text(encoding="utf-8"))
+        checkpoint_data = json.loads(self._read_text(checkpoint_file))
 
         # Restore raw chapter
         if checkpoint_data.get("raw_chapter"):
@@ -375,8 +374,8 @@ def rollback_to_state(self: Any, novel_id: str, chapter_id: str, target_state: C
             self._persist_chapter_bundle(novel_id, safe_chapter_id, chapter_payload)
             logger.debug(f"Deleted translated chapter {safe_chapter_id}")
         translated_path = self._novel_dir(novel_id) / "translated" / f"{safe_chapter_id}.json"
-        if translated_path.exists():
-            translated_path.unlink()
+        if self._path_exists(translated_path):
+            self._unlink_path(translated_path)
 
     if target_idx < state_order.index(ChapterState.SEGMENTED):
         # Segmentation is in-memory only, but we mark state

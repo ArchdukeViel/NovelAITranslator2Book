@@ -23,7 +23,7 @@ def build_export_path(
         return custom_dir / f"{safe_novel_id}.{safe_export_format}"
 
     novel_dir = self._novel_dir(safe_novel_id)
-    novel_dir.mkdir(parents=True, exist_ok=True)
+    self._mkdirs(novel_dir)
     return novel_dir / f"full_novel.{safe_export_format}"
 
 

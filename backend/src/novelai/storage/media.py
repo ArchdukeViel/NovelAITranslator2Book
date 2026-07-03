@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import mimetypes
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +12,7 @@ from novelai.storage.common import _UNSET
 def _chapter_image_dir(self: Any, novel_id: str, chapter_id: str) -> Path:
     safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
     image_dir = self._novel_dir(novel_id) / "assets" / "images" / safe_chapter_id
-    image_dir.mkdir(parents=True, exist_ok=True)
+    self._mkdirs(image_dir)
     return image_dir
 
 
@@ -40,8 +39,8 @@ def _guess_asset_suffix(self: Any, source_url: str | None, content_type: str | N
 def clear_chapter_image_assets(self: Any, novel_id: str, chapter_id: str) -> None:
     safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
     image_dir = self._novel_dir(novel_id) / "assets" / "images" / safe_chapter_id
-    if image_dir.exists():
-        shutil.rmtree(image_dir, ignore_errors=True)
+    if self._path_exists(image_dir):
+        self._rmtree(image_dir)
 
 
 def save_chapter_image_asset(
@@ -57,7 +56,7 @@ def save_chapter_image_asset(
     suffix = self._guess_asset_suffix(source_url, content_type)
     filename = f"{image_index:04d}{suffix}"
     path = self._chapter_image_dir(novel_id, chapter_id) / filename
-    path.write_bytes(content)
+    self._backend.save(self._rel(path), content)
     return {
         "local_path": self._asset_relative_path(novel_id, path),
         "content_type": content_type,

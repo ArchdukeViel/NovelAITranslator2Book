@@ -9,13 +9,12 @@ from novelai.core.chapter_state import ChapterState
 from novelai.core.security import validate_storage_identifier
 from novelai.services.query_builder import ChapterQueryBuilder
 from novelai.storage.common import _utc_now_iso
-from novelai.utils import atomic_write
 
 logger = logging.getLogger(__name__)
 
 def _chapter_dir(self: Any, novel_id: str) -> Path:
     chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
-    chapter_dir.mkdir(parents=True, exist_ok=True)
+    self._mkdirs(chapter_dir)
     return chapter_dir
 
 
@@ -29,15 +28,15 @@ def _load_legacy_raw_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[
     json_path = self._novel_dir(novel_id) / "raw" / f"{safe_chapter_id}.json"
     txt_path = self._novel_dir(novel_id) / "raw" / f"{safe_chapter_id}.txt"
 
-    if json_path.exists():
+    if self._path_exists(json_path):
         try:
-            return json.loads(json_path.read_text(encoding="utf-8"))
+            return json.loads(self._read_text(json_path))
         except (json.JSONDecodeError, OSError):
             logger.warning("Failed to parse legacy raw chapter %s/%s.", novel_id, chapter_id)
             return None
 
-    if txt_path.exists():
-        return {"id": chapter_id, "text": txt_path.read_text(encoding="utf-8")}
+    if self._path_exists(txt_path):
+        return {"id": chapter_id, "text": self._read_text(txt_path)}
     return None
 
 
@@ -46,15 +45,15 @@ def _load_legacy_translated_chapter(self: Any, novel_id: str, chapter_id: str) -
     json_path = self._novel_dir(novel_id) / "translated" / f"{safe_chapter_id}.json"
     txt_path = self._novel_dir(novel_id) / "translated" / f"{safe_chapter_id}.txt"
 
-    if json_path.exists():
+    if self._path_exists(json_path):
         try:
-            return json.loads(json_path.read_text(encoding="utf-8"))
+            return json.loads(self._read_text(json_path))
         except (json.JSONDecodeError, OSError):
             logger.warning("Failed to parse legacy translated chapter %s/%s.", novel_id, chapter_id)
             return None
 
-    if txt_path.exists():
-        return {"id": chapter_id, "text": txt_path.read_text(encoding="utf-8")}
+    if self._path_exists(txt_path):
+        return {"id": chapter_id, "text": self._read_text(txt_path)}
     return None
 
 
@@ -65,9 +64,9 @@ def _load_chapter_bundle(self: Any, novel_id: str, chapter_id: str) -> dict[str,
     unified bundle file does not exist.
     """
     chapter_path = self._chapter_path(novel_id, chapter_id)
-    if chapter_path.exists():
+    if self._path_exists(chapter_path):
         try:
-            data = json.loads(chapter_path.read_text(encoding="utf-8"))
+            data = json.loads(self._read_text(chapter_path))
             if isinstance(data, dict):
                 return self._normalize_media_fields(data)
         except (json.JSONDecodeError, OSError):
@@ -103,7 +102,7 @@ def _persist_chapter_bundle(self: Any, novel_id: str, chapter_id: str, payload: 
     self._normalize_media_fields(payload)
     payload["schema_version"] = self.SCHEMA_VERSION
     path = self._chapter_path(novel_id, chapter_id)
-    atomic_write(path, json.dumps(payload, ensure_ascii=False, indent=2))
+    self._write_text(path, json.dumps(payload, ensure_ascii=False, indent=2))
     return path
 
 
@@ -229,10 +228,10 @@ def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
     """
     stems: set[str] = set()
     chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
-    if chapter_dir.exists():
-        for chapter_path in chapter_dir.glob("*.json"):
+    if self._path_exists(chapter_dir):
+        for chapter_path in self._glob(chapter_dir, "*.json"):
             try:
-                payload = json.loads(chapter_path.read_text(encoding="utf-8"))
+                payload = json.loads(self._read_text(chapter_path))
             except (json.JSONDecodeError, OSError):
                 logger.debug("Skipping unreadable chapter file %s.", chapter_path)
                 continue
@@ -243,9 +242,9 @@ def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
 
     for legacy_dirname in ("raw", "translated"):
         legacy_dir = self._novel_dir(novel_id) / legacy_dirname
-        if not legacy_dir.exists():
+        if not self._path_exists(legacy_dir):
             continue
-        for path in legacy_dir.iterdir():
+        for path in self._list_dir(legacy_dir):
             if not path.is_file():
                 continue
             if path.suffix.lower() in {".json", ".txt"}:
@@ -261,13 +260,13 @@ def count_stored_chapters(self: Any, novel_id: str) -> int:
 def get_chapters_by_state(self: Any, novel_id: str, state: ChapterState) -> list[str]:
     """Get all chapters in a specific state."""
     state_dir = self._get_state_dir(novel_id)
-    if not state_dir.exists():
+    if not self._path_exists(state_dir):
         return []
 
     chapters = []
-    for state_file in state_dir.glob("*.json"):
+    for state_file in self._glob(state_dir, "*.json"):
         try:
-            state_data = json.loads(state_file.read_text(encoding="utf-8"))
+            state_data = json.loads(self._read_text(state_file))
             if ChapterState(state_data["current_state"]) == state:
                 chapters.append(state_data["chapter_id"])
         except (json.JSONDecodeError, OSError, KeyError, ValueError):
@@ -284,12 +283,12 @@ def get_chapter_progress(self: Any, novel_id: str) -> dict[str, int]:
     progress = {s.value: 0 for s in ChapterState}
 
     state_dir = self._get_state_dir(novel_id)
-    if not state_dir.exists():
+    if not self._path_exists(state_dir):
         return progress
 
-    for state_file in state_dir.glob("*.json"):
+    for state_file in self._glob(state_dir, "*.json"):
         try:
-            state_data = json.loads(state_file.read_text(encoding="utf-8"))
+            state_data = json.loads(self._read_text(state_file))
             current_state = state_data["current_state"]
             progress[current_state] += 1
         except (json.JSONDecodeError, OSError, KeyError, ValueError):
@@ -330,15 +329,15 @@ def get_scraping_progress(self: Any, novel_id: str) -> dict[str, Any]:
     }
 
     state_dir = self._get_state_dir(novel_id)
-    if not state_dir.exists():
+    if not self._path_exists(state_dir):
         return progress
 
     total_files = 0
     error_count = 0
 
-    for state_file in state_dir.glob("*.json"):
+    for state_file in self._glob(state_dir, "*.json"):
         try:
-            state_data = json.loads(state_file.read_text(encoding="utf-8"))
+            state_data = json.loads(self._read_text(state_file))
             total_files += 1
             if state_data.get("error_count", 0) > 0:
                 error_count += 1

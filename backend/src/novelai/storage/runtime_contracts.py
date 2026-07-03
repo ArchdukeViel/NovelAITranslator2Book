@@ -7,7 +7,6 @@ from typing import Any
 
 from novelai.infrastructure.http.cache import FetchCacheEntry
 from novelai.storage.common import _utc_now_iso
-from novelai.utils import atomic_write
 
 logger = logging.getLogger(__name__)
 
@@ -57,27 +56,27 @@ class StorageFetchCache:
 
 def _runtime_dir(self: Any):
     path = self.base_dir / "runtime"
-    path.mkdir(parents=True, exist_ok=True)
+    self._mkdirs(path)
     return path
 
 
 def _translation_runtime_dir(self: Any):
     path = self._runtime_dir() / "translation"
-    path.mkdir(parents=True, exist_ok=True)
+    self._mkdirs(path)
     return path
 
 
 def _fetch_cache_dir(self: Any):
     path = self._runtime_dir() / "fetch_cache"
-    path.mkdir(parents=True, exist_ok=True)
+    self._mkdirs(path)
     return path
 
 
-def _read_json_file(path: Any, default: Any) -> Any:
-    if not path.exists():
+def _read_json_file(self: Any, path: Any, default: Any) -> Any:
+    if not self._path_exists(path):
         return default
     try:
-        text = path.read_text(encoding="utf-8")
+        text = self._read_text(path)
         if not text.strip():
             logger.debug("Empty/whitespace file: %s — returning default.", path.name)
             return default
@@ -182,13 +181,13 @@ def _redact_sensitive(value: Any) -> Any:
     return value
 
 
-def _read_mapping(path: Any) -> dict[str, Any]:
-    payload = _read_json_file(path, {})
+def _read_mapping(self: Any, path: Any) -> dict[str, Any]:
+    payload = _read_json_file(self, path, {})
     return payload if isinstance(payload, dict) else {}
 
 
-def _write_mapping(path: Any, payload: dict[str, Any]) -> None:
-    atomic_write(path, json.dumps(payload, ensure_ascii=False, indent=2))
+def _write_mapping(self: Any, path: Any, payload: dict[str, Any]) -> None:
+    self._write_text(path, json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 def save_translation_chunks(self: Any, novel_id: str, chunks: list[dict[str, Any] | Any]) -> list[dict[str, Any]]:
@@ -197,7 +196,7 @@ def save_translation_chunks(self: Any, novel_id: str, chunks: list[dict[str, Any
         raise ValueError("novel_id is required.")
 
     path = self._translation_runtime_dir() / "chunks.json"
-    records = _read_mapping(path)
+    records = _read_mapping(self, path)
     now = _utc_now_iso()
     stored: list[dict[str, Any]] = []
     for chunk in chunks:
@@ -237,7 +236,7 @@ def save_translation_chunks(self: Any, novel_id: str, chunks: list[dict[str, Any
         records[key] = record
         stored.append(dict(record))
 
-    _write_mapping(path, records)
+    _write_mapping(self, path, records)
     return stored
 
 
@@ -252,7 +251,7 @@ def read_translation_chunks(
     chapter_scope: str | None = None,
 ) -> list[dict[str, Any]]:
     path = self._translation_runtime_dir() / "chunks.json"
-    records = _read_mapping(path)
+    records = _read_mapping(self, path)
     items = [dict(item) for item in records.values() if isinstance(item, dict)]
     if isinstance(novel_id, str) and novel_id.strip():
         items = [item for item in items if item.get("novel_id") == novel_id]
@@ -309,7 +308,7 @@ def save_chunk_attempt_record(self: Any, attempt: dict[str, Any] | Any) -> dict[
         attempt_number = 0
 
     path = self._translation_runtime_dir() / "chunk_attempts.json"
-    records = _read_mapping(path)
+    records = _read_mapping(self, path)
     run_scope, chapter_scope = _runtime_scope(payload)
     attempt_id = str(payload.get("attempt_id") or _runtime_record_key(novel_id, payload, chunk_id, attempt_number)).strip()
     existing = records.get(attempt_id)
@@ -332,7 +331,7 @@ def save_chunk_attempt_record(self: Any, attempt: dict[str, Any] | Any) -> dict[
         "updated_at": now,
     }
     records[attempt_id] = record
-    _write_mapping(path, records)
+    _write_mapping(self, path, records)
     return dict(record)
 
 
@@ -348,7 +347,7 @@ def list_chunk_attempt_records(
     chapter_scope: str | None = None,
 ) -> list[dict[str, Any]]:
     path = self._translation_runtime_dir() / "chunk_attempts.json"
-    records = _read_mapping(path)
+    records = _read_mapping(self, path)
     items = [dict(item) for item in records.values() if isinstance(item, dict)]
     for key, value in (("novel_id", novel_id), ("chunk_id", chunk_id), ("status", status)):
         if isinstance(value, str) and value.strip():
@@ -374,7 +373,7 @@ def save_translation_bundle(self: Any, bundle: dict[str, Any] | Any) -> dict[str
         raise ValueError("bundle_id is required.")
 
     path = self._translation_runtime_dir() / "bundles.json"
-    records = _read_mapping(path)
+    records = _read_mapping(self, path)
     key = _record_key(novel_id, bundle_id)
     existing = records.get(key)
     now = _utc_now_iso()
@@ -392,24 +391,24 @@ def save_translation_bundle(self: Any, bundle: dict[str, Any] | Any) -> dict[str
         "updated_at": now,
     }
     records[key] = record
-    _write_mapping(path, records)
+    _write_mapping(self, path, records)
     return dict(record)
 
 
 def read_translation_bundle(self: Any, novel_id: str, bundle_id: str) -> dict[str, Any] | None:
     path = self._translation_runtime_dir() / "bundles.json"
-    record = _read_mapping(path).get(_record_key(novel_id, bundle_id))
+    record = _read_mapping(self, path).get(_record_key(novel_id, bundle_id))
     return dict(record) if isinstance(record, dict) else None
 
 
 def delete_translation_bundle(self: Any, novel_id: str, bundle_id: str) -> bool:
     path = self._translation_runtime_dir() / "bundles.json"
-    records = _read_mapping(path)
+    records = _read_mapping(self, path)
     key = _record_key(novel_id, bundle_id)
     if key not in records:
         return False
     del records[key]
-    _write_mapping(path, records)
+    _write_mapping(self, path, records)
     return True
 
 
@@ -425,7 +424,7 @@ def save_translation_output(self: Any, output: dict[str, Any] | Any) -> dict[str
     now = _utc_now_iso()
     output_id = str(payload.get("output_id") or f"{chunk_id}:{now}").strip()
     path = self._translation_runtime_dir() / "outputs.json"
-    records = _read_mapping(path)
+    records = _read_mapping(self, path)
     run_scope, chapter_scope = _runtime_scope(payload)
     key = _runtime_record_key(novel_id, payload, chunk_id, output_id)
     record = {
@@ -448,7 +447,7 @@ def save_translation_output(self: Any, output: dict[str, Any] | Any) -> dict[str
         "updated_at": now,
     }
     records[key] = record
-    _write_mapping(path, records)
+    _write_mapping(self, path, records)
     return dict(record)
 
 
@@ -464,7 +463,7 @@ def read_translation_output(
     chapter_scope: str | None = None,
 ) -> dict[str, Any] | list[dict[str, Any]] | None:
     path = self._translation_runtime_dir() / "outputs.json"
-    records = _read_mapping(path)
+    records = _read_mapping(self, path)
     items = [
         dict(record)
         for record in records.values()
@@ -493,7 +492,7 @@ def save_provider_request_record(self: Any, record: dict[str, Any] | Any) -> dic
     if not isinstance(payload, dict):
         payload = {}
     path = self._runtime_dir() / "provider_requests.json"
-    records = _read_json_file(path, [])
+    records = _read_json_file(self, path, [])
     if not isinstance(records, list):
         records = []
     now = _utc_now_iso()
@@ -505,7 +504,7 @@ def save_provider_request_record(self: Any, record: dict[str, Any] | Any) -> dic
         "timestamp": str(payload.get("timestamp") or now),
     }
     records.append(stored)
-    atomic_write(path, json.dumps(records, ensure_ascii=False, indent=2))
+    self._write_text(path, json.dumps(records, ensure_ascii=False, indent=2))
     return dict(stored)
 
 
@@ -518,7 +517,7 @@ def list_provider_request_records(
     success: bool | None = None,
 ) -> list[dict[str, Any]]:
     path = self._runtime_dir() / "provider_requests.json"
-    records = _read_json_file(path, [])
+    records = _read_json_file(self, path, [])
     if not isinstance(records, list):
         return []
     items = [dict(item) for item in records if isinstance(item, dict)]
@@ -549,7 +548,7 @@ def save_fetch_cache_entry(self: Any, entry: dict[str, Any] | Any) -> dict[str, 
     headers = payload.get("headers")
     headers_payload = {str(key).lower(): str(value) for key, value in headers.items()} if isinstance(headers, dict) else {}
     path = self._fetch_cache_dir() / "index.json"
-    records = _read_mapping(path)
+    records = _read_mapping(self, path)
     record = {
         **payload,
         "schema_version": SCHEMA_VERSION,
@@ -566,13 +565,13 @@ def save_fetch_cache_entry(self: Any, entry: dict[str, Any] | Any) -> dict[str, 
         "from_cache": bool(payload.get("from_cache", False)),
     }
     records[_record_key(source_key, url)] = record
-    _write_mapping(path, records)
+    _write_mapping(self, path, records)
     return dict(record)
 
 
 def read_fetch_cache_entry(self: Any, source_key: str, url: str) -> dict[str, Any] | None:
     path = self._fetch_cache_dir() / "index.json"
-    record = _read_mapping(path).get(_record_key(source_key, url))
+    record = _read_mapping(self, path).get(_record_key(source_key, url))
     return dict(record) if isinstance(record, dict) else None
 
 
