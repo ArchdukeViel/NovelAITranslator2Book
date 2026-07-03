@@ -58,9 +58,24 @@ class ChapterQueryResult:
 class ChapterQueryBuilder:
     """Fluent query builder for filtering and querying chapters."""
 
-    def __init__(self, state_dir: Path):
-        """Initialize query builder with state directory."""
+    def __init__(
+        self,
+        state_dir: Path,
+        *,
+        list_files: Callable[[], list[Path]] | None = None,
+        read_file: Callable[[Path], str] | None = None,
+        path_exists: Callable[[], bool] | None = None,
+    ):
+        """Initialize query builder with state directory.
+
+        Optional ``list_files``/``read_file``/``path_exists`` callables
+        override direct filesystem I/O — used by storage layer to route
+        through ``StorageService`` backend helpers.
+        """
         self.state_dir = state_dir
+        self._list_files = list_files
+        self._read_file = read_file
+        self._path_exists = path_exists
         self._filters: list[Callable[[dict[str, Any]], bool]] = []
         self._sort_key: Callable[[ChapterQueryResult], Any] | None = None
         self._sort_reverse = False
@@ -161,15 +176,20 @@ class ChapterQueryBuilder:
         """Execute query and return results."""
         results: list[ChapterQueryResult] = []
 
-        if not self.state_dir.exists():
+        # Use injected callables when available, fall back to direct Path I/O
+        path_exists = self._path_exists or self.state_dir.exists
+        list_files = self._list_files or (lambda: sorted(self.state_dir.glob("*.json")))
+        read_file = self._read_file or (lambda p: p.read_text(encoding="utf-8"))
+
+        if not path_exists():
             return results
 
         logger.debug(f"Executing query on {self.state_dir}")
 
         # Load and filter
-        for state_file in self.state_dir.glob("*.json"):
+        for state_file in list_files():
             try:
-                data = json.loads(state_file.read_text(encoding="utf-8"))
+                data = json.loads(read_file(state_file))
                 if not isinstance(data, dict):
                     continue
 

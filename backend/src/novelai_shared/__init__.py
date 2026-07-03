@@ -1,7 +1,7 @@
-"""novelai-core — shared package for reader & admin services.
+"""novelai-shared — shared package for reader & admin services.
 
 Both services consume the same codebase; this facade documents and stabilises
-the shared surface. Install via `pip install -e backend/src/novelai_core`.
+the shared surface. Install via `pip install -e backend/src/novelai_shared`.
 """
 
 from __future__ import annotations
