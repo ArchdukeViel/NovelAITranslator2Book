@@ -315,15 +315,14 @@ async def test_translation_service_builds_multilingual_prompt_request(integratio
 
 
 @pytest.mark.asyncio
-async def test_translate_stage_falls_back_from_gemini_to_nvidia(integration_fixture):
+async def test_translate_stage_falls_back_from_gemini_to_dummy(integration_fixture):
     fixture = integration_fixture
     gemini_provider = FallbackPipelineProvider("gemini")
-    nvidia_provider = FallbackPipelineProvider("nvidia")
+    dummy_provider = FallbackPipelineProvider("dummy")
     fixture.add_source_chapter("http://example.com/fallback", "ãƒ†ã‚¹ãƒˆã§ã™ã€‚")
     fixture.settings_service.set_provider_key("gemini")
     fixture.settings_service.set_provider_model("gemini-3.1-flash-lite")
     fixture.settings_service.set_api_key("gemini-key", provider_key="gemini")
-    fixture.settings_service.set_api_key("nvidia-key", provider_key="nvidia")
 
     pipeline = TranslationPipeline(
         stages=[
@@ -331,7 +330,7 @@ async def test_translate_stage_falls_back_from_gemini_to_nvidia(integration_fixt
             ParseStage(),
             SegmentStage(),
             TranslateStage(
-                provider_factory=lambda key: gemini_provider if key == "gemini" else nvidia_provider,
+                provider_factory=lambda key: gemini_provider if key == "gemini" else dummy_provider,
                 cache=fixture.cache,
                 settings_service=fixture.settings_service,
                 usage_service=fixture.usage_service,
@@ -347,8 +346,8 @@ async def test_translate_stage_falls_back_from_gemini_to_nvidia(integration_fixt
     result = await pipeline.run(context)
 
     assert gemini_provider.models_seen == ["gemini-3.1-flash-lite"]
-    assert nvidia_provider.models_seen == ["google/gemma-4-31b-it"]
-    assert "[google/gemma-4-31b-it]" in result.final_text
+    assert dummy_provider.models_seen == []
+    assert "[google/gemma-4-31b-it]" not in result.final_text
 
 
 @pytest.mark.asyncio

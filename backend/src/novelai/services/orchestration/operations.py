@@ -9,6 +9,7 @@ from typing import Any
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.config.settings import settings
+from novelai.services.catalog_service import CatalogService
 from novelai.services.export_service import ExportService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.sources.registry import detect_source

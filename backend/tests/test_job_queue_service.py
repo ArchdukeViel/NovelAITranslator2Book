@@ -84,8 +84,8 @@ def test_create_translation_activity_and_filter(activity_log: ActivityQueueServi
         novel_id="novel-1",
         kind="translate",
         chapters="1-3",
-        provider="nvidia",
-        model="google/gemma-4-31b-it",
+        provider="gemini",
+        model="gemini-2.0-flash",
     )
 
     filtered = activity_log.list_activity(activity_type="translation", status=JobStatus.PENDING)

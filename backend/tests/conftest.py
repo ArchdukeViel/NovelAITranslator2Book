@@ -135,23 +135,17 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
     previous_data_dir = settings.NOVEL_LIBRARY_DIR
     previous_provider_default = settings.PROVIDER_DEFAULT
     previous_gemini_api_key = settings.PROVIDER_GEMINI_API_KEY
-    previous_nvidia_api_key = settings.NVIDIA_API_KEY
     previous_env_novel_library = os.environ.get("NOVEL_LIBRARY_DIR")
     previous_env_data_dir = os.environ.get("DATA_DIR")
     previous_env_gemini_api_key = os.environ.get("PROVIDER_GEMINI_API_KEY")
-    previous_env_nvidia_api_key = os.environ.get("NVIDIA_API_KEY")
-    previous_env_provider_nvidia_api_key = os.environ.get("PROVIDER_NVIDIA_API_KEY")
 
     os.environ["NOVEL_LIBRARY_DIR"] = str(runtime_dir)
     os.environ["DATA_DIR"] = str(runtime_dir)
     os.environ.pop("PROVIDER_GEMINI_API_KEY", None)
-    os.environ.pop("NVIDIA_API_KEY", None)
-    os.environ.pop("PROVIDER_NVIDIA_API_KEY", None)
 
     settings.NOVEL_LIBRARY_DIR = runtime_dir
     settings.PROVIDER_DEFAULT = "dummy"
     settings.PROVIDER_GEMINI_API_KEY = None
-    settings.NVIDIA_API_KEY = None
     _reset_global_container()
 
     try:
@@ -161,7 +155,6 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
         settings.NOVEL_LIBRARY_DIR = previous_data_dir
         settings.PROVIDER_DEFAULT = previous_provider_default
         settings.PROVIDER_GEMINI_API_KEY = previous_gemini_api_key
-        settings.NVIDIA_API_KEY = previous_nvidia_api_key
 
         if previous_env_novel_library is None:
             os.environ.pop("NOVEL_LIBRARY_DIR", None)
@@ -177,16 +170,6 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
             os.environ.pop("PROVIDER_GEMINI_API_KEY", None)
         else:
             os.environ["PROVIDER_GEMINI_API_KEY"] = previous_env_gemini_api_key
-
-        if previous_env_nvidia_api_key is None:
-            os.environ.pop("NVIDIA_API_KEY", None)
-        else:
-            os.environ["NVIDIA_API_KEY"] = previous_env_nvidia_api_key
-
-        if previous_env_provider_nvidia_api_key is None:
-            os.environ.pop("PROVIDER_NVIDIA_API_KEY", None)
-        else:
-            os.environ["PROVIDER_NVIDIA_API_KEY"] = previous_env_provider_nvidia_api_key
 
         if runtime_dir.exists():
             _force_remove_tree(runtime_dir)

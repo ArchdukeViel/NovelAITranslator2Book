@@ -89,8 +89,8 @@ async def test_run_translation_activity_uses_stored_metadata_source(worker_env) 
     activity = activity_log.create_translation_activity(
         novel_id="novel-1",
         chapters="1",
-        provider="nvidia",
-        model="google/gemma-4-31b-it",
+        provider="gemini",
+        model="gemini-2.0-flash",
     )
 
     result = await worker.run_activity(activity["id"])
@@ -101,8 +101,8 @@ async def test_run_translation_activity_uses_stored_metadata_source(worker_env) 
     assert result["metadata"]["activity_phase"] == "translate"
     assert orchestrator.calls[0][0] == "translate_chapters"
     assert orchestrator.calls[0][1][:3] == ("kakuyomu", "novel-1", "1")
-    assert orchestrator.calls[0][2]["provider_key"] == "nvidia"
-    assert orchestrator.calls[0][2]["provider_model"] == "google/gemma-4-31b-it"
+    assert orchestrator.calls[0][2]["provider_key"] == "gemini"
+    assert orchestrator.calls[0][2]["provider_model"] == "gemini-2.0-flash"
 
 
 @pytest.mark.asyncio

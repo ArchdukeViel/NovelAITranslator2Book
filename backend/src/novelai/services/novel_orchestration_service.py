@@ -163,7 +163,7 @@ class NovelOrchestrationService:
 
     @staticmethod
     def _provider_requires_api_key(provider_key: str) -> bool:
-        return provider_key in {"gemini", "nvidia"}
+        return provider_key in {"gemini"}
 
 
     @staticmethod

@@ -95,7 +95,7 @@ class TranslateStage(PipelineStage):
         self._max_attempts_per_chunk = configured_max_attempts if configured_max_attempts > 0 else 3
 
     def _resolve_provider_and_model(self, provider_key: str, model: str) -> tuple[str, str]:
-        if provider_key in {"gemini", "nvidia"} and not self._settings.get_api_key(provider_key):
+        if provider_key == "gemini" and not self._settings.get_api_key(provider_key):
             logger.warning("%s API key missing; falling back to dummy provider for translation.", provider_key.capitalize())
             return "dummy", "dummy"
         return provider_key, model
@@ -373,12 +373,17 @@ class TranslateStage(PipelineStage):
         candidates = model_candidates(provider_key, model, supported)
         policy = normalize_policy(context.metadata.get("scheduler_policy") or settings.TRANSLATION_SCHEDULER_POLICY)
         raw_policy = context.metadata.get("scheduler_models")
+        admin_policy_consulted = False
+        admin_policy_intentionally_empty = False
         if not isinstance(raw_policy, list):
             raw_policy = self._admin_provider_policy_models(
                 provider_key=provider_key,
                 model=model,
                 allow_cross_provider_fallback=context.metadata.get("allow_cross_provider_fallback", True) is not False,
             )
+            admin_policy_consulted = True
+            if raw_policy is None:
+                admin_policy_intentionally_empty = True
         if not isinstance(raw_policy, list):
             raw_policy = settings.TRANSLATION_MODEL_POLICY
         allow_cross_provider_fallback = context.metadata.get("allow_cross_provider_fallback", True) is not False
@@ -394,24 +399,21 @@ class TranslateStage(PipelineStage):
                 filtered_count = len(original_policy) - len(raw_policy)
                 if not raw_policy:
                     raw_policy = None
+                    admin_policy_intentionally_empty = True
             context.metadata["provider_lock"] = provider_key
             context.metadata["allow_cross_provider_fallback"] = False
             if filtered_count:
                 context.metadata["provider_lock_filtered_candidates"] = filtered_count
-        if allow_cross_provider_fallback and not raw_policy and provider_key == "gemini":
+        # Only fall back to default gemini model if no admin policy was set
+        if allow_cross_provider_fallback and not raw_policy and provider_key == "gemini" and not admin_policy_consulted:
             raw_policy = [
                 {
                     "provider_key": "gemini",
                     "provider_model": model,
                     "priority_order": 0,
                 },
-                {
-                    "provider_key": "nvidia",
-                    "provider_model": settings.NVIDIA_DEFAULT_MODEL,
-                    "priority_order": 1,
-                },
             ]
-        configs = normalize_model_configs(raw_policy, default_provider_key=provider_key, default_models=candidates)
+        configs = normalize_model_configs(raw_policy, default_provider_key=provider_key, default_models=candidates, allow_empty=admin_policy_intentionally_empty)
         existing_state = context.scheduler_state
         job_id = self._safe_job_id(context)
         if job_id is not None:

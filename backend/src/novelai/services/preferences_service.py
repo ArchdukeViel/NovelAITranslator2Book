@@ -27,7 +27,7 @@ class PreferencesService:
     - Secrets: ALWAYS from environment variables (NEVER persisted)
 
     This service stores user choices like:
-    - Which provider to use (gemini, nvidia, dummy, etc)
+    - Which provider to use (gemini, dummy, etc)
     - Which model to use (gemini-3.1-flash-lite, google/gemma-4-31b-it, etc)
     - User UI preferences
 
@@ -453,9 +453,7 @@ class PreferencesService:
         provider_key = self.get_provider_key()
         if provider_key == "gemini" and model == "gpt-5.4":
             return settings.PROVIDER_GEMINI_DEFAULT_MODEL
-        if provider_key == "nvidia" and model.startswith("gpt-"):
-            return settings.NVIDIA_DEFAULT_MODEL
-        if provider_key not in {"gemini", "nvidia"}:
+        if provider_key not in {"gemini"}:
             return model
         try:
             from novelai.providers.registry import available_models
@@ -479,8 +477,6 @@ class PreferencesService:
         """Return the runtime API key from environment-backed settings."""
         if provider_key == "gemini":
             api_key = settings.PROVIDER_GEMINI_API_KEY
-        elif provider_key == "nvidia":
-            api_key = settings.NVIDIA_API_KEY
         else:
             return None
         if api_key is None:
@@ -495,18 +491,12 @@ class PreferencesService:
         if provider_key == "gemini":
             settings.PROVIDER_GEMINI_API_KEY = SecretStr(api_key)
             return
-        if provider_key == "nvidia":
-            settings.NVIDIA_API_KEY = SecretStr(api_key)
-            return
         raise ValueError(f"Unsupported API key provider: {provider_key}")
 
     def clear_api_key(self, provider_key: str = "gemini") -> None:
         """Remove the runtime API key from environment-backed settings."""
         if provider_key == "gemini":
             settings.PROVIDER_GEMINI_API_KEY = None
-            return
-        if provider_key == "nvidia":
-            settings.NVIDIA_API_KEY = None
             return
         raise ValueError(f"Unsupported API key provider: {provider_key}")
 

@@ -15,34 +15,18 @@ from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from sqlalchemy.orm import Session
 
-API_KEY_PROVIDERS = {"gemini", "nvidia"}
+API_KEY_PROVIDERS = {"gemini"}
 DEFAULT_PROVIDER_MODELS = {
     "gemini": "gemini-3.1-flash-lite",
-    "nvidia": "google/gemma-4-31b-it",
 }
 PROVIDER_LABELS = {
     "gemini": "Gemini",
-    "nvidia": "NVIDIA",
 }
 DEFAULT_QUOTA_HINTS = {
     ("gemini", "gemini-3.1-flash-lite"): {
         "rpm_limit": 15,
         "tpm_limit": 250_000,
         "rpd_limit": 500,
-        "cooldown_seconds": 90,
-        "daily_reset": None,
-    },
-    ("gemini", "gemma-4-31b-it"): {
-        "rpm_limit": 15,
-        "tpm_limit": None,
-        "rpd_limit": 1_500,
-        "cooldown_seconds": 90,
-        "daily_reset": None,
-    },
-    ("nvidia", "google/gemma-4-31b-it"): {
-        "rpm_limit": None,
-        "tpm_limit": None,
-        "rpd_limit": None,
         "cooldown_seconds": 90,
         "daily_reset": None,
     },
@@ -281,7 +265,7 @@ class AdminService:
     def normalize_provider(self, provider: str) -> str:
         normalized = provider.strip().lower()
         if normalized not in API_KEY_PROVIDERS:
-            raise ValueError("Provider must be one of: gemini, nvidia")
+            raise ValueError("Provider must be: gemini")
         return normalized
 
     def resolve_default_model(self, provider: str, requested_model: str | None = None) -> str:
@@ -830,17 +814,6 @@ class AdminService:
                     "rpd_limit": primary_quota.get("rpd_limit"),
                     "cooldown_seconds": primary_quota.get("cooldown_seconds"),
                     "daily_reset": primary_quota.get("daily_reset"),
-                },
-                {
-                    "priority_order": 1,
-                    "provider": "nvidia",
-                    "provider_key": "nvidia",
-                    "model": DEFAULT_PROVIDER_MODELS["nvidia"],
-                    "provider_model": DEFAULT_PROVIDER_MODELS["nvidia"],
-                    "credential_id": "nvidia",
-                    "enabled": False,
-                    "allowed_failure_reasons": sorted(ALLOWED_FALLBACK_FAILURE_REASONS),
-                    **DEFAULT_QUOTA_HINTS.get(("nvidia", DEFAULT_PROVIDER_MODELS["nvidia"]), {}),
                 },
             ],
         }
