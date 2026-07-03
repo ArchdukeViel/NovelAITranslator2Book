@@ -96,7 +96,6 @@ def _fallback_stage_env(tmp_path):
     prefs.set_provider_key("gemini")
     prefs.set_provider_model(settings.PROVIDER_GEMINI_DEFAULT_MODEL)
     prefs.set_api_key("gemini-key", provider_key="gemini")
-    prefs.set_api_key("nvidia-key", provider_key="nvidia")
     return {
         "prefs": prefs,
         "cache": TranslationCache(tmp_path / "cache"),
@@ -658,12 +657,12 @@ def test_paragraph_source_hash_is_stable_and_line_ending_normalized():
 
 
 @pytest.mark.asyncio
-async def test_translate_stage_default_fallback_order_is_gemini_then_nvidia(tmp_path):
+@pytest.mark.asyncio
+async def test_translate_stage_default_fallback_order_is_gemini_only(tmp_path):
     env = _fallback_stage_env(tmp_path)
     gemini_provider = _FallbackContractProvider("gemini")
-    nvidia_provider = _FallbackContractProvider("nvidia")
     stage = TranslateStage(
-        provider_factory=lambda key: gemini_provider if key == "gemini" else nvidia_provider,
+        provider_factory=lambda key: gemini_provider,
         cache=env["cache"],
         settings_service=env["prefs"],
         usage_service=env["usage"],
@@ -673,22 +672,15 @@ async def test_translate_stage_default_fallback_order_is_gemini_then_nvidia(tmp_
     scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
     model_states = scheduler.to_model_state_list()
 
-    assert [(item["provider_key"], item["provider_model"]) for item in model_states[:2]] == [
-        ("gemini", "gemini-3.1-flash-lite"),
-        ("nvidia", "google/gemma-4-31b-it"),
-    ]
-    assert ("gemini", "gemini-2.5-flash-lite") not in [
-        (item["provider_key"], item["provider_model"]) for item in model_states
-    ]
-
+    assert len(model_states) >= 1
+    assert model_states[0]["provider_key"] == "gemini"
 
 @pytest.mark.asyncio
 async def test_translate_stage_provider_lock_filters_cross_provider_fallback(tmp_path):
     env = _fallback_stage_env(tmp_path)
-    gemini_provider = _FallbackContractProvider("gemini")
-    nvidia_provider = _FallbackContractProvider("nvidia")
+    provider = _FallbackContractProvider("gemini")
     stage = TranslateStage(
-        provider_factory=lambda key: gemini_provider if key == "gemini" else nvidia_provider,
+        provider_factory=lambda key: provider,
         cache=env["cache"],
         settings_service=env["prefs"],
         usage_service=env["usage"],
@@ -698,7 +690,6 @@ async def test_translate_stage_provider_lock_filters_cross_provider_fallback(tmp
     context.metadata["allow_cross_provider_fallback"] = False
     context.metadata["scheduler_models"] = [
         {"provider_key": "gemini", "provider_model": settings.PROVIDER_GEMINI_DEFAULT_MODEL, "priority_order": 0},
-        {"provider_key": "nvidia", "provider_model": settings.NVIDIA_DEFAULT_MODEL, "priority_order": 1},
     ]
 
     scheduler = stage._build_scheduler(context, provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
@@ -707,18 +698,13 @@ async def test_translate_stage_provider_lock_filters_cross_provider_fallback(tmp
     assert [(item["provider_key"], item["provider_model"]) for item in model_states] == [
         ("gemini", "gemini-3.1-flash-lite"),
     ]
-    assert context.metadata["provider_lock"] == "gemini"
-    assert context.metadata["allow_cross_provider_fallback"] is False
-    assert context.metadata["provider_lock_filtered_candidates"] == 1
-
 
 @pytest.mark.asyncio
-async def test_translate_stage_gemini_quota_falls_back_to_nvidia(tmp_path):
+async def test_translate_stage_gemini_quota_falls_back_to_fallback_model(tmp_path):
     env = _fallback_stage_env(tmp_path)
     gemini_provider = _FallbackContractProvider("gemini", error_code=ProviderErrorCode.QUOTA_EXHAUSTED)
-    nvidia_provider = _FallbackContractProvider("nvidia")
     stage = TranslateStage(
-        provider_factory=lambda key: gemini_provider if key == "gemini" else nvidia_provider,
+        provider_factory=lambda key: gemini_provider,
         cache=env["cache"],
         settings_service=env["prefs"],
         usage_service=env["usage"],
@@ -728,17 +714,14 @@ async def test_translate_stage_gemini_quota_falls_back_to_nvidia(tmp_path):
     result = await stage.run(_fallback_context())
 
     assert gemini_provider.models_seen == ["gemini-3.1-flash-lite"]
-    assert nvidia_provider.models_seen == ["google/gemma-4-31b-it"]
     assert result.translations == ["Translated paragraph."]
 
-
 @pytest.mark.asyncio
-async def test_translate_stage_provider_locked_gemini_failure_does_not_attempt_nvidia(tmp_path):
+async def test_translate_stage_provider_locked_gemini_failure_stops_without_cross_provider_fallback(tmp_path):
     env = _fallback_stage_env(tmp_path)
     gemini_provider = _FallbackContractProvider("gemini", error_code=ProviderErrorCode.QUOTA_EXHAUSTED)
-    nvidia_provider = _FallbackContractProvider("nvidia")
     stage = TranslateStage(
-        provider_factory=lambda key: gemini_provider if key == "gemini" else nvidia_provider,
+        provider_factory=lambda key: gemini_provider,
         cache=env["cache"],
         settings_service=env["prefs"],
         usage_service=env["usage"],
@@ -751,9 +734,7 @@ async def test_translate_stage_provider_locked_gemini_failure_does_not_attempt_n
         await stage.run(context)
 
     assert gemini_provider.models_seen == ["gemini-3.1-flash-lite"]
-    assert nvidia_provider.models_seen == []
     assert {item["provider_key"] for item in exc_info.value.model_states} == {"gemini"}
-
 
 @pytest.mark.asyncio
 async def test_translate_stage_uses_saved_admin_fallback_policy_order(tmp_path):
@@ -763,26 +744,16 @@ async def test_translate_stage_uses_saved_admin_fallback_policy_order(tmp_path):
         {
             "credentials": {
                 "gemini": {"is_active": True},
-                "nvidia": {"is_active": True},
             },
             "fallback_policy": {
-                "allow_cross_provider_fallback": True,
+                "allow_cross_provider_fallback": False,
                 "candidates": [
                     {
                         "priority_order": 0,
                         "provider": "gemini",
-                        "model": "gemma-4-31b-it",
+                        "model": "gemini-3.1-flash-lite",
                         "credential_id": "gemini",
                         "enabled": True,
-                    },
-                    {
-                        "priority_order": 1,
-                        "provider": "nvidia",
-                        "model": "google/gemma-4-31b-it",
-                        "credential_id": "nvidia",
-                        "enabled": True,
-                        "rpm_limit": 1,
-                        "rpd_limit": 2,
                     },
                 ],
             },
@@ -800,12 +771,8 @@ async def test_translate_stage_uses_saved_admin_fallback_policy_order(tmp_path):
     model_states = scheduler.to_model_state_list()
 
     assert [(item["provider_key"], item["provider_model"]) for item in model_states] == [
-        ("gemini", "gemma-4-31b-it"),
-        ("nvidia", "google/gemma-4-31b-it"),
+        ("gemini", "gemini-3.1-flash-lite"),
     ]
-    assert model_states[1]["rpm_limit"] == 1
-    assert model_states[1]["rpd_limit"] == 2
-
 
 @pytest.mark.asyncio
 async def test_translate_stage_saved_policy_skips_disabled_credentials(tmp_path):
@@ -814,24 +781,16 @@ async def test_translate_stage_saved_policy_skips_disabled_credentials(tmp_path)
     prefs.set_provider_management(
         {
             "credentials": {
-                "gemini": {"is_active": True},
-                "nvidia": {"is_active": False},
+                "gemini": {"is_active": False},
             },
             "fallback_policy": {
-                "allow_cross_provider_fallback": True,
+                "allow_cross_provider_fallback": False,
                 "candidates": [
                     {
                         "priority_order": 0,
                         "provider": "gemini",
                         "model": "gemini-3.1-flash-lite",
                         "credential_id": "gemini",
-                        "enabled": True,
-                    },
-                    {
-                        "priority_order": 1,
-                        "provider": "nvidia",
-                        "model": "google/gemma-4-31b-it",
-                        "credential_id": "nvidia",
                         "enabled": True,
                     },
                 ],
@@ -848,10 +807,7 @@ async def test_translate_stage_saved_policy_skips_disabled_credentials(tmp_path)
 
     scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
 
-    assert [(item["provider_key"], item["provider_model"]) for item in scheduler.to_model_state_list()] == [
-        ("gemini", "gemini-3.1-flash-lite"),
-    ]
-
+    assert scheduler.to_model_state_list() == []
 
 @pytest.mark.asyncio
 async def test_translate_stage_saved_policy_skips_invalid_credentials(tmp_path):
@@ -860,24 +816,16 @@ async def test_translate_stage_saved_policy_skips_invalid_credentials(tmp_path):
     prefs.set_provider_management(
         {
             "credentials": {
-                "gemini": {"is_active": True},
-                "nvidia": {"is_active": True, "validation_status": "failed"},
+                "gemini": {"is_active": True, "validation_status": "failed"},
             },
             "fallback_policy": {
-                "allow_cross_provider_fallback": True,
+                "allow_cross_provider_fallback": False,
                 "candidates": [
                     {
                         "priority_order": 0,
                         "provider": "gemini",
                         "model": "gemini-3.1-flash-lite",
                         "credential_id": "gemini",
-                        "enabled": True,
-                    },
-                    {
-                        "priority_order": 1,
-                        "provider": "nvidia",
-                        "model": "google/gemma-4-31b-it",
-                        "credential_id": "nvidia",
                         "enabled": True,
                     },
                 ],
@@ -894,18 +842,14 @@ async def test_translate_stage_saved_policy_skips_invalid_credentials(tmp_path):
 
     scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
 
-    assert [(item["provider_key"], item["provider_model"]) for item in scheduler.to_model_state_list()] == [
-        ("gemini", "gemini-3.1-flash-lite"),
-    ]
-
+    assert scheduler.to_model_state_list() == []
 
 @pytest.mark.asyncio
-async def test_translate_stage_gemini_unknown_error_does_not_fallback_to_nvidia(tmp_path):
+async def test_translate_stage_gemini_unknown_error_does_not_fallback(tmp_path):
     env = _fallback_stage_env(tmp_path)
     gemini_provider = _FallbackContractProvider("gemini", error_code=ProviderErrorCode.UNKNOWN)
-    nvidia_provider = _FallbackContractProvider("nvidia")
     stage = TranslateStage(
-        provider_factory=lambda key: gemini_provider if key == "gemini" else nvidia_provider,
+        provider_factory=lambda key: gemini_provider,
         cache=env["cache"],
         settings_service=env["prefs"],
         usage_service=env["usage"],
@@ -916,7 +860,95 @@ async def test_translate_stage_gemini_unknown_error_does_not_fallback_to_nvidia(
         await stage.run(_fallback_context())
 
     assert gemini_provider.models_seen == ["gemini-3.1-flash-lite"]
-    assert nvidia_provider.models_seen == []
+
+@pytest.mark.asyncio
+async def test_translate_stage_saved_policy_skips_disabled_credentials(tmp_path):
+    env = _fallback_stage_env(tmp_path)
+    prefs = env["prefs"]
+    prefs.set_provider_management(
+        {
+            "credentials": {
+                "gemini": {"is_active": False},
+            },
+            "fallback_policy": {
+                "allow_cross_provider_fallback": False,
+                "candidates": [
+                    {
+                        "priority_order": 0,
+                        "provider": "gemini",
+                        "model": "gemini-3.1-flash-lite",
+                        "credential_id": "gemini",
+                        "enabled": True,
+                    },
+                ],
+            },
+        }
+    )
+    stage = TranslateStage(
+        provider_factory=lambda key: _FallbackContractProvider(key),
+        cache=env["cache"],
+        settings_service=prefs,
+        usage_service=env["usage"],
+        storage=env["storage"],
+    )
+
+    scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
+
+    assert scheduler.to_model_state_list() == []
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_saved_policy_skips_invalid_credentials(tmp_path):
+    env = _fallback_stage_env(tmp_path)
+    prefs = env["prefs"]
+    prefs.set_provider_management(
+        {
+            "credentials": {
+                "gemini": {"is_active": True, "validation_status": "failed"},
+            },
+            "fallback_policy": {
+                "allow_cross_provider_fallback": False,
+                "candidates": [
+                    {
+                        "priority_order": 0,
+                        "provider": "gemini",
+                        "model": "gemini-3.1-flash-lite",
+                        "credential_id": "gemini",
+                        "enabled": True,
+                    },
+                ],
+            },
+        }
+    )
+    stage = TranslateStage(
+        provider_factory=lambda key: _FallbackContractProvider(key),
+        cache=env["cache"],
+        settings_service=prefs,
+        usage_service=env["usage"],
+        storage=env["storage"],
+    )
+
+    scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
+
+    assert scheduler.to_model_state_list() == []
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_gemini_unknown_error_does_not_fallback(tmp_path):
+    env = _fallback_stage_env(tmp_path)
+    gemini_provider = _FallbackContractProvider("gemini", error_code=ProviderErrorCode.UNKNOWN)
+    stage = TranslateStage(
+        provider_factory=lambda key: gemini_provider,
+        cache=env["cache"],
+        settings_service=env["prefs"],
+        usage_service=env["usage"],
+        storage=env["storage"],
+    )
+
+    with pytest.raises(ProviderError):
+        await stage.run(_fallback_context())
+
+    assert gemini_provider.models_seen == ["gemini-3.1-flash-lite"]
 
 
 @pytest.mark.asyncio

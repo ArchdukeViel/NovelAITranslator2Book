@@ -23,15 +23,10 @@ def model_candidates(
     supported = [model for model in supported_models or [] if isinstance(model, str) and model.strip()]
 
     _add_unique(candidates, requested_model)
-    if provider_key == "gemini":
-        _add_unique(candidates, settings.PROVIDER_GEMINI_DEFAULT_MODEL)
-        for model in settings.PROVIDER_GEMINI_MODEL_FALLBACKS:
-            _add_unique(candidates, model)
-    elif provider_key == "nvidia":
-        _add_unique(candidates, settings.NVIDIA_DEFAULT_MODEL)
-        for model in supported:
-            _add_unique(candidates, model)
-    elif supported:
+    _add_unique(candidates, settings.PROVIDER_GEMINI_DEFAULT_MODEL)
+    for model in settings.PROVIDER_GEMINI_MODEL_FALLBACKS:
+        _add_unique(candidates, model)
+    if supported:
         if requested_model in supported:
             _add_unique(candidates, requested_model)
         else:

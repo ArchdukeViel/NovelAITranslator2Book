@@ -44,7 +44,6 @@ from novelai.db.models.novel import Novel
 from novelai.db.models.system import ProviderCredential
 from novelai.db.models.users import NovelRequest
 from novelai.providers.gemini_provider import GeminiProvider
-from novelai.providers.nvidia_provider import NVIDIAProvider
 from novelai.runtime.bootstrap import bootstrap
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.provider_credentials import ProviderCredentialService
@@ -857,7 +856,6 @@ class _FakeGeminiClient:
 @pytest.fixture(autouse=True)
 def _clean_tmp():
     old_gemini_key = settings.PROVIDER_GEMINI_API_KEY
-    old_nvidia_key = settings.NVIDIA_API_KEY
     old_provider_credential_key = settings.PROVIDER_CREDENTIAL_ENCRYPTION_KEY
     novels._hits.clear()
     if _TMP.exists():
@@ -865,7 +863,6 @@ def _clean_tmp():
     _TMP.mkdir(parents=True, exist_ok=True)
     yield
     settings.PROVIDER_GEMINI_API_KEY = old_gemini_key
-    settings.NVIDIA_API_KEY = old_nvidia_key
     settings.PROVIDER_CREDENTIAL_ENCRYPTION_KEY = old_provider_credential_key
     novels._hits.clear()
     shutil.rmtree(_TMP, ignore_errors=True)
@@ -2667,44 +2664,19 @@ class TestAdmin:
         assert canonical_resp.json()["validation_status"] == "Working"
         assert preferences.get_api_key("gemini") is None
 
-    def test_admin_provider_api_accepts_nvidia_and_rejects_openai(
+    def test_admin_provider_api_rejects_openai(
         self,
         _no_api_key: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         bootstrap()
-        monkeypatch.setattr(settings, "NVIDIA_API_KEY", None)
-        monkeypatch.setattr(
-            NVIDIAProvider,
-            "validate_connection",
-            AsyncMock(return_value=(True, "NVIDIA model google/gemma-4-31b-it is reachable.")),
-        )
         storage = _fresh_storage()
         preferences = PreferencesService(_TMP / "prefs")
         c = _make_app(storage, preferences=preferences)
 
-        status_resp = c.get("/api/admin/provider-api-key/nvidia")
-        assert status_resp.status_code == 200
-        assert status_resp.json()["provider_key"] == "nvidia"
-        assert status_resp.json()["provider_model"] == "google/gemma-4-31b-it"
-
-        set_resp = c.post(
-            "/api/admin/provider-api-key",
-            json={"provider_key": "nvidia", "api_key": "nvapi-test-key"},
-            headers=_csrf_headers(c),
-        )
-
-        assert set_resp.status_code == 200
-        assert set_resp.json()["configured"] is True
-        assert set_resp.json()["preferred_provider_key"] == "nvidia"
-        assert set_resp.json()["provider_model"] == "google/gemma-4-31b-it"
-        assert set_resp.json()["validation_status"] == "working"
-        assert preferences.get_api_key("nvidia") == "nvapi-test-key"
-        assert preferences.get_preferred_provider() == "nvidia"
-
         openai_resp = c.get("/api/admin/provider-api-key/openai")
         assert openai_resp.status_code == 400
-        assert "gemini, nvidia" in openai_resp.json()["detail"]
+        assert "must be: gemini" in openai_resp.json()["detail"]
 
     def test_provider_management_requires_owner_and_returns_safe_metadata(
         self,
@@ -2771,7 +2743,6 @@ class TestAdmin:
         models = {(item["provider"], item["model"]) for item in models_resp.json()["models"]}
         assert ("gemini", "gemma-4-31b-it") in models
         assert ("gemini", "google/gemma-4-31b-it") not in models
-        assert ("nvidia", "google/gemma-4-31b-it") in models
 
         rejected = c.put(
             "/api/admin/providers/fallback-policy",
@@ -2819,16 +2790,12 @@ class TestAdmin:
         preferences = PreferencesService(_TMP / "prefs-policy")
         c = _make_app(_fresh_storage(), preferences=preferences, db_session=isolated_db_session)
         headers = _csrf_headers(c)
-        for provider, key, model in [
-            ("gemini", "AIza-policy-key", "gemma-4-31b-it"),
-            ("nvidia", "nvapi-policy-key", "google/gemma-4-31b-it"),
-        ]:
-            resp = c.post(
-                "/api/admin/providers/credentials",
-                json={"provider": provider, "api_key": key, "model": model, "is_active": True},
-                headers=headers,
-            )
-            assert resp.status_code == 200
+        resp = c.post(
+            "/api/admin/providers/credentials",
+            json={"provider": "gemini", "api_key": "AIza-policy-key", "model": "gemma-4-31b-it", "is_active": True},
+            headers=headers,
+        )
+        assert resp.status_code == 200
 
         policy_resp = c.put(
             "/api/admin/providers/fallback-policy",
@@ -2836,19 +2803,9 @@ class TestAdmin:
                 "default_provider": "gemini",
                 "default_model": "gemma-4-31b-it",
                 "default_credential_id": "gemini",
-                "allow_cross_provider_fallback": True,
+                "allow_cross_provider_fallback": False,
                 "fallback_on_qa_failure": False,
                 "candidates": [
-                    {
-                        "priority_order": 1,
-                        "provider": "nvidia",
-                        "model": "google/gemma-4-31b-it",
-                        "credential_id": "nvidia",
-                        "enabled": True,
-                        "rpm_limit": 3,
-                        "tpm_limit": 1234,
-                        "rpd_limit": 5,
-                    },
                     {
                         "priority_order": 0,
                         "provider": "gemini",
@@ -2864,24 +2821,12 @@ class TestAdmin:
         policy = policy_resp.json()
         assert policy["default_provider"] == "gemini"
         assert policy["default_model"] == "gemma-4-31b-it"
-        assert policy["allow_cross_provider_fallback"] is True
+        assert policy["allow_cross_provider_fallback"] is False
         assert policy["fallback_on_qa_failure"] is False
         assert "qa_failure" in policy["disallowed_failure_reasons"]
         assert [(item["provider"], item["model"]) for item in policy["candidates"]] == [
             ("gemini", "gemma-4-31b-it"),
-            ("nvidia", "google/gemma-4-31b-it"),
         ]
-        assert policy["candidates"][1]["rpm_limit"] == 3
-        assert policy["candidates"][1]["tpm_limit"] == 1234
-        assert policy["candidates"][1]["rpd_limit"] == 5
-
-        disabled = c.patch(
-            "/api/admin/providers/credentials/nvidia",
-            json={"is_active": False},
-            headers=headers,
-        )
-        assert disabled.status_code == 200
-        assert disabled.json()["is_active"] is False
 
     def test_admin_runtime_state_can_list_refresh_and_clear(self, _no_api_key: None) -> None:
         bootstrap()
@@ -2989,18 +2934,18 @@ class TestActivity:
             json={
                 "novel_id": "test-n1",
                 "chapters": "1-2",
-                "provider_key": "nvidia",
-                "provider_model": "google/gemma-4-31b-it",
+                "provider_key": "gemini",
+                "provider_model": "gemini-2.5-flash-lite",
             },
             headers=_csrf_headers(c),
         )
         assert create_resp.status_code == 200
         created_payload = create_resp.json()
         job_id = created_payload["id"]
-        assert created_payload["provider"] == "nvidia"
-        assert created_payload["model"] == "google/gemma-4-31b-it"
-        assert created_payload["provider_key"] == "nvidia"
-        assert created_payload["provider_model"] == "google/gemma-4-31b-it"
+        assert created_payload["provider"] == "gemini"
+        assert created_payload["model"] == "gemini-2.5-flash-lite"
+        assert created_payload["provider_key"] == "gemini"
+        assert created_payload["provider_model"] == "gemini-2.5-flash-lite"
 
         update_resp = c.patch(
             f"/novels/activity/{job_id}",
@@ -3077,8 +3022,8 @@ class TestActivity:
         created = jobs.create_translation_activity(
             novel_id="test-n1",
             chapters="1-2",
-            provider="nvidia",
-            model="google/gemma-4-31b-it",
+            provider="gemini",
+            model="gemini-2.5-flash-lite",
         )
         c = _make_app(storage, jobs)
 
@@ -3095,10 +3040,10 @@ class TestActivity:
         assert detail_payload["id"] == created["id"]
         assert detail_payload["activity_id"] == created["id"]
         assert detail_payload["job_id"] == created["id"]
-        assert detail_payload["provider"] == "nvidia"
-        assert detail_payload["model"] == "google/gemma-4-31b-it"
-        assert detail_payload["provider_key"] == "nvidia"
-        assert detail_payload["provider_model"] == "google/gemma-4-31b-it"
+        assert detail_payload["provider"] == "gemini"
+        assert detail_payload["model"] == "gemini-2.5-flash-lite"
+        assert detail_payload["provider_key"] == "gemini"
+        assert detail_payload["provider_model"] == "gemini-2.5-flash-lite"
 
     def test_activity_root_metadata_progress_fields_and_default_arrays_are_normalized(self, _no_api_key: None) -> None:
         bootstrap()

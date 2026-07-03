@@ -1762,13 +1762,13 @@ async def test_scrape_metadata_passes_max_chapter_to_source(orchestration_env) -
 
 
 @pytest.mark.asyncio
-async def test_scrape_metadata_logs_missing_nvidia_key_only_once(orchestration_env) -> None:
+async def test_scrape_metadata_logs_missing_gemini_key_only_once(orchestration_env) -> None:
     provider = MockTranslationProvider(key="dummy", model="dummy")
     source = StubSource()
     settings = orchestration_env["settings"]
-    settings.set_provider_key("nvidia")
-    settings.set_provider_model("google/gemma-4-31b-it")
-    settings.clear_api_key("nvidia")
+    settings.set_provider_key("gemini")
+    settings.set_provider_model("gemini-2.0-flash")
+    settings.clear_api_key("gemini")
 
     orchestrator = NovelOrchestrationService(
         storage=orchestration_env["storage"],
@@ -1784,7 +1784,7 @@ async def test_scrape_metadata_logs_missing_nvidia_key_only_once(orchestration_e
         metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
         await orchestrator.scrape_metadata("syosetu_ncode", "novel-2", mode="update")
 
-    warning.assert_called_once_with("%s API key missing; falling back to dummy provider.", "Nvidia")
+    warning.assert_called_once_with("%s API key missing; falling back to dummy provider.", "Gemini")
     assert metadata["metadata_translation_status"] == "unavailable"
     assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v2"
     assert "metadata_translation_error" not in metadata

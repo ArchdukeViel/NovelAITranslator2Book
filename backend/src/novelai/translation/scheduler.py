@@ -373,7 +373,7 @@ def normalize_policy(value: str | SchedulerPolicy | None) -> SchedulerPolicy:
     return SchedulerPolicy.VOLUME_FIRST
 
 
-def normalize_model_configs(raw_items: Any, *, default_provider_key: str, default_models: list[str]) -> list[SchedulerModelConfig]:
+def normalize_model_configs(raw_items: Any, *, default_provider_key: str, default_models: list[str], allow_empty: bool = False) -> list[SchedulerModelConfig]:
     configs: list[SchedulerModelConfig] = []
     if isinstance(raw_items, list):
         for index, item in enumerate(raw_items):
@@ -400,6 +400,9 @@ def normalize_model_configs(raw_items: Any, *, default_provider_key: str, defaul
 
     if configs:
         return _dedupe_configs(configs)
+
+    if allow_empty:
+        return []
 
     return [
         SchedulerModelConfig(

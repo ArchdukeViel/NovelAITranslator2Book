@@ -1993,12 +1993,11 @@ async def translate_chapters(
 
         # Acquire per-chapter lock to prevent concurrent translation
         lock = _get_translation_lock(novel_id, chapter_id)
-        try:
-            await asyncio.wait_for(lock.acquire(), timeout=0.0)
-        except TimeoutError:
+        if lock.locked():
             raise TranslationInProgressError(
                 f"Translation is already in progress for {novel_id}/{chapter_id}"
-            ) from None
+            )
+        await lock.acquire()
 
         prev_state: dict[str, Any] | None = None
         try:
