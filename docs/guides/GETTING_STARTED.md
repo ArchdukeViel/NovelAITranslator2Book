@@ -201,8 +201,8 @@ Public reader routes:
 
 ```text
 /                              — public catalog home
-/novel/[slug]                  — novel detail
-/novel/[slug]/chapter/[chapterId] — chapter reader
+/novels/[slug]                  — novel detail
+/novels/[slug]/chapter/[chapterId] — chapter reader
 /account/history               — reading history (authenticated)
 /account/requests              — novel/chapter requests (authenticated)
 /account/contribute            — contribution (gated/unavailable)

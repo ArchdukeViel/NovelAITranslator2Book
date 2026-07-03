@@ -1372,7 +1372,7 @@ async def test_scrape_metadata_translates_title_author_and_chapter_titles(orches
     index_entry = storage._load_index()["novel-1"]
     folder_name = index_entry["folder_name"]
     assert folder_name == stored["folder_name"]
-    assert folder_name.startswith("novel/")
+    assert folder_name == stored["folder_name"]
     metadata_path = storage._folder_path(folder_name) / "metadata.json"
     assert metadata_path.exists()
     assert stored["translated_title"] == "[TRANSLATED] Original Novel"

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from novelai.config.workflow_profiles import normalize_workflow_defaults, normalize_workflow_profiles
-from novelai.core.security import safe_child_path, validate_storage_identifier
+from novelai.core.security import validate_storage_identifier
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.common import _utc_now_iso
 
@@ -19,7 +19,6 @@ _SYOSETU_NCODE_PATTERN = re.compile(r"^n\d{4}[a-z]{2}$", re.IGNORECASE)
 _LEGACY_SYOSETU_NCODE_FOLDER_PATTERN = re.compile(r"^\d{4}[a-z]{2}$", re.IGNORECASE)
 METADATA_BACKUP_DIRNAME = "metadata_backups"
 METADATA_BACKUP_RETENTION = 5
-TITLE_SLUG_DIRNAME = "novel"
 STORAGE_SLUG_MAX_LENGTH = 100
 _WINDOWS_RESERVED_NAMES = {
     "con",
@@ -224,18 +223,11 @@ def _validate_folder_name(self: Any, folder_name: str) -> str:
     parts = [part for part in cleaned.split("/") if part]
     if len(parts) == 1:
         return validate_storage_identifier(parts[0], "folder_name")
-    if len(parts) == 2 and parts[0] == TITLE_SLUG_DIRNAME:
-        slug = validate_storage_identifier(parts[1], "storage_slug")
-        if slug.lower() in _WINDOWS_RESERVED_NAMES:
-            raise ValueError("storage_slug must not be a Windows reserved name.")
-        return f"{TITLE_SLUG_DIRNAME}/{slug}"
-    raise ValueError("folder_name must be a legacy folder or novel/{storage_slug}.")
+    raise ValueError("folder_name must be a single-part identifier.")
 
 
 def _folder_path(self: Any, folder_name: str) -> Path:
     folder_name = self._validate_folder_name(folder_name)
-    if folder_name.startswith(f"{TITLE_SLUG_DIRNAME}/"):
-        return safe_child_path(self.base_dir, folder_name)
     return self.novels_dir / folder_name
 
 
@@ -275,21 +267,19 @@ def _compute_folder_name(self: Any, novel_id: str, metadata: dict[str, Any]) -> 
 
     source = _storage_slug_source(novel_id, metadata)
     storage_slug = _storage_slug_from_text(source, fallback_source_id=novel_id)
-    folder_name = f"{TITLE_SLUG_DIRNAME}/{storage_slug}"
-    if not self._folder_in_use_by_other_novel(folder_name, novel_id, index):
-        return folder_name
+    if not self._folder_in_use_by_other_novel(storage_slug, novel_id, index):
+        return storage_slug
 
     suffix = _source_suffix(novel_id)
     storage_slug = f"{storage_slug}--{suffix}"[:STORAGE_SLUG_MAX_LENGTH].strip("-._ ")
-    folder_name = f"{TITLE_SLUG_DIRNAME}/{storage_slug}"
-    if not self._folder_in_use_by_other_novel(folder_name, novel_id, index):
-        return folder_name
+    if not self._folder_in_use_by_other_novel(storage_slug, novel_id, index):
+        return storage_slug
 
     source_hash = hashlib.sha256(
         f"{novel_id}:{metadata.get('source_url') or ''}".encode()
     ).hexdigest()[:8]
     storage_slug = f"{storage_slug}--{source_hash}"[:STORAGE_SLUG_MAX_LENGTH].strip("-._ ")
-    return f"{TITLE_SLUG_DIRNAME}/{storage_slug}"
+    return storage_slug
 
 
 def _normalize_library_novel_id(self: Any, value: Any) -> str | None:
@@ -418,7 +408,7 @@ def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
         merged["authors"] = authors
 
     folder_name = self._compute_folder_name(novel_id, merged)
-    storage_slug = folder_name.split("/", 1)[1] if folder_name.startswith(f"{TITLE_SLUG_DIRNAME}/") else folder_name
+    storage_slug = folder_name
     merged["source_novel_id"] = self._clean_string(merged.get("source_novel_id"), novel_id)
     merged["storage_slug"] = storage_slug
     merged["folder_name"] = folder_name
@@ -542,35 +532,6 @@ def list_novels(self: Any) -> list[str]:
             continue
         resolved_id = self._clean_string(metadata.get("novel_id"), novel_dir.name) or novel_dir.name
         add_novel(resolved_id, novel_dir.name)
-
-    title_slug_root = self.base_dir / TITLE_SLUG_DIRNAME
-    if self._path_exists(title_slug_root):
-        for novel_dir in sorted(self._list_dir(title_slug_root), key=lambda path: path.name.lower()):
-            if not novel_dir.is_dir():
-                continue
-            folder_name = f"{TITLE_SLUG_DIRNAME}/{novel_dir.name}"
-            if not self._folder_has_novel_data(novel_dir):
-                continue
-            metadata_path = novel_dir / "metadata.json"
-            if not self._path_exists(metadata_path):
-                add_novel(novel_dir.name, folder_name)
-                continue
-            try:
-                metadata = json.loads(self._read_text(metadata_path))
-            except json.JSONDecodeError as exc:
-                logger.warning("Corrupted metadata for novel folder %s at %s: %s", folder_name, metadata_path, exc)
-                add_novel(novel_dir.name, folder_name)
-                continue
-            except OSError as exc:
-                logger.warning("Failed to read metadata for novel folder %s at %s: %s", folder_name, metadata_path, exc)
-                add_novel(novel_dir.name, folder_name)
-                continue
-            if not isinstance(metadata, dict):
-                logger.warning("Metadata for novel folder %s is not a JSON object.", folder_name)
-                add_novel(novel_dir.name, folder_name)
-                continue
-            resolved_id = self._clean_string(metadata.get("novel_id"), novel_dir.name) or novel_dir.name
-            add_novel(resolved_id, folder_name)
 
     if index_changed:
         self._persist_index(updated_index)

@@ -592,21 +592,21 @@ def test_new_metadata_save_uses_translated_title_slug_layout(storage):
 
     loaded = storage.load_metadata("n2056dn")
 
-    assert path == storage.base_dir / "novel" / "the-silent-architect-of-dreams" / "metadata.json"
+    assert path == storage.base_dir / "novels" / "the-silent-architect-of-dreams" / "metadata.json"
     assert loaded is not None
     assert loaded["novel_id"] == "n2056dn"
     assert loaded["source_novel_id"] == "n2056dn"
     assert loaded["storage_slug"] == "the-silent-architect-of-dreams"
-    assert loaded["folder_name"] == "novel/the-silent-architect-of-dreams"
-    assert storage._load_index()["n2056dn"]["folder_name"] == "novel/the-silent-architect-of-dreams"
+    assert loaded["folder_name"] == "the-silent-architect-of-dreams"
+    assert storage._load_index()["n2056dn"]["folder_name"] == "the-silent-architect-of-dreams"
 
 
 def test_metadata_save_slug_falls_back_to_title_then_novel_id(storage):
     title_path = storage.save_metadata("n0813kx", {"title": "Only Source Title"})
     id_path = storage.save_metadata("16817330655991571532", {})
 
-    assert title_path == storage.base_dir / "novel" / "only-source-title" / "metadata.json"
-    assert id_path == storage.base_dir / "novel" / "16817330655991571532" / "metadata.json"
+    assert title_path == storage.base_dir / "novels" / "only-source-title" / "metadata.json"
+    assert id_path == storage.base_dir / "novels" / "16817330655991571532" / "metadata.json"
     assert storage.load_metadata("n0813kx")["storage_slug"] == "only-source-title"
     assert storage.load_metadata("16817330655991571532")["storage_slug"] == "16817330655991571532"
 
@@ -624,8 +624,8 @@ def test_metadata_storage_slug_is_windows_safe_and_bounded(storage):
     assert "\\" not in slug
     assert not slug.endswith((".", " "))
     assert slug != "con"
-    assert loaded["folder_name"] == f"novel/{slug}"
-    assert (storage.base_dir / "novel" / slug / "metadata.json").exists()
+    assert loaded["folder_name"] == slug
+    assert (storage.base_dir / "novels" / slug / "metadata.json").exists()
 
 
 def test_metadata_storage_slug_collision_gets_stable_source_suffix(storage):
@@ -635,8 +635,8 @@ def test_metadata_storage_slug_collision_gets_stable_source_suffix(storage):
     first_meta = storage.load_metadata("source-a")
     second_meta = storage.load_metadata("source-b")
 
-    assert first_meta["folder_name"] == "novel/same-translated-title"
-    assert second_meta["folder_name"] == "novel/same-translated-title--source-b"
+    assert first_meta["folder_name"] == "same-translated-title"
+    assert second_meta["folder_name"] == "same-translated-title--source-b"
     assert first.parent != second.parent
     assert first.exists()
     assert second.exists()
@@ -651,10 +651,10 @@ def test_metadata_storage_slug_is_stable_on_title_change(storage):
     assert loaded is not None
     assert loaded["translated_title"] == "Second Title"
     assert loaded["storage_slug"] == "first-title"
-    assert loaded["folder_name"] == "novel/first-title"
-    assert storage._load_index()["stable-source"]["folder_name"] == "novel/first-title"
+    assert loaded["folder_name"] == "first-title"
+    assert storage._load_index()["stable-source"]["folder_name"] == "first-title"
     assert first.exists()
-    assert not (storage.base_dir / "novel" / "second-title").exists()
+    assert not (storage.base_dir / "novels" / "second-title").exists()
 
 
 def test_legacy_indexed_source_folder_remains_readable_and_not_moved(storage):
@@ -674,7 +674,7 @@ def test_legacy_indexed_source_folder_remains_readable_and_not_moved(storage):
     assert loaded["folder_name"] == "n0813kx"
     assert loaded["storage_slug"] == "n0813kx"
     assert (legacy_dir / "metadata.json").exists()
-    assert not (storage.base_dir / "novel" / "new-translated-title").exists()
+    assert not (storage.base_dir / "novels" / "new-translated-title").exists()
     assert storage._get_folder_name("n0813kx") == "n0813kx"
 
 
@@ -698,7 +698,7 @@ def test_title_slug_storage_subpaths_resolve_under_mapped_folder(storage):
     storage.create_checkpoint("mapped-source", "1", "resume")
     storage.save_metadata("mapped-source", {"translated_title": "Mapped Folder Updated"})
 
-    novel_dir = storage.base_dir / "novel" / "mapped-folder"
+    novel_dir = storage.base_dir / "novels" / "mapped-folder"
 
     assert (novel_dir / "chapters" / "1.json").exists()
     assert (novel_dir / "checkpoints").exists()
