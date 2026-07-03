@@ -11,9 +11,10 @@ from itertools import pairwise
 from typing import Any
 
 from novelai.config.settings import settings
-from novelai.core.chapter_state import ChapterState
+from novelai.core.chapter_state import ChapterState, TranslationState
 from novelai.core.errors import TranslationInProgressError
 from novelai.db.engine import session_scope
+from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
 from novelai.glossary import glossary_status_counts, normalize_glossary_entries
 from novelai.prompts import (
@@ -24,6 +25,7 @@ from novelai.prompts import (
 from novelai.providers.model_fallbacks import model_candidates
 from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.services.orchestration.common import PreflightIssue, _make_state_data
+from novelai.services.pipeline.checkpoint import Checkpoint, CheckpointManager
 from novelai.sources.base import SourceAdapter
 from novelai.translation.pipeline.context import TranslationChunk
 from novelai.translation.pipeline.stages.segment import SmartSegmentStage
@@ -50,6 +52,62 @@ def _get_translation_lock(novel_id: str, chapter_id: str) -> asyncio.Lock:
     if key not in _translation_locks:
         _translation_locks[key] = asyncio.Lock()
     return _translation_locks[key]
+
+
+def _update_db_translation_state(
+    novel_id: str,
+    chapter_id: str,
+    state: TranslationState,
+    error: str | None = None,
+) -> None:
+    """Update ``translation_state`` and ``translation_error`` on Chapter row.
+
+    REQ-1.4: State must be updated before/after each pipeline stage.
+    """
+    try:
+        with session_scope() as session:
+            novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+            if novel is None:
+                return
+            chapter_num = int(chapter_id) if chapter_id.isdigit() else -1
+            row = (
+                session.query(Chapter)
+                .filter(
+                    Chapter.novel_id == novel.id,
+                    Chapter.chapter_number == chapter_num,
+                )
+                .one_or_none()
+            )
+            if row is not None:
+                row.translation_state = state.value  # type: ignore[assignment]
+                if error is not None:
+                    row.translation_error = error[:1024] if len(error) > 1024 else error
+                session.commit()
+    except Exception:
+        logger.warning("Failed to update DB translation state %s/%s", novel_id, chapter_id, exc_info=True)
+
+
+def _load_db_translation_state(novel_id: str, chapter_id: str) -> str:
+    """Read ``translation_state`` from the Chapter row (REQ-3.1)."""
+    try:
+        with session_scope() as session:
+            novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+            if novel is None:
+                return TranslationState.PENDING.value
+            chapter_num = int(chapter_id) if chapter_id.isdigit() else -1
+            row = (
+                session.query(Chapter.translation_state)
+                .filter(
+                    Chapter.novel_id == novel.id,
+                    Chapter.chapter_number == chapter_num,
+                )
+                .one_or_none()
+            )
+            if row is not None:
+                return row[0] or TranslationState.PENDING.value
+    except Exception:
+        logger.warning("Failed to load DB translation state %s/%s", novel_id, chapter_id, exc_info=True)
+    return TranslationState.PENDING.value
 
 
 def _pipeline_context_from_exception(exc: BaseException) -> Any | None:
@@ -1980,12 +2038,32 @@ async def translate_chapters(
         details = "; ".join(f"{issue.code}: {issue.reason}" for issue in preflight_issues)
         raise RuntimeError(f"Translation preflight failed: {details}")
 
+    # Initialize CheckpointManager for segment-level resume (REQ-2)
+    cp_mgr = CheckpointManager(self.storage._get_checkpoints_dir(novel_id))
+
+    # Force mode: reset all chapters to PENDING (REQ-3.4, Task 5.2)
+    if force:
+        for cn in selected_numbers:
+            _update_db_translation_state(novel_id, str(cn), TranslationState.PENDING)
+            cp_mgr.delete(str(cn))
+        logger.info("Force mode: reset %d chapters to PENDING", len(selected_numbers))
+
     for chapter_num in selected_numbers:
         chapter = chapter_map.get(chapter_num)
         if not chapter:
             continue
 
         chapter_id = str(chapter_num)
+
+        # Resume logic (REQ-3.1): skip COMPLETE, reset FAILED — bypassed when force=True (REQ-3.4)
+        if not force:
+            db_state = _load_db_translation_state(novel_id, chapter_id)
+            if db_state == TranslationState.COMPLETE.value:
+                logger.info("Skipping already-complete chapter %s/%s", novel_id, chapter_id)
+                continue
+            if db_state == TranslationState.FAILED.value:
+                logger.info("Resetting FAILED chapter %s/%s to PENDING for retry", novel_id, chapter_id)
+                _update_db_translation_state(novel_id, chapter_id, TranslationState.PENDING)
 
         existing = self.storage.load_translated_chapter(novel_id, chapter_id)
         if existing and not force and not settings.TRANSLATION_DELTA_RETRANSLATION_ENABLED:
@@ -1998,6 +2076,8 @@ async def translate_chapters(
                 f"Translation is already in progress for {novel_id}/{chapter_id}"
             )
         await lock.acquire()
+
+        _update_db_translation_state(novel_id, chapter_id, TranslationState.FETCHING)
 
         prev_state: dict[str, Any] | None = None
         try:
@@ -2097,10 +2177,27 @@ async def translate_chapters(
                         _make_state_data(ChapterState.TRANSLATED, previous=prev_state),
                     )
                     self.storage.create_checkpoint(novel_id, chapter_id, "translated")
+                    _update_db_translation_state(novel_id, chapter_id, TranslationState.COMPLETE)
+                    cp_mgr.save(Checkpoint(
+                        chapter_id=chapter_id,
+                        state=TranslationState.COMPLETE,
+                        completed_stages=["delta_translate"],
+                        segments_completed=1,
+                        segments_total=1,
+                    ))
+                    cp_mgr.delete(chapter_id)
                     continue
                 delta_fallback_reason = str(delta_result.get("fallback_reason") or "unsafe_delta")
             elif force:
                 delta_fallback_reason = "force_full_translation"
+
+            # Update DB state + write checkpoint before full pipeline (REQ-1.4, REQ-2.3)
+            _update_db_translation_state(novel_id, chapter_id, TranslationState.TRANSLATING)
+            cp_mgr.save(Checkpoint(
+                chapter_id=chapter_id,
+                state=TranslationState.TRANSLATING,
+                current_stage="translate",
+            ))
 
             result = await self.translation.translate_chapter(
                 source_adapter=source,
@@ -2171,6 +2268,17 @@ async def translate_chapters(
                 self.storage.upsert_chunk_state(chunk_state)
             _persist_chunk_qa_results_to_outputs(self.storage, novel_id, result.chunk_states)
             self.storage.create_checkpoint(novel_id, chapter_id, "translated")
+            # Mark COMPLETE in DB + write CheckpointManager checkpoint (REQ-2.3, REQ-3.1)
+            _update_db_translation_state(novel_id, chapter_id, TranslationState.COMPLETE)
+            n_segments = len(result.chunk_states)
+            cp_mgr.save(Checkpoint(
+                chapter_id=chapter_id,
+                state=TranslationState.COMPLETE,
+                completed_stages=["fetch", "parse", "segment", "translate", "qa", "post_process"],
+                segments_completed=n_segments,
+                segments_total=n_segments,
+            ))
+            cp_mgr.delete(chapter_id)
         except Exception as exc:
             logger.error("Failed to translate chapter %s/%s: %s", novel_id, chapter_id, exc)
             provider_code = getattr(getattr(exc, "provider_error_code", None), "value", None)
@@ -2234,6 +2342,12 @@ async def translate_chapters(
                     }
                 )
             self.storage.create_checkpoint(novel_id, chapter_id, "failed")
+            _update_db_translation_state(novel_id, chapter_id, TranslationState.FAILED, error=str(exc))
+            cp_mgr.save(Checkpoint(
+                chapter_id=chapter_id,
+                state=TranslationState.FAILED,
+                error=str(exc)[:1024],
+            ))
             raise
         finally:
             lock.release()
