@@ -20,7 +20,6 @@ from novelai.services.glossary_apply_preview import (
     GlossaryApplyPreviewRequest,
     GlossaryApplyPreviewResult,
     GlossaryApplyPreviewService,
-    GlossaryChapterPreview,
     GlossaryReplacementPreview,
 )
 from novelai.utils import atomic_write
@@ -220,7 +219,7 @@ class GlossaryApplyService:
     def list_events(self, novel_id: int) -> list[GlossaryApplyEventSummary]:
         storage_novel_id = self.preview_service._storage_key_for_novel(novel_id)
         events: list[GlossaryApplyEventSummary] = []
-        for path in sorted(getattr(self.storage, "_glob")(self._event_dir(storage_novel_id), "*.json")):
+        for path in sorted(getattr(self.storage, "_glob")(self._event_dir(storage_novel_id), "*.json")):  # noqa: B009
             event = self._read_event_path(path)
             if not event or event.get("platform_novel_id") != novel_id:
                 continue
@@ -375,9 +374,9 @@ class GlossaryApplyService:
         return text if isinstance(text, str) else None
 
     def _event_dir(self, storage_novel_id: str) -> Path:
-        novel_dir = getattr(self.storage, "_novel_dir")(storage_novel_id)
+        novel_dir = getattr(self.storage, "_novel_dir")(storage_novel_id)  # noqa: B009
         path = novel_dir / "glossary_apply_events"
-        getattr(self.storage, "_mkdirs")(path)
+        getattr(self.storage, "_mkdirs")(path)  # noqa: B009
         return path
 
     def _event_path(self, storage_novel_id: str, apply_event_id: str) -> Path:
@@ -392,7 +391,7 @@ class GlossaryApplyService:
 
     def _read_event_path(self, path: Path) -> dict[str, Any] | None:
         try:
-            payload = json.loads(getattr(self.storage, "_read_text")(path))
+            payload = json.loads(getattr(self.storage, "_read_text")(path))  # noqa: B009
         except (OSError, json.JSONDecodeError):
             return None
         return payload if isinstance(payload, dict) else None
@@ -437,7 +436,7 @@ def _event_summary(event: dict[str, Any]) -> GlossaryApplyEventSummary:
         status=str(event.get("status") or "failed"),
         created_at=str(event.get("created_at") or ""),
         created_by=event.get("created_by") if isinstance(event.get("created_by"), int) else None,
-        chapter_count=len(event.get("chapters") if isinstance(event.get("chapters"), list) else []),
+        chapter_count=len(event.get("chapters") or []),
         replacement_count=int(event.get("replacement_count") or 0),
         rollback_status=str(event.get("rollback_status") or "unknown"),
         rolled_back_at=event.get("rolled_back_at") if isinstance(event.get("rolled_back_at"), str) else None,

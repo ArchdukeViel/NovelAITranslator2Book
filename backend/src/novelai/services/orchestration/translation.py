@@ -435,18 +435,25 @@ def _preflight_translation(
                 _novel_is_pending = _novel.glossary_status == "glossary_pending"
         if _novel_is_pending:
             pending_count = _count_pending_glossary_entries(novel_id)
-            review_path = f"/admin/novels/{novel_id}/glossary"
-            issues.append(
-                PreflightIssue(
-                    code="glossary_gate_pending",
-                    reason="Glossary review required before translation.",
-                    details={
-                        "glossary_status": "glossary_pending",
-                        "glossary_pending_count": pending_count,
-                        "glossary_review_url": review_path,
-                    },
+            if pending_count == 0:
+                logger.info(
+                    "Novel %r glossary_status=%r but no pending entries; skipping gate.",
+                    novel_id,
+                    "glossary_pending",
                 )
-            )
+            else:
+                review_path = f"/admin/novels/{novel_id}/glossary"
+                issues.append(
+                    PreflightIssue(
+                        code="glossary_gate_pending",
+                        reason="Glossary review required before translation.",
+                        details={
+                            "glossary_status": "glossary_pending",
+                            "glossary_pending_count": pending_count,
+                            "glossary_review_url": review_path,
+                        },
+                    )
+                )
     else:
         logger.info(
             "Glossary gate bypassed via skip_glossary_gate override for novel %r.",
