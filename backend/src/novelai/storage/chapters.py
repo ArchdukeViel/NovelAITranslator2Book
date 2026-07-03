@@ -302,7 +302,13 @@ def get_chapter_progress(self: Any, novel_id: str) -> dict[str, int]:
 def query_chapters(self: Any, novel_id: str) -> ChapterQueryBuilder:
     """Create a query builder for chapters."""
     state_dir = self._get_state_dir(novel_id)
-    return ChapterQueryBuilder(state_dir)
+    # Inject backend-aware callables to avoid direct Path I/O
+    return ChapterQueryBuilder(
+        state_dir,
+        path_exists=lambda: self._path_exists(state_dir),
+        list_files=lambda: self._glob(state_dir, "*.json"),
+        read_file=lambda p: self._read_text(p),
+    )
 
 
 def get_chapters_with_errors(self: Any, novel_id: str, limit: int = 100) -> list[str]:

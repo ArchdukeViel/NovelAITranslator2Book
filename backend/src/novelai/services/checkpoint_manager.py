@@ -197,8 +197,8 @@ class CheckpointManager:
         for cp in to_delete:
             try:
                 checkpoint_file = self.storage._get_checkpoints_dir(novel_id) / cp["filename"]
-                if checkpoint_file.exists():
-                    checkpoint_file.unlink()
+                if self.storage._path_exists(checkpoint_file):
+                    self.storage._unlink_path(checkpoint_file)
                     deleted_count += 1
                     logger.debug(f"Deleted checkpoint: {cp['filename']}")
             except Exception as e:

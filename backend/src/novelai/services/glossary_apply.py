@@ -220,7 +220,7 @@ class GlossaryApplyService:
     def list_events(self, novel_id: int) -> list[GlossaryApplyEventSummary]:
         storage_novel_id = self.preview_service._storage_key_for_novel(novel_id)
         events: list[GlossaryApplyEventSummary] = []
-        for path in sorted(self._event_dir(storage_novel_id).glob("*.json")):
+        for path in sorted(getattr(self.storage, "_glob")(self._event_dir(storage_novel_id), "*.json")):
             event = self._read_event_path(path)
             if not event or event.get("platform_novel_id") != novel_id:
                 continue
@@ -377,7 +377,7 @@ class GlossaryApplyService:
     def _event_dir(self, storage_novel_id: str) -> Path:
         novel_dir = getattr(self.storage, "_novel_dir")(storage_novel_id)
         path = novel_dir / "glossary_apply_events"
-        path.mkdir(parents=True, exist_ok=True)
+        getattr(self.storage, "_mkdirs")(path)
         return path
 
     def _event_path(self, storage_novel_id: str, apply_event_id: str) -> Path:
@@ -392,7 +392,7 @@ class GlossaryApplyService:
 
     def _read_event_path(self, path: Path) -> dict[str, Any] | None:
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload = json.loads(getattr(self.storage, "_read_text")(path))
         except (OSError, json.JSONDecodeError):
             return None
         return payload if isinstance(payload, dict) else None

@@ -83,7 +83,7 @@ def load_chapter_export_images(self: Any, novel_id: str, chapter_id: str) -> lis
             continue
         entry = dict(image)
         asset_path = self.resolve_asset_path(novel_id, entry.get("local_path"))
-        entry["asset_path"] = str(asset_path) if asset_path is not None and asset_path.exists() else None
+        entry["asset_path"] = str(asset_path) if asset_path is not None and self._path_exists(asset_path) else None
         export_images.append(entry)
 
     return self._normalize_image_manifest(export_images)

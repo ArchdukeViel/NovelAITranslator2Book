@@ -376,10 +376,10 @@ def list_translated_chapters(self: Any, novel_id: str) -> list[str]:
     """Return sorted chapter IDs that have translated content on disk."""
     stems: set[str] = set()
     chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
-    if chapter_dir.exists():
-        for chapter_path in chapter_dir.glob("*.json"):
+    if self._path_exists(chapter_dir):
+        for chapter_path in self._glob(chapter_dir, "*.json"):
             try:
-                payload = json.loads(chapter_path.read_text(encoding="utf-8"))
+                payload = json.loads(self._read_text(chapter_path))
             except (json.JSONDecodeError, OSError):
                 logger.debug("Skipping unreadable chapter file %s.", chapter_path)
                 continue
@@ -387,10 +387,8 @@ def list_translated_chapters(self: Any, novel_id: str) -> list[str]:
                 stems.add(chapter_path.stem)
 
     legacy_translated_dir = self._novel_dir(novel_id) / "translated"
-    if legacy_translated_dir.exists():
-        for path in legacy_translated_dir.iterdir():
-            if not path.is_file():
-                continue
+    if self._path_exists(legacy_translated_dir):
+        for path in self._list_dir(legacy_translated_dir):
             if path.suffix.lower() in {".json", ".txt"}:
                 stems.add(path.stem)
     return sorted(stems)

@@ -368,7 +368,7 @@ owner  - authenticated single owner; dangerous operations
 | Production session secret fail-closed | Implemented. |
 | Structured error handling + logging system | Implemented. StructuredHTTPException, PipelineContext, JsonFormatter, /health/errors endpoint, trace_id propagation. |
 | Glossary auto-population | Implemented. SuggestionExtractor, GlossarySuggestionService, review/reject/apply API, pipeline integration. |
-| Microservice-split readiness | Implemented. main_reader/main_admin entry points, DEPLOY_MODE dispatch (monolith/split), novelai_core facade package, Docker Compose + Caddy split routing, 14 contract tests. |
+| Microservice-split readiness | Implemented. main_reader/main_admin entry points, DEPLOY_MODE dispatch (monolith/split), novelai_shared facade package, Docker Compose + Caddy split routing, 14 contract tests. |
 | Advanced translation caching | Implemented. TranslationCacheService (SHA-256 keys, sharded file storage, TTL), pipeline integration, glossary invalidation, /api/admin/cache/* endpoints. |
 | Adapter plugin system | Implemented. SourceAdapter ABC, AdapterRegistry (pkgutil auto-discovery, get_by_key, list_adapters), all adapters refactored, bootstrap registration. |
 | Public contribution credential backend lifecycle | Deferred. |
