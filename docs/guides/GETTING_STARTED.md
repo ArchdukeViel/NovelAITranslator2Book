@@ -99,9 +99,6 @@ Useful local values:
 NOVEL_LIBRARY_DIR=storage/novel_library
 PROVIDER_DEFAULT=gemini
 PROVIDER_GEMINI_API_KEY=your_gemini_key_here
-NVIDIA_API_KEY=your_nvidia_key_here
-NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
-NVIDIA_DEFAULT_MODEL=google/gemma-4-31b-it
 TRANSLATION_TARGET_LANGUAGE=English
 LOG_LEVEL=INFO
 WEB_RATE_LIMITER_BACKEND=memory

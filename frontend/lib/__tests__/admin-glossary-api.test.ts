@@ -172,7 +172,7 @@ describe("admin glossary API client", () => {
       max_candidates: 3,
       max_chapters: 2,
       max_chars: 3000,
-      provider: "nvidia",
+      provider: "other",
       provider_model: "model two",
     });
 
@@ -189,7 +189,7 @@ describe("admin glossary API client", () => {
       max_candidates: 3,
       max_chapters: 2,
       max_chars: 3000,
-      provider: "nvidia",
+      provider: "other",
       provider_model: "model two",
     });
     expect(String(fetchMock.mock.calls[1][0])).not.toContain("/import/");
