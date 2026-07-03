@@ -255,8 +255,8 @@ backend/src/novelai/
 **Public** (`/*`):
 - `/home` — homepage with latest novels, updates
 - `/browse-novels` — catalog browse with genre/tag filters
-- `/novel/[slug]` — novel detail
-- `/novel/[slug]/chapter/[chapterId]` — chapter reader
+- `/novels/[slug]` — novel detail
+- `/novels/[slug]/chapter/[chapterId]` — chapter reader
 - `/ranking` — ranking page
 - `/request-novel` — novel request form
 - `/contribute` — contribution page

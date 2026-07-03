@@ -31,9 +31,8 @@ storage/
     |       |-- chunk_attempts.json
     |       |-- bundles.json
     |       `-- outputs.json
-    |-- novels/
-    |   `-- index.json
-    `-- novel/
+    `-- novels/
+        |-- index.json
         `-- <storage_slug>/
             |-- metadata.json
             |-- metadata_backups/
@@ -52,10 +51,9 @@ storage/
             `-- full_novel.md
 ```
 
-New novel saves use the title-slug layout under
-`storage/novel_library/novel/{storage_slug}`. Legacy data may still exist under
-`storage/novel_library/novels/{source_id}` and remains readable through the
-storage index for backward compatibility.
+Title-slug novel content resides under `storage/novel_library/novels/{storage_slug}`.
+Single-part legacy folders (e.g. `n2056dn`) live alongside them in the same
+`novels/` directory, resolved through the storage index.
 
 `storage/novel_library` is private runtime data. It should not be committed,
 served as static frontend files, or pasted into public issue reports. Local
@@ -208,7 +206,7 @@ Maps logical novel IDs/source IDs to actual storage folder names.
 The `folder_name` value may be either:
 
 - a legacy source-ID folder such as `n2056dn`
-- a title-slug folder such as `novel/the-silent-architect-of-dreams`
+- a title-slug folder such as `the-silent-architect-of-dreams`
 
 Do not manually edit this file unless you are deliberately repairing storage.
 If a folder is moved without updating the index, DB rows and public/admin API
@@ -219,7 +217,7 @@ Example:
 ```json
 {
   "n4423lw": {
-    "folder_name": "novel/translated-title",
+    "folder_name": "translated-title",
     "updated_at": "2026-06-02T10:00:00Z"
   }
 }
@@ -227,7 +225,7 @@ Example:
 
 ## Novel Metadata
 
-### `novel/<storage_slug>/metadata.json`
+### `novels/<storage_slug>/metadata.json`
 
 Legacy path: `novels/<source_id>/metadata.json`
 
@@ -286,7 +284,7 @@ Example:
       "url": "https://ncode.syosetu.com/n4423lw/1/"
     }
   ],
-  "folder_name": "novel/translated-title",
+  "folder_name": "translated-title",
   "storage_slug": "translated-title",
   "scraped_at": "2026-06-02T10:00:00Z",
   "updated_at": "2026-06-02T10:00:00Z"
@@ -295,7 +293,7 @@ Example:
 
 ## Chapter Bundles
 
-### `novel/<storage_slug>/chapters/<chapter_id>.json`
+### `novels/<storage_slug>/chapters/<chapter_id>.json`
 
 Legacy path: `novels/<source_id>/chapters/<chapter_id>.json`
 
@@ -416,7 +414,7 @@ Example edit history:
 
 ## Glossary
 
-### `novel/<storage_slug>/glossary.json`
+### `novels/<storage_slug>/glossary.json`
 
 Legacy path: `novels/<source_id>/glossary.json`
 
@@ -440,7 +438,7 @@ Example:
 Images are stored under:
 
 ```text
-novel/<storage_slug>/assets/images/<chapter_id>/
+novels/<storage_slug>/assets/images/<chapter_id>/
 ```
 
 Example:
@@ -481,7 +479,7 @@ Valid re-embedding statuses:
 
 ## Chapter State
 
-### `novel/<storage_slug>/state/<chapter_id>.json`
+### `novels/<storage_slug>/state/<chapter_id>.json`
 
 Legacy path: `novels/<source_id>/state/<chapter_id>.json`
 
@@ -515,7 +513,7 @@ Example:
 
 ## Checkpoints
 
-### `novel/<storage_slug>/checkpoints/<chapter_id>__<name>.json`
+### `novels/<storage_slug>/checkpoints/<chapter_id>__<name>.json`
 
 Legacy path: `novels/<source_id>/checkpoints/<chapter_id>__<name>.json`
 
@@ -659,7 +657,7 @@ Retention policy: runtime/job state; deleting it may remove pause/resume hints b
 
 ## Translation Runtime Records
 
-Canonical chapter storage remains `novel/<storage_slug>/chapters/<chapter_id>.json`
+Canonical chapter storage remains `novels/<storage_slug>/chapters/<chapter_id>.json`
 for new saves, with legacy reads from
 `novels/<source_id>/chapters/<chapter_id>.json`. The following runtime files are
 pipeline/cache/retry artifacts and must not be treated as final chapter output.
@@ -915,7 +913,7 @@ active scrape/translation process before deleting or replacing runtime files.
 
 | Path | Purpose | Producer/consumer | Sensitive/copyright risk | Safe to delete? | Consequence |
 |---|---|---|---|---|---|
-| `novel/` | Canonical title-slug novel metadata and chapter bundles | StorageService, catalog projection, reader/admin APIs | High: raw and translated chapter content | No, unless resetting DB/storage together from backup | Public/admin novel rows may point at missing content |
+| `novels/<slug>/` | Title-slug novel metadata and chapter bundles | StorageService, catalog projection, reader/admin APIs | High: raw and translated chapter content | No, unless resetting DB/storage together from backup | Public/admin novel rows may point at missing content |
 | `novels/` | Legacy source-ID folders plus `index.json` resolver | StorageService compatibility reads/writes | High: raw and translated chapter content | No, unless resetting DB/storage together from backup | Legacy novels and folder resolution can break |
 | `novels/index.json` | Maps logical novel IDs/source IDs to folder names | StorageService | Medium: IDs/source linkage | Only during careful storage repair | Wrong edits can orphan folders or route lookups |
 | `metadata_backups/` | Bounded backup copies of old `metadata.json` | StorageService metadata save | Medium: source URLs, synopsis, titles | Usually yes after backup, but keep recent copies during active work | Loses metadata history/diff inspection |
@@ -945,7 +943,7 @@ storage contains chapter bodies and metadata JSON. Resetting only one side can
 leave DB rows pointing at missing storage, or storage folders that are invisible
 to admin/public listings until reconciliation runs.
 
-Do not manually move `novel/{storage_slug}` or legacy `novels/{source_id}`
+Do not manually move `novels/<slug>` or legacy `novels/{source_id}`
 folders without also preserving or repairing `novels/index.json`.
 
 ## Public URL And Slug Notes
@@ -971,9 +969,9 @@ Public user-contributed credential storage is not implemented in the current fil
 Default exports are written to the novel directory:
 
 ```text
-novel/<storage_slug>/full_novel.epub
-novel/<storage_slug>/full_novel.html
-novel/<storage_slug>/full_novel.md
+novels/<storage_slug>/full_novel.epub
+novels/<storage_slug>/full_novel.html
+novels/<storage_slug>/full_novel.md
 ```
 
 A custom output directory can be used by backend export commands when supplied.
@@ -985,7 +983,7 @@ Typical web workflow:
 
 1. Crawl metadata.
    - Creates or updates `novels/index.json`.
-   - Creates or updates `novel/<storage_slug>/metadata.json`.
+   - Creates or updates `novels/<storage_slug>/metadata.json`.
    - Existing legacy novels may continue reading from `novels/<source_id>/metadata.json`.
 2. Crawl chapters.
    - Creates `chapters/<chapter_id>.json`.
@@ -1041,7 +1039,7 @@ Recommended future upgrades:
 - Storage diagnostic command that checks DB rows, index mappings, folder
   existence, metadata validity, translated counts, and public slug resolution.
 - Optional legacy migration CLI to move `novels/{source_id}` folders into
-  `novel/{storage_slug}` with backups and index repair.
+  `novels/{storage_slug}` with backups and index repair.
 - Object storage (S3/R2/B2) for images, covers, and exports at production scale.
 - CDN in front of reader assets.
 - Redis-backed rate limiting (current rate limiter is in-memory).

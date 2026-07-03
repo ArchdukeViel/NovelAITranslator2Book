@@ -546,8 +546,7 @@ Older or prototype route names may exist temporarily:
 /rankings
 /library
 /bookmarks
-/novel/:slug
-/novel/:slug/chapter/:chapterNum
+(legacy; consolidated to /novels/[slug])
 ```
 
 These are implementation drift relative to the approved future contract.
@@ -1106,7 +1105,7 @@ Real key handling belongs to backend architecture, not pretty frontend enthusias
 
 Known current drift/design debt to audit before implementation:
 
-1. Legacy singular `/novel/:slug` may still exist as a compatibility alias; approved route is `/novels/[slug]`.
+1. Legacy `/novel/` routes have been consolidated to `/novels/`.
 2. Legacy browse routes such as `/browse` or `/novel-list` should not receive new design work; approved route is `/browse-novels`.
 3. Legacy ranking route `/rankings` should not receive new design work; approved route is `/ranking`.
 4. Legacy `/library` should not receive new design work; approved route is `/account/library`.
