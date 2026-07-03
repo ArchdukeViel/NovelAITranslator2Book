@@ -134,6 +134,44 @@ http://127.0.0.1:8000/api/health
 6. Review and edit chapter versions in `/admin/editor`.
 7. Read public chapters under `/novel/[slug]`.
 
+## Quick Start with Docker
+
+The fastest way to run the full stack (PostgreSQL, Redis, backend, frontend, Caddy):
+
+```powershell
+# 1. Create env file from example
+Copy-Item deploy\.env.example deploy\.env
+
+# 2. Edit deploy\.env — set at minimum:
+#    SESSION_SECRET_KEY, OWNER_BOOTSTRAP_SECRET, PUBLIC_FRONTEND_URL
+notepad deploy\.env
+
+# 3. Build and start all services
+docker compose -f deploy\compose.yml up --build -d
+
+# 4. Run database migrations
+docker compose -f deploy\compose.yml run --rm migrate
+
+# 5. Open the app and log in
+start http://localhost/admin
+```
+
+Compose reads `deploy/.env` automatically. The `migrate` service runs Alembic then exits.
+
+**First login**: use the value of `OWNER_BOOTSTRAP_SECRET` from `deploy/.env` as the secret on the login page. This creates an owner session without needing a registration.
+
+To stop:
+
+```powershell
+docker compose -f deploy\compose.yml down
+```
+
+To rebuild after changes:
+
+```powershell
+docker compose -f deploy\compose.yml up --build -d
+```
+
 ## Production-Style Run
 
 The production layout is in `deploy/`.

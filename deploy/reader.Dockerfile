@@ -11,8 +11,8 @@ COPY pyproject.toml readme.md ./
 COPY backend ./backend
 COPY backend/src/novelai_core ./backend/src/novelai_core
 
-RUN python -m pip install --no-cache-dir -e ./backend/src/novelai_core
 RUN python -m pip install --no-cache-dir ".[documents,openai,gemini,db,worker,auth]"
+RUN python -m pip install --no-cache-dir -e ./backend/src/novelai_core
 
 ENV WEB_HOST=0.0.0.0
 ENV WEB_PORT=8001
