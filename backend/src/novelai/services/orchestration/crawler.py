@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # This prevents concurrent scrapes of the same novel from corrupting storage.
 _crawl_locks: dict[str, asyncio.Lock] = {}
 _METADATA_TRANSLATION_UNAVAILABLE_MESSAGE = (
-    "Metadata translation skipped because no active Gemini provider is configured."
+    "Metadata translation skipped because no active Gemini/NVIDIA provider is configured."
 )
 _METADATA_TRANSLATION_ERROR_MAX_CHARS = 500
 
