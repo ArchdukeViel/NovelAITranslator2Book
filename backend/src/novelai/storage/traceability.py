@@ -4,20 +4,19 @@ import json
 from typing import Any
 
 from novelai.storage.common import _utc_now_iso
-from novelai.utils import atomic_write
 
 
 def _trace_dir(self: Any):
     path = self.base_dir / "runtime" / "traceability"
-    path.mkdir(parents=True, exist_ok=True)
+    self._mkdirs(path)
     return path
 
 
-def _read_json_file(path, default: Any) -> Any:
-    if not path.exists():
+def _read_json_file(self: Any, path, default: Any) -> Any:
+    if not self._path_exists(path):
         return default
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(self._read_text(path))
     except (json.JSONDecodeError, OSError):
         return default
     return data
@@ -71,11 +70,11 @@ def append_pipeline_event(self: Any, event: dict[str, Any] | Any) -> dict[str, A
     payload = _as_dict(event)
     payload["timestamp"] = str(payload.get("timestamp") or _utc_now_iso())
     path = self._trace_dir() / "pipeline_events.json"
-    events = _read_json_file(path, [])
+    events = self._read_json_file(path, [])
     if not isinstance(events, list):
         events = []
     events.append(payload)
-    atomic_write(path, json.dumps(events, ensure_ascii=False, indent=2))
+    self._write_text(path, json.dumps(events, ensure_ascii=False, indent=2))
     return dict(payload)
 
 
@@ -96,7 +95,7 @@ def list_pipeline_events(
     chapter_id: str | None = None,
 ) -> list[dict[str, Any]]:
     path = self._trace_dir() / "pipeline_events.json"
-    events = _read_json_file(path, [])
+    events = self._read_json_file(path, [])
     if not isinstance(events, list):
         return []
     filtered = [dict(event) for event in events if isinstance(event, dict)]
@@ -124,7 +123,7 @@ def upsert_chunk_state(self: Any, state: dict[str, Any] | Any) -> dict[str, Any]
     payload["created_at"] = str(payload.get("created_at") or now)
     payload["updated_at"] = now
     path = self._trace_dir() / "chunk_states.json"
-    states = _read_json_file(path, {})
+    states = self._read_json_file(path, {})
     if not isinstance(states, dict):
         states = {}
     run_scope = _run_scope(payload)
@@ -135,7 +134,7 @@ def upsert_chunk_state(self: Any, state: dict[str, Any] | Any) -> dict[str, Any]
     existing = states.get(key)
     merged = {**existing, **payload} if isinstance(existing, dict) else payload
     states[key] = merged
-    atomic_write(path, json.dumps(states, ensure_ascii=False, indent=2))
+    self._write_text(path, json.dumps(states, ensure_ascii=False, indent=2))
     return dict(merged)
 
 
@@ -148,7 +147,7 @@ def load_chunk_states(
     translation_run_id: str | None = None,
 ) -> list[dict[str, Any]]:
     path = self._trace_dir() / "chunk_states.json"
-    states = _read_json_file(path, {})
+    states = self._read_json_file(path, {})
     if not isinstance(states, dict):
         return []
     items = [dict(value) for value in states.values() if isinstance(value, dict)]
@@ -178,17 +177,17 @@ def save_scheduler_state(self: Any, job_id: str, model_states: list[dict[str, An
         "model_states": [_as_dict(state) for state in model_states],
     }
     path = self._trace_dir() / "scheduler_states.json"
-    states = _read_json_file(path, {})
+    states = self._read_json_file(path, {})
     if not isinstance(states, dict):
         states = {}
     states[normalized_job_id] = payload
-    atomic_write(path, json.dumps(states, ensure_ascii=False, indent=2))
+    self._write_text(path, json.dumps(states, ensure_ascii=False, indent=2))
     return dict(payload)
 
 
 def load_scheduler_state(self: Any, job_id: str) -> dict[str, Any] | None:
     path = self._trace_dir() / "scheduler_states.json"
-    states = _read_json_file(path, {})
+    states = self._read_json_file(path, {})
     if not isinstance(states, dict):
         return None
     payload = states.get(job_id)

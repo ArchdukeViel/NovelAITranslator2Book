@@ -53,14 +53,18 @@ from novelai.storage.media import (
     save_chapter_media_state,
 )
 from novelai.storage.novels import (
+    _backup_metadata_file,
     _compute_folder_name,
     _ensure_novel_dir,
+    _folder_has_novel_data,
     _folder_in_use_by_other_novel,
     _folder_path,
     _get_folder_name,
     _index_path,
     _legacy_folder_candidates,
     _load_index,
+    _metadata_backup_dir,
+    _metadata_history_entry,
     _normalize_library_novel_id,
     _novel_dir,
     _persist_index,
@@ -89,6 +93,7 @@ from novelai.storage.translations import (
 )
 from novelai.storage.traceability import (
     _trace_dir,
+    _read_json_file,
     append_pipeline_event,
     append_pipeline_events,
     list_pipeline_events,
@@ -213,15 +218,67 @@ class StorageService:
 
 
     def __init__(self, base_dir: Path | None = None, backend: Any | None = None) -> None:
-        from novelai.storage.backends import get_storage_backend
+        if backend is not None:
+            self._backend = backend
+        elif base_dir is not None:
+            from novelai.storage.backends.filesystem import FilesystemBackend
+            self._backend = FilesystemBackend(base_dir.resolve())
+        else:
+            from novelai.storage.backends import get_storage_backend
+            self._backend = get_storage_backend()
 
-        self._backend = backend or get_storage_backend()
         self.base_dir = (base_dir or settings.DATA_DIR).resolve()
         self._backend.mkdirs(self.base_dir)
 
         self.novels_dir = self.base_dir / "novels"
         self._backend.mkdirs(self.novels_dir)
 
+
+    # ── backend-abstracted I/O helpers ──────────────────────────────
+
+    def _rel(self, path: Path) -> str:
+        """Convert absolute Path to backend-relative key."""
+        return str(path.relative_to(self.base_dir))
+
+    def _read_text(self, path: Path) -> str:
+        """Read text content via storage backend."""
+        return self._backend.load(self._rel(path)).decode("utf-8")
+
+    def _write_text(self, path: Path, content: str) -> None:
+        """Write text content via storage backend."""
+        self._backend.save(self._rel(path), content.encode("utf-8"))
+
+    def _path_exists(self, path: Path) -> bool:
+        """Check existence via storage backend."""
+        return self._backend.exists(self._rel(path))
+
+    def _unlink_path(self, path: Path) -> None:
+        """Delete file via storage backend."""
+        self._backend.delete(self._rel(path))
+
+    def _mkdirs(self, path: Path) -> None:
+        """Create directory via storage backend."""
+        self._backend.mkdirs(self._rel(path))
+
+    def _list_dir(self, path: Path) -> list[Path]:
+        """List immediate children via storage backend."""
+        return sorted(self.base_dir / key for key in self._backend.list_keys(self._rel(path)))
+
+    def _glob(self, path: Path, pattern: str) -> list[Path]:
+        """List children matching glob pattern via storage backend."""
+        import fnmatch
+
+        return sorted(
+            self.base_dir / key
+            for key in self._backend.list_keys(self._rel(path))
+            if fnmatch.fnmatch(Path(key).name, pattern)
+        )
+
+    def _rmtree(self, path: Path) -> None:
+        """Remove directory tree via storage backend."""
+        prefix = self._rel(path)
+        for key in self._backend.list_keys(prefix):
+            self._backend.delete(key)
 
     @staticmethod
     def _normalize_image_manifest(images: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -370,6 +427,10 @@ class StorageService:
     list_metadata_history = list_metadata_history
     load_metadata_snapshot = load_metadata_snapshot
     list_novels = list_novels
+    _backup_metadata_file = _backup_metadata_file
+    _metadata_history_entry = _metadata_history_entry
+    _metadata_backup_dir = _metadata_backup_dir
+    _folder_has_novel_data = _folder_has_novel_data
     _chapter_dir = _chapter_dir
     _chapter_path = _chapter_path
     _load_legacy_raw_chapter = _load_legacy_raw_chapter
@@ -423,6 +484,7 @@ class StorageService:
     save_glossary = save_glossary
     load_glossary = load_glossary
     _trace_dir = _trace_dir
+    _read_json_file = _read_json_file
     append_pipeline_event = append_pipeline_event
     append_pipeline_events = append_pipeline_events
     list_pipeline_events = list_pipeline_events
