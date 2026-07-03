@@ -386,6 +386,7 @@ class TranslateStage(PipelineStage):
                 admin_policy_intentionally_empty = True
         if not isinstance(raw_policy, list):
             raw_policy = settings.TRANSLATION_MODEL_POLICY
+            admin_policy_intentionally_empty = False
         allow_cross_provider_fallback = context.metadata.get("allow_cross_provider_fallback", True) is not False
         filtered_count = 0
         if not allow_cross_provider_fallback:
