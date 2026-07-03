@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from novelai.storage.backends.base import StorageBackend
+
+logger = logging.getLogger(__name__)
 
 
 class S3Backend(StorageBackend):
@@ -41,34 +44,41 @@ class S3Backend(StorageBackend):
     # ── interface ────────────────────────────────────────────────────
 
     def save(self, path: str | Path, data: bytes) -> None:
-        self._client.put_object(Bucket=self._bucket, Key=self._key(path), Body=data)
+        key = self._key(path)
+        logger.debug("S3 save: bucket=%s key=%s size=%d", self._bucket, key, len(data))
+        self._client.put_object(Bucket=self._bucket, Key=key, Body=data)
 
     def load(self, path: str | Path) -> bytes:
-        resp = self._client.get_object(Bucket=self._bucket, Key=self._key(path))
+        key = self._key(path)
+        logger.debug("S3 load: bucket=%s key=%s", self._bucket, key)
+        resp = self._client.get_object(Bucket=self._bucket, Key=key)
         body = resp["Body"].read()
         resp["Body"].close()
         return body
 
     def delete(self, path: str | Path) -> None:
+        key = self._key(path)
+        logger.debug("S3 delete: bucket=%s key=%s", self._bucket, key)
         try:
-            self._client.delete_object(Bucket=self._bucket, Key=self._key(path))
+            self._client.delete_object(Bucket=self._bucket, Key=key)
         except self._client.exceptions.NoSuchKey:
             pass
         except Exception:
-            # boto3 has per-service exceptions; swallow broadly for idempotency
             pass
 
     def exists(self, path: str | Path) -> bool:
+        key = self._key(path)
         try:
-            self._client.head_object(Bucket=self._bucket, Key=self._key(path))
+            self._client.head_object(Bucket=self._bucket, Key=key)
             return True
         except Exception:
             return False
 
     def list_keys(self, prefix: str | Path) -> list[str]:
         key = self._key(prefix)
-        # delimiter listing: trailing slash groups subdirs; empty prefix lists root
+        # delimiter listing for subdir grouping; empty prefix lists root
         prefix_str = key if not key or key.endswith("/") else f"{key}/"
+        logger.debug("S3 list_keys: bucket=%s prefix=%s", self._bucket, prefix_str)
         resp = self._client.list_objects_v2(
             Bucket=self._bucket, Prefix=prefix_str, Delimiter="/"
         )

@@ -20,7 +20,7 @@
   - [x] 3.5 Implement `delete`, `exists`, `list_keys` (REQ-3.1)
   - [x] 3.6 Map keys to S3 object keys with prefix (REQ-3.3)
   - [x] 3.7 Configure via settings env vars (REQ-3.2)
-  - [ ] 3.8 Add DEBUG logging for S3 operations (REQ-3.5)
+  - [x] 3.8 Add DEBUG logging for S3 operations (REQ-3.5)
 
 - [x] 4. Implement factory and config validation
   - [x] 4.1 Implement `get_storage_backend()` factory in `__init__.py` (REQ-4.2)
@@ -39,7 +39,7 @@
   - [x] 6.3 Test `S3Backend` with moto (mock S3) — 10 tests
   - [x] 6.4 Test factory selects correct backend based on `STORAGE_BACKEND`
   - [x] 6.5 Test unknown choice raises clear error
-  - [ ] 6.6 Test existing tests pass with filesystem backend (REQ-5.3)
+  - [x] 6.6 Test existing tests pass with filesystem backend (REQ-5.3) — 28/28 storage backend tests pass, checkpoint resume tests pass, pre-existing failures unchanged
 
 - [x] 7. Verify, lint, and type-check
   - [x] 7.1 Run `pytest backend/tests/test_storage_backends.py -v` — 28/28 pass
