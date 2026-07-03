@@ -1039,7 +1039,7 @@ async def test_translate_chapters_injects_approved_db_glossary_through_real_pipe
             language="ja",
             status="ongoing",
             glossary_status="glossary_skipped",
-            glossary_revision=7,
+            glossary_revision=6,
         )
         session.add(novel)
         session.flush()
