@@ -6,13 +6,11 @@ import shutil
 import subprocess
 import sys
 import webbrowser
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin
 
 from novelai.config.settings import settings
-from novelai.api.server import main as web_main
-from novelai.runtime.bootstrap import bootstrap
-from novelai.runtime.container import container
 
 
 def _expected_launcher_path() -> Path:
@@ -83,6 +81,7 @@ def _doctor_check() -> tuple[int, list[str]]:
 
 
 async def _run_worker_once() -> None:
+    from novelai.runtime.container import container  # noqa: PLC0415
     runner = getattr(container, "activity_runner", None) or getattr(container, "job_runner")
     activity = await runner.run_once()
     if activity is None:
@@ -92,6 +91,7 @@ async def _run_worker_once() -> None:
 
 
 async def _run_worker_forever(poll_seconds: float | None) -> None:
+    from novelai.runtime.container import container  # noqa: PLC0415
     runner = getattr(container, "activity_runner", None) or getattr(container, "job_runner")
     if poll_seconds is not None:
         runner.poll_seconds = max(0.05, float(poll_seconds))
@@ -168,6 +168,12 @@ def main(argv: list[str] | None = None) -> None:
         help="Polling delay for continuous worker mode.",
     )
 
+    create_user_parser = subparsers.add_parser("create-user", help="Create a password-based user (owner or user role)")
+    create_user_parser.add_argument("email", help="User email address")
+    create_user_parser.add_argument("password", help="User password (will be Argon2id-hashed)")
+    create_user_parser.add_argument("--role", default="user", choices=["user", "owner"], help="Role to assign (default: user)")
+    create_user_parser.add_argument("--display-name", default=None, help="Optional display name")
+
     subparsers.add_parser("doctor", help="Check launcher wiring and environment health")
 
     args = parser.parse_args(argv)
@@ -193,9 +199,11 @@ def main(argv: list[str] | None = None) -> None:
         )
         return
 
+    from novelai.runtime.bootstrap import bootstrap  # noqa: PLC0415
     bootstrap()
 
     if command == "web":
+        from novelai.api.server import main as web_main  # noqa: PLC0415
         web_main(reload=bool(getattr(args, "reload", False)))
         return
 
@@ -207,6 +215,39 @@ def main(argv: list[str] | None = None) -> None:
                 asyncio.run(_run_worker_forever(args.poll_seconds))
         except KeyboardInterrupt:
             print("Worker stopped.")
+        return
+
+    if command == "create-user":
+        # Lazy imports — argon2 is an optional dependency
+        from novelai.api.auth.passwords import hash_password  # noqa: PLC0415
+        from novelai.db.engine import session_scope  # noqa: PLC0415
+        from novelai.db.models.users import User  # noqa: PLC0415
+
+        email = args.email.strip().lower()
+        if not email:
+            print("Error: email is required.", file=sys.stderr)
+            raise SystemExit(1)
+        if len(args.password) < 8:
+            print("Error: password must be at least 8 characters.", file=sys.stderr)
+            raise SystemExit(1)
+
+        pw_hash = hash_password(args.password)
+        user = User(
+            email=email,
+            display_name=args.display_name,
+            role=args.role,
+            password_hash=pw_hash,
+            email_verified_at=datetime.now(timezone.utc),
+            is_active=True,
+        )
+        try:
+            with session_scope() as session:
+                session.add(user)
+                session.flush()
+                print(f"Created {args.role} user: id={user.id} email={user.email}")
+        except Exception as exc:
+            print(f"Error: failed to create user — {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
         return
 
     if command == "doctor":

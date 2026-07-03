@@ -27,11 +27,11 @@
   - [x] 5.1 Create `.github/workflows/deploy.yml` with `workflow_dispatch` trigger (REQ-5.1)
   - [x] 5.2 Add SSH-based deploy step with Docker Compose (REQ-5.2)
 
-- [ ] 6. Configure repository secrets
-  - [ ] 6.1 Add `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` secrets if deploying
-  - [ ] 6.2 Verify GHCR token permissions
+- [-] 6. Configure repository secrets (BLOCKED — GitHub UI manual step)
+  - [-] 6.1 Add `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` secrets if deploying
+  - [-] 6.2 Verify GHCR token permissions
 
-- [ ] 7. Verify
-  - [ ] 7.1 Push a test PR and confirm CI runs all jobs
-  - [ ] 7.2 Merge to `main` and confirm Docker images are pushed to GHCR
-  - [ ] 7.3 Confirm full CI completes in under 5 minutes (REQ-4.4)
+- [-] 7. Verify (BLOCKED — requires real PR/merge on GitHub)
+  - [-] 7.1 Push a test PR and confirm CI runs all jobs
+  - [-] 7.2 Merge to `main` and confirm Docker images are pushed to GHCR
+  - [-] 7.3 Confirm full CI completes in under 5 minutes (REQ-4.4)
