@@ -238,7 +238,7 @@ class TestGetOrCreateNovel:
                 "chapters": [
                     {"id": "ch001", "num": 1, "title": "Raw 1", "translated_title": "Translated Title 1"},
                     {"id": "ch002", "num": 2, "title": "Raw 2"},
-                    {"id": "ch003", "num": 3, "title": "Raw 3", "translated_title": "Translated Title 3"},
+                    {"id": "ch003", "num": 3, "title": "Raw 3", "translated_title": "Translated Title 3", "translated_at": "2026-06-19T01:02:03+00:00"},
                 ],
             },
         )
@@ -382,7 +382,7 @@ class TestSaveTranslatedChapter:
                 "title": "Test Novel",
                 "chapters": [
                     {"id": "ch001", "num": 1, "title": "Chapter 1"},
-                    {"id": "ch002", "num": 2, "title": "Chapter 2"},
+                    {"id": "ch002", "num": 2, "title": "Chapter 2", "translated_at": "2026-06-19T01:02:03+00:00"},
                 ],
             },
         )
@@ -452,7 +452,7 @@ def test_reconcile_catalog_projection_updates_translated_latest_fields(storage, 
             "title": "Projection Repair",
             "chapters": [
                 {"id": "ch001", "num": 1, "title": "Chapter 1"},
-                {"id": "ch002", "num": 2, "title": "Chapter 2"},
+                {"id": "ch002", "num": 2, "title": "Chapter 2", "translated_at": "2026-06-19T01:02:03+00:00"},
             ],
         },
     )
@@ -479,7 +479,7 @@ def test_checkpoint_restore_projection_refresh_updates_translated_latest_fields(
             "title": "Checkpoint Projection Repair",
             "chapters": [
                 {"id": "ch001", "num": 1, "title": "Chapter 1"},
-                {"id": "ch002", "num": 2, "title": "Chapter 2"},
+                {"id": "ch002", "num": 2, "title": "Chapter 2", "translated_at": "2026-06-19T01:02:03+00:00"},
             ],
         },
     )
