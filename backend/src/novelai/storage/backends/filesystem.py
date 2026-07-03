@@ -63,7 +63,7 @@ class FilesystemBackend(StorageBackend):
         return sorted(keys)
 
     def mkdirs(self, path: str | Path) -> None:
-        self._resolve(path).parent.mkdir(parents=True, exist_ok=True)
+        self._resolve(path).mkdir(parents=True, exist_ok=True)
 
 
 def _try_unlink(path: Path) -> None:

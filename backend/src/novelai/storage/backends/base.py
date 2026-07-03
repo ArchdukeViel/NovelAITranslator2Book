@@ -41,6 +41,6 @@ class StorageBackend(ABC):
 
     @abstractmethod
     def mkdirs(self, path: str | Path) -> None:
-        """Ensure the parent directory for *path* exists.
+        """Ensure *path* (a directory) exists, creating parents if needed.
         No-op for flat backends (S3).
         """
