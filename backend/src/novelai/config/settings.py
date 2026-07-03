@@ -35,6 +35,27 @@ class AppSettings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # --- Storage
+    # Backend type: "filesystem" (default) or "s3"
+    STORAGE_BACKEND: str = Field(
+        default="filesystem",
+        description="Storage backend type. filesystem (default) or s3.",
+    )
+    S3_BUCKET: str | None = Field(
+        default=None,
+        description="S3 bucket name. Required when STORAGE_BACKEND=s3.",
+    )
+    S3_REGION: str = Field(
+        default="us-east-1",
+        description="S3 region. Default us-east-1.",
+    )
+    S3_KEY_PREFIX: str = Field(
+        default="",
+        description="Optional key prefix (folder) for all S3 objects.",
+    )
+    S3_ENDPOINT: str | None = Field(
+        default=None,
+        description="Custom S3 endpoint URL (e.g. MinIO).",
+    )
     # Main runtime library: metadata, chapters, exports, preferences, logs.
     NOVEL_LIBRARY_DIR: Path = Field(
         default_factory=_default_novel_library_dir,

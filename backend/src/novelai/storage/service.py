@@ -212,12 +212,15 @@ class StorageService:
         return default
 
 
-    def __init__(self, base_dir: Path | None = None) -> None:
+    def __init__(self, base_dir: Path | None = None, backend: Any | None = None) -> None:
+        from novelai.storage.backends import get_storage_backend
+
+        self._backend = backend or get_storage_backend()
         self.base_dir = (base_dir or settings.DATA_DIR).resolve()
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        self._backend.mkdirs(self.base_dir)
 
         self.novels_dir = self.base_dir / "novels"
-        self.novels_dir.mkdir(parents=True, exist_ok=True)
+        self._backend.mkdirs(self.novels_dir)
 
 
     @staticmethod
