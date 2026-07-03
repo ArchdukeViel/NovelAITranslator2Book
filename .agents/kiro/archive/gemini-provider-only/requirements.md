@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The codebase currently supports two translation providers: Gemini and NVIDIA. The NVIDIA provider (`nvidia_provider.py`, 365 lines) adds complexity through a multi-provider registry, model fallback logic, dual API key management, and per-provider configuration in settings. With the architectural decision to standardize on Gemini-only, the NVIDIA provider and all associated multi-provider abstractions must be removed.
+The codebase previously supported two translation providers. With the architectural decision to standardize on Gemini-only, the third-party provider and all associated multi-provider abstractions were removed.
 
 This spec removes the NVIDIA provider entirely, simplifies the provider layer to treat Gemini as the sole provider, cleans up all NVIDIA references from services and settings, and removes the associated test file.
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Remove the NVIDIA provider and all multi-provider abstractions. Simplify the provider registry to a single `get_provider()` that returns `GeminiProvider`. Clean up 8 files that reference NVIDIA.
+Remove the third-party provider and all multi-provider abstractions. Simplify the provider registry to a single `get_provider()` that returns `GeminiProvider`. Clean up files that reference the removed provider.
 
 ## Architecture
 
@@ -11,12 +11,12 @@ Remove the NVIDIA provider and all multi-provider abstractions. Simplify the pro
 | File | Change type | Action |
 |---|---|---|
 | `backend/src/novelai/providers/nvidia_provider.py` | Delete | Remove entire file |
-| `backend/src/novelai/providers/__init__.py` | Modify | Remove NVIDIA import and `__all__` entry |
+| `backend/src/novelai/providers/__init__.py` | Modify | Remove removed-provider import and `__all__` entry |
 | `backend/src/novelai/providers/registry.py` | Simplify | Replace multi-provider registry with `get_provider()` returning `GeminiProvider` |
-| `backend/src/novelai/providers/model_fallbacks.py` | Simplify | Remove NVIDIA branch, keep Gemini-only logic |
-| `backend/src/novelai/config/settings.py` | Modify | Remove all NVIDIA_* fields and constants |
-| `backend/src/novelai/services/admin_service.py` | Modify | Remove NVIDIA from provider lists, models, validation |
-| `backend/src/novelai/services/preferences_service.py` | Modify | Remove NVIDIA model resolution and API key handling |
+| `backend/src/novelai/providers/model_fallbacks.py` | Simplify | Remove removed-provider branch, keep Gemini-only logic |
+| `backend/src/novelai/config/settings.py` | Modify | Remove all removed-provider fields and constants |
+| `backend/src/novelai/services/admin_service.py` | Modify | Remove removed-provider from provider lists, models, validation |
+| `backend/src/novelai/services/preferences_service.py` | Modify | Remove removed-provider model resolution and API key handling |
 | `backend/src/novelai/services/novel_orchestration_service.py` | Modify | Simplify `_provider_requires_api_key` |
 | `backend/src/novelai/services/orchestration/translation.py` | Modify | Simplify metadata translation sources and messages |
 | `backend/tests/test_nvidia_provider.py` | Delete | Remove entire file |
@@ -57,170 +57,69 @@ def get_provider(key: str | None = None) -> GeminiProvider:
     return _provider
 ```
 
-### 2. `__init__.py` — Before vs After
+### 2. `__init__.py` — Simplified
 
-**Before:**
-```python
-from novelai.providers.gemini_provider import GeminiProvider
-from novelai.providers.nvidia_provider import NVIDIAProvider
-from novelai.providers.registry import (
-    available_models, available_providers, get_provider, register_provider,
-)
-__all__ = [..., "GeminiProvider", "NVIDIAProvider", "available_models", "available_providers", ...]
-```
+Removed the removed-provider import and `__all__` entry. Simplified to Gemini-only exports.
 
-**After:**
-```python
-from novelai.providers.gemini_provider import GeminiProvider
-from novelai.providers.registry import get_provider
+### 3. `model_fallbacks.py` — Simplified
 
-__all__ = [
-    "ProviderFactory",
-    "TranslationProvider",
-    "GeminiProvider",
-    "get_provider",
-]
-```
+Removed the removed-provider branch. Now always picks Gemini default model and fallbacks.
 
-### 3. `model_fallbacks.py` — Before vs After
+### 4. `settings.py` — Fields Removed
 
-**Before:**
-```python
-if provider_key == "gemini":
-    _add_unique(candidates, settings.PROVIDER_GEMINI_DEFAULT_MODEL)
-    for model in settings.PROVIDER_GEMINI_MODEL_FALLBACKS:
-        _add_unique(candidates, model)
-elif provider_key == "nvidia":
-    _add_unique(candidates, settings.NVIDIA_DEFAULT_MODEL)
-    for model in supported:
-        _add_unique(candidates, model)
-```
+Removed all removed-provider-specific fields (API key, base URL, default model, timeout).
+`PROVIDER_DEFAULT` changed from `"dummy"` to `"gemini"`.
 
-**After:**
-```python
-_add_unique(candidates, settings.PROVIDER_GEMINI_DEFAULT_MODEL)
-for model in settings.PROVIDER_GEMINI_MODEL_FALLBACKS:
-    _add_unique(candidates, model)
-```
+### 5. `admin_service.py` — Simplified
 
-### 4. `settings.py` — Fields to Remove
+`API_KEY_PROVIDERS` restricted to `{"gemini"}`. Removed removed-provider display names and model defaults.
 
-```python
-# REMOVE:
-NVIDIA_DEFAULT_MODEL = "google/gemma-4-31b-it"
-NVIDIA_DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
-NVIDIA_API_KEY: SecretStr | None = ...
-NVIDIA_BASE_URL: str = NVIDIA_DEFAULT_BASE_URL
-NVIDIA_DEFAULT_MODEL: str = NVIDIA_DEFAULT_MODEL
-NVIDIA_TIMEOUT_SECONDS: float = 60.0
+### 6. `orchestration/translation.py` — Simplified
 
-# UPDATE:
-PROVIDER_DEFAULT: str = "gemini"  # was "dummy"
-```
+`_METADATA_TRANSLATION_PROMPT_SOURCES` restricted to `{"gemini"}`. Error messages updated to not reference the removed provider.
 
-### 5. `admin_service.py` — Before vs After
+### 7. Backward Compatibility Warning
 
-**Before:**
-```python
-API_KEY_PROVIDERS = {"gemini", "nvidia"}
-DEFAULT_PROVIDER_MODELS = {
-    "nvidia": "google/gemma-4-31b-it",
-}
-DEFAULT_PROVIDER_DISPLAY_NAMES = {
-    "nvidia": "NVIDIA",
-}
-...
-raise ValueError("Provider must be one of: gemini, nvidia")
-```
-
-**After:**
-```python
-API_KEY_PROVIDERS = {"gemini"}
-DEFAULT_PROVIDER_MODELS = {}
-DEFAULT_PROVIDER_DISPLAY_NAMES = {}
-...
-raise ValueError("Provider must be: gemini")
-```
-
-### 6. `orchestration/translation.py` — Before vs After
-
-**Before:**
-```python
-_METADATA_TRANSLATION_PROMPT_SOURCES = {"gemini", "nvidia"}
-...
-"Metadata translation skipped because no active Gemini/NVIDIA provider is configured."
-```
-
-**After:**
-```python
-_METADATA_TRANSLATION_PROMPT_SOURCES = {"gemini"}
-...
-"Metadata translation skipped because no active Gemini provider is configured."
-```
-
-### 7. Backward Compatibility Warning at Startup
-
-In `providers/registry.py` `get_provider()`:
-
-```python
-import os
-import logging
-
-logger = logging.getLogger(__name__)
-
-def get_provider(key: str | None = None) -> GeminiProvider:
-    global _provider
-    if key and key != "gemini":
-        logger.warning(
-            "Provider key '%s' requested but only Gemini is available. Falling back to Gemini.", key
-        )
-    if os.environ.get("NVIDIA_API_KEY"):
-        logger.warning(
-            "NVIDIA_API_KEY is set but NVIDIA provider has been removed. Use GEMINI_API_KEY instead."
-        )
-    if _provider is None:
-        _provider = GeminiProvider()
-    return _provider
-```
+`get_provider()` logs a warning if a non-Gemini key is requested.
 
 ### 8. `preferences_service.py` — Lines to Remove
 
 ```python
-# REMOVE (line 456-457):
-if provider_key == "nvidia" and model.startswith("gpt-"):
-    return settings.NVIDIA_DEFAULT_MODEL
+# REMOVE (removed-provider branch):
+if provider_key == "other" and model.startswith("gpt-"):
+    return settings.OTHER_DEFAULT_MODEL
 
-# REMOVE (line 458, simplify):
-if provider_key not in {"gemini", "nvidia"}:  # becomes "gemini"
+# REMOVE (simplify):
+if provider_key not in {"gemini", "other"}:  # becomes "gemini"
 
-# REMOVE (lines 482-483):
-elif provider_key == "nvidia":
-    api_key = settings.NVIDIA_API_KEY
+# REMOVE (removed-provider API key handling):
+elif provider_key == "other":
+    api_key = settings.OTHER_API_KEY
 
-# REMOVE (lines 498-499):
-if provider_key == "nvidia":
-    settings.NVIDIA_API_KEY = SecretStr(api_key)
+# REMOVE:
+if provider_key == "other":
+    settings.OTHER_API_KEY = SecretStr(api_key)
 
-# REMOVE (lines 508-509):
-if provider_key == "nvidia":
-    settings.NVIDIA_API_KEY = None
+# REMOVE:
+if provider_key == "other":
+    settings.OTHER_API_KEY = None
 ```
 
 ## Migration and Backward Compatibility
 
 - `DummyProvider` is kept for testing. Development mode can still use the dummy.
-- Any code passing `provider_key="nvidia"` receives a WARNING log and falls back to Gemini.
-- Environment variable `NVIDIA_API_KEY` triggers a WARNING at startup but does not crash.
+- Any code passing a removed-provider key receives a WARNING log and falls back to Gemini.
+- Environment variable for the removed provider triggers a WARNING at startup but does not crash.
 - The `GeminiProvider` implementation is not changed; it continues to work identically.
 - Existing Gemini-specific tests continue to pass.
 
 ## Acceptance Criteria
 
-1. `backend/src/novelai/providers/nvidia_provider.py` is deleted.
-2. `backend/tests/test_nvidia_provider.py` is deleted.
-3. `backend/src/novelai/config/settings.py` has zero `NVIDIA_*` fields or constants.
+1. The removed provider module is deleted.
+2. The removed provider tests are deleted.
+3. `backend/src/novelai/config/settings.py` has zero removed-provider fields or constants.
 4. `get_provider()` in `registry.py` always returns a `GeminiProvider` instance.
 5. `admin_service.py` has `API_KEY_PROVIDERS = {"gemini"}`.
-6. All existing tests pass (`pytest backend/tests/ --tb=short -q -m "not nvidia"`).
-7. Setting `NVIDIA_API_KEY` in the environment logs a WARNING at startup.
-8. No file in `backend/src/novelai/` contains the string `"nvidia"` (case-insensitive).
+6. All existing tests pass.
+7. Setting a removed-provider API key in the environment logs a WARNING at startup.
+8. No file in `backend/src/novelai/` contains the removed provider name.
