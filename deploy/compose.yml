@@ -69,7 +69,7 @@ services:
       context: ..
       dockerfile: deploy/backend.Dockerfile
     working_dir: /app/backend
-    command: ["alembic", "-c", "/app/backend/alembic.ini", "upgrade", "head"]
+    entrypoint: ["alembic", "-c", "/app/backend/alembic.ini", "upgrade", "heads"]
     environment:
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-DEV_DEFAULT_REMOVED}@postgres:5432/${POSTGRES_DB:-novelai}
       - PROVIDER_CREDENTIAL_ENCRYPTION_KEY=${PROVIDER_CREDENTIAL_ENCRYPTION_KEY:-}
