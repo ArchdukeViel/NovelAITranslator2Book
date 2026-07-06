@@ -29,6 +29,7 @@ MULTILINGUAL_SYSTEM_PROMPT_TEMPLATE = dedent(
     - Always preserve the grammatical subject of every sentence. Do not drop or omit subjects. If the source language permits dropped subjects (e.g., Japanese), infer and supply the correct subject explicitly in the translation.
     - The glossary block is authoritative. If a source term appears in the glossary, you MUST use its approved translation. Do not substitute synonyms or paraphrases for glossed terms even if they seem contextually reasonable.
     - Pay attention to Japanese honorifics (-san, -kun, -chan, -sama, -sensei, -dono, -sempai, -kohai) and title/rank terms. Follow the honorific policy provided below.
+    - The block delimited by `[CONTEXT OVERLAP]` and `[END CONTEXT OVERLAP]` is prior-chunk context, not content to translate. Do not translate, paraphrase, or echo it. Output the [CHAPTER ...] and [P ...] markers only for the paragraphs that come AFTER the [END CONTEXT OVERLAP] line.
 
     Style requirements:
     - Prioritize accuracy first, then naturalness.
@@ -40,6 +41,13 @@ MULTILINGUAL_SYSTEM_PROMPT_TEMPLATE = dedent(
     """
 ).strip()
 
+
+CONTEXT_OVERLAP_PROMPT_BLOCK = (
+    "Context overlap: the text above the [END CONTEXT OVERLAP] line is provided "
+    "as prior-chunk reference. Do not translate it, do not paraphrase it, and do "
+    "not include it in the output. Begin translating from the first [CHAPTER ...] "
+    "or [P ...] marker that appears AFTER the [END CONTEXT OVERLAP] line."
+)
 
 DEFAULT_USER_PROMPT_TEMPLATE = dedent(
     """

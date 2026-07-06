@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from novelai.glossary.glossary import Glossary, GlossaryEntryLike, GlossaryTerm, normalize_glossary_entries
 from novelai.prompts.models import TranslationRequest
 from novelai.prompts.templates import (
+    CONTEXT_OVERLAP_PROMPT_BLOCK,
     DEFAULT_USER_PROMPT_TEMPLATE,
     HONORIFIC_POLICY_BLOCKS,
     JSON_CONSISTENCY_BLOCK_TEMPLATE,
@@ -84,6 +85,7 @@ def _format_additional_instructions(
     json_output: bool = False,
     consistency_mode: bool = False,
     honorific_policy: str | None = None,
+    context_overlap_present: bool = False,
 ) -> tuple[str, list[str]]:
     blocks: list[str] = []
     conflict_warnings: list[str] = []
@@ -108,6 +110,9 @@ def _format_additional_instructions(
 
     if json_output and consistency_mode:
         blocks.append(JSON_CONSISTENCY_BLOCK_TEMPLATE)
+
+    if context_overlap_present:
+        blocks.append(CONTEXT_OVERLAP_PROMPT_BLOCK.strip())
 
     if not blocks:
         return ("", conflict_warnings)
@@ -140,6 +145,7 @@ def build_user_prompt(
     style_preset: str | None = None,
     consistency_mode: bool = False,
     honorific_policy: str | None = None,
+    context_overlap_present: bool = False,
 ) -> str:
     raw_text = _require_non_empty_text(text, "text")
     normalized_source_language = _normalize_language(source_language, "source_language")
@@ -155,6 +161,7 @@ def build_user_prompt(
         style_preset=style_preset,
         target_language=normalized_target_language,
         honorific_policy=honorific_policy,
+        context_overlap_present=context_overlap_present,
     )
     return template.format(
         source_language=normalized_source_language,
@@ -184,6 +191,7 @@ def build_json_user_prompt(
     style_preset: str | None = None,
     consistency_mode: bool = False,
     honorific_policy: str | None = None,
+    context_overlap_present: bool = False,
 ) -> str:
     raw_text = _require_non_empty_text(text, "text")
     normalized_source_language = _normalize_language(source_language, "source_language")
@@ -196,6 +204,7 @@ def build_json_user_prompt(
         json_output=True,
         consistency_mode=consistency_mode,
         honorific_policy=honorific_policy,
+        context_overlap_present=context_overlap_present,
     )
     return JSON_USER_PROMPT_TEMPLATE.format(
         source_language=normalized_source_language,
@@ -216,6 +225,7 @@ def build_translation_request(
     consistency_mode: bool = False,
     json_output: bool = False,
     honorific_policy: str | None = None,
+    context_overlap_present: bool = False,
 ) -> TranslationRequest:
     entries = tuple(_coerce_glossary_entries(glossary_entries))
     normalized_style_preset = normalize_style_preset(style_preset)
@@ -231,6 +241,7 @@ def build_translation_request(
             style_preset=normalized_style_preset,
             consistency_mode=consistency_mode,
             honorific_policy=honorific_policy,
+            context_overlap_present=context_overlap_present,
         )
     else:
         system_prompt = build_system_prompt(source_language, target_language, style_preset=normalized_style_preset)
@@ -243,6 +254,7 @@ def build_translation_request(
             style_preset=normalized_style_preset,
             consistency_mode=consistency_mode,
             honorific_policy=honorific_policy,
+            context_overlap_present=context_overlap_present,
         )
 
     _additional, conflict_warnings = _format_additional_instructions(
@@ -253,6 +265,7 @@ def build_translation_request(
         json_output=json_output,
         consistency_mode=consistency_mode,
         honorific_policy=honorific_policy,
+        context_overlap_present=context_overlap_present,
     )
 
     return TranslationRequest(

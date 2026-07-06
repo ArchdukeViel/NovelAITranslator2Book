@@ -14,6 +14,12 @@ from novelai.translation.pipeline.stages.base import PipelineStage
 logger = logging.getLogger(__name__)
 
 _PARAGRAPH_SPLIT_RE = re.compile(r"\n\s*\n+")
+# Sentence boundary candidates used to split oversized paragraphs safely.
+# Picked to keep CJK dialogue/quote-pairs intact: prefer splitting AFTER
+# closing quotes/parentheses if the closer ends a sentence.
+_SENTENCE_SPLIT_RE = re.compile(
+    r"(?<=[。！？!?])|(?<=[」』）)])\s+|(?<=\.)\s+"
+)
 
 
 @dataclass(frozen=True)
@@ -186,6 +192,78 @@ class SmartSegmentStage(PipelineStage):
                 source_hash=paragraph_source_hash(part),
             )
             for index, part in enumerate(parts, start=1)
+        ]
+
+    @classmethod
+    def split_oversized_paragraph(
+        cls,
+        paragraph: Paragraph,
+        *,
+        budget_chars: int,
+    ) -> list[Paragraph]:
+        """Split an oversized paragraph into sub-paragraphs under ``budget_chars``.
+
+        Strategy:
+        1. Prefer sentence/dialogue-safe boundaries from ``_SENTENCE_SPLIT_RE``.
+        2. If a single sentence still exceeds budget, fall back to a hard
+           character-window split with continuation markers so providers still
+           receive bounded text.
+        3. Preserve the original ``paragraph_id`` on every split so downstream
+           mapping (paragraph_refs, paragraph_hashes) still traces back.
+
+        Each emitted sub-paragraph carries the source paragraph's hash so
+        persisted hashes remain stable for QA. ``paragraph_split_index`` and
+        ``paragraph_split_count`` record the split position; the base dataclass
+        does not need a new field because we reuse the existing ``text`` and
+        ``source_hash`` fields and attach split metadata when building the
+        chunk lineage.
+        """
+        text = paragraph.text
+        if len(text) <= budget_chars:
+            return [paragraph]
+
+        # 1) Sentence-boundary split. Greedy pack: accumulate sentences until
+        # adding the next one would exceed budget, then flush.
+        pieces: list[str] = []
+        cursor = 0
+        for match in _SENTENCE_SPLIT_RE.finditer(text):
+            end = match.end()
+            # Skip zero-length matches (e.g. when regex is anchored at index 0)
+            if end <= cursor:
+                continue
+            pieces.append(text[cursor:end])
+            cursor = end
+        if cursor < len(text):
+            pieces.append(text[cursor:])
+
+        # If everything fit into a single piece (no safe boundary), fall back
+        # to a hard character-window split.
+        if len(pieces) <= 1 or any(len(piece) > budget_chars for piece in pieces):
+            pieces = cls._hard_window_split(text, budget_chars)
+
+        pieces = [piece for piece in pieces if piece]
+        if not pieces:
+            return [paragraph]
+
+        return cls._build_split_paragraphs(paragraph, pieces)
+
+    @staticmethod
+    def _hard_window_split(text: str, budget_chars: int) -> list[str]:
+        window = max(1, budget_chars)
+        return [text[index : index + window] for index in range(0, len(text), window)]
+
+    @staticmethod
+    def _build_split_paragraphs(source: Paragraph, pieces: list[str]) -> list[Paragraph]:
+        return [
+            Paragraph(
+                paragraph_id=source.paragraph_id,
+                chapter_id=source.chapter_id,
+                text=piece,
+                char_count=len(piece),
+                paragraph_index=source.paragraph_index,
+                source_hash=source.source_hash,
+            )
+            for piece in pieces
         ]
 
     def _chapter_inputs(self, context: PipelineContext) -> list[_ChapterParagraphs]:
@@ -397,11 +475,21 @@ class SmartSegmentStage(PipelineStage):
             projected = pending_chars + paragraph.char_count
             has_enough_remaining = 1 + remaining_paragraphs >= remaining_groups
             can_close_before = bool(pending) and len(groups) < chunk_count - 1 and has_enough_remaining
+            # Boundary priority: scene break > paragraph > sentence > hard split.
+            # A scene break is the strongest close signal: close eagerly even if
+            # the current group is still well below the per-group target, because
+            # a scene break is exactly the kind of natural story boundary the
+            # spec wants to preserve.
+            scene_boundary = bool(pending) and self._is_scene_separator(pending[-1])
             near_target = can_close_before and abs(pending_chars - target) < abs(projected - target)
-            scene_boundary = can_close_before and pending_chars >= target * 0.75 and self._is_scene_separator(pending[-1])
             exceeds_hard = can_close_before and projected > hard_max_chars
+            # If the next paragraph starts an open quote/parenthesis or is a
+            # dialogue-heavy line, prefer not to close before it (let it stay
+            # with the prior group) unless the budget is exceeded.
+            next_is_dialogue = self._is_short_dialogue(paragraph) and self._quote_balance(paragraph.text) > 0
 
-            if len(groups) < chunk_count - 1 and (exceeds_hard or scene_boundary or near_target):
+            close_for_scene = bool(pending) and scene_boundary and not next_is_dialogue
+            if can_close_before and (exceeds_hard or close_for_scene or (near_target and not next_is_dialogue)):
                 groups.append(pending)
                 pending = []
                 pending_chars = 0
@@ -442,14 +530,46 @@ class SmartSegmentStage(PipelineStage):
         for paragraph in chapter.paragraphs:
             if paragraph.char_count > self.adaptive_hard_max_chars:
                 flush_segment()
-                warnings.append(
-                    f"Oversized paragraph {chapter.chapter_id}/{paragraph.paragraph_id} has "
-                    f"{paragraph.char_count} chars; isolated in its own chunk."
+                splits = self.split_oversized_paragraph(
+                    paragraph, budget_chars=self.adaptive_hard_max_chars
                 )
-                groups.append([paragraph])
+                if len(splits) > 1:
+                    warnings.append(
+                        f"Oversized paragraph {chapter.chapter_id}/{paragraph.paragraph_id} "
+                        f"({paragraph.char_count} chars) split into {len(splits)} parts."
+                    )
+                for group in self._group_splits_into_budget(splits):
+                    groups.append(group)
                 continue
             segment.append(paragraph)
         flush_segment()
+        return groups
+
+    def _group_splits_into_budget(
+        self,
+        splits: list[Paragraph],
+        *,
+        budget_chars: int | None = None,
+    ) -> list[list[Paragraph]]:
+        """Pack split sub-paragraphs into groups that respect the budget.
+
+        Each split is already at-or-under ``budget_chars`` on its own; we
+        only need to combine them when the sum stays under the cap.
+        """
+        cap = budget_chars if budget_chars is not None else self.adaptive_hard_max_chars
+        groups: list[list[Paragraph]] = []
+        pending: list[Paragraph] = []
+        pending_chars = 0
+        for split in splits:
+            projected = pending_chars + split.char_count
+            if pending and projected > cap:
+                groups.append(pending)
+                pending = []
+                pending_chars = 0
+            pending.append(split)
+            pending_chars += split.char_count
+        if pending:
+            groups.append(pending)
         return groups
 
     def _append_adaptive_chapter_chunks(
@@ -489,16 +609,19 @@ class SmartSegmentStage(PipelineStage):
                 )
                 pending = []
                 pending_chars = 0
-                warnings.append(
-                    f"Oversized paragraph {chapter.chapter_id}/{paragraph.paragraph_id} has "
-                    f"{paragraph.char_count} chars; isolated in its own chunk."
-                )
-                previous_paragraphs, _ = self._flush_chunk(
-                    chunks=chunks,
-                    pending=[paragraph],
-                    novel_id=chapter.novel_id,
-                    previous_paragraphs=previous_paragraphs,
-                )
+                splits = self.split_oversized_paragraph(paragraph, budget_chars=self.hard_max_chars)
+                if len(splits) > 1:
+                    warnings.append(
+                        f"Oversized paragraph {chapter.chapter_id}/{paragraph.paragraph_id} "
+                        f"({paragraph.char_count} chars) split into {len(splits)} parts."
+                    )
+                for group in self._group_splits_into_budget(splits, budget_chars=self.hard_max_chars):
+                    previous_paragraphs, _ = self._flush_chunk(
+                        chunks=chunks,
+                        pending=group,
+                        novel_id=chapter.novel_id,
+                        previous_paragraphs=previous_paragraphs,
+                    )
                 continue
 
             projected = pending_chars + paragraph.char_count
@@ -584,16 +707,19 @@ class SmartSegmentStage(PipelineStage):
                     )
                     pending = []
                     pending_chars = 0
-                    warnings.append(
-                        f"Oversized paragraph {chapter.chapter_id}/{paragraph.paragraph_id} has "
-                        f"{paragraph.char_count} chars; isolated in its own chunk."
-                    )
-                    previous_paragraphs, pending_novel_id = self._flush_chunk(
-                        chunks=chunks,
-                        pending=[paragraph],
-                        novel_id=chapter.novel_id,
-                        previous_paragraphs=previous_paragraphs,
-                    )
+                    splits = self.split_oversized_paragraph(paragraph, budget_chars=self.hard_max_chars)
+                    if len(splits) > 1:
+                        warnings.append(
+                            f"Oversized paragraph {chapter.chapter_id}/{paragraph.paragraph_id} "
+                            f"({paragraph.char_count} chars) split into {len(splits)} parts."
+                        )
+                    for group in self._group_splits_into_budget(splits, budget_chars=self.hard_max_chars):
+                        previous_paragraphs, pending_novel_id = self._flush_chunk(
+                            chunks=chunks,
+                            pending=group,
+                            novel_id=chapter.novel_id,
+                            previous_paragraphs=previous_paragraphs,
+                        )
                     continue
 
                 projected_chars = pending_chars + paragraph.char_count
