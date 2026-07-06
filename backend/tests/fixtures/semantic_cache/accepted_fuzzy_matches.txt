@@ -1,0 +1,65 @@
+# Accepted Fuzzy Match Examples
+#
+# These are pairs where semantic similarity is high AND context preserves meaning.
+# Format: source_text | candidate_translation | expected: ACCEPTED
+# Similarity threshold: >= 0.85 with context guard
+
+# 1. Minor word order change, same meaning
+"Hello world, how are you?" | "Hello world, how are you doing?" | ACCEPTED
+
+# 2. Synonym substitution, same meaning
+"The cat sat on the mat." | "The feline sat on the mat." | ACCEPTED
+
+# 3. Contraction expansion
+"I don't know." | "I do not know." | ACCEPTED
+
+# 4. Polite form variation (Japanese context)
+"ありがとうございます。" | "ありがとう。" | ACCEPTED
+
+# 5. Honorific variation, same referent
+"田中さんが来ました。" | "田中様が来られました。" | ACCEPTED
+
+# 6. Tense consistency maintained
+"He walks to school." | "He walks to school every day." | ACCEPTED
+
+# 7. Number format variation
+"There are 3 apples." | "There are three apples." | ACCEPTED
+
+# 8. Minor punctuation difference
+"Wait!" | "Wait." | ACCEPTED
+
+# 9. Demonstrative pronoun variation
+"This is my book." | "That is my book." | ACCEPTED
+
+# 10. Passive/active voice, same meaning
+"The book was read by her." | "She read the book." | ACCEPTED
+
+# 11. Adverb placement
+"He quickly ran." | "He ran quickly." | ACCEPTED
+
+# 12. Article variation (definite/indefinite)
+"A dog barked." | "The dog barked." | ACCEPTED
+
+# 13. Preposition variation, same spatial relation
+"In the room." | "Inside the room." | ACCEPTED
+
+# 14. Conjunction variation
+"He came and left." | "He came, then left." | ACCEPTED
+
+# 15. Relative clause reduction
+"The man who is standing there." | "The man standing there." | ACCEPTED
+
+# 16. Japanese: です/ます form variation
+"これは本です。" | "これは本だ。" | ACCEPTED
+
+# 17. Japanese: particle variation (wa/ga) with same topic
+"私は学生です。" | "私が学生です。" | ACCEPTED
+
+# 18. Japanese: honorific prefix variation
+"お茶を飲みます。" | "茶を飲みます。" | ACCEPTED
+
+# 19. Japanese: verb form variation (dictionary vs masu)
+"食べる。" | "食べます。" | ACCEPTED
+
+# 20. Japanese: casual vs polite, same content
+"行くよ。" | "行きますよ。" | ACCEPTED

@@ -223,7 +223,7 @@ _PROVIDER_ERROR_RE = re.compile(
 _SUMMARY_RE = re.compile(r"\b(summary|summarize|summarised|summarized|tl;dr)\b", re.IGNORECASE)
 
 
-def normalize_translation_output(raw_output: str) -> NormalizedTranslationOutput:
+def normalize_translation_output(raw_output: str, *, structured_output: bool = False) -> NormalizedTranslationOutput:
     """Parse optional structured translation output while preserving plain text."""
 
     text = raw_output.strip()
@@ -232,10 +232,14 @@ def normalize_translation_output(raw_output: str) -> NormalizedTranslationOutput
 
     try:
         payload = json.loads(extract_unambiguous_json_object(text))
-    except (json.JSONDecodeError, ValueError):
+    except (json.JSONDecodeError, ValueError) as e:
+        if structured_output:
+            raise ValueError(f"structured_output_required: {e}") from e
         return NormalizedTranslationOutput(text=text, paragraph_map=[], structured=False)
 
     if not isinstance(payload, dict):
+        if structured_output:
+            raise ValueError("structured_output_required: JSON response must be an object")
         return NormalizedTranslationOutput(text=text, paragraph_map=[], structured=False)
 
     paragraph_map = _normalize_paragraph_map(payload.get("paragraph_map"))
@@ -262,11 +266,29 @@ def evaluate_translation_quality(
     structured_output: bool = False,
     approved_glossary: list[dict] | None = None,
 ) -> TranslationQAResult:
-    normalized = normalize_translation_output(translated_text)
+    try:
+        normalized = normalize_translation_output(translated_text, structured_output=structured_output)
+    except ValueError as e:
+        return TranslationQAResult(
+            score=0.0,
+            passed=False,
+            warnings=[],
+            errors=[str(e)],
+            diagnostics={},
+        )
     output_text = normalized.text
     warnings: list[str] = []
     errors: list[str] = []
     diagnostics: dict[str, Any] = {}
+
+    # When structured_output is explicitly requested, validate the structure
+    if structured_output:
+        if not normalized.structured:
+            errors.append("structured_output_required")
+        elif not normalized.text.strip():
+            errors.append("translated_text_required")
+        elif not normalized.paragraph_map:
+            errors.append("paragraph_map_required")
 
     _check_basic_text(source_text, output_text, warnings=warnings, errors=errors)
     _check_source_language_residue(output_text, warnings=warnings, errors=errors)
@@ -554,6 +576,13 @@ def _check_paragraph_map(
         errors.append("paragraph_unexpected")
     if multi_chapter and any(ref not in expected for ref in normalized_refs):
         errors.append("chapter_mapping_invalid")
+    elif not multi_chapter and expected and normalized_refs:
+        # Single chapter: verify chapter_id matches if provided
+        expected_chapter = expected[0][0]
+        for ref in normalized_refs:
+            if ref[0] != expected_chapter:
+                errors.append("chapter_mapping_invalid")
+                break
 
 
 def _score(*, warnings: list[str], errors: list[str]) -> float:

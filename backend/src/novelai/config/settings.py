@@ -139,6 +139,24 @@ class AppSettings(BaseSettings):
     TRANSLATION_TARGET_LANGUAGE: str = "English"
     TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD: float = 0.55
 
+    # --- Semantic Cache (future feature, disabled by default)
+    SEMANTIC_CACHE_ENABLED: bool = False
+    SEMANTIC_CACHE_SIMILARITY_THRESHOLD: float = Field(
+        default=0.85,
+        ge=0.0,
+        le=1.0,
+        description="Cosine similarity threshold for semantic cache candidates.",
+    )
+    SEMANTIC_CACHE_CONTEXT_GUARD_ENABLED: bool = True
+    SEMANTIC_CACHE_EMBEDDING_PROVIDER: str = "gemini"
+    SEMANTIC_CACHE_EMBEDDING_MODEL: str = "text-embedding-004"
+
+    # --- LLM QA (future feature, disabled by default)
+    LLM_QA_ENABLED: bool = False
+    LLM_QA_PROVIDER: str = "gemini"
+    LLM_QA_MODEL: str = "gemini-3.1-flash-lite"
+    LLM_QA_COST_TRACKING_ENABLED: bool = True
+
     # --- Database
     DATABASE_URL: str | None = None
 
