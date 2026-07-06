@@ -280,6 +280,19 @@ class StorageService:
         for key in self._backend.list_keys(prefix):
             self._backend.delete(key)
 
+    def runtime_path(self, *parts: str) -> Path:
+        """Resolve path under runtime/ via storage base_dir.
+
+        ponytail: returns absolute Path; direct OS ops bypass backend.
+        Add backend-abstracted runtime I/O when non-filesystem backends
+        are needed for runtime data.
+        """
+        return self.base_dir / "runtime" / Path(*parts)
+
+    def backups_path(self, *parts: str) -> Path:
+        """Resolve path under backups/ via storage base_dir."""
+        return self.base_dir / "backups" / Path(*parts)
+
     @staticmethod
     def _normalize_image_manifest(images: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
         if not images:

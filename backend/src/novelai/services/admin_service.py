@@ -221,12 +221,14 @@ class AdminService:
         translation_cache: TranslationCache,
         usage: UsageService,
         activity_runner: BackgroundActivityRunner,
+        storage: Any | None = None,
         db_session: Session | None = None,
     ) -> None:
         self.preferences = preferences
         self.translation_cache = translation_cache
         self.usage = usage
         self.activity_runner = activity_runner
+        self.storage = storage
         self.db_session = db_session
 
     def dashboard_html(self) -> str:
@@ -907,6 +909,22 @@ class AdminService:
             return self.translation_cache.cache_file
         if key == "usage":
             return self.usage.usage_path
+        if self.storage is None:
+            return self._legacy_runtime_state_path(key)
+        if key == "runtime_chunks":
+            return self.storage.runtime_path("translation", "chunks.json")
+        if key == "runtime_chunk_attempts":
+            return self.storage.runtime_path("translation", "chunk_attempts.json")
+        if key == "runtime_bundles":
+            return self.storage.runtime_path("translation", "bundles.json")
+        if key == "runtime_outputs":
+            return self.storage.runtime_path("translation", "outputs.json")
+        if key == "backup_manifest":
+            return self.storage.backups_path("manifest.json")
+        raise KeyError(f"Unknown runtime state file: {key}")
+
+    def _legacy_runtime_state_path(self, key: str) -> Path:
+        """Fallback when storage is not injected — resolves via settings.DATA_DIR."""
         if key == "runtime_chunks":
             return settings.DATA_DIR / "runtime" / "translation" / "chunks.json"
         if key == "runtime_chunk_attempts":

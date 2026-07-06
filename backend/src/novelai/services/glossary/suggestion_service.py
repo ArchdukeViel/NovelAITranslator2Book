@@ -57,7 +57,7 @@ class GlossarySuggestionService:
     FILENAME = "glossary_suggestions.json"
 
     def __init__(self, base_dir: Path | None = None) -> None:
-        self.base_dir = base_dir
+        self.base_dir = base_dir  # ponytail: direct file I/O (path.read_text/atomic_write), migrate to StorageService
 
     # --- helpers ---
 
