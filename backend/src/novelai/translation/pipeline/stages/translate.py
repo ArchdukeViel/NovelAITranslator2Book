@@ -45,6 +45,25 @@ logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS_EXCEEDED_ERROR_CODE = "max_attempts_exceeded"
 
+CONTEXT_OVERLAP_OPEN = "[CONTEXT OVERLAP]"
+CONTEXT_OVERLAP_CLOSE = "[END CONTEXT OVERLAP]"
+
+def _strip_context_overlap_block(text: str) -> str:
+    """Drop a `[CONTEXT OVERLAP] ... [END CONTEXT OVERLAP]` block from text.
+
+    The block is prompt-only context. If the model echoes it back, or the raw
+    source text gets persisted verbatim, we want the saved output to contain
+    only the actual translated paragraphs.
+    """
+    if not isinstance(text, str) or CONTEXT_OVERLAP_OPEN not in text:
+        return text
+    start = text.index(CONTEXT_OVERLAP_OPEN)
+    close_index = text.find(CONTEXT_OVERLAP_CLOSE, start)
+    if close_index < 0:
+        return text
+    end = close_index + len(CONTEXT_OVERLAP_CLOSE)
+    return (text[:start] + text[end:]).strip()
+
 
 def _utc_now_iso() -> str:
     """Return a serialized UTC timestamp with a trailing Z."""
@@ -646,6 +665,7 @@ class TranslateStage(PipelineStage):
             return
         chunk_id = self._chunk_id(chunk, chunk_index)
         chunk_text = self._chunk_text(chunk)
+        sanitized_translated_text = _strip_context_overlap_block(translated_text)
         self._storage.save_translation_output(
             {
                 "output_id": f"{chunk_id}:attempt_{attempt_number:04d}",
@@ -656,9 +676,9 @@ class TranslateStage(PipelineStage):
                 "paragraph_ids": self._paragraph_ids(chunk),
                 "paragraph_hashes": self._paragraph_hashes(chunk),
                 "paragraph_lineage": self._paragraph_lineage(chunk),
-                "translated_text": translated_text,
+                "translated_text": sanitized_translated_text,
                 "source_text_hash": _hash_text(chunk_text),
-                "output_hash": _hash_text(translated_text),
+                "output_hash": _hash_text(sanitized_translated_text),
                 "provider_key": provider_key,
                 "provider_model": provider_model,
                 "prompt_version": self._prompt_version(context),
@@ -723,7 +743,7 @@ class TranslateStage(PipelineStage):
     def _build_prompt_request(
         self,
         context: PipelineContext,
-        chunk: str,
+        chunk: str | TranslationChunk,
         *,
         chunk_glossary: list[GlossaryTerm],
         prompt_glossary_block: str | None = None,
@@ -741,8 +761,10 @@ class TranslateStage(PipelineStage):
         honorific_policy = context.metadata.get("honorific_policy")
         if not isinstance(honorific_policy, str) or not honorific_policy.strip():
             honorific_policy = None
+        context_overlap_present = isinstance(chunk, TranslationChunk) and bool(chunk.previous_context)
+        chunk_text = self._chunk_text(chunk)
         return build_translation_request(
-            text=chunk,
+            text=chunk_text,
             source_language=source_language,
             target_language=target_language,
             glossary_entries=chunk_glossary,
@@ -751,6 +773,7 @@ class TranslateStage(PipelineStage):
             consistency_mode=consistency_mode,
             json_output=json_output,
             honorific_policy=honorific_policy,
+            context_overlap_present=context_overlap_present,
         )
 
     @staticmethod
@@ -1141,7 +1164,7 @@ class TranslateStage(PipelineStage):
                     )
                 request = self._build_prompt_request(
                     context,
-                    chunk_text,
+                    chunk,
                     chunk_glossary=selected_glossary,
                     prompt_glossary_block=prompt_glossary_text,
                 )
@@ -1414,7 +1437,10 @@ class TranslateStage(PipelineStage):
                 mark_chunk_completed(chunk_index)
                 return translated
 
-        context.translations = await asyncio.gather(*[worker(i, c) for i, c in enumerate(chunks)])
+        context.translations = [
+            _strip_context_overlap_block(text)
+            for text in await asyncio.gather(*[worker(i, c) for i, c in enumerate(chunks)])
+        ]
         self._save_scheduler_state(context, scheduler)
         context.metadata["translated_chunk_ids"] = [
             self._chunk_id(chunk, index)

@@ -1233,19 +1233,23 @@ async def test_smart_segment_stage_adaptive_disabled_preserves_baseline_chunk_co
 
 
 @pytest.mark.asyncio
-async def test_smart_segment_stage_isolates_oversized_paragraph_with_warning():
+async def test_smart_segment_stage_splits_oversized_paragraph_with_warning():
     segment = SmartSegmentStage(target_chars=10, hard_max_chars=12)
     context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
     context.normalized_text = "short\n\nthis paragraph is too long\n\nend"
 
     result = await segment.run(context)
 
+    # REQ-3: oversized paragraphs are split into multiple chunks. Each split
+    # preserves the original paragraph_id so downstream mapping still traces
+    # back via paragraph_refs / paragraph_hashes.
     oversized_chunks = [
         chunk
         for chunk in result.translation_chunks
         if chunk.paragraph_ids == ["p0002"]
     ]
-    assert len(oversized_chunks) == 1
+    assert len(oversized_chunks) > 1
+    assert all(chunk.paragraph_ids == ["p0002"] for chunk in oversized_chunks)
     warnings = result.metadata["segmentation"]["warnings"]
     assert any("Oversized paragraph chapter_001/p0002" in warning for warning in warnings)
 
