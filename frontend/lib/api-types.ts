@@ -436,7 +436,8 @@ export type GlossaryProviderCandidateAction = "preview" | "created" | "merged" |
 
 export type GlossaryEntry = {
   id: number;
-  novel_id: number;
+  novel_id: number | null;
+  scope: "global" | "novel";
   canonical_term: string;
   term_type: GlossaryTermType;
   approved_translation: string | null;
@@ -465,6 +466,7 @@ export type GlossaryEntryCreatePayload = {
   term_type: GlossaryTermType;
   approved_translation?: string | null;
   status?: GlossaryEntryStatus;
+  scope?: "global" | "novel";
   enforcement_level?: GlossaryEnforcementLevel;
   owner_locked?: boolean;
   public_visible?: boolean;

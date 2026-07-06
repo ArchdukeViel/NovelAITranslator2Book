@@ -7,6 +7,7 @@ from uuid import uuid4
 from novelai.sources.base import SourceAdapter
 from novelai.translation.pipeline.context import PipelineResult, PipelineState
 from novelai.translation.pipeline.pipeline import TranslationPipeline
+from novelai.translation.pipeline.stages.cache_flush import CacheFlushStage
 from novelai.translation.pipeline.stages.fetch import FetchStage
 from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.post_process import PostProcessStage
@@ -36,6 +37,7 @@ class TranslationService:
                 SmartSegmentStage(),
                 TranslateStage(),
                 TranslationQAStage(),
+                CacheFlushStage(),
                 PostProcessStage(),
             ]
         )

@@ -72,16 +72,55 @@ class GlossaryRepository:
         stmt = stmt.order_by(NovelGlossaryEntry.canonical_term, NovelGlossaryEntry.id)
         return list(self.db.scalars(stmt))
 
+    def list_glossary_entries_global(
+        self,
+        *,
+        status: str | None = None,
+        term_type: str | None = None,
+        public_visible: bool | None = None,
+    ) -> list[NovelGlossaryEntry]:
+        """List global-scope entries with optional filters."""
+        stmt = select(NovelGlossaryEntry).where(
+            NovelGlossaryEntry.scope == NovelGlossaryEntry.SCOPE_GLOBAL
+        )
+        if status is not None:
+            stmt = stmt.where(NovelGlossaryEntry.status == status)
+        if term_type is not None:
+            stmt = stmt.where(NovelGlossaryEntry.term_type == term_type)
+        if public_visible is not None:
+            stmt = stmt.where(NovelGlossaryEntry.public_visible == public_visible)
+        stmt = stmt.order_by(NovelGlossaryEntry.canonical_term, NovelGlossaryEntry.id)
+        return list(self.db.scalars(stmt))
+
+    def list_approved_global_entries(self) -> list[NovelGlossaryEntry]:
+        """Return all approved entries with scope='global'.
+
+        Used by GlossaryResolver to build the base global glossary before
+        applying novel overrides.
+        """
+        stmt = (
+            select(NovelGlossaryEntry)
+            .where(
+                NovelGlossaryEntry.scope == NovelGlossaryEntry.SCOPE_GLOBAL,
+                NovelGlossaryEntry.status == "approved",
+            )
+            .order_by(NovelGlossaryEntry.canonical_term, NovelGlossaryEntry.id)
+        )
+        return list(self.db.scalars(stmt))
+
     def get_glossary_entry(self, entry_id: int, *, novel_id: int | None = None) -> NovelGlossaryEntry | None:
         stmt = select(NovelGlossaryEntry).where(NovelGlossaryEntry.id == entry_id)
         if novel_id is not None:
             stmt = stmt.where(NovelGlossaryEntry.novel_id == novel_id)
+        else:
+            # When novel_id is None, only match global-scope entries.
+            stmt = stmt.where(NovelGlossaryEntry.scope == NovelGlossaryEntry.SCOPE_GLOBAL)
         return self.db.scalar(stmt)
 
     def create_glossary_entry(
         self,
         *,
-        novel_id: int,
+        novel_id: int | None,
         canonical_term: str,
         term_type: str,
         approved_translation: str | None = None,
@@ -101,9 +140,11 @@ class GlossaryRepository:
         actor_user_id: int | None = None,
         decision_source: str = "system",
         rationale: str | None = None,
+        scope: str = "novel",
     ) -> NovelGlossaryEntry:
         self._validate_entry_status(status)
         entry = NovelGlossaryEntry(
+            scope=scope,
             novel_id=novel_id,
             canonical_term=canonical_term,
             term_type=term_type,
@@ -126,16 +167,17 @@ class GlossaryRepository:
         )
         self.db.add(entry)
         self.db.flush()
-        self.create_decision_event(
-            novel_id=novel_id,
-            glossary_entry_id=entry.id,
-            actor_user_id=actor_user_id,
-            event_type="create",
-            new_value={"status": status, "canonical_term": canonical_term},
-            rationale=rationale,
-            decision_source=decision_source,
-        )
-        if status == "approved":
+        if novel_id is not None:
+            self.create_decision_event(
+                novel_id=novel_id,
+                glossary_entry_id=entry.id,
+                actor_user_id=actor_user_id,
+                event_type="create",
+                new_value={"status": status, "canonical_term": canonical_term, "scope": scope},
+                rationale=rationale,
+                decision_source=decision_source,
+            )
+        if status == "approved" and novel_id is not None:
             self._increment_glossary_revision(novel_id)
         return entry
 
@@ -143,10 +185,14 @@ class GlossaryRepository:
         self,
         entry_id: int,
         *,
-        novel_id: int,
+        novel_id: int | None = None,
         actor_user_id: int | None = None,
         **fields: Any,
     ) -> NovelGlossaryEntry:
+        """Update a glossary entry by ID.
+
+        If novel_id is None, treats it as a global entry lookup.
+        """
         entry = self._require_entry(entry_id, novel_id=novel_id)
         allowed = {
             "canonical_term",
@@ -163,6 +209,7 @@ class GlossaryRepository:
             "first_seen_chapter_number",
             "last_seen_chapter_id",
             "last_seen_chapter_number",
+            "scope",
         }
         unknown = set(fields) - allowed
         if unknown:
@@ -183,7 +230,7 @@ class GlossaryRepository:
         self,
         entry_id: int,
         *,
-        novel_id: int,
+        novel_id: int | None = None,
         status: str,
         actor_user_id: int | None = None,
         rationale: str | None = None,
@@ -453,7 +500,7 @@ class GlossaryRepository:
     def create_decision_event(
         self,
         *,
-        novel_id: int,
+        novel_id: int | None,
         event_type: str,
         glossary_entry_id: int | None = None,
         alias_id: int | None = None,
@@ -675,6 +722,13 @@ class GlossaryRepository:
         if entry is None:
             scope = f" for novel {novel_id}" if novel_id is not None else ""
             raise LookupError(f"Glossary entry {entry_id} was not found{scope}")
+        return entry
+
+    def _require_entry_global(self, entry_id: int) -> NovelGlossaryEntry:
+        """Fetch a global-scope entry by ID, checking scope matches."""
+        entry = self.db.get(NovelGlossaryEntry, entry_id)
+        if entry is None or entry.scope != NovelGlossaryEntry.SCOPE_GLOBAL:
+            raise LookupError(f"Global glossary entry {entry_id} was not found")
         return entry
 
     def _require_alias(self, alias_id: int, *, novel_id: int) -> NovelGlossaryAlias:

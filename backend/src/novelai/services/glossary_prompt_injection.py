@@ -62,10 +62,34 @@ class PromptGlossaryBlock:
 
 
 class GlossaryPromptInjectionService:
-    """Create deterministic prompt glossary blocks scoped to one platform novel."""
+    """Create deterministic prompt glossary blocks using resolved global+novel entries."""
 
     def __init__(self, repository: GlossaryRepository) -> None:
         self.repository = repository
+
+    def _resolve_entries(self, novel_id: int) -> list[NovelGlossaryEntry]:
+        """Merge global approved + novel approved entries.
+
+        Novel-scoped entries override global entries with same normalized
+        source term.  The result is deterministic.
+        """
+        global_entries = self.repository.list_approved_global_entries()
+        novel_entries = self.repository.list_glossary_entries_for_novel(
+            novel_id, status="approved"
+        )
+
+        # Build index of novel entries by normalized term
+        novel_by_term: dict[str, NovelGlossaryEntry] = {}
+        for e in novel_entries:
+            key = e.canonical_term.strip().casefold()
+            novel_by_term[key] = e
+
+        merged: list[NovelGlossaryEntry] = list(global_entries)
+        # Remove globals that have novel override
+        merged = [e for e in merged if e.canonical_term.strip().casefold() not in novel_by_term]
+        merged.extend(novel_entries)
+        merged.sort(key=lambda e: (e.canonical_term.casefold(), e.id))
+        return merged
 
     def build_for_chapter(
         self,
@@ -75,7 +99,7 @@ class GlossaryPromptInjectionService:
         options: GlossaryPromptInjectionOptions | None = None,
     ) -> PromptGlossaryBlock:
         opts = (options or GlossaryPromptInjectionOptions()).normalized()
-        entries = self.repository.list_glossary_entries_for_novel(novel_id, status="approved")
+        entries = self._resolve_entries(novel_id)
         eligible, skipped = self._eligible_entries(entries)
         conflicts = self._conflict_warnings(eligible)
         ranked = self._rank_entries(

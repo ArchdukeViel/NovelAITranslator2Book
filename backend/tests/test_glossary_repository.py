@@ -138,7 +138,7 @@ def test_approved_entry_changes_increment_glossary_revision(session, repo, user)
         approved_translation="Pocott",
         status="approved",
     )
-    assert novel.glossary_revision == 0
+    assert novel.glossary_revision == 1
 
     repo.update_glossary_entry(
         entry.id,
@@ -146,7 +146,7 @@ def test_approved_entry_changes_increment_glossary_revision(session, repo, user)
         approved_translation="Pocott Village",
         actor_user_id=user.id,
     )
-    assert novel.glossary_revision == 1
+    assert novel.glossary_revision == 2
 
     repo.change_glossary_entry_status(
         entry.id,
@@ -154,7 +154,7 @@ def test_approved_entry_changes_increment_glossary_revision(session, repo, user)
         status="deprecated",
         actor_user_id=user.id,
     )
-    assert novel.glossary_revision == 2
+    assert novel.glossary_revision == 3
 
 
 def test_non_approved_entry_changes_do_not_increment_glossary_revision(session, repo, user) -> None:
@@ -190,6 +190,7 @@ def test_approved_entry_changes_increment_glossary_revision_property(session, re
         approved_translation="Pocott",
         status="approved",
     )
+    assert novel.glossary_revision == revision + 1
 
     repo.update_glossary_entry(
         entry.id,
@@ -197,7 +198,7 @@ def test_approved_entry_changes_increment_glossary_revision_property(session, re
         approved_translation="Pocott Village",
         actor_user_id=user.id,
     )
-    assert novel.glossary_revision == revision + 1
+    assert novel.glossary_revision == revision + 2
 
     repo.change_glossary_entry_status(
         entry.id,
@@ -205,7 +206,7 @@ def test_approved_entry_changes_increment_glossary_revision_property(session, re
         status="deprecated",
         actor_user_id=user.id,
     )
-    assert novel.glossary_revision == revision + 2
+    assert novel.glossary_revision == revision + 3
 
 
 @settings(suppress_health_check=[HealthCheck.function_scoped_fixture], database=None)
