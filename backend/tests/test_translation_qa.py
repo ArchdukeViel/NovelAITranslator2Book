@@ -185,7 +185,8 @@ def test_translation_qa_rejects_ambiguous_multiple_structured_json_objects():
     )
 
     assert not result.passed
-    assert "paragraph_missing" in result.errors
+    assert "structured_output_required" in result.errors[0]
+    assert "multiple parseable objects" in result.errors[0]
 
 
 def test_translation_qa_missing_paragraph_id_fails():

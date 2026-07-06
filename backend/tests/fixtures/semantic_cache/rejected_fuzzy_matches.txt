@@ -1,0 +1,65 @@
+# Rejected Fuzzy Match Examples
+#
+# These are pairs where semantic similarity may be high BUT context changes meaning.
+# Format: source_text | candidate_translation | expected: REJECTED
+# These MUST be rejected by the context guard even if similarity >= threshold
+
+# 1. Negation flip - completely opposite meaning
+"He is happy." | "He is not happy." | REJECTED
+
+# 2. Subject/object swap - changes who does what
+"The dog bit the man." | "The man bit the dog." | REJECTED
+
+# 3. Tense change - changes temporal meaning
+"He walks to school." | "He walked to school." | REJECTED
+
+# 4. Number change - changes quantity
+"There are 3 apples." | "There are 5 apples." | REJECTED
+
+# 5. Pronoun reference change - changes referent
+"He gave it to her." | "She gave it to him." | REJECTED
+
+# 6. Modal verb change - changes certainty/obligation
+"You must go." | "You may go." | REJECTED
+
+# 7. Proper noun substitution - changes entity
+"Tokyo is the capital." | "Osaka is the capital." | REJECTED
+
+# 8. Adjective antonym - opposite quality
+"The water is hot." | "The water is cold." | REJECTED
+
+# 9. Preposition change - changes spatial relation
+"The book is on the table." | "The book is under the table." | REJECTED
+
+# 10. Quantifier change - changes scope
+"All students passed." | "Some students passed." | REJECTED
+
+# 11. Japanese: negation flip
+"行きます。" | "行きません。" | REJECTED
+
+# 12. Japanese: subject/topic change
+"田中さんが来ました。" | "佐藤さんが来ました。" | REJECTED
+
+# 13. Japanese: tense change
+"食べました。" | "食べます。" | REJECTED
+
+# 14. Japanese: honorific level change (changes social relationship)
+"先生が来られました。" | "先生が来た。" | REJECTED
+
+# 15. Japanese: particle change (wa/ga) changing focus
+"私は学生です。" | "私が学生です。" | REJECTED
+
+# 16. Japanese: verb form changing aspect
+"食べている。" | "食べた。" | REJECTED
+
+# 17. Japanese: potential form vs plain (ability vs action)
+"読めます。" | "読みます。" | REJECTED
+
+# 18. Japanese: causative vs passive (who causes what)
+"先生に読ませた。" | "先生に読まれた。" | REJECTED
+
+# 19. Japanese: conditional vs statement
+"雨なら行く。" | "雨だ。" | REJECTED
+
+# 20. Japanese: desire vs statement
+"行きたい。" | "行く。" | REJECTED
