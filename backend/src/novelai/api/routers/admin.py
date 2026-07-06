@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from novelai.activity.runner import BackgroundActivityRunner
 from novelai.api.auth.roles import require_role
@@ -13,6 +14,7 @@ from novelai.api.routers.dependencies import (
     get_activity_runner,
     get_db_session,
     get_preferences,
+    get_storage,
     get_translation_cache,
     get_usage,
 )
@@ -20,7 +22,7 @@ from novelai.services.admin_service import AdminService
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
-from sqlalchemy.orm import Session
+from novelai.storage.service import StorageService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
@@ -105,12 +107,14 @@ def get_admin_service(
     translation_cache: TranslationCache = Depends(get_translation_cache),
     usage: UsageService = Depends(get_usage),
     activity_runner: BackgroundActivityRunner = Depends(get_activity_runner),
+    storage: StorageService = Depends(get_storage),
 ) -> AdminService:
     return AdminService(
         preferences=preferences,
         translation_cache=translation_cache,
         usage=usage,
         activity_runner=activity_runner,
+        storage=storage,
     )
 
 
@@ -119,6 +123,7 @@ def get_admin_db_service(
     translation_cache: TranslationCache = Depends(get_translation_cache),
     usage: UsageService = Depends(get_usage),
     activity_runner: BackgroundActivityRunner = Depends(get_activity_runner),
+    storage: StorageService = Depends(get_storage),
     db_session: Session = Depends(get_db_session),
 ) -> AdminService:
     return AdminService(
@@ -126,6 +131,7 @@ def get_admin_db_service(
         translation_cache=translation_cache,
         usage=usage,
         activity_runner=activity_runner,
+        storage=storage,
         db_session=db_session,
     )
 

@@ -17,7 +17,7 @@ class UsageService:
     """Track translation usage (tokens, costs, provider/model choices, etc.)."""
 
     def __init__(self, base_dir: Path | None = None) -> None:
-        self.base_dir = (base_dir or settings.DATA_DIR).resolve()
+        self.base_dir = (base_dir or settings.DATA_DIR).resolve()  # ponytail: direct DATA_DIR, migrate to StorageService when usage becomes storage-backed
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.usage_path = self.base_dir / "usage.json"
         self._data: list[dict[str, Any]] = self._load()

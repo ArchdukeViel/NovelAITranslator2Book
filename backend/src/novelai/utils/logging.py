@@ -182,7 +182,7 @@ def get_logger(name: str) -> logging.Logger:
 def configure_from_settings() -> None:
     """Configure logging based on app settings."""
     log_level = settings.LOG_LEVEL.upper()
-    log_dir = settings.DATA_DIR / "logs"
+    log_dir = settings.DATA_DIR / "logs"  # ponytail: direct DATA_DIR, migrate log path to StorageService
     log_file = log_dir / "novelai.log" if settings.ENV == "production" else None
     use_json = settings.ENV == "production"
 

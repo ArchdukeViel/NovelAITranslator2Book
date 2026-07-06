@@ -22,7 +22,6 @@ from novelai.services.glossary_apply_preview import (
     GlossaryApplyPreviewService,
     GlossaryReplacementPreview,
 )
-from novelai.utils import atomic_write
 
 
 class GlossaryApplyStorage(Protocol):
@@ -384,7 +383,10 @@ class GlossaryApplyService:
         return self._event_dir(storage_novel_id) / f"{safe_id}.json"
 
     def _write_event(self, storage_novel_id: str, apply_event_id: str, event: dict[str, Any]) -> None:
-        atomic_write(self._event_path(storage_novel_id, apply_event_id), json.dumps(event, ensure_ascii=False, indent=2))
+        getattr(self.storage, "_write_text")(  # noqa: B009
+            self._event_path(storage_novel_id, apply_event_id),
+            json.dumps(event, ensure_ascii=False, indent=2),
+        )
 
     def _read_event(self, storage_novel_id: str, apply_event_id: str) -> dict[str, Any] | None:
         return self._read_event_path(self._event_path(storage_novel_id, apply_event_id))
