@@ -200,7 +200,7 @@ class ActivityWorkerService:
         allow_cross_provider_fallback = metadata.get("allow_cross_provider_fallback", True) is not False
         skip_glossary_gate = metadata.get("skip_glossary_gate") is True
 
-        await self.orchestrator.translate_chapters(
+        summary = await self.orchestrator.translate_chapters(
             self._resolve_translation_source_key(activity),
             novel_id,
             chapters,
@@ -214,7 +214,19 @@ class ActivityWorkerService:
             allow_cross_provider_fallback=allow_cross_provider_fallback,
             skip_glossary_gate=skip_glossary_gate,
         )
-        return {"chapters": chapters, "force": force, "target_language": target_language or "English"}
+        result: dict[str, Any] = {
+            "chapters": chapters,
+            "force": force,
+            "target_language": target_language or "English",
+        }
+        if isinstance(summary, dict):
+            chapter_progress = summary.get("chapter_progress")
+            if isinstance(chapter_progress, dict):
+                result["chapter_progress"] = chapter_progress
+            for key in ("succeeded", "failed", "skipped", "total"):
+                if key in summary:
+                    result[key] = summary[key]
+        return result
 
     async def run_activity(self, activity_id: str) -> dict[str, Any] | None:
         activity = self.activity_log.get_activity(activity_id)
@@ -257,43 +269,61 @@ class ActivityWorkerService:
                 and str(activity.get("source_key") or "").strip()
             ):
                 self.activity_log.record_source_health(str(activity.get("source_key") or ""), success=False, error=str(exc))
+            # Per-chapter progress attached by the orchestrator for partial-failure
+            # summary (REQ-3.3).  Surface it on both the paused and failed paths.
+            chapter_progress = getattr(exc, "chapter_progress", None)
+            if not isinstance(chapter_progress, dict):
+                chapter_progress = None
+            chapter_summary = getattr(exc, "chapter_summary", None)
+            if not isinstance(chapter_summary, dict):
+                chapter_summary = None
             paused_status = self._pause_status(exc)
             if paused_status is not None:
+                paused_metadata: dict[str, Any] = {
+                    **activity_metadata,
+                    "current_stage": "paused",
+                    "status": "paused",
+                    "paused_reason": getattr(exc, "paused_reason", None),
+                    "resume_after": getattr(exc, "resume_after", None),
+                    "model_states": getattr(exc, "model_states", []),
+                    "errors": [
+                        {
+                            "message": str(exc),
+                            "error_code": getattr(exc, "error_code", exc.__class__.__name__),
+                        }
+                    ],
+                }
+                if chapter_progress is not None:
+                    paused_metadata["chapter_progress"] = chapter_progress
+                if chapter_summary is not None:
+                    paused_metadata["chapter_summary"] = chapter_summary
                 paused = self.activity_log.update_activity_status(
                     activity_id,
                     paused_status,
                     error=str(exc),
-                    metadata={
-                        **activity_metadata,
-                        "current_stage": "paused",
-                        "status": "paused",
-                        "paused_reason": getattr(exc, "paused_reason", None),
-                        "resume_after": getattr(exc, "resume_after", None),
-                        "model_states": getattr(exc, "model_states", []),
-                        "errors": [
-                            {
-                                "message": str(exc),
-                                "error_code": getattr(exc, "error_code", exc.__class__.__name__),
-                            }
-                        ],
-                    },
+                    metadata=paused_metadata,
                 )
                 if paused is None:
                     raise
                 return paused
+            failed_metadata: dict[str, Any] = {
+                **activity_metadata,
+                **self._provider_failure_metadata(activity, exc),
+                "current_stage": "failed",
+                "errors": [{"message": str(exc), "error_code": getattr(getattr(exc, "provider_error_code", None), "value", exc.__class__.__name__)}],
+                "failure_code": self._failure_code(activity),
+                "failure_category": activity_metadata["activity_subtype"],
+                "failure_explanation": str(exc),
+            }
+            if chapter_progress is not None:
+                failed_metadata["chapter_progress"] = chapter_progress
+            if chapter_summary is not None:
+                failed_metadata["chapter_summary"] = chapter_summary
             failed = self.activity_log.update_activity_status(
                 activity_id,
                 JobStatus.FAILED,
                 error=str(exc),
-                metadata={
-                    **activity_metadata,
-                    **self._provider_failure_metadata(activity, exc),
-                    "current_stage": "failed",
-                    "errors": [{"message": str(exc), "error_code": getattr(getattr(exc, "provider_error_code", None), "value", exc.__class__.__name__)}],
-                    "failure_code": self._failure_code(activity),
-                    "failure_category": activity_metadata["activity_subtype"],
-                    "failure_explanation": str(exc),
-                },
+                metadata=failed_metadata,
             )
             if failed is None:
                 raise

@@ -99,6 +99,16 @@ class AppSettings(BaseSettings):
 
     # --- Translation
     TRANSLATION_CONCURRENCY: int = 4
+    TRANSLATION_CHAPTER_CONCURRENCY: int = Field(
+        default=1,
+        ge=1,
+        le=32,
+        description=(
+            "Maximum number of chapters translated in parallel inside a single "
+            "orchestrator run. 1 preserves the previous sequential behavior. "
+            "Upper bound keeps in-flight chapter work within a single worker process."
+        ),
+    )
     TRANSLATION_TARGET_CHARS_PER_CHUNK: int = 4500
     TRANSLATION_HARD_MAX_CHARS_PER_CHUNK: int = 7000
     TRANSLATION_CHUNK_OVERLAP_PARAGRAPHS: int = 1
