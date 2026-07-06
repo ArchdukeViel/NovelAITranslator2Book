@@ -29,11 +29,17 @@ class NovelGlossaryEntry(Base):
         Index("ix_novel_glossary_entries_novel_id_term_type", "novel_id", "term_type"),
         Index("ix_novel_glossary_entries_novel_id_public_visible", "novel_id", "public_visible"),
         Index("ix_novel_glossary_entries_novel_id_canonical_term", "novel_id", "canonical_term"),
+        Index("ix_novel_glossary_entries_scope", "scope"),
+        Index("ix_novel_glossary_entries_novel_id_scope", "novel_id", "scope"),
     )
 
+    SCOPE_GLOBAL = "global"
+    SCOPE_NOVEL = "novel"
+
     id: Mapped[int] = mapped_column(primary_key=True)
-    novel_id: Mapped[int] = mapped_column(
-        ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True
+    scope: Mapped[str] = mapped_column(String(32), nullable=False, default=SCOPE_NOVEL)
+    novel_id: Mapped[int | None] = mapped_column(
+        ForeignKey("novels.id", ondelete="CASCADE"), nullable=True, index=True
     )
     canonical_term: Mapped[str] = mapped_column(String(255), nullable=False)
     term_type: Mapped[str] = mapped_column(String(64), nullable=False)

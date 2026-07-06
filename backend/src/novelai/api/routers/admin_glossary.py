@@ -80,6 +80,7 @@ class GlossaryEntryCreateRequest(BaseModel):
     term_type: TermType
     approved_translation: NonEmptyStr | None = None
     status: EntryStatus = "candidate"
+    scope: Literal["global", "novel"] = "novel"
     enforcement_level: Literal["none", "info", "warning", "error", "blocker"] = "none"
     owner_locked: bool = False
     public_visible: bool = False
@@ -141,7 +142,8 @@ class GlossaryDecisionRequest(BaseModel):
 
 class GlossaryEntryResponse(BaseModel):
     id: int
-    novel_id: int
+    novel_id: int | None
+    scope: str
     canonical_term: str
     term_type: str
     approved_translation: str | None
@@ -580,6 +582,7 @@ def _entry_response(entry: NovelGlossaryEntry) -> GlossaryEntryResponse:
     return GlossaryEntryResponse(
         id=entry.id,
         novel_id=entry.novel_id,
+        scope=entry.scope,
         canonical_term=entry.canonical_term,
         term_type=entry.term_type,
         approved_translation=entry.approved_translation,
@@ -915,6 +918,7 @@ async def create_glossary_entry(
     try:
         entry = _repo(session).create_glossary_entry(
             novel_id=novel_id,
+            scope=body.scope,
             canonical_term=body.canonical_term,
             term_type=body.term_type,
             approved_translation=body.approved_translation,
@@ -2014,3 +2018,104 @@ async def reject_all_glossary_suggestions(
         count=len(results),
         items=[SuggestionResponse(**r.model_dump(exclude_none=False)) for r in results],
     )
+
+
+# ── Global glossary endpoints ────────────────────────────────────
+
+@router.get("/glossary/global", response_model=list[GlossaryEntryResponse])
+async def list_global_glossary_entries(
+    status: str | None = None,
+    term_type: str | None = None,
+    public_visible: bool | None = None,
+    session: Session = Depends(get_db_session),
+    _owner=Depends(require_role("owner")),
+) -> list[GlossaryEntryResponse]:
+    entries = _repo(session).list_glossary_entries_global(
+        status=status,
+        term_type=term_type,
+        public_visible=public_visible,
+    )
+    return [_entry_response(entry) for entry in entries]
+
+@router.post("/glossary/global", response_model=GlossaryEntryResponse)
+async def create_global_glossary_entry(
+    body: GlossaryEntryCreateRequest,
+    session: Session = Depends(get_db_session),
+    owner=Depends(require_role("owner")),
+) -> GlossaryEntryResponse:
+    try:
+        entry = _repo(session).create_glossary_entry(
+            novel_id=None,
+            scope="global",
+            canonical_term=body.canonical_term,
+            term_type=body.term_type,
+            approved_translation=body.approved_translation,
+            status=body.status,
+            enforcement_level=body.enforcement_level,
+            owner_locked=body.owner_locked,
+            public_visible=body.public_visible,
+            public_description=body.public_description,
+            admin_notes=body.admin_notes,
+            confidence=body.confidence,
+            replacement_policy=body.replacement_policy,
+            matching_policy=body.matching_policy,
+            first_seen_chapter_id=body.first_seen_chapter_id,
+            first_seen_chapter_number=body.first_seen_chapter_number,
+            last_seen_chapter_id=body.last_seen_chapter_id,
+            last_seen_chapter_number=body.last_seen_chapter_number,
+            actor_user_id=_owner_user_id(owner),
+            decision_source="owner",
+            rationale=body.rationale,
+        )
+        return _entry_response(entry)
+    except (LookupError, ValueError) as exc:
+        _raise_repo_error(exc)
+        raise AssertionError("unreachable") from exc
+
+@router.get("/glossary/global/{entry_id}", response_model=GlossaryEntryResponse)
+async def get_global_glossary_entry(
+    entry_id: int,
+    session: Session = Depends(get_db_session),
+    _owner=Depends(require_role("owner")),
+) -> GlossaryEntryResponse:
+    entry = _repo(session)._require_entry_global(entry_id)
+    return _entry_response(entry)
+
+@router.patch("/glossary/global/{entry_id}", response_model=GlossaryEntryResponse)
+async def update_global_glossary_entry(
+    entry_id: int,
+    body: GlossaryEntryUpdateRequest,
+    session: Session = Depends(get_db_session),
+    owner=Depends(require_role("owner")),
+) -> GlossaryEntryResponse:
+    try:
+        entry = _repo(session).update_glossary_entry(
+            entry_id,
+            novel_id=None,
+            actor_user_id=_owner_user_id(owner),
+            **_body_fields(body),
+        )
+        return _entry_response(entry)
+    except (LookupError, ValueError) as exc:
+        _raise_repo_error(exc)
+        raise AssertionError("unreachable") from exc
+
+@router.post("/glossary/global/{entry_id}/status", response_model=GlossaryEntryResponse)
+async def change_global_glossary_entry_status(
+    entry_id: int,
+    body: GlossaryEntryStatusRequest,
+    session: Session = Depends(get_db_session),
+    owner=Depends(require_role("owner")),
+) -> GlossaryEntryResponse:
+    try:
+        entry = _repo(session).change_glossary_entry_status(
+            entry_id,
+            novel_id=None,
+            status=body.status,
+            actor_user_id=_owner_user_id(owner),
+            rationale=body.rationale,
+        )
+        return _entry_response(entry)
+    except (LookupError, ValueError) as exc:
+        _raise_repo_error(exc)
+        raise AssertionError("unreachable") from exc

@@ -34,9 +34,16 @@ def make_cache_key(
     source_language: str,
     target_language: str,
     glossary_hash: str,
+    provider_key: str = "",
+    provider_model: str = "",
+    prompt_version: str = "",
 ) -> str:
-    """Generate a deterministic SHA-256 cache key for a segment."""
-    raw = f"{source_text}|{source_language}|{target_language}|{glossary_hash}"
+    """Generate a deterministic SHA-256 cache key for a segment.
+
+    Includes all translation-affecting parameters so different providers,
+    models, prompt versions, or glossary hashes produce distinct keys.
+    """
+    raw = f"{source_text}|{source_language}|{target_language}|{glossary_hash}|{provider_key}|{provider_model}|{prompt_version}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
