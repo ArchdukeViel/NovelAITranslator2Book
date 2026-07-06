@@ -342,7 +342,7 @@ class AdminService:
         temporary_key = api_key.strip() if isinstance(api_key, str) and api_key.strip() else None
         credential_service = self._credential_service()
         credential = credential_service.get_by_provider(normalized_provider) if credential_service is not None else None
-        if temporary_key is None and credential is not None:
+        if temporary_key is None and credential is not None and credential_service is not None:
             temporary_key = credential_service.decrypt_api_key(credential)
         resolved_model = self.resolve_default_model(normalized_provider, model)
 
