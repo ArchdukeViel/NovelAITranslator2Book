@@ -138,14 +138,20 @@ No:
 
 ## Repository-Specific Guidance
 
+- **Architecture:** `backend/` (FastAPI + SQLAlchemy pipeline) and `frontend/` (Next.js app router) are independent packages. Backend package root is `backend/src`; entrypoint `novelai.__main__:main`.
 - **Commands:**
   - Lint: `ruff check .`
-  - Test: `pytest`
-- **Architecture:** `backend/` handles core translation/pipeline; `frontend/` uses Next.js app router.
-- **Workflow:** Lint -> Typecheck -> Test. Ensure verification passes before commit.
-- **Ignore:** Add `.ruff_cache/`, `.hypothesis/`, `.venv/`, `node_modules/`, `__pycache__/`, `*.log`, `*.tmp`, `*.cache`, `*.bak`, `.vscode/` to `.gitignore`.
-- **Data Handling:** Use `SQLAlchemy` for DB models. Avoid raw SQL queries.
-- **Translation Pipeline:** Context is paramount. Ensure translation QA stage has access to glossary and previous chapter state.
-- **Tooling:** Prefer `powershell` native cmdlets over bash-like aliases for cross-compatibility.
+  - Typecheck: `pyright` (uses `pyrightconfig.json`; includes `backend/src` + `backend/tests`)
+  - Test (focused): `pytest backend/tests/test_glossary_repository.py` — run one file, not the whole suite
+  - Test (full): `pytest` (slow; ~90 files, times out past ~120s — avoid in one shot)
+  - Workflow: lint -> typecheck -> test before commit.
+- **Dependencies:** `pyproject.toml` is authoritative; there is **no** `requirements.txt` by design. Install with optional groups: `pip install -e ".[dev,db,worker,s3,documents]"`.
+- **Logging:** central config is `novelai.logging_config.configure_logging()` (emits JSON when `LOG_FORMAT=json`). Call it at startup; don't scatter `basicConfig` per module.
+- **Translation pipeline:** context is paramount — QA stage must see glossary + previous chapter state.
+- **Data handling:** SQLAlchemy models only; no raw SQL.
+- **Tooling:** prefer `powershell` native cmdlets over bash-style aliases.
+- **File writes — critical:** never use `write` to (re)create a path that may already exist. `pyrightconfig.json` and `backend/src/novelai/logging_config.py` were silently overwritten this session, destroying real config/code. Before `write`, check `git ls-files <path>` and file existence; use `edit` to change existing files.
+- **Scratch artifacts:** `.gitignore` already covers caches/venv/node_modules/`*.log`/`*.bak`. Never write scratch files (e.g. `*.txt` dumps) to the repo root — use the OS temp dir.
+
 
 
