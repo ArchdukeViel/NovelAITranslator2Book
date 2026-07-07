@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from novelai.infrastructure.http.cache import FetchCacheEntry
@@ -12,6 +13,12 @@ logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
 _SENSITIVE_KEY_PARTS = ("api_key", "authorization", "cookie", "secret", "token")
+
+# Max age (in days) for runtime translation data before it's eligible for
+# automatic cleanup.  Completed/failed translation bundles, chunk outputs,
+# chunk attempts, and provider request records older than this threshold
+# are purged by :func:`cleanup_expired_runtime_data`.
+RUNTIME_DATA_MAX_AGE_DAYS = 14
 
 
 class StorageFetchCache:
@@ -527,6 +534,78 @@ def list_provider_request_records(
     if success is not None:
         items = [item for item in items if bool(item.get("success")) is success]
     return items
+
+
+def cleanup_expired_runtime_data(self: Any, *, max_age_days: int | None = None) -> int:
+    """Remove runtime translation data older than *max_age_days*.
+
+    Scans chunks.json, chunk_attempts.json, bundles.json, outputs.json,
+    and provider_requests.json -- purging entries whose ``updated_at`` /
+    ``created_at`` / ``timestamp`` exceeds the threshold.  Returns the
+    total count of purged entries.
+
+    This is the main lifecycle-hardening entry-point called by the
+    admin maintenance route or a periodic scheduler.
+    """
+    max_age_days = max_age_days or RUNTIME_DATA_MAX_AGE_DAYS
+    cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
+    total = 0
+
+    # --- Mapping-based files (chunks, chunk_attempts, bundles, outputs) ---
+    for filename in ("chunks.json", "chunk_attempts.json", "bundles.json", "outputs.json"):
+        path = self._translation_runtime_dir() / filename
+        records = _read_mapping(self, path)
+        if not records:
+            continue
+        kept: dict[str, Any] = {}
+        for key, record in records.items():
+            if not isinstance(record, dict):
+                continue
+            updated = _parse_timestamp(record.get("updated_at") or record.get("created_at"))
+            if updated is not None and updated < cutoff:
+                total += 1
+                continue
+            kept[key] = record
+        if len(kept) != len(records):
+            _write_mapping(self, path, kept)
+
+    # --- List-based file (provider_requests) ---
+    req_path = self._runtime_dir() / "provider_requests.json"
+    req_records = _read_json_file(self, req_path, [])
+    if isinstance(req_records, list) and req_records:
+        kept_reqs = [
+            item for item in req_records
+            if isinstance(item, dict)
+            and (
+                (ts := _parse_timestamp(item.get("timestamp"))) is None
+                or ts >= cutoff
+            )
+        ]
+        if len(kept_reqs) != len(req_records):
+            total += len(req_records) - len(kept_reqs)
+            self._write_text(req_path, json.dumps(kept_reqs, ensure_ascii=False, indent=2))
+
+    if total > 0:
+        logger.info("Cleanup: purged %d expired runtime records (max_age=%dd).", total, max_age_days)
+    return total
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f%z"):
+            try:
+                parsed = datetime.strptime(text.rstrip("Z"), fmt)
+                return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
+            except ValueError:
+                continue
+        return None
+    except (ValueError, TypeError, OverflowError):
+        return None
 
 
 def save_fetch_cache_entry(self: Any, entry: dict[str, Any] | Any) -> dict[str, Any]:
