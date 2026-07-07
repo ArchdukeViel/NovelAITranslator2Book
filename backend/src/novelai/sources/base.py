@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import logging
-import time
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable, Mapping
-from typing import Any, Protocol, TypeVar
-
-import httpx
+from collections.abc import Mapping
+from typing import Any, Protocol
 
 from novelai.infrastructure.http.client import validate_safe_url
 
 logger = logging.getLogger(__name__)
 
-_T = TypeVar("_T")
 
 
 def validate_url(url: str) -> str:
@@ -26,65 +21,6 @@ def validate_url(url: str) -> str:
 
 class SourceAdapter(ABC):
     """Base interface for a novel source / scraper adapter."""
-
-    _last_request_time: float = 0.0
-
-    async def _rate_limit(self) -> None:
-        """Wait if needed to respect the configured scrape delay."""
-        from novelai.config.settings import settings
-
-        delay = settings.SCRAPE_DELAY_SECONDS
-        if delay <= 0:
-            return
-        elapsed = time.monotonic() - self._last_request_time
-        if elapsed < delay:
-            await asyncio.sleep(delay - elapsed)
-        self._last_request_time = time.monotonic()
-
-    _RETRYABLE_STATUS_CODES: set[int] = {429, 500, 502, 503, 504}
-
-    async def _with_retry(self, fn: Callable[[], Awaitable[_T]]) -> _T:
-        """Execute an async no-arg callable with retry on transient HTTP errors.
-
-        Retries on connection errors, timeouts, and 429/5xx status codes.
-        Uses the project's :class:`Retrier` with a conservative config.
-        """
-        from novelai.utils.retry_decorator import RetryConfig, Retrier
-
-        config = RetryConfig(
-            max_attempts=3,
-            initial_delay=1.0,
-            max_delay=30.0,
-            jitter=True,
-            # Only retry on network/calendar errors and HTTPStatusError
-            retry_on=(httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError),
-        )
-
-        retrier = Retrier(config)
-
-        class _NonRetryableError(Exception):
-            pass
-
-        async def _wrapped() -> _T:
-            try:
-                return await fn()
-            except httpx.HTTPStatusError as exc:
-                # If status code isn't considered retryable, surface as non-retryable
-                if exc.response.status_code not in self._RETRYABLE_STATUS_CODES:
-                    raise _NonRetryableError(exc)
-                raise
-
-        try:
-            return await retrier.execute_async(_wrapped)
-        except _NonRetryableError as exc:
-            # Unwrap original HTTPStatusError passed as the first arg when
-            # the sentinel _NonRetryableError was raised above. Guard against
-            # missing/None values so we never attempt to raise a non-BaseException.
-            original = exc.args[0] if exc.args else None
-            if isinstance(original, BaseException):
-                raise original from exc
-            # Fall back to re-raising the wrapper if no valid inner exception.
-            raise
 
     @property
     @abstractmethod
