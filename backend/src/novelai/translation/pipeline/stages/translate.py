@@ -382,7 +382,7 @@ class TranslateStage(PipelineStage):
                 allow_cross_provider_fallback=context.metadata.get("allow_cross_provider_fallback", True) is not False,
             )
             admin_policy_consulted = True
-            if raw_policy is None:
+            if raw_policy is not None and not raw_policy:
                 admin_policy_intentionally_empty = True
         if not isinstance(raw_policy, list):
             raw_policy = settings.TRANSLATION_MODEL_POLICY
@@ -398,8 +398,9 @@ class TranslateStage(PipelineStage):
                 ]
                 filtered_count = len(original_policy) - len(raw_policy)
                 if not raw_policy:
+                    if filtered_count:
+                        admin_policy_intentionally_empty = True
                     raw_policy = None
-                    admin_policy_intentionally_empty = True
             context.metadata["provider_lock"] = provider_key
             context.metadata["allow_cross_provider_fallback"] = False
             if filtered_count:
@@ -476,7 +477,7 @@ class TranslateStage(PipelineStage):
             context_skips = getattr(self, "_last_admin_policy_skips", [])
             context_skips.extend(skipped)
             self._last_admin_policy_skips = context_skips
-        return configs or None
+        return configs
 
     @staticmethod
     def _nonnegative_int(value: Any, *, default: int) -> int:
