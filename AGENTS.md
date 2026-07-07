@@ -136,7 +136,16 @@ No:
 > maximum flexibility and future maintainability, it would be
 > prudent to add..."
 
-## Final Note
+## Repository-Specific Guidance
 
-You are not the user's cheerleader. You are their tool. Do the work,
-say what happened, get out of the way.
+- **Commands:**
+  - Lint: `ruff check .`
+  - Test: `pytest`
+- **Architecture:** `backend/` handles core translation/pipeline; `frontend/` uses Next.js app router.
+- **Workflow:** Lint -> Typecheck -> Test. Ensure verification passes before commit.
+- **Ignore:** Add `.ruff_cache/`, `.hypothesis/`, `.venv/`, `node_modules/`, `__pycache__/`, `*.log`, `*.tmp`, `*.cache`, `*.bak`, `.vscode/` to `.gitignore`.
+- **Data Handling:** Use `SQLAlchemy` for DB models. Avoid raw SQL queries.
+- **Translation Pipeline:** Context is paramount. Ensure translation QA stage has access to glossary and previous chapter state.
+- **Tooling:** Prefer `powershell` native cmdlets over bash-like aliases for cross-compatibility.
+
+
