@@ -712,7 +712,7 @@ async def test_translate_stage_gemini_quota_falls_back_to_fallback_model(tmp_pat
         storage=env["storage"],
     )
 
-    with pytest.raises(SchedulerPausedError) as exc_info:
+    with pytest.raises(SchedulerPausedError):
         await stage.run(_fallback_context())
 
     assert gemini_provider.models_seen == ["gemini-3.1-flash-lite", "gemma-4-31b-it"]
