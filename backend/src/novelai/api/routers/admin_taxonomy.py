@@ -180,13 +180,13 @@ async def set_novel_taxonomy(
         validated_tags.append(tag)
 
     # --- Get existing assignments for this novel ---
-    existing_genre_ids = {
+    _existing_genre_ids = {
         row.genre_id
         for row in db_session.execute(
             select(novel_genres.c.genre_id).where(novel_genres.c.novel_id == novel.id)
         )
     }
-    existing_tag_ids = {
+    _existing_tag_ids = {
         row.tag_id
         for row in db_session.execute(
             select(novel_tags.c.tag_id).where(novel_tags.c.novel_id == novel.id)

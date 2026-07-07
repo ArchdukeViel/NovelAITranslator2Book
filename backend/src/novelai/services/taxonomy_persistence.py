@@ -11,9 +11,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from novelai.db.models.genre import Genre, novel_genres
-from novelai.db.models.novel import Novel
 from novelai.db.models.tag import Tag, novel_tags
-from novelai.sources.taxonomy import normalize_keywords
 
 logger = logging.getLogger(__name__)
 

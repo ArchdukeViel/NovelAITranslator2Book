@@ -855,20 +855,6 @@ class AdminService:
     def list_runtime_state(self) -> dict[str, Any]:
         return {"items": [self.runtime_state_record(key) for key in RUNTIME_STATE_DEFINITIONS]}
 
-    def runtime_state_record(self, key: str) -> dict[str, Any]:
-        definition = RUNTIME_STATE_DEFINITIONS[key]
-        path = self.runtime_state_path(key)
-        return {
-            "key": key,
-            "label": definition["label"],
-            "description": definition["description"],
-            "exists": path.exists(),
-            "size_bytes": path.stat().st_size if path.exists() else 0,
-            "updated_at": datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat() if path.exists() else None,
-        }
-
-    def runtime_state_path(self, key: str) -> Path:
-        return self.storage._runtime_dir() / RUNTIME_STATE_DEFINITIONS[key]["filename"]
 
     def refresh_runtime_state(self, state_key: str) -> dict[str, Any]:
         key = state_key.strip().lower()
