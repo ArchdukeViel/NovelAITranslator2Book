@@ -34,6 +34,9 @@ from novelai.translation.service import TranslationService
 from tests.conftest import MockTranslationProvider, TESTS_TMP_ROOT
 from tests.test_novel_orchestration_service import StubSource
 
+# Import the module to clear its global locks between tests
+from novelai.services.orchestration import translation as translation_module
+
 
 def _configure_catalog_projection_db(data_dir: Path, monkeypatch):
     db_path = data_dir / "catalog_projection.sqlite"
@@ -47,6 +50,9 @@ def _configure_catalog_projection_db(data_dir: Path, monkeypatch):
 
 @pytest.fixture
 def orchestration_env(monkeypatch):
+    # Clear global translation locks before each test to prevent cross-test interference
+    translation_module._translation_locks.clear()
+    
     TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     data_dir = TESTS_TMP_ROOT / f"orchestrator_{uuid4().hex}"
     data_dir.mkdir(parents=True, exist_ok=False)
