@@ -21,11 +21,11 @@ from novelai.prompts import build_translation_request
 from novelai.prompts.models import TranslationRequest
 from novelai.providers.base import TranslationProvider
 from novelai.providers.model_fallbacks import model_candidates
-from novelai.services.cache.translation_cache import TranslationCacheService
 from novelai.services.glossary_prompt_injection import GlossaryPromptInjectionService, PromptGlossaryBlock
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
+from novelai.services.cache.translation_cache import TranslationCacheService
 from novelai.services.usage_service import UsageService
 from novelai.shared.pipeline import ChunkAttemptStatus, ChunkTranslationStatus
 from novelai.storage.service import StorageService
@@ -44,25 +44,6 @@ from novelai.translation.scheduler import (
 logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS_EXCEEDED_ERROR_CODE = "max_attempts_exceeded"
-
-CONTEXT_OVERLAP_OPEN = "[CONTEXT OVERLAP]"
-CONTEXT_OVERLAP_CLOSE = "[END CONTEXT OVERLAP]"
-
-def _strip_context_overlap_block(text: str) -> str:
-    """Drop a `[CONTEXT OVERLAP] ... [END CONTEXT OVERLAP]` block from text.
-
-    The block is prompt-only context. If the model echoes it back, or the raw
-    source text gets persisted verbatim, we want the saved output to contain
-    only the actual translated paragraphs.
-    """
-    if not isinstance(text, str) or CONTEXT_OVERLAP_OPEN not in text:
-        return text
-    start = text.index(CONTEXT_OVERLAP_OPEN)
-    close_index = text.find(CONTEXT_OVERLAP_CLOSE, start)
-    if close_index < 0:
-        return text
-    end = close_index + len(CONTEXT_OVERLAP_CLOSE)
-    return (text[:start] + text[end:]).strip()
 
 
 def _utc_now_iso() -> str:
@@ -405,7 +386,6 @@ class TranslateStage(PipelineStage):
                 admin_policy_intentionally_empty = True
         if not isinstance(raw_policy, list):
             raw_policy = settings.TRANSLATION_MODEL_POLICY
-            admin_policy_intentionally_empty = False
         allow_cross_provider_fallback = context.metadata.get("allow_cross_provider_fallback", True) is not False
         filtered_count = 0
         if not allow_cross_provider_fallback:
@@ -665,7 +645,6 @@ class TranslateStage(PipelineStage):
             return
         chunk_id = self._chunk_id(chunk, chunk_index)
         chunk_text = self._chunk_text(chunk)
-        sanitized_translated_text = _strip_context_overlap_block(translated_text)
         self._storage.save_translation_output(
             {
                 "output_id": f"{chunk_id}:attempt_{attempt_number:04d}",
@@ -676,9 +655,9 @@ class TranslateStage(PipelineStage):
                 "paragraph_ids": self._paragraph_ids(chunk),
                 "paragraph_hashes": self._paragraph_hashes(chunk),
                 "paragraph_lineage": self._paragraph_lineage(chunk),
-                "translated_text": sanitized_translated_text,
+                "translated_text": translated_text,
                 "source_text_hash": _hash_text(chunk_text),
-                "output_hash": _hash_text(sanitized_translated_text),
+                "output_hash": _hash_text(translated_text),
                 "provider_key": provider_key,
                 "provider_model": provider_model,
                 "prompt_version": self._prompt_version(context),
@@ -743,7 +722,7 @@ class TranslateStage(PipelineStage):
     def _build_prompt_request(
         self,
         context: PipelineContext,
-        chunk: str | TranslationChunk,
+        chunk: str,
         *,
         chunk_glossary: list[GlossaryTerm],
         prompt_glossary_block: str | None = None,
@@ -761,10 +740,8 @@ class TranslateStage(PipelineStage):
         honorific_policy = context.metadata.get("honorific_policy")
         if not isinstance(honorific_policy, str) or not honorific_policy.strip():
             honorific_policy = None
-        context_overlap_present = isinstance(chunk, TranslationChunk) and bool(chunk.previous_context)
-        chunk_text = self._chunk_text(chunk)
         return build_translation_request(
-            text=chunk_text,
+            text=chunk,
             source_language=source_language,
             target_language=target_language,
             glossary_entries=chunk_glossary,
@@ -773,7 +750,6 @@ class TranslateStage(PipelineStage):
             consistency_mode=consistency_mode,
             json_output=json_output,
             honorific_policy=honorific_policy,
-            context_overlap_present=context_overlap_present,
         )
 
     @staticmethod
@@ -885,15 +861,10 @@ class TranslateStage(PipelineStage):
         if settings.TRANSLATION_CACHE_ENABLED:
             try:
                 from novelai.services.cache.translation_cache import make_cache_key
-                source_language = self._infer_source_language(context)
+                source_language = self._infer_source_language(context) or "auto"
                 target_language = context.metadata.get("target_language") or settings.TRANSLATION_TARGET_LANGUAGE
                 g_hash = glossary_hash or ""
-                pv = self._prompt_version(context)
-                cache_key = make_cache_key(
-                    chunk, source_language, target_language, g_hash,
-                    provider_key=provider_key, provider_model=provider_model,
-                    prompt_version=pv,
-                )
+                cache_key = make_cache_key(chunk, source_language, target_language, g_hash)
                 entry = self._cache_service.get(cache_key)
                 if entry is not None:
                     logger.debug("Cache hit for chunk: key=%s, cache_hit=True", cache_key[:16])
@@ -994,6 +965,33 @@ class TranslateStage(PipelineStage):
 
         self._usage.record(usage_entry)
 
+        if settings.TRANSLATION_CACHE_ENABLED:
+            try:
+                from novelai.services.cache.translation_cache import make_cache_key, CacheEntry
+                source_language = self._infer_source_language(context) or "auto"
+                target_language = context.metadata.get("target_language") or settings.TRANSLATION_TARGET_LANGUAGE
+                g_hash = glossary_hash or ""
+                cache_key = make_cache_key(chunk, source_language, target_language, g_hash)
+                entry = CacheEntry(
+                    key=cache_key,
+                    source_text=chunk,
+                    translated_text=text,
+                    source_language=source_language,
+                    target_language=target_language,
+                    glossary_hash=g_hash,
+                    provider_key=provider.key,
+                    provider_model=provider_model,
+                    created_at=datetime.now(UTC).isoformat(),
+                    ttl_seconds=settings.TRANSLATION_CACHE_TTL_SECONDS,
+                    novel_id=context.novel_id,
+                )
+                self._cache_service.set(cache_key, entry)
+                logger.debug("Cache miss for chunk: key=%s, cache_hit=False", cache_key[:16])
+            except Exception as exc:
+                logger.warning("Cache write error: %s", exc)
+
+        cache_key = request.cache_key() if request is not None else chunk
+        self._cache.set(cache_key, provider.key, provider_model, text)
         self._storage.save_provider_request_record(
             self._provider_request_record(
                 context,
@@ -1014,34 +1012,6 @@ class TranslateStage(PipelineStage):
                 metadata=metadata,
             )
         )
-        # Defer cache write until after QA pass. Store pending entry.
-        if settings.TRANSLATION_CACHE_ENABLED:
-            from novelai.services.cache.translation_cache import CacheEntry, make_cache_key
-            try:
-                source_language = self._infer_source_language(context)
-                target_language = context.metadata.get("target_language") or settings.TRANSLATION_TARGET_LANGUAGE
-                g_hash = glossary_hash or ""
-                pv = self._prompt_version(context)
-                ck = make_cache_key(
-                    chunk, source_language, target_language, g_hash,
-                    provider_key=provider.key, provider_model=provider_model,
-                    prompt_version=pv,
-                )
-                entry = CacheEntry(
-                    key=ck, source_text=chunk, translated_text=text,
-                    source_language=source_language, target_language=target_language,
-                    glossary_hash=g_hash, provider_key=provider.key,
-                    provider_model=provider_model,
-                    created_at=datetime.now(UTC).isoformat(),
-                    ttl_seconds=settings.TRANSLATION_CACHE_TTL_SECONDS,
-                    novel_id=context.novel_id,
-                )
-                pending = context.metadata.setdefault("_pending_cache_entries", [])
-                if isinstance(pending, list):
-                    pending.append((ck, entry))
-            except Exception as exc:
-                logger.warning("Cache defer error: %s", exc)
-
         return text, provider.key, provider_model, False
 
     async def run(self, context: PipelineContext) -> PipelineContext:
@@ -1105,8 +1075,6 @@ class TranslateStage(PipelineStage):
                     "paused_reason": None,
                     "resume_after": None,
                     "model_states": scheduler.to_model_state_list(),
-                    "cache_hits": 0,
-                    "cache_misses": 0,
                 }
             )
 
@@ -1164,7 +1132,7 @@ class TranslateStage(PipelineStage):
                     )
                 request = self._build_prompt_request(
                     context,
-                    chunk,
+                    chunk_text,
                     chunk_glossary=selected_glossary,
                     prompt_glossary_block=prompt_glossary_text,
                 )
@@ -1219,8 +1187,6 @@ class TranslateStage(PipelineStage):
                         if cached is not None:
                             translated, used_provider_key, used_provider_model = cached
                             logger.debug("Cache hit for chunk %s using %s/%s", chunk_id, used_provider_key, used_provider_model)
-                            if isinstance(progress, dict):
-                                progress["cache_hits"] = progress.get("cache_hits", 0) + 1
                             context.chunk_states[chunk_id] = {
                                 **context.chunk_states.get(chunk_id, {}),
                                 "chunk_id": chunk_id,
@@ -1325,9 +1291,6 @@ class TranslateStage(PipelineStage):
                             selection_reason=selection.reason,
                             status=ChunkAttemptStatus.RUNNING.value,
                         )
-                        if isinstance(progress, dict):
-                            progress["cache_misses"] = progress.get("cache_misses", 0) + 1
-
                         try:
                             translated, used_provider_key, used_provider_model, cache_hit = await self._translate_with_model(
                                 context,
@@ -1437,10 +1400,7 @@ class TranslateStage(PipelineStage):
                 mark_chunk_completed(chunk_index)
                 return translated
 
-        context.translations = [
-            _strip_context_overlap_block(text)
-            for text in await asyncio.gather(*[worker(i, c) for i, c in enumerate(chunks)])
-        ]
+        context.translations = await asyncio.gather(*[worker(i, c) for i, c in enumerate(chunks)])
         self._save_scheduler_state(context, scheduler)
         context.metadata["translated_chunk_ids"] = [
             self._chunk_id(chunk, index)
