@@ -123,6 +123,12 @@ class PipelineError(NovelAIError):
 class PipelineStageError(PipelineError):
     """Individual pipeline stage error."""
 
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.error_code: str | None = None
+        self.details: dict[str, Any] | None = None
+        self.pipeline_context: Any | None = None
+
 
 class StorageError(NovelAIError):
     """Storage layer errors."""
