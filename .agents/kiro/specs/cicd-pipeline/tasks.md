@@ -27,11 +27,20 @@
   - [x] 5.1 Create `.github/workflows/deploy.yml` with `workflow_dispatch` trigger (REQ-5.1)
   - [x] 5.2 Add SSH-based deploy step with Docker Compose (REQ-5.2)
 
-- [-] 6. Configure repository secrets (BLOCKED — GitHub UI manual step)
-  - [-] 6.1 Add `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` secrets if deploying
-  - [-] 6.2 Verify GHCR token permissions
+- [ ] 6. Configure repository secrets (MANUAL / BLOCKED — GitHub UI step)
+  - [ ] 6.1 Add `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` secrets if deploying
+  - [ ] 6.2 Verify GitHub Actions package permissions allow GHCR push
+  - [ ] 6.3 Confirm the repository has `packages: write` permission available for workflow runs
+  - [ ] 6.4 Confirm staging or production environment protection rules, if deploy environments are enabled
 
-- [-] 7. Verify (BLOCKED — requires real PR/merge on GitHub)
-  - [-] 7.1 Push a test PR and confirm CI runs all jobs
-  - [-] 7.2 Merge to `main` and confirm Docker images are pushed to GHCR
-  - [-] 7.3 Confirm full CI completes in under 5 minutes (REQ-4.4)
+- [ ] 7. Verify pipeline in GitHub (MANUAL / BLOCKED — requires real PR and merge)
+  - [ ] 7.1 Push a test PR and confirm CI runs backend lint, backend tests, frontend checks, and conditional e2e
+  - [ ] 7.2 Confirm a PR with relevant backend service or API changes triggers the e2e job
+  - [ ] 7.3 Merge to `main` and confirm Docker images are pushed to GHCR
+  - [ ] 7.4 Confirm pushed images include both git SHA and `latest` tags
+  - [ ] 7.5 Confirm full CI completes in under 5 minutes on a cache-hit run (REQ-4.4)
+  - [ ] 7.6 Run the manual deploy workflow against staging after secrets are configured, if deployment is in scope
+
+## Manual Completion Notes
+
+The repository-side CI/CD implementation is complete through task 5. Tasks 6 and 7 are intentionally left open because they require GitHub UI configuration, repository permissions, secrets, and real remote workflow execution.
