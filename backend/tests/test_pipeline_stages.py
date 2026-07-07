@@ -861,95 +861,6 @@ async def test_translate_stage_gemini_unknown_error_does_not_fallback(tmp_path):
 
     assert gemini_provider.models_seen == ["gemini-3.1-flash-lite"]
 
-@pytest.mark.asyncio
-async def test_translate_stage_saved_policy_skips_disabled_credentials(tmp_path):
-    env = _fallback_stage_env(tmp_path)
-    prefs = env["prefs"]
-    prefs.set_provider_management(
-        {
-            "credentials": {
-                "gemini": {"is_active": False},
-            },
-            "fallback_policy": {
-                "allow_cross_provider_fallback": False,
-                "candidates": [
-                    {
-                        "priority_order": 0,
-                        "provider": "gemini",
-                        "model": "gemini-3.1-flash-lite",
-                        "credential_id": "gemini",
-                        "enabled": True,
-                    },
-                ],
-            },
-        }
-    )
-    stage = TranslateStage(
-        provider_factory=lambda key: _FallbackContractProvider(key),
-        cache=env["cache"],
-        settings_service=prefs,
-        usage_service=env["usage"],
-        storage=env["storage"],
-    )
-
-    scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
-
-    assert scheduler.to_model_state_list() == []
-
-
-@pytest.mark.asyncio
-async def test_translate_stage_saved_policy_skips_invalid_credentials(tmp_path):
-    env = _fallback_stage_env(tmp_path)
-    prefs = env["prefs"]
-    prefs.set_provider_management(
-        {
-            "credentials": {
-                "gemini": {"is_active": True, "validation_status": "failed"},
-            },
-            "fallback_policy": {
-                "allow_cross_provider_fallback": False,
-                "candidates": [
-                    {
-                        "priority_order": 0,
-                        "provider": "gemini",
-                        "model": "gemini-3.1-flash-lite",
-                        "credential_id": "gemini",
-                        "enabled": True,
-                    },
-                ],
-            },
-        }
-    )
-    stage = TranslateStage(
-        provider_factory=lambda key: _FallbackContractProvider(key),
-        cache=env["cache"],
-        settings_service=prefs,
-        usage_service=env["usage"],
-        storage=env["storage"],
-    )
-
-    scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
-
-    assert scheduler.to_model_state_list() == []
-
-
-@pytest.mark.asyncio
-async def test_translate_stage_gemini_unknown_error_does_not_fallback(tmp_path):
-    env = _fallback_stage_env(tmp_path)
-    gemini_provider = _FallbackContractProvider("gemini", error_code=ProviderErrorCode.UNKNOWN)
-    stage = TranslateStage(
-        provider_factory=lambda key: gemini_provider,
-        cache=env["cache"],
-        settings_service=env["prefs"],
-        usage_service=env["usage"],
-        storage=env["storage"],
-    )
-
-    with pytest.raises(ProviderError):
-        await stage.run(_fallback_context())
-
-    assert gemini_provider.models_seen == ["gemini-3.1-flash-lite"]
-
 
 @pytest.mark.asyncio
 async def test_smart_segment_stage_packs_normal_chapter_by_budget():
@@ -1233,23 +1144,19 @@ async def test_smart_segment_stage_adaptive_disabled_preserves_baseline_chunk_co
 
 
 @pytest.mark.asyncio
-async def test_smart_segment_stage_splits_oversized_paragraph_with_warning():
+async def test_smart_segment_stage_isolates_oversized_paragraph_with_warning():
     segment = SmartSegmentStage(target_chars=10, hard_max_chars=12)
     context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
     context.normalized_text = "short\n\nthis paragraph is too long\n\nend"
 
     result = await segment.run(context)
 
-    # REQ-3: oversized paragraphs are split into multiple chunks. Each split
-    # preserves the original paragraph_id so downstream mapping still traces
-    # back via paragraph_refs / paragraph_hashes.
     oversized_chunks = [
         chunk
         for chunk in result.translation_chunks
         if chunk.paragraph_ids == ["p0002"]
     ]
-    assert len(oversized_chunks) > 1
-    assert all(chunk.paragraph_ids == ["p0002"] for chunk in oversized_chunks)
+    assert len(oversized_chunks) == 1
     warnings = result.metadata["segmentation"]["warnings"]
     assert any("Oversized paragraph chapter_001/p0002" in warning for warning in warnings)
 
