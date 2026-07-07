@@ -78,5 +78,7 @@ def provider_credential_response(status: dict[str, Any]) -> dict[str, Any]:
 def model_payload(model: BaseModel) -> dict[str, Any]:
     dump = getattr(model, "model_dump", None)
     if callable(dump):
-        return dump(exclude_none=True)
+        result = dump(exclude_none=True)
+        assert isinstance(result, dict)
+        return result
     return model.dict(exclude_none=True)
