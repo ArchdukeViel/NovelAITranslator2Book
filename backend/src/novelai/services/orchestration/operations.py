@@ -9,17 +9,16 @@ from typing import Any
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.config.settings import settings
-from novelai.core.chapter_state import TranslationState
-from novelai.core.errors import TranslationInProgressError
 from novelai.services.catalog_service import CatalogService
 from novelai.services.export_service import ExportService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.sources.registry import detect_source
 from novelai.storage.service import StorageService
+from novelai.core.errors import TranslationInProgressError
 
 logger = logging.getLogger(__name__)
 
-# Novel-level concurrency guard - prevents concurrent translation runs per novel
+# Novel-level concurrency guard – prevents concurrent translation runs per novel
 _novel_translation_locks: dict[str, asyncio.Lock] = {}
 
 def _get_novel_translation_lock(novel_id: str) -> asyncio.Lock:
@@ -342,71 +341,29 @@ class OperationsService:
         *,
         novel_id: str,
     ) -> dict[str, Any]:
-        """Return per-chapter translation state summary (REQ-4.1)."""
-        from novelai.db.engine import session_scope
-        from novelai.db.models.chapter import Chapter
-        from novelai.db.models.novel import Novel
-
+        """Return per-chapter translation state summary."""
         meta = self.storage.load_metadata(novel_id)
         if meta is None:
             raise OperationError(404, {"error": "Novel not found", "novel_id": novel_id})
-
-        # Load TranslationState from DB per chapter
-        db_states: dict[str, str] = {}
-        try:
-            with session_scope() as session:
-                novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
-                if novel is not None:
-                    rows = (
-                        session.query(Chapter.chapter_number, Chapter.translation_state)
-                        .filter(Chapter.novel_id == novel.id)
-                        .all()
-                    )
-                    for row in rows:
-                        db_states[str(row[0])] = row[1] or TranslationState.PENDING.value
-        except Exception:
-            pass
-
-        # Compute overall counts from DB states
-        total = len(meta.get("chapters", []))
-        completed = sum(1 for s in db_states.values() if s == TranslationState.COMPLETE.value)
-        failed = sum(1 for s in db_states.values() if s == TranslationState.FAILED.value)
-        in_progress = sum(
-            1 for s in db_states.values()
-            if s not in (TranslationState.COMPLETE.value, TranslationState.FAILED.value, TranslationState.PENDING.value)
-        )
-
-        if completed == total:
-            overall = "complete"
-        elif failed > 0 and completed + failed == total:
-            overall = "failed"
-        elif in_progress > 0:
-            overall = "in_progress"
-        else:
-            overall = "pending"
 
         chapters: list[dict[str, Any]] = []
         for chapter in meta.get("chapters", []):
             chapter_id = str(chapter.get("id"))
             state = self.storage.load_chapter_state(novel_id, chapter_id)
             translated = self.storage.load_translated_chapter(novel_id, chapter_id)
-            db_state = db_states.get(chapter_id, TranslationState.PENDING.value)
             chapters.append({
                 "id": chapter_id,
                 "title": chapter.get("title"),
                 "translated": translated is not None,
-                "state": state["current_state"].value if state else db_state,
-                "translation_state": db_state,
+                "state": state["current_state"].value if state else "unknown",
                 "error_count": state.get("error_count", 0) if state else 0,
             })
 
+        translated_count = sum(1 for c in chapters if c["translated"])
         return {
             "novel_id": novel_id,
-            "total_chapters": total,
-            "completed_chapters": completed,
-            "failed_chapters": failed,
-            "in_progress_chapters": in_progress,
-            "overall_state": overall,
+            "total_chapters": len(chapters),
+            "translated_chapters": translated_count,
             "chapters": chapters,
         }
 
