@@ -32,8 +32,7 @@ Install:
 - Node.js LTS with npm
 - Git
 - Docker Desktop, only if you want the production-like Compose run
-- Gemini API key for primary real translation
-- NVIDIA API key if you want the Gemma fallback provider
+- Gemini API key for primary real translation (Gemma 4 31B fallback uses the same Gemini API key — NVIDIA provider was removed, see architecture.md §13)
 
 Check versions:
 

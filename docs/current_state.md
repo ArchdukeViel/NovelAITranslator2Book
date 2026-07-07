@@ -1,6 +1,6 @@
 # NovelAI Current State
 
-**Last updated**: 2026-07-02 (post-OPS-SAFETY-1, +5 .kiro specs completed)
+**Last updated**: 2026-07-07 (all 16 test failures fixed: 5 root causes)
 **Source of truth**: `docs/architecture/architecture.md`
 
 ## Verdict
@@ -81,9 +81,10 @@
 ## Test Baseline
 
 ```
-Backend: 170+ tests pass (pytest, 2026-07-02)
+Backend: 1817+ tests collect, 1700+ pass (pytest, 2026-07-07)
+  - test_pipeline_stages.py: 42 passed (pipeline stage unit tests)
+  - test_novel_orchestration_service.py: 76 passed (orchestration + catalog projection)
   - test_crawl_resilience_contracts.py: 21 passed (contract tests for crawl behavior)
-  - test_novel_orchestration_service.py: 56 passed
   - test_taxonomy.py: 37 passed
   - test_public_router.py: 83 passed (incl. source_title, synopsis, is_adult contract)
   - test_gemini_provider.py: 12 passed
@@ -93,7 +94,10 @@ Backend: 170+ tests pass (pytest, 2026-07-02)
   - test_microservice_split.py: 14 passed (route registration contract tests)
   - test_cache_service.py: 18 passed (TranslationCacheService unit + integration)
   - test_glossary_suggestion.py: 12 passed (SuggestionExtractor + GlossarySuggestionService)
-  - (full suite: 780+ total)
+  - All 16 previous test failures fixed (5 root causes: admin policy None/[],
+    model_candidates multi-model, folder_name slug, segment chunk count,
+    catalog projection translated_at fallback)
+  - (full suite: 1817+ total)
 
 Frontend: 411 tests pass (vitest, 2026-06-17) — unchanged
   - 40 test files
@@ -108,9 +112,9 @@ Auth smoke: PASS (2026-06-18) after email/password backend, public auth UI, and 
 
 ---
 
-## Current Spec Burndown (`docs/archive/specs/`)
+## Current Spec Burndown
 
-All 8 specs are 100% complete — archived at `docs/archive/specs/`:
+All 8 specs are 100% complete:
 
 | Spec | Tasks | Status |
 |------|-------|--------|
@@ -227,7 +231,7 @@ backend/src/novelai/
 ├── infrastructure/   HTTP fetching, throttle, cache
 ├── inputs/           Non-web input adapters
 ├── prompts/          Prompt builders, templates, parsing
-├── providers/        LLM provider interfaces (Gemini, NVIDIA)
+├── providers/        LLM provider interfaces (Gemini only; NVIDIA removed)
 ├── runtime/          CLI, bootstrap, container
 ├── services/         Application use cases, orchestration
 ├── shared/           Cross-domain protocols, pipeline contracts
