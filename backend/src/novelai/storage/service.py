@@ -82,7 +82,9 @@ from novelai.storage.novels import (
     list_novels,
     load_metadata,
     load_metadata_snapshot,
+    resolve_onboarding_status,
     save_metadata,
+    update_onboarding_status,
 )
 from novelai.storage.runtime_contracts import (
     _fetch_cache_dir,
@@ -493,6 +495,8 @@ class StorageService:
     delete_novel = delete_novel
     save_metadata = save_metadata
     load_metadata = load_metadata
+    update_onboarding_status = update_onboarding_status
+    resolve_onboarding_status = resolve_onboarding_status
     _load_latest_valid_metadata_backup = _load_latest_valid_metadata_backup
     _normalize_loaded_metadata = _normalize_loaded_metadata
     _recover_metadata_from_backup = _recover_metadata_from_backup

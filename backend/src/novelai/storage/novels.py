@@ -488,6 +488,86 @@ def _recover_metadata_from_backup(self: Any, novel_id: str, path: Path) -> dict[
     logger.warning("Recovered metadata for novel %s from backup %s", novel_id, backup_path)
     return self._normalize_loaded_metadata(payload, novel_id)
 
+VALID_ONBOARDING_STATUSES = frozenset({
+    "not_started",
+    "metadata_discovered",
+    "glossary_pending",
+    "chapters_pending",
+    "scraping_chapters",
+    "ready_for_translation",
+    "failed",
+    "cancelled",
+})
+
+
+def update_onboarding_status(
+    self: Any,
+    novel_id: str,
+    status: str,
+    *,
+    error_code: str | None = None,
+    error_message: str | None = None,
+    clear_error: bool = False,
+) -> dict[str, Any]:
+    if status not in VALID_ONBOARDING_STATUSES:
+        raise ValueError(f"Invalid onboarding status: {status!r}. Valid values: {sorted(VALID_ONBOARDING_STATUSES)}")
+
+    novel_id = self._normalize_library_novel_id(novel_id) or novel_id
+    meta = self.load_metadata(novel_id)
+    if meta is None:
+        raise ValueError(f"No metadata found for novel {novel_id!r}")
+
+    meta["onboarding_status"] = status
+    meta["onboarding_updated_at"] = _utc_now_iso()
+
+    if clear_error:
+        meta.pop("onboarding_error_code", None)
+        meta.pop("onboarding_error_message", None)
+    else:
+        if error_code is not None:
+            meta["onboarding_error_code"] = error_code
+        if error_message is not None:
+            meta["onboarding_error_message"] = error_message
+
+    novel_dir = self._novel_dir(novel_id)
+    path = novel_dir / "metadata.json"
+    self._backup_metadata_file(path)
+    self._write_text_atomic(path, json.dumps(meta, ensure_ascii=False, indent=2))
+
+    try:
+        from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
+        safely_refresh_catalog_projection_after_storage_write(novel_id, self, context="onboarding_status_update")
+    except Exception:
+        logger.warning("Catalog projection refresh failed after onboarding status update for %s.", novel_id)
+
+    return meta
+
+
+def resolve_onboarding_status(self: Any, novel_id: str) -> str:
+    meta = self.load_metadata(novel_id)
+    if meta is None:
+        return "not_started"
+
+    explicit = meta.get("onboarding_status")
+    if explicit in VALID_ONBOARDING_STATUSES:
+        return explicit
+
+    if explicit is not None:
+        logger.warning("Unknown onboarding_status %r for novel %s; inferring from state.", explicit, novel_id)
+
+    chapters = meta.get("chapters") or []
+    if not chapters:
+        return "metadata_discovered"
+
+    list_stored = getattr(self, "list_stored_chapters", None)
+    if callable(list_stored):
+        raw_ids = list_stored(novel_id)
+        if raw_ids:
+            return "ready_for_translation"
+
+    return "chapters_pending"
+
+
 # ---- Glossary persistence -------------------------------------------------
 
 

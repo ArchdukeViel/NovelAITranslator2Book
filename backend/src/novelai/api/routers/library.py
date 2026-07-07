@@ -52,6 +52,11 @@ class NovelSummary(BaseModel):
     glossary_status: str = "glossary_pending"
     glossary_revision: int = 0
     glossary_pending_count: int = 0
+    onboarding_status: str | None = None
+    onboarding_updated_at: str | None = None
+    onboarding_error_code: str | None = None
+    onboarding_error_message: str | None = None
+    body_scrape_required: bool | None = None
 
 
 class SourceMetadataExtraction(BaseModel):
@@ -453,8 +458,9 @@ def _source_metadata_inspection_payload(
     )
 
 
-def _db_novel_summary(novel: Novel) -> NovelSummary:
+def _db_novel_summary(novel: Novel, storage: StorageService) -> NovelSummary:
     publication_status = normalize_publication_status(novel.publication_status or novel.status)
+    meta = storage.load_metadata(novel.slug) or {}
     return NovelSummary(
         novel_id=novel.slug,
         title=_optional_string(novel.title) or novel.slug,
@@ -473,6 +479,11 @@ def _db_novel_summary(novel: Novel) -> NovelSummary:
         glossary_status=novel.glossary_status,
         glossary_revision=novel.glossary_revision,
         glossary_pending_count=_pending_glossary_count(novel),
+        onboarding_status=meta.get("onboarding_status"),
+        onboarding_updated_at=meta.get("onboarding_updated_at"),
+        onboarding_error_code=meta.get("onboarding_error_code"),
+        onboarding_error_message=meta.get("onboarding_error_message"),
+        body_scrape_required=meta.get("body_scrape_required"),
     )
 
 
@@ -572,6 +583,11 @@ def _storage_novel_summary(
         chapter_count=chapter_count,
         scraped_count=scraped_count,
         translated_count=translated_count,
+        onboarding_status=meta.get("onboarding_status"),
+        onboarding_updated_at=meta.get("onboarding_updated_at"),
+        onboarding_error_code=meta.get("onboarding_error_code"),
+        onboarding_error_message=meta.get("onboarding_error_message"),
+        body_scrape_required=meta.get("body_scrape_required"),
     )
 
 
@@ -589,7 +605,7 @@ async def list_novels(
             query = query.offset(offset)
         if limit is not None:
             query = query.limit(limit)
-        return [_db_novel_summary(novel) for novel in query.all()]
+        return [_db_novel_summary(novel, storage) for novel in query.all()]
 
     summaries: list[NovelSummary] = []
     for novel_id in storage.list_novels():

@@ -332,6 +332,19 @@ def _preflight_translation(
         )
         return issues
 
+    onboarding_status = self.storage.resolve_onboarding_status(novel_id)
+    if onboarding_status != "ready_for_translation":
+        issues.append(
+            PreflightIssue(
+                code="onboarding_not_ready",
+                reason=(
+                    f"Novel onboarding is {onboarding_status!r}; "
+                    "complete chapter scraping before translation."
+                ),
+                details={"onboarding_status": onboarding_status},
+            )
+        )
+
     chapter_map = {
         int(chapter["id"]): chapter
         for chapter in meta.get("chapters", [])
@@ -2429,8 +2442,8 @@ async def translate_chapters(
         # Attach progress so the activity worker can surface a partial-failure
         # summary (REQ-3.3) while still propagating the underlying error so
         # existing failure routing is preserved.
-        setattr(first_error, "chapter_progress", chapter_progress)
-        setattr(first_error, "chapter_summary", summary)
+        first_error.chapter_progress = chapter_progress
+        first_error.chapter_summary = summary
         raise first_error
     return summary
 

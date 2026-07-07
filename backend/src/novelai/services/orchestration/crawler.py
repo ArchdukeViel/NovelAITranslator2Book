@@ -11,13 +11,13 @@ from novelai.db.engine import session_scope
 from novelai.db.models.novel import Novel
 from novelai.glossary import extract_candidate_glossary_terms
 from novelai.prompts import METADATA_TRANSLATION_PROMPT_VERSION
+from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
+from novelai.services.glossary_repository import GlossaryRepository
 from novelai.sources.quality import (
     chapter_content_hash,
     evaluate_chapter_quality,
     evaluate_metadata_quality,
 )
-from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
-from novelai.services.glossary_repository import GlossaryRepository
 
 logger = logging.getLogger(__name__)
 
@@ -237,6 +237,14 @@ async def scrape_metadata(
         context="scrape_metadata",
     )
     meta["bootstrap_candidate_count"] = await bootstrap_glossary_if_needed(self, novel_id, meta)
+    if meta.get("chapters"):
+        self.storage.update_onboarding_status(novel_id, "chapters_pending")
+        meta["onboarding_status"] = "chapters_pending"
+        meta["body_scrape_required"] = True
+    else:
+        self.storage.update_onboarding_status(novel_id, "metadata_discovered")
+        meta["onboarding_status"] = "metadata_discovered"
+        meta["body_scrape_required"] = False
     logger.info(f"Metadata scraped: {len(meta)} fields saved")
     if progress_callback:
         progress_callback(f"Metadata saved ({len(meta)} fields).")
@@ -273,9 +281,21 @@ async def scrape_chapters(
         )
 
     async with lock:
-        return await _scrape_chapters_impl(
+        result = await _scrape_chapters_impl(
             self, source_key, novel_id, chapters, mode, progress_callback
         )
+
+    if result["succeeded"] > 0:
+        self.storage.update_onboarding_status(novel_id, "ready_for_translation")
+    elif result["failed"] > 0 and result["succeeded"] == 0:
+        self.storage.update_onboarding_status(
+            novel_id,
+            "failed",
+            error_code="scrape_completed_without_chapters",
+            error_message="Chapter scrape finished without saving any usable raw chapters.",
+        )
+
+    return result
 
 
 async def _scrape_chapters_impl(
@@ -288,6 +308,8 @@ async def _scrape_chapters_impl(
 ) -> dict[str, Any]:
     """Internal implementation of scrape_chapters (called under lock)."""
     source = self._source_factory(source_key)
+
+    self.storage.update_onboarding_status(novel_id, "scraping_chapters", clear_error=True)
 
     if mode == "full":
         self.storage.delete_novel(novel_id)
