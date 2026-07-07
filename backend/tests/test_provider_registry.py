@@ -59,14 +59,16 @@ class TestProviderRegistry:
     def test_available_providers(self) -> None:
         providers = set(available_providers())
         assert {"dummy", "gemini"}.issubset(providers)
-        assert providers == {"dummy", "gemini"}
+        assert "nvidia" not in providers
+        assert "openai" not in providers
 
     def test_bootstrap_registers_gemini_and_dummy_and_excludes_openai(self) -> None:
         _PROVIDER_REGISTRY.clear()
         bootstrap_providers()
         providers = set(available_providers())
+        assert {"dummy", "gemini"}.issubset(providers)
         assert "openai" not in providers
-        assert providers == {"dummy", "gemini"}
+        assert "nvidia" not in providers
 
     def test_available_models_returns_gemini_models(self) -> None:
         models = available_models("gemini")

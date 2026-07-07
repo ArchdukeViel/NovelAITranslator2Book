@@ -31,7 +31,7 @@ def register_provider(key: str, factory: Callable[[], TranslationProvider]) -> N
         _PROVIDER_REGISTRY[key] = factory
         return
     logger.warning(
-        "Provider key %r ignored: only Gemini is supported.",
+        "Provider key %r ignored: only Gemini is supported. NVIDIA provider has been removed.",
         key,
     )
 
@@ -59,12 +59,18 @@ def get_provider(key: str | None = None) -> TranslationProvider:
 
     The *key* argument is accepted for backward compatibility. Any value
     other than ``"gemini"``/``"dummy"`` triggers a warning and falls back
-    to the Gemini provider.
+    to the Gemini provider. If the ``NVIDIA_API_KEY`` environment
+    variable is set, a separate warning is logged.
     """
     if key is not None and key not in {"gemini", "dummy"}:
         logger.warning(
             "Provider key %r requested but only Gemini is available. Falling back to Gemini.",
             key,
+        )
+
+    if os.environ.get("NVIDIA_API_KEY"):
+        logger.warning(
+            "NVIDIA_API_KEY is set but NVIDIA provider has been removed. Use GEMINI_API_KEY instead."
         )
 
     factory = _PROVIDER_REGISTRY.get(key or "gemini") or _PROVIDER_REGISTRY["gemini"]
