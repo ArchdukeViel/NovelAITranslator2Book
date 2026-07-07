@@ -1,11 +1,11 @@
 # NovelAI Current State
 
-**Last updated**: 2026-07-07 (all 16 test failures fixed: 5 root causes)
+**Last updated**: 2026-07-07 (tasks 3-6 complete: bundle lifecycle hardening, FetchService migration, operations thinning, VS Code problems)
 **Source of truth**: `docs/architecture/architecture.md`
 
 ## Verdict
 
-**PASS** — Core platform operational. Database migrated to PostgreSQL 16. Public auth supports Google OAuth plus email/password sign-up, sign-in, and sign-out. Owner bootstrap login is admin-only and separate from public auth. Public user features (library, progress, history, reviews, requests) remain enabled with CSRF and rate-limit hardening.
+**PASS** — Core platform operational. Database migrated to PostgreSQL 16. Public auth supports Google OAuth plus email/password sign-up, sign-in, and sign-out. Owner bootstrap login is admin-only and separate from public auth. Public user features (library, progress, history, reviews, requests) remain enabled with CSRF and rate-limit hardening. Bundle lifecycle hardening, FetchService migration, operations thinning, and VS Code problem cleanup completed.
 
 ---
 
@@ -40,7 +40,7 @@
 | Glossary auto-population | ✅ | SuggestionExtractor, GlossarySuggestionService, review/reject/apply API, pipeline integration |
 | Microservice-split readiness | ✅ | main_reader/main_admin entry points, DEPLOY_MODE dispatch, novelai_shared facade, Docker Compose + Caddy split routing, 14 contract tests |
 | Source pipeline hardening | ✅ | GenericSource ruby/preflight/confidence, KakuyomuSource preflight/UTF-8/UA/Kakuyomu URL canonicalization, per-chapter partial failure, in-process crawl lock, block-page regex refined |
-| Storage layer | ✅ | File-backed, chapter-based, runtime contracts |
+| Storage layer | ✅ | File-backed, chapter-based, runtime contracts; `cleanup_expired_runtime_data()` added for TTL-based purge (14 days) |
 | Provider errors | ✅ | `ProviderError` / `ProviderErrorCode` classification, API error mapping |
 || PostgreSQL database | ✅ | Supabase PostgreSQL 16, 12 ORM models, Alembic migrations applied |
 || Redis/RQ workers | ✅ | Background crawl and translation jobs |
@@ -84,6 +84,7 @@
 Backend: 1817+ tests collect, 1700+ pass (pytest, 2026-07-07)
   - test_pipeline_stages.py: 42 passed (pipeline stage unit tests)
   - test_novel_orchestration_service.py: 76 passed (orchestration + catalog projection)
+  - test_smart_chunking_context.py: 19 passed (chunking context assembly)
   - test_crawl_resilience_contracts.py: 21 passed (contract tests for crawl behavior)
   - test_taxonomy.py: 37 passed
   - test_public_router.py: 83 passed (incl. source_title, synopsis, is_adult contract)

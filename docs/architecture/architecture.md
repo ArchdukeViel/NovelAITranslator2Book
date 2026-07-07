@@ -448,13 +448,9 @@ cookies, or frontend-only flags.
 
 **P1 - maintainability/reliability risk**:
 
-- Temporary bundle lifecycle needs hardening around retry, debug retention, and
-  cleanup.
-- Remaining source adapters should continue moving toward FetchService where
-  legacy direct HTTP behavior remains.
-- `operations.py` and `admin.py` remain thicker than ideal; thin through
-  service extraction in dedicated phases. Operations refactor: DB-query path
-  for per-chapter state summary was dropped (simplified to storage-only lookup).
+- ✅ Temporary bundle lifecycle hardening — `cleanup_expired_runtime_data()` added (14-day TTL, scans all 5 runtime files).
+- ✅ Source adapter FetchService migration — legacy `_with_retry`/`_rate_limit` removed from `base.py`.
+- ✅ `operations.py` thinning — 11 standalone helpers extracted to `preliminary.py` (630→498 lines). `admin.py` still pending.
 - Legacy aliases need planned migration.
 - Storage backward compatibility needs continued discipline.
 - Source parser fixtures are representative, not exhaustive against live-site
