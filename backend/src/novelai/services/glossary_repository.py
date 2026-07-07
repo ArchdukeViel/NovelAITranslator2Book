@@ -221,7 +221,7 @@ class GlossaryRepository:
         entry.updated_by_user_id = actor_user_id
         # Only increment when the entry is currently approved — candidate/recommended changes
         # do not affect the vetted glossary set (Req 8.2, 8.4).
-        if entry_status_before_update == "approved":
+        if entry_status_before_update == "approved" and novel_id is not None:
             self._increment_glossary_revision(novel_id)
         self.db.flush()
         return entry
@@ -261,7 +261,7 @@ class GlossaryRepository:
         )
         # Increment glossary_revision when approving an entry, or when an
         # approved entry is deprecated or rejected (the active set changed).
-        if status == "approved" or (old_status == "approved" and status in {"deprecated", "rejected"}):
+        if (status == "approved" or (old_status == "approved" and status in {"deprecated", "rejected"})) and novel_id is not None:
             self._increment_glossary_revision(novel_id)
         self.db.flush()
         return entry

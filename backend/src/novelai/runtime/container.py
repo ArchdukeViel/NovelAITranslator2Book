@@ -127,6 +127,7 @@ class Container:
                     starttls=settings.SMTP_STARTTLS,
                     use_ssl=settings.SMTP_USE_SSL,
                     timeout_seconds=settings.SMTP_TIMEOUT_SECONDS,
+                    smtp_factory=None,
                 )
             else:
                 raise ValueError(f"Unsupported AUTH_EMAIL_DELIVERY_MODE: {settings.AUTH_EMAIL_DELIVERY_MODE!r}")

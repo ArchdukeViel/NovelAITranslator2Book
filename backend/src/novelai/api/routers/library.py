@@ -349,7 +349,8 @@ def _load_sanitized_metadata_snapshot(
     snapshot = storage.load_metadata_snapshot(novel_id, snapshot_id)
     if snapshot is None:
         return None, None, []
-    raw_metadata = snapshot.get("metadata") if isinstance(snapshot.get("metadata"), dict) else {}
+    raw_metadata_raw = snapshot.get("metadata")
+    raw_metadata: dict[str, Any] = raw_metadata_raw if isinstance(raw_metadata_raw, dict) else {}
     sanitized_metadata, _metadata_keys, sanitize_warnings = _sanitize_metadata_snapshot(raw_metadata)
     return snapshot, sanitized_metadata, sanitize_warnings
 
@@ -776,7 +777,9 @@ async def inspect_source_metadata_snapshot_detail(
             raise HTTPException(status_code=404, detail="Novel not found")
         raise HTTPException(status_code=404, detail="Metadata snapshot not found")
 
-    raw_metadata = snapshot.get("metadata") if isinstance(snapshot.get("metadata"), dict) else {}
+    raw_metadata: dict[str, Any] = snapshot.get("metadata") if isinstance(snapshot.get("metadata"), dict) else {}
+    if raw_metadata is None:
+        raw_metadata = {}
     sanitized_metadata, metadata_keys, sanitize_warnings = _sanitize_metadata_snapshot(raw_metadata)
     warnings = sorted(
         set(sanitize_warnings)

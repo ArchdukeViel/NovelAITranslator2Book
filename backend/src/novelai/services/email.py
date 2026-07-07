@@ -38,10 +38,10 @@ class AuthEmailMessage:
 
 class AuthEmailService(Protocol):
     def send_password_reset_email(self, *, email: str, token: str) -> EmailDeliveryResult:
-        """Send or enqueue a password reset email."""
+        ...
 
     def send_email_verification_email(self, *, email: str, token: str) -> EmailDeliveryResult:
-        """Send or enqueue an email verification email."""
+        ...
 
 
 def _recipient_fingerprint(email: str) -> str:
@@ -210,7 +210,7 @@ class SMTPAuthEmailService(NoopAuthEmailService):
     def _build_message(self, *, recipient: str, subject: str, body: str) -> EmailMessage:
         message = EmailMessage()
         message["Subject"] = subject
-        message["From"] = formataddr((self.from_name, self.from_email))
+        message["From"] = formataddr((self.from_name, self.from_email or ""))
         message["To"] = recipient
         message.set_content(body)
         return message
@@ -255,6 +255,7 @@ class SMTPAuthEmailService(NoopAuthEmailService):
         return EmailDeliveryResult(message_type=message_type, provider=self.provider, delivered=False)
 
     def _connect(self) -> object:
+        assert self.host is not None
         factory = self.smtp_factory
         if factory is None:
             factory = smtplib.SMTP_SSL if self.use_ssl else smtplib.SMTP

@@ -16,10 +16,9 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
-    UniqueConstraint,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from novelai.db.base import Base
 
