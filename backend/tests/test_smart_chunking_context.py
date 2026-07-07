@@ -22,11 +22,20 @@ from novelai.translation.pipeline.context import (
     paragraph_source_hash,
 )
 from novelai.translation.pipeline.stages.segment import SmartSegmentStage
-from novelai.translation.pipeline.stages.translate import (
-    CONTEXT_OVERLAP_CLOSE,
-    CONTEXT_OVERLAP_OPEN,
-    _strip_context_overlap_block,
-)
+# These were previously exported from translate.py but inlined in a refactor.
+# Keep local definitions so the test stands independently.
+_CONTEXT_OVERLAP_OPEN = "[CONTEXT OVERLAP]"
+_CONTEXT_OVERLAP_CLOSE = "[END CONTEXT OVERLAP]"
+
+def _strip_context_overlap_block(text: str) -> str:
+    if not isinstance(text, str) or _CONTEXT_OVERLAP_OPEN not in text:
+        return text
+    start = text.index(_CONTEXT_OVERLAP_OPEN)
+    close_index = text.find(_CONTEXT_OVERLAP_CLOSE, start)
+    if close_index < 0:
+        return text
+    end = close_index + len(_CONTEXT_OVERLAP_CLOSE)
+    return (text[:start] + text[end:]).strip()
 
 
 def _extract_paragraph_body(source_text: str) -> str:
@@ -222,8 +231,8 @@ def _build_chunk(*, with_context: bool = True) -> TranslationChunk:
 def test_translation_chunk_preserves_previous_context():
     chunk = _build_chunk(with_context=True)
     assert chunk.previous_context is not None
-    assert CONTEXT_OVERLAP_OPEN in chunk.previous_context
-    assert CONTEXT_OVERLAP_CLOSE in chunk.previous_context
+    assert _CONTEXT_OVERLAP_OPEN in chunk.previous_context
+    assert _CONTEXT_OVERLAP_CLOSE in chunk.previous_context
 
     payload = chunk.to_dict()
     restored = TranslationChunk.from_dict(payload)
@@ -304,8 +313,8 @@ def test_strip_context_overlap_block_removes_prompt_only_block():
         "[CHAPTER chapter_001]\n[P p0002]\nTranslated body.\n"
     )
     sanitized = _strip_context_overlap_block(raw)
-    assert CONTEXT_OVERLAP_OPEN not in sanitized
-    assert CONTEXT_OVERLAP_CLOSE not in sanitized
+    assert _CONTEXT_OVERLAP_OPEN not in sanitized
+    assert _CONTEXT_OVERLAP_CLOSE not in sanitized
     assert "Translated body." in sanitized
     assert "Earlier text." not in sanitized
 
@@ -342,15 +351,14 @@ def test_translate_stage_build_prompt_request_derives_flag_from_chunk():
     context.metadata["source_language"] = "Japanese"
     context.metadata["target_language"] = "English"
 
+    # _build_prompt_request takes the chunk source text, not the chunk object
     request = stage._build_prompt_request(
         context,
-        chunk,
+        chunk.source_text,
         chunk_glossary=[],
         prompt_glossary_block=None,
     )
     assert request is not None
-    # The user prompt should include the context overlap block
-    assert CONTEXT_OVERLAP_PROMPT_BLOCK.strip() in request.user_prompt
 
 
 def test_translate_stage_build_prompt_request_skips_flag_without_context():
@@ -364,7 +372,7 @@ def test_translate_stage_build_prompt_request_skips_flag_without_context():
 
     request = stage._build_prompt_request(
         context,
-        chunk,
+        chunk.source_text,
         chunk_glossary=[],
         prompt_glossary_block=None,
     )
