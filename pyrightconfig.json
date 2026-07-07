@@ -1,9 +1,14 @@
 {
   "include": [
-    "backend/src"
+    "backend/src",
+    "backend/tests"
   ],
   "exclude": [
-    "tests"
+    "**/__pycache__",
+    ".venv",
+    "node_modules",
+    ".ruff_cache",
+    ".hypothesis"
   ],
   "extraPaths": [
     "backend/src"
