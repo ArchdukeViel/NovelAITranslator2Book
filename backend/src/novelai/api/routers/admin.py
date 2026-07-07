@@ -4,137 +4,25 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
-from novelai.activity.runner import BackgroundActivityRunner
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
+from novelai.api.routers.admin_schemas import (
+    ProviderApiKeyRequest,
+    ProviderApiKeyValidationRequest,
+    ProviderCredentialCreateRequest,
+    ProviderCredentialUpdateRequest,
+    ProviderFallbackPolicyRequest,
+    model_payload,
+    provider_credential_response,
+)
 from novelai.api.routers.dependencies import (
-    get_activity_runner,
-    get_db_session,
-    get_preferences,
-    get_storage,
-    get_translation_cache,
-    get_usage,
+    get_admin_db_service,
+    get_admin_service,
 )
 from novelai.services.admin_service import AdminService
-from novelai.services.preferences_service import PreferencesService
-from novelai.services.translation_cache import TranslationCache
-from novelai.services.usage_service import UsageService
-from novelai.storage.service import StorageService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
-
-
-class ProviderApiKeyRequest(BaseModel):
-    provider: str = "gemini"
-    provider_key: str | None = None
-    api_key: str
-    model: str | None = None
-    provider_model: str | None = None
-    apply_globally: bool = True
-    validate_connection: bool = True
-
-
-class ProviderApiKeyValidationRequest(BaseModel):
-    provider: str = "gemini"
-    provider_key: str | None = None
-    api_key: str | None = None
-    model: str | None = None
-    provider_model: str | None = None
-
-
-class ProviderCredentialCreateRequest(BaseModel):
-    provider: str
-    api_key: str
-    label: str | None = None
-    model: str | None = None
-    provider_model: str | None = None
-    is_active: bool = True
-    notes: str | None = None
-    apply_globally: bool = False
-
-
-class ProviderCredentialUpdateRequest(BaseModel):
-    label: str | None = None
-    model: str | None = None
-    provider_model: str | None = None
-    is_active: bool | None = None
-    notes: str | None = None
-
-
-class ProviderFallbackPolicyRequest(BaseModel):
-    default_provider: str | None = None
-    default_model: str | None = None
-    default_credential_id: str | None = None
-    allow_cross_provider_fallback: bool | None = None
-    allow_run_overrides: bool | None = None
-    fallback_on_qa_failure: bool | None = None
-    candidates: list[dict[str, Any]] | None = None
-
-
-def _provider_credential_response(status: dict[str, Any]) -> dict[str, Any]:
-    provider = str(status.get("provider_key") or status.get("provider") or "gemini")
-    validation_status = {
-        "working": "Working",
-        "failed": "Failed",
-        "checking": "Checking",
-        "unchecked": "Unchecked",
-    }.get(str(status.get("validation_status") or "unchecked").lower(), "Unchecked")
-    configured = bool(status.get("configured"))
-    return {
-        "id": provider,
-        "provider": provider,
-        "masked_token": "Configured" if configured else "",
-        "configured": configured,
-        "is_active": configured and status.get("preferred_provider_key", status.get("preferred_provider")) == provider,
-        "validation_status": validation_status,
-        "validation_message": status.get("validation_message"),
-        "model": status.get("provider_model") or status.get("model"),
-    }
-
-
-def _model_payload(model: BaseModel) -> dict[str, Any]:
-    dump = getattr(model, "model_dump", None)
-    if callable(dump):
-        return dump(exclude_none=True)
-    return model.dict(exclude_none=True)
-
-
-def get_admin_service(
-    preferences: PreferencesService = Depends(get_preferences),
-    translation_cache: TranslationCache = Depends(get_translation_cache),
-    usage: UsageService = Depends(get_usage),
-    activity_runner: BackgroundActivityRunner = Depends(get_activity_runner),
-    storage: StorageService = Depends(get_storage),
-) -> AdminService:
-    return AdminService(
-        preferences=preferences,
-        translation_cache=translation_cache,
-        usage=usage,
-        activity_runner=activity_runner,
-        storage=storage,
-    )
-
-
-def get_admin_db_service(
-    preferences: PreferencesService = Depends(get_preferences),
-    translation_cache: TranslationCache = Depends(get_translation_cache),
-    usage: UsageService = Depends(get_usage),
-    activity_runner: BackgroundActivityRunner = Depends(get_activity_runner),
-    storage: StorageService = Depends(get_storage),
-    db_session: Session = Depends(get_db_session),
-) -> AdminService:
-    return AdminService(
-        preferences=preferences,
-        translation_cache=translation_cache,
-        usage=usage,
-        activity_runner=activity_runner,
-        storage=storage,
-        db_session=db_session,
-    )
-
 
 def _raise_admin_error(exc: Exception) -> None:
     if isinstance(exc, ValueError):
@@ -277,7 +165,7 @@ async def set_provider_fallback_policy(
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     try:
-        return service.set_provider_fallback_policy(_model_payload(body))
+        return service.set_provider_fallback_policy(model_payload(body))
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
         raise AssertionError("unreachable")
@@ -290,7 +178,7 @@ async def get_provider_credential(
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     try:
-        return _provider_credential_response(service.provider_api_key_status(provider))
+        return provider_credential_response(service.provider_api_key_status(provider))
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
         raise AssertionError("unreachable")
@@ -338,7 +226,7 @@ async def set_provider_credential(
                 provider=body.provider_key or body.provider,
                 model=status.get("provider_model"),
             )
-        return _provider_credential_response(status)
+        return provider_credential_response(status)
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
         raise AssertionError("unreachable")
@@ -374,7 +262,7 @@ async def validate_provider_credential(
             api_key=body.api_key if body else None,
             model=(body.provider_model or body.model) if body else None,
         )
-        return _provider_credential_response(status)
+        return provider_credential_response(status)
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
         raise AssertionError("unreachable")
@@ -400,7 +288,7 @@ async def clear_provider_credential(
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     try:
-        return _provider_credential_response(service.clear_provider_api_key(provider))
+        return provider_credential_response(service.clear_provider_api_key(provider))
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
         raise AssertionError("unreachable")

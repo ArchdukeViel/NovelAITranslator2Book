@@ -450,6 +450,7 @@ cookies, or frontend-only flags.
 
 - ✅ Temporary bundle lifecycle hardening — `cleanup_expired_runtime_data()` added (14-day TTL, scans all 5 runtime files).
 - ✅ Source adapter FetchService migration — legacy `_with_retry`/`_rate_limit` removed from `base.py`.
+- ✅ Object storage boundary spike — `S3Backend` implemented and integrated into storage factory.
 - ✅ `operations.py` thinning — 11 standalone helpers extracted to `preliminary.py` (630→498 lines). `admin.py` still pending.
 - Legacy aliases need planned migration.
 - Storage backward compatibility needs continued discipline.

@@ -6,6 +6,8 @@ from typing import Any
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 from starlette import status
 
 from novelai.activity.queue import ActivityQueueService
@@ -13,6 +15,7 @@ from novelai.activity.runner import BackgroundActivityRunner
 from novelai.activity.worker import ActivityWorkerService
 from novelai.config.settings import settings
 from novelai.runtime.container import container
+from novelai.services.admin_service import AdminService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
@@ -164,3 +167,37 @@ def reader_title(meta: dict[str, Any]) -> str | None:
 def reader_author(meta: dict[str, Any]) -> str | None:
     author = meta.get("translated_author") or meta.get("author")
     return author if isinstance(author, str) else None
+
+
+def get_admin_service(
+    preferences: PreferencesService = Depends(get_preferences),
+    translation_cache: TranslationCache = Depends(get_translation_cache),
+    usage: UsageService = Depends(get_usage),
+    activity_runner: BackgroundActivityRunner = Depends(get_activity_runner),
+    storage: StorageService = Depends(get_storage),
+) -> AdminService:
+    return AdminService(
+        preferences=preferences,
+        translation_cache=translation_cache,
+        usage=usage,
+        activity_runner=activity_runner,
+        storage=storage,
+    )
+
+
+def get_admin_db_service(
+    preferences: PreferencesService = Depends(get_preferences),
+    translation_cache: TranslationCache = Depends(get_translation_cache),
+    usage: UsageService = Depends(get_usage),
+    activity_runner: BackgroundActivityRunner = Depends(get_activity_runner),
+    storage: StorageService = Depends(get_storage),
+    db_session: Session = Depends(get_db_session),
+) -> AdminService:
+    return AdminService(
+        preferences=preferences,
+        translation_cache=translation_cache,
+        usage=usage,
+        activity_runner=activity_runner,
+        storage=storage,
+        db_session=db_session,
+    )
