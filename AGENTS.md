@@ -138,20 +138,42 @@ No:
 
 ## Repository-Specific Guidance
 
-- **Architecture:** `backend/` (FastAPI + SQLAlchemy pipeline) and `frontend/` (Next.js app router) are independent packages. Backend package root is `backend/src`; entrypoint `novelai.__main__:main`.
-- **Commands:**
-  - Lint: `ruff check .`
-  - Typecheck: `pyright` (uses `pyrightconfig.json`; includes `backend/src` + `backend/tests`)
-  - Test (focused): `pytest backend/tests/test_glossary_repository.py` — run one file, not the whole suite
-  - Test (full): `pytest` (slow; ~90 files, times out past ~120s — avoid in one shot)
-  - Workflow: lint -> typecheck -> test before commit.
-- **Dependencies:** `pyproject.toml` is authoritative; there is **no** `requirements.txt` by design. Install with optional groups: `pip install -e ".[dev,db,worker,s3,documents]"`.
-- **Logging:** central config is `novelai.logging_config.configure_logging()` (emits JSON when `LOG_FORMAT=json`). Call it at startup; don't scatter `basicConfig` per module.
-- **Translation pipeline:** context is paramount — QA stage must see glossary + previous chapter state.
-- **Data handling:** SQLAlchemy models only; no raw SQL.
-- **Tooling:** prefer `powershell` native cmdlets over bash-style aliases.
-- **File writes — critical:** never use `write` to (re)create a path that may already exist. `pyrightconfig.json` and `backend/src/novelai/logging_config.py` were silently overwritten this session, destroying real config/code. Before `write`, check `git ls-files <path>` and file existence; use `edit` to change existing files.
-- **Scratch artifacts:** `.gitignore` already covers caches/venv/node_modules/`*.log`/`*.bak`. Never write scratch files (e.g. `*.txt` dumps) to the repo root — use the OS temp dir.
+### Structure
+- `backend/` (FastAPI + SQLAlchemy) and `frontend/` (Next.js App Router) are independent packages.
+  Backend package root is `backend/src`; entrypoint is `novelai.__main__:main`.
+- `docs/architecture/architecture.md` is the authoritative architecture doc. Read it before touching anything non-trivial.
+
+### Verification Commands (run from repo root unless noted)
+- **Lint:** `python -m ruff check .`
+- **Typecheck:** `python -m pyright` (uses `pyrightconfig.json`, includes `backend/src` + `backend/tests`)
+- **Test (focused):** `python -m pytest backend/tests/test_<filename>.py` — run one file, not the whole suite (~90 files, times out past ~120s)
+- **Test (full):** `python -m pytest` (slow — avoid in one shot)
+- **Workflow:** lint → typecheck → test before commit.
+
+### Dependencies
+- `pyproject.toml` is authoritative. **No `requirements.txt`** by design.
+- Install dev deps: `pip install -e ".[dev]"` from the `backend/` directory.
+- To also run the full pipeline: `pip install -e ".[dev,db,worker,s3,documents]"` (or any combination of the available extras: `auth`, `db`, `dev`, `documents`, `gemini`, `openai`, `s3`, `test`, `worker`).
+
+### Logging
+- Central config: `novelai.logging_config.configure_logging()` (emits JSON when `LOG_FORMAT=json`).
+- Call it at startup; don't scatter `basicConfig` per module.
+
+### Translation Pipeline
+- Context is paramount — QA stage must see glossary + previous chapter state.
+- **Onboarding status** gates translation: `onboarding_status` must be `ready_for_translation` for translation to proceed (checked in `_preflight_translation`).
+
+### Data Handling
+- SQLAlchemy models only; no raw SQL.
+
+### Tooling
+- **Windows:** use `powershell` native cmdlets; chain with `; if ($?) { next }` instead of `&&`.
+- **Python:** use `python -m <tool>` rather than assuming `<tool>` is in PATH.
+- **File writes — critical:** never use `write` to overwrite an existing file. Use `edit` to change existing files. Before creating a *new* file with `write`, verify it doesn't exist: on Windows use `Test-Path -LiteralPath "<path>"`; on bash use `git ls-files --error-unmatch "<path>" 2>/dev/null || echo "new"`.
+
+### Scratch Artifacts
+- `.gitignore` already covers `cache/`, `venv/`, `node_modules/`, `*.log`, `*.bak`, `.pytest_cache/`, `.ruff_cache/`.
+- Never write scratch `.txt` dumps to the repo root — use the OS temp dir.
 
 
 
