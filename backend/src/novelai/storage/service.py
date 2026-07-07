@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import json
+import logging
+import os
 import re
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -63,18 +68,53 @@ from novelai.storage.novels import (
     _index_path,
     _legacy_folder_candidates,
     _load_index,
+    _load_latest_valid_metadata_backup,
     _metadata_backup_dir,
     _metadata_history_entry,
     _normalize_library_novel_id,
+    _normalize_loaded_metadata,
     _novel_dir,
     _persist_index,
+    _recover_metadata_from_backup,
     _validate_folder_name,
     delete_novel,
     list_metadata_history,
-    load_metadata_snapshot,
     list_novels,
     load_metadata,
+    load_metadata_snapshot,
     save_metadata,
+)
+from novelai.storage.runtime_contracts import (
+    _fetch_cache_dir,
+    _runtime_dir,
+    _translation_runtime_dir,
+    cleanup_expired_runtime_data,
+    delete_translation_bundle,
+    fetch_cache_conditional_headers,
+    list_chunk_attempt_records,
+    list_provider_request_records,
+    read_fetch_cache_entry,
+    read_translation_bundle,
+    read_translation_chunks,
+    read_translation_output,
+    save_chunk_attempt_record,
+    save_fetch_cache_entry,
+    save_provider_request_record,
+    save_translation_bundle,
+    save_translation_chunks,
+    save_translation_output,
+    update_translation_chunk_status,
+)
+from novelai.storage.traceability import (
+    _read_json_file,
+    _trace_dir,
+    append_pipeline_event,
+    append_pipeline_events,
+    list_pipeline_events,
+    load_chunk_states,
+    load_scheduler_state,
+    save_scheduler_state,
+    upsert_chunk_state,
 )
 from novelai.storage.translations import (
     _active_translation_version,
@@ -91,38 +131,26 @@ from novelai.storage.translations import (
     save_edited_translation,
     save_translated_chapter,
 )
-from novelai.storage.traceability import (
-    _trace_dir,
-    _read_json_file,
-    append_pipeline_event,
-    append_pipeline_events,
-    list_pipeline_events,
-    load_chunk_states,
-    load_scheduler_state,
-    save_scheduler_state,
-    upsert_chunk_state,
-)
-from novelai.storage.runtime_contracts import (
-    _fetch_cache_dir,
-    _runtime_dir,
-    _translation_runtime_dir,
-    cleanup_expired_runtime_data,
-    delete_translation_bundle,
-    fetch_cache_conditional_headers,
-    list_chunk_attempt_records,
-    list_provider_request_records,
-    read_fetch_cache_entry,
-    read_translation_bundle,
-    read_translation_chunks,
-    read_translation_output,
-    save_fetch_cache_entry,
-    save_chunk_attempt_record,
-    save_provider_request_record,
-    save_translation_bundle,
-    save_translation_chunks,
-    save_translation_output,
-    update_translation_chunk_status,
-)
+
+logger = logging.getLogger(__name__)
+
+
+def _fsync_directory(directory: Path) -> None:
+    """Best-effort fsync of a directory so a rename is durable.
+
+    Failures are debug-level only; directory fsync is unsupported on some
+    platforms and must never break the write.
+    """
+    try:
+        fd = os.open(str(directory), os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        logger.debug("Directory fsync failed for %s", directory, exc_info=True)
+    finally:
+        os.close(fd)
 
 
 class StorageService:
@@ -248,6 +276,33 @@ class StorageService:
     def _write_text(self, path: Path, content: str) -> None:
         """Write text content via storage backend."""
         self._backend.save(self._rel(path), content.encode("utf-8"))
+
+    def _write_text_atomic(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        """Write ``content`` to ``path`` atomically.
+
+        Writes to a unique temp file in the same directory, flushes and fsyncs
+        it, then replaces the target with ``os.replace`` so readers never see a
+        partial file. Best-effort fsyncs the parent directory and removes the
+        temp file on failure before the rename.
+        """
+        self._backend.mkdirs(self._rel(path.parent))
+        temp_path = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+        replaced = False
+        try:
+            self._backend.save(self._rel(temp_path), content.encode(encoding))
+            os.replace(temp_path, path)
+            replaced = True
+            _fsync_directory(path.parent)
+        except Exception as exc:
+            if not replaced:
+                with contextlib.suppress(OSError):
+                    temp_path.unlink(missing_ok=True)
+                logger.warning("Atomic write failed for %s: %s", path, exc)
+            raise
+
+    def _write_json_atomic(self, path: Path, payload: Any, *, encoding: str = "utf-8") -> None:
+        """Serialize ``payload`` as JSON and write it atomically."""
+        self._write_text_atomic(path, json.dumps(payload, ensure_ascii=False, indent=2), encoding=encoding)
 
     def _path_exists(self, path: Path) -> bool:
         """Check existence via storage backend."""
@@ -438,6 +493,9 @@ class StorageService:
     delete_novel = delete_novel
     save_metadata = save_metadata
     load_metadata = load_metadata
+    _load_latest_valid_metadata_backup = _load_latest_valid_metadata_backup
+    _normalize_loaded_metadata = _normalize_loaded_metadata
+    _recover_metadata_from_backup = _recover_metadata_from_backup
     list_metadata_history = list_metadata_history
     load_metadata_snapshot = load_metadata_snapshot
     list_novels = list_novels

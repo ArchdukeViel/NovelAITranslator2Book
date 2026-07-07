@@ -102,7 +102,7 @@ def _persist_chapter_bundle(self: Any, novel_id: str, chapter_id: str, payload: 
     self._normalize_media_fields(payload)
     payload["schema_version"] = self.SCHEMA_VERSION
     path = self._chapter_path(novel_id, chapter_id)
-    self._write_text(path, json.dumps(payload, ensure_ascii=False, indent=2))
+    self._write_text_atomic(path, json.dumps(payload, ensure_ascii=False, indent=2))
     return path
 
 
