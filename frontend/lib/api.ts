@@ -646,5 +646,15 @@ export const adminApi = {
     }),
   // Active provider credential status used by the admin shell.
   providerCredential: (provider?: string) =>
-    request<import("./api-types").ProviderCredential>(`/admin/providers/${provider ?? "gemini"}`)
+    request<import("./api-types").ProviderCredential>(`/admin/providers/${provider ?? "gemini"}`),
+  resumeOnboarding: (novelId: string, chapters = "all") =>
+    request<{ novel_id: string; onboarding_status: string; activity_id: string | null }>(
+      `/novels/${encodeURIComponent(novelId)}/onboarding/resume`,
+      { method: "POST", body: JSON.stringify({ chapters }) }
+    ),
+  cancelOnboarding: (novelId: string) =>
+    request<{ novel_id: string; onboarding_status: string }>(
+      `/novels/${encodeURIComponent(novelId)}/onboarding/cancel`,
+      { method: "POST", body: JSON.stringify({}) }
+    ),
 };

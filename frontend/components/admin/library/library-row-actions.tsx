@@ -1,6 +1,6 @@
 "use client";
 
-import { BookMarked, BookOpen, Eye, EyeOff, FileEdit, Languages, RefreshCw, Tags, Trash2 } from "lucide-react";
+import { BookMarked, BookOpen, Eye, EyeOff, FileEdit, Languages, RefreshCw, RotateCw, Tags, Trash2, X } from "lucide-react";
 import Link from "next/link";
 
 import { ReadinessBadge } from "@/components/admin/glossary/readiness-badge";
@@ -21,6 +21,8 @@ export type LibraryRowActionsProps = {
   onEditTaxonomy: (novel: NovelSummary) => void;
   onPublish: (novel: NovelSummary) => void;
   onUnpublish: (novel: NovelSummary) => void;
+  onResume?: (novel: NovelSummary) => void;
+  onCancel?: (novel: NovelSummary) => void;
 };
 
 function latestChapterText(novel: NovelSummary) {
@@ -48,7 +50,9 @@ export function LibraryRowActions({
   onDelete,
   onEditTaxonomy,
   onPublish,
-  onUnpublish
+  onUnpublish,
+  onResume,
+  onCancel,
 }: LibraryRowActionsProps) {
   const published = novel.is_published === true;
   const translatedCount = novel.translated_count ?? 0;
@@ -59,6 +63,15 @@ export function LibraryRowActions({
       ? "Published novels appear in the public catalog when at least one translated chapter is available."
       : "Translate at least one chapter before publishing.";
   const latest = latestChapterText(novel);
+
+  const onboardingStatus = novel.onboarding_status;
+  const onboardingResumable = onboardingStatus !== null &&
+    onboardingStatus !== undefined &&
+    !["ready_for_translation", "cancelled", "not_started"].includes(onboardingStatus);
+  const onboardingCancellable = onboardingStatus !== null &&
+    onboardingStatus !== undefined &&
+    !["ready_for_translation", "cancelled", "not_started"].includes(onboardingStatus);
+  const showOnboardingError = onboardingStatus === "failed" && novel.onboarding_error_message;
 
   return (
     <div className="space-y-2">
@@ -73,12 +86,28 @@ export function LibraryRowActions({
           glossaryPendingCount={novel.glossary_pending_count}
           compact
         />
+        {onboardingStatus && onboardingStatus !== "ready_for_translation" ? (
+          <Badge tone={onboardingStatus === "failed" ? "red" : onboardingStatus === "scraping_chapters" || onboardingStatus === "chapters_pending" || onboardingStatus === "glossary_pending" ? "amber" : "neutral"}>
+            {onboardingStatus === "scraping_chapters" ? "Scraping" :
+             onboardingStatus === "chapters_pending" ? "Scrape pending" :
+             onboardingStatus === "glossary_pending" ? "Glossary pending" :
+             onboardingStatus === "failed" ? "Failed" :
+             onboardingStatus === "metadata_discovered" ? "Metadata ready" :
+             onboardingStatus === "cancelled" ? "Cancelled" :
+             onboardingStatus}
+          </Badge>
+        ) : null}
         {novel.publication_status ? (
           <span className="text-xs text-muted-foreground">
             Source status: {novel.publication_status}
           </span>
         ) : null}
       </div>
+      {showOnboardingError ? (
+        <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1 text-xs text-destructive">
+          {novel.onboarding_error_message}
+        </div>
+      ) : null}
       <div className="text-xs leading-5 text-muted-foreground">
         <div>{publishHelper}</div>
         {latest ? <div>{latest}</div> : null}
@@ -154,6 +183,18 @@ export function LibraryRowActions({
           <Tags className="h-4 w-4" />
           Taxonomy
         </Button>
+        {onboardingResumable && onResume ? (
+          <Button size="sm" variant="outline" onClick={() => onResume(novel)} disabled={pending} title="Resume onboarding">
+            <RotateCw className="h-4 w-4" />
+            Resume
+          </Button>
+        ) : null}
+        {onboardingCancellable && onCancel ? (
+          <Button size="sm" variant="outline" onClick={() => onCancel(novel)} disabled={pending} title="Cancel onboarding">
+            <X className="h-4 w-4" />
+            Cancel
+          </Button>
+        ) : null}
       </div>
     </div>
   );

@@ -280,6 +280,20 @@ export default function LibraryPage() {
     }
   });
 
+  const resumeOnboarding = useMutation({
+    mutationFn: async (novel: NovelSummary) => api.resumeOnboarding(novel.novel_id),
+    onSuccess: () => {
+      invalidateLibrary();
+    }
+  });
+
+  const cancelOnboarding = useMutation({
+    mutationFn: async (novel: NovelSummary) => api.cancelOnboarding(novel.novel_id),
+    onSuccess: () => {
+      invalidateLibrary();
+    }
+  });
+
   const toggleAllRows = () => {
     setSelectedNovelIds(allRowsSelected ? new Set() : new Set(rows.map((novel) => novel.novel_id)));
   };
@@ -430,6 +444,8 @@ export default function LibraryPage() {
         </PanelHeader>
         <ErrorBanner error={runLibraryAction.error} fallback="Failed to run library action." />
         <ErrorBanner error={publishNovel.error} fallback="Failed to update publication state." />
+        <ErrorBanner error={resumeOnboarding.error} fallback="Failed to resume onboarding." />
+        <ErrorBanner error={cancelOnboarding.error} fallback="Failed to cancel onboarding." />
         <ErrorBanner error={novels.error} fallback="Failed to load novels." />
         {publicationNotice ? (
           <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
@@ -455,16 +471,17 @@ export default function LibraryPage() {
                   <SortableHeader label="Raw chapters" sortKey="raw" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-32" />
                   <SortableHeader label="Translated chapters" sortKey="translated" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-44" />
                   <SortableHeader label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-36" />
+                  <th className="px-4 py-3">Onboarding</th>
                   <th className="w-[360px] px-4 py-3">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {novels.isLoading ? (
-                  <LoadingRows colSpan={8} label="Loading library..." />
+                  <LoadingRows colSpan={9} label="Loading library..." />
                 ) : novels.error ? (
-                  <EmptyState title="Failed to load novels." colSpan={8} />
+                  <EmptyState title="Failed to load novels." colSpan={9} />
                 ) : unexpectedPayload ? (
-                  <EmptyState title="Unexpected novels payload." colSpan={8} />
+                  <EmptyState title="Unexpected novels payload." colSpan={9} />
                 ) : sortedRows.length ? (
                   sortedRows.map((novel) => {
                     const sourceUrl = novel.source_url?.trim();
@@ -472,6 +489,8 @@ export default function LibraryPage() {
                     const translatedChapters = novel.translated_count ?? 0;
                     const listedChapters = novel.chapter_count;
                     const missingSource = !novel.source;
+                    const onboardingStatus = novel.onboarding_status;
+                    const showOnboardingBadge = onboardingStatus != null && onboardingStatus !== "ready_for_translation";
                     return (
                       <tr className="border-b last:border-0" key={novel.novel_id}>
                         <td className="px-4 py-3">
@@ -515,10 +534,51 @@ export default function LibraryPage() {
                         </td>
                         <td className="px-4 py-3">{translationBadge(novel)}</td>
                         <td className="px-4 py-3">
+                          {showOnboardingBadge ? (
+                            <div className="space-y-1">
+                              <Badge
+                                tone={
+                                  onboardingStatus === "failed"
+                                    ? "red"
+                                    : onboardingStatus === "scraping_chapters" ||
+                                      onboardingStatus === "chapters_pending" ||
+                                      onboardingStatus === "glossary_pending"
+                                    ? "amber"
+                                    : "neutral"
+                                }
+                              >
+                                {onboardingStatus === "scraping_chapters"
+                                  ? "Scraping"
+                                  : onboardingStatus === "chapters_pending"
+                                    ? "Scrape pending"
+                                    : onboardingStatus === "glossary_pending"
+                                      ? "Glossary pending"
+                                      : onboardingStatus === "failed"
+                                        ? "Failed"
+                                        : onboardingStatus === "metadata_discovered"
+                                          ? "Metadata ready"
+                                          : onboardingStatus === "cancelled"
+                                            ? "Cancelled"
+                                            : onboardingStatus}
+                              </Badge>
+                              {onboardingStatus === "failed" && novel.onboarding_error_message ? (
+                                <div className="max-w-[200px] truncate text-xs text-destructive" title={novel.onboarding_error_message}>
+                                  {novel.onboarding_error_message}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-3">
                           <LibraryRowActions
                             novel={novel}
                             missingSource={missingSource}
-                            pending={runLibraryAction.isPending || publishNovel.isPending}
+                            pending={
+                              runLibraryAction.isPending ||
+                              publishNovel.isPending ||
+                              resumeOnboarding.isPending ||
+                              cancelOnboarding.isPending
+                            }
                             translationPending={runTranslationDialog.isPending}
                             onTranslate={(row) => runAction("translate", [row])}
                             onRecrawl={(row) => runAction("recrawl", [row])}
@@ -526,13 +586,15 @@ export default function LibraryPage() {
                             onEditTaxonomy={openTaxonomyDialog}
                             onPublish={(row) => runPublishAction(row, true)}
                             onUnpublish={(row) => runPublishAction(row, false)}
+                            onResume={(row) => resumeOnboarding.mutate(row)}
+                            onCancel={(row) => cancelOnboarding.mutate(row)}
                           />
                         </td>
                       </tr>
                     );
                   })
                 ) : (
-                  <EmptyState title="No novels in the library yet." colSpan={8} />
+                  <EmptyState title="No novels in the library yet." colSpan={9} />
                 )}
               </tbody>
             </table>

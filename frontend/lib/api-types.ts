@@ -26,6 +26,11 @@ export type NovelSummary = {
   glossary_status?: GlossaryReadinessStatus;
   glossary_revision?: number;
   glossary_pending_count?: number;
+  onboarding_status?: string | null;
+  onboarding_updated_at?: string | null;
+  onboarding_error_code?: string | null;
+  onboarding_error_message?: string | null;
+  body_scrape_required?: boolean | null;
 };
 
 export type NovelPublicationSummary = {

@@ -8,6 +8,7 @@ from typing import Any
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.config.settings import settings
+from novelai.core.errors import TranslationInProgressError
 from novelai.services.catalog_service import CatalogService
 from novelai.services.export_service import ExportService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
@@ -21,7 +22,6 @@ from novelai.services.orchestration.preliminary import (
 )
 from novelai.sources.registry import detect_source
 from novelai.storage.service import StorageService
-from novelai.core.errors import TranslationInProgressError
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +246,8 @@ class OperationsService:
             "detected_at": detected_at,
             "chapters": chapter_count(meta),
             "chapter_list": chapter_rows(meta),
+            "onboarding_status": meta.get("onboarding_status"),
+            "body_scrape_required": meta.get("body_scrape_required", False),
         }
 
     async def scrape_preliminary_metadata(
@@ -495,5 +497,107 @@ class OperationsService:
             },
         )
         return completed or activity
+
+    async def resume_onboarding(
+        self,
+        *,
+        novel_id: str,
+        chapters: str = "all",
+    ) -> dict[str, Any]:
+        meta = self.storage.load_metadata(novel_id)
+        if meta is None:
+            raise OperationError(404, {"error": "Novel not found", "novel_id": novel_id})
+
+        current_status = self.storage.resolve_onboarding_status(novel_id)
+        if current_status in ("ready_for_translation", "cancelled"):
+            raise OperationError(
+                409,
+                {
+                    "error": f"Cannot resume onboarding in state {current_status!r}.",
+                    "novel_id": novel_id,
+                    "current_status": current_status,
+                },
+            )
+
+        resolved_source_key = meta.get("source_key") or meta.get("input_adapter_key") or "generic"
+        timeout = settings.WEB_REQUEST_TIMEOUT_SECONDS
+        activity_id: str | None = None
+        try:
+            from novelai.core.platform import CrawlJobKind
+            activity = self.activity_log.create_crawl_activity(
+                novel_id=novel_id,
+                source_key=resolved_source_key,
+                kind=CrawlJobKind.CHAPTERS,
+                chapters=chapters,
+                source_url=meta.get("source_url"),
+                metadata={
+                    "activity_subtype": "crawling",
+                    "activity_phase": "resume_onboarding",
+                    "resumed_from_status": current_status,
+                    "identifier": meta.get("source_url") or novel_id,
+                    "selected_source_key": resolved_source_key,
+                },
+            )
+            activity_id = activity.get("id")
+        except Exception:
+            logger.warning("Failed to record resume activity.", exc_info=True)
+
+        try:
+            await asyncio.wait_for(
+                self.orchestrator.scrape_chapters(
+                    resolved_source_key,
+                    novel_id,
+                    chapters,
+                    mode="update",
+                ),
+                timeout=timeout,
+            )
+        except TimeoutError as exc:
+            raise OperationError(504, "Resume operation timed out") from exc
+        except RuntimeError as exc:
+            self.storage.update_onboarding_status(
+                novel_id,
+                "failed",
+                error_code="scrape_locked",
+                error_message=str(exc)[:500],
+            )
+            raise OperationError(409, {"error": str(exc), "novel_id": novel_id}) from exc
+        except Exception as exc:
+            self.storage.update_onboarding_status(
+                novel_id,
+                "failed",
+                error_code="resume_error",
+                error_message=f"Resume failed: {exc.__class__.__name__}",
+            )
+            raise
+
+        return {
+            "novel_id": novel_id,
+            "onboarding_status": self.storage.resolve_onboarding_status(novel_id),
+            "activity_id": activity_id,
+        }
+
+    def cancel_onboarding(self, *, novel_id: str) -> dict[str, Any]:
+        meta = self.storage.load_metadata(novel_id)
+        if meta is None:
+            raise OperationError(404, {"error": "Novel not found", "novel_id": novel_id})
+
+        current_status = self.storage.resolve_onboarding_status(novel_id)
+        cancellable = {"metadata_discovered", "glossary_pending", "chapters_pending", "failed"}
+        if current_status not in cancellable:
+            raise OperationError(
+                409,
+                {
+                    "error": f"Cannot cancel onboarding in state {current_status!r}.",
+                    "novel_id": novel_id,
+                    "current_status": current_status,
+                },
+            )
+
+        self.storage.update_onboarding_status(novel_id, "cancelled")
+        return {
+            "novel_id": novel_id,
+            "onboarding_status": "cancelled",
+        }
 
 

@@ -182,6 +182,48 @@ async def translate_status(
         raise AssertionError("unreachable")
 
 
+class ResumeOnboardingRequest(BaseModel):
+    chapters: str = "all"
+
+
+class CancelOnboardingRequest(BaseModel):
+    pass
+
+
+@router.post("/{novel_id}/onboarding/resume")
+async def resume_onboarding(
+    novel_id: str,
+    body: ResumeOnboardingRequest,
+    request: Request,
+    service: OperationsService = Depends(get_operations_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    _rate_limit(request, "scrape")
+    try:
+        return await service.resume_onboarding(
+            novel_id=novel_id,
+            chapters=body.chapters,
+        )
+    except OperationError as exc:
+        _raise_operation_error(exc)
+        raise AssertionError("unreachable")
+
+
+@router.post("/{novel_id}/onboarding/cancel")
+async def cancel_onboarding(
+    novel_id: str,
+    _body: CancelOnboardingRequest | None = None,
+    request: Request | None = None,
+    service: OperationsService = Depends(get_operations_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    try:
+        return service.cancel_onboarding(novel_id=novel_id)
+    except OperationError as exc:
+        _raise_operation_error(exc)
+        raise AssertionError("unreachable")
+
+
 @router.post("/{novel_id}/export")
 async def export_novel(
     novel_id: str,
