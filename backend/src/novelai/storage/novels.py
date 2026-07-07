@@ -71,7 +71,7 @@ def _backup_metadata_file(self: Any, metadata_path: Path, *, keep: int = METADAT
     while self._path_exists(backup_path):
         backup_path = backup_dir / f"{safe_stamp}_{suffix}.json"
         suffix += 1
-    self._write_text(backup_path, self._read_text(metadata_path))
+    self._write_text_atomic(backup_path, self._read_text(metadata_path))
 
     backups = sorted(self._glob(backup_dir, "*.json"), key=lambda path: path.name, reverse=True)
     for stale_backup in backups[keep:]:
@@ -416,7 +416,7 @@ def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
     novel_dir = self._ensure_novel_dir(novel_id, folder_name)
     path = novel_dir / "metadata.json"
     self._backup_metadata_file(path)
-    self._write_text(path, json.dumps(merged, ensure_ascii=False, indent=2))
+    self._write_text_atomic(path, json.dumps(merged, ensure_ascii=False, indent=2))
     return path
 
 
@@ -428,26 +428,65 @@ def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
     content = self._read_text(path)
     try:
         payload = json.loads(content)
-        if not isinstance(payload, dict):
-            return None
-        payload["translation_profiles"] = normalize_workflow_profiles(payload.get("translation_profiles"))["steps"]
-        payload["translation_defaults"] = normalize_workflow_defaults(payload.get("translation_defaults"))
-        source_url_text = self._clean_string(payload.get("source_url"))
-        payload["origin_type"] = self._clean_string(payload.get("origin_type"), "url" if source_url_text else "library")
-        payload["origin_uri_or_path"] = self._clean_string(payload.get("origin_uri_or_path"))
-        payload["document_type"] = self._clean_string(payload.get("document_type"), "web_novel")
-        payload["input_adapter_key"] = self._clean_string(payload.get("input_adapter_key"))
-        payload["context_group_id"] = self._clean_string(payload.get("context_group_id"), novel_id)
-        publication_status = normalize_publication_status(payload.get("publication_status") or payload.get("status"))
-        payload["publication_status"] = publication_status
-        payload["status"] = publication_status
-        return payload
     except json.JSONDecodeError as exc:
         logger.warning("Corrupted metadata for novel %s at %s: %s", novel_id, path, exc)
-        return None
+        return self._recover_metadata_from_backup(novel_id, path)
+    if not isinstance(payload, dict):
+        logger.warning("Metadata for novel %s at %s is not a JSON object.", novel_id, path)
+        return self._recover_metadata_from_backup(novel_id, path)
+    try:
+        return self._normalize_loaded_metadata(payload, novel_id)
     except OSError as exc:
         logger.warning("Failed to read metadata for novel %s at %s: %s", novel_id, path, exc)
         return None
+
+
+def _normalize_loaded_metadata(self: Any, payload: dict[str, Any], novel_id: str) -> dict[str, Any]:
+    payload["translation_profiles"] = normalize_workflow_profiles(payload.get("translation_profiles"))["steps"]
+    payload["translation_defaults"] = normalize_workflow_defaults(payload.get("translation_defaults"))
+    source_url_text = self._clean_string(payload.get("source_url"))
+    payload["origin_type"] = self._clean_string(payload.get("origin_type"), "url" if source_url_text else "library")
+    payload["origin_uri_or_path"] = self._clean_string(payload.get("origin_uri_or_path"))
+    payload["document_type"] = self._clean_string(payload.get("document_type"), "web_novel")
+    payload["input_adapter_key"] = self._clean_string(payload.get("input_adapter_key"))
+    payload["context_group_id"] = self._clean_string(payload.get("context_group_id"), novel_id)
+    publication_status = normalize_publication_status(payload.get("publication_status") or payload.get("status"))
+    payload["publication_status"] = publication_status
+    payload["status"] = publication_status
+    return payload
+
+
+def _load_latest_valid_metadata_backup(self: Any, novel_id: str) -> tuple[dict[str, Any], Path] | None:
+    """Return ``(payload, backup_path)`` for the newest parseable metadata backup.
+
+    Backups are inspected newest-first using the same naming/ordering as
+    ``list_metadata_history``. Invalid backups are skipped. Invalid primary or
+    backup files are never deleted here.
+    """
+    novel_id = self._normalize_library_novel_id(novel_id) or novel_id
+    novel_dir = self._novel_dir(novel_id)
+    backup_dir = _metadata_backup_dir(novel_dir)
+    if not self._path_exists(backup_dir):
+        return None
+    backups = sorted(self._glob(backup_dir, "*.json"), key=lambda path: path.name, reverse=True)
+    for backup_path in backups:
+        try:
+            payload = json.loads(self._read_text(backup_path))
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Skipping invalid metadata backup %s: %s", backup_path, exc)
+            continue
+        if isinstance(payload, dict):
+            return payload, backup_path
+    return None
+
+
+def _recover_metadata_from_backup(self: Any, novel_id: str, path: Path) -> dict[str, Any] | None:
+    recovered = self._load_latest_valid_metadata_backup(novel_id)
+    if recovered is None:
+        return None
+    payload, backup_path = recovered
+    logger.warning("Recovered metadata for novel %s from backup %s", novel_id, backup_path)
+    return self._normalize_loaded_metadata(payload, novel_id)
 
 # ---- Glossary persistence -------------------------------------------------
 
