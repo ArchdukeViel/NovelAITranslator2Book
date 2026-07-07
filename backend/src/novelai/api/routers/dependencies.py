@@ -6,7 +6,6 @@ from typing import Any
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from starlette import status
 

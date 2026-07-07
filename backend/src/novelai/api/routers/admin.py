@@ -320,7 +320,7 @@ async def cleanup_runtime_state(
     service: AdminService = Depends(get_admin_service),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
-    return {"purged": service.storage.cleanup_expired_runtime_data()}
+    return {"purged": service.storage.cleanup_expired_runtime_data() if service.storage else 0}
 
 
 @router.delete("/admin/runtime-state/{state_key}")
