@@ -1,0 +1,14 @@
+{
+  "id": "legacy-ch-1",
+  "edit_history": [
+    {
+      "id": "e1",
+      "action": "manual_edit",
+      "version_id": "v1",
+      "previous_version_id": "v0",
+      "created_at": "2024-01-03T00:00:00Z",
+      "editor": "human",
+      "note": "Fixed terminology"
+    }
+  ]
+}

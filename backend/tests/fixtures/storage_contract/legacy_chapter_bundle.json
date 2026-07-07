@@ -1,0 +1,17 @@
+{
+  "id": "legacy-ch-1",
+  "title": "Legacy Chapter",
+  "source_key": "syosetu",
+  "source_url": "https://example.test/1",
+  "origin_type": "web",
+  "document_type": "web_novel",
+  "input_adapter_key": "syosetu",
+  "context_group_id": "legacy-group",
+  "raw": {
+    "id": "legacy-ch-1",
+    "scraped_at": "2024-01-01T00:00:00Z",
+    "text": "Synthetic legacy raw text.",
+    "paragraphs": ["Synthetic legacy raw text."],
+    "images": []
+  }
+}
