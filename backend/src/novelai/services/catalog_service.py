@@ -623,16 +623,24 @@ class CatalogService:
             chapter_id = str(chapter.get("id", "")).strip()
             if not chapter_id or chapter_id not in translated_ids:
                 continue
+            # Pull timestamp from metadata first, then fall back to the
+            # chapter translation bundle (source of truth).  save_translated_chapter
+            # writes translated_at to the bundle but not to metadata.
+            chapter_updated_at = _metadata_datetime(
+                _optional_string(chapter.get("translated_at"))
+                or _optional_string(chapter.get("updated_at"))
+                or _optional_string(chapter.get("scraped_at"))
+            )
+            if chapter_updated_at is None:
+                translated = self._storage.load_translated_chapter(novel_id, chapter_id)
+                if isinstance(translated, dict):
+                    chapter_updated_at = _metadata_datetime(translated.get("translated_at"))
             latest = {
                 "id": chapter_id,
                 "number": chapter.get("num") or (index + 1),
                 "title": _optional_string(chapter.get("translated_title"))
                 or _optional_string(chapter.get("title")),
-                "updated_at": _metadata_datetime(
-                    _optional_string(chapter.get("translated_at"))
-                    or _optional_string(chapter.get("updated_at"))
-                    or _optional_string(chapter.get("scraped_at"))
-                ),
+                "updated_at": chapter_updated_at,
             }
 
         return latest

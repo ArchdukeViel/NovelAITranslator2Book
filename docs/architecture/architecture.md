@@ -3,10 +3,9 @@
 ## 0. Document Status
 
 **Status**: canonical project architecture
-**Last reviewed**: 2026-06-17 (frontend consistency refresh)
+**Last reviewed**: 2026-07-07 (post-chapter-parallelization update)
 
-This is the single active architecture reasoning file for NovelAI. Historical
-notes are archived under `docs/archive/architecture/`. If another document
+This is the single active architecture reasoning file for NovelAI. If another document
 disagrees with this one, this document wins and the conflict should be reported
 before implementation.
 
@@ -18,7 +17,7 @@ FastAPI backend under /api
 Next.js public reader + owner/admin UI
 Postgres-backed metadata, file-backed chapter content
 background crawl/translation activity worker
-owner session auth implemented for dangerous admin operations
+own server session auth implemented for dangerous admin operations
 guest public catalog / novel detail / chapter reader implemented
 Google OAuth and email/password public login implemented (backend routes + frontend plumbing)
 public user library/progress/history/reviews/requests frontend re-enabled
@@ -26,6 +25,11 @@ CSRF enforcement and basic public rate limits implemented
 production session secret fails closed when left at default
 public contribution credentials intentionally gated
 future admin API methods quarantined until backend routes exist
+chapter-level parallel translation via asyncio.Semaphore + bounded gather
+NVIDIA provider removed; Gemini-only fallback chain
+S3 storage fields restored to settings (not yet active)
+pipeline/scheduler hardened: job-runtime persistence, model-state tracking
+microservice-split readiness: dual entry points, DEPLOY_MODE, novelai_shared facade
 ```
 
 NovelAI is currently a web-based Japanese novel ingestion, translation, editing,
@@ -137,6 +141,9 @@ chapter-based storage
 - Chunk IDs are deterministic, for example `c0001`.
 - Every translated unit must preserve `novel_id`, `chapter_id`,
   `paragraph_id`, and `chunk_id`.
+- Chapter-level translation is parallelized via `asyncio.Semaphore` + bounded
+  `asyncio.gather` with `return_exceptions=True`. Per-chapter failures do not
+  erase successful outputs for other chapters in the same job.
 - `TranslationQAStage` runs after provider output and before final save.
 - QA checks include empty output, source-identical output, suspicious length
   ratios, placeholders, provider refusal/error text, and mapping integrity.
@@ -384,7 +391,7 @@ owner  - authenticated single owner; dangerous operations
 
 **Verdict**: later gated phase, not in the current safe product surface.
 
-Public API contribution, where registered users donate Gemini/NVIDIA provider
+Public API contribution, where registered users donate Gemini provider
 quota, opens only after all of the following exist and are tested:
 
 - Real public authentication/account boundary.
@@ -446,7 +453,8 @@ cookies, or frontend-only flags.
 - Remaining source adapters should continue moving toward FetchService where
   legacy direct HTTP behavior remains.
 - `operations.py` and `admin.py` remain thicker than ideal; thin through
-  service extraction in dedicated phases.
+  service extraction in dedicated phases. Operations refactor: DB-query path
+  for per-chapter state summary was dropped (simplified to storage-only lookup).
 - Legacy aliases need planned migration.
 - Storage backward compatibility needs continued discipline.
 - Source parser fixtures are representative, not exhaustive against live-site
