@@ -361,6 +361,7 @@ class SchedulerPausedError(RuntimeError):
         self.model_states = model_states
         self.error_code = error_code or reason
         self.job_status = "paused"
+        self.pipeline_context: Any | None = None
 
 
 def normalize_policy(value: str | SchedulerPolicy | None) -> SchedulerPolicy:
