@@ -14,7 +14,7 @@ from hypothesis import settings as hypothesis_settings
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from novelai.config.settings import GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODEL, settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
 from novelai.core.chapter_state import ChapterState
 from novelai.db.base import Base
 from novelai.db.models.novel import Novel
@@ -860,7 +860,7 @@ async def test_translation_write_path_refreshes_catalog_projection(orchestration
             "source": "stub",
             "source_language": "Japanese",
             "chapters": [
-                {"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1", "translated_at": "2026-07-03T12:00:00Z"},
+                {"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"},
                 {"id": "2", "num": 2, "title": "Chapter 2", "url": "https://example.com/2"},
             ],
         },
@@ -1039,7 +1039,7 @@ async def test_translate_chapters_injects_approved_db_glossary_through_real_pipe
             language="ja",
             status="ongoing",
             glossary_status="glossary_skipped",
-            glossary_revision=6,
+            glossary_revision=7,
         )
         session.add(novel)
         session.flush()
@@ -1332,9 +1332,9 @@ async def test_translation_service_generates_isolated_manual_run_ids() -> None:
 def test_gemini_model_candidates_default_to_stable_flash_lite() -> None:
     candidates = model_candidates("gemini", None, ["gemini-2.5-flash"])
 
-    assert candidates[0] == GEMINI_DEFAULT_MODEL
+    assert candidates == [GEMINI_DEFAULT_MODEL]
+    assert candidates[0] == "gemini-3.1-flash-lite"
     assert "gemini-2.5-flash" not in candidates
-    assert GEMINI_FALLBACK_MODEL in candidates
     assert not candidates[0].endswith("-preview")
 
 
@@ -1372,7 +1372,7 @@ async def test_scrape_metadata_translates_title_author_and_chapter_titles(orches
     index_entry = storage._load_index()["novel-1"]
     folder_name = index_entry["folder_name"]
     assert folder_name == stored["folder_name"]
-    assert folder_name == stored["folder_name"]
+    assert folder_name.startswith("novel/")
     metadata_path = storage._folder_path(folder_name) / "metadata.json"
     assert metadata_path.exists()
     assert stored["translated_title"] == "[TRANSLATED] Original Novel"
