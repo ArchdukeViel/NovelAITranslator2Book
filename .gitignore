@@ -111,7 +111,7 @@ SESSION_EXPORT_*.json
 .hermes/
 
 # Agent artifact dirs (design archives, old plans — promote keepers to docs/)
-.agents/qoder/
+.agents
 
 # But track Qoder rules (agent-to-agent knowledge transfer)
 !.agents/qoder/rules/
