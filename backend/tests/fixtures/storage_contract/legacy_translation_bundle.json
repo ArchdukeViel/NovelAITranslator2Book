@@ -1,0 +1,16 @@
+{
+  "id": "legacy-ch-1",
+  "translation_versions": [
+    {
+      "id": "v1",
+      "kind": "mt",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "created_at": "2024-01-02T00:00:00Z",
+      "translated_at": "2024-01-02T00:00:00Z",
+      "text": "Legacy translated text.",
+      "paragraphs": ["Legacy translated text."]
+    }
+  ],
+  "active_translation_version_id": "v1"
+}

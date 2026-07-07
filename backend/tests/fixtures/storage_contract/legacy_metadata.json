@@ -1,0 +1,17 @@
+{
+  "id": "legacy-novel-1",
+  "title": "Legacy Source Novel",
+  "translated_title": "Legacy Translated Novel",
+  "author": "Legacy Author",
+  "chapters": [
+    {"id": "1", "num": 1, "title": "Chapter One", "url": "https://example.test/1"}
+  ],
+  "source_language": "ja",
+  "origin_type": "web",
+  "origin_uri_or_path": "https://example.test/novel",
+  "document_type": "web_novel",
+  "input_adapter_key": "syosetu",
+  "context_group_id": "legacy-group",
+  "translation_profiles": [],
+  "translation_defaults": {}
+}
