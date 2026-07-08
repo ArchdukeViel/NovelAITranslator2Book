@@ -23,7 +23,7 @@ import re
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import and_, case, true
 from sqlalchemy.orm import Session
@@ -34,6 +34,7 @@ from novelai.api.routers.dependencies import (
     metadata_chapters,
     reader_title,
 )
+from novelai.config.settings import settings
 from novelai.db.models.genre import Genre
 from novelai.db.models.novel import Novel
 from novelai.db.models.tag import Tag
@@ -60,6 +61,10 @@ PUBLIC_PARAGRAPH_MARKER_RE = re.compile(
     r"^\s*\[P\s+p\d{4}\]\s*",
     re.IGNORECASE,
 )
+
+# Public reader availability policies (REQ-1.4)
+VALID_UNAVAILABLE_POLICIES = {"hard_404", "chapter_shell", "latest_version"}
+DEFAULT_UNAVAILABLE_POLICY = "hard_404"
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +97,7 @@ class PublicChapterSummary(BaseModel):
     title: str | None = None
     chapter_number: int | None = None
     translated: bool = False
+    availability_status: str = "not_translated"
 
 
 class PublicCatalogResponse(BaseModel):
@@ -836,6 +842,197 @@ def _catalog_from_storage(
 
 
 # ---------------------------------------------------------------------------
+# Public reader availability helpers (REQ-1, REQ-3, REQ-4, REQ-5)
+# ---------------------------------------------------------------------------
+
+
+def _resolve_unavailable_policy(meta: dict[str, Any]) -> str:
+    """Resolve the unavailable-chapter policy for a novel.
+
+    Per-novel ``public_reader_unavailable_policy`` in metadata takes
+    precedence over the global ``PUBLIC_READER_UNAVAILABLE_POLICY``
+    setting. Invalid values fall back to ``hard_404`` and log a warning.
+    Missing values are not warned about.
+    """
+    per_novel = meta.get("public_reader_unavailable_policy")
+    if isinstance(per_novel, str) and per_novel.strip():
+        if per_novel in VALID_UNAVAILABLE_POLICIES:
+            return per_novel
+        logger.warning(
+            "Invalid per-novel public_reader_unavailable_policy %r; using hard_404",
+            per_novel,
+        )
+        return DEFAULT_UNAVAILABLE_POLICY
+
+    global_policy = settings.PUBLIC_READER_UNAVAILABLE_POLICY
+    if isinstance(global_policy, str) and global_policy in VALID_UNAVAILABLE_POLICIES:
+        return global_policy
+    if isinstance(global_policy, str) and global_policy.strip():
+        logger.warning(
+            "Invalid PUBLIC_READER_UNAVAILABLE_POLICY %r; using hard_404",
+            global_policy,
+        )
+    return DEFAULT_UNAVAILABLE_POLICY
+
+
+async def _try_get_owner(request: Request | None) -> Any | None:
+    """Best-effort, non-raising owner check for optional public preview.
+
+    Returns the owner session user when authenticated as owner, otherwise
+    ``None``. Swallows expected auth failures so public ``?version_id=``
+    requests continue normally.
+    """
+    if request is None:
+        return None
+    try:
+        from novelai.api.auth.session import get_current_user
+
+        # Honor FastAPI dependency overrides (used in tests) by checking
+        # the app's override map before falling back to the default
+        # ``get_current_user`` implementation.
+        scope = getattr(request, "scope", None) or {}
+        app = scope.get("app") if isinstance(scope, dict) else None
+        override = None
+        if app is not None:
+            overrides = getattr(app, "dependency_overrides", None)
+            if isinstance(overrides, dict):
+                override = overrides.get(get_current_user)
+        if override is not None:
+            user = override()
+        else:
+            user = get_current_user(request)
+        if getattr(user, "is_owner", False):
+            return user
+        return None
+    except Exception:
+        return None
+
+
+def _has_reader_text(translated: dict[str, Any] | None) -> bool:
+    return isinstance((translated or {}).get("text"), str)
+
+
+def _latest_version_with_text(
+    versions: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Return the newest version that has usable string text."""
+    candidates = [
+        version
+        for version in versions
+        if isinstance(version, dict) and isinstance(version.get("text"), str)
+    ]
+    if not candidates:
+        return None
+    return sorted(
+        candidates,
+        key=lambda version: (
+            version.get("created_at") or version.get("translated_at") or ""
+        ),
+        reverse=True,
+    )[0]
+
+
+def _translated_from_version(
+    chapter_id: str,
+    version: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a normalized translated-chapter dict from a raw version entry."""
+    created_at = version.get("created_at") or version.get("translated_at")
+    translated_at = version.get("translated_at") or version.get("created_at")
+    return {
+        "id": chapter_id,
+        "version_id": version.get("id") or version.get("version_id"),
+        "version_kind": version.get("version_kind") or version.get("kind"),
+        "provider": version.get("provider"),
+        "model": version.get("model"),
+        "translated_at": translated_at,
+        "created_at": created_at,
+        "text": version.get("text"),
+        "editor": version.get("editor"),
+        "note": version.get("note"),
+        "confidence_score": version.get("confidence_score"),
+        "glossary_revision": version.get("glossary_revision", 0)
+        if isinstance(version.get("glossary_revision"), int)
+        else 0,
+    }
+
+
+def _chapter_shell_response(
+    *,
+    novel_id: str,
+    meta: dict[str, Any],
+    public_slug: str,
+    chapter_id: str,
+    chapter: dict[str, Any],
+    chapters: list[dict[str, Any]],
+    storage: StorageService,
+) -> dict[str, Any]:
+    """Build a reader-safe chapter shell response with no translated text."""
+    chapter_ids = [str(ch.get("id", "")) for ch in chapters]
+    if chapter_id in chapter_ids:
+        index = chapter_ids.index(chapter_id)
+    else:
+        index = 0
+    translated_ids = set(storage.list_translated_chapters(novel_id))
+
+    prev_id = chapter_ids[index - 1] if index > 0 else None
+    next_id = chapter_ids[index + 1] if index + 1 < len(chapter_ids) else None
+
+    return {
+        "novel_id": novel_id,
+        "slug": public_slug,
+        "chapter_id": chapter_id,
+        "chapter_number": chapter.get("num") or (index + 1),
+        "novel_title": reader_title(meta),
+        "title": _optional_str(chapter.get("translated_title"))
+        or _optional_str(chapter.get("title")),
+        "text": None,
+        "reader_blocks": [],
+        "previous_chapter_id": prev_id if prev_id in translated_ids else None,
+        "next_chapter_id": next_id if next_id in translated_ids else None,
+        "previous_chapter_unavailable": prev_id is not None and prev_id not in translated_ids,
+        "next_chapter_unavailable": next_id is not None and next_id not in translated_ids,
+        "availability_status": "not_translated",
+        "availability_message": "This chapter has not been translated yet.",
+        "version_id": None,
+        "version_kind": None,
+        "is_active_version": False,
+        "provider": None,
+        "model": None,
+        "translated_at": None,
+    }
+
+
+def _availability_fields(
+    translated: dict[str, Any] | None,
+    *,
+    is_active_version: bool,
+) -> dict[str, Any]:
+    """Build additive availability/version fields for a translated response."""
+    if not isinstance(translated, dict):
+        return {
+            "availability_status": "available",
+            "availability_message": None,
+            "version_id": None,
+            "version_kind": None,
+            "is_active_version": is_active_version,
+            "provider": None,
+            "model": None,
+            "translated_at": None,
+        }
+    return {
+        "availability_status": "available",
+        "availability_message": None,
+        "version_id": translated.get("version_id"),
+        "version_kind": translated.get("version_kind"),
+        "is_active_version": is_active_version,
+        "provider": translated.get("provider"),
+        "model": translated.get("model"),
+        "translated_at": translated.get("translated_at"),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -968,11 +1165,13 @@ async def list_chapters(
     result = []
     for idx, ch in enumerate(metadata_chapters(meta)):
         chapter_id = str(ch.get("id", ""))
+        is_translated = chapter_id in translated_ids
         result.append(PublicChapterSummary(
             chapter_id=chapter_id,
             title=_optional_str(ch.get("translated_title")) or _optional_str(ch.get("title")),
             chapter_number=ch.get("num") or (idx + 1),
-            translated=chapter_id in translated_ids,
+            translated=is_translated,
+            availability_status="available" if is_translated else "not_translated",
         ))
     return result
 
@@ -981,6 +1180,8 @@ async def list_chapters(
 async def get_chapter(
     slug: str,
     chapter_id: str,
+    version_id: str | None = Query(default=None),
+    request: Request = None,  # type: ignore[assignment]
     storage: StorageService = Depends(get_storage),
     db: Session = Depends(get_db_session),
 ) -> dict[str, Any]:
@@ -995,14 +1196,72 @@ async def get_chapter(
     if chapter_id not in chapter_ids:
         raise HTTPException(status_code=404, detail="Chapter not found.")
 
-    translated = storage.load_translated_chapter(novel_id, chapter_id)
-    if translated is None:
-        raise HTTPException(status_code=404, detail="Translated chapter not available.")
-    translated_text: str | None = translated.get("text")  # type: ignore[no-untyped-call]
-    if translated_text is None:
-        raise HTTPException(status_code=404, detail="Translated chapter not available.")
+    # Owner-only version preview (REQ-5). Public unauthenticated requests
+    # silently ignore ``version_id``.
+    effective_version_id: str | None = None
+    if version_id is not None:
+        owner = await _try_get_owner(request)
+        if owner is not None:
+            effective_version_id = version_id
 
-    # Skip loading raw chapter when paragraph_map exists (source blocks not needed).
+    translated: dict[str, Any] | None = None
+    is_active_version = True
+
+    if effective_version_id is not None:
+        translated = storage.load_translated_chapter_by_version_id(
+            novel_id,
+            chapter_id,
+            effective_version_id,
+        )
+        if translated is None:
+            raise HTTPException(status_code=404, detail="Version not found.")
+        active = storage.load_translated_chapter(novel_id, chapter_id)
+        active_version_id = active.get("version_id") if isinstance(active, dict) else None
+        is_active_version = active_version_id == effective_version_id
+    else:
+        translated = storage.load_translated_chapter(novel_id, chapter_id)
+        is_active_version = True
+
+    # Unavailable-chapter policy handling (REQ-1, REQ-3, REQ-4).
+    if not _has_reader_text(translated):
+        policy = _resolve_unavailable_policy(meta)
+
+        if policy == "latest_version":
+            versions = storage.list_translated_chapter_versions(novel_id, chapter_id)
+            latest = _latest_version_with_text(versions)
+            if latest is not None:
+                translated = _translated_from_version(chapter_id, latest)
+                is_active_version = False
+            else:
+                policy = "chapter_shell"
+
+        if policy == "chapter_shell":
+            index = chapter_ids.index(chapter_id)
+            chapter = chapters[index]
+            return _chapter_shell_response(
+                novel_id=novel_id,
+                meta=meta,
+                public_slug=public_slug,
+                chapter_id=chapter_id,
+                chapter=chapter,
+                chapters=chapters,
+                storage=storage,
+            )
+
+        if policy == "hard_404":
+            raise HTTPException(
+                status_code=404,
+                detail="Translated chapter not available.",
+            )
+
+    # Active translation path (REQ-7).
+    assert isinstance(translated, dict)
+    translated_text = translated.get("text")  # type: ignore[no-untyped-call]
+    if not isinstance(translated_text, str):
+        raise HTTPException(
+            status_code=404,
+            detail="Translated chapter not available.",
+        )
     paragraph_map = translated.get("paragraph_map")
     raw_chapter: dict[str, Any] = {}
     if not paragraph_map or not isinstance(paragraph_map, list) or not paragraph_map:
@@ -1015,7 +1274,7 @@ async def get_chapter(
     next_adjacent_id = chapter_ids[index + 1] if index + 1 < len(chapter_ids) else None
     previous_chapter_id = previous_adjacent_id if previous_adjacent_id in translated_ids else None
     next_chapter_id = next_adjacent_id if next_adjacent_id in translated_ids else None
-    return {
+    response = {
         "novel_id": novel_id,
         "slug": public_slug,
         "chapter_id": chapter_id,
@@ -1029,6 +1288,8 @@ async def get_chapter(
         "previous_chapter_unavailable": previous_adjacent_id is not None and previous_chapter_id is None,
         "next_chapter_unavailable": next_adjacent_id is not None and next_chapter_id is None,
     }
+    response.update(_availability_fields(translated, is_active_version=is_active_version))
+    return response
 
 
 # ---------------------------------------------------------------------------

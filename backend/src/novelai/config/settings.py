@@ -197,5 +197,11 @@ class AppSettings(BaseSettings):
     LLM_QA_MODEL: str = "gemini-3.1-flash-lite"
     LLM_QA_COST_TRACKING_ENABLED: bool = True
 
+    # --- Public reader availability
+    # Controls behavior when a public chapter has no active translation.
+    # Allowed values: "hard_404" (default), "chapter_shell", "latest_version".
+    # Invalid values are tolerated at load time and resolved by the public router.
+    PUBLIC_READER_UNAVAILABLE_POLICY: str = "hard_404"
+
 
 settings = AppSettings()
