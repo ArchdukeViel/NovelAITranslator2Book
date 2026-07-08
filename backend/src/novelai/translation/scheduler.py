@@ -230,6 +230,177 @@ class SchedulerSelection:
         return self.provider_key is None or self.provider_model is None
 
 
+# Scheduler observability: decision records (REQ-1, REQ-2, REQ-3).
+MAX_SCHEDULER_DECISION_CANDIDATES = 20
+
+
+@dataclass
+class SchedulerCandidateDecision:
+    provider: str
+    model: str
+    status: str | None
+    selected: bool
+    skip_reason: str | None
+    cooldown_until: str | None = None
+    exhausted_until: str | None = None
+    failed_at: str | None = None
+    last_error_code: str | None = None
+
+
+@dataclass
+class SchedulerDecision:
+    request_id: str | None = None
+    activity_id: str | None = None
+    job_id: str | None = None
+    chapter_id: str | None = None
+    checkpoint_id: str | None = None
+    selected_provider: str | None = None
+    selected_model: str | None = None
+    policy: str = ""
+    fallback_used: bool = False
+    selected_at: str | None = None
+    candidates: list[SchedulerCandidateDecision] | None = None
+    failure_reason: str | None = None
+    parallel_slot: int | None = None
+    exact_memory_bytes: int | None = None
+    memory_limit_bytes: int | None = None
+    memory_pressure: bool | None = None
+    candidate_count_total: int = 0
+    candidate_count_recorded: int = 0
+    candidate_list_truncated: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "policy": self.policy,
+            "selected_at": self.selected_at,
+        }
+        if self.request_id:
+            result["request_id"] = self.request_id
+        if self.activity_id:
+            result["activity_id"] = self.activity_id
+        if self.job_id:
+            result["job_id"] = self.job_id
+        if self.chapter_id:
+            result["chapter_id"] = self.chapter_id
+        if self.checkpoint_id:
+            result["checkpoint_id"] = self.checkpoint_id
+        if self.selected_provider and self.selected_model:
+            result["selected"] = {"provider": self.selected_provider, "model": self.selected_model}
+        else:
+            result["selected"] = None
+        if self.fallback_used:
+            result["fallback_used"] = True
+        if self.failure_reason:
+            result["failure_reason"] = self.failure_reason
+        if self.candidates:
+            result["candidates"] = [
+                {
+                    "provider": c.provider,
+                    "model": c.model,
+                    "status": c.status,
+                    "selected": c.selected,
+                    "skip_reason": c.skip_reason,
+                }
+                for c in self.candidates
+            ]
+        else:
+            result["candidates"] = []
+        result["candidate_count_total"] = self.candidate_count_total
+        result["candidate_count_recorded"] = self.candidate_count_recorded
+        result["candidate_list_truncated"] = self.candidate_list_truncated
+        if self.parallel_slot is not None:
+            result["parallel_slot"] = self.parallel_slot
+        if self.exact_memory_bytes is not None:
+            result["memory"] = {
+                "exact_memory_bytes": self.exact_memory_bytes,
+                "memory_limit_bytes": self.memory_limit_bytes,
+                "memory_pressure": self.memory_pressure,
+            }
+        return result
+
+
+class SchedulerDecisionRecorder:
+    """Observes scheduler selection without influencing it.
+
+    Records evaluated candidates, selected decision, and skip reasons.
+    Must not change scheduler behavior.
+    """
+
+    def __init__(
+        self,
+        *,
+        request_id: str | None = None,
+        activity_id: str | None = None,
+        job_id: str | None = None,
+        chapter_id: str | None = None,
+        checkpoint_id: str | None = None,
+        parallel_slot: int | None = None,
+    ) -> None:
+        self._decision = SchedulerDecision(
+            request_id=request_id,
+            activity_id=activity_id,
+            job_id=job_id,
+            chapter_id=chapter_id,
+            checkpoint_id=checkpoint_id,
+            parallel_slot=parallel_slot,
+        )
+        self._candidates: list[SchedulerCandidateDecision] = []
+
+    def record_candidate(
+        self,
+        *,
+        provider: str,
+        model: str,
+        status: str | None,
+        selected: bool,
+        skip_reason: str | None = None,
+        cooldown_until: str | None = None,
+        exhausted_until: str | None = None,
+        failed_at: str | None = None,
+        last_error_code: str | None = None,
+    ) -> None:
+        if len(self._candidates) >= MAX_SCHEDULER_DECISION_CANDIDATES:
+            self._decision.candidate_list_truncated = True
+            return
+        self._candidates.append(
+            SchedulerCandidateDecision(
+                provider=provider,
+                model=model,
+                status=status,
+                selected=selected,
+                skip_reason=skip_reason,
+                cooldown_until=cooldown_until,
+                exhausted_until=exhausted_until,
+                failed_at=failed_at,
+                last_error_code=last_error_code,
+            )
+        )
+
+    def finalize(
+        self,
+        *,
+        selection: SchedulerSelection,
+        policy: str,
+        total_candidates: int = 0,
+        selected_at: str | None = None,
+    ) -> SchedulerDecision:
+        self._decision.policy = policy
+        self._decision.selected_at = selected_at or utc_now_iso()
+        self._decision.selected_provider = selection.provider_key
+        self._decision.selected_model = selection.provider_model
+        self._decision.fallback_used = (
+            selection.reason != SelectionReason.PRIMARY_AVAILABLE.value
+            and selection.provider_key is not None
+        )
+        self._decision.failure_reason = (
+            "no_capacity" if selection.paused and "cooldown" not in (selection.reason or "") and "exhausted" not in (selection.reason or "") else None
+        )
+        self._decision.candidates = self._candidates
+        self._decision.candidate_count_total = total_candidates
+        self._decision.candidate_count_recorded = len(self._candidates)
+        return self._decision
+
+
 @dataclass
 class TranslationScheduler:
     model_configs: list[SchedulerModelConfig]
@@ -268,6 +439,7 @@ class TranslationScheduler:
         previous_attempts: set[tuple[str, str]] | None = None,
         qa_failed: bool = False,
         now: datetime | None = None,
+        decision_recorder: SchedulerDecisionRecorder | None = None,
     ) -> SchedulerSelection:
         current = now or utc_now()
         attempted = previous_attempts or set()
@@ -284,6 +456,22 @@ class TranslationScheduler:
                 continue
             state = self.model_states[key]
             available = state.is_available(current)
+
+            # Record candidate evaluation (REQ-5, REQ-6).
+            if decision_recorder is not None:
+                skip_reason = None if available else _reason_for_unavailable_state(state)
+                decision_recorder.record_candidate(
+                    provider=config.provider_key,
+                    model=config.provider_model,
+                    status=state.status,
+                    selected=available and (index == 0 or first_unavailable_reason is not None),
+                    skip_reason=skip_reason,
+                    cooldown_until=state.cooldown_until,
+                    exhausted_until=state.exhausted_until,
+                    failed_at=state.failed_at,
+                    last_error_code=state.last_error_code,
+                )
+
             if available:
                 if index > 0 and first_unavailable_reason:
                     return SchedulerSelection(config.provider_key, config.provider_model, first_unavailable_reason)
