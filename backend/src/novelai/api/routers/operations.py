@@ -42,9 +42,15 @@ class TranslateRequest(BaseModel):
     source_language: str | None = None
     target_language: str | None = "English"
     allow_cross_provider_fallback: bool = True
-    # When True, bypasses the glossary gate even if glossary_status is
-    # "glossary_pending". Allows translation to proceed without a vetted glossary.
     skip_glossary_gate: bool = False
+
+
+class RetranslateStaleRequest(BaseModel):
+    chapter_ids: list[str] | None = None
+    include_legacy_unknown: bool = False
+    activate: bool = False
+    provider_key: str | None = None
+    provider_model: str | None = None
 
 
 class ExportRequest(BaseModel):
@@ -162,6 +168,35 @@ async def translate_novel(
             target_language=body.target_language,
             allow_cross_provider_fallback=body.allow_cross_provider_fallback,
             skip_glossary_gate=body.skip_glossary_gate,
+        )
+    except OperationError as exc:
+        _raise_operation_error(exc)
+        raise AssertionError("unreachable")
+
+
+@router.post("/{novel_id}/retranslate-stale")
+async def retranslate_stale(
+    novel_id: str,
+    body: RetranslateStaleRequest,
+    service: OperationsService = Depends(get_operations_service),
+    storage: StorageService = Depends(get_storage),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    try:
+        meta = storage.load_metadata(novel_id)
+        if meta is None:
+            raise HTTPException(status_code=404, detail="Novel not found")
+        source_key = str(meta.get("source") or "")
+        if not source_key.strip():
+            raise HTTPException(status_code=400, detail="Novel has no source_key in metadata")
+        return await service.retranslate_stale(
+            novel_id=novel_id,
+            source_key=source_key,
+            chapter_ids=body.chapter_ids,
+            include_legacy_unknown=body.include_legacy_unknown,
+            activate=body.activate,
+            provider_key=body.provider_key,
+            provider_model=body.provider_model,
         )
     except OperationError as exc:
         _raise_operation_error(exc)

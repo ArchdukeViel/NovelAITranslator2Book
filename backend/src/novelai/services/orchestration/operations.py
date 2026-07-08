@@ -600,4 +600,85 @@ class OperationsService:
             "onboarding_status": "cancelled",
         }
 
+    async def retranslate_stale(
+        self,
+        *,
+        novel_id: str,
+        source_key: str,
+        chapter_ids: list[str] | None = None,
+        include_legacy_unknown: bool = False,
+        activate: bool = False,
+        provider_key: str | None = None,
+        provider_model: str | None = None,
+    ) -> dict[str, Any]:
+        from novelai.translation.glossary_freshness import (
+            FRESHNESS_LEGACY_UNKNOWN,
+            FRESHNESS_STALE,
+            GlossarySnapshot,
+            compute_glossary_freshness,
+        )
+
+        meta = self.storage.load_metadata(novel_id)
+        if meta is None:
+            raise OperationError(404, {"error": "Novel not found", "novel_id": novel_id})
+
+        chapters = meta.get("chapters", [])
+        if not isinstance(chapters, list):
+            raise OperationError(400, {"error": "Novel has no chapters metadata"})
+
+        # Resolve current glossary snapshot from metadata
+        snapshot = None
+        revision = meta.get("glossary_revision")
+        if isinstance(revision, int):
+            snapshot = GlossarySnapshot(
+                revision=revision,
+                hash=meta.get("glossary_hash"),
+            )
+
+        stale_chapter_ids: list[str] = []
+        legacy_chapter_ids: list[str] = []
+        for ch in chapters:
+            ch_id = str(ch.get("id", ""))
+            if not ch_id:
+                continue
+            if chapter_ids is not None and ch_id not in chapter_ids:
+                continue
+            translated = self.storage.load_translated_chapter(novel_id, ch_id)
+            if not isinstance(translated, dict):
+                continue
+            freshness = compute_glossary_freshness(translated, snapshot)
+            state = freshness.get("glossary_freshness")
+            if state == FRESHNESS_STALE:
+                stale_chapter_ids.append(ch_id)
+            elif state == FRESHNESS_LEGACY_UNKNOWN and include_legacy_unknown:
+                legacy_chapter_ids.append(ch_id)
+
+        target_ids = stale_chapter_ids + (legacy_chapter_ids if include_legacy_unknown else [])
+        if not target_ids:
+            return {
+                "novel_id": novel_id,
+                "stale_chapter_count": len(stale_chapter_ids),
+                "legacy_unknown_chapter_count": len(legacy_chapter_ids),
+                "scheduled_chapter_count": 0,
+                "activity_id": None,
+            }
+
+        chapters_str = ",".join(sorted(target_ids, key=int))
+        await self.orchestrator.translate_chapters(
+            source_key,
+            novel_id,
+            chapters_str,
+            provider_key=provider_key,
+            provider_model=provider_model,
+            force=True,
+        )
+
+        return {
+            "novel_id": novel_id,
+            "stale_chapter_count": len(stale_chapter_ids),
+            "legacy_unknown_chapter_count": len(legacy_chapter_ids),
+            "scheduled_chapter_count": len(target_ids),
+            "activity_id": None,
+        }
+
 
