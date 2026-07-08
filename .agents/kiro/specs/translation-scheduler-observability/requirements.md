@@ -2,130 +2,268 @@
 
 ## Introduction
 
-The translation backend has scheduler-aware provider/model routing. The deep research reports found that scheduler state includes runtime limits and health fields such as RPM/RPD limits, requests this minute/day, cooldown, exhausted state, failed timestamp, last error code, and status. However, those decisions are not clearly surfaced to admins or captured in translation activity metadata.
+The translation backend already has scheduler-aware provider/model routing, runtime provider state, request IDs, checkpoint/resume, chapter parallelization, quota/cooldown handling, and memory safeguards. The remaining gap is visibility.
 
-This spec makes translation scheduler decisions observable. The goal is to explain which model was selected, which candidates were skipped, why fallback happened, and what provider/model health looked like at selection time.
+Admins need to understand why a model was selected, why other candidates were skipped, when fallback happened, when no capacity was available, and what provider/model health looked like at selection time. This spec makes scheduler decisions observable without changing scheduling behavior.
+
+This work is instrumentation-first. It must not change model ordering, provider routing, quota policy, cooldown behavior, checkpoint/resume behavior, chapter parallelization, memory guards, or translation output.
 
 ## Requirements
 
 ### REQ-1: Record Scheduler Selection Decisions
 
-Every translation model selection should produce a compact decision record.
+Every provider/model selection attempt should produce a compact scheduler decision record.
 
-- REQ-1.1: Record the selected provider and model.
-- REQ-1.2: Record the scheduler policy used for selection.
-- REQ-1.3: Record all candidate provider/model configs considered, or a bounded summary if the list is large.
-- REQ-1.4: For each skipped candidate, record a machine-readable skip reason.
-- REQ-1.5: Record whether the selected model is a fallback after one or more candidates were skipped.
-- REQ-1.6: Record selection timestamp.
-- REQ-1.7: Do not record provider API keys or sensitive configuration.
+- REQ-1.1: Record selected provider and model when selection succeeds.
+- REQ-1.2: Record `selected: null` when no provider/model is available.
+- REQ-1.3: Record the scheduler policy used for selection.
+- REQ-1.4: Record whether fallback was used.
+- REQ-1.5: Record selection timestamp.
+- REQ-1.6: Record candidate provider/model entries considered by the scheduler.
+- REQ-1.7: Candidate lists must be bounded to avoid oversized metadata.
+- REQ-1.8: If the candidate list is truncated, record total candidate count, recorded candidate count, and truncation flag.
+- REQ-1.9: Decision recording must observe scheduler behavior only and must not influence selection.
 
-### REQ-2: Standardize Skip Reasons
+### REQ-2: Include Request, Job, Chapter, and Checkpoint Identity
 
-Scheduler skip/fallback reasons must use stable codes.
+Scheduler decisions must be traceable across activity/job dashboards and per-chapter translation records.
 
-- REQ-2.1: Include `cooldown_active` when a model is cooling down.
-- REQ-2.2: Include `quota_exhausted` when daily or provider quota is exhausted.
-- REQ-2.3: Include `rpm_limited` when minute rate limit prevents selection.
-- REQ-2.4: Include `rpd_limited` when daily request limit prevents selection.
-- REQ-2.5: Include `disabled` when a model/provider is disabled by config.
-- REQ-2.6: Include `previously_attempted` when excluded by attempted model history.
-- REQ-2.7: Include `unhealthy` when model status prevents selection.
-- REQ-2.8: Include `no_capacity` when no known candidate is currently available.
-- REQ-2.9: Include `unknown` for unexpected cases.
+- REQ-2.1: Decision records should include `request_id` when available.
+- REQ-2.2: Decision records should include `activity_id` when available.
+- REQ-2.3: Decision records should include `job_id` when available.
+- REQ-2.4: Decision records should include `chapter_id` when available.
+- REQ-2.5: Decision records should include attempt number when available.
+- REQ-2.6: Decision records should include checkpoint ID or checkpoint reference when available.
+- REQ-2.7: Missing identity fields must not break translation execution.
+- REQ-2.8: Existing request ID propagation must be reused rather than replaced.
 
-### REQ-3: Persist Decision Records in Translation Metadata
+### REQ-3: Standardize Skip and Failure Reason Codes
+
+Scheduler skip, fallback, and failure reasons must use stable machine-readable codes.
+
+- REQ-3.1: Include `cooldown_active` when a candidate is cooling down.
+- REQ-3.2: Include `quota_exhausted` when provider/model quota is exhausted.
+- REQ-3.3: Include `rpm_limited` when requests-per-minute limits prevent selection.
+- REQ-3.4: Include `rpd_limited` when requests-per-day limits prevent selection.
+- REQ-3.5: Include `memory_pressure` when existing memory guards prevent safe scheduling or execution.
+- REQ-3.6: Include `parallelism_limit` when chapter parallelization limits prevent immediate execution.
+- REQ-3.7: Include `disabled` when a provider/model is disabled by config.
+- REQ-3.8: Include `previously_attempted` when a candidate is skipped because it was already attempted for the same unit of work.
+- REQ-3.9: Include `unhealthy` when runtime health marks a candidate unavailable.
+- REQ-3.10: Include `checkpoint_blocked` when existing checkpoint/resume state blocks execution.
+- REQ-3.11: Include `no_capacity` when no candidate can be selected.
+- REQ-3.12: Include `unknown` for unexpected cases.
+- REQ-3.13: Reason codes must not contain raw exception traces or secrets.
+
+### REQ-4: Record Candidate Runtime State Safely
+
+Each recorded scheduler candidate must include safe runtime state.
+
+- REQ-4.1: Candidate records must include provider and model.
+- REQ-4.2: Candidate records must include runtime status when available.
+- REQ-4.3: Candidate records must include whether the candidate was selected.
+- REQ-4.4: Skipped candidate records must include `skip_reason`.
+- REQ-4.5: Candidate records should include `cooldown_until` when available.
+- REQ-4.6: Candidate records should include `exhausted_until` when available.
+- REQ-4.7: Candidate records should include `failed_at` when available.
+- REQ-4.8: Candidate records should include safe `last_error_code` when available.
+- REQ-4.9: Candidate records must not include API keys, credentials, account identifiers, prompts, source text, translated text, raw provider responses, or full exception traces.
+
+### REQ-5: Persist Per-Chapter Scheduler Metadata
 
 Scheduler decisions must survive beyond logs.
 
-- REQ-3.1: Persist per-chapter scheduler decision metadata when translation runs.
-- REQ-3.2: Persist aggregate scheduler summary in translation activity metadata when practical.
-- REQ-3.3: Persist decision metadata in a bounded form to avoid oversized activity records.
-- REQ-3.4: Decision metadata must be additive to existing translation version/activity metadata.
-- REQ-3.5: Existing translation records without scheduler metadata must remain loadable.
+- REQ-5.1: Per-chapter translation output metadata should include the scheduler decision when available.
+- REQ-5.2: Translation version metadata may store the scheduler decision where provider/model metadata is already stored.
+- REQ-5.3: Scheduler metadata must be additive to existing translation metadata.
+- REQ-5.4: Existing translation versions without scheduler metadata must remain loadable.
+- REQ-5.5: Scheduler metadata must not duplicate prompt text, source text, or translated text.
+- REQ-5.6: Scheduler metadata must remain compact enough for existing metadata storage.
 
-### REQ-4: Expose Scheduler Health in Admin APIs
+### REQ-6: Aggregate Scheduler Summary in Activity Metadata
+
+Translation activities must expose a compact scheduler summary.
+
+- REQ-6.1: Activity metadata should include `scheduler_summary` when translation scheduler decisions are recorded.
+- REQ-6.2: Summary must include `chapters_with_decisions`.
+- REQ-6.3: Summary must include `fallback_count`.
+- REQ-6.4: Summary must include `no_capacity_count`.
+- REQ-6.5: Summary must include `skip_reason_counts`.
+- REQ-6.6: Summary must include `selected_model_counts`.
+- REQ-6.7: Summary should include `provider_counts`.
+- REQ-6.8: Summary should include quota/cooldown-related counts.
+- REQ-6.9: Summary should include checkpoint/resume counts when available.
+- REQ-6.10: Summary should include memory-pressure counts when available.
+- REQ-6.11: Summary updates must be safe under chapter parallelization.
+- REQ-6.12: Legacy activity records without scheduler summaries must remain loadable.
+
+### REQ-7: Preserve Checkpoint and Resume Semantics
+
+Scheduler observability must align with existing checkpoint/resume behavior.
+
+- REQ-7.1: Observability must not change checkpoint write timing.
+- REQ-7.2: Observability must not change resume eligibility.
+- REQ-7.3: A resumed chapter should preserve prior scheduler decision metadata when already recorded.
+- REQ-7.4: A new provider/model selection after resume must create a new decision record.
+- REQ-7.5: Decision records should include checkpoint references when available.
+- REQ-7.6: Activity summaries should count resumed work when existing metadata supports it.
+- REQ-7.7: Checkpoint-blocked states should use `checkpoint_blocked`.
+
+### REQ-8: Support Chapter Parallelization Safely
+
+Scheduler metadata must be safe when chapters are translated concurrently.
+
+- REQ-8.1: Each decision record must be tied to a stable chapter identity where available.
+- REQ-8.2: Parallel workers must not overwrite each other’s scheduler metadata.
+- REQ-8.3: Aggregation must be concurrency-safe.
+- REQ-8.4: Duplicate attempts for the same chapter must be distinguishable by attempt number, request ID, or job ID when available.
+- REQ-8.5: Activity summaries must aggregate by decision/attempt rather than using lossy chapter-only keys when retries or resumes occur.
+- REQ-8.6: Observability must not change chapter parallelization limits or scheduling behavior.
+
+### REQ-9: Surface Exact Memory State When Available
+
+Scheduler observability should reuse existing memory tracking.
+
+- REQ-9.1: If exact memory tracking already exists, decision records should include current exact memory values when available.
+- REQ-9.2: Memory metadata may include `exact_memory_bytes`.
+- REQ-9.3: Memory metadata may include `memory_limit_bytes`.
+- REQ-9.4: Memory metadata may include `memory_pressure`.
+- REQ-9.5: Activity summary should include `peak_exact_memory_bytes` when available.
+- REQ-9.6: Activity summary should include `memory_pressure_count` when available.
+- REQ-9.7: Activity summary should include `memory_blocked_count` when available.
+- REQ-9.8: Do not add a second memory accounting system.
+- REQ-9.9: Do not change memory guard behavior.
+
+### REQ-10: Expose Scheduler Health in Admin APIs
 
 Admins must be able to inspect provider/model runtime health.
 
-- REQ-4.1: Expose provider/model scheduler health through an existing admin route or a new narrowly scoped admin route.
-- REQ-4.2: Health response must include provider, model, status, RPM limit, RPD limit, requests this minute, requests today, cooldown until, exhausted until, failed at, and last error code when available.
-- REQ-4.3: Health response must not expose secrets.
-- REQ-4.4: If strict response models are used, update them so new fields are not dropped.
-- REQ-4.5: Public APIs must not expose scheduler health.
+- REQ-10.1: Scheduler health must be exposed through an existing admin operations route when practical.
+- REQ-10.2: If no suitable admin route exists, add a narrowly scoped admin-only scheduler health route.
+- REQ-10.3: Health response must include provider and model.
+- REQ-10.4: Health response must include status.
+- REQ-10.5: Health response should include RPM limit and requests this minute when available.
+- REQ-10.6: Health response should include RPD limit and requests today when available.
+- REQ-10.7: Health response should include cooldown until when available.
+- REQ-10.8: Health response should include exhausted until when available.
+- REQ-10.9: Health response should include failed at when available.
+- REQ-10.10: Health response should include safe last error code when available.
+- REQ-10.11: Health response must not expose secrets.
+- REQ-10.12: Public APIs must not expose scheduler health.
 
-### REQ-5: Expose Scheduler Decisions in Admin Activity/Translation APIs
+### REQ-11: Expose Scheduler Metadata in Admin Translation APIs
 
-Admin APIs must make routing decisions visible in translation activity and chapter/version review.
+Admin APIs must make scheduler routing decisions visible in translation activity and chapter/version review.
 
-- REQ-5.1: Translation activity detail response must include scheduler summary when available.
-- REQ-5.2: Chapter/version translation metadata must include selected provider/model and skip/fallback summary when available.
-- REQ-5.3: Novel translation summary may include counts of fallback selections, cooldown skips, quota skips, and failed selections.
-- REQ-5.4: Response changes must be additive.
-- REQ-5.5: Legacy translation records without scheduler metadata must show "not available" rather than failing.
+- REQ-11.1: Translation activity detail response must include scheduler summary when available.
+- REQ-11.2: Translation job dashboard response should include scheduler summary when available.
+- REQ-11.3: Chapter/version translation detail must include selected provider/model when available.
+- REQ-11.4: Chapter/version translation detail should include fallback state when available.
+- REQ-11.5: Chapter/version translation detail should include compact skipped candidate summary when available.
+- REQ-11.6: Chapter/version translation detail should include request ID/job ID when available.
+- REQ-11.7: Novel translation summary may include fallback, cooldown, quota, memory, and no-capacity counts.
+- REQ-11.8: Response changes must be additive.
+- REQ-11.9: Strict response models must be updated if they would otherwise drop new fields.
+- REQ-11.10: Legacy records without scheduler metadata must show `null`, omitted fields, or `not_available` according to existing API style.
 
-### REQ-6: Admin UI Visibility
+### REQ-12: Admin UI Visibility
 
 Admin UI must show scheduler routing outcomes and provider health.
 
-- REQ-6.1: Translation activity UI must show selected provider/model summary.
-- REQ-6.2: Translation activity UI must show fallback count.
-- REQ-6.3: Translation activity UI must show skip reason counts.
-- REQ-6.4: Chapter/version UI should show selected provider/model for that translation.
-- REQ-6.5: Provider/model health UI should show cooldown, exhausted, failed, and healthy states.
-- REQ-6.6: UI must not expose secrets.
+- REQ-12.1: Translation activity UI must show selected model counts.
+- REQ-12.2: Translation activity UI must show provider counts.
+- REQ-12.3: Translation activity UI must show fallback count.
+- REQ-12.4: Translation activity UI must show skip reason counts.
+- REQ-12.5: Translation activity UI should show cooldown and quota counts.
+- REQ-12.6: Translation activity UI should show memory pressure counts when available.
+- REQ-12.7: Translation activity UI should show checkpoint/resume counts when available.
+- REQ-12.8: Chapter/version UI should show selected provider/model.
+- REQ-12.9: Chapter/version UI should show fallback state and skipped candidate reasons.
+- REQ-12.10: Chapter/version UI should show request ID/job ID where useful.
+- REQ-12.11: Provider/model health UI should show cooldown, exhausted, failed, quota, and healthy states.
+- REQ-12.12: UI must not expose secrets.
 
-### REQ-7: Failure and Fallback Visibility
+### REQ-13: Failure and Fallback Visibility
 
 Scheduler failures must be visible and diagnosable.
 
-- REQ-7.1: When no provider/model is available, record a decision record with `selected=null` and reason `no_capacity`.
-- REQ-7.2: When fallback happens, record the candidates skipped before the final selection.
-- REQ-7.3: When provider call failure marks a model failed/cooling down/exhausted, record the state transition where current scheduler code already handles it.
-- REQ-7.4: Translation activity errors should include a safe scheduler summary when failure is related to model availability.
-- REQ-7.5: Scheduler observability must not swallow or mask existing translation errors.
+- REQ-13.1: When no provider/model is available, record `selected: null`.
+- REQ-13.2: No-capacity decisions must include `failure_reason: "no_capacity"`.
+- REQ-13.3: When fallback happens, record candidates skipped before final selection.
+- REQ-13.4: When provider failure marks a model failed, cooling down, or exhausted, expose the safe resulting state where scheduler code already records it.
+- REQ-13.5: Translation activity errors related to model availability should include a safe scheduler summary.
+- REQ-13.6: Scheduler observability must not swallow, mask, or replace existing translation errors.
+- REQ-13.7: Scheduler observability must not retry or reroute independently of existing scheduler policy.
 
-### REQ-8: Bounded and Safe Metadata
+### REQ-14: Bounded and Safe Metadata
 
 Scheduler metadata must be safe and reasonably small.
 
-- REQ-8.1: Bound candidate decision lists to a safe maximum.
-- REQ-8.2: Use machine-readable reason codes instead of long free-form error strings where possible.
-- REQ-8.3: Redact provider secrets and account identifiers.
-- REQ-8.4: Avoid storing full prompts or translated content in scheduler metadata.
-- REQ-8.5: Store only safe `last_error_code`, not full provider exception traces, unless existing admin error handling already redacts them.
+- REQ-14.1: Candidate decision lists must be bounded by a constant such as `MAX_SCHEDULER_DECISION_CANDIDATES`.
+- REQ-14.2: Candidate truncation must be explicit in metadata.
+- REQ-14.3: Use machine-readable reason codes instead of long free-form error strings.
+- REQ-14.4: Redact provider secrets.
+- REQ-14.5: Redact account identifiers.
+- REQ-14.6: Do not store prompts.
+- REQ-14.7: Do not store source text.
+- REQ-14.8: Do not store translated text inside scheduler metadata.
+- REQ-14.9: Store safe `last_error_code`, not full exception traces.
+- REQ-14.10: Keep activity summaries compact.
 
-### REQ-9: Backward Compatibility
+### REQ-15: Backward Compatibility
 
 Existing scheduler and translation behavior must remain compatible.
 
-- REQ-9.1: Model selection order and policy must not change except for instrumentation.
-- REQ-9.2: Existing translation flows must work when observability metadata is absent.
-- REQ-9.3: Existing activity records must remain loadable.
-- REQ-9.4: Existing provider/model config formats must remain supported.
-- REQ-9.5: No public reader behavior changes are allowed.
+- REQ-15.1: Model selection order must not change.
+- REQ-15.2: Provider routing policy must not change.
+- REQ-15.3: Quota and cooldown behavior must not change.
+- REQ-15.4: Checkpoint/resume behavior must not change.
+- REQ-15.5: Chapter parallelization behavior must not change.
+- REQ-15.6: Memory guard behavior must not change.
+- REQ-15.7: Existing translation flows must work when observability metadata is absent.
+- REQ-15.8: Existing translation versions must remain loadable.
+- REQ-15.9: Existing activity records must remain loadable.
+- REQ-15.10: Existing provider/model config formats must remain supported.
+- REQ-15.11: Public reader behavior must not change.
 
-### REQ-10: Tests
+### REQ-16: Tests
 
-Focused tests must prove decision recording and health exposure.
+Create `backend/tests/test_translation_scheduler_observability.py`.
 
-- REQ-10.1: Test selected model decision is recorded.
-- REQ-10.2: Test cooldown candidate skip reason is recorded.
-- REQ-10.3: Test RPM/RPD limit skip reasons are recorded.
-- REQ-10.4: Test quota/exhausted skip reason is recorded.
-- REQ-10.5: Test fallback selection records skipped candidates.
-- REQ-10.6: Test no-capacity failure records `selected=null` and `no_capacity`.
-- REQ-10.7: Test activity metadata includes aggregate scheduler summary.
-- REQ-10.8: Test admin scheduler health API excludes secrets.
-- REQ-10.9: Test legacy translations without scheduler metadata still load.
-- REQ-10.10: Test UI rendering if frontend is changed.
+- REQ-16.1: Test selected model decision is recorded.
+- REQ-16.2: Test decision includes request ID, job ID, and chapter ID when available.
+- REQ-16.3: Test cooldown candidate skip reason is recorded.
+- REQ-16.4: Test RPM limit skip reason is recorded.
+- REQ-16.5: Test RPD limit skip reason is recorded.
+- REQ-16.6: Test quota/exhausted skip reason is recorded.
+- REQ-16.7: Test memory pressure skip reason is recorded when memory guard state exists.
+- REQ-16.8: Test checkpoint blocked skip reason is recorded when checkpoint state blocks execution.
+- REQ-16.9: Test fallback selection records skipped candidates.
+- REQ-16.10: Test no-capacity failure records `selected=null` and `failure_reason="no_capacity"`.
+- REQ-16.11: Test candidate list is bounded and truncation metadata is recorded.
+- REQ-16.12: Test parallel chapter decisions do not overwrite each other.
+- REQ-16.13: Test resumed translation preserves or records scheduler decision metadata.
+- REQ-16.14: Test per-chapter translation metadata includes scheduler decision.
+- REQ-16.15: Test activity metadata includes aggregate scheduler summary.
+- REQ-16.16: Test scheduler summary counts selected models.
+- REQ-16.17: Test scheduler summary counts skip reasons.
+- REQ-16.18: Test scheduler health API excludes secrets.
+- REQ-16.19: Test legacy translations without scheduler metadata still load.
+- REQ-16.20: Add frontend tests for UI rendering if frontend code changes.
+- REQ-16.21: Tests must not call live translation providers.
 
 ## Non-Goals
 
 - This spec does not redesign the scheduling algorithm.
+- This spec does not change model priority or provider routing.
 - This spec does not change provider quota policy.
+- This spec does not change cooldown behavior.
+- This spec does not change checkpoint/resume behavior.
+- This spec does not change chapter parallelization behavior.
+- This spec does not change memory guard behavior.
 - This spec does not add provider billing integration.
 - This spec does not expose scheduler health publicly.
 - This spec does not implement distributed metrics storage.
-- This spec does not change prompt construction or glossary behavior.
-
+- This spec does not change prompt construction.
+- This spec does not change glossary behavior.
+- This spec does not change public reader behavior.
