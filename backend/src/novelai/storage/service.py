@@ -129,6 +129,7 @@ from novelai.storage.translations import (
     list_translated_chapter_versions,
     list_translated_chapters,
     load_translated_chapter,
+    load_translated_chapter_by_version_id,
     load_translation_edit_history,
     save_edited_translation,
     save_translated_chapter,
@@ -530,6 +531,7 @@ class StorageService:
     _append_edit_history = _append_edit_history
     save_translated_chapter = save_translated_chapter
     load_translated_chapter = load_translated_chapter
+    load_translated_chapter_by_version_id = load_translated_chapter_by_version_id
     list_translated_chapter_versions = list_translated_chapter_versions
     save_edited_translation = save_edited_translation
     load_translation_edit_history = load_translation_edit_history

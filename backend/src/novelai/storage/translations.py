@@ -297,6 +297,50 @@ def load_translated_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[s
     }
 
 
+def load_translated_chapter_by_version_id(
+    self: Any,
+    novel_id: str,
+    chapter_id: str,
+    version_id: str,
+) -> dict[str, Any] | None:
+    """Load a specific translation version by its version id.
+
+    Returns a normalized dict compatible with public response building,
+    or ``None`` when the bundle or version does not exist. Does not
+    modify storage.
+    """
+    payload = self._load_chapter_bundle(novel_id, chapter_id)
+    if payload is None:
+        return None
+
+    versions = self._translation_versions_from_payload(payload)
+    for version in versions:
+        if not isinstance(version, dict):
+            continue
+        if str(version.get("id")) != str(version_id):
+            continue
+        created_at = version.get("created_at") or version.get("translated_at")
+        translated_at = version.get("translated_at") or version.get("created_at")
+        return {
+            "id": chapter_id,
+            "version_id": version.get("id"),
+            "version_kind": self._normalize_version_kind(version.get("kind")),
+            "provider": version.get("provider"),
+            "model": version.get("model"),
+            "created_at": created_at,
+            "translated_at": translated_at,
+            "text": version.get("text"),
+            "editor": version.get("editor"),
+            "note": version.get("note"),
+            "confidence_score": version.get("confidence_score"),
+            "glossary_revision": version.get("glossary_revision", 0)
+            if isinstance(version.get("glossary_revision"), int)
+            else 0,
+        }
+
+    return None
+
+
 def list_translated_chapter_versions(self: Any, novel_id: str, chapter_id: str) -> list[dict[str, Any]]:
     """Return all stored translation/edit versions for a chapter."""
     payload = self._load_chapter_bundle(novel_id, chapter_id)
