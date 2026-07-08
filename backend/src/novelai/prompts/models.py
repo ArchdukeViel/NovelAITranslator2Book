@@ -20,6 +20,8 @@ class TranslationRequest:
     json_output: bool = False
     honorific_policy: str | None = None
     prompt_template_version: str = ""
+    prompt_policy: str | None = None
+    prompt_policy_version: str | None = None
     runtime_glossary_conflict_warnings: tuple[str, ...] = ()
 
     def cache_key(self) -> str:
@@ -49,6 +51,8 @@ class TranslationRequest:
             "json_output": self.json_output,
             "honorific_policy": self.honorific_policy,
             "prompt_template_version": self.prompt_template_version,
+            "prompt_policy": self.prompt_policy,
+            "prompt_policy_version": self.prompt_policy_version,
             "runtime_glossary_conflict_warnings": list(self.runtime_glossary_conflict_warnings),
         }
         return json.dumps(payload, ensure_ascii=False, sort_keys=True)
