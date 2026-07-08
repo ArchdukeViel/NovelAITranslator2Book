@@ -5,6 +5,8 @@ Covers:
 - compute_glossary_freshness classification (fresh, stale, legacy_unknown, unknown)
 - Stale reason semantics
 - Non-mutating behavior (never deactivates active versions)
+- Stale active translation counts
+- Cache key includes glossary_revision and glossary_hash
 
 No live translation providers. All tests are offline.
 """
@@ -18,14 +20,16 @@ from novelai.translation.glossary_freshness import (
     FRESHNESS_LEGACY_UNKNOWN,
     FRESHNESS_STALE,
     FRESHNESS_UNKNOWN,
+    GlossarySnapshot,
     STALE_REASON_CURRENT_SNAPSHOT_UNAVAILABLE,
     STALE_REASON_FRESH,
     STALE_REASON_HASH_MISMATCH,
     STALE_REASON_LEGACY_MISSING_REVISION,
     STALE_REASON_REVISION_MISMATCH,
-    GlossarySnapshot,
     compute_glossary_freshness,
+    compute_stale_active_translation_counts,
 )
+from novelai.services.cache.translation_cache import make_cache_key
 
 # ---------------------------------------------------------------------------
 # Task 2: GlossarySnapshot
@@ -224,3 +228,82 @@ class TestFreshnessResponseFields:
         # But the version dict is unchanged
         assert version["id"] == "v1"
         assert version["text"] == "translated text"
+
+
+# ---------------------------------------------------------------------------
+# Task 9: Stale active translation counts
+# ---------------------------------------------------------------------------
+
+
+class TestStaleActiveTranslationCounts:
+    def test_counts_all_fresh_versions(self) -> None:
+        current = GlossarySnapshot(revision=12, hash="sha256:abc")
+        versions = [
+            {"glossary_revision": 12, "glossary_hash": "sha256:abc"},
+            {"glossary_revision": 12, "glossary_hash": "sha256:abc"},
+        ]
+        result = compute_stale_active_translation_counts(versions, current)
+        assert result["fresh_active_translation_count"] == 2
+        assert result["stale_active_translation_count"] == 0
+        assert result["legacy_unknown_translation_count"] == 0
+        assert result["current_glossary_revision"] == 12
+
+    def test_counts_mixed_freshness(self) -> None:
+        current = GlossarySnapshot(revision=12, hash="sha256:new")
+        versions = [
+            {"glossary_revision": 12, "glossary_hash": "sha256:new"},  # fresh
+            {"glossary_revision": 10, "glossary_hash": "sha256:old"},  # stale
+            {"text": "no glossary metadata"},  # legacy_unknown
+        ]
+        result = compute_stale_active_translation_counts(versions, current)
+        assert result["fresh_active_translation_count"] == 1
+        assert result["stale_active_translation_count"] == 1
+        assert result["legacy_unknown_translation_count"] == 1
+
+    def test_returns_none_when_no_snapshot(self) -> None:
+        versions = [{"glossary_revision": 12}]
+        result = compute_stale_active_translation_counts(versions, None)
+        assert result["current_glossary_revision"] is None
+
+    def test_includes_current_revision(self) -> None:
+        current = GlossarySnapshot(revision=42, hash="sha256:abc")
+        versions = [{"glossary_revision": 42, "glossary_hash": "sha256:abc"}]
+        result = compute_stale_active_translation_counts(versions, current)
+        assert result["current_glossary_revision"] == 42
+
+
+# ---------------------------------------------------------------------------
+# Tasks 5, 18: Cache key regression tests
+# ---------------------------------------------------------------------------
+
+
+class TestCacheKeyRegression:
+    def test_cache_key_includes_glossary_hash(self) -> None:
+        key_a = make_cache_key("text", "Japanese", "English", "hash_a")
+        key_b = make_cache_key("text", "Japanese", "English", "hash_b")
+        assert key_a != key_b
+
+    def test_cache_key_different_per_source_text(self) -> None:
+        key_a = make_cache_key("text_a", "Japanese", "English", "hash")
+        key_b = make_cache_key("text_b", "Japanese", "English", "hash")
+        assert key_a != key_b
+
+    def test_cache_key_different_per_language(self) -> None:
+        key_a = make_cache_key("text", "Japanese", "English", "hash")
+        key_b = make_cache_key("text", "Chinese", "English", "hash")
+        assert key_a != key_b
+
+    def test_cache_key_different_per_provider(self) -> None:
+        key_a = make_cache_key("text", "Japanese", "English", "hash", provider_key="gemini")
+        key_b = make_cache_key("text", "Japanese", "English", "hash", provider_key="openai")
+        assert key_a != key_b
+
+    def test_cache_key_different_per_model(self) -> None:
+        key_a = make_cache_key("text", "Japanese", "English", "hash", provider_model="model-a")
+        key_b = make_cache_key("text", "Japanese", "English", "hash", provider_model="model-b")
+        assert key_a != key_b
+
+    def test_cache_key_different_per_prompt_version(self) -> None:
+        key_a = make_cache_key("text", "Japanese", "English", "hash", prompt_version="v1")
+        key_b = make_cache_key("text", "Japanese", "English", "hash", prompt_version="v2")
+        assert key_a != key_b

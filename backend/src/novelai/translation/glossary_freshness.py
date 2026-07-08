@@ -118,3 +118,39 @@ def compute_glossary_freshness(
         "current_glossary_revision": current.revision,
         "current_glossary_hash": current.hash,
     }
+
+
+def compute_stale_active_translation_counts(
+    versions: list[dict[str, Any]],
+    current: GlossarySnapshot | None,
+) -> dict[str, int | None]:
+    """Count active translations by freshness state.
+
+    Returns:
+        - ``fresh_active_translation_count``
+        - ``stale_active_translation_count``
+        - ``legacy_unknown_translation_count``
+        - ``current_glossary_revision``: current revision or None.
+    """
+    fresh = 0
+    stale = 0
+    legacy = 0
+
+    for version in versions:
+        if not isinstance(version, dict):
+            continue
+        freshness = compute_glossary_freshness(version, current)
+        state = freshness.get("glossary_freshness")
+        if state == FRESHNESS_FRESH:
+            fresh += 1
+        elif state == FRESHNESS_STALE:
+            stale += 1
+        elif state == FRESHNESS_LEGACY_UNKNOWN:
+            legacy += 1
+
+    return {
+        "fresh_active_translation_count": fresh,
+        "stale_active_translation_count": stale,
+        "legacy_unknown_translation_count": legacy,
+        "current_glossary_revision": current.revision if current else None,
+    }
