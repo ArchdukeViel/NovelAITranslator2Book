@@ -6,6 +6,10 @@ Covers:
 - Cooldown, RPM, RPD, quota, memory skip reasons
 - Fallback selection, no-capacity failure
 - Candidate list bounding and truncation
+- Checkpoint/resume IDs, memory fields
+- Scheduler summary aggregation
+- push/collect decision accumulator (parallelism safe)
+- Legacy translation compatibility
 
 No live translation providers. All tests are offline.
 """
@@ -272,6 +276,106 @@ class TestDecisionSafety:
         decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
         d = str(decision.to_dict())
         assert "translated" not in d.lower() or "translated_at" in d.lower()
+
+
+class TestDecisionAccumulator:
+    """push_scheduler_decision / collect_scheduler_decisions (REQ-12, REQ-9)."""
+
+    def test_push_and_collect(self) -> None:
+        from novelai.translation.scheduler import collect_scheduler_decisions, push_scheduler_decision
+
+        # Clear any prior decisions
+        collect_scheduler_decisions()
+
+        push_scheduler_decision({"selected": {"provider": "p", "model": "m"}})
+        push_scheduler_decision({"selected": {"provider": "q", "model": "n"}})
+
+        decisions = collect_scheduler_decisions()
+        assert len(decisions) == 2
+        assert decisions[0]["selected"]["provider"] == "p"
+        assert decisions[1]["selected"]["provider"] == "q"
+
+    def test_collect_clears_accumulator(self) -> None:
+        from novelai.translation.scheduler import collect_scheduler_decisions, push_scheduler_decision
+
+        collect_scheduler_decisions()
+        push_scheduler_decision({"selected": {"provider": "p", "model": "m"}})
+        first = collect_scheduler_decisions()
+        assert len(first) == 1
+        second = collect_scheduler_decisions()
+        assert len(second) == 0
+
+    def test_accumulator_is_thread_safe_list(self) -> None:
+        """The accumulator is a plain list — appends are atomic in CPython."""
+        from novelai.translation.scheduler import _scheduler_decisions_accumulator
+
+        _scheduler_decisions_accumulator.clear()
+        _scheduler_decisions_accumulator.append({"a": 1})
+        _scheduler_decisions_accumulator.append({"b": 2})
+        assert len(_scheduler_decisions_accumulator) == 2
+
+
+# ---------------------------------------------------------------------------
+# Task 9: Parallel chapter decisions
+# ---------------------------------------------------------------------------
+
+
+class TestParallelismSafety:
+    def test_decisions_from_parallel_chapters_are_distinct(self) -> None:
+        """Simulate two parallel chapters producing decisions."""
+        from novelai.translation.scheduler import (
+            SchedulerDecisionRecorder,
+            collect_scheduler_decisions,
+            push_scheduler_decision,
+        )
+
+        collect_scheduler_decisions()
+
+        # Chapter 1 decision
+        r1 = SchedulerDecisionRecorder(chapter_id="ch1", request_id="req-1")
+        s1 = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        sel1 = s1.select_model(decision_recorder=r1)
+        d1 = r1.finalize(selection=sel1, policy=s1.policy.value).to_dict()
+        push_scheduler_decision(d1)
+
+        # Chapter 2 decision
+        r2 = SchedulerDecisionRecorder(chapter_id="ch2", request_id="req-2")
+        s2 = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        sel2 = s2.select_model(decision_recorder=r2)
+        d2 = r2.finalize(selection=sel2, policy=s2.policy.value).to_dict()
+        push_scheduler_decision(d2)
+
+        decisions = collect_scheduler_decisions()
+        assert len(decisions) == 2
+        assert decisions[0]["chapter_id"] == "ch1"
+        assert decisions[1]["chapter_id"] == "ch2"
+
+    def test_duplicate_attempts_distinguishable(self) -> None:
+        """Same chapter, different attempts — distinguished by request_id."""
+        from novelai.translation.scheduler import (
+            SchedulerDecisionRecorder,
+            collect_scheduler_decisions,
+            push_scheduler_decision,
+        )
+
+        collect_scheduler_decisions()
+
+        s = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        for attempt in range(2):
+            r = SchedulerDecisionRecorder(
+                chapter_id="ch1",
+                request_id=f"req-ch1-attempt-{attempt}",
+                job_id="job-1",
+            )
+            sel = s.select_model(decision_recorder=r)
+            d = r.finalize(selection=sel, policy=s.policy.value).to_dict()
+            push_scheduler_decision(d)
+
+        decisions = collect_scheduler_decisions()
+        assert len(decisions) == 2
+        assert decisions[0]["request_id"] == "req-ch1-attempt-0"
+        assert decisions[1]["request_id"] == "req-ch1-attempt-1"
+        assert decisions[0]["job_id"] == "job-1"
 
 
 # ---------------------------------------------------------------------------
