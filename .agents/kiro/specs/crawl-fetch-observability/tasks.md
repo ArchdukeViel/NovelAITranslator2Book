@@ -215,7 +215,7 @@ Scope boundaries:
   - [x] 19.9 Test source-health cache invalidates after `update_activity_status`.
   - [x] 19.10 Add API-level source-health response test if strict response models are used.
 
-- [ ] 20. Backward Compatibility Checks
+- [x] 20. Backward Compatibility Checks
   - [x] 20.1 Confirm existing activity records without `metadata.crawl_result` still load and serialize.
   - [x] 20.2 Confirm existing callers of `Retrier.execute_async` work without `on_retry`.
   - [x] 20.3 Confirm existing source adapters work without `on_retry`.
