@@ -131,6 +131,25 @@ class ActivityWorkerService:
 
         raise ValueError("Translation activity requires source_key or stored metadata.source.")
 
+    @staticmethod
+    def _resolve_current_glossary_revision(novel_id: str) -> int | None:
+        """Resolve the current glossary revision for a novel.
+
+        Opens a temporary DB session to read the value. Returns None
+        when the novel or revision field cannot be resolved.
+        """
+        try:
+            from novelai.db.engine import session_scope
+            from novelai.db.models.novel import Novel
+
+            with session_scope() as session:
+                novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
+                if novel is not None:
+                    return int(novel.glossary_revision or 0)
+        except Exception:
+            return None
+        return None
+
     async def _run_crawl_activity(self, activity: dict[str, Any]) -> dict[str, Any]:
         kind = str(activity.get("kind") or "")
         metadata = self._activity_metadata(activity)
@@ -212,6 +231,51 @@ class ActivityWorkerService:
         novel_id = str(activity.get("novel_id") or "")
         if not novel_id.strip():
             raise ValueError("Translation activity is missing novel_id.")
+
+        # Detect stale scheduled glossary snapshot (REQ-11).
+        # If the scheduled glossary revision differs from the current
+        # revision, cancel this job and reschedule with current glossary.
+        scheduled_revision = metadata.get("scheduled_glossary_revision")
+        if isinstance(scheduled_revision, int):
+            try:
+                current_revision = self._resolve_current_glossary_revision(novel_id)
+                if current_revision != scheduled_revision:
+                    logger.info(
+                        "Translation job %s stale: scheduled_glossary_revision=%d != current=%d. "
+                        "Cancelling and rescheduling.",
+                        activity.get("id"),
+                        scheduled_revision,
+                        current_revision,
+                    )
+                    # Cancel this activity and reschedule a new one with current revision
+                    meta = self.orchestrator.storage.load_metadata(novel_id) or {}
+                    source_key = meta.get("source") or activity.get("source_key") or ""
+                    new_activity = self.activity_log.create_translation_activity(
+                        novel_id=novel_id,
+                        source_key=str(source_key),
+                        kind=kind,
+                        chapters=str(activity.get("chapters") or "all"),
+                        provider=activity.get("provider_key") or activity.get("provider"),
+                        model=activity.get("provider_model") or activity.get("model"),
+                        metadata={
+                            **metadata,
+                            "scheduled_glossary_revision": current_revision,
+                            "stale_before_run": True,
+                            "previous_activity_id": str(activity.get("id") or ""),
+                        },
+                    )
+                    self.activity_log.update_activity_status(
+                        str(activity["id"]),
+                        "cancelled",
+                        error=f"Stale glossary: revision {scheduled_revision} -> {current_revision}",
+                    )
+                    return {
+                        "chapters": activity.get("chapters") or "all",
+                        "stale_before_run": True,
+                        "rescheduled_activity_id": new_activity.get("id"),
+                    }
+            except Exception:
+                logger.debug("Failed to check glossary revision freshness", exc_info=True)
 
         chapters = activity.get("chapters")
         if not isinstance(chapters, str) or not chapters.strip():
