@@ -5,15 +5,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy.orm import Session
+
 from novelai.activity.runner import BackgroundActivityRunner
 from novelai.config.settings import settings
 from novelai.config.workflow_profiles import WORKFLOW_PROFILE_STEPS
 from novelai.providers.model_fallbacks import model_candidates
-from novelai.services.provider_credentials import ProviderCredentialService
 from novelai.services.preferences_service import PreferencesService
+from novelai.services.provider_credentials import ProviderCredentialService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
-from sqlalchemy.orm import Session
 
 API_KEY_PROVIDERS = {"gemini"}
 DEFAULT_PROVIDER_MODELS = {
@@ -937,6 +938,43 @@ class AdminService:
         if key == "backup_manifest":
             return settings.DATA_DIR / "backups" / "manifest.json"
         raise KeyError(f"Unknown runtime state file: {key}")
+
+    def scheduler_health(self) -> dict[str, Any]:
+        policy = self.get_provider_fallback_policy()
+        configs = self.scheduler_policy_models(
+            provider_key=str(policy.get("default_provider", "gemini")),
+            model=str(policy.get("default_model", "")),
+            allow_cross_provider_fallback=bool(policy.get("allow_cross_provider_fallback", False)),
+        )
+        health: list[dict[str, Any]] = []
+        for item in configs:
+            pk = str(item.get("provider_key") or "")
+            pm = str(item.get("provider_model") or "")
+            credential = self._credential_metadata(pk)
+            configured = (
+                credential.get("is_active") is not False
+                and self.preferences.get_api_key(pk) is not None
+            )
+            health.append({
+                "provider_key": pk,
+                "provider_model": pm,
+                "priority_order": item.get("priority_order", 0),
+                "configured": configured,
+                "credential_active": credential.get("is_active") if credential else None,
+                "rpm_limit": item.get("rpm_limit"),
+                "rpd_limit": item.get("rpd_limit"),
+            })
+        default_provider = str(policy.get("default_provider", "gemini"))
+        default_model = str(policy.get("default_model", ""))
+        return {
+            "policy": {
+                "default_provider": default_provider,
+                "default_model": default_model,
+                "allow_cross_provider_fallback": bool(policy.get("allow_cross_provider_fallback", False)),
+                "fallback_on_qa_failure": bool(policy.get("fallback_on_qa_failure", False)),
+            },
+            "models": health,
+        }
 
     def worker_status(self) -> dict[str, Any]:
         return self.activity_runner.status()

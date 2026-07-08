@@ -2269,6 +2269,7 @@ async def translate_chapters(
                     confidence_score is None
                     or confidence_score >= settings.TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD
                 )
+                scheduler_policy = result.scheduler_state.get("policy") if isinstance(result.scheduler_state, dict) else None
                 self.storage.save_translated_chapter(
                     novel_id,
                     chapter_id,
@@ -2282,6 +2283,7 @@ async def translate_chapters(
                         "source_length": len((raw_text or "").strip()),
                         "translated_length": len(translated.strip()),
                         "style_preset": effective_style_preset,
+                        "scheduler_policy": scheduler_policy,
                         "delta": {
                             "delta_retranslation": False,
                             "mode": "full",

@@ -93,6 +93,7 @@ export type TranslatedChapter = {
   glossary_stale_reason?: string | null;
   current_glossary_revision?: number | null;
   current_glossary_hash?: string | null;
+  confidence_details?: Record<string, unknown>;
 };
 
 export type TranslationVersion = Record<string, unknown> & {
@@ -342,6 +343,38 @@ export type CreateTranslationActivityPayload = {
   model?: string;
   skip_glossary_gate?: boolean;
   metadata?: Record<string, unknown>;
+};
+
+export type SchedulerHealthModel = {
+  provider_key: string;
+  provider_model: string;
+  priority_order: number;
+  configured: boolean;
+  credential_active: boolean | null;
+  rpm_limit: number | null;
+  rpd_limit: number | null;
+};
+
+export type SchedulerHealthResponse = {
+  policy: {
+    default_provider: string;
+    default_model: string;
+    allow_cross_provider_fallback: boolean;
+    fallback_on_qa_failure: boolean;
+  };
+  models: SchedulerHealthModel[];
+};
+
+export type SchedulerSummary = {
+  chapters_with_decisions: number;
+  fallback_count: number;
+  no_capacity_count: number;
+  checkpoint_blocked_count: number;
+  memory_pressure_count: number;
+  peak_exact_memory_bytes: number;
+  skip_reason_counts: Record<string, number>;
+  selected_model_counts: Record<string, number>;
+  provider_counts: Record<string, number>;
 };
 
 // ===========================================

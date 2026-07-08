@@ -24,7 +24,8 @@ import {
   type ActivityPhaseKey
 } from "@/lib/activity";
 import { activityProgress, activityProgressLabel, api } from "@/lib/api";
-import type { ActivityRecord } from "@/lib/api";
+import type { ActivityRecord, SchedulerSummary } from "@/lib/api";
+import { SchedulerSummaryPanel } from "@/components/admin/scheduler-summary";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -251,6 +252,15 @@ export default function ActivityDetailPage() {
                         <SchedulerStatePanel activity={activityItem} />
                       </div>
                     ) : null}
+                    {(() => {
+                      const result = activityItem.metadata?.result as Record<string, unknown> | undefined;
+                      const rawSummary = result?.scheduler_summary as SchedulerSummary | undefined;
+                      return rawSummary ? (
+                        <div className="border-b p-3">
+                          <SchedulerSummaryPanel summary={rawSummary} />
+                        </div>
+                      ) : null;
+                    })()}
                     <pre className="seamless-scrollbar max-h-80 overflow-auto bg-muted/35 p-3 text-xs leading-5">
                       {JSON.stringify(activityItem, null, 2)}
                     </pre>
