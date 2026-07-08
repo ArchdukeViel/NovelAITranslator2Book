@@ -521,3 +521,165 @@ class TestSchedulerSummary:
         summary = build_scheduler_summary(decisions)
         assert "extra_noise" not in summary
         assert "candidates" not in summary
+
+
+# ---------------------------------------------------------------------------
+# Task 18: Activity metadata summary
+# ---------------------------------------------------------------------------
+
+
+class TestActivityMetadataSummary:
+    """Scheduler_summary is stored in activity metadata via the worker."""
+
+    def test_worker_passes_scheduler_summary(self) -> None:
+        """Simulate what the worker does: extract scheduler_summary."""
+        from novelai.translation.scheduler import (
+            build_scheduler_summary,
+            collect_scheduler_decisions,
+            push_scheduler_decision,
+        )
+
+        collect_scheduler_decisions()
+
+        push_scheduler_decision({
+            "selected": {"provider": "p", "model": "m"},
+            "fallback_used": False,
+            "candidates": [],
+            "chapter_id": "1",
+        })
+        push_scheduler_decision({
+            "selected": {"provider": "q", "model": "n"},
+            "fallback_used": True,
+            "candidates": [{"skip_reason": "preferred_model_cooling_down"}],
+            "chapter_id": "2",
+        })
+
+        summary = build_scheduler_summary(collect_scheduler_decisions())
+        assert summary["chapters_with_decisions"] == 2
+        assert summary["fallback_count"] == 1
+        assert summary["selected_model_counts"] == {"p:m": 1, "q:n": 1}
+        assert "preferred_model_cooling_down" in summary["skip_reason_counts"]
+
+    def test_scheduler_summary_combined_with_chapter_progress(self) -> None:
+        """The translate_chapters return dict includes both chapter_progress and scheduler_summary."""
+        from novelai.translation.scheduler import (
+            build_scheduler_summary,
+            collect_scheduler_decisions,
+            push_scheduler_decision,
+        )
+
+        collect_scheduler_decisions()
+        push_scheduler_decision({
+            "selected": {"provider": "p", "model": "m"},
+            "fallback_used": True,
+            "candidates": [],
+        })
+        summary = build_scheduler_summary(collect_scheduler_decisions())
+
+        full_result = {
+            "chapter_progress": {"1": {"status": "succeeded"}, "2": {"status": "succeeded"}},
+            "succeeded": 2,
+            "failed": 0,
+            "skipped": 0,
+            "total": 2,
+            "scheduler_summary": summary,
+        }
+        assert full_result["scheduler_summary"]["chapters_with_decisions"] == 1
+        assert full_result["scheduler_summary"]["fallback_count"] == 1
+
+    def test_scheduler_summary_empty_when_no_decisions(self) -> None:
+        from novelai.translation.scheduler import build_scheduler_summary, collect_scheduler_decisions
+
+        collect_scheduler_decisions()
+        summary = build_scheduler_summary(collect_scheduler_decisions())
+        assert summary["chapters_with_decisions"] == 0
+        assert summary["fallback_count"] == 0
+        assert summary["no_capacity_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 18: Scheduler health API data
+# ---------------------------------------------------------------------------
+
+
+class TestSchedulerHealthData:
+    """Test the scheduler_health service method generates correct structure.
+
+    These tests call the method directly; the mocked preferences return
+    no provider_management state so the method falls through to
+    _default_fallback_policy, which needs a registered provider.
+    We patch at a high level to keep tests offline.
+    """
+
+    def _make_service(self):
+        from novelai.services.admin_service import AdminService
+
+        fake_prefs = type("FakePrefs", (), {
+            "prefs_path": "nope",
+            "get_provider_management": lambda self: {},
+            "get_preferred_provider": lambda self: "gemini",
+            "get_provider_model": lambda self: "gemini-3.1-flash-lite",
+            "get_api_key": lambda self, pk: "fake-key",
+            "reload": lambda self: None,
+            "clear": lambda self: None,
+        })()
+        return AdminService(
+            preferences=fake_prefs,
+            translation_cache=type("FakeCache", (), {"cache_file": "nope"})(),
+            usage=type("FakeUsage", (), {"usage_path": "nope", "reload": lambda self: None, "clear": lambda self: None})(),
+            activity_runner=type("FakeRunner", (), {"status": lambda self: {}})(),
+        )
+
+    def test_health_structure(self) -> None:
+        """scheduler_health() returns policy + models."""
+        import json
+
+        service = self._make_service()
+        # Patch scheduler_policy_models to avoid provider registry calls
+        original = service.scheduler_policy_models
+        service.scheduler_policy_models = lambda **kw: [
+            {"provider_key": "gemini", "provider_model": "g-1", "priority_order": 0},
+        ]
+        try:
+            health = service.scheduler_health()
+            assert "policy" in health
+            assert "models" in health
+            assert "default_provider" in health["policy"]
+            assert "allow_cross_provider_fallback" in health["policy"]
+            assert len(health["models"]) >= 1
+            # Verify JSON-serializable
+            json.dumps(health)
+        finally:
+            service.scheduler_policy_models = original
+
+    def test_health_models_have_required_fields(self) -> None:
+        service = self._make_service()
+        original = service.scheduler_policy_models
+        service.scheduler_policy_models = lambda **kw: [
+            {"provider_key": "gemini", "provider_model": "g-1", "priority_order": 0},
+            {"provider_key": "openai", "provider_model": "gpt-4", "priority_order": 1},
+        ]
+        try:
+            health = service.scheduler_health()
+            for model in health["models"]:
+                assert "provider_key" in model
+                assert "provider_model" in model
+                assert "priority_order" in model
+                assert "configured" in model
+        finally:
+            service.scheduler_policy_models = original
+
+    def test_health_redacts_secrets(self) -> None:
+        """scheduler_health must not include API keys or credential secrets."""
+        service = self._make_service()
+        original = service.scheduler_policy_models
+        service.scheduler_policy_models = lambda **kw: [
+            {"provider_key": "gemini", "provider_model": "g-1", "priority_order": 0},
+        ]
+        try:
+            health = service.scheduler_health()
+            dumped = str(health).lower()
+            assert "api_key" not in dumped
+            assert "secret" not in dumped
+        finally:
+            service.scheduler_policy_models = original

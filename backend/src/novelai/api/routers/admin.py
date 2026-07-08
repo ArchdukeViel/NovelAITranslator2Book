@@ -387,6 +387,14 @@ async def invalidate_novel_cache(
         raise HTTPException(status_code=500, detail=f"Failed to invalidate cache: {exc}") from exc
 
 
+@router.get("/admin/translation/scheduler-health")
+async def scheduler_health(
+    service: AdminService = Depends(get_admin_db_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    return service.scheduler_health()
+
+
 @router.get("/admin/health/errors")
 async def health_errors(
     _owner=Depends(require_role("owner")),

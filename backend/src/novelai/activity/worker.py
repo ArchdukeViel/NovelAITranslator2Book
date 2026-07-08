@@ -328,6 +328,9 @@ class ActivityWorkerService:
             for key in ("succeeded", "failed", "skipped", "total"):
                 if key in summary:
                     result[key] = summary[key]
+            scheduler_summary = summary.get("scheduler_summary")
+            if isinstance(scheduler_summary, dict):
+                result["scheduler_summary"] = scheduler_summary
         return result
 
     async def run_activity(self, activity_id: str) -> dict[str, Any] | None:

@@ -173,6 +173,11 @@ export default function EditorPage() {
                         <Badge tone={version.active ? "green" : "neutral"}>{version.active ? "active" : String(version.version_kind || version.kind || "stored")}</Badge>
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">{formatDateTime(version.created_at || version.translated_at)}</div>
+                      {version.provider_key || version.provider_model ? (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {version.provider_key}/{version.provider_model}
+                        </div>
+                      ) : null}
                       <Button className="mt-3 w-full" size="sm" variant="outline" onClick={() => rollback.mutate(versionId)} disabled={!versionId || version.active || rollback.isPending}>
                         <RotateCcw className="h-4 w-4" />
                         Rollback
@@ -188,6 +193,32 @@ export default function EditorPage() {
         </div>
 
         <div className="space-y-5">
+          {translated.data ? (
+            <Panel>
+              <PanelHeader>
+                <PanelTitle>Scheduler Decision</PanelTitle>
+              </PanelHeader>
+              <PanelBody className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Provider / Model</span>
+                  <span className="font-medium">{translated.data.provider_key || translated.data.provider || "-"} / {translated.data.provider_model || translated.data.model || "-"}</span>
+                </div>
+                {translated.data.confidence_details?.scheduler_policy ? (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Scheduler Policy</span>
+                    <Badge tone="blue">{String(translated.data.confidence_details.scheduler_policy)}</Badge>
+                  </div>
+                ) : null}
+                {translated.data.version_kind ? (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Version Kind</span>
+                    <span className="font-medium">{translated.data.version_kind}</span>
+                  </div>
+                ) : null}
+              </PanelBody>
+            </Panel>
+          ) : null}
+
           <Panel>
             <PanelHeader className="flex flex-row items-center justify-between">
               <PanelTitle>Translated Text</PanelTitle>

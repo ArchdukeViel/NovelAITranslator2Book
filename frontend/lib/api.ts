@@ -43,6 +43,8 @@ import type {
   ReaderChapter,
   ReaderNovel,
   RuntimeStateItem,
+  SchedulerHealthResponse,
+  SchedulerSummary,
   SourceHealth,
   TranslatedChapter,
   TranslationEditHistory,
@@ -414,6 +416,7 @@ export const api = {
   workerStart: () => apiFetch<WorkerStatus>("/admin/worker/start", { method: "POST" }),
   workerStop: () => apiFetch<WorkerStatus>("/admin/worker/stop", { method: "POST" }),
   workerRunOnce: () => apiFetch<{ activity: ActivityRecord | null; worker: WorkerStatus }>("/admin/worker/run-once", { method: "POST" }),
+  schedulerHealth: () => apiFetch<SchedulerHealthResponse>("/admin/translation/scheduler-health"),
   requests: () => apiFetch<{ requests: NovelRequestRecord[] }>("/admin/requests?limit=50"),
   createRequest: (payload: { title: string; source_key?: string; source_url?: string; requested_by?: string; notes?: string }) =>
     apiFetch<NovelRequestRecord>("/admin/requests", {
