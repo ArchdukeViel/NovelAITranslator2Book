@@ -21,17 +21,18 @@ from novelai.prompts import build_translation_request
 from novelai.prompts.models import TranslationRequest
 from novelai.providers.base import TranslationProvider
 from novelai.providers.model_fallbacks import model_candidates
+from novelai.services.cache.translation_cache import TranslationCacheService
 from novelai.services.glossary_prompt_injection import GlossaryPromptInjectionService, PromptGlossaryBlock
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
-from novelai.services.cache.translation_cache import TranslationCacheService
 from novelai.services.usage_service import UsageService
 from novelai.shared.pipeline import ChunkAttemptStatus, ChunkTranslationStatus
 from novelai.storage.service import StorageService
 from novelai.translation.pipeline.context import PipelineContext, TranslationChunk
 from novelai.translation.pipeline.stages.base import PipelineStage
 from novelai.translation.scheduler import (
+    SchedulerDecisionRecorder,
     SchedulerPausedError,
     SelectionReason,
     TranslationScheduler,
@@ -968,7 +969,7 @@ class TranslateStage(PipelineStage):
 
         if settings.TRANSLATION_CACHE_ENABLED:
             try:
-                from novelai.services.cache.translation_cache import make_cache_key, CacheEntry
+                from novelai.services.cache.translation_cache import CacheEntry, make_cache_key
                 source_language = self._infer_source_language(context) or "auto"
                 target_language = context.metadata.get("target_language") or settings.TRANSLATION_TARGET_LANGUAGE
                 g_hash = glossary_hash or ""
@@ -1148,11 +1149,18 @@ class TranslateStage(PipelineStage):
                 try:
                     while True:
                         async with scheduler_lock:
+                            recorder = SchedulerDecisionRecorder(
+                                request_id=context.metadata.get("request_id"),
+                                activity_id=context.metadata.get("activity_id"),
+                                job_id=context.metadata.get("job_id"),
+                                chapter_id=context.chapter_id,
+                            )
                             selection = scheduler.select_model(
                                 chapter_id=context.chapter_id,
                                 previous_attempts=attempted_models,
                                 qa_failed=qa_failed,
                                 now=utc_now(),
+                                decision_recorder=recorder,
                             )
                             if selection.paused:
                                 if isinstance(progress, dict):
@@ -1175,6 +1183,14 @@ class TranslateStage(PipelineStage):
                                 raise paused
                             used_provider_key = str(selection.provider_key)
                             used_provider_model = str(selection.provider_model)
+
+                        # Record scheduler decision for observability (REQ-1)
+                        decision = recorder.finalize(
+                            selection=selection,
+                            policy=scheduler.policy.value,
+                            total_candidates=len(scheduler.model_configs),
+                        )
+                        context.metadata.setdefault("scheduler_decisions", []).append(decision.to_dict())
 
                         attempted_models.add((used_provider_key, used_provider_model))
                         cached = self._cached_translation(

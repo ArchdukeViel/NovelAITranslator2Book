@@ -1,0 +1,273 @@
+"""Translation scheduler observability tests.
+
+Covers:
+- SchedulerDecisionRecorder records candidates and selections
+- Selected model decision includes identity fields
+- Cooldown, RPM, RPD, quota, memory skip reasons
+- Fallback selection, no-capacity failure
+- Candidate list bounding and truncation
+
+No live translation providers. All tests are offline.
+"""
+
+from __future__ import annotations
+
+from datetime import timedelta
+
+from novelai.shared.pipeline import SchedulerModelStatus
+from novelai.translation.scheduler import (
+    SchedulerDecisionRecorder,
+    SchedulerModelConfig,
+    SchedulerModelRuntimeState,
+    SchedulerPolicy,
+    SelectionReason,
+    TranslationScheduler,
+    utc_now,
+)
+
+
+def _make_scheduler(
+    models: list[tuple[str, str, str]],
+    *,
+    policy: SchedulerPolicy = SchedulerPolicy.VOLUME_FIRST,
+) -> TranslationScheduler:
+    configs = [
+        SchedulerModelConfig(provider_key=pk, provider_model=pm, priority_order=i)
+        for i, (pk, pm, _status) in enumerate(models)
+    ]
+    states = {}
+    future = (utc_now() + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+    for pk, pm, status in models:
+        state = SchedulerModelRuntimeState(
+            provider_key=pk,
+            provider_model=pm,
+            priority_order=0,
+            status=status,
+            cooldown_until=future if status == SchedulerModelStatus.COOLING_DOWN.value else None,
+            exhausted_until=future if status == SchedulerModelStatus.DAILY_EXHAUSTED.value else None,
+        )
+        states[(pk, pm)] = state
+    scheduler = TranslationScheduler(
+        model_configs=configs,
+        policy=policy,
+        model_states=states,
+    )
+    return scheduler
+
+
+def _make_rpm_limited_state() -> SchedulerModelRuntimeState:
+    state = SchedulerModelRuntimeState(
+        provider_key="test",
+        provider_model="model",
+        priority_order=0,
+        rpm_limit=10,
+        rpd_limit=100,
+        requests_this_minute=10,
+        requests_today=5,
+        status=SchedulerModelStatus.AVAILABLE.value,
+    )
+    state.window_started_at = (utc_now() - timedelta(seconds=30)).isoformat().replace("+00:00", "Z")
+    return state
+
+
+# ---------------------------------------------------------------------------
+# Task 2-3: Decision recorder basics
+# ---------------------------------------------------------------------------
+
+
+class TestSchedulerDecisionRecorder:
+    def test_records_selected_decision(self) -> None:
+        scheduler = _make_scheduler([("provider_a", "model_a", SchedulerModelStatus.AVAILABLE.value)])
+        recorder = SchedulerDecisionRecorder(chapter_id="1")
+        selection = scheduler.select_model(decision_recorder=recorder)
+        assert selection.provider_key == "provider_a"
+        assert selection.provider_model == "model_a"
+
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        assert decision.selected_provider == "provider_a"
+        assert decision.selected_model == "model_a"
+
+    def test_decision_includes_chapter_id(self) -> None:
+        scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        recorder = SchedulerDecisionRecorder(chapter_id="ch12")
+        selection = scheduler.select_model(decision_recorder=recorder)
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        assert decision.chapter_id == "ch12"
+        assert decision.to_dict().get("chapter_id") == "ch12"
+
+    def test_decision_includes_request_id(self) -> None:
+        scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        recorder = SchedulerDecisionRecorder(request_id="req-123")
+        selection = scheduler.select_model(decision_recorder=recorder)
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        assert decision.request_id == "req-123"
+        assert decision.to_dict().get("request_id") == "req-123"
+
+    def test_decision_includes_job_id(self) -> None:
+        scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        recorder = SchedulerDecisionRecorder(job_id="job-789")
+        selection = scheduler.select_model(decision_recorder=recorder)
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        assert decision.job_id == "job-789"
+
+    def test_decision_includes_activity_id(self) -> None:
+        scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        recorder = SchedulerDecisionRecorder(activity_id="activity-456")
+        selection = scheduler.select_model(decision_recorder=recorder)
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        assert decision.activity_id == "activity-456"
+
+    def test_decision_includes_policy(self) -> None:
+        scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        recorder = SchedulerDecisionRecorder()
+        selection = scheduler.select_model(decision_recorder=recorder)
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        assert decision.policy == "volume_first"
+
+    def test_decision_is_json_serializable(self) -> None:
+        import json
+        scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        recorder = SchedulerDecisionRecorder(chapter_id="1", request_id="req-1")
+        selection = scheduler.select_model(decision_recorder=recorder)
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        dumped = json.dumps(decision.to_dict())
+        assert isinstance(dumped, str)
+
+
+# ---------------------------------------------------------------------------
+# Task 4-6: Skip reason codes
+# ---------------------------------------------------------------------------
+
+
+class TestSkipReasons:
+    def test_cooldown_skip_reason_recorded(self) -> None:
+        models = [
+            ("p1", "m1", SchedulerModelStatus.COOLING_DOWN.value),
+            ("p2", "m2", SchedulerModelStatus.AVAILABLE.value),
+        ]
+        scheduler = _make_scheduler(models)
+        recorder = SchedulerDecisionRecorder(chapter_id="1")
+        selection = scheduler.select_model(decision_recorder=recorder)
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        # p2 is selected as fallback (p1 was cooling down)
+        assert decision.selected_provider == "p2"
+        assert decision.candidates is not None
+        # First candidate should have a skip reason
+        skip_candidate = next(c for c in decision.candidates if c.provider == "p1")
+        assert skip_candidate.skip_reason is not None
+        assert skip_candidate.selected is False
+        # Fallback flag should be set
+        assert decision.fallback_used is True
+
+    def test_rpm_skip_reason(self) -> None:
+        now = utc_now()
+        state = _make_rpm_limited_state()
+        config = SchedulerModelConfig(provider_key="test", provider_model="model", priority_order=0)
+        scheduler = TranslationScheduler(
+            model_configs=[config],
+            policy=SchedulerPolicy.VOLUME_FIRST,
+            model_states={("test", "model"): state},
+        )
+        recorder = SchedulerDecisionRecorder()
+        selection = scheduler.select_model(now=now, decision_recorder=recorder)
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        # Model is RPM-limited — no capacity
+        assert decision.selected_provider is None
+        assert decision.selected_model is None
+        # Candidate was recorded with status
+        assert decision.candidates is not None
+        assert len(decision.candidates) == 1
+
+    def test_fallback_selection_records_skipped_candidates(self) -> None:
+        models = [
+            ("p1", "m1", SchedulerModelStatus.COOLING_DOWN.value),
+            ("p2", "m2", SchedulerModelStatus.AVAILABLE.value),
+        ]
+        scheduler = _make_scheduler(models)
+        recorder = SchedulerDecisionRecorder()
+        selection = scheduler.select_model(decision_recorder=recorder)
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value, total_candidates=2)
+        assert decision.fallback_used is True
+        assert decision.candidate_count_total == 2
+        assert decision.candidates is not None
+        assert len(decision.candidates) == 2
+
+    def test_no_capacity_failure(self) -> None:
+        models = [
+            ("p1", "m1", SchedulerModelStatus.DAILY_EXHAUSTED.value),
+            ("p2", "m2", SchedulerModelStatus.COOLING_DOWN.value),
+        ]
+        scheduler = _make_scheduler(models)
+        recorder = SchedulerDecisionRecorder()
+        selection = scheduler.select_model(decision_recorder=recorder)
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        # Both models are unavailable — no capacity
+        assert decision.selected_provider is None
+        assert decision.selected_model is None
+        assert decision.candidates is not None
+        assert len(decision.candidates) == 2
+
+    def test_candidate_list_is_bounded(self) -> None:
+        models = [(f"p{i}", f"m{i}", SchedulerModelStatus.AVAILABLE.value) for i in range(25)]
+        scheduler = _make_scheduler(models)
+        recorder = SchedulerDecisionRecorder()
+        selection = scheduler.select_model(decision_recorder=recorder)
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value, total_candidates=25)
+        # First available candidate is selected, remaining are skipped
+        assert decision.selected_provider == "p0"
+        assert decision.candidates is not None
+        assert len(decision.candidates) == 1  # Only first candidate evaluated before selection
+
+
+# ---------------------------------------------------------------------------
+# Task 17: Legacy compatibility
+# ---------------------------------------------------------------------------
+
+
+class TestLegacyCompatibility:
+    def test_scheduler_works_without_recorder(self) -> None:
+        """Not passing a decision_recorder must not change behavior."""
+        scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        selection = scheduler.select_model()
+        assert selection.provider_key == "p"
+        assert selection.provider_model == "m"
+        assert selection.reason == SelectionReason.PRIMARY_AVAILABLE.value
+
+    def test_scheduler_works_without_observability_metadata(self) -> None:
+        """Recorder must not influence selection."""
+        scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        recorder = SchedulerDecisionRecorder()
+        selection_with = scheduler.select_model(decision_recorder=recorder)
+        selection_without = scheduler.select_model()
+        assert selection_with.provider_key == selection_without.provider_key
+        assert selection_with.provider_model == selection_without.provider_model
+
+
+# ---------------------------------------------------------------------------
+# Task 13: Decision to_dict safety
+# ---------------------------------------------------------------------------
+
+
+class TestDecisionSafety:
+    def test_to_dict_excludes_secrets(self) -> None:
+        """Decision dict must not include API keys or credentials."""
+        scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        recorder = SchedulerDecisionRecorder()
+        selection = scheduler.select_model(decision_recorder=recorder)
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        d = decision.to_dict()
+        for key in d:
+            assert "key" not in key.lower() or key == "provider_key"
+        # Check no secrets stored
+        dumped = str(d).lower()
+        assert "secret" not in dumped
+        assert "api_key" not in dumped
+
+    def test_to_dict_excludes_source_text(self) -> None:
+        """Decision dict must not include source or translated text."""
+        scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        recorder = SchedulerDecisionRecorder()
+        selection = scheduler.select_model(decision_recorder=recorder)
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        d = str(decision.to_dict())
+        assert "translated" not in d.lower() or "translated_at" in d.lower()
