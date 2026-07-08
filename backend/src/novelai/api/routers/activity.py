@@ -4,15 +4,16 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-from novelai.api.auth.roles import require_role
-from novelai.api.auth.security import require_csrf_for_unsafe_methods
-from novelai.api.response_helpers import activity_list_response, activity_record_response
-from novelai.api.models import ActivityListResponse, ActivityRecordResponse
 from novelai.activity.queue import ActivityQueueService
 from novelai.activity.worker import ActivityWorkerService
+from novelai.api.auth.roles import require_role
+from novelai.api.auth.security import require_csrf_for_unsafe_methods
+from novelai.api.models import ActivityListResponse, ActivityRecordResponse
+from novelai.api.response_helpers import activity_list_response, activity_record_response
+from novelai.api.routers.dependencies import get_activity_log, get_activity_worker, get_db_session
 from novelai.core.platform import JobStatus
-from novelai.api.routers.dependencies import get_activity_log, get_activity_worker
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
@@ -146,6 +147,7 @@ async def create_translation_activity(
     body: TranslationActivityRequest,
     activity_log: ActivityQueueService = Depends(get_activity_log),
     _owner=Depends(require_role("owner")),
+    db: Session = Depends(get_db_session),
 ) -> ActivityRecordResponse:
     try:
         metadata = dict(body.metadata or {})
@@ -153,6 +155,19 @@ async def create_translation_activity(
             metadata["allow_cross_provider_fallback"] = False
         if body.skip_glossary_gate:
             metadata["skip_glossary_gate"] = True
+
+        # Record current glossary revision at schedule time (REQ-10).
+        # The worker may compare this with the current revision before
+        # execution to detect stale scheduled jobs.
+        if "scheduled_glossary_revision" not in metadata:
+            from novelai.db.models.novel import Novel
+            try:
+                novel = db.query(Novel).filter_by(slug=body.novel_id).one_or_none()
+                if novel is not None:
+                    metadata["scheduled_glossary_revision"] = novel.glossary_revision
+            except Exception:
+                pass
+
         return activity_record_response(activity_log.create_translation_activity(
             novel_id=body.novel_id,
             source_key=body.source_key,
