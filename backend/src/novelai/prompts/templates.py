@@ -4,6 +4,17 @@ from textwrap import dedent
 
 PROMPT_TEMPLATE_VERSION = "v2"
 
+# JP-EN prompt quality policy identity (REQ-10).
+# Bumped when output-shaping instructions change in a way that can
+# affect translation results. Cache identity includes this version
+# so old cached translations are not reused after policy changes.
+JP_EN_PROMPT_POLICY = "jp_en_quality"
+JP_EN_PROMPT_POLICY_VERSION = "jp_en_quality_v1"
+
+# Language aliases for JP-EN activation (REQ-2).
+JP_EN_SOURCE_LANGUAGE_ALIASES = frozenset({"ja", "japanese"})
+JP_EN_TARGET_LANGUAGE_ALIASES = frozenset({"en", "english"})
+
 MULTILINGUAL_SYSTEM_PROMPT_TEMPLATE = dedent(
     """
     You are an expert literary translator specializing in novels, web novels, light novels, and serialized fiction.

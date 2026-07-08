@@ -6,6 +6,7 @@ from novelai.prompts.builders import (
     build_translation_request,
     build_user_prompt,
     format_glossary_block,
+    is_jp_en_prompt,
     normalize_style_preset,
 )
 from novelai.prompts.metadata import (
@@ -35,5 +36,6 @@ __all__ = [
     "build_translation_responses_payload",
     "build_user_prompt",
     "format_glossary_block",
+    "is_jp_en_prompt",
     "normalize_style_preset",
 ]

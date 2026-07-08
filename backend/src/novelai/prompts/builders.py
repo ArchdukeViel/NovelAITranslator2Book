@@ -8,6 +8,10 @@ from novelai.prompts.templates import (
     CONTEXT_OVERLAP_PROMPT_BLOCK,
     DEFAULT_USER_PROMPT_TEMPLATE,
     HONORIFIC_POLICY_BLOCKS,
+    JP_EN_PROMPT_POLICY,
+    JP_EN_PROMPT_POLICY_VERSION,
+    JP_EN_SOURCE_LANGUAGE_ALIASES,
+    JP_EN_TARGET_LANGUAGE_ALIASES,
     JSON_CONSISTENCY_BLOCK_TEMPLATE,
     JSON_SYSTEM_PROMPT_TEMPLATE,
     JSON_USER_PROMPT_TEMPLATE,
@@ -17,6 +21,18 @@ from novelai.prompts.templates import (
     STYLE_PRESET_SYSTEM_SUFFIX_TEMPLATES,
     STYLE_PRESET_TEMPLATES,
 )
+
+
+def is_jp_en_prompt(source_language: str, target_language: str) -> bool:
+    """Return True when the JP-EN prompt quality policy applies.
+
+    The policy applies only when source language is Japanese and target
+    language is English (REQ-2). Unknown languages do not trigger the
+    policy unless an explicit override enables it.
+    """
+    source = source_language.strip().lower()
+    target = target_language.strip().lower()
+    return source in JP_EN_SOURCE_LANGUAGE_ALIASES and target in JP_EN_TARGET_LANGUAGE_ALIASES
 
 
 def _require_non_empty_text(value: str, field_name: str) -> str:
@@ -283,6 +299,12 @@ def build_translation_request(
         json_output=json_output,
         honorific_policy=_normalize_honorific_policy(honorific_policy),
         prompt_template_version=PROMPT_TEMPLATE_VERSION,
+        prompt_policy=JP_EN_PROMPT_POLICY
+        if is_jp_en_prompt(source_language, target_language)
+        else None,
+        prompt_policy_version=JP_EN_PROMPT_POLICY_VERSION
+        if is_jp_en_prompt(source_language, target_language)
+        else None,
         runtime_glossary_conflict_warnings=tuple(conflict_warnings),
     )
 
