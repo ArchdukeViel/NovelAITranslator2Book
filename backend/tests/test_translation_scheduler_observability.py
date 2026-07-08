@@ -22,6 +22,7 @@ from novelai.translation.scheduler import (
     SchedulerPolicy,
     SelectionReason,
     TranslationScheduler,
+    build_scheduler_summary,
     utc_now,
 )
 
@@ -271,3 +272,148 @@ class TestDecisionSafety:
         decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
         d = str(decision.to_dict())
         assert "translated" not in d.lower() or "translated_at" in d.lower()
+
+
+# ---------------------------------------------------------------------------
+# Task 8: Checkpoint/resume integration
+# ---------------------------------------------------------------------------
+
+
+class TestCheckpointObservability:
+    def test_decision_includes_checkpoint_id(self) -> None:
+        scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        recorder = SchedulerDecisionRecorder(checkpoint_id="cp-abc")
+        selection = scheduler.select_model(decision_recorder=recorder)
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        assert decision.checkpoint_id == "cp-abc"
+        assert decision.to_dict().get("checkpoint_id") == "cp-abc"
+
+
+# ---------------------------------------------------------------------------
+# Task 10: Memory observability
+# ---------------------------------------------------------------------------
+
+
+class TestMemoryObservability:
+    def test_decision_memory_fields(self) -> None:
+        recorder = SchedulerDecisionRecorder()
+        decision = recorder.finalize(
+            selection=_make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)]).select_model(),
+            policy="volume_first",
+        )
+        # Memory fields are None by default
+        assert decision.exact_memory_bytes is None
+        assert decision.memory_limit_bytes is None
+        assert decision.memory_pressure is None
+
+    def test_decision_memory_fields_in_to_dict(self) -> None:
+        scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        recorder = SchedulerDecisionRecorder()
+        selection = scheduler.select_model(decision_recorder=recorder)
+
+        # Simulate setting memory on the underlying decision
+        recorder._decision.exact_memory_bytes = 500_000_000
+        recorder._decision.memory_limit_bytes = 1_000_000_000
+        recorder._decision.memory_pressure = False
+
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        d = decision.to_dict()
+        assert "memory" in d
+        assert d["memory"]["exact_memory_bytes"] == 500_000_000
+        assert d["memory"]["memory_limit_bytes"] == 1_000_000_000
+        assert d["memory"]["memory_pressure"] is False
+
+    def test_memory_pressure_flag(self) -> None:
+        scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
+        recorder = SchedulerDecisionRecorder()
+        selection = scheduler.select_model(decision_recorder=recorder)
+        recorder._decision.memory_pressure = True
+        decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
+        assert decision.memory_pressure is True
+
+
+# ---------------------------------------------------------------------------
+# Task 12: Scheduler summary
+# ---------------------------------------------------------------------------
+
+
+class TestSchedulerSummary:
+    def test_summary_counts_chapters_with_decisions(self) -> None:
+        decisions = [
+            {"selected": {"provider": "p", "model": "m"}, "candidates": []},
+            {"selected": {"provider": "p", "model": "m"}, "candidates": []},
+        ]
+        summary = build_scheduler_summary(decisions)
+        assert summary["chapters_with_decisions"] == 2
+
+    def test_summary_counts_fallback(self) -> None:
+        decisions = [
+            {"selected": {"provider": "p", "model": "m"}, "fallback_used": True, "candidates": []},
+            {"selected": {"provider": "p", "model": "m"}, "fallback_used": False, "candidates": []},
+        ]
+        summary = build_scheduler_summary(decisions)
+        assert summary["fallback_count"] == 1
+
+    def test_summary_counts_no_capacity(self) -> None:
+        decisions = [
+            {"selected": None, "failure_reason": "no_capacity", "candidates": []},
+            {"selected": {"provider": "p", "model": "m"}, "candidates": []},
+        ]
+        summary = build_scheduler_summary(decisions)
+        assert summary["no_capacity_count"] == 1
+
+    def test_summary_aggregates_skip_reasons(self) -> None:
+        decisions = [
+            {
+                "selected": {"provider": "p", "model": "m"},
+                "candidates": [
+                    {"skip_reason": "cooldown_active"},
+                    {"skip_reason": "cooldown_active"},
+                ],
+            },
+        ]
+        summary = build_scheduler_summary(decisions)
+        assert summary["skip_reason_counts"] == {"cooldown_active": 2}
+
+    def test_summary_aggregates_selected_models(self) -> None:
+        decisions = [
+            {"selected": {"provider": "p", "model": "m"}, "candidates": []},
+            {"selected": {"provider": "p", "model": "m"}, "candidates": []},
+            {"selected": {"provider": "q", "model": "n"}, "candidates": []},
+        ]
+        summary = build_scheduler_summary(decisions)
+        assert summary["selected_model_counts"] == {"p:m": 2, "q:n": 1}
+        assert summary["provider_counts"] == {"p": 2, "q": 1}
+
+    def test_summary_counts_checkpoint(self) -> None:
+        decisions = [
+            {"selected": {"provider": "p", "model": "m"}, "checkpoint_id": "cp-1", "candidates": []},
+            {"selected": {"provider": "p", "model": "m"}, "candidates": []},
+        ]
+        summary = build_scheduler_summary(decisions)
+        assert summary["checkpoint_blocked_count"] == 1
+
+    def test_summary_tracks_peak_memory(self) -> None:
+        decisions = [
+            {"selected": {"provider": "p", "model": "m"}, "memory": {"exact_memory_bytes": 100, "memory_pressure": False}, "candidates": []},
+            {"selected": {"provider": "p", "model": "m"}, "memory": {"exact_memory_bytes": 500, "memory_pressure": True}, "candidates": []},
+            {"selected": {"provider": "p", "model": "m"}, "memory": {"exact_memory_bytes": 300, "memory_pressure": False}, "candidates": []},
+        ]
+        summary = build_scheduler_summary(decisions)
+        assert summary["peak_exact_memory_bytes"] == 500
+        assert summary["memory_pressure_count"] == 1
+
+    def test_summary_empty_decisions(self) -> None:
+        summary = build_scheduler_summary([])
+        assert summary["chapters_with_decisions"] == 0
+        assert summary["skip_reason_counts"] == {}
+        assert summary["selected_model_counts"] == {}
+        assert summary["provider_counts"] == {}
+
+    def test_summary_excludes_noise_fields(self) -> None:
+        decisions = [
+            {"selected": {"provider": "p", "model": "m"}, "candidates": [], "extra_noise": "should_not_appear"},
+        ]
+        summary = build_scheduler_summary(decisions)
+        assert "extra_noise" not in summary
+        assert "candidates" not in summary
