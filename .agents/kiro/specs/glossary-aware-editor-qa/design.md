@@ -2,33 +2,45 @@
 
 ## Overview
 
-This design adds deterministic glossary QA to the manual editor path. It protects approved terminology after machine translation by checking editor changes before and during save. The spec also absorbs the earlier partial `editor-glossary-enforcement` work, so preview linting, save-time enforcement, override metadata, and glossary update shortcuts are handled in one place.
+This design adds deterministic glossary QA to the manual translation editor path.
 
-The design is intentionally deterministic. It does not ask an LLM whether terminology is correct. It checks known approved glossary entries against source text and edited translation text, then returns structured issues that the editor UI can render and the backend can enforce.
+Machine translation already receives approved glossary terms during prompt construction, but manual edits can accidentally remove approved terminology, introduce stale variants, or replace locked terms. This feature checks edited translation text against approved glossary entries before and during save, then returns structured issues that the editor UI can render and the backend can enforce.
+
+This spec also absorbs the earlier partial `editor-glossary-enforcement` work. Preview linting, save-time enforcement, override metadata, glossary update shortcuts, and persisted QA summaries should be implemented in one coherent editor QA workflow.
+
+The design is deterministic. It does not ask an LLM to judge terminology quality. It compares known approved glossary entries against source text and edited translation text using stable matching rules.
 
 ## Goals
 
-- Catch edited translations that drop approved glossary translations.
-- Catch forbidden or stale variants introduced by manual edits.
+- Detect edited translations that drop approved glossary translations.
+- Detect forbidden, stale, or non-approved variants introduced by manual edits.
 - Let editors preview glossary issues before saving.
-- Allow configured blocking behavior for strict or locked terms.
+- Support blocking behavior for strict, required, locked, or owner-enforced terms.
 - Preserve an auditable override path.
-- Provide an admin shortcut to update an approved glossary translation when the edit is intentionally better.
-- Keep legacy editor saves working when glossary data is absent.
+- Provide an admin shortcut to approve a better translation as the new glossary value.
+- Persist compact QA summaries with edited translation versions.
+- Keep legacy editor saves working when glossary data is unavailable.
+- Emit glossary revision metadata that the glossary invalidation spec can consume.
 
 ## Non-Goals
 
 - Semantic translation review.
-- Public reader annotations.
-- Batch linting for all chapters.
+- LLM-based QA.
+- Batch linting every chapter in a novel.
 - Replacing prompt-time glossary injection.
-- Implementing full revision invalidation. This spec emits enough metadata for the invalidation spec to consume.
+- Replacing glossary review workflows.
+- Implementing full glossary revision invalidation.
+- Public reader glossary annotations.
+- Public reader warnings.
+- Changing active-version selection.
 
 ## Current System Context
 
-The existing editor save route stores edited translated chapter content but does not validate it against glossary entries. Approved glossary entries are already available through the glossary repository and are used by prompt-related services in other specs. This feature reuses those entries for editor QA.
+The editor save path stores edited translated chapter content but does not currently validate edits against approved glossary entries.
 
-The implementation should prefer existing repository, auth, schema, and editor route patterns. If the current code names the service `GlossaryLintService`, that name is acceptable, but the API response should expose the broader concept as `glossary_qa`.
+Approved glossary entries are already available through glossary repository/service code and are used by prompt-related services. This feature reuses the same approved-term source of truth for editor QA.
+
+Implementation should prefer existing repository, auth, schema, router, and storage patterns. If the current code already has a service named `GlossaryLintService`, that name is acceptable internally, but API responses should expose the broader feature as `glossary_qa`.
 
 ## Architecture
 
@@ -39,27 +51,34 @@ flowchart TD
     Lint --> QA["GlossaryEditorQAService"]
     Save --> QA
     QA --> Repo["GlossaryRepository"]
+    QA --> Source["Source chapter text"]
     Save --> Store["Edited translation storage"]
-    UI --> Approve["approve translation change"]
+    UI --> Approve["Approve translation change"]
     Approve --> Repo
 ```
 
 ## Backend Components
 
 | Component | Responsibility |
-| --- | --- |
-| `GlossaryEditorQAService` | Computes deterministic QA results for edited text. |
-| `GlossaryRepository` | Loads approved glossary entries and updates approved translations. |
-| Editor router | Adds preview lint endpoint and save-time QA integration. |
-| Admin glossary router | Adds approve translation change shortcut. |
-| Edited translation storage | Persists QA summaries and override metadata with edited versions. |
-| Editor frontend | Displays issues, supports preview lint, override, and approve term change actions. |
+|---|---|
+| `GlossaryEditorQAService` | Computes deterministic QA results for edited text |
+| `GlossaryRepository` | Loads approved glossary entries and updates approved translations |
+| Editor router | Adds preview lint endpoint and save-time QA integration |
+| Admin glossary router | Adds approve-translation-change shortcut |
+| Edited translation storage | Persists QA summaries and override metadata |
+| Editor frontend | Displays QA issues, preview lint results, override controls, and approval shortcuts |
 
 ## QA Service
 
-Create `backend/src/novelai/services/glossary_editor_qa_service.py`, or use `glossary_lint_service.py` if that better matches the existing naming. The service should stay independent of HTTP concerns.
+Create:
 
-Suggested signature:
+```text
+backend/src/novelai/services/glossary_editor_qa_service.py
+```
+
+If the existing project naming favors `glossary_lint_service.py`, that is acceptable.
+
+Suggested service interface:
 
 ```python
 class GlossaryEditorQAService:
@@ -80,37 +99,115 @@ class GlossaryEditorQAService:
 The service should:
 
 - Load approved glossary entries for the novel.
-- Include inherited global entries if the current glossary repository already supports that behavior.
+- Include inherited/global glossary entries if the repository already supports them.
 - Prefer source-text matching to decide which entries are relevant.
 - Fall back to advisory all-entry checking when source text is unavailable.
-- Match source terms and translations with normalized case-insensitive substring checks first.
+- Use deterministic normalized matching.
 - Avoid mutating glossary entries.
 - Return a stable data contract suitable for API responses and persisted summaries.
+- Include the glossary revision used for checking when available.
+- Resolve approved terms from the same glossary source used by prompt injection.
+
+## Glossary Entry Inputs
+
+The QA service should use the available approved glossary entry fields.
+
+Expected fields, where present:
+
+```json
+{
+  "entry_id": 42,
+  "canonical_term": "魔王",
+  "approved_translation": "Demon King",
+  "aliases": ["魔王様"],
+  "forbidden_variants": ["Devil Lord"],
+  "known_variants": ["Dark Lord"],
+  "status": "approved",
+  "owner_locked": false,
+  "enforcement_level": "warning"
+}
+```
+
+Rules:
+
+- Only approved or enforced entries should be treated as required.
+- Pending entries must not be enforced as approved terms.
+- Disabled, rejected, or archived entries must not create blocking issues.
+- If aliases are used by prompt injection, they should also be considered source-term matches.
+- Matching should use the current glossary revision.
 
 ## Matching Rules
 
 | Rule | Behavior |
-| --- | --- |
-| Source relevance | If `source_text` is present, only entries whose `canonical_term` or aliases appear in source text are required. |
-| Missing approved translation | If a relevant term's `approved_translation` is absent from edited text, emit `missing_required_term` or `missing_approved_translation`. |
-| Forbidden variant | If an entry's forbidden variant appears in edited text, emit `forbidden_variant`. |
-| Non-approved variant | If a known non-approved variant appears while the approved translation is absent, emit `non_approved_translation`. |
-| Ambiguous match | If matching cannot confidently distinguish approved translation from a substring collision, emit `ambiguous_match` as warning/advisory. |
-| No source context | If source text is absent, add `legacy_no_source_context` note and avoid blocking solely because a term was not detected in source. |
+|---|---|
+| Source relevance | If `source_text` is present, only entries whose `canonical_term` or aliases appear in source text are required |
+| Missing approved translation | If a relevant term's `approved_translation` is absent from edited text, emit `missing_approved_translation` |
+| Required/locked missing term | If the missing term is strict, required, blocking, or owner-locked, emit `missing_required_term` |
+| Forbidden variant | If an entry's forbidden variant appears in edited text, emit `forbidden_variant` |
+| Non-approved variant | If a known non-approved variant appears while the approved translation is absent, emit `non_approved_translation` |
+| Ambiguous match | If matching may be caused by substring collision, emit `ambiguous_match` as warning/advisory |
+| No source context | If source text is absent, add `legacy_no_source_context` note and avoid blocking solely because a term was not detected in source |
 
-This first implementation can use deterministic substring matching. Word-boundary or tokenizer improvements can be added later for languages and scripts where substring collisions become noisy.
+The first implementation may use normalized case-insensitive substring matching.
+
+Future improvements can add token boundaries, script-aware matching, fuzzy matching, or morphology-aware matching. Those improvements should remain deterministic and testable.
+
+## Normalization
+
+Normalize text before matching:
+
+- Unicode normalization where appropriate.
+- Case-insensitive comparison for English translations.
+- Trim surrounding whitespace.
+- Collapse repeated internal whitespace.
+- Preserve original text for display.
+- Do not alter stored edited text.
+
+Do not use normalization that changes term meaning.
 
 ## Severity Mapping
 
 | Glossary entry state | Default severity | Save behavior |
-| --- | --- | --- |
-| `owner_locked = true` | `error` | Blocking unless override is accepted. |
-| `enforcement_level in strict|required|blocking` | `error` | Blocking unless override is accepted. |
-| `enforcement_level = warning` | `warning` | Save succeeds with issue metadata. |
-| `enforcement_level in advisory|soft` | `advisory` | Save succeeds with note. |
-| Unknown enforcement level | `warning` | Save succeeds with issue metadata. |
+|---|---|---|
+| `owner_locked = true` | `error` | Blocking unless authorized override is accepted |
+| `enforcement_level in strict|required|blocking` | `error` | Blocking unless authorized override is accepted |
+| `enforcement_level = warning` | `warning` | Save succeeds with issue metadata |
+| `enforcement_level in advisory|soft` | `advisory` | Save succeeds with note |
+| Unknown enforcement level | `warning` | Save succeeds with issue metadata |
 
-If the current schema does not yet include `enforcement_level`, derive severity from `owner_locked` first and treat all other approved terms as warnings.
+If the current schema does not include `enforcement_level`, derive severity from `owner_locked` first and treat all other approved terms as warnings.
+
+## Issue Codes
+
+Supported issue codes:
+
+| Code | Meaning |
+|---|---|
+| `missing_approved_translation` | Approved term appears relevant but approved translation is missing |
+| `missing_required_term` | Required or locked approved translation is missing |
+| `forbidden_variant` | Forbidden variant appears in edited text |
+| `non_approved_translation` | Known non-approved variant appears without approved translation |
+| `ambiguous_match` | Matching may be affected by substring collision |
+| `legacy_no_source_context` | Source text unavailable, so checks are advisory |
+| `glossary_unavailable` | Glossary data could not be resolved |
+
+## Result Status
+
+| Status | Meaning |
+|---|---|
+| `passed` | Checked terms found no issues |
+| `advisory` | QA ran with notes only, or glossary data was unavailable |
+| `warning` | Non-blocking issues exist |
+| `blocked` | Blocking issues exist and no override was accepted |
+| `overridden` | Blocking issues existed, but an authorized override allowed save |
+
+Status selection:
+
+- `blocked` if any blocking issue exists and no valid override is accepted.
+- `overridden` if blocking issues exist and a valid override is accepted.
+- `warning` if non-blocking warnings exist.
+- `advisory` if only advisory notes exist or glossary is unavailable.
+- `passed` if QA runs and finds no issues.
 
 ## API Contracts
 
@@ -165,7 +262,7 @@ Response:
 }
 ```
 
-If the `Novel` DB row cannot be resolved, return HTTP 200:
+If the `Novel` DB row or glossary state cannot be resolved, return HTTP 200 with an advisory result:
 
 ```json
 {
@@ -173,6 +270,8 @@ If the `Novel` DB row cannot be resolved, return HTTP 200:
     "status": "advisory",
     "checked_terms": 0,
     "issue_count": 0,
+    "has_errors": false,
+    "has_warnings": false,
     "issues": [],
     "notes": ["Glossary not available for this novel."]
   }
@@ -206,8 +305,9 @@ Behavior:
 - Run QA before committing active edited content when QA is enabled or enforcement is configured for the novel.
 - Return `glossary_qa` when `lint=true`.
 - Return HTTP 409 with `glossary_qa` when blocking issues exist and no valid override is provided.
-- Save successfully and mark status `overridden` when an authorized override is provided.
-- Do not fail solely because glossary data is unavailable.
+- Save successfully and mark QA status as `overridden` when an authorized override is provided.
+- Save warnings and advisory results as non-blocking metadata.
+- Do not fail solely because glossary data is unavailable unless an existing editor policy requires hard failure.
 
 ### Approve Translation Change
 
@@ -238,21 +338,17 @@ Response:
 }
 ```
 
-The endpoint should record a glossary decision event with `event_type = "approve"` or the nearest existing event type.
+Behavior:
 
-## Result Status
-
-| Status | Meaning |
-| --- | --- |
-| `passed` | Checked terms found no issues. |
-| `advisory` | QA ran with notes only, or glossary data was unavailable. |
-| `warning` | Non-blocking issues exist. |
-| `blocked` | Blocking issues exist and no override was accepted. |
-| `overridden` | Blocking issues existed, but an authorized override allowed save. |
+- Require owner/admin or equivalent glossary permission.
+- Update the approved translation through existing glossary repository methods.
+- Increment glossary revision through existing glossary revision behavior.
+- Record a glossary decision event with `event_type = "approve"` or the nearest existing event type.
+- Do not silently approve pending or rejected terms without following existing glossary rules.
 
 ## Persistence
 
-When an edited translation is saved after QA, persist a compact summary with the edited translation version or edit history record:
+When an edited translation is saved after QA, persist a compact QA summary with the edited translation version or edit history record.
 
 ```json
 {
@@ -261,8 +357,11 @@ When an edited translation is saved after QA, persist a compact summary with the
     "glossary_revision": 8,
     "checked_terms": 12,
     "issue_count": 1,
+    "has_errors": true,
+    "has_warnings": false,
     "issues": [
       {
+        "issue_id": "gqa_001",
         "entry_id": 42,
         "canonical_term": "魔王",
         "approved_translation": "Demon King",
@@ -280,26 +379,49 @@ When an edited translation is saved after QA, persist a compact summary with the
 }
 ```
 
-Do not store full source text in QA metadata. If text context is needed for display, store a short sanitized snippet or recompute QA on demand.
+Rules:
+
+- Do not store full source text in QA metadata.
+- Do not store full edited text inside QA metadata.
+- Store short sanitized snippets only if needed for display.
+- Prefer recomputing QA on demand for detailed context.
+- Persist glossary revision so revision invalidation can compare editor QA against the glossary state used at save time.
+- Persist override metadata for auditability.
 
 ## Authorization
 
 | Action | Required permission |
-| --- | --- |
-| Preview lint | Same as editing translated chapter. |
-| Save with non-blocking QA | Same as editing translated chapter. |
-| Save with override | Owner/admin or explicit glossary override permission. |
-| Approve translation change | Owner/admin for the novel or glossary scope. |
+|---|---|
+| Preview lint | Same permission as editing translated chapter |
+| Save with non-blocking QA | Same permission as editing translated chapter |
+| Save with blocking override | Owner/admin or explicit glossary override permission |
+| Approve translation change | Owner/admin for the novel or glossary scope |
+
+Unauthorized users must receive the existing project auth error style.
 
 ## Frontend Behavior
 
-The editor should add a glossary QA panel or inline issue list near the translated text. It can run preview lint from a button or debounce after edits. The UI should make the distinction between advisory, warning, blocked, and overridden states clear.
+The editor should show a glossary QA panel or inline issue list near the translated text.
 
-For blocking issues, the UI should offer:
+The UI may run preview lint from:
 
-- Fix the edited text.
-- Override with a required reason, if the user has permission.
-- Approve the new translation globally, if the issue represents a better glossary translation and the user has permission.
+- a manual "Check glossary" button,
+- debounced editor changes,
+- save attempt.
+
+The UI should clearly distinguish:
+
+- `passed`,
+- `advisory`,
+- `warning`,
+- `blocked`,
+- `overridden`.
+
+For blocking issues, the UI should offer permitted actions:
+
+- fix the edited text,
+- override with a required reason,
+- approve the edited translation as the new glossary translation.
 
 The UI should treat glossary-unavailable results as non-blocking.
 
@@ -307,31 +429,109 @@ The UI should treat glossary-unavailable results as non-blocking.
 
 Log structured QA events:
 
-- `novel_id`
-- `chapter_id`
-- `platform_novel_id`
-- `glossary_revision`
-- `checked_terms`
-- `issue_count`
-- `status`
-- `elapsed_ms`
+```json
+{
+  "event": "glossary_editor_qa",
+  "novel_id": "my-novel",
+  "chapter_id": "chapter-001",
+  "platform_novel_id": 123,
+  "glossary_revision": 8,
+  "checked_terms": 12,
+  "issue_count": 2,
+  "status": "warning",
+  "elapsed_ms": 18
+}
+```
 
-Do not log full source or translated chapter text.
+Do not log:
+
+- full source text,
+- full translated text,
+- full edited text,
+- private user notes,
+- credentials.
 
 ## Failure Handling
 
 | Failure | Behavior |
-| --- | --- |
-| Glossary novel row missing | Preview returns advisory empty result; save continues unless another error exists. |
-| Glossary repository error | Preview returns service error if direct lint call; save treats QA as unavailable only if existing editor policy allows soft failure. |
-| Invalid override payload | Save returns 400. |
-| Blocking issue without override | Save returns 409 with `glossary_qa`. |
-| Unauthorized approval | Return existing auth error style. |
+|---|---|
+| Glossary novel row missing | Preview returns advisory empty result; save continues unless another error exists |
+| Glossary repository unavailable | Preview returns service error; save may treat QA as unavailable only if existing editor policy allows soft failure |
+| Source text missing | QA runs in advisory/no-source mode |
+| Invalid override payload | Save returns HTTP 400 |
+| Blocking issue without override | Save returns HTTP 409 with `glossary_qa` |
+| Unauthorized override | Return existing auth error style |
+| Unauthorized approval | Return existing auth error style |
+| Unknown enforcement level | Treat as warning |
+| Excessive glossary term count | Respect `max_terms` cap and include truncation/note metadata |
 
 ## Test Strategy
 
-- Unit-test matching, severity mapping, source-context handling, term caps, and empty glossary behavior.
-- API-test preview lint success, missing novel advisory response, auth errors, save with warnings, save blocked by strict term, save with override, and approval endpoint.
-- Storage-test persisted QA metadata on edited version files or DB records.
-- Frontend-test issue rendering, blocked save flow, override reason validation, and approve translation change action.
+### Unit Tests
 
+- matching approved terms against source text,
+- matching aliases against source text,
+- detecting missing approved translation,
+- detecting forbidden variants,
+- detecting non-approved variants,
+- ambiguous substring match behavior,
+- no-source-context behavior,
+- severity mapping,
+- owner-locked blocking behavior,
+- enforcement-level mapping,
+- term cap behavior,
+- empty glossary behavior,
+- deterministic issue IDs.
+
+### API Tests
+
+- preview lint success,
+- preview lint with missing glossary returns advisory result,
+- preview lint auth requirements,
+- save with no issues succeeds,
+- save with warnings succeeds and persists QA metadata,
+- save blocked by strict term returns HTTP 409,
+- save with authorized override succeeds,
+- save with invalid override returns HTTP 400,
+- save with unauthorized override returns auth error,
+- approve translation change updates glossary entry,
+- approve translation change increments glossary revision,
+- approve translation change records decision event.
+
+### Storage Tests
+
+- persisted QA metadata appears on edited version or edit history record,
+- override metadata is persisted,
+- full source text is not persisted inside QA metadata,
+- legacy edited versions without QA metadata remain loadable.
+
+### Frontend Tests
+
+- QA issue panel renders advisory, warning, blocked, and overridden states,
+- preview lint action displays returned issues,
+- blocked save flow requires fix or override,
+- override requires reason,
+- approve translation change action calls API,
+- glossary-unavailable result is non-blocking.
+
+## Migration and Backward Compatibility
+
+- Existing edited translations remain loadable.
+- Existing editor save behavior remains compatible when glossary data is unavailable.
+- Existing prompt-time glossary injection remains unchanged.
+- Existing glossary approval workflows remain the source of truth.
+- New API fields are additive.
+- Public reader output is unchanged.
+- Full glossary revision invalidation is handled by the separate invalidation spec.
+
+## Acceptance Criteria
+
+1. Editor preview lint returns deterministic `glossary_qa` results.
+2. Save-time QA blocks strict, required, or owner-locked terminology violations unless an authorized override is provided.
+3. Non-blocking glossary issues are persisted as QA metadata.
+4. Override reason and issue IDs are persisted for auditability.
+5. Admins can approve an edited translation as the new approved glossary translation.
+6. Glossary revision metadata is included in QA results and persisted summaries when available.
+7. Missing glossary data does not break legacy editor saves.
+8. Public reader output remains unchanged.
+9. Unit, API, storage, and frontend tests cover the editor QA flow.
