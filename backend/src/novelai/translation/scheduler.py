@@ -10,6 +10,13 @@ from novelai.shared.pipeline import SchedulerModelStatus
 
 FAILED_MODEL_STATE_TTL_SECONDS = 60 * 60
 
+# Thread-local accumulator for scheduler decisions during translation.
+# TranslateStage pushes decisions here; translate_chapters reads and
+# clears them to build the scheduler_summary.  Safe under parallelism
+# because the accumulator is cleared before each translate_chapters
+# call and populated during its execution.
+_scheduler_decisions_accumulator: list[dict[str, Any]] = []
+
 
 class SchedulerPolicy(StrEnum):
     VOLUME_FIRST = "volume_first"
@@ -317,6 +324,21 @@ class SchedulerDecision:
                 "memory_pressure": self.memory_pressure,
             }
         return result
+
+
+def push_scheduler_decision(decision: dict[str, Any]) -> None:
+    """Push a scheduler decision dict to the thread-local accumulator."""
+    _scheduler_decisions_accumulator.append(decision)
+
+
+def collect_scheduler_decisions() -> list[dict[str, Any]]:
+    """Return and clear the accumulated scheduler decisions.
+
+    Call at the end of translate_chapters to build the summary.
+    """
+    decisions = list(_scheduler_decisions_accumulator)
+    _scheduler_decisions_accumulator.clear()
+    return decisions
 
 
 def build_scheduler_summary(decisions: list[dict[str, Any]]) -> dict[str, Any]:
