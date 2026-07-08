@@ -3,6 +3,7 @@
 import { BookMarked, BookOpen, Eye, EyeOff, FileEdit, Languages, RefreshCw, RotateCw, Tags, Trash2, X } from "lucide-react";
 import Link from "next/link";
 
+import { GlossaryFreshnessBadge } from "@/components/admin/glossary-freshness-badge";
 import { ReadinessBadge } from "@/components/admin/glossary/readiness-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ export type LibraryRowActionsProps = {
   onUnpublish: (novel: NovelSummary) => void;
   onResume?: (novel: NovelSummary) => void;
   onCancel?: (novel: NovelSummary) => void;
+  onRetranslateStale?: (novel: NovelSummary) => void;
 };
 
 function latestChapterText(novel: NovelSummary) {
@@ -53,6 +55,7 @@ export function LibraryRowActions({
   onUnpublish,
   onResume,
   onCancel,
+  onRetranslateStale,
 }: LibraryRowActionsProps) {
   const published = novel.is_published === true;
   const translatedCount = novel.translated_count ?? 0;
@@ -138,6 +141,18 @@ export function LibraryRowActions({
           <Languages className="h-4 w-4" />
           Translate
         </Button>
+        {onRetranslateStale && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onRetranslateStale(novel)}
+            disabled={missingSource || pending}
+            title="Retranslate chapters with stale glossary"
+          >
+            <RotateCw className="h-4 w-4" />
+            Retranslate Stale
+          </Button>
+        )}
         <Button
           size="sm"
           variant="outline"

@@ -8,6 +8,7 @@ import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { EmptyState } from "@/components/admin/empty-state";
 import { ErrorBanner } from "@/components/admin/error-banner";
 import { LibraryRowActions } from "@/components/admin/library/library-row-actions";
+import { RetranslateStaleDialog } from "@/components/admin/library/retranslate-stale-dialog";
 import { TaxonomyDialog } from "@/components/admin/library/taxonomy-dialog";
 import { TranslationModal } from "@/components/admin/library/translation-modal";
 import { LoadingRows } from "@/components/admin/loading-rows";
@@ -102,6 +103,7 @@ export default function LibraryPage() {
   const [publicationNotice, setPublicationNotice] = React.useState<string | null>(null);
   const [translationLanguage, setTranslationLanguage] = React.useState<(typeof TRANSLATION_LANGUAGES)[number]>("English");
   const [selectedTranslationChapterIds, setSelectedTranslationChapterIds] = React.useState<Set<string>>(new Set());
+  const [retranslateStaleNovel, setRetranslateStaleNovel] = React.useState<NovelSummary | null>(null);
   // Note: activeGeminiToken removed - provider credential now comes from Admin_API, server-managed (Task 4)
   const translationNovelId = translationNovel?.novel_id;
 
@@ -260,6 +262,23 @@ export default function LibraryPage() {
       setTranslationNovel(null);
       setSelectedTranslationChapterIds(new Set());
     }
+  });
+
+  const runRetranslateStale = useMutation({
+    mutationFn: async (options: { includeLegacy: boolean; activate: boolean }) => {
+      if (!retranslateStaleNovel) throw new Error("No novel selected.");
+      if (!retranslateStaleNovel.source) throw new Error(`${retranslateStaleNovel.novel_id} has no source key.`);
+      return api.retranslateStale(retranslateStaleNovel.novel_id, {
+        include_legacy_unknown: options.includeLegacy,
+        activate: options.activate,
+        provider_key: null,
+        provider_model: null,
+      });
+    },
+    onSuccess: () => {
+      setRetranslateStaleNovel(null);
+      queryClient.invalidateQueries({ queryKey: ["novels"] });
+    },
   });
 
   const publishNovel = useMutation({
@@ -588,6 +607,7 @@ export default function LibraryPage() {
                             onUnpublish={(row) => runPublishAction(row, false)}
                             onResume={(row) => resumeOnboarding.mutate(row)}
                             onCancel={(row) => cancelOnboarding.mutate(row)}
+                            onRetranslateStale={(row) => setRetranslateStaleNovel(row)}
                           />
                         </td>
                       </tr>
@@ -648,6 +668,17 @@ export default function LibraryPage() {
         open={Boolean(taxonomyNovel)}
         novel={taxonomyNovel}
         onClose={closeTaxonomyDialog}
+      />
+
+      <RetranslateStaleDialog
+        open={Boolean(retranslateStaleNovel)}
+        novelId={retranslateStaleNovel?.novel_id ?? ""}
+        title={retranslateStaleNovel?.title ?? ""}
+        staleCount={0}
+        legacyCount={0}
+        pending={runRetranslateStale.isPending}
+        onCancel={() => setRetranslateStaleNovel(null)}
+        onConfirm={(options) => runRetranslateStale.mutate(options)}
       />
     </>
   );

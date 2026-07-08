@@ -88,6 +88,11 @@ export type TranslatedChapter = {
   note?: string | null;
   confidence_score?: number | null;
   polish_needed?: boolean | null;
+  glossary_freshness?: string | null;
+  glossary_stale?: boolean | null;
+  glossary_stale_reason?: string | null;
+  current_glossary_revision?: number | null;
+  current_glossary_hash?: string | null;
 };
 
 export type TranslationVersion = Record<string, unknown> & {
@@ -103,6 +108,11 @@ export type TranslationVersion = Record<string, unknown> & {
   provider_model?: string | null;
   created_at?: string | null;
   translated_at?: string | null;
+  glossary_freshness?: string | null;
+  glossary_stale?: boolean | null;
+  glossary_stale_reason?: string | null;
+  current_glossary_revision?: number | null;
+  current_glossary_hash?: string | null;
 };
 
 export type TranslationEditHistory = Record<string, unknown> & {
