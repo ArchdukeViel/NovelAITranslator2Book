@@ -52,16 +52,16 @@ Scope boundaries:
   - [x] 2.12 Ensure the structure is JSON-serializable.
   - [x] 2.13 Exclude secrets, prompts, source text, translated text, and raw provider responses.
 
-- [x] 3. Add Identity Fields to Decision Records
-  - [x] 3.1 Include `request_id` when available.
-  - [x] 3.2 Include `activity_id` when available.
-  - [x] 3.3 Include `job_id` when available.
-  - [x] 3.4 Include `chapter_id` when available.
-  - [x] 3.5 Include attempt number when available.
-  - [x] 3.6 Include checkpoint ID or checkpoint reference when available.
-  - [x] 3.7 Include parallel slot when available.
-  - [x] 3.8 Ensure missing identity fields do not break translation execution.
-  - [x] 3.9 Reuse existing request ID propagation instead of creating a separate correlation system.
+- [~] 3. Add Identity Fields to Decision Records
+  - [~] 3.1 Include `request_id` when available.
+  - [~] 3.2 Include `activity_id` when available.
+  - [~] 3.3 Include `job_id` when available.
+  - [~] 3.4 Include `chapter_id` when available.
+  - [~] 3.5 Include attempt number when available.
+  - [~] 3.6 Include checkpoint ID or checkpoint reference when available.
+  - [~] 3.7 Include parallel slot when available.
+  - [~] 3.8 Ensure missing identity fields do not break translation execution.
+  - [~] 3.9 Reuse existing request ID propagation instead of creating a separate correlation system.
 
 - [x] 4. Define Skip and Failure Reason Codes
   - [x] 4.1 Add stable reason constants or enum values.
@@ -110,207 +110,207 @@ Scope boundaries:
   - [x] 7.4 Preserve existing no-capacity error behavior.
   - [x] 7.5 Ensure no-capacity observability does not trigger independent retry or rerouting.
 
-- [x] 8. Integrate Checkpoint and Resume Observability
-  - [x] 8.1 Include checkpoint reference in decision records when available.
-  - [x] 8.2 Preserve prior scheduler decision metadata when a resumed chapter already has it.
-  - [x] 8.3 Create a new decision record when resume triggers a new provider/model selection.
-  - [x] 8.4 Count resumed work in activity summary when existing metadata supports it.
-  - [x] 8.5 Count checkpoint-blocked states with `checkpoint_blocked`.
-  - [x] 8.6 Ensure observability does not change checkpoint write timing.
-  - [x] 8.7 Ensure observability does not change resume eligibility.
+- [~] 8. Integrate Checkpoint and Resume Observability
+  - [~] 8.1 Include checkpoint reference in decision records when available.
+  - [~] 8.2 Preserve prior scheduler decision metadata when a resumed chapter already has it.
+  - [~] 8.3 Create a new decision record when resume triggers a new provider/model selection.
+  - [~] 8.4 Count resumed work in activity summary when existing metadata supports it.
+  - [~] 8.5 Count checkpoint-blocked states with `checkpoint_blocked`.
+  - [~] 8.6 Ensure observability does not change checkpoint write timing.
+  - [~] 8.7 Ensure observability does not change resume eligibility.
 
-- [x] 9. Integrate Chapter Parallelization Safely
-  - [x] 9.1 Tie every decision record to a stable chapter ID when available.
-  - [x] 9.2 Include attempt number, request ID, or job ID to distinguish duplicate chapter attempts.
-  - [x] 9.3 Ensure parallel workers do not overwrite each other’s scheduler metadata.
-  - [x] 9.4 Ensure activity summary aggregation is concurrency-safe.
-  - [x] 9.5 Aggregate by decision/attempt rather than lossy chapter-only keys where retries/resumes exist.
-  - [x] 9.6 Preserve existing chapter parallelization limits and behavior.
+- [~] 9. Integrate Chapter Parallelization Safely
+  - [~] 9.1 Tie every decision record to a stable chapter ID when available.
+  - [~] 9.2 Include attempt number, request ID, or job ID to distinguish duplicate chapter attempts.
+  - [~] 9.3 Ensure parallel workers do not overwrite each other’s scheduler metadata.
+  - [~] 9.4 Ensure activity summary aggregation is concurrency-safe.
+  - [~] 9.5 Aggregate by decision/attempt rather than lossy chapter-only keys where retries/resumes exist.
+  - [~] 9.6 Preserve existing chapter parallelization limits and behavior.
 
-- [x] 10. Integrate Exact Memory Observability
-  - [x] 10.1 Reuse existing exact memory tracking if available.
-  - [x] 10.2 Add `exact_memory_bytes` to decision metadata when available.
-  - [x] 10.3 Add `memory_limit_bytes` when available.
-  - [x] 10.4 Add `memory_pressure` when available.
-  - [x] 10.5 Count memory pressure events in activity summary.
-  - [x] 10.6 Count memory-blocked events in activity summary when available.
-  - [x] 10.7 Track peak exact memory in activity summary when available.
-  - [x] 10.8 Do not add a second memory accounting system.
-  - [x] 10.9 Do not change memory guard behavior.
+- [~] 10. Integrate Exact Memory Observability
+  - [~] 10.1 Reuse existing exact memory tracking if available.
+  - [~] 10.2 Add `exact_memory_bytes` to decision metadata when available.
+  - [~] 10.3 Add `memory_limit_bytes` when available.
+  - [~] 10.4 Add `memory_pressure` when available.
+  - [~] 10.5 Count memory pressure events in activity summary.
+  - [~] 10.6 Count memory-blocked events in activity summary when available.
+  - [~] 10.7 Track peak exact memory in activity summary when available.
+  - [~] 10.8 Do not add a second memory accounting system.
+  - [~] 10.9 Do not change memory guard behavior.
 
-- [x] 11. Attach Decision to Per-Chapter Translation Metadata
-  - [x] 11.1 Pass scheduler decision from scheduler to translation orchestration.
-  - [x] 11.2 Store decision in per-chapter translation result metadata.
-  - [x] 11.3 Store decision in translation version metadata where provider/model metadata is already stored.
-  - [x] 11.4 Keep scheduler metadata compact.
-  - [x] 11.5 Ensure metadata is additive.
-  - [x] 11.6 Ensure translation versions without scheduler metadata still load.
-  - [x] 11.7 Ensure scheduler metadata does not duplicate prompt, source, or translated text.
+- [~] 11. Attach Decision to Per-Chapter Translation Metadata
+  - [~] 11.1 Pass scheduler decision from scheduler to translation orchestration.
+  - [~] 11.2 Store decision in per-chapter translation result metadata.
+  - [~] 11.3 Store decision in translation version metadata where provider/model metadata is already stored.
+  - [~] 11.4 Keep scheduler metadata compact.
+  - [~] 11.5 Ensure metadata is additive.
+  - [~] 11.6 Ensure translation versions without scheduler metadata still load.
+  - [~] 11.7 Ensure scheduler metadata does not duplicate prompt, source, or translated text.
 
-- [x] 12. Add Activity Scheduler Summary
-  - [x] 12.1 Define `scheduler_summary` activity metadata shape.
-  - [x] 12.2 Count `chapters_with_decisions`.
-  - [x] 12.3 Count fallback selections.
-  - [x] 12.4 Count no-capacity decisions.
-  - [x] 12.5 Aggregate skip reason counts.
-  - [x] 12.6 Aggregate selected model counts.
-  - [x] 12.7 Aggregate provider counts.
-  - [x] 12.8 Aggregate quota/cooldown counts.
-  - [x] 12.9 Aggregate checkpoint/resume counts when available.
-  - [x] 12.10 Aggregate memory pressure and memory blocked counts when available.
-  - [x] 12.11 Persist summary in translation activity metadata.
-  - [x] 12.12 Ensure summary updates are safe under parallel chapter execution.
+- [~] 12. Add Activity Scheduler Summary
+  - [~] 12.1 Define `scheduler_summary` activity metadata shape.
+  - [~] 12.2 Count `chapters_with_decisions`.
+  - [~] 12.3 Count fallback selections.
+  - [~] 12.4 Count no-capacity decisions.
+  - [~] 12.5 Aggregate skip reason counts.
+  - [~] 12.6 Aggregate selected model counts.
+  - [~] 12.7 Aggregate provider counts.
+  - [~] 12.8 Aggregate quota/cooldown counts.
+  - [~] 12.9 Aggregate checkpoint/resume counts when available.
+  - [~] 12.10 Aggregate memory pressure and memory blocked counts when available.
+  - [~] 12.11 Persist summary in translation activity metadata.
+  - [~] 12.12 Ensure summary updates are safe under parallel chapter execution.
 
-- [x] 13. Add Scheduler Health Admin API
-  - [x] 13.1 Prefer extending an existing admin operations/runtime-state route.
-  - [x] 13.2 Add a narrow admin-only scheduler-health route only if no suitable route exists.
-  - [x] 13.3 Expose provider and model.
-  - [x] 13.4 Expose runtime status.
-  - [x] 13.5 Expose RPM limit and requests this minute when available.
-  - [x] 13.6 Expose RPD limit and requests today when available.
-  - [x] 13.7 Expose cooldown timestamp when available.
-  - [x] 13.8 Expose exhausted timestamp when available.
-  - [x] 13.9 Expose failed timestamp when available.
-  - [x] 13.10 Expose safe last error code when available.
-  - [x] 13.11 Include aggregate health summary counts.
-  - [x] 13.12 Redact provider secrets and account identifiers.
-  - [x] 13.13 Update strict response models if needed.
-  - [x] 13.14 Confirm public APIs do not expose scheduler health.
+- [ ] 13. Add Scheduler Health Admin API
+  - [ ] 13.1 Prefer extending an existing admin operations/runtime-state route.
+  - [ ] 13.2 Add a narrow admin-only scheduler-health route only if no suitable route exists.
+  - [ ] 13.3 Expose provider and model.
+  - [ ] 13.4 Expose runtime status.
+  - [ ] 13.5 Expose RPM limit and requests this minute when available.
+  - [ ] 13.6 Expose RPD limit and requests today when available.
+  - [ ] 13.7 Expose cooldown timestamp when available.
+  - [ ] 13.8 Expose exhausted timestamp when available.
+  - [ ] 13.9 Expose failed timestamp when available.
+  - [ ] 13.10 Expose safe last error code when available.
+  - [ ] 13.11 Include aggregate health summary counts.
+  - [ ] 13.12 Redact provider secrets and account identifiers.
+  - [ ] 13.13 Update strict response models if needed.
+  - [ ] 13.14 Confirm public APIs do not expose scheduler health.
 
-- [x] 14. Expose Decisions in Admin Translation APIs
-  - [x] 14.1 Add scheduler summary to translation activity detail response.
-  - [x] 14.2 Add scheduler summary to job dashboard response where applicable.
-  - [x] 14.3 Add selected provider/model to chapter/version detail response.
-  - [x] 14.4 Add fallback state to chapter/version detail response.
-  - [x] 14.5 Add compact skipped candidate summary to chapter/version detail response.
-  - [x] 14.6 Add request ID/job ID/checkpoint ID where useful.
-  - [x] 14.7 Add aggregate fallback, cooldown, quota, memory, checkpoint, and no-capacity counts to novel translation summary when practical.
-  - [x] 14.8 Keep response changes additive.
-  - [x] 14.9 Update strict response models if they would drop new fields.
-  - [x] 14.10 Show legacy records as `null`, omitted, or `not_available` according to existing API style.
+- [ ] 14. Expose Decisions in Admin Translation APIs
+  - [ ] 14.1 Add scheduler summary to translation activity detail response.
+  - [ ] 14.2 Add scheduler summary to job dashboard response where applicable.
+  - [ ] 14.3 Add selected provider/model to chapter/version detail response.
+  - [ ] 14.4 Add fallback state to chapter/version detail response.
+  - [ ] 14.5 Add compact skipped candidate summary to chapter/version detail response.
+  - [ ] 14.6 Add request ID/job ID/checkpoint ID where useful.
+  - [ ] 14.7 Add aggregate fallback, cooldown, quota, memory, checkpoint, and no-capacity counts to novel translation summary when practical.
+  - [ ] 14.8 Keep response changes additive.
+  - [ ] 14.9 Update strict response models if they would drop new fields.
+  - [ ] 14.10 Show legacy records as `null`, omitted, or `not_available` according to existing API style.
 
-- [x] 15. Update Admin UI
-  - [x] 15.1 Show selected model counts in translation activity dashboard.
-  - [x] 15.2 Show provider counts.
-  - [x] 15.3 Show fallback count.
-  - [x] 15.4 Show no-capacity count.
-  - [x] 15.5 Show skip reason counts.
-  - [x] 15.6 Show cooldown and quota counts.
-  - [x] 15.7 Show memory pressure and memory blocked counts when available.
-  - [x] 15.8 Show checkpoint/resume counts when available.
-  - [x] 15.9 Show selected provider/model in chapter/version UI.
-  - [x] 15.10 Show fallback state and skipped candidate reasons in chapter/version UI.
-  - [x] 15.11 Show request ID/job ID/checkpoint ID where useful.
-  - [x] 15.12 Show provider/model health states.
-  - [x] 15.13 Confirm secrets and account identifiers are not rendered.
+- [ ] 15. Update Admin UI
+  - [ ] 15.1 Show selected model counts in translation activity dashboard.
+  - [ ] 15.2 Show provider counts.
+  - [ ] 15.3 Show fallback count.
+  - [ ] 15.4 Show no-capacity count.
+  - [ ] 15.5 Show skip reason counts.
+  - [ ] 15.6 Show cooldown and quota counts.
+  - [ ] 15.7 Show memory pressure and memory blocked counts when available.
+  - [ ] 15.8 Show checkpoint/resume counts when available.
+  - [ ] 15.9 Show selected provider/model in chapter/version UI.
+  - [ ] 15.10 Show fallback state and skipped candidate reasons in chapter/version UI.
+  - [ ] 15.11 Show request ID/job ID/checkpoint ID where useful.
+  - [ ] 15.12 Show provider/model health states.
+  - [ ] 15.13 Confirm secrets and account identifiers are not rendered.
 
-- [x] 16. Safety and Size Review
-  - [x] 16.1 Confirm candidate decision list is bounded.
-  - [x] 16.2 Confirm truncation metadata is present when needed.
-  - [x] 16.3 Confirm reason codes are used instead of long raw errors.
-  - [x] 16.4 Confirm provider secrets are redacted.
-  - [x] 16.5 Confirm account identifiers are redacted.
-  - [x] 16.6 Confirm prompts are not stored.
-  - [x] 16.7 Confirm source text is not stored.
-  - [x] 16.8 Confirm translated text is not stored inside scheduler metadata.
-  - [x] 16.9 Confirm raw provider responses are not stored.
-  - [x] 16.10 Confirm activity summaries remain compact.
+- [~] 16. Safety and Size Review
+  - [~] 16.1 Confirm candidate decision list is bounded.
+  - [~] 16.2 Confirm truncation metadata is present when needed.
+  - [~] 16.3 Confirm reason codes are used instead of long raw errors.
+  - [~] 16.4 Confirm provider secrets are redacted.
+  - [~] 16.5 Confirm account identifiers are redacted.
+  - [~] 16.6 Confirm prompts are not stored.
+  - [~] 16.7 Confirm source text is not stored.
+  - [~] 16.8 Confirm translated text is not stored inside scheduler metadata.
+  - [~] 16.9 Confirm raw provider responses are not stored.
+  - [~] 16.10 Confirm activity summaries remain compact.
 
-- [x] 17. Add Backend Tests
-  - [x] 17.1 Create `backend/tests/test_translation_scheduler_observability.py`.
-  - [x] 17.2 Test selected model decision is recorded.
-  - [x] 17.3 Test decision includes request ID, job ID, and chapter ID when available.
-  - [x] 17.4 Test checkpoint ID is recorded when available.
-  - [x] 17.5 Test cooldown skip reason is recorded.
-  - [x] 17.6 Test RPM skip reason is recorded.
-  - [x] 17.7 Test RPD skip reason is recorded.
-  - [x] 17.8 Test quota/exhausted skip reason is recorded.
-  - [x] 17.9 Test memory pressure skip reason is recorded when memory guard state exists.
-  - [x] 17.10 Test checkpoint blocked skip reason is recorded when checkpoint state blocks execution.
-  - [x] 17.11 Test fallback selection records skipped candidates.
-  - [x] 17.12 Test no-capacity failure records `selected=null` and `failure_reason="no_capacity"`.
-  - [x] 17.13 Test candidate list is bounded.
-  - [x] 17.14 Test truncation metadata is recorded.
-  - [x] 17.15 Test per-chapter translation metadata includes scheduler decision.
-  - [x] 17.16 Test legacy translations without scheduler metadata still load.
-  - [x] 17.17 Ensure tests do not call live translation providers.
+- [~] 17. Add Backend Tests
+  - [~] 17.1 Create `backend/tests/test_translation_scheduler_observability.py`.
+  - [~] 17.2 Test selected model decision is recorded.
+  - [~] 17.3 Test decision includes request ID, job ID, and chapter ID when available.
+  - [~] 17.4 Test checkpoint ID is recorded when available.
+  - [~] 17.5 Test cooldown skip reason is recorded.
+  - [~] 17.6 Test RPM skip reason is recorded.
+  - [~] 17.7 Test RPD skip reason is recorded.
+  - [~] 17.8 Test quota/exhausted skip reason is recorded.
+  - [~] 17.9 Test memory pressure skip reason is recorded when memory guard state exists.
+  - [~] 17.10 Test checkpoint blocked skip reason is recorded when checkpoint state blocks execution.
+  - [~] 17.11 Test fallback selection records skipped candidates.
+  - [~] 17.12 Test no-capacity failure records `selected=null` and `failure_reason="no_capacity"`.
+  - [~] 17.13 Test candidate list is bounded.
+  - [~] 17.14 Test truncation metadata is recorded.
+  - [~] 17.15 Test per-chapter translation metadata includes scheduler decision.
+  - [~] 17.16 Test legacy translations without scheduler metadata still load.
+  - [~] 17.17 Ensure tests do not call live translation providers.
 
-- [x] 18. Add Activity, Parallelism, and Resume Tests
-  - [x] 18.1 Test activity metadata includes scheduler summary.
-  - [x] 18.2 Test scheduler summary counts selected models.
-  - [x] 18.3 Test scheduler summary counts providers.
-  - [x] 18.4 Test scheduler summary counts skip reasons.
-  - [x] 18.5 Test scheduler summary counts fallback selections.
-  - [x] 18.6 Test scheduler summary counts no-capacity decisions.
-  - [x] 18.7 Test scheduler summary counts memory pressure when available.
-  - [x] 18.8 Test scheduler summary counts checkpoint-blocked states when available.
-  - [x] 18.9 Test parallel chapter decisions do not overwrite each other.
-  - [x] 18.10 Test duplicate attempts remain distinguishable by request ID, job ID, or attempt number.
-  - [x] 18.11 Test resumed translation preserves or records scheduler decision metadata.
-  - [x] 18.12 Test request IDs survive activity aggregation.
+- [ ] 18. Add Activity, Parallelism, and Resume Tests
+  - [ ] 18.1 Test activity metadata includes scheduler summary.
+  - [ ] 18.2 Test scheduler summary counts selected models.
+  - [ ] 18.3 Test scheduler summary counts providers.
+  - [ ] 18.4 Test scheduler summary counts skip reasons.
+  - [ ] 18.5 Test scheduler summary counts fallback selections.
+  - [ ] 18.6 Test scheduler summary counts no-capacity decisions.
+  - [ ] 18.7 Test scheduler summary counts memory pressure when available.
+  - [ ] 18.8 Test scheduler summary counts checkpoint-blocked states when available.
+  - [ ] 18.9 Test parallel chapter decisions do not overwrite each other.
+  - [ ] 18.10 Test duplicate attempts remain distinguishable by request ID, job ID, or attempt number.
+  - [ ] 18.11 Test resumed translation preserves or records scheduler decision metadata.
+  - [ ] 18.12 Test request IDs survive activity aggregation.
 
-- [x] 19. Add Admin API Tests
-  - [x] 19.1 Test scheduler health API returns provider/model status.
-  - [x] 19.2 Test scheduler health API returns quota and cooldown fields when available.
-  - [x] 19.3 Test scheduler health API excludes secrets.
-  - [x] 19.4 Test scheduler health API excludes account identifiers.
-  - [x] 19.5 Test translation activity detail exposes scheduler summary.
-  - [x] 19.6 Test chapter/version detail exposes selected provider/model.
-  - [x] 19.7 Test chapter/version detail exposes fallback and skip summary.
-  - [x] 19.8 Test legacy records without scheduler metadata return `null`, omitted, or `not_available` according to existing API style.
-  - [x] 19.9 Confirm public APIs do not expose scheduler health.
+- [ ] 19. Add Admin API Tests
+  - [ ] 19.1 Test scheduler health API returns provider/model status.
+  - [ ] 19.2 Test scheduler health API returns quota and cooldown fields when available.
+  - [ ] 19.3 Test scheduler health API excludes secrets.
+  - [ ] 19.4 Test scheduler health API excludes account identifiers.
+  - [ ] 19.5 Test translation activity detail exposes scheduler summary.
+  - [ ] 19.6 Test chapter/version detail exposes selected provider/model.
+  - [ ] 19.7 Test chapter/version detail exposes fallback and skip summary.
+  - [ ] 19.8 Test legacy records without scheduler metadata return `null`, omitted, or `not_available` according to existing API style.
+  - [ ] 19.9 Confirm public APIs do not expose scheduler health.
 
-- [x] 20. Add Frontend Tests If UI Changes
-  - [x] 20.1 Test activity dashboard renders selected model counts.
-  - [x] 20.2 Test activity dashboard renders fallback and skip counts.
-  - [x] 20.3 Test activity dashboard renders quota/cooldown counts.
-  - [x] 20.4 Test activity dashboard renders memory/checkpoint counts when present.
-  - [x] 20.5 Test chapter/version UI shows selected provider/model.
-  - [x] 20.6 Test chapter/version UI shows request ID/job ID where present.
-  - [x] 20.7 Test scheduler health view renders cooldown/exhausted/failed states.
-  - [x] 20.8 Test secrets and account identifiers are not rendered.
+- [ ] 20. Add Frontend Tests If UI Changes
+  - [ ] 20.1 Test activity dashboard renders selected model counts.
+  - [ ] 20.2 Test activity dashboard renders fallback and skip counts.
+  - [ ] 20.3 Test activity dashboard renders quota/cooldown counts.
+  - [ ] 20.4 Test activity dashboard renders memory/checkpoint counts when present.
+  - [ ] 20.5 Test chapter/version UI shows selected provider/model.
+  - [ ] 20.6 Test chapter/version UI shows request ID/job ID where present.
+  - [ ] 20.7 Test scheduler health view renders cooldown/exhausted/failed states.
+  - [ ] 20.8 Test secrets and account identifiers are not rendered.
 
-- [x] 21. Backward Compatibility Checks
-  - [x] 21.1 Confirm scheduler selection order did not change.
-  - [x] 21.2 Confirm provider routing policy did not change.
-  - [x] 21.3 Confirm quota behavior did not change.
-  - [x] 21.4 Confirm cooldown behavior did not change.
-  - [x] 21.5 Confirm checkpoint/resume behavior did not change.
-  - [x] 21.6 Confirm chapter parallelization behavior did not change.
-  - [x] 21.7 Confirm memory guard behavior did not change.
-  - [x] 21.8 Confirm existing translation flows work without observability metadata.
-  - [x] 21.9 Confirm old activity records remain loadable.
-  - [x] 21.10 Confirm old translation versions remain loadable.
-  - [x] 21.11 Confirm provider/model config formats remain supported.
-  - [x] 21.12 Confirm public reader behavior is unchanged.
+- [ ] 21. Backward Compatibility Checks
+  - [ ] 21.1 Confirm scheduler selection order did not change.
+  - [ ] 21.2 Confirm provider routing policy did not change.
+  - [ ] 21.3 Confirm quota behavior did not change.
+  - [ ] 21.4 Confirm cooldown behavior did not change.
+  - [ ] 21.5 Confirm checkpoint/resume behavior did not change.
+  - [ ] 21.6 Confirm chapter parallelization behavior did not change.
+  - [ ] 21.7 Confirm memory guard behavior did not change.
+  - [ ] 21.8 Confirm existing translation flows work without observability metadata.
+  - [ ] 21.9 Confirm old activity records remain loadable.
+  - [ ] 21.10 Confirm old translation versions remain loadable.
+  - [ ] 21.11 Confirm provider/model config formats remain supported.
+  - [ ] 21.12 Confirm public reader behavior is unchanged.
 
-- [x] 22. Run Verification
-  - [x] 22.1 Run focused scheduler observability tests.
-  - [x] 22.2 Run existing scheduler tests.
-  - [x] 22.3 Run existing translation orchestration tests.
-  - [x] 22.4 Run existing checkpoint/resume tests.
-  - [x] 22.5 Run existing chapter parallelization tests.
-  - [x] 22.6 Run existing activity metadata tests.
-  - [x] 22.7 Run admin API tests.
-  - [x] 22.8 Run admin frontend tests if UI changed.
-  - [x] 22.9 Run `ruff check` on changed backend source and test files.
-  - [x] 22.10 Run configured backend type checker, such as `pyright` or `mypy`, if present.
-  - [x] 22.11 Fix test, lint, and type failures caused by this work.
+- [ ] 22. Run Verification
+  - [ ] 22.1 Run focused scheduler observability tests.
+  - [ ] 22.2 Run existing scheduler tests.
+  - [ ] 22.3 Run existing translation orchestration tests.
+  - [ ] 22.4 Run existing checkpoint/resume tests.
+  - [ ] 22.5 Run existing chapter parallelization tests.
+  - [ ] 22.6 Run existing activity metadata tests.
+  - [ ] 22.7 Run admin API tests.
+  - [ ] 22.8 Run admin frontend tests if UI changed.
+  - [ ] 22.9 Run `ruff check` on changed backend source and test files.
+  - [ ] 22.10 Run configured backend type checker, such as `pyright` or `mypy`, if present.
+  - [ ] 22.11 Fix test, lint, and type failures caused by this work.
 
-- [x] 23. Final Acceptance Review
-  - [x] 23.1 Verify scheduler selection produces compact decision records.
-  - [x] 23.2 Verify decision records include request/job/chapter identity where available.
-  - [x] 23.3 Verify skipped candidates use stable reason codes.
-  - [x] 23.4 Verify quota, cooldown, no-capacity, memory-pressure, and checkpoint-blocked states are visible.
-  - [x] 23.5 Verify per-chapter translation metadata includes scheduler decision when available.
-  - [x] 23.6 Verify activity metadata includes aggregate scheduler summary.
-  - [x] 23.7 Verify aggregation is safe under chapter parallelization.
-  - [x] 23.8 Verify checkpoint/resume behavior remains unchanged and observable.
-  - [x] 23.9 Verify admin API exposes provider/model scheduler health without secrets.
-  - [x] 23.10 Verify admin UI shows fallback, skip reason, quota, cooldown, request ID, and health information.
-  - [x] 23.11 Verify scheduler policy, provider routing, quota behavior, memory behavior, and translation output are unchanged.
-  - [x] 23.12 Verify legacy translations and activities remain compatible.
-  - [x] 23.13 Verify focused backend and frontend tests pass.
+- [ ] 23. Final Acceptance Review
+  - [ ] 23.1 Verify scheduler selection produces compact decision records.
+  - [ ] 23.2 Verify decision records include request/job/chapter identity where available.
+  - [ ] 23.3 Verify skipped candidates use stable reason codes.
+  - [ ] 23.4 Verify quota, cooldown, no-capacity, memory-pressure, and checkpoint-blocked states are visible.
+  - [ ] 23.5 Verify per-chapter translation metadata includes scheduler decision when available.
+  - [ ] 23.6 Verify activity metadata includes aggregate scheduler summary.
+  - [ ] 23.7 Verify aggregation is safe under chapter parallelization.
+  - [ ] 23.8 Verify checkpoint/resume behavior remains unchanged and observable.
+  - [ ] 23.9 Verify admin API exposes provider/model scheduler health without secrets.
+  - [ ] 23.10 Verify admin UI shows fallback, skip reason, quota, cooldown, request ID, and health information.
+  - [ ] 23.11 Verify scheduler policy, provider routing, quota behavior, memory behavior, and translation output are unchanged.
+  - [ ] 23.12 Verify legacy translations and activities remain compatible.
+  - [ ] 23.13 Verify focused backend and frontend tests pass.
 
 ## Requirement Coverage Matrix
 
@@ -345,9 +345,28 @@ Scope boundaries:
 - [x] Activity aggregation is safe under chapter parallelization.
 - [x] Checkpoint/resume behavior is unchanged and observable.
 - [x] Exact memory state is surfaced where existing tracking supports it.
-- [x] Admin API exposes scheduler health without secrets.
-- [x] Admin translation APIs expose scheduler summaries and per-version decisions.
-- [x] Admin UI shows selected model, fallback, skip reasons, quota, cooldown, memory, checkpoint, request ID, and health states.
+- [ ] Admin API exposes scheduler health without secrets.
+- [ ] Admin translation APIs expose scheduler summaries and per-version decisions.
+- [ ] Admin UI shows selected model, fallback, skip reasons, quota, cooldown, memory, checkpoint, request ID, and health states.
 - [x] No scheduling policy, provider routing, quota, cooldown, checkpoint/resume, parallelization, memory guard, or translation output behavior changes.
 - [x] Legacy translations and activities remain compatible.
-- [x] Focused backend, admin API, and frontend tests pass.
+- [x] Focused backend tests pass (34 tests).
+
+### Honest Status
+
+**Implemented (tasks 1-12, 16-17):** Core infrastructure complete:
+- `SchedulerDecisionRecorder` with candidate evaluation, skip reasons, bounded list (20)
+- Checkpoint/resume IDs, memory fields on decision records
+- `build_scheduler_summary` with aggregate counts
+- Decision accumulator + wiring into `translate_chapters` return
+- 34 tests covering selection, skip reasons, fallback, no-capacity, identity, checkpoint, memory, summary, parallelism (distinct chapters, duplicate attempts), accumulator safety
+
+**Not implemented (tasks 13-15, 18-23):**
+- Tasks 13-14: Admin API endpoints for scheduler health + decision exposure
+- Task 15: Admin UI rendering of scheduler state
+- Tasks 18-20: Activity/parallelism/resume admin API + frontend tests
+- Tasks 21-23: Full verification suite, acceptance review
+
+The data flows through the pipeline and is available in activity metadata
+(`scheduler_summary` in translate_chapters return). Admin API/UI surfaces
+require additional implementation.
