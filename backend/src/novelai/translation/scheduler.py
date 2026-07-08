@@ -319,6 +319,80 @@ class SchedulerDecision:
         return result
 
 
+def build_scheduler_summary(decisions: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate scheduler decisions into a compact activity summary (REQ-12).
+
+    Returns a dict with:
+        - ``chapters_with_decisions``
+        - ``fallback_count``
+        - ``no_capacity_count``
+        - ``skip_reason_counts``
+        - ``selected_model_counts``
+        - ``provider_counts``
+        - ``checkpoint_blocked_count``
+        - ``memory_pressure_count``
+        - ``peak_exact_memory_bytes``
+
+    Thread-safe for parallel chapter processing since it operates on an
+    already-collected list.
+    """
+    chapters_with_decisions = len(decisions)
+    fallback_count = 0
+    no_capacity_count = 0
+    skip_reason_counts: dict[str, int] = {}
+    selected_model_counts: dict[str, int] = {}
+    provider_counts: dict[str, int] = {}
+    checkpoint_blocked_count = 0
+    memory_pressure_count = 0
+    peak_exact_memory_bytes = 0
+
+    for d in decisions:
+        if d.get("fallback_used"):
+            fallback_count += 1
+        if d.get("failure_reason") == "no_capacity":
+            no_capacity_count += 1
+
+        selected = d.get("selected")
+        if isinstance(selected, dict):
+            provider = str(selected.get("provider") or "")
+            model = str(selected.get("model") or "")
+            if provider and model:
+                key = f"{provider}:{model}"
+                selected_model_counts[key] = selected_model_counts.get(key, 0) + 1
+                provider_counts[provider] = provider_counts.get(provider, 0) + 1
+
+        candidates = d.get("candidates")
+        if isinstance(candidates, list):
+            for c in candidates:
+                if isinstance(c, dict):
+                    reason = c.get("skip_reason")
+                    if isinstance(reason, str) and reason:
+                        skip_reason_counts[reason] = skip_reason_counts.get(reason, 0) + 1
+
+        if d.get("checkpoint_id"):
+            checkpoint_blocked_count += 1
+
+        memory = d.get("memory")
+        if isinstance(memory, dict):
+            if memory.get("memory_pressure"):
+                memory_pressure_count += 1
+            peak = memory.get("exact_memory_bytes") or 0
+            if isinstance(peak, (int, float)) and peak > peak_exact_memory_bytes:
+                peak_exact_memory_bytes = int(peak)
+
+    return {
+        "chapters_with_decisions": chapters_with_decisions,
+        "fallback_count": fallback_count,
+        "no_capacity_count": no_capacity_count,
+        "checkpoint_blocked_count": checkpoint_blocked_count,
+        "memory_pressure_count": memory_pressure_count,
+        "peak_exact_memory_bytes": peak_exact_memory_bytes,
+        "skip_reason_counts": dict(sorted(skip_reason_counts.items())),
+        "selected_model_counts": dict(sorted(selected_model_counts.items())),
+        "provider_counts": dict(sorted(provider_counts.items())),
+    }
+
+
 class SchedulerDecisionRecorder:
     """Observes scheduler selection without influencing it.
 
