@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -8,8 +9,6 @@ from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
 from novelai.infrastructure.http.fetch_service import FetchService, get_default_fetch_service
-from novelai.sources.quality import detect_age_gate_text, detect_block_page_text
-from novelai.sources.status import normalize_publication_status, publication_status_payload
 from novelai.sources._helpers import (
     attribute_to_str,
     extract_image_references,
@@ -18,7 +17,9 @@ from novelai.sources._helpers import (
 )
 from novelai.sources.base import SourceAdapter
 from novelai.sources.html_parsers import HTMLParserMixin
+from novelai.sources.quality import detect_age_gate_text, detect_block_page_text
 from novelai.sources.source_layout import normalize_source_blocks, source_blocks_from_text_blocks
+from novelai.sources.status import normalize_publication_status, publication_status_payload
 from novelai.sources.taxonomy import (
     SYOSETU_GENRE_MAP,
     map_genre,
@@ -166,12 +167,13 @@ class SyosetuNcodeSource(SourceAdapter):
     def _decode_page_body(body: bytes) -> str:
         return body.decode("utf-8", errors="replace")
 
-    async def _fetch_page(self, url: str) -> str:
+    async def _fetch_page(self, url: str, *, on_retry: Callable[[int, Exception], None] | None = None) -> str:
         result = await self._fetch_service.get_text(
             url,
             source_key=self.key,
             headers=self._request_headers(),
             cookies=self._build_request_cookies(),
+            on_retry=on_retry,
         )
         html = self._decode_page_body(result.body)
         self._validate_fetched_page(url, httpx.URL(result.final_url), html)
@@ -743,11 +745,11 @@ class SyosetuNcodeSource(SourceAdapter):
 
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         url = self._normalize_url(url)
-        html = await self._fetch_page(url)
+        html = await self._fetch_page(url, on_retry=None)
         metadata = self._parse_metadata_html(html, url)
         try:
             infotop_url = self._infotop_url(url)
-            infotop_html = await self._fetch_page(infotop_url)
+            infotop_html = await self._fetch_page(infotop_url, on_retry=None)
         except SourceError:
             pass
         else:
@@ -779,7 +781,7 @@ class SyosetuNcodeSource(SourceAdapter):
 
         for page_number in page_numbers[1:]:
             page_url = f"{url}?p={page_number}"
-            page_html = await self._fetch_page(page_url)
+            page_html = await self._fetch_page(page_url, on_retry=None)
             page_soup = BeautifulSoup(page_html, "lxml")
             for chapter in self._extract_chapters(page_soup, url, metadata.get("title"), initial_part=current_part):
                 chapter_part = chapter.get("part") or chapter.get("volume") or chapter.get("arc") or chapter.get("section")
@@ -798,9 +800,11 @@ class SyosetuNcodeSource(SourceAdapter):
         return metadata
 
     async def fetch_chapter(self, url: str) -> str:
-        html = await self._fetch_page(url)
+        html = await self._fetch_page(url, on_retry=None)
         return str(self._parse_chapter_payload(html, url).get("text", ""))
 
-    async def fetch_chapter_payload(self, url: str) -> dict[str, Any]:
-        html = await self._fetch_page(url)
+    async def fetch_chapter_payload(
+        self, url: str, *, on_retry: Callable[[int, Exception], None] | None = None
+    ) -> dict[str, Any]:
+        html = await self._fetch_page(url, on_retry=on_retry)
         return self._parse_chapter_payload(html, url)

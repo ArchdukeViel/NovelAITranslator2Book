@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 
 from novelai.infrastructure.http.client import validate_safe_url
@@ -47,7 +47,9 @@ class SourceAdapter(ABC):
     async def fetch_chapter(self, url: str) -> str:
         """Fetch raw chapter text from the source."""
 
-    async def fetch_chapter_payload(self, url: str) -> Mapping[str, Any]:
+    async def fetch_chapter_payload(
+        self, url: str, *, on_retry: Callable[[int, Exception], None] | None = None
+    ) -> Mapping[str, Any]:
         """Fetch chapter text plus optional structured assets."""
         validate_url(url)
         return {

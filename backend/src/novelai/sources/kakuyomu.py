@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -18,8 +19,8 @@ from novelai.sources._helpers import (
 from novelai.sources.base import SourceAdapter
 from novelai.sources.html_parsers import HTMLParserMixin
 from novelai.sources.quality import detect_age_gate_text, detect_block_page_text
-from novelai.sources.status import normalize_publication_status, publication_status_payload
 from novelai.sources.source_layout import source_blocks_from_text_blocks
+from novelai.sources.status import normalize_publication_status, publication_status_payload
 from novelai.sources.taxonomy import (
     KAKUYOMU_GENRE_MAP,
     map_genre,
@@ -166,12 +167,13 @@ class KakuyomuSource(SourceAdapter):
                 f"Kakuyomu page at {url} appears to require age verification or adult confirmation."
             )
 
-    async def _fetch_page(self, url: str) -> str:
+    async def _fetch_page(self, url: str, *, on_retry: Callable[[int, Exception], None] | None = None) -> str:
         try:
             result = await self._fetch_service.get_text(
                 url,
                 source_key=self.key,
                 headers=self._request_headers(),
+                on_retry=on_retry,
             )
         except SourceError as exc:
             raise SourceError(f"Failed to fetch Kakuyomu page from {url}: {exc}") from exc
@@ -724,7 +726,7 @@ class KakuyomuSource(SourceAdapter):
 
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         url = self._normalize_url(url)
-        html = await self._fetch_page(url)
+        html = await self._fetch_page(url, on_retry=None)
         metadata = self._parse_metadata_html(html, url)
         if max_chapter is not None:
             metadata["chapters"] = [
@@ -737,9 +739,11 @@ class KakuyomuSource(SourceAdapter):
         return metadata
 
     async def fetch_chapter(self, url: str) -> str:
-        html = await self._fetch_page(url)
+        html = await self._fetch_page(url, on_retry=None)
         return str(self._parse_chapter_payload(html, url).get("text", ""))
 
-    async def fetch_chapter_payload(self, url: str) -> dict[str, Any]:
-        html = await self._fetch_page(url)
+    async def fetch_chapter_payload(
+        self, url: str, *, on_retry: Callable[[int, Exception], None] | None = None
+    ) -> dict[str, Any]:
+        html = await self._fetch_page(url, on_retry=on_retry)
         return self._parse_chapter_payload(html, url)

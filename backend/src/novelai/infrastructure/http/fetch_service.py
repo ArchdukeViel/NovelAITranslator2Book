@@ -12,7 +12,7 @@ from novelai.core.errors import SourceError
 from novelai.infrastructure.http.cache import FetchCache, FetchCacheEntry, InMemoryFetchCache
 from novelai.infrastructure.http.client import create_async_client, validate_safe_url
 from novelai.infrastructure.http.throttle import DomainThrottle
-from novelai.utils.retry_decorator import RetryConfig, Retrier
+from novelai.utils.retry_decorator import Retrier, RetryConfig
 
 
 @dataclass(frozen=True)
@@ -64,6 +64,7 @@ class FetchService:
         referer: str | None = None,
         headers: dict[str, str] | None = None,
         cookies: Any = None,
+        on_retry: Callable[[int, Exception], None] | None = None,
     ) -> FetchResult:
         return await self._fetch(
             url,
@@ -71,6 +72,7 @@ class FetchService:
             referer=referer,
             headers=headers,
             cookies=cookies,
+            on_retry=on_retry,
         )
 
     async def get_bytes(
@@ -98,6 +100,7 @@ class FetchService:
         referer: str | None,
         headers: dict[str, str] | None,
         cookies: Any,
+        on_retry: Callable[[int, Exception], None] | None = None,
     ) -> FetchResult:
         requested_url = validate_safe_url(url)
         request_headers = dict(headers or {})
@@ -109,7 +112,8 @@ class FetchService:
         started = perf_counter()
         try:
             response = await self._with_retry(
-                lambda: self._request(requested_url, headers=request_headers, cookies=cookies)
+                lambda: self._request(requested_url, headers=request_headers, cookies=cookies),
+                on_retry=on_retry,
             )
         except httpx.HTTPStatusError as exc:
             await self._throttle.after_response(requested_url, exc.response.status_code)
@@ -176,7 +180,9 @@ class FetchService:
                 response.raise_for_status()
             return response
 
-    async def _with_retry(self, fn: Callable[[], Any]) -> httpx.Response:
+    async def _with_retry(
+        self, fn: Callable[[], Any], *, on_retry: Callable[[int, Exception], None] | None = None
+    ) -> httpx.Response:
         config = RetryConfig(
             max_attempts=3,
             initial_delay=1.0,
@@ -194,11 +200,11 @@ class FetchService:
                 return await fn()
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code not in self._RETRYABLE_STATUS_CODES:
-                    raise _NonRetryableError(exc)
+                    raise _NonRetryableError(exc) from exc
                 raise
 
         try:
-            return await retrier.execute_async(_wrapped)
+            return await retrier.execute_async(_wrapped, on_retry=on_retry)
         except _NonRetryableError as exc:
             original = exc.args[0] if exc.args else None
             if isinstance(original, BaseException):

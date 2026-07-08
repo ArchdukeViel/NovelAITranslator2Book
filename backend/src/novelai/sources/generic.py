@@ -7,6 +7,7 @@ matches.  Expects a full novel/chapter URL rather than a site-specific ID.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -14,11 +15,6 @@ from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
 from novelai.infrastructure.http.fetch_service import FetchService, get_default_fetch_service
-from novelai.sources.quality import (
-    QualityGateResult,
-    detect_age_gate_text,
-    detect_block_page_text,
-)
 from novelai.sources._helpers import (
     extract_image_references,
     image_placeholder,
@@ -26,6 +22,11 @@ from novelai.sources._helpers import (
 )
 from novelai.sources.base import SourceAdapter
 from novelai.sources.html_parsers import HTMLParserMixin
+from novelai.sources.quality import (
+    QualityGateResult,
+    detect_age_gate_text,
+    detect_block_page_text,
+)
 from novelai.utils.text_normalization import normalize_text as _shared_normalize_text
 
 # Selectors tried in order to find the main story text.
@@ -100,9 +101,9 @@ class GenericSource(SourceAdapter):
             return f"{parsed.netloc}{parsed.path}".rstrip("/")
         return candidate
 
-    async def _fetch_page(self, url: str) -> str:
+    async def _fetch_page(self, url: str, *, on_retry: Callable[[int, Exception], None] | None = None) -> str:
         try:
-            result = await self._fetch_service.get_text(url, source_key=self.key)
+            result = await self._fetch_service.get_text(url, source_key=self.key, on_retry=on_retry)
         except SourceError as exc:
             raise SourceError(f"Failed to fetch page from {url}: {exc}") from exc
         return result.text
@@ -312,7 +313,7 @@ class GenericSource(SourceAdapter):
     async def fetch_metadata(
         self, url: str, *, max_chapter: int | None = None
     ) -> dict[str, Any]:
-        html = await self._fetch_page(url)
+        html = await self._fetch_page(url, on_retry=None)
         self._preflight_check(html, url)
         soup = BeautifulSoup(html, "lxml")
         self._clean_soup(soup)
@@ -346,7 +347,7 @@ class GenericSource(SourceAdapter):
         }
 
     async def fetch_chapter(self, url: str) -> str:
-        html = await self._fetch_page(url)
+        html = await self._fetch_page(url, on_retry=None)
         self._preflight_check(html, url)
         soup = BeautifulSoup(html, "lxml")
         self._clean_soup(soup)
@@ -361,8 +362,10 @@ class GenericSource(SourceAdapter):
             raise SourceError("Extracted chapter text was empty.")
         return text
 
-    async def fetch_chapter_payload(self, url: str) -> dict[str, Any]:
-        html = await self._fetch_page(url)
+    async def fetch_chapter_payload(
+        self, url: str, *, on_retry: Callable[[int, Exception], None] | None = None
+    ) -> dict[str, Any]:
+        html = await self._fetch_page(url, on_retry=on_retry)
         self._preflight_check(html, url)
         soup = BeautifulSoup(html, "lxml")
         self._clean_soup(soup)

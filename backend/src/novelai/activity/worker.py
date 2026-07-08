@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -7,6 +8,8 @@ from novelai.activity.queue import ActivityQueueService
 from novelai.core.errors import ProviderError
 from novelai.core.platform import CrawlJobKind, JobStatus, TranslationJobKind
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now_iso() -> str:
@@ -155,13 +158,48 @@ class ActivityWorkerService:
             chapters = activity.get("chapters")
             if not isinstance(chapters, str) or not chapters.strip():
                 chapters = str(metadata.get("chapter_id") or "all")
-            await self.orchestrator.scrape_chapters(
+
+            meta = self.orchestrator.storage.load_metadata(novel_id) or {}
+            chapter_list = meta.get("chapters")
+            total = len(chapter_list) if isinstance(chapter_list, list) else None
+
+            activity_id = str(activity.get("id") or "")
+            completed = [0]
+
+            def _progress_callback(message: str) -> None:
+                completed[0] += 1
+                try:
+                    self.activity_log.update_activity_metadata(
+                        activity_id,
+                        {
+                            "progress": {
+                                "completed": completed[0],
+                                "total": total,
+                                "current_label": message,
+                            }
+                        },
+                    )
+                except Exception:
+                    logger.debug("Failed to update crawl progress", exc_info=True)
+
+            result = await self.orchestrator.scrape_chapters(
                 source_key,
                 novel_id,
                 chapters,
                 mode=mode,
+                progress_callback=_progress_callback,
             )
-            return {"chapters": chapters}
+
+            crawl_result = {
+                "succeeded": result.get("succeeded", 0),
+                "skipped": result.get("skipped", 0),
+                "failed": result.get("failed", 0),
+                "failures": result.get("failures", []),
+                "image_download_failures": result.get("image_download_failures", 0),
+            }
+            self.activity_log.update_activity_metadata(activity_id, {"crawl_result": crawl_result})
+
+            return {"chapters": chapters, "crawl_result": crawl_result}
 
         raise ValueError(f"Unsupported crawl activity kind: {kind}")
 
