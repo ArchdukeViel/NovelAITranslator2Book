@@ -476,6 +476,26 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  retranslateStale: (
+    novelId: string,
+    payload: {
+      chapter_ids?: string[];
+      include_legacy_unknown?: boolean;
+      activate?: boolean;
+      provider_key?: string | null;
+      provider_model?: string | null;
+    }
+  ) =>
+    apiFetch<{
+      novel_id: string;
+      stale_chapter_count: number;
+      legacy_unknown_chapter_count: number;
+      scheduled_chapter_count: number;
+      activity_id: string | null;
+    }>(`/admin/novels/${encodeURIComponent(novelId)}/retranslate-stale`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
   exportNovel: (novelId: string, payload: { format: string; chapters?: string | null }) =>
     apiDownload(`/admin/novels/${encodeURIComponent(novelId)}/export`, payload),
   getTaxonomy: (novelId: string) =>
