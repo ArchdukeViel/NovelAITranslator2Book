@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -12,6 +14,34 @@ from novelai.core.platform import CrawlJobKind, JobStatus, TranslationJobKind
 from novelai.utils import atomic_write
 
 logger = logging.getLogger(__name__)
+
+
+def EnrichSourceHealthFromCrawlResult(
+    crawl_result: dict[str, Any],
+) -> dict[str, Any]:
+    succeeded = int(crawl_result.get("succeeded") or 0)
+    skipped = int(crawl_result.get("skipped") or 0)
+    failed = int(crawl_result.get("failed") or 0)
+    failures: list[dict[str, Any]] = crawl_result.get("failures") or []
+
+    error_category_counts: dict[str, int] = {}
+    http_status_counts: dict[str, int] = {}
+
+    for f in failures:
+        cat = f.get("error_category") or "unknown"
+        error_category_counts[cat] = error_category_counts.get(cat, 0) + 1
+
+        status_code = f.get("http_status_code")
+        if status_code is not None:
+            http_status_counts[str(status_code)] = http_status_counts.get(str(status_code), 0) + 1
+
+    return {
+        "total_chapters_attempted": succeeded + skipped + failed,
+        "total_chapters_succeeded": succeeded,
+        "total_chapters_failed": failed,
+        "error_category_counts": error_category_counts,
+        "http_status_counts": http_status_counts,
+    }
 
 
 def _utc_now_iso() -> str:
@@ -37,6 +67,7 @@ class ActivityQueueService:
     LEGACY_JOBS_DIRNAME = "jobs"
     DEFAULT_PRUNE_KEEP_COMPLETED = 200
     DEFAULT_PRUNE_KEEP_FAILED = 100
+    SOURCE_HEALTH_CACHE_TTL = 60.0
 
     def __init__(self, base_dir: Path | None = None) -> None:
         self.base_dir = (base_dir or settings.DATA_DIR).resolve()
@@ -48,6 +79,8 @@ class ActivityQueueService:
         self.activity_file = self.activity_log_dir / "queue.json"
         self.jobs_file = self.activity_file
         self.source_health_file = self.activity_log_dir / "source_health.json"
+        self._lock = threading.Lock()
+        self._source_health_cache: dict[str, tuple[float, Any]] = {}
         self._migrate_legacy_jobs_dir()
 
     def _migrate_legacy_jobs_dir(self) -> None:
@@ -364,8 +397,41 @@ class ActivityQueueService:
 
             activity_log[index] = updated
             self._persist_activity(activity_log)
+            self._invalidate_source_health_cache()
             return dict(updated)
         return None
+
+    def update_activity_metadata(self, activity_id: str, patch: dict[str, Any]) -> bool:
+        with self._lock:
+            activity_log = self._load_activity()
+            for _index, act in enumerate(activity_log):
+                if act.get("id") == activity_id:
+                    break
+            else:
+                return False
+
+            activity = dict(act)
+            metadata = dict(activity.get("metadata") or {})
+            patch = dict(patch or {})
+
+            if isinstance(patch.get("progress"), dict):
+                progress = dict(metadata.get("progress") or {})
+                progress.update(patch["progress"])
+                patch["progress"] = progress
+
+            metadata.update(patch)
+
+            existing_meta = activity.get("metadata")
+            merged: dict[str, Any] = dict(existing_meta) if isinstance(existing_meta, dict) else {}
+            merged.update(metadata)
+            activity["metadata"] = merged
+            activity_log[_index] = activity
+            self._persist_activity(activity_log)
+            self._invalidate_source_health_cache()
+            return True
+
+    def _invalidate_source_health_cache(self) -> None:
+        self._source_health_cache.clear()
 
     def retry_activity(self, activity_id: str) -> dict[str, Any] | None:
         activity_log = self._load_activity()
@@ -467,17 +533,117 @@ class ActivityQueueService:
         entry["updated_at"] = now
         health[normalized_source] = entry
         self._persist_source_health(health)
-        return dict(entry)
+        self._invalidate_source_health_cache()
+        return self._build_source_health_envelope(normalized_source, entry)
+
+    @staticmethod
+    def _build_source_health_envelope(
+        source_key: str, legacy: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        legacy = legacy or {}
+        return {
+            "source_key": source_key,
+            "success_count": int(legacy.get("success_count", 0) or 0),
+            "failure_count": int(legacy.get("failure_count", 0) or 0),
+            "last_success_at": legacy.get("last_success_at"),
+            "last_failure_at": legacy.get("last_failure_at"),
+            "last_error": legacy.get("last_error"),
+            "updated_at": legacy.get("updated_at"),
+            "total_chapters_attempted": 0,
+            "total_chapters_succeeded": 0,
+            "total_chapters_failed": 0,
+            "error_category_counts": {},
+            "http_status_counts": {},
+            "last_crawl_at": legacy.get("last_success_at") or legacy.get("last_failure_at"),
+        }
+
+    @staticmethod
+    def _aggregate_crawl_into(envelope: dict[str, Any], activity: dict[str, Any]) -> None:
+        crawl_result = activity.get("metadata", {}).get("crawl_result")
+        if not isinstance(crawl_result, dict):
+            return
+
+        enriched = EnrichSourceHealthFromCrawlResult(crawl_result)
+        envelope["total_chapters_attempted"] += enriched["total_chapters_attempted"]
+        envelope["total_chapters_succeeded"] += enriched["total_chapters_succeeded"]
+        envelope["total_chapters_failed"] += enriched["total_chapters_failed"]
+
+        for cat, cnt in enriched["error_category_counts"].items():
+            envelope["error_category_counts"][cat] = envelope["error_category_counts"].get(cat, 0) + cnt
+        for sc, cnt in enriched["http_status_counts"].items():
+            envelope["http_status_counts"][sc] = envelope["http_status_counts"].get(sc, 0) + cnt
+
+        ts = activity.get("finished_at") or activity.get("started_at")
+        if ts:
+            existing_ts = envelope.get("last_crawl_at")
+            if not existing_ts or str(ts) > str(existing_ts):
+                envelope["last_crawl_at"] = str(ts)
 
     def list_source_health(self) -> list[dict[str, Any]]:
-        health = self._load_source_health()
-        return [dict(health[key]) for key in sorted(health)]
+        now = time.monotonic()
+        cached = self._source_health_cache.get("_list")
+        if cached is not None and (now - cached[0]) < self.SOURCE_HEALTH_CACHE_TTL:
+            return cached[1]
+
+        envelopes: dict[str, dict[str, Any]] = {}
+        legacy_map = self._load_source_health()
+        for activity in self._load_activity():
+            if str(activity.get("type")) != "crawl":
+                continue
+            source_key = str(activity.get("source_key") or "")
+            if not source_key:
+                continue
+            if source_key not in envelopes:
+                envelopes[source_key] = self._build_source_health_envelope(
+                    source_key, legacy_map.get(source_key)
+                )
+            self._aggregate_crawl_into(envelopes[source_key], activity)
+
+        for source_key in legacy_map:
+            if source_key not in envelopes:
+                envelopes[source_key] = self._build_source_health_envelope(
+                    source_key, legacy_map[source_key]
+                )
+
+        result = [dict(envelopes[k]) for k in sorted(envelopes)]
+        self._source_health_cache["_list"] = (now, result)
+        return result
 
     def get_source_health(self, source_key: str) -> dict[str, Any] | None:
         normalized_source = source_key.strip() if isinstance(source_key, str) else ""
         if not normalized_source:
             return None
-        return self._load_source_health().get(normalized_source)
+
+        cache_key = f"_src:{normalized_source}"
+        now = time.monotonic()
+        cached = self._source_health_cache.get(cache_key)
+        if cached is not None and (now - cached[0]) < self.SOURCE_HEALTH_CACHE_TTL:
+            return cached[1]
+
+        legacy_map = self._load_source_health()
+        envelope = self._build_source_health_envelope(
+            normalized_source, legacy_map.get(normalized_source)
+        )
+        found_crawl = False
+        for activity in self._load_activity():
+            if str(activity.get("type")) != "crawl":
+                continue
+            if str(activity.get("source_key") or "") != normalized_source:
+                continue
+            crawl_result = activity.get("metadata", {}).get("crawl_result")
+            if not isinstance(crawl_result, dict):
+                continue
+            self._aggregate_crawl_into(envelope, activity)
+            found_crawl = True
+
+        if not found_crawl and envelope["success_count"] == 0 and envelope["failure_count"] == 0:
+            result: dict[str, Any] | None = None
+        else:
+            result = dict(envelope)
+
+        if result is not None:
+            self._source_health_cache[cache_key] = (now, result)
+        return result
 
     def create_crawl_job(self, **kwargs: Any) -> dict[str, Any]:
         return self.create_crawl_activity(**kwargs)

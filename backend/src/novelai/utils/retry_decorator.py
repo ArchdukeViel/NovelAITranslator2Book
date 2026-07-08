@@ -115,13 +115,21 @@ class Retrier:
         self.backoff = BackoffCalculator(config)
 
     async def execute_async(
-        self, func: Callable[..., Awaitable[Any]], *args: Any, **kwargs: Any
+        self,
+        func: Callable[..., Awaitable[Any]],
+        *args: Any,
+        on_retry: Callable[[int, Exception], None] | None = None,
+        **kwargs: Any,
     ) -> Any:
         """Execute async function with retries.
 
         Args:
             func: Async function to execute
             *args: Positional arguments
+            on_retry: Sync callback invoked before each backoff sleep.
+                Called as ``on_retry(retry_number, exception)`` where retry_number
+                is 1-indexed (first retry = 1). Not called for initial attempt
+                or after final exhausted attempt.
             **kwargs: Keyword arguments
 
         Returns:
@@ -163,8 +171,17 @@ class Retrier:
                 )
 
                 # Call on_retry callback if provided
+                retry_number = attempt + 1
                 if self.config.on_retry:
-                    await self.config.on_retry(attempt, e)
+                    try:
+                        await self.config.on_retry(retry_number, e)
+                    except Exception as callback_exc:
+                        logger.debug("Retry callback failed: %s", callback_exc)
+                if on_retry is not None:
+                    try:
+                        on_retry(retry_number, e)
+                    except Exception as callback_exc:
+                        logger.debug("Retry callback failed: %s", callback_exc)
 
                 # Wait before retrying
                 await asyncio.sleep(delay)

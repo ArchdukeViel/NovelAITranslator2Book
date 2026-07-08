@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -251,6 +252,47 @@ async def scrape_metadata(
     return meta
 
 
+def _extract_http_status(exc: Exception) -> int | None:
+    if hasattr(exc, "response"):
+        try:
+            response = exc.response  # type: ignore[attr-defined]
+        except AttributeError:
+            response = None
+        status_code = getattr(response, "status_code", None) if response is not None else None
+        if isinstance(status_code, int):
+            return status_code
+    status_code = getattr(exc, "status_code", None)
+    if isinstance(status_code, int):
+        return status_code
+    message = str(exc)
+    for pattern in (r"\bstatus=(\d{3})\b", r"\bstatus_code=(\d{3})\b", r"\bHTTP\s+(\d{3})\b", r"\b(429|404|5\d\d)\b"):
+        match = re.search(pattern, message, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _is_quality_gate_error(exc: Exception, msg: str) -> bool:
+    return isinstance(exc, SourceError) and msg.startswith("Chapter quality gate failed")
+
+
+def _classify_error(exc: Exception, error_message: str, http_status_code: int | None = None) -> str:
+    msg = error_message.lower()
+    if _is_quality_gate_error(exc, error_message):
+        return "quality_gate"
+    if http_status_code == 429 or "rate limit" in msg or "rate_limited" in msg:
+        return "rate_limited"
+    if http_status_code == 404 or "not found" in msg:
+        return "not_found"
+    if "timeout" in msg:
+        return "timeout"
+    if http_status_code is not None and 500 <= http_status_code <= 599:
+        return "server_error"
+    if isinstance(exc, SourceError):
+        return "fetch_error"
+    return "unknown"
+
+
 async def scrape_chapters(
     self: Any,
     source_key: str,
@@ -346,6 +388,8 @@ async def _scrape_chapters_impl(
     skipped = 0
     failed = 0
     failures: list[dict[str, Any]] = []
+    retry_attempts = [0]
+    image_download_failures = 0
 
     for _chapter_index, chapter_num in enumerate(selected_numbers):
         chapter = chapter_map.get(chapter_num)
@@ -357,8 +401,11 @@ async def _scrape_chapters_impl(
             _ch_title = str(chapter.get("title") or f"Chapter {chapter_id}")
             progress_callback(f"[{_chapter_index + 1}/{_total_chapters}] {_ch_title}")
 
+        def _on_retry(retry_number: int, exc: Exception) -> None:
+            retry_attempts[0] = retry_number
+
         try:
-            payload = await source.fetch_chapter_payload(chapter["url"])
+            payload = await source.fetch_chapter_payload(chapter["url"], on_retry=_on_retry)
             text = payload.get("text")
             if not isinstance(text, str):
                 raise RuntimeError(f"Source returned invalid chapter text for {chapter['url']}.")
@@ -465,6 +512,8 @@ async def _scrape_chapters_impl(
             )
             if progress_callback:
                 progress_callback(f"  Saved chapter {chapter_id}.")
+            if any(img.get("download_error") for img in downloaded_images):
+                image_download_failures += 1
             succeeded += 1
 
         except (SourceError, RuntimeError, Exception) as exc:
@@ -484,6 +533,7 @@ async def _scrape_chapters_impl(
                     f"  Chapter {chapter_id} failed ({error_type}): {error_message}"
                 )
 
+            http_status_code = _extract_http_status(exc)
             failures.append({
                 "chapter_id": chapter_id,
                 "chapter_number": chapter_num,
@@ -491,6 +541,9 @@ async def _scrape_chapters_impl(
                 "source_url": chapter.get("url"),
                 "error_type": error_type,
                 "error_message": error_message,
+                "error_category": _classify_error(exc, error_message, http_status_code),
+                "http_status_code": http_status_code,
+                "retry_attempts": retry_attempts[0],
             })
             failed += 1
 
@@ -510,4 +563,5 @@ async def _scrape_chapters_impl(
         "skipped": skipped,
         "failed": failed,
         "failures": failures,
+        "image_download_failures": image_download_failures,
     }
