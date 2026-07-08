@@ -10,6 +10,53 @@ from novelai.storage.common import _utc_now_iso
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_glossary_snapshot_from_metadata(
+    metadata: dict[str, Any] | None,
+) -> Any:
+    """Resolve a GlossarySnapshot from novel metadata if available.
+
+    Returns None when metadata is missing or has no glossary fields.
+    This is a best-effort resolver for the file-based storage layer;
+    callers that have DB access should resolve the snapshot directly.
+    """
+    # Lazy import to avoid circular dependency between storage and translation.
+    from novelai.translation.glossary_freshness import GlossarySnapshot
+
+    if not isinstance(metadata, dict):
+        return None
+    revision = metadata.get("glossary_revision")
+    if not isinstance(revision, int):
+        return None
+    hash_value = metadata.get("glossary_hash")
+    if not isinstance(hash_value, str) or not hash_value:
+        hash_value = None
+    term_count = metadata.get("glossary_term_count")
+    if not isinstance(term_count, int):
+        term_count = None
+    return GlossarySnapshot(
+        revision=revision,
+        hash=hash_value,
+        approved_term_count=term_count,
+    )
+
+
+def _attach_freshness_fields(
+    version: dict[str, Any],
+    snapshot: Any,
+) -> dict[str, Any]:
+    """Return a copy of ``version`` with glossary freshness fields attached.
+
+    Non-mutating: does not modify ``version``. If ``snapshot`` is None,
+    freshness is reported as ``unknown``.
+    """
+    # Lazy import to avoid circular dependency between storage and translation.
+    from novelai.translation.glossary_freshness import compute_glossary_freshness
+
+    result = dict(version)
+    result.update(compute_glossary_freshness(version, snapshot))
+    return result
+
 def _translated_payload_to_version(self: Any, translated: dict[str, Any], fallback_id: str) -> dict[str, Any]:
     raw_text = translated.get("text")
     text = raw_text if isinstance(raw_text, str) else ""
@@ -256,9 +303,13 @@ def load_translated_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[s
     if not isinstance(translated, dict):
         return None
 
+    metadata = self.load_metadata(novel_id) if hasattr(self, "load_metadata") else None
+    snapshot = _resolve_glossary_snapshot_from_metadata(metadata)
+    version_with_freshness = _attach_freshness_fields(translated, snapshot)
+
     return {
         "id": chapter_id,
-        "version_id": translated.get("id"),
+        "version_id": version_with_freshness.get("version_id") or translated.get("id"),
         "version_kind": self._normalize_version_kind(translated.get("kind")),
         "provider": translated.get("provider"),
         "model": translated.get("model"),
@@ -294,6 +345,11 @@ def load_translated_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[s
         "ocr_text": payload.get("ocr_text"),
         "ocr_status": payload.get("ocr_status", "skipped"),
         "reembed_status": payload.get("reembed_status", "skipped"),
+        "glossary_freshness": version_with_freshness.get("glossary_freshness"),
+        "glossary_stale": version_with_freshness.get("glossary_stale"),
+        "glossary_stale_reason": version_with_freshness.get("glossary_stale_reason"),
+        "current_glossary_revision": version_with_freshness.get("current_glossary_revision"),
+        "current_glossary_hash": version_with_freshness.get("current_glossary_hash"),
     }
 
 
@@ -353,12 +409,16 @@ def list_translated_chapter_versions(self: Any, novel_id: str, chapter_id: str) 
         active = self._active_translation_version(payload)
         active_id = active.get("id") if isinstance(active, dict) else None
 
+    metadata = self.load_metadata(novel_id) if hasattr(self, "load_metadata") else None
+    snapshot = _resolve_glossary_snapshot_from_metadata(metadata)
+
     normalized: list[dict[str, Any]] = []
     for version in versions:
         item = dict(version)
         item["version_id"] = item.get("id")
         item["version_kind"] = self._normalize_version_kind(item.get("kind"))
         item["active"] = bool(active_id and item.get("id") == active_id)
+        item.update(_attach_freshness_fields(item, snapshot))
         normalized.append(item)
     return normalized
 
