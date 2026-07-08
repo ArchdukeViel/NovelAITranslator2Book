@@ -118,50 +118,50 @@ Scope boundaries:
   - [x] 9.7 Avoid expensive full text reads when metadata is sufficient.
   - [x] 9.8 Keep aggregate counts optional if first-pass performance or API shape makes them unsafe.
 
-- [ ] 10. Track Glossary Snapshot on Queued Translation Jobs
-  - [ ] 10.1 Add `scheduled_glossary_revision` to queued translation job metadata when available.
-  - [ ] 10.2 Add `scheduled_glossary_hash` when available.
-  - [ ] 10.3 Record the scheduled snapshot when the translation job is created.
-  - [ ] 10.4 Before execution starts, resolve the current glossary snapshot.
-  - [ ] 10.5 Compare scheduled snapshot with current snapshot.
-  - [ ] 10.6 If the job is already running, let it continue with the execution snapshot.
-  - [ ] 10.7 Ensure saved versions record the glossary snapshot actually used.
-  - [ ] 10.8 Preserve activity tracking, request IDs, and checkpoint/resume metadata where they already exist.
+- [x] 10. Track Glossary Snapshot on Queued Translation Jobs
+  - [x] 10.1 Add `scheduled_glossary_revision` to queued translation job metadata when available.
+  - [x] 10.2 Add `scheduled_glossary_hash` when available.
+  - [x] 10.3 Record the scheduled snapshot when the translation job is created.
+  - [x] 10.4 Before execution starts, resolve the current glossary snapshot.
+  - [x] 10.5 Compare scheduled snapshot with current snapshot.
+  - [x] 10.6 If the job is already running, let it continue with the execution snapshot.
+  - [x] 10.7 Ensure saved versions record the glossary snapshot actually used.
+  - [x] 10.8 Preserve activity tracking, request IDs, and checkpoint/resume metadata where they already exist.
 
-- [ ] 11. Implement Queued Job Invalidation Behavior
-  - [ ] 11.1 Define the default stale-before-run behavior.
-  - [ ] 11.2 Prefer `cancel_and_reschedule` unless the existing scheduler has a better native pattern.
-  - [ ] 11.3 Support or document allowed behaviors: `cancel_and_reschedule`, `run_with_current_glossary`, `run_with_scheduled_glossary`, and `fail_requires_admin`.
-  - [ ] 11.4 Mark stale queued jobs with a clear status or metadata field.
-  - [ ] 11.5 Avoid producing new translations with known-stale glossary state by default.
-  - [ ] 11.6 Integrate with existing checkpoint/resume semantics.
-  - [ ] 11.7 Do not create a parallel scheduler state machine.
-  - [ ] 11.8 Ensure completed jobs are not retroactively changed.
+- [x] 11. Implement Queued Job Invalidation Behavior
+  - [x] 11.1 Define the default stale-before-run behavior.
+  - [x] 11.2 Prefer `cancel_and_reschedule` unless the existing scheduler has a better native pattern.
+  - [x] 11.3 Support or document allowed behaviors: `cancel_and_reschedule`, `run_with_current_glossary`, `run_with_scheduled_glossary`, and `fail_requires_admin`.
+  - [x] 11.4 Mark stale queued jobs with a clear status or metadata field.
+  - [x] 11.5 Avoid producing new translations with known-stale glossary state by default.
+  - [x] 11.6 Integrate with existing checkpoint/resume semantics.
+  - [x] 11.7 Do not create a parallel scheduler state machine.
+  - [x] 11.8 Ensure completed jobs are not retroactively changed.
 
-- [ ] 12. Expose Freshness in Admin APIs
-  - [ ] 12.1 Add glossary metadata fields to version list responses.
-  - [ ] 12.2 Add computed freshness fields to version list responses.
-  - [ ] 12.3 Add freshness fields to version detail responses.
-  - [ ] 12.4 Add active-version freshness to chapter translation detail responses.
-  - [ ] 12.5 Add stale/fresh/legacy counts to novel/admin summary responses when implemented.
-  - [ ] 12.6 Update strict response models if they would drop new fields.
-  - [ ] 12.7 Keep all admin response changes additive.
-  - [ ] 12.8 Do not change public reader response shape.
+- [x] 12. Expose Freshness in Admin APIs
+  - [x] 12.1 Add glossary metadata fields to version list responses.
+  - [x] 12.2 Add computed freshness fields to version list responses.
+  - [x] 12.3 Add freshness fields to version detail responses.
+  - [x] 12.4 Add active-version freshness to chapter translation detail responses.
+  - [x] 12.5 Add stale/fresh/legacy counts to novel/admin summary responses when implemented.
+  - [x] 12.6 Update strict response models if they would drop new fields.
+  - [x] 12.7 Keep all admin response changes additive.
+  - [x] 12.8 Do not change public reader response shape.
 
-- [ ] 13. Add or Extend Retranslate-Stale Operation
-  - [ ] 13.1 Inspect existing retranslation endpoint/activity and prefer extending it with `stale_only=true`.
-  - [ ] 13.2 If no suitable endpoint exists, add a focused admin retranslate-stale operation.
-  - [ ] 13.3 Support a single chapter.
-  - [ ] 13.4 Support a selected list of chapter IDs.
-  - [ ] 13.5 Support all stale active translations in a novel.
-  - [ ] 13.6 Optionally include `legacy_unknown` translations.
-  - [ ] 13.7 Use current glossary revision/hash.
-  - [ ] 13.8 Reuse existing translation orchestration.
-  - [ ] 13.9 Reuse existing translation locks.
-  - [ ] 13.10 Reuse existing activity/job tracking.
-  - [ ] 13.11 Return scheduled count, stale count, legacy count, activity ID, and activation behavior.
+- [x] 13. Add or Extend Retranslate-Stale Operation
+  - [x] 13.1 Inspect existing retranslation endpoint/activity and prefer extending it with `stale_only=true`.
+  - [x] 13.2 If no suitable endpoint exists, add a focused admin retranslate-stale operation.
+  - [x] 13.3 Support a single chapter.
+  - [x] 13.4 Support a selected list of chapter IDs.
+  - [x] 13.5 Support all stale active translations in a novel.
+  - [x] 13.6 Optionally include `legacy_unknown` translations.
+  - [x] 13.7 Use current glossary revision/hash.
+  - [x] 13.8 Reuse existing translation orchestration.
+  - [x] 13.9 Reuse existing translation locks.
+  - [x] 13.10 Reuse existing activity/job tracking.
+  - [x] 13.11 Return scheduled count, stale count, legacy count, activity ID, and activation behavior.
 
-- [ ] 14. Preserve Version History During Retranslation
+- [x] 14. Preserve Version History During Retranslation
   - [x] 14.1 Save retranslations as new translation versions.
   - [x] 14.2 Do not overwrite stale versions.
   - [x] 14.3 Do not delete stale versions.
@@ -170,7 +170,7 @@ Scope boundaries:
   - [x] 14.6 Keep stale versions available for admin comparison.
   - [x] 14.7 Do not mutate historical version text.
 
-- [ ] 15. Preserve Active-Version Semantics
+- [x] 15. Preserve Active-Version Semantics
   - [x] 15.1 Confirm stale detection does not deactivate active versions.
   - [x] 15.2 Confirm stale detection does not activate historical versions.
   - [x] 15.3 Retranslation must not activate new versions by default unless existing behavior already does or `activate=true` is explicitly requested.
@@ -179,17 +179,17 @@ Scope boundaries:
   - [x] 15.6 Confirm public reader continues using active-version selection.
   - [x] 15.7 Do not add public reader stale warnings.
 
-- [ ] 16. Update Admin UI
-  - [ ] 16.1 Show stale glossary badge in translation/version lists.
-  - [ ] 16.2 Show freshness state in version detail.
-  - [ ] 16.3 Show version glossary revision versus current glossary revision.
-  - [ ] 16.4 Show stale reason where available.
-  - [ ] 16.5 Show stale active translation count in novel translation overview when API provides it.
-  - [ ] 16.6 Show legacy/unknown count when API provides it.
-  - [ ] 16.7 Add retranslate-stale action.
-  - [ ] 16.8 Add option to include or exclude legacy/unknown versions where supported.
-  - [ ] 16.9 Add option to activate fresh retranslations automatically where supported.
-  - [ ] 16.10 Keep stale warnings out of public reader UI.
+- [x] 16. Update Admin UI
+  - [x] 16.1 Show stale glossary badge in translation/version lists.
+  - [x] 16.2 Show freshness state in version detail.
+  - [x] 16.3 Show version glossary revision versus current glossary revision.
+  - [x] 16.4 Show stale reason where available.
+  - [x] 16.5 Show stale active translation count in novel translation overview when API provides it.
+  - [x] 16.6 Show legacy/unknown count when API provides it.
+  - [x] 16.7 Add retranslate-stale action.
+  - [x] 16.8 Add option to include or exclude legacy/unknown versions where supported.
+  - [x] 16.9 Add option to activate fresh retranslations automatically where supported.
+  - [x] 16.10 Keep stale warnings out of public reader UI.
 
 - [x] 17. Add Backend Tests
   - [x] 17.1 Create `backend/tests/test_glossary_revision_translation_invalidation.py`.
@@ -219,17 +219,17 @@ Scope boundaries:
   - [x] 18.7 Test running jobs save versions with the execution glossary snapshot.
   - [x] 18.8 Test request IDs and activity tracking survive queued-job invalidation.
 
-- [ ] 19. Add Frontend Tests If UI Changes
-  - [ ] 19.1 Test stale badge rendering.
-  - [ ] 19.2 Test stale reason tooltip or detail display.
-  - [ ] 19.3 Test stale active translation count rendering.
-  - [ ] 19.4 Test legacy/unknown count rendering.
-  - [ ] 19.5 Test retranslate-stale action calls the correct API.
-  - [ ] 19.6 Test include-legacy option is respected.
-  - [ ] 19.7 Test activate-on-completion option is respected.
-  - [ ] 19.8 Test fresh status appears after data refresh.
+- [x] 19. Add Frontend Tests If UI Changes
+  - [x] 19.1 Test stale badge rendering.
+  - [x] 19.2 Test stale reason tooltip or detail display.
+  - [x] 19.3 Test stale active translation count rendering.
+  - [x] 19.4 Test legacy/unknown count rendering.
+  - [x] 19.5 Test retranslate-stale action calls the correct API.
+  - [x] 19.6 Test include-legacy option is respected.
+  - [x] 19.7 Test activate-on-completion option is respected.
+  - [x] 19.8 Test fresh status appears after data refresh.
 
-- [ ] 20. Backward Compatibility Checks
+- [x] 20. Backward Compatibility Checks
   - [x] 20.1 Confirm translation versions without glossary metadata still load.
   - [x] 20.2 Confirm existing active-version selection still works.
   - [x] 20.3 Confirm existing glossary gate behavior remains intact.
@@ -240,34 +240,34 @@ Scope boundaries:
   - [x] 20.8 Confirm storage changes are additive fields only.
   - [x] 20.9 Confirm public reader behavior is unchanged.
 
-- [ ] 21. Run Verification
-  - [ ] 21.1 Run focused glossary revision invalidation tests.
-  - [ ] 21.2 Run existing glossary tests.
-  - [ ] 21.3 Run existing translation storage tests.
-  - [ ] 21.4 Run existing translation cache tests.
-  - [ ] 21.5 Run existing translation scheduler/job tests.
-  - [ ] 21.6 Run admin API tests.
-  - [ ] 21.7 Run frontend/admin tests if UI changed.
-  - [ ] 21.8 Run `ruff check` on changed backend source and test files.
-  - [ ] 21.9 Run configured backend type checker, such as `pyright` or `mypy`, if present.
-  - [ ] 21.10 Fix test, lint, and type failures caused by this work.
+- [x] 21. Run Verification
+  - [x] 21.1 Run focused glossary revision invalidation tests.
+  - [x] 21.2 Run existing glossary tests.
+  - [x] 21.3 Run existing translation storage tests.
+  - [x] 21.4 Run existing translation cache tests.
+  - [x] 21.5 Run existing translation scheduler/job tests.
+  - [x] 21.6 Run admin API tests.
+  - [x] 21.7 Run frontend/admin tests if UI changed.
+  - [x] 21.8 Run `ruff check` on changed backend source and test files.
+  - [x] 21.9 Run configured backend type checker, such as `pyright` or `mypy`, if present.
+  - [x] 21.10 Fix test, lint, and type failures caused by this work.
 
-- [ ] 22. Final Acceptance Review
-  - [ ] 22.1 Verify new translation versions store glossary revision metadata.
-  - [ ] 22.2 Verify new translation versions store glossary hash when available.
-  - [ ] 22.3 Verify active and historical versions classify as `fresh`, `stale`, `legacy_unknown`, or `unknown`.
-  - [ ] 22.4 Verify glossary changes make older translations visibly stale without deactivating them.
-  - [ ] 22.5 Verify queued translation jobs detect stale scheduled glossary snapshots before execution.
-  - [ ] 22.6 Verify stale queued jobs follow the documented invalidation behavior.
-  - [ ] 22.7 Verify admin APIs expose glossary freshness fields additively.
-  - [ ] 22.8 Verify admin summaries expose stale and legacy/unknown counts when implemented.
-  - [ ] 22.9 Verify admins can retranslate stale chapters and produce new fresh versions.
-  - [ ] 22.10 Verify retranslation does not overwrite old versions.
-  - [ ] 22.11 Verify retranslation does not activate new versions by default unless requested.
-  - [ ] 22.12 Verify legacy versions without glossary metadata remain loadable.
-  - [ ] 22.13 Verify existing glossary gate, prompt injection, cache identity, and active-version behavior remain intact.
-  - [ ] 22.14 Verify public reader behavior is unchanged.
-  - [ ] 22.15 Verify focused backend and admin UI tests pass.
+- [x] 22. Final Acceptance Review
+  - [x] 22.1 Verify new translation versions store glossary revision metadata.
+  - [x] 22.2 Verify new translation versions store glossary hash when available.
+  - [x] 22.3 Verify active and historical versions classify as `fresh`, `stale`, `legacy_unknown`, or `unknown`.
+  - [x] 22.4 Verify glossary changes make older translations visibly stale without deactivating them.
+  - [x] 22.5 Verify queued translation jobs detect stale scheduled glossary snapshots before execution.
+  - [x] 22.6 Verify stale queued jobs follow the documented invalidation behavior.
+  - [x] 22.7 Verify admin APIs expose glossary freshness fields additively.
+  - [x] 22.8 Verify admin summaries expose stale and legacy/unknown counts when implemented.
+  - [x] 22.9 Verify admins can retranslate stale chapters and produce new fresh versions.
+  - [x] 22.10 Verify retranslation does not overwrite old versions.
+  - [x] 22.11 Verify retranslation does not activate new versions by default unless requested.
+  - [x] 22.12 Verify legacy versions without glossary metadata remain loadable.
+  - [x] 22.13 Verify existing glossary gate, prompt injection, cache identity, and active-version behavior remain intact.
+  - [x] 22.14 Verify public reader behavior is unchanged.
+  - [x] 22.15 Verify focused backend and admin UI tests pass.
 
 ## Requirement Coverage Matrix
 
@@ -292,21 +292,21 @@ Scope boundaries:
 
 ## Definition of Done
 
-- [ ] New translation versions store glossary revision metadata.
-- [ ] New translation versions store glossary hash when available.
-- [ ] Current glossary snapshot is resolved from existing glossary state.
-- [ ] Glossary revision increment paths are verified and only missing paths are patched.
-- [ ] Cache identity remains glossary-aware.
-- [ ] Active and historical versions compute freshness dynamically.
-- [ ] Freshness states include `fresh`, `stale`, `legacy_unknown`, and `unknown`.
-- [ ] Stale reasons are exposed for admin diagnosis.
-- [ ] Queued translation jobs record scheduled glossary snapshots.
-- [ ] Queued jobs detect stale glossary snapshots before execution.
-- [ ] Admin APIs expose freshness fields additively.
-- [ ] Admin UI shows stale badges, stale counts, stale reasons, and retranslation controls.
-- [ ] Retranslate-stale creates new fresh versions without overwriting old versions.
-- [ ] Stale detection does not deactivate active versions.
-- [ ] Public reader behavior is unchanged.
-- [ ] Legacy translation versions without glossary metadata remain loadable.
-- [ ] Existing glossary gate, prompt injection, cache identity, provider routing, and active-version behavior remain intact.
-- [ ] Focused backend, queue, cache, admin API, and admin UI tests pass.
+- [x] New translation versions store glossary revision metadata.
+- [x] New translation versions store glossary hash when available.
+- [x] Current glossary snapshot is resolved from existing glossary state.
+- [x] Glossary revision increment paths are verified and only missing paths are patched.
+- [x] Cache identity remains glossary-aware.
+- [x] Active and historical versions compute freshness dynamically.
+- [x] Freshness states include `fresh`, `stale`, `legacy_unknown`, and `unknown`.
+- [x] Stale reasons are exposed for admin diagnosis.
+- [x] Queued translation jobs record scheduled glossary snapshots.
+- [x] Queued jobs detect stale glossary snapshots before execution.
+- [x] Admin APIs expose freshness fields additively.
+- [x] Admin UI shows stale badges, stale counts, stale reasons, and retranslation controls.
+- [x] Retranslate-stale creates new fresh versions without overwriting old versions.
+- [x] Stale detection does not deactivate active versions.
+- [x] Public reader behavior is unchanged.
+- [x] Legacy translation versions without glossary metadata remain loadable.
+- [x] Existing glossary gate, prompt injection, cache identity, provider routing, and active-version behavior remain intact.
+- [x] Focused backend, queue, cache, admin API, and admin UI tests pass.
