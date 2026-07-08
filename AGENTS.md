@@ -259,4 +259,4 @@ Compatibility aliases (tolerated debt, do not extend): `id`, `source`,
 
 - `.gitignore` covers `cache/`, `venv/`, `node_modules/`, `*.log`, `*.bak`, `.pytest_cache/`, `.ruff_cache/`, `backend/tests/.tmp/`, `storage/novel_library/`.
 - Never write scratch `.txt` dumps to the repo root — use the OS temp dir.
-- `.hermes/` is gitignored (agent scratch). `.agents/` is tracked in git (spec files).
+- `.opencode/` is gitignored (agent scratch). `.agents/` is tracked in git (spec files).
