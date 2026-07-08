@@ -34,6 +34,7 @@ from novelai.translation.qa import (
     extract_unambiguous_json_object,
     normalize_translation_output,
 )
+from novelai.translation.scheduler import build_scheduler_summary, collect_scheduler_decisions
 
 logger = logging.getLogger(__name__)
 
@@ -2437,6 +2438,7 @@ async def translate_chapters(
         "failed": failed_count,
         "skipped": skipped_count,
         "total": len(selected_numbers),
+        "scheduler_summary": build_scheduler_summary(collect_scheduler_decisions()),
     }
     if first_error is not None:
         # Attach progress so the activity worker can surface a partial-failure

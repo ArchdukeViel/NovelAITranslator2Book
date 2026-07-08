@@ -1190,7 +1190,10 @@ class TranslateStage(PipelineStage):
                             policy=scheduler.policy.value,
                             total_candidates=len(scheduler.model_configs),
                         )
-                        context.metadata.setdefault("scheduler_decisions", []).append(decision.to_dict())
+                        decision_dict = decision.to_dict()
+                        context.metadata.setdefault("scheduler_decisions", []).append(decision_dict)
+                        from novelai.translation.scheduler import push_scheduler_decision
+                        push_scheduler_decision(decision_dict)
 
                         attempted_models.add((used_provider_key, used_provider_model))
                         cached = self._cached_translation(
