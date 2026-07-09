@@ -147,6 +147,7 @@ class FakeFetchService(FetchService):
         referer: str | None = None,
         headers: dict[str, str] | None = None,
         cookies: Any = None,
+        on_retry: Any = None,
     ) -> FetchResult:
         self.calls.append(
             {
