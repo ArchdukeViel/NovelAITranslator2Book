@@ -6,6 +6,7 @@ import contextlib
 import os
 import shutil
 import stat
+import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -32,7 +33,11 @@ TESTS_RUNTIME_ROOT = TESTS_ROOT / ".tmp" / "runtime"
 
 
 def _force_remove_tree(path: Path) -> None:
-    """Remove a directory tree even when Windows leaves read-only temp paths behind."""
+    """Remove a directory tree even when Windows leaves read-only temp paths behind.
+
+    Uses a subprocess with a timeout to prevent indefinite hangs on locked files.
+    """
+    import sys as _sys
 
     def on_error(func: Any, target: str, exc_info: Any) -> None:
         with contextlib.suppress(Exception):
@@ -40,7 +45,14 @@ def _force_remove_tree(path: Path) -> None:
         with contextlib.suppress(Exception):
             func(target)
 
-    shutil.rmtree(path, onerror=on_error)
+    try:
+        subprocess.run(
+            [_sys.executable, "-c",
+             f"import shutil; shutil.rmtree(r'{path}', onerror=lambda f, t, e: None)"],
+            timeout=10, capture_output=True, check=False,
+        )
+    except (subprocess.TimeoutExpired, Exception):
+        shutil.rmtree(path, onerror=on_error, ignore_errors=True)
 
 
 def cleanup_test_artifacts(
@@ -49,7 +61,12 @@ def cleanup_test_artifacts(
     *,
     include_pytest_managed: bool = False,
 ) -> tuple[list[Path], list[str]]:
-    """Remove test-generated cache and temp directories."""
+    """Remove test-generated cache and temp directories.
+
+    .tmp/runtime/ is intentionally NOT cleaned here. It's recreated each
+    session by isolate_tests_from_runtime_library and may contain locked
+    files on Windows that cause indefinite hangs during session teardown.
+    """
     removed: list[Path] = []
     warnings: list[str] = []
     extra_test_output_roots = (
@@ -57,7 +74,6 @@ def cleanup_test_artifacts(
         project_root / ".pipeline_verify",
         project_root / ".pytest_tmp",
         tests_root / ".cache",
-        tests_root / ".tmp" / "runtime",
     )
 
     paths_to_remove = [
@@ -69,7 +85,6 @@ def cleanup_test_artifacts(
         paths_to_remove.extend(
             [
                 tests_root / ".pytest_cache",
-                tests_root / ".tmp",
             ]
         )
 
