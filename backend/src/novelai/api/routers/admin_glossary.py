@@ -335,13 +335,13 @@ class GlossaryStatusTransitionRequest(BaseModel):
 
 
 class GlossaryStatusTransitionResponse(BaseModel):
-    novel_id: str
+    novel_id: int
     glossary_status: str
     glossary_revision: int
 
 
 class GlossaryBatchApproveResponse(BaseModel):
-    novel_id: str
+    novel_id: int
     approved_count: int
     glossary_status: str
     glossary_revision: int
@@ -1759,7 +1759,7 @@ async def batch_approve_glossary_candidates(
         actor_user_id=actor_user_id,
     )
     return GlossaryBatchApproveResponse(
-        novel_id=updated.slug,
+        novel_id=updated.id,
         approved_count=approved_count,
         glossary_status=updated.glossary_status,
         glossary_revision=updated.glossary_revision,
@@ -1801,7 +1801,7 @@ async def transition_glossary_status(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return GlossaryStatusTransitionResponse(
-        novel_id=novel.slug,
+        novel_id=novel.id,
         glossary_status=novel.glossary_status,
         glossary_revision=novel.glossary_revision,
     )

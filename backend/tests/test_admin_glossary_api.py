@@ -345,8 +345,13 @@ def test_owner_can_transition_glossary_status(owner_client, db_session) -> None:
     assert [event.event_type for event in events] == ["novel_glossary_status_change"]
 
 
-def test_glossary_status_endpoint_rejects_non_owner(client, db_session) -> None:
+def test_glossary_status_endpoint_rejects_non_owner(client, app, db_session) -> None:
     novel = _seed_novel(db_session, "status-forbidden")
+
+    user = User(email="reader-status@example.com", role="user")
+    db_session.add(user)
+    db_session.flush()
+    set_user(app, user_id=user.id, role="user")
 
     resp = client.patch(
         f"/api/admin/novels/{novel.slug}/glossary-status",
