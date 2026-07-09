@@ -856,7 +856,7 @@ class TranslateStage(PipelineStage):
         chunk: str,
         request: TranslationRequest | None,
         glossary_hash: str | None = None,
-    ) -> tuple[str, str, str] | None:
+    ) -> tuple[str, str, str, bool] | None:
         provider_key, provider_model = self._resolve_provider_and_model(provider_key, provider_model)
         provider = self._provider_factory(provider_key)
 
@@ -866,11 +866,17 @@ class TranslateStage(PipelineStage):
                 source_language = self._infer_source_language(context) or "auto"
                 target_language = context.metadata.get("target_language") or settings.TRANSLATION_TARGET_LANGUAGE
                 g_hash = glossary_hash or ""
-                cache_key = make_cache_key(chunk, source_language, target_language, g_hash)
+                prompt_version = context.metadata.get("prompt_version") or ""
+                cache_key = make_cache_key(
+                    chunk, source_language, target_language, g_hash,
+                    provider_key=provider.key,
+                    provider_model=provider_model,
+                    prompt_version=prompt_version,
+                )
                 entry = self._cache_service.get(cache_key)
                 if entry is not None:
                     logger.debug("Cache hit for chunk: key=%s, cache_hit=True", cache_key[:16])
-                    return entry.translated_text, provider.key, provider_model
+                    return entry.translated_text, provider.key, provider_model, True
             except Exception as exc:
                 logger.warning("Cache read error: %s", exc)
 
@@ -878,7 +884,7 @@ class TranslateStage(PipelineStage):
         cached = self._cache.get(cache_key, provider.key, provider_model)
         if cached is None:
             return None
-        return cached, provider.key, provider_model
+        return cached, provider.key, provider_model, True
 
     async def _translate_with_model(
         self,
@@ -967,13 +973,21 @@ class TranslateStage(PipelineStage):
 
         self._usage.record(usage_entry)
 
+        cache_key: str | None = None
+        entry: CacheEntry | None = None
         if settings.TRANSLATION_CACHE_ENABLED:
             try:
                 from novelai.services.cache.translation_cache import CacheEntry, make_cache_key
                 source_language = self._infer_source_language(context) or "auto"
                 target_language = context.metadata.get("target_language") or settings.TRANSLATION_TARGET_LANGUAGE
                 g_hash = glossary_hash or ""
-                cache_key = make_cache_key(chunk, source_language, target_language, g_hash)
+                prompt_version = context.metadata.get("prompt_version") or ""
+                cache_key = make_cache_key(
+                    chunk, source_language, target_language, g_hash,
+                    provider_key=provider.key,
+                    provider_model=provider_model,
+                    prompt_version=prompt_version,
+                )
                 entry = CacheEntry(
                     key=cache_key,
                     source_text=chunk,
@@ -987,10 +1001,13 @@ class TranslateStage(PipelineStage):
                     ttl_seconds=settings.TRANSLATION_CACHE_TTL_SECONDS,
                     novel_id=context.novel_id,
                 )
-                self._cache_service.set(cache_key, entry)
                 logger.debug("Cache miss for chunk: key=%s, cache_hit=False", cache_key[:16])
             except Exception as exc:
                 logger.warning("Cache write error: %s", exc)
+
+        if cache_key is not None and entry is not None:
+            pending = context.metadata.setdefault("_pending_cache_entries", [])
+            pending.append((cache_key, entry))
 
         cache_key = request.cache_key() if request is not None else chunk
         self._cache.set(cache_key, provider.key, provider_model, text)
@@ -1066,6 +1083,8 @@ class TranslateStage(PipelineStage):
         completed = 0
         progress = context.metadata.setdefault("progress", {})
         if isinstance(progress, dict):
+            progress.setdefault("cache_hits", 0)
+            progress.setdefault("cache_misses", 0)
             progress.update(
                 {
                     "status": "running",
@@ -1089,6 +1108,7 @@ class TranslateStage(PipelineStage):
                 progress["model_states"] = scheduler.to_model_state_list()
 
         async def worker(chunk_index: int, chunk: str | TranslationChunk) -> str:
+            cache_hit = False
             chunk_text = self._chunk_text(chunk)
             chunk_id = self._chunk_id(chunk, chunk_index)
             chapter_ids = self._chapter_ids(context, chunk)
@@ -1205,7 +1225,8 @@ class TranslateStage(PipelineStage):
                             glossary_hash=prompt_glossary_hash,
                         )
                         if cached is not None:
-                            translated, used_provider_key, used_provider_model = cached
+                            translated, used_provider_key, used_provider_model, _cache_hit = cached
+                            cache_hit = True
                             logger.debug("Cache hit for chunk %s using %s/%s", chunk_id, used_provider_key, used_provider_model)
                             context.chunk_states[chunk_id] = {
                                 **context.chunk_states.get(chunk_id, {}),
@@ -1311,6 +1332,7 @@ class TranslateStage(PipelineStage):
                             selection_reason=selection.reason,
                             status=ChunkAttemptStatus.RUNNING.value,
                         )
+                        cache_hit = False
                         try:
                             translated, used_provider_key, used_provider_model, cache_hit = await self._translate_with_model(
                                 context,
@@ -1418,6 +1440,11 @@ class TranslateStage(PipelineStage):
                 async with glossary_lock:
                     self._observe_chunk_context(chunk_text, glossary_state, chunk_index=chunk_index)
                 mark_chunk_completed(chunk_index)
+                if isinstance(progress, dict):
+                    if cache_hit:
+                        progress["cache_hits"] = int(progress.get("cache_hits", 0)) + 1
+                    else:
+                        progress["cache_misses"] = int(progress.get("cache_misses", 0)) + 1
                 return translated
 
         context.translations = await asyncio.gather(*[worker(i, c) for i, c in enumerate(chunks)])
