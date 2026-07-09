@@ -308,9 +308,9 @@ class TestCatalog:
         self, client: TestClient, storage: StorageService
     ) -> None:
         _seed_novel(storage, "novel-001", chapters=[
-            {"id": "ch001", "title": "Source Chapter 1", "translated_title": "Translated Chapter 1", "num": 1},
-            {"id": "ch002", "title": "Source Chapter 2", "translated_title": "Translated Chapter 2", "num": 2},
-            {"id": "ch003", "title": "Source Chapter 3", "translated_title": "Translated Chapter 3", "num": 3},
+            {"id": "ch001", "title": "Source Chapter 1", "translated_title": "Translated Chapter 1", "num": 1, "translated_at": "2026-01-01T00:00:00Z"},
+            {"id": "ch002", "title": "Source Chapter 2", "translated_title": "Translated Chapter 2", "num": 2, "translated_at": "2026-01-02T00:00:00Z"},
+            {"id": "ch003", "title": "Source Chapter 3", "translated_title": "Translated Chapter 3", "num": 3, "translated_at": "2026-01-03T00:00:00Z"},
         ])
         _seed_translated_chapter(storage, "novel-001", "ch001", "Translated one.")
         _seed_translated_chapter(storage, "novel-001", "ch002", "Translated two.")
