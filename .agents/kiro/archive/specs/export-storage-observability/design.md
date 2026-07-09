@@ -1,0 +1,578 @@
+# Design: Export Storage Observability
+
+## Overview
+
+This design adds storage-backend-safe observability for export artifacts.
+
+Export creates downstream artifacts from translated chapter storage, active version selection, novel metadata, glossary state, export options, templates, and assets. Admins need to know what was exported, where the artifact is stored, which input versions were used, whether the artifact is stale, and why an export failed.
+
+This design is additive and begins with source review because export paths were not fully covered in earlier research. Implementation must first document the current export service, storage layout, download routes, and activity flow before locking the manifest shape into tests.
+
+The implementation must align with the existing storage backend abstraction and storage contract tests. It must not leak local filesystem paths, S3 bucket internals, credentials, or storage-provider-specific details through admin or public APIs.
+
+## Goals
+
+- Persist a compact manifest for new export artifacts.
+- Expose export status, artifact metadata, input versions, and failure reasons to admins.
+- Track export progress and result/failure metadata in activity records.
+- Compute whether an export is stale compared with current translation/metadata/glossary/export-option state.
+- List latest exports per format.
+- Preserve existing download behavior.
+- Keep storage-backend support compatible with local filesystem and object storage backends.
+- Add focused backend, storage contract, admin API, and frontend tests.
+
+## Non-Goals
+
+- Redesigning export rendering.
+- Changing export format output.
+- Changing public reader availability.
+- Changing active translation version selection.
+- Changing translation version storage.
+- Changing crawler/source adapter behavior.
+- Rewriting legacy exports.
+- Exposing unpublished/private export artifacts publicly.
+- Leaking local absolute paths, S3 paths, bucket names, credentials, or storage internals.
+
+## Architecture
+
+### Affected Files
+
+| File | Change type |
+|---|---|
+| Existing `ExportService` module | Emit export manifests and safe failure metadata |
+| Export renderer/orchestration path | Report input version state, options, progress, and result metadata |
+| Storage/export helper module, if present | Add storage-backend-safe helpers to write/list/read manifests |
+| Storage backend abstraction | Reuse existing APIs; add only narrow helper methods if required |
+| Activity worker/queue export path | Persist export progress/result/failure metadata |
+| Admin export/novel API routes | Expose export artifacts, latest export per format, stale state, and failures |
+| Admin frontend export UI | Show latest exports, stale state, failures, and re-export action |
+| `backend/tests/test_export_storage_observability.py` | Add focused tests |
+| Storage contract tests | Add export manifest/list/read behavior where backend-specific coverage is needed |
+| Docs/storage contract | Document export artifact and manifest contract |
+
+### Files Not Touched
+
+- Public reader routes, except tests confirming export metadata is not exposed.
+- Translation renderer internals, unless required to emit manifest inputs.
+- Translation version schema, except read-only version metadata access for freshness.
+- Glossary revision logic.
+- Scheduler/provider routing.
+- Crawler/source adapters.
+
+## Export Manifest Contract
+
+Each export attempt that reaches artifact planning should produce a compact manifest or activity failure record. Successful exports must write a manifest.
+
+Example manifest:
+
+```json
+{
+  "export_id": "exp_20260708_001",
+  "novel_id": "novel-id",
+  "format": "epub",
+  "status": "succeeded",
+  "filename": "Novel Title.epub",
+  "artifact_key": "exports/epub/exp_20260708_001/Novel Title.epub",
+  "manifest_key": "exports/epub/exp_20260708_001/manifest.json",
+  "storage_backend": "default",
+  "file_size_bytes": 123456,
+  "sha256": "sha256:abc123",
+  "created_at": "2026-07-08T00:00:00Z",
+  "completed_at": "2026-07-08T00:01:00Z",
+  "source_chapter_count": 42,
+  "exported_chapter_count": 42,
+  "translation_versions": [
+    {
+      "chapter_id": "1",
+      "version_id": "v3"
+    }
+  ],
+  "translation_version_count": 42,
+  "translation_versions_hash": "sha256:def456",
+  "metadata_revision": "2026-07-08T00:00:00Z",
+  "glossary_revision": 12,
+  "glossary_hash": "sha256:glossary123",
+  "asset_manifest_hash": "sha256:assets456",
+  "options": {
+    "include_images": true,
+    "chapter_range": null,
+    "template": "default",
+    "template_version": "default_v1"
+  },
+  "freshness": {
+    "stale": false,
+    "stale_reasons": []
+  }
+}
+```
+
+Rules:
+
+- `artifact_key` and `manifest_key` must be storage-backend-safe keys, not local absolute paths.
+- Do not expose bucket names, credentials, signed URLs, or direct filesystem paths in persisted manifests.
+- Admin APIs may return download route URLs generated by the application, but those should not be persisted as the source of truth.
+- If storing every chapter/version pair would make the manifest too large, store:
+  - `translation_version_count`,
+  - `translation_versions_hash`,
+  - bounded `translation_versions_sample`.
+- The manifest must not store full chapter text.
+- The manifest must not store full prompts.
+- The manifest must not store translated chapter body text.
+- The manifest must not store provider secrets or storage credentials.
+
+## Export Statuses
+
+| Status | Meaning |
+|---|---|
+| `pending` | Export was requested but has not started |
+| `running` | Export is currently generating |
+| `succeeded` | Artifact was written and verified |
+| `failed` | Export failed and no valid artifact was produced |
+| `deleted` | Artifact was removed by cleanup/delete operation |
+| `legacy_unknown` | Existing discoverable artifact has no manifest |
+
+For new exports, `pending` and `running` may live primarily in activity metadata. Completed export manifests should generally be `succeeded`, `failed`, or `deleted`.
+
+## Failure Categories
+
+| Category | Meaning |
+|---|---|
+| `missing_translation` | Required chapter has no translated content |
+| `missing_asset` | Required image or asset is unavailable |
+| `render_error` | Renderer failed to generate output |
+| `write_error` | Artifact or manifest write failed |
+| `verify_error` | Artifact was written but size/checksum verification failed |
+| `invalid_options` | Export request options are invalid |
+| `storage_error` | Storage backend operation failed |
+| `unknown` | Unexpected failure |
+
+Failure metadata:
+
+```json
+{
+  "status": "failed",
+  "failure_category": "missing_translation",
+  "failure_message": "Chapter 12 has no active translated version.",
+  "failed_at": "2026-07-08T00:00:00Z"
+}
+```
+
+Rules:
+
+- Failure messages must be safe and concise.
+- Do not store stack traces in manifest or activity metadata.
+- Do not store full chapter text.
+- Do not store provider responses.
+- Keep detailed exception traces in server logs only if existing redaction/logging policy allows them.
+
+## Storage Strategy
+
+Implementation must inspect current export paths before changing storage behavior.
+
+Preferred storage layout:
+
+```text
+<novel-storage-root>/exports/<format>/<export-id>/manifest.json
+<novel-storage-root>/exports/<format>/<export-id>/<artifact-file>
+```
+
+If the existing export service uses a different artifact path, preserve it and place the manifest:
+
+- next to the artifact, or
+- in an export metadata directory that maps cleanly to the existing artifact key.
+
+Rules:
+
+- Use `StorageBackend` or existing storage helper APIs.
+- Do not introduce direct `Path`/filesystem operations in export code that must also work on object storage.
+- Do not leak local paths into manifests or API responses.
+- Write manifests atomically when the storage backend supports atomic JSON writes.
+- For object storage backends, use the existing storage contract’s safest equivalent for write/replace/list semantics.
+- Temporary render files must not appear in export lists.
+- Existing download routes must remain valid.
+- Legacy exports without manifests must remain accessible if current routes already support them.
+
+## Artifact Verification
+
+After writing an artifact, verify safe metadata where supported:
+
+- file size,
+- checksum/hash,
+- storage key exists,
+- manifest write completed.
+
+Rules:
+
+- Verification failure should classify as `verify_error` or `storage_error`.
+- Verification should not require reading huge artifacts into memory if the storage backend exposes metadata efficiently.
+- If checksum generation is too expensive for a format/backend, file size and existence checks may be used first, with checksum documented as optional.
+- Verification behavior must be deterministic in tests.
+
+## Export Input State
+
+Before or during export, capture the input state used to produce the artifact.
+
+Input state should include:
+
+- active translated version per exported chapter,
+- source chapter count,
+- exported chapter count,
+- novel metadata revision or updated timestamp,
+- glossary revision/hash when available,
+- asset manifest hash when available,
+- export options,
+- export template/template version when available.
+
+Suggested structure:
+
+```python
+@dataclass
+class ExportInputState:
+    novel_id: str
+    format: str
+    translation_versions: list[ExportChapterVersion]
+    metadata_revision: str | None
+    glossary_revision: int | None
+    glossary_hash: str | None
+    asset_manifest_hash: str | None
+    options_hash: str
+    template_version: str | None
+```
+
+This state must be derived through existing storage and metadata APIs.
+
+## Freshness Detection
+
+An export is stale when any of the following are true and the required data is available:
+
+- current active translation version for an exported chapter differs from the manifest version,
+- novel metadata changed after the manifest’s recorded metadata revision,
+- current glossary revision is newer than manifest glossary revision,
+- current glossary hash differs from manifest glossary hash,
+- export options changed,
+- export template version changed,
+- asset manifest hash changed.
+
+Helper:
+
+```python
+def compute_export_freshness(
+    manifest: Mapping[str, Any],
+    current_state: ExportInputState,
+) -> dict[str, Any]:
+    ...
+```
+
+Freshness result:
+
+```json
+{
+  "stale": true,
+  "stale_reasons": [
+    "translation_version_changed"
+  ]
+}
+```
+
+Supported stale reasons:
+
+| Reason | Meaning |
+|---|---|
+| `translation_version_changed` | Current active translated version differs from the exported version |
+| `metadata_changed` | Novel metadata changed after export |
+| `glossary_revision_changed` | Current glossary revision is newer than exported glossary revision |
+| `glossary_hash_changed` | Current glossary hash differs from exported glossary hash |
+| `export_options_changed` | Export options differ |
+| `template_version_changed` | Export template changed |
+| `asset_manifest_changed` | Exported assets differ from current asset state |
+| `unknown_legacy_manifest` | Artifact has no manifest or insufficient input metadata |
+| `current_state_unavailable` | Current input state could not be resolved |
+
+Rules:
+
+- Staleness must be computed dynamically for admin display.
+- Staleness must not delete artifacts automatically.
+- Staleness must not revoke download access automatically.
+- Staleness must not change public reader behavior.
+- Legacy exports may be marked stale with `unknown_legacy_manifest`.
+
+## Activity Metadata Integration
+
+During export activity, persist progress and result metadata under an `export` key.
+
+Running activity metadata:
+
+```json
+{
+  "export": {
+    "export_id": "exp_20260708_001",
+    "format": "epub",
+    "status": "running",
+    "progress": {
+      "completed": 10,
+      "total": 42,
+      "current_label": "Chapter 10"
+    }
+  }
+}
+```
+
+Success metadata:
+
+```json
+{
+  "export": {
+    "export_id": "exp_20260708_001",
+    "format": "epub",
+    "status": "succeeded",
+    "manifest_key": "exports/epub/exp_20260708_001/manifest.json",
+    "artifact_key": "exports/epub/exp_20260708_001/Novel Title.epub",
+    "file_size_bytes": 123456,
+    "sha256": "sha256:abc123"
+  }
+}
+```
+
+Failure metadata:
+
+```json
+{
+  "export": {
+    "export_id": "exp_20260708_001",
+    "format": "epub",
+    "status": "failed",
+    "failure_category": "render_error",
+    "failure_message": "EPUB renderer failed.",
+    "failed_at": "2026-07-08T00:00:00Z"
+  }
+}
+```
+
+Rules:
+
+- Use existing safe activity metadata merge/update helpers.
+- Do not overwrite unrelated activity metadata.
+- Progress updates should be compact.
+- Failure messages should be sanitized.
+- Activity metadata should not contain local paths.
+
+## Admin API Design
+
+Add or extend existing admin export endpoints.
+
+Prefer extending existing routes. Add new routes only if no suitable export/admin route exists.
+
+Possible routes:
+
+```http
+GET /admin/novels/{novel_id}/exports
+GET /admin/novels/{novel_id}/exports/latest
+GET /admin/novels/{novel_id}/exports/{export_id}
+```
+
+Example list response:
+
+```json
+{
+  "novel_id": "novel-id",
+  "exports": [
+    {
+      "export_id": "exp_20260708_001",
+      "format": "epub",
+      "status": "succeeded",
+      "created_at": "2026-07-08T00:00:00Z",
+      "completed_at": "2026-07-08T00:01:00Z",
+      "filename": "Novel Title.epub",
+      "file_size_bytes": 123456,
+      "sha256": "sha256:abc123",
+      "stale": true,
+      "stale_reasons": ["translation_version_changed"],
+      "download_available": true
+    }
+  ],
+  "latest_by_format": {
+    "epub": "exp_20260708_001"
+  }
+}
+```
+
+Example detail response:
+
+```json
+{
+  "export_id": "exp_20260708_001",
+  "novel_id": "novel-id",
+  "format": "epub",
+  "status": "succeeded",
+  "filename": "Novel Title.epub",
+  "file_size_bytes": 123456,
+  "created_at": "2026-07-08T00:00:00Z",
+  "completed_at": "2026-07-08T00:01:00Z",
+  "source_chapter_count": 42,
+  "exported_chapter_count": 42,
+  "translation_version_count": 42,
+  "translation_versions_hash": "sha256:def456",
+  "metadata_revision": "2026-07-08T00:00:00Z",
+  "glossary_revision": 12,
+  "glossary_hash": "sha256:glossary123",
+  "stale": false,
+  "stale_reasons": [],
+  "download_available": true
+}
+```
+
+Rules:
+
+- Admin APIs may expose storage-safe keys only if existing admin APIs expose similar internal keys.
+- Prefer exposing application download routes over raw storage keys.
+- Do not expose local absolute paths.
+- Do not expose bucket names, signed storage URLs, credentials, or provider internals.
+- Public APIs must not expose unpublished export artifacts.
+
+## Admin UI Design
+
+Add or extend the export panel on the novel/admin page.
+
+Show:
+
+- latest export per format,
+- export history,
+- status badge,
+- created/completed time,
+- file size,
+- checksum when useful,
+- stale badge and stale reasons,
+- failure category and safe message,
+- source/exported chapter count,
+- input version summary,
+- re-export action using existing export flow,
+- download/open action if current UI already supports it.
+
+Legacy state:
+
+```text
+Export manifest not available for this artifact.
+```
+
+Stale state:
+
+```text
+This export may be stale because active translation versions changed.
+```
+
+## Legacy Export Handling
+
+Existing exports without manifests:
+
+- remain downloadable if current routes already support them,
+- appear as `legacy_unknown` or `unknown` in admin lists if discoverable,
+- may be marked stale with `unknown_legacy_manifest`,
+- should not be rewritten automatically,
+- should not be deleted automatically.
+
+If legacy exports cannot be discovered safely through the storage backend, do not add filesystem-specific scans. Document that only manifest-backed exports can be listed reliably.
+
+## Security and Privacy Controls
+
+Export observability must not leak sensitive data.
+
+Rules:
+
+- No local absolute paths in manifest, activity metadata, or API responses.
+- No S3 bucket names unless already considered safe by existing admin storage APIs.
+- No storage credentials.
+- No signed URLs persisted in manifests.
+- No full chapter text.
+- No full prompts.
+- No provider request or response bodies.
+- No stack traces in user-visible failure metadata.
+- Public endpoints must not expose unpublished/private artifacts.
+- Admin endpoints must use existing admin/owner authorization.
+
+## Storage Backend Compatibility
+
+Export observability must work across supported storage backends.
+
+Rules:
+
+- Use `StorageBackend` abstractions for manifest/artifact read, write, list, and metadata operations.
+- Add export-specific storage helpers only if they can be implemented for every supported backend.
+- Avoid direct path joins outside storage helper boundaries.
+- Do not assume POSIX rename semantics for object storage.
+- Prefer write-temp-then-finalize only where the storage backend supports it.
+- Add storage contract coverage for local and object-storage/fake-S3 style backends where available.
+- Keep storage projection/public-path hardening intact.
+
+## Test Design
+
+Create:
+
+```text
+backend/tests/test_export_storage_observability.py
+```
+
+Backend tests:
+
+- `test_export_writes_artifact_and_manifest`
+- `test_export_manifest_includes_format_file_size_and_chapter_counts`
+- `test_export_manifest_records_translation_version_summary`
+- `test_export_manifest_uses_storage_keys_not_local_paths`
+- `test_latest_export_per_format_is_discoverable`
+- `test_export_activity_metadata_records_progress`
+- `test_export_activity_metadata_records_success_artifact`
+- `test_missing_translation_failure_is_classified`
+- `test_render_failure_is_classified`
+- `test_write_failure_is_classified`
+- `test_failed_export_does_not_publish_invalid_artifact`
+- `test_stale_detection_after_active_translation_version_changes`
+- `test_stale_detection_after_metadata_revision_changes`
+- `test_stale_detection_after_glossary_revision_changes_when_available`
+- `test_legacy_export_without_manifest_is_legacy_unknown_when_discoverable`
+- `test_admin_api_lists_export_metadata`
+- `test_admin_api_latest_export_by_format`
+- `test_public_api_does_not_expose_unpublished_export_artifact`
+
+Storage contract tests where applicable:
+
+- manifest write/read works through storage backend,
+- manifest list works through storage backend,
+- artifact metadata lookup returns size/checksum where supported,
+- export helpers do not require local filesystem paths,
+- object-storage backend does not expose bucket internals.
+
+Frontend tests if UI changes:
+
+- latest export status renders,
+- stale reason renders,
+- failed export message renders,
+- legacy manifest unavailable state renders,
+- re-export action triggers existing export flow,
+- download action uses existing authorized download flow.
+
+No tests should depend on live S3, live object storage, or external services.
+
+## Migration and Backward Compatibility
+
+- Existing export files remain valid.
+- Existing download routes remain valid.
+- Manifest files are additive.
+- Existing export behavior remains compatible.
+- Legacy exports without manifests remain accessible if currently accessible.
+- Public reader behavior is unchanged.
+- Public export behavior is unchanged except for existing authorized download semantics.
+- No export format redesign is required.
+- No storage schema migration is required unless current export metadata is not discoverable through existing storage abstractions.
+
+## Acceptance Criteria
+
+1. Export service writes a manifest for completed new exports.
+2. Manifest records output artifact, format, file size, chapter counts, input version state, and safe storage keys.
+3. Manifest and API responses do not leak local paths, credentials, bucket internals, prompts, or chapter text.
+4. Export activity metadata exposes progress, success artifact metadata, or safe failure category/message.
+5. Admin APIs list exports and latest export per format.
+6. Admin APIs compute and expose export stale state where data is available.
+7. Admin UI shows status, stale state, failures, legacy state, and re-export action.
+8. Existing export/download behavior remains compatible.
+9. Public APIs do not expose unpublished export artifacts.
+10. Storage backend contract tests cover manifest read/write/list behavior where applicable.
+11. Focused backend and frontend tests pass.
