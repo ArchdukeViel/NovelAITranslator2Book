@@ -56,6 +56,17 @@ class _FakeStorage:
     def _load_legacy_translated_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
         return None
 
+    def _path_exists(self, path: Path) -> bool:
+        return path.exists()
+
+    def _read_text(self, path: Path) -> str:
+        return path.read_text(encoding="utf-8")
+
+
+def _make_storage(tmp_path):
+    """Create a _FakeStorage for _read_json_file tests."""
+    return _FakeStorage(tmp_path)
+
 
 # ---------------------------------------------------------------------------
 # _load_chapter_bundle
@@ -224,7 +235,7 @@ class TestReadJsonFile:
         path = tmp_path / "test.json"
         path.write_text("{broken", encoding="utf-8")
         with caplog.at_level(logging.WARNING):
-            result = _read_json_file(path, {})
+            result = _read_json_file(_make_storage(tmp_path), path, {})
         assert result == {}
         assert any("Corrupt JSON file" in msg for msg in caplog.messages)
 
@@ -234,7 +245,7 @@ class TestReadJsonFile:
         path = tmp_path / "test.json"
         path.write_text("", encoding="utf-8")
         with caplog.at_level(logging.DEBUG):
-            result = _read_json_file(path, {})
+            result = _read_json_file(_make_storage(tmp_path), path, {})
         assert result == {}
         assert any("Empty/whitespace file" in msg for msg in caplog.messages)
 
@@ -244,23 +255,23 @@ class TestReadJsonFile:
         path = tmp_path / "test.json"
         path.write_text("   \n\n  ", encoding="utf-8")
         with caplog.at_level(logging.DEBUG):
-            result = _read_json_file(path, {})
+            result = _read_json_file(_make_storage(tmp_path), path, {})
         assert result == {}
         assert any("Empty/whitespace file" in msg for msg in caplog.messages)
 
     def test_missing_file_returns_default(self, tmp_path: Path) -> None:
-        result = _read_json_file(tmp_path / "nonexistent.json", {})
+        result = _read_json_file(_make_storage(tmp_path), tmp_path / "nonexistent.json", {})
         assert result == {}
 
     def test_valid_json_returns_parsed(self, tmp_path: Path) -> None:
         path = tmp_path / "test.json"
         path.write_text('{"key": "value"}', encoding="utf-8")
-        result = _read_json_file(path, {})
+        result = _read_json_file(_make_storage(tmp_path), path, {})
         assert result == {"key": "value"}
 
     def test_oserror_silent(self, tmp_path: Path) -> None:
         """OSError branch is silent — no log."""
-        result = _read_json_file(tmp_path / "nonexistent_dir" / "file.json", {})
+        result = _read_json_file(_make_storage(tmp_path), tmp_path / "nonexistent_dir" / "file.json", {})
         assert result == {}
 
 
