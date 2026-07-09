@@ -29,7 +29,7 @@ _TMP = Path(__file__).resolve().parent / ".tmp" / "advanced_caching"
 
 
 @pytest.fixture()
-def cache_dir() -> Generator[Path, None, None]:
+def cache_dir() -> Generator[Path]:
     d = _TMP / uuid4().hex[:8]
     d.mkdir(parents=True, exist_ok=True)
     yield d
@@ -576,8 +576,12 @@ async def test_translate_stage_progress_counts_hits_and_misses(cache_dir: Path) 
     from unittest.mock import MagicMock
 
     from novelai.services.cache.translation_cache import TranslationCacheService
+    from novelai.services.translation_cache import TranslationCache
     from novelai.storage.service import StorageService
     from novelai.translation.pipeline.stages.translate import TranslateStage
+
+    # Clear the global legacy cache to avoid stale entries from prior tests
+    TranslationCache().clear()
 
     service = TranslationCacheService(cache_dir=cache_dir)
     written = 0
