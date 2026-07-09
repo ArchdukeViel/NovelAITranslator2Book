@@ -2,6 +2,7 @@ name: novel-ai
 
 services:
   postgres:
+    profiles: ["local-db"]
     networks:
       - novelai-net
     image: postgres:16-alpine
@@ -71,11 +72,12 @@ services:
     working_dir: /app/backend
     command: ["alembic", "-c", "/app/backend/alembic.ini", "upgrade", "head"]
     environment:
-      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-novelai}@postgres:5432/${POSTGRES_DB:-novelai}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-novelai}@postgres:5432/${POSTGRES_DB:-novelai}}
       - PROVIDER_CREDENTIAL_ENCRYPTION_KEY=${PROVIDER_CREDENTIAL_ENCRYPTION_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
+    profiles: ["local-db"]
     networks:
       - novelai-net
     restart: "no"
@@ -129,7 +131,7 @@ services:
       - GOOGLE_OAUTH_CLIENT_ID
       - GOOGLE_OAUTH_CLIENT_SECRET
       - GOOGLE_OAUTH_REDIRECT_URI
-      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-novelai}@postgres:5432/${POSTGRES_DB:-novelai}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-novelai}@postgres:5432/${POSTGRES_DB:-novelai}}
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ../storage/novel_library:/app/storage/novel_library
@@ -155,7 +157,7 @@ services:
       - WEB_PORT=8001
       - WEB_CORS_ORIGINS=${WEB_CORS_ORIGINS:-[]}
       - NOVEL_LIBRARY_DIR=/app/storage/novel_library
-      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-novelai}@postgres:5432/${POSTGRES_DB:-novelai}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-novelai}@postgres:5432/${POSTGRES_DB:-novelai}}
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ../storage/novel_library:/app/storage/novel_library
