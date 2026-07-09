@@ -248,7 +248,6 @@ async def resume_onboarding(
 async def cancel_onboarding(
     novel_id: str,
     _body: CancelOnboardingRequest | None = None,
-    request: Request | None = None,
     service: OperationsService = Depends(get_operations_service),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:

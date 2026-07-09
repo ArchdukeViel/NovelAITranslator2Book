@@ -354,7 +354,7 @@ async def test_fetch_metadata_collects_all_paginated_chapter_pages() -> None:
         """,
     }
 
-    async def fake_fetch_page(url: str) -> str:
+    async def fake_fetch_page(url: str, on_retry=None) -> str:
         return pages[url]
 
     source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
@@ -408,7 +408,7 @@ async def test_fetch_metadata_carries_part_heading_between_paginated_pages() -> 
         """,
     }
 
-    async def fake_fetch_page(url: str) -> str:
+    async def fake_fetch_page(url: str, on_retry=None) -> str:
         return pages[url]
 
     source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
@@ -462,7 +462,7 @@ async def test_fetch_metadata_stops_after_requested_max_chapter_page() -> None:
         """,
     }
 
-    async def fake_fetch_page(url: str) -> str:
+    async def fake_fetch_page(url: str, on_retry=None) -> str:
         requests.append(url)
         return pages[url]
 
@@ -479,10 +479,10 @@ async def test_fetch_metadata_caps_single_page_toc_without_counting_headings() -
     root_url = "https://ncode.syosetu.com/n8733gf/"
     infotop_url = "https://ncode.syosetu.com/novelview/infotop/ncode/n8733gf/"
 
-    async def fake_fetch_page(url: str) -> str:
+    async def fake_fetch_page(url: str, on_retry=None) -> str:
         if url == infotop_url:
             return """
-            <html><body><table><tr><th>掲載状態</th><td>連載中</td></tr></table></body></html>
+            <html><body><table><tr><th>掲載状態</th><td>連載中</td</tr</table</body</html>
             """
         assert url == root_url
         return """

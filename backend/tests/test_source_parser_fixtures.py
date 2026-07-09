@@ -159,7 +159,7 @@ async def test_syosetu_fixture_paginated_toc_uses_offline_pages() -> None:
         f"{root_url}?p=2": _fixture("syosetu", "paginated_toc_page_2.html"),
     }
 
-    async def fake_fetch_page(url: str) -> str:
+    async def fake_fetch_page(url: str, on_retry=None) -> str:
         return pages.get(url, pages[root_url])
 
     source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
@@ -242,7 +242,7 @@ def test_kakuyomu_fixture_image_extraction() -> None:
 async def test_generic_fixture_valid_toc_confidence_and_duplicate_normalization() -> None:
     source = GenericSource()
 
-    async def fake_fetch_page(url: str) -> str:
+    async def fake_fetch_page(url: str, on_retry=None) -> str:
         return _fixture("generic", "valid_toc.html")
 
     source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
@@ -260,7 +260,7 @@ async def test_generic_fixture_valid_toc_confidence_and_duplicate_normalization(
 async def test_generic_fixture_nav_heavy_page_is_low_confidence() -> None:
     source = GenericSource()
 
-    async def fake_fetch_page(url: str) -> str:
+    async def fake_fetch_page(url: str, on_retry=None) -> str:
         return _fixture("generic", "nav_heavy_page.html")
 
     source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
@@ -274,7 +274,7 @@ async def test_generic_fixture_nav_heavy_page_is_low_confidence() -> None:
 async def test_generic_fixture_low_confidence_page_warns() -> None:
     source = GenericSource()
 
-    async def fake_fetch_page(url: str) -> str:
+    async def fake_fetch_page(url: str, on_retry=None) -> str:
         return _fixture("generic", "low_confidence_page.html")
 
     source._fetch_page = fake_fetch_page  # type: ignore[method-assign]

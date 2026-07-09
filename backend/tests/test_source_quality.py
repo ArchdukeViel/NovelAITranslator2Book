@@ -30,7 +30,7 @@ class EmptyChapterSource(SourceAdapter):
     async def fetch_chapter(self, url: str) -> str:
         return ""
 
-    async def fetch_chapter_payload(self, url: str) -> dict[str, Any]:
+    async def fetch_chapter_payload(self, url: str, on_retry=None) -> dict[str, Any]:
         return {"text": "", "images": []}
 
 
@@ -122,7 +122,7 @@ async def test_generic_low_confidence_toc_marks_needs_review(monkeypatch):
     """
     source = GenericSource()
 
-    async def fake_fetch_page(url: str) -> str:
+    async def fake_fetch_page(url: str, on_retry=None) -> str:
         return html
 
     monkeypatch.setattr(source, "_fetch_page", fake_fetch_page)
