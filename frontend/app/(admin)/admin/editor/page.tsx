@@ -1,11 +1,12 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, RotateCcw, Save } from "lucide-react";
+import { CheckCircle2, ExternalLink, RotateCcw, Save } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 
 import { ErrorBanner } from "@/components/admin/error-banner";
+import { GlossaryQAPanel } from "@/components/admin/glossary-qa-panel";
 import { PageHeading } from "@/components/admin/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import type { GlossaryQAIssue, GlossaryQAResult } from "@/lib/api-types";
 import { formatDateTime } from "@/lib/format";
 import { publicChapterHref } from "@/lib/public-routes";
 
@@ -23,6 +25,9 @@ export default function EditorPage() {
   const [editorName, setEditorName] = React.useState("admin");
   const [note, setNote] = React.useState("");
   const [draftText, setDraftText] = React.useState("");
+  const [qaResult, setQaResult] = React.useState<GlossaryQAResult | null>(null);
+  const [overrideReason, setOverrideReason] = React.useState("");
+  const [showOverride, setShowOverride] = React.useState(false);
 
   const novels = useQuery({ queryKey: ["novels"], queryFn: () => api.novels() });
   const chapters = useQuery({
@@ -79,8 +84,50 @@ export default function EditorPage() {
   };
 
   const saveEdit = useMutation({
-    mutationFn: () => api.updateTranslatedChapter(novelId, chapterId, { text: draftText, editor: editorName, note }),
-    onSuccess: invalidateEditor
+    mutationFn: () =>
+      api.updateTranslatedChapter(novelId, chapterId, {
+        text: draftText,
+        editor: editorName,
+        note,
+        lint: true,
+        source_text: rawChapter.data?.text,
+        glossary_override:
+          qaResult?.status === "blocked" && overrideReason.trim()
+            ? { reason: overrideReason, issue_ids: qaResult.issues.map((i) => i.issue_id) }
+            : undefined,
+      }),
+    onSuccess: (data) => {
+      if (data.glossary_qa) {
+        setQaResult(data.glossary_qa);
+      } else {
+        setQaResult(null);
+      }
+      setShowOverride(false);
+      setOverrideReason("");
+      invalidateEditor();
+    }
+  });
+
+  const lintEdit = useMutation({
+    mutationFn: () =>
+      api.lintTranslatedChapter(novelId, chapterId, {
+        text: draftText,
+        source_text: rawChapter.data?.text,
+      }),
+    onSuccess: (data) => {
+      setQaResult(data.glossary_qa);
+    }
+  });
+
+  const approveChange = useMutation({
+    mutationFn: (issue: GlossaryQAIssue) =>
+      api.approveTranslationChange(novelId, issue.entry_id!, {
+        new_translation: issue.matched_variant || issue.approved_translation || "",
+        rationale: `Approved from editor QA issue ${issue.issue_id}`,
+      }),
+    onSuccess: () => {
+      void lintEdit.mutate();
+    }
   });
   const rollback = useMutation({
     mutationFn: (versionId: string) => api.rollbackTranslatedChapter(novelId, chapterId, { version_id: versionId, editor: editorName, note }),
@@ -222,11 +269,22 @@ export default function EditorPage() {
           <Panel>
             <PanelHeader className="flex flex-row items-center justify-between">
               <PanelTitle>Translated Text</PanelTitle>
-              <Button onClick={() => saveEdit.mutate()} disabled={!novelId || !chapterId || !draftText.trim() || saveEdit.isPending}>
-                <Save className="h-4 w-4" />
-                Save
-              </Button>
-            </PanelHeader>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => lintEdit.mutate()}
+                  disabled={!novelId || !chapterId || !draftText.trim() || lintEdit.isPending}
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Check glossary
+               </Button>
+                <Button onClick={() => saveEdit.mutate()} disabled={!novelId || !chapterId || !draftText.trim() || saveEdit.isPending}>
+                  <Save className="h-4 w-4" />
+                  Save
+               </Button>
+             </div>
+           </PanelHeader>
             <PanelBody className="space-y-3">
               <Textarea
                 className="min-h-[520px] font-serif text-base leading-7"
@@ -235,8 +293,57 @@ export default function EditorPage() {
                 placeholder="Translated chapter text"
               />
               <ErrorBanner error={saveEdit.error} fallback="Failed to save edit." className="rounded-md border border-destructive/40 px-3" />
-            </PanelBody>
-          </Panel>
+           </PanelBody>
+         </Panel>
+
+          {qaResult ? (
+            <Panel>
+              <PanelHeader>
+                <PanelTitle>Glossary QA</PanelTitle>
+             </PanelHeader>
+              <PanelBody>
+                <GlossaryQAPanel
+                  result={qaResult}
+                  canApprove
+                  canOverride
+                  onApproveChange={(issue) => approveChange.mutate(issue)}
+                  onOverride={() => setShowOverride(true)}
+                />
+                {showOverride && qaResult.status === "blocked" ? (
+                  <div className="mt-3 space-y-2 rounded-md border border-red-300 bg-red-50 p-3 text-xs">
+                    <div className="font-medium text-red-800">Override blocked save</div>
+                    <textarea
+                      className="w-full rounded-md border bg-background p-2 text-sm"
+                      placeholder="Reason for override (required)"
+                      value={overrideReason}
+                      onChange={(event) => setOverrideReason(event.target.value)}
+                      rows={2}
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => saveEdit.mutate()}
+                        disabled={!overrideReason.trim() || saveEdit.isPending}
+                      >
+                        Submit override
+                     </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setShowOverride(false);
+                          setOverrideReason("");
+                        }}
+                      >
+                        Cancel
+                     </Button>
+                   </div>
+                 </div>
+                ) : null}
+             </PanelBody>
+           </Panel>
+          ) : null}
 
           <div className="grid gap-5 lg:grid-cols-2">
             <Panel>
