@@ -37,7 +37,8 @@ def _force_remove_tree(path: Path) -> None:
     def on_error(func: Any, target: str, exc_info: Any) -> None:
         with contextlib.suppress(Exception):
             os.chmod(target, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
-        func(target)
+        with contextlib.suppress(Exception):
+            func(target)
 
     shutil.rmtree(path, onerror=on_error)
 
