@@ -35,6 +35,13 @@ def patch_redis_connection(monkeypatch: pytest.MonkeyPatch, fake_redis):
     )
 
 
+@pytest.fixture(autouse=True)
+def clear_database_url(monkeypatch: pytest.MonkeyPatch):
+    """Prevent bootstrap from trying to connect to a real database."""
+    from novelai.config.settings import settings
+    monkeypatch.setattr(settings, "DATABASE_URL", "")
+
+
 class TestEnqueueCrawlJob:
     def test_returns_rq_job_id(self, fake_redis) -> None:
         job_id = enqueue_crawl_job("crawl_abc123")
