@@ -389,19 +389,9 @@ To use Supabase, add to `deploy/.env`:
 DATABASE_URL=postgresql://postgres:your-password@db.your-project.supabase.co:5432/postgres
 ```
 
-To use local PostgreSQL (default), the `postgres` container handles it automatically.
+To use local PostgreSQL (default), keep the `POSTGRES_*` variables in `deploy/.env` — the `postgres` container handles it automatically.
 
-### Profiles for Local PostgreSQL
-
-The local `postgres` and `migrate` services are tagged with `profiles: ["local-db"]`. When `DATABASE_URL` is set (Supabase mode), these services are excluded:
-
-```bash
-# Use Supabase (skips local postgres)
-docker compose up
-
-# Use local postgres
-docker compose --profile local-db up
-```
+> **Note:** When using Supabase, you can comment out or remove the `postgres` service in `deploy/compose.yml` to avoid running an unnecessary container.
 
 ---
 

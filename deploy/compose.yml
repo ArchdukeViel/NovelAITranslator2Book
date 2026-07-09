@@ -2,7 +2,6 @@ name: novel-ai
 
 services:
   postgres:
-    profiles: ["local-db"]
     networks:
       - novelai-net
     image: postgres:16-alpine
@@ -77,7 +76,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    profiles: ["local-db"]
     networks:
       - novelai-net
     restart: "no"
