@@ -274,7 +274,7 @@ async def test_fetch_metadata_caps_kakuyomu_after_readable_episode_ordering() ->
     source = KakuyomuSource()
     work_id = "822139845959461179"
 
-    async def fake_fetch_page(url: str) -> str:
+    async def fake_fetch_page(url: str, on_retry=None) -> str:
         assert url == f"https://kakuyomu.jp/works/{work_id}"
         links = "\n".join(
             f'<a href="/works/{work_id}/episodes/e{index}">Episode {index}</a>'
@@ -396,7 +396,7 @@ async def test_fetch_metadata_normalizes_episode_url_to_work_root() -> None:
     episode_url = "https://kakuyomu.jp/works/822139845959461179/episodes/822139845959540845"
     work_url = "https://kakuyomu.jp/works/822139845959461179"
 
-    async def fake_fetch_page(url: str) -> str:
+    async def fake_fetch_page(url: str, on_retry=None) -> str:
         assert url == work_url
         return """
         <html>

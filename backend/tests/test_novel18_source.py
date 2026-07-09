@@ -105,7 +105,7 @@ async def test_novel18_fetch_metadata_uses_novel18_domain() -> None:
     seen_urls: list[str] = []
     infotop_url = "https://novel18.syosetu.com/novelview/infotop/ncode/n0813kx/"
 
-    async def fake_fetch_page(url: str) -> str:
+    async def fake_fetch_page(url: str, on_retry=None) -> str:
         seen_urls.append(url)
         if url == infotop_url:
             return """
@@ -137,7 +137,7 @@ async def test_novel18_fetch_metadata_caps_single_page_flat_toc() -> None:
     root_url = "https://novel18.syosetu.com/n0813kx/"
     infotop_url = "https://novel18.syosetu.com/novelview/infotop/ncode/n0813kx/"
 
-    async def fake_fetch_page(url: str) -> str:
+    async def fake_fetch_page(url: str, on_retry=None) -> str:
         if url == infotop_url:
             return """
             <html><body><table><tr><th>掲載状態</th><td>連載中</td></tr></table></body></html>
