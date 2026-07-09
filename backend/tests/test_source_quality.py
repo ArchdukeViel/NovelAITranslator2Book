@@ -30,7 +30,7 @@ class EmptyChapterSource(SourceAdapter):
     async def fetch_chapter(self, url: str) -> str:
         return ""
 
-    async def fetch_chapter_payload(self, url: str, on_retry=None) -> dict[str, Any]:
+    async def fetch_chapter_payload(self, url: str, *, on_retry=None) -> dict[str, Any]:
         return {"text": "", "images": []}
 
 
