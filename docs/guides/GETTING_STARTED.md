@@ -345,6 +345,8 @@ No real translation output:
 
 ### Required Production Environment Variables
 
+> **For a complete reference of all environment variables, see [docs/environment.md](../environment.md).**
+
 See `.env.example` for full reference.
 
 | Variable | Required | Notes |

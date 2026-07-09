@@ -14,17 +14,17 @@ from uuid import uuid4
 
 import pytest
 
-from novelai.runtime.container import Container
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState
 from novelai.glossary.glossary import Glossary
 from novelai.providers.base import TranslationProvider
+from novelai.runtime.container import Container
 from novelai.services.preferences_service import PreferencesService
-from novelai.storage.service import StorageService
 from novelai.services.translation_cache import TranslationCache
-from novelai.translation.service import TranslationService
 from novelai.services.usage_service import UsageService
 from novelai.sources.base import SourceAdapter
+from novelai.storage.service import StorageService
+from novelai.translation.service import TranslationService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TESTS_ROOT = Path(__file__).resolve().parent
@@ -338,8 +338,8 @@ class TestFixture:
         from novelai.translation.pipeline.stages.parse import ParseStage
         from novelai.translation.pipeline.stages.post_process import PostProcessStage
         from novelai.translation.pipeline.stages.segment import SegmentStage
-        from novelai.translation.pipeline.stages.translation_qa import TranslationQAStage
         from novelai.translation.pipeline.stages.translate import TranslateStage
+        from novelai.translation.pipeline.stages.translation_qa import TranslationQAStage
 
         pipeline = TranslationPipeline(
             stages=[
