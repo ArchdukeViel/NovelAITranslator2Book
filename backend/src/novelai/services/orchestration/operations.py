@@ -4,12 +4,19 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.config.settings import settings
 from novelai.core.errors import TranslationInProgressError
 from novelai.services.catalog_service import CatalogService
+from novelai.services.export_manifest_service import (
+    STATUS_FAILED,
+    STATUS_SUCCEEDED,
+    build_manifest,
+    write_manifest,
+)
 from novelai.services.export_service import ExportService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.orchestration.preliminary import (
@@ -25,7 +32,7 @@ from novelai.storage.service import StorageService
 
 logger = logging.getLogger(__name__)
 
-# Novel-level concurrency guard – prevents concurrent translation runs per novel
+# Novel-level concurrency guard - prevents concurrent translation runs per novel
 _novel_translation_locks: dict[str, asyncio.Lock] = {}
 
 def _get_novel_translation_lock(novel_id: str) -> asyncio.Lock:
@@ -395,18 +402,63 @@ class OperationsService:
         if not chapters:
             raise OperationError(400, "No translated chapters available for export")
 
-        output_path = str(self.storage.build_export_path(novel_id, export_format))
-        self.export_service.export(
-            export_format,
+        # Create pending manifest
+        manifest = build_manifest(
             novel_id=novel_id,
-            chapters=chapters,
-            output_path=output_path,
+            export_format=export_format,
+            status="pending",
+            source_chapter_count=len(meta.get("chapters", [])),
+            chapter_count=len(chapters),
+            glossary_revision=meta.get("glossary_revision"),
+            glossary_hash=meta.get("glossary_hash"),
+            novel_updated_at=meta.get("updated_at"),
         )
-        return ExportOperationResult(
-            path=output_path,
-            media_type="application/epub+zip" if export_format == "epub" else "application/octet-stream",
-            filename=f"{novel_id}.{export_format}",
-        )
+        write_manifest(self.storage, novel_id, manifest)
+
+        try:
+            output_path = str(self.storage.build_export_path(novel_id, export_format))
+            self.export_service.export(
+                export_format,
+                novel_id=novel_id,
+                chapters=chapters,
+                output_path=output_path,
+            )
+
+            # Update manifest to succeeded
+            output_file = Path(output_path)
+            updated = build_manifest(
+                novel_id=novel_id,
+                export_format=export_format,
+                status=STATUS_SUCCEEDED,
+                output_filename=output_file.name,
+                source_chapter_count=len(meta.get("chapters", [])),
+                chapter_count=len(chapters),
+                file_size_bytes=output_file.stat().st_size if output_file.exists() else None,
+                glossary_revision=meta.get("glossary_revision"),
+                glossary_hash=meta.get("glossary_hash"),
+                novel_updated_at=meta.get("updated_at"),
+                previous_manifest_key=manifest["manifest_key"],
+            )
+            write_manifest(self.storage, novel_id, updated)
+
+            return ExportOperationResult(
+                path=output_path,
+                media_type="application/epub+zip" if export_format == "epub" else "application/octet-stream",
+                filename=f"{novel_id}.{export_format}",
+            )
+        except Exception as exc:
+            failed = build_manifest(
+                novel_id=novel_id,
+                export_format=export_format,
+                status=STATUS_FAILED,
+                failure_code="render_error",
+                failure_message=str(exc)[:200],
+                source_chapter_count=len(meta.get("chapters", [])),
+                chapter_count=len(chapters),
+                previous_manifest_key=manifest["manifest_key"],
+            )
+            write_manifest(self.storage, novel_id, failed)
+            raise
 
     def record_preliminary_crawl_failure(
         self,
