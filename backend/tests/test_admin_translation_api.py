@@ -87,6 +87,7 @@ class TestSchedulerHealthHandler:
     @pytest.mark.asyncio
     async def test_handler_json_serializable(self) -> None:
         import json
+
         from novelai.api.routers.admin import scheduler_health
 
         svc = self._fake_service()
