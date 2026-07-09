@@ -57,7 +57,7 @@ class TwoChapterSource(SourceAdapter):
         payload = await self.fetch_chapter_payload(url)
         return str(payload.get("text", ""))
 
-    async def fetch_chapter_payload(self, url: str) -> dict[str, Any]:
+    async def fetch_chapter_payload(self, url: str, *, on_retry=None) -> dict[str, Any]:
         self.fetch_count += 1
         if url in self.fetch_errors:
             raise self.fetch_errors[url]
@@ -91,7 +91,7 @@ class ChangingChapterSource(SourceAdapter):
     async def fetch_chapter(self, url: str) -> str:
         return f"Version {self.version} content from {url}"
 
-    async def fetch_chapter_payload(self, url: str) -> dict[str, Any]:
+    async def fetch_chapter_payload(self, url: str, *, on_retry=None) -> dict[str, Any]:
         return {"text": f"Version {self.version} content from {url}", "images": []}
 
 

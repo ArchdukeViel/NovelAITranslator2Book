@@ -68,7 +68,7 @@ class StubSource(SourceAdapter):
     async def fetch_chapter(self, url: str) -> str:
         return f"chapter from {url}"
 
-    async def fetch_chapter_payload(self, url: str) -> dict[str, object]:
+    async def fetch_chapter_payload(self, url: str, *, on_retry=None) -> dict[str, object]:
         payload = self.chapter_payloads.get(url)
         if payload is not None:
             return payload

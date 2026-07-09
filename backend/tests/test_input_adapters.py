@@ -143,7 +143,7 @@ class _StubWebSource:
             ],
         }
 
-    async def fetch_chapter_payload(self, url: str) -> dict[str, object]:
+    async def fetch_chapter_payload(self, url: str, *, on_retry=None) -> dict[str, object]:
         return {"text": "Body", "images": []}
 
 
