@@ -431,6 +431,8 @@ def save_edited_translation(
     *,
     editor: str | None = None,
     note: str | None = None,
+    glossary_qa: dict[str, Any] | None = None,
+    glossary_revision: int | None = None,
 ) -> Path:
     """Persist a manual translation edit as a new active version."""
     payload = self._load_chapter_bundle(novel_id, chapter_id) or {"id": chapter_id}
@@ -454,6 +456,10 @@ def save_edited_translation(
         edited_payload["editor"] = editor.strip()
     if isinstance(note, str) and note.strip():
         edited_payload["note"] = note.strip()
+    if isinstance(glossary_qa, dict) and glossary_qa:
+        edited_payload["glossary_qa"] = glossary_qa
+    if isinstance(glossary_revision, int):
+        edited_payload["glossary_revision"] = glossary_revision
     versions.append(edited_payload)
     payload["translation_versions"] = versions
     self._set_active_translation_version(payload, edited_payload)

@@ -378,6 +378,61 @@ export type SchedulerSummary = {
 };
 
 // ===========================================
+// Glossary Editor QA
+// ===========================================
+
+export type GlossaryQAIssue = {
+  issue_id: string;
+  entry_id: number | null;
+  canonical_term: string;
+  approved_translation: string | null;
+  matched_variant: string | null;
+  severity: "error" | "warning" | "advisory";
+  code: string;
+  owner_locked: boolean;
+  context_hint: string;
+};
+
+export type GlossaryQAResult = {
+  status: "passed" | "advisory" | "warning" | "blocked" | "overridden";
+  novel_id: string;
+  platform_novel_id: number | null;
+  chapter_id: string;
+  glossary_revision: number | null;
+  checked_terms: number;
+  issue_count: number;
+  has_errors: boolean;
+  has_warnings: boolean;
+  source_context: "provided" | "missing";
+  notes: string[];
+  issues: GlossaryQAIssue[];
+  cap_reached: boolean;
+  cap_limit: number | null;
+};
+
+export type GlossaryQAResponse = {
+  glossary_qa: GlossaryQAResult;
+};
+
+export type GlossaryOverride = {
+  reason: string;
+  issue_ids?: string[];
+};
+
+export type ApproveTranslationChangeRequest = {
+  new_translation: string;
+  rationale?: string;
+};
+
+export type ApproveTranslationChangeResponse = {
+  entry_id: number;
+  canonical_term: string;
+  approved_translation: string;
+  glossary_revision: number | null;
+  updated_at: string | null;
+};
+
+// ===========================================
 // Admin UI Rework - Active Data Models
 // ===========================================
 

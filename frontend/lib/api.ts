@@ -2,6 +2,8 @@ import { useUiStore } from "@/lib/store";
 import type {
   ActivityRecord,
   ApiErrorPayload,
+  ApproveTranslationChangeRequest,
+  ApproveTranslationChangeResponse,
   ChapterDetail,
   ChapterSummary,
   CreateTranslationActivityPayload,
@@ -21,10 +23,13 @@ import type {
   GlossaryEntryUpdatePayload,
   GlossaryProvenance,
   GlossaryProvenanceCreatePayload,
-  GlossaryQaFinding,
-  GlossaryQaFindingCreatePayload,
-  GlossaryQaFindingListFilters,
-  GlossaryQaFindingStatusPayload,
+  GlossaryQAResponse,
+  GlossaryOverride,
+  GlossaryQAResult,
+  GlossaryQAFinding,
+  GlossaryQAFindingCreatePayload,
+  GlossaryQAFindingListFilters,
+  GlossaryQAFindingStatusPayload,
   GlossaryBatchApproveResult,
   GlossaryStatusTransitionPayload,
   GlossaryStatusTransitionResult,
@@ -333,12 +338,46 @@ export const api = {
   updateTranslatedChapter: (
     novelId: string,
     chapterId: string,
-    payload: { text: string; editor?: string; note?: string }
+    payload: {
+      text: string;
+      editor?: string;
+      note?: string;
+      lint?: boolean;
+      source_text?: string;
+      glossary_override?: GlossaryOverride;
+    }
   ) =>
-    apiFetch<TranslatedChapter>(`/admin/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}/translated`, {
-      method: "PUT",
-      body: JSON.stringify(payload)
-    }),
+    apiFetch<TranslatedChapter & { glossary_qa?: GlossaryQAResult }>(
+      `/admin/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}/translated`,
+      {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      }
+    ),
+  lintTranslatedChapter: (
+    novelId: string,
+    chapterId: string,
+    payload: { text: string; source_text?: string; max_terms?: number }
+  ) =>
+    apiFetch<GlossaryQAResponse>(
+      `/admin/novels/${encodeURIComponent(novelId)}/chapters/${encodeURIComponent(chapterId)}/translated/lint`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }
+    ),
+  approveTranslationChange: (
+    novelId: string,
+    entryId: number,
+    payload: ApproveTranslationChangeRequest
+  ) =>
+    apiFetch<ApproveTranslationChangeResponse>(
+      `/admin/novels/${encodeURIComponent(novelId)}/glossary/entries/${entryId}/approve-translation-change`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }
+    ),
   rollbackTranslatedChapter: (
     novelId: string,
     chapterId: string,

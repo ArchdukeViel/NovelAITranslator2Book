@@ -1398,6 +1398,79 @@ async def deprecate_glossary_entry(
         raise AssertionError("unreachable") from exc
 
 
+class ApproveTranslationChangeRequest(BaseModel):
+    new_translation: NonEmptyStr
+    rationale: NonEmptyStr | None = None
+
+
+class ApproveTranslationChangeResponse(BaseModel):
+    entry_id: int
+    canonical_term: str
+    approved_translation: str
+    glossary_revision: int | None
+    updated_at: str | None
+
+
+@router.post(
+    "/novels/{novel_id}/glossary/entries/{entry_id}/approve-translation-change",
+    response_model=ApproveTranslationChangeResponse,
+)
+async def approve_translation_change(
+    novel_id: str,
+    entry_id: int,
+    body: ApproveTranslationChangeRequest,
+    session: Session = Depends(get_db_session),
+    owner=Depends(require_role("owner")),
+) -> ApproveTranslationChangeResponse:
+    """Approve an edited translation as the new approved glossary translation."""
+    novel_key: int = _require_novel(session, novel_id).id
+    actor_id = _owner_user_id(owner)
+    try:
+        repo = _repo(session)
+        from novelai.db.models.glossary import NovelGlossaryEntry
+        from novelai.db.models.novel import Novel
+
+        entry = session.get(NovelGlossaryEntry, entry_id)
+        if entry is None:
+            raise LookupError("Glossary entry not found")
+        if entry.scope == "novel" and entry.novel_id != novel_key:
+            raise LookupError("Entry does not belong to this novel")
+        if entry.owner_locked and actor_id is None:
+            raise LookupError("Owner-locked entry requires owner permission")
+
+        updated = repo.update_glossary_entry(
+            entry_id,
+            novel_id=novel_key,
+            actor_user_id=actor_id,
+            approved_translation=body.new_translation,
+        )
+
+        repo.create_decision_event(
+            novel_id=novel_key,
+            event_type="approve",
+            glossary_entry_id=entry_id,
+            actor_user_id=actor_id,
+            old_value={"approved_translation": entry.approved_translation},
+            new_value={"approved_translation": body.new_translation},
+            rationale=body.rationale,
+            decision_source="owner",
+        )
+
+        novel = session.get(Novel, novel_key)
+        glossary_revision = int(novel.glossary_revision) if novel else None
+
+        return ApproveTranslationChangeResponse(
+            entry_id=updated.id,
+            canonical_term=updated.canonical_term,
+            approved_translation=updated.approved_translation or "",
+            glossary_revision=glossary_revision,
+            updated_at=updated.updated_at.isoformat() if updated.updated_at else None,
+        )
+    except (LookupError, ValueError) as exc:
+        _raise_repo_error(exc)
+        raise AssertionError("unreachable") from exc
+
+
 @router.get("/novels/{novel_id}/glossary/entries/{entry_id}/aliases", response_model=list[GlossaryAliasResponse])
 async def list_glossary_aliases(
     novel_id: str,
