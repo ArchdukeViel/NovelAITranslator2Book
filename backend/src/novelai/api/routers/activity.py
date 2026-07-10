@@ -158,11 +158,11 @@ async def create_translation_activity(
         # The worker may compare this with the current revision before
         # execution to detect stale scheduled jobs.
         if "scheduled_glossary_revision" not in metadata:
-            from novelai.db.models.novel import Novel
+            from novelai.services.novel_query_service import get_glossary_revision
             try:
-                novel = db.query(Novel).filter_by(slug=body.novel_id).one_or_none()
-                if novel is not None:
-                    metadata["scheduled_glossary_revision"] = novel.glossary_revision
+                revision = get_glossary_revision(db, body.novel_id)
+                if revision is not None:
+                    metadata["scheduled_glossary_revision"] = revision
             except Exception:
                 pass
 
