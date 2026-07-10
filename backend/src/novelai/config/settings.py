@@ -203,5 +203,11 @@ class AppSettings(BaseSettings):
     # Invalid values are tolerated at load time and resolved by the public router.
     PUBLIC_READER_UNAVAILABLE_POLICY: str = "hard_404"
 
+    # --- Public glossary annotations
+    # Enable glossary term annotations in public chapter reader.
+    # When enabled, approved glossary terms are matched against translated text
+    # and returned as annotations for highlighting/tooltips.
+    PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED: bool = False
+
 
 settings = AppSettings()

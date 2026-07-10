@@ -192,3 +192,12 @@ def load_scheduler_state(self: Any, job_id: str) -> dict[str, Any] | None:
         return None
     payload = states.get(job_id)
     return dict(payload) if isinstance(payload, dict) else None
+
+
+def load_all_scheduler_states(self: Any) -> dict[str, Any]:
+    """Load all persisted scheduler states across all jobs."""
+    path = self._trace_dir() / "scheduler_states.json"
+    states = self._read_json_file(path, {})
+    if not isinstance(states, dict):
+        return {}
+    return {job_id: dict(payload) for job_id, payload in states.items() if isinstance(payload, dict)}

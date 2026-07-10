@@ -38,6 +38,10 @@ from novelai.config.settings import settings
 from novelai.db.models.genre import Genre
 from novelai.db.models.novel import Novel
 from novelai.db.models.tag import Tag
+from novelai.services.public_glossary_annotations import (
+    find_annotations,
+    select_public_terms,
+)
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
 
@@ -1289,6 +1293,40 @@ async def get_chapter(
         "next_chapter_unavailable": next_adjacent_id is not None and next_chapter_id is None,
     }
     response.update(_availability_fields(translated, is_active_version=is_active_version))
+
+    # Public glossary annotations (REQ-1.3)
+    if settings.PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED:
+        try:
+            from novelai.db.engine import session_scope
+            from novelai.db.models.glossary import GlossaryEntry
+            from novelai.services.glossary_repository import GlossaryRepository
+
+            with session_scope() as session:
+                repository = GlossaryRepository(session)
+                # Get platform novel ID for glossary lookup
+                platform_novel_id = None
+                for key in ("platform_novel_id", "db_novel_id", "glossary_novel_id"):
+                    value = meta.get(key)
+                    if isinstance(value, int) and value > 0:
+                        platform_novel_id = value
+                        break
+                if platform_novel_id is None:
+                    # Try to resolve from DB
+                    from novelai.db.models.novel import Novel as NovelModel
+                    novel_row = session.query(NovelModel).filter_by(slug=novel_id).one_or_none()
+                    if novel_row is not None:
+                        platform_novel_id = novel_row.id
+
+                if platform_novel_id is not None:
+                    entries = repository.get_entries_for_novel(platform_novel_id)
+                    public_terms = select_public_terms(entries)
+                    reader_blocks = response.get("reader_blocks", [])
+                    annotations = find_annotations(public_terms, response.get("text", ""), reader_blocks)
+                    if annotations:
+                        response["glossary_annotations"] = annotations
+        except Exception as exc:
+            logger.debug("Glossary annotations failed: %s", exc)
+
     return response
 
 
