@@ -136,3 +136,46 @@ This document summarizes completion status, known flaws, and remaining debt.
 | Pre-existing tests verified | 150+ |
 | New services created | 5 (export_manifest, glossary_diagnostics, public_glossary_annotations + scheduler/export/glossary extensions) |
 | New API endpoints | 4 (scheduler health, export list, export latest, glossary save QA) |
+
+---
+
+## Deferred Debt (Category 2 — Storage/Metadata Preconditions)
+
+These test failures are deferred until the novel library is repopulated. They require either:
+- A populated novel library with stored metadata
+- A working PostgreSQL connection (psycopg2 driver)
+- Or both
+
+### Files Affected
+
+| File | Failures | Root Cause |
+|------|----------|------------|
+| `test_catalog_service.py` | 32 errors | `FileNotFoundError` for stale temp dir `pytest-3` |
+| `test_crawl_resilience_contracts.py` | 18 failures | `No metadata found for novel` — novel library cleared |
+| `test_storage_backends.py` | 2 errors | Same `FileNotFoundError` temp dir issue |
+| `test_onboarding_state_machine.py` | 3 failures | Storage precondition failures |
+| `test_document_import_orchestration.py` | 3 failures | Missing metadata + missing `psycopg2` |
+| `test_chapter_parallelization.py` | 1 failure | `Metadata not found` |
+| `test_translation_qa.py` | 1 failure | `Metadata not found` |
+| `test_web_api.py` (auth route tests) | 6 failures | `psycopg2` missing — auth check happens after DB access |
+| `test_integration.py` | 5 failures | Pipeline failure events not recorded |
+| `test_novel_orchestration_service.py` | 1 failure | DB session required |
+
+### Resolution Path
+
+1. **Install psycopg2**: `pip install psycopg2-binary` (or `pip install -e ".[db]"`)
+2. **Populate novel library**: Crawl or import at least one novel with stored metadata
+3. **Re-run tests**: All Category 2 failures should resolve automatically
+
+### Additional Debt (Category 3/4 — Pre-existing)
+
+| File | Failures | Root Cause |
+|------|----------|------------|
+| `test_web_api.py` (TestListDetail, TestAdmin, TestActivity) | 6 failures | DB-dependent tests |
+| `test_glossary_sync_bridge.py` | 2 failures | Sync bridge increments revision too many times; review doesn't trigger sync |
+| `test_frontend_api_contract.py` | 1 failure | `login-view.tsx` uses `fetch()` directly instead of `apiFetch` |
+| `test_integration.py` | 5 failures | Pipeline failure events not recorded in trace |
+
+### Session Teardown Hang
+
+`test_novel_orchestration_service.py` intermittently hangs during session teardown on Windows. The conftest.py fix (subprocess timeout in `_force_remove_tree`) mitigates this but doesn't eliminate it entirely. The hang is environmental (Windows file locking on `.tmp/runtime/` directories).
