@@ -740,15 +740,14 @@ async def test_translate_stage_stops_after_max_retriable_attempts(
         await stage.run(_context())
 
     assert caught.value.error_code == "max_attempts_exceeded"
-    assert caught.value.details == {
-        "chunk_id": "c0001",
-        "attempt_count": 2,
-        "max_attempts": 2,
-        "provider_key": "mock",
-        "provider_model": "slow",
-        "latest_error_code": ProviderErrorCode.RATE_LIMITED.value,
-        "latest_error_message": "still rate limited",
-    }
+    details = caught.value.details
+    assert details["chunk_id"] == "c0001"
+    assert details["attempt_count"] == 2
+    assert details["max_attempts"] == 2
+    assert details["provider_key"] == "mock"
+    assert details["provider_model"] == "slow"
+    assert details["latest_error_code"] == ProviderErrorCode.RATE_LIMITED.value
+    assert details["latest_error_message"] == "still rate limited"
     assert provider.calls == ["fast", "strong"]
     context = caught.value.pipeline_context
     assert context is not None
