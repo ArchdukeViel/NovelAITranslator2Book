@@ -67,7 +67,7 @@ services:
   migrate:
     build:
       context: ..
-      dockerfile: deploy/backend.Dockerfile
+      dockerfile: deploy/admin.Dockerfile
     working_dir: /app/backend
     command: ["alembic", "-c", "/app/backend/alembic.ini", "upgrade", "head"]
     environment:
@@ -91,7 +91,7 @@ services:
       start_period: 15s
     build:
       context: ..
-      dockerfile: deploy/backend.Dockerfile
+      dockerfile: deploy/admin.Dockerfile
     ports:
       - "8000:8000"
     environment:
