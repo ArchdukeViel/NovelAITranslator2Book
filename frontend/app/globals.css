@@ -44,7 +44,7 @@
   --accent-foreground: 39 29% 7%;
   --destructive: 1 75% 55%;
   --destructive-foreground: 0 0% 100%;
-  --border: 38 33% 87% / 0.10;
+  --border: 38 33% 87% / 0.1;
   --input: 42 17% 16%;
   --ring: 37 48% 59%;
   --sidebar: 39 29% 7%;
@@ -61,7 +61,9 @@ body {
   background: hsl(var(--background));
   color: hsl(var(--foreground));
   font-family: var(--font-dm-sans), sans-serif;
-  font-feature-settings: "rlig" 1, "calt" 1;
+  font-feature-settings:
+    "rlig" 1,
+    "calt" 1;
 }
 
 a {
