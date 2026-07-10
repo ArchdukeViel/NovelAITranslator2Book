@@ -1,11 +1,10 @@
-"use client";
-
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, BookOpen, Flag } from "lucide-react";
 
 import { ReaderControls } from "@/components/public/reader-controls";
+import { GlossaryAnnotationHighlighter } from "@/components/public/glossary-annotation-highlighter";
 import {
   useChapter,
   usePublicAuth,
@@ -306,6 +305,7 @@ export default function ChapterPage() {
   const novelTitle = data.novel_title || slug;
   const chapterTitle = data.title || (data.chapter_number != null ? `Chapter ${data.chapter_number}` : "Untitled chapter");
   const displayParagraphs = readerDisplayParagraphs(data);
+  const glossaryAnnotations = (data as any).glossary_annotations || [];
 
   return (
     <div data-reader-theme={theme} className="reader-container">
