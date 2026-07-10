@@ -12,7 +12,7 @@ from novelai.core.errors import SourceError
 from novelai.infrastructure.http.cache import FetchCache, FetchCacheEntry, InMemoryFetchCache
 from novelai.infrastructure.http.client import create_async_client, validate_safe_url
 from novelai.infrastructure.http.throttle import DomainThrottle
-from novelai.utils.retry_decorator import Retrier, RetryConfig
+from novelai.infrastructure.http.retry import Retrier, RetryConfig
 
 
 @dataclass(frozen=True)

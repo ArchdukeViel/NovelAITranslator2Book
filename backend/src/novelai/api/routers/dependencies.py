@@ -20,7 +20,7 @@ from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.storage.service import StorageService
-from novelai.utils.rate_limiter import get_default_rate_limiter
+from novelai.infrastructure.http.rate_limiter import get_default_rate_limiter
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 

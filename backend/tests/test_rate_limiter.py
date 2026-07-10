@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from novelai.utils.rate_limiter import (
+from novelai.infrastructure.http.rate_limiter import (
     DisabledRateLimiter,
     InMemoryRateLimiter,
     RedisRateLimiter,
@@ -53,8 +53,8 @@ class TestRedisRateLimiter:
         import fakeredis
         # Create a fresh fake redis instance for each test
         self.fake_redis = fakeredis.FakeStrictRedis()
-        monkeypatch.setattr("novelai.utils.rate_limiter.settings.REDIS_URL", "redis://localhost:6379/0")
-        monkeypatch.setattr("novelai.utils.rate_limiter.redis.from_url", lambda url: self.fake_redis)
+        monkeypatch.setattr("novelai.infrastructure.http.rate_limiter.settings.REDIS_URL", "redis://localhost:6379/0")
+        monkeypatch.setattr("novelai.infrastructure.http.rate_limiter.redis.from_url", lambda url: self.fake_redis)
 
     def test_allows_under_limit(self):
         limiter = RedisRateLimiter(limits={"test_action": 2}, window_seconds=60)
@@ -73,17 +73,17 @@ class TestRedisRateLimiter:
 
     def test_expires_after_window(self):
         # Use a fixed time to ensure consistent window_id calculation
-        with patch("novelai.utils.rate_limiter.time.time", return_value=1000.0):
+        with patch("novelai.infrastructure.http.rate_limiter.time.time", return_value=1000.0):
             limiter = RedisRateLimiter(limits={"test_action": 1}, window_seconds=1)
             assert limiter.hit("client1", "test_action") is True
             assert limiter.hit("client1", "test_action") is False
             
             # Simulate time passing to the next window
-            with patch("novelai.utils.rate_limiter.time.time", return_value=1002.0):
+            with patch("novelai.infrastructure.http.rate_limiter.time.time", return_value=1002.0):
                 assert limiter.hit("client1", "test_action") is True
 
     def test_missing_redis_url_raises_error(self, monkeypatch):
-        monkeypatch.setattr("novelai.utils.rate_limiter.settings.REDIS_URL", None)
+        monkeypatch.setattr("novelai.infrastructure.http.rate_limiter.settings.REDIS_URL", None)
         with pytest.raises(ValueError, match="REDIS_URL environment variable is required"):
             RedisRateLimiter(limits={"test_action": 1}, window_seconds=60)
 
@@ -94,7 +94,7 @@ class TestRateLimiterFactory:
             create_rate_limiter("unknown_backend")
 
     def test_missing_redis_url_with_redis_backend_raises_error(self, monkeypatch):
-        monkeypatch.setattr("novelai.utils.rate_limiter.settings.REDIS_URL", None)
+        monkeypatch.setattr("novelai.infrastructure.http.rate_limiter.settings.REDIS_URL", None)
         with pytest.raises(ValueError, match="REDIS_URL environment variable is required"):
             create_rate_limiter("redis")
 

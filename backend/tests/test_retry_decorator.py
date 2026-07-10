@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from novelai.utils.retry_decorator import (
+from novelai.infrastructure.http.retry import (
     BackoffCalculator,
     Retrier,
     RetryConfig,
