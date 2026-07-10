@@ -3,6 +3,7 @@
 > **Comprehensive reference for all environment variables.**
 > Source of truth: `backend/src/novelai/config/settings.py`
 > Example files: `.env.example`, `deploy/.env.example`
+> Last updated: 2026-07-10 — environment consolidation complete, legacy `provider`/`model` API aliases removed
 
 ---
 
@@ -83,7 +84,7 @@ SESSION_SECRET_KEY: <generate-with-python-secrets>
 OWNER_BOOTSTRAP_SECRET: <set-a-value>
 DATABASE_URL: postgresql+psycopg://novelai:novelai@localhost:5432/novelai
 REDIS_URL: redis://localhost:6379/0
-PROVIDER_DEFAULT: dummy
+PROVIDER_DEFAULT: gemini
 ```
 
 Generate required secrets:
@@ -263,7 +264,7 @@ python -c "import secrets; print(secrets.token_hex(32))"
 ```yaml
 # .env or deploy/.env
 ENV: development
-PROVIDER_DEFAULT: dummy
+PROVIDER_DEFAULT: gemini
 WEB_RATE_LIMITER_BACKEND: memory
 JOB_WORKER_ENABLED: false
 DATABASE_URL: postgresql+psycopg://novelai:novelai@localhost:5432/novelai
