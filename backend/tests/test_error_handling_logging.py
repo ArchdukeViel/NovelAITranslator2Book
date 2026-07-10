@@ -142,7 +142,7 @@ class TestStructuredExceptionHandler:
 
 class TestPipelineContextLogging:
     def test_stage_lifecycle_logs_json(self) -> None:
-        from novelai.services.pipeline.context import PipelineContext
+        from novelai.services.pipeline.context import StageLogContext
 
         records: list[logging.LogRecord] = []
 
@@ -154,7 +154,7 @@ class TestPipelineContextLogging:
         logger.addHandler(ListHandler())
         logger.setLevel(logging.INFO)
 
-        ctx = PipelineContext(novel_id="n1", chapter_id="c1", request_id="req-1", logger=logger)
+        ctx = StageLogContext(novel_id="n1", chapter_id="c1", request_id="req-1", logger=logger)
         marker = ctx.stage_enter("TestStage")
         ctx.stage_exit(marker)
 
@@ -169,7 +169,7 @@ class TestPipelineContextLogging:
         assert exit_record.__dict__["duration_ms"] >= 0
 
     def test_stage_error_logs_error_level(self) -> None:
-        from novelai.services.pipeline.context import PipelineContext
+        from novelai.services.pipeline.context import StageLogContext
 
         records: list[logging.LogRecord] = []
 
@@ -181,7 +181,7 @@ class TestPipelineContextLogging:
         logger.addHandler(ListHandler())
         logger.setLevel(logging.INFO)
 
-        ctx = PipelineContext(novel_id="n1", chapter_id="c1", request_id="req-1", logger=logger)
+        ctx = StageLogContext(novel_id="n1", chapter_id="c1", request_id="req-1", logger=logger)
         marker = ctx.stage_enter("FailStage")
         ctx.stage_error(marker, error_code="pipeline.fetch.timeout", stack_trace="  File \"test.py\", line 1, in test\n")
 
