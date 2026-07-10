@@ -1,4 +1,8 @@
-"""Pipeline logging context — per-chapter structured logging support."""
+"""Pipeline logging context — per-chapter structured logging support.
+
+Note: This module defines ``StageLogContext`` for logging. The canonical
+``PipelineContext`` dataclass lives in ``novelai.shared.pipeline``.
+"""
 
 from __future__ import annotations
 
@@ -9,11 +13,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 
-class PipelineContext:
+class StageLogContext:
     """Per-chapter logging context for pipeline stage execution.
 
     Usage:
-        ctx = PipelineContext(novel_id="n1", chapter_id="c1", request_id="uuid")
+        ctx = StageLogContext(novel_id="n1", chapter_id="c1", request_id="uuid")
         with ctx.stage("FetchStage"):
             ...
     """
@@ -91,13 +95,13 @@ def get_pipeline_logger(
     novel_id: str,
     chapter_id: str,
     request_id: str | None = None,
-) -> tuple[logging.Logger, PipelineContext]:
-    """Create a logger and PipelineContext for a chapter translation.
+) -> tuple[logging.Logger, StageLogContext]:
+    """Create a logger and StageLogContext for a chapter translation.
 
     Returns (logger, context).
     """
     logger = logging.getLogger("novelai.pipeline")
-    ctx = PipelineContext(
+    ctx = StageLogContext(
         novel_id=novel_id,
         chapter_id=chapter_id,
         request_id=request_id,
