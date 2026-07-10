@@ -10,7 +10,7 @@ Add a segment-level translation cache that stores translated results keyed by a 
 
 | File | Change type |
 |---|---|
-| `backend/src/novelai/services/cache/translation_cache.py` | New — `TranslationCacheService`, `CacheEntry` model, `make_cache_key` |
+| `backend/src/novelai/services/translation_cache.py` | New — `TranslationCacheService`, `CacheEntry` model, `make_cache_key` (was `services/cache/translation_cache.py` before merge) |
 | `backend/src/novelai/services/pipeline/stages/translate.py` | Update — add cache check/write around provider call |
 | `backend/src/novelai/services/glossary_service.py` | Update — call cache invalidation on glossary change |
 | `backend/src/novelai/api/routers/admin.py` | Update — add cache invalidation endpoint |
@@ -25,7 +25,7 @@ Add a segment-level translation cache that stores translated results keyed by a 
 
 ## Component Design
 
-### 1. `TranslationCacheService` (`services/cache/translation_cache.py`)
+### 1. `TranslationCacheService` (`services/translation_cache.py`)
 
 ```python
 import hashlib

@@ -26,7 +26,7 @@ No new storage files, database tables, migrations, or API endpoints are added.
 | `backend/src/novelai/activity/worker.py` | Capture `scrape_chapters` return value, persist `crawl_result`, and add crawl progress callback |
 | `backend/src/novelai/activity/queue.py` | Add safe metadata merge, `update_activity_metadata`, source-health enrichment, and cache invalidation |
 | `backend/src/novelai/services/orchestration/crawler.py` | Enrich per-chapter failures, count image download failures, and pass retry callback into source fetch |
-| `backend/src/novelai/utils/retry_decorator.py` | Add optional `on_retry` callback to `Retrier.execute_async` |
+| `backend/src/novelai/infrastructure/http/retry.py` | Add optional `on_retry` callback to `Retrier.execute_async` (moved from `utils/retry_decorator.py`) |
 | `backend/src/novelai/infrastructure/http/fetch_service.py` | Thread optional `on_retry` through retried fetch calls |
 | Source adapter modules | Accept and pass optional `on_retry` where adapters call the retried fetch service |
 | `backend/src/novelai/api/routers/activity.py` | Inspect only; update response usage only if strict models drop metadata |
