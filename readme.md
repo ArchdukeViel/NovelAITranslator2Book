@@ -4,13 +4,15 @@ Novel AI is a web-first Japanese novel platform for crawling source sites, queue
 
 The project is now oriented toward a production-style web deployment, similar in shape to a WTR-Lab style site: a Next.js frontend for public/admin pages, a FastAPI backend under `/api`, PostgreSQL-backed metadata, file/object-backed chapter content, and Redis/RQ background workers for crawler/translation activity.
 
-Current mode is single-owner / controlled-admin transitioning to a public platform. The project has:
+Current mode is single-owner / controlled-admin transitioning to a public platform. The project has 41 completed specs in `.agents/kiro/archive/` (37 fully complete, 3 partial, 1 not started) covering:
 - Scheduler-enabled admin-owned provider/model routing
 - PostgreSQL 16 with SQLAlchemy 2.x + Alembic migrations (metadata, users, jobs)
 - Redis 7 + RQ background workers
 - Guest/user/owner authentication (backend-enforced)
 - Public reader routes and user library/progress/ratings/requests
 - Baseline owner/admin security hardening
+- Glossary diagnostics, export manifests, public annotations, env consolidation
+- Legacy compatibility aliases (`source`, `provider`, `model`) fully removed from API contracts
 
 Not implemented: public contribution credentials (later gated phase), batch mode, billing, organizations, multi-admin teams.
 
@@ -23,8 +25,10 @@ Not implemented: public contribution credentials (later gated phase), batch mode
 - Route translation chunks through the backend scheduler with provider/model cooldown and quota state.
 - Review machine translations, save manual edits, switch active versions, and roll back chapter versions.
 - Track source health, activity/job status, scheduler model state, translation usage, glossary state, OCR review state, and export readiness.
-- Export translated or source text as EPUB, HTML, or Markdown.
+- Export translated or source text as EPUB, HTML, or Markdown with manifest validation.
 - Serve public reader routes and admin routes from the Next.js frontend.
+- Glossary diagnostics: readiness, coverage, and drift detection via `/api/admin/glossary/diagnostics`.
+- Public reader annotations: per-user highlights and notes persisted via `/api/user/annotations`.
 
 ## Project Layout
 
@@ -230,4 +234,7 @@ npm run build
 - [docs/architecture/public-auth-contract.md](docs/architecture/public-auth-contract.md): public auth and user data contract design
 - [docs/reference/data-output-structure.md](docs/reference/data-output-structure.md): storage and output layout
 - [docs/reference/python-commands.md](docs/reference/python-commands.md): backend launcher and Python API reference
+- [docs/environment.md](docs/environment.md): environment variables reference (single `.env` at repo root, `deploy/.env` for Docker)
+- [docs/cicd-manual-setup.md](docs/cicd-manual-setup.md): CI/CD pipeline setup guide (GitHub Actions)
 - [docs/current_state.md](docs/current_state.md): implementation status snapshot and test baseline
+- [SPECS_COMPLETION.md](SPECS_COMPLETION.md): all 14 specs completion summary

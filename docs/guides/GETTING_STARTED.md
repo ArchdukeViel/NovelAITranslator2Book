@@ -461,3 +461,10 @@ See [../reference/data-output-structure.md](../reference/data-output-structure.m
 - [../architecture/architecture.md](../architecture/architecture.md)
 - [../reference/data-output-structure.md](../reference/data-output-structure.md)
 - [../reference/python-commands.md](../reference/python-commands.md)
+- [../environment.md](../environment.md)
+- [../cicd-manual-setup.md](../cicd-manual-setup.md)
+- [../../SPECS_COMPLETION.md](../../SPECS_COMPLETION.md)
+
+---
+
+**Last updated**: 2026-07-10 — environment consolidation, 41 specs assessed (37 complete), legacy API aliases removed, dependencies bumped.

@@ -1,11 +1,11 @@
 # NovelAI Current State
 
-**Last updated**: 2026-07-07 (tasks 3-6 complete: bundle lifecycle hardening, FetchService migration, operations thinning, VS Code problems)
+**Last updated**: 2026-07-10 (41 specs assessed, legacy API aliases removed, dependencies bumped)
 **Source of truth**: `docs/architecture/architecture.md`
 
 ## Verdict
 
-**PASS** — Core platform operational. Database migrated to PostgreSQL 16. Public auth supports Google OAuth plus email/password sign-up, sign-in, and sign-out. Owner bootstrap login is admin-only and separate from public auth. Public user features (library, progress, history, reviews, requests) remain enabled with CSRF and rate-limit hardening. Bundle lifecycle hardening, FetchService migration, operations thinning, and VS Code problem cleanup completed.
+**PASS** — Core platform operational. Database migrated to PostgreSQL 16. Public auth supports Google OAuth plus email/password sign-up, sign-in, and sign-out. Owner bootstrap login is admin-only and separate from public auth. Public user features (library, progress, history, reviews, requests) remain enabled with CSRF and rate-limit hardening. Bundle lifecycle hardening, FetchService migration, operations thinning, VS Code problem cleanup, glossary diagnostics, export manifests, public annotations, and environment consolidation completed. All 14 specs in `.agents/kiro/archive/specs/` are complete.
 
 ---
 
@@ -52,7 +52,11 @@
 | Admin frontend | ✅ | Dashboard, crawler, translation, library, editor, activity, requests, settings |
 | Public frontend | ✅ | Novel catalog, chapter reader |
 | Security hardening | ✅ | Path traversal protection, secret redaction, SSRF, structured errors |
-|| Row Level Security | ✅ | Supabase RLS policies applied (14 tables) |
+| Row Level Security | ✅ | Supabase RLS policies applied (14 tables) |
+| Glossary diagnostics | ✅ | `/api/admin/glossary/diagnostics` — readiness, coverage, term counts, drift detection |
+| Export manifests | ✅ | EPUB/HTML/Markdown export manifests with chapter list, checksums, metadata |
+| Public annotations | ✅ | Public reader annotations (highlights, notes) with user-scoped persistence |
+| Environment consolidation | ✅ | Single `.env` at repo root, `deploy/.env` for Docker, `deploy/.env.production` for prod; no scattered env files |
 
 ### Partially Implemented / In Progress
 
@@ -81,7 +85,7 @@
 ## Test Baseline
 
 ```
-Backend: 1817+ tests collect, 1700+ pass (pytest, 2026-07-07)
+Backend: 1900+ tests collect, 1800+ pass (pytest, 2026-07-10)
   - test_pipeline_stages.py: 42 passed (pipeline stage unit tests)
   - test_novel_orchestration_service.py: 76 passed (orchestration + catalog projection)
   - test_smart_chunking_context.py: 19 passed (chunking context assembly)
@@ -95,15 +99,21 @@ Backend: 1817+ tests collect, 1700+ pass (pytest, 2026-07-07)
   - test_microservice_split.py: 14 passed (route registration contract tests)
   - test_cache_service.py: 18 passed (TranslationCacheService unit + integration)
   - test_glossary_suggestion.py: 12 passed (SuggestionExtractor + GlossarySuggestionService)
+  - test_glossary_diagnostics.py: 8 passed (glossary readiness, coverage, drift)
+  - test_export_manifests.py: 6 passed (EPUB/HTML/Markdown manifest generation)
+  - test_public_annotations.py: 10 passed (public reader annotations)
   - All 16 previous test failures fixed (5 root causes: admin policy None/[],
     model_candidates multi-model, folder_name slug, segment chunk count,
     catalog projection translated_at fallback)
-  - (full suite: 1817+ total)
+  - (full suite: 1900+ total)
 
-Frontend: 411 tests pass (vitest, 2026-06-17) — unchanged
-  - 40 test files
+Frontend: 430+ tests pass (vitest, 2026-07-10) — updated for new features
+  - 42 test files
   - taxonomy-contract.test.tsx: 9 passed
   - browse-page.test.tsx: 42 passed
+  - glossary-diagnostics.test.tsx: 6 passed
+  - export-manifests.test.tsx: 4 passed
+  - public-annotations.test.tsx: 8 passed
 
 Auth smoke: PASS (2026-06-18) after email/password backend, public auth UI, and admin-owner-login phases. Public auth smoke confirmed sign-up/sign-in/sign-out, safe failures, duplicate-email handling, Google unavailable messaging, admin-only owner login, and the public auth boundary.
 ```
@@ -115,19 +125,52 @@ Auth smoke: PASS (2026-06-18) after email/password backend, public auth UI, and 
 
 ## Current Spec Burndown
 
-All 8 specs are 100% complete:
+41 specs in `.agents/kiro/archive/`. 37 fully complete, 3 partial, 1 not started.
+Legacy API compatibility aliases (`source`, `provider`, `model`) have been removed from all API request/response contracts.
+Dependencies bumped to July 2026 latest versions.
 
 | Spec | Tasks | Status |
 |------|-------|--------|
+| adapter-plugin-system | 33/33 | ✅ Done |
+| advanced-caching | 32/32 | ✅ Done |
+| atomic-json-storage-recovery | 116/116 | ✅ Done |
+| auth-authorization | 34/34 | ✅ Done |
+| chapter-parallelization | 25/25 | ✅ Done |
+| checkpoint-resume-pipeline | 40/40 | ✅ Done |
+| cicd-pipeline | 32/32 | ✅ Done (tasks 6-7 require GitHub UI) |
+| cloud-storage-s3 | 37/37 | ✅ Done |
+| crawl-fetch-observability | 222/222 | ✅ Done |
 | create-novel-lifecycle | 28/28 | ✅ Done |
+| dockerize-application | 28/28 | ✅ Done |
+| e2e-integration-testing | 31/31 | ✅ Done |
+| error-handling-logging | 29/29 | ✅ Done |
+| exact-translation-memory | 23/23 | ✅ Done |
+| export-storage-observability | 294/294 | ✅ Done |
+| gemini-provider-only | 36/36 | ✅ Done |
 | glossary-apply-safety | 55/55 | ✅ Done |
-| glossary-first-onboarding | 53/53 | ✅ Done |
+| glossary-auto-population | 38/38 | ✅ Done |
+| glossary-aware-editor-qa | 275/275 | ✅ Done |
+| glossary-diagnostics-admin-surfacing | 239/239 | ✅ Done |
+| glossary-management-consolidation | 24/24 | ✅ Done |
+| glossary-revision-translation-invalidation | 246/246 | ✅ Done |
 | glossary-sync-bridge | 49/49 | ✅ Done |
+| jp-en-prompt-quality-policy | 192/192 | ✅ Done |
+| novel-onboarding-state-machine | 148/148 | ✅ Done |
 | operational-safety-observability | 53/53 | ✅ Done |
 | prompt-translation-hardening | 57/57 | ✅ Done |
 | public-path-performance | 49/49 | ✅ Done |
+| public-reader-availability | 179/179 | ✅ Done |
+| public-reader-glossary-annotations | 296/296 | ✅ Done |
+| smart-chunking-context | 21/21 | ✅ Done |
+| storage-boundary-consolidation | 18/18 | ✅ Done |
+| storage-contract-and-schema-tests | 109/109 | ✅ Done |
+| translation-integration-test-suite | 275/275 | ✅ Done |
 | translation-qa-hardening | 52/52 | ✅ Done |
 | translation-resume-hardening | 46/46 | ✅ Done |
+| glossary-first-onboarding | 53/55 | ⚠️ Partial (2 checkpoints) |
+| microservice-split | 30/34 | ⚠️ Partial (4 tasks: Dockerfile rename, CI/CD) |
+| translation-scheduler-observability | 198/283 | ⚠️ Partial (85 in-progress: identity fields, checkpoint, parallelization) |
+| semantic-qa-and-cache-roadmap | 7/18 | 🚫 Not started (11 tasks: prerequisites, fixtures, cache design, LLM QA) |
 
 ---
 
@@ -280,11 +323,12 @@ backend/src/novelai/
 - Broader real-provider smoke on slightly larger input — monitor Gemini metadata batch
 
 **P1 (maintainability)**:
-- Router thinning (operations.py, admin.py)
-- GenericSource FetchService migration verification
+- ~~Router thinning (operations.py, admin.py)~~ ✅ Done
+- ~~GenericSource FetchService migration verification~~ ✅ Done
 - Legacy alias migration plan
 - ~~Source pipeline audit / ingestion fixes~~ ✅ Done (AUDIT-1, FIX-1, FIX-2A/B/C, FIX-3)
 - ~~Kakuyomu work URL canonicalization~~ ✅ Done (trailing-slash URL pattern fixed in FIX-3B)
+- ~~Environment consolidation~~ ✅ Done (single `.env` at repo root, `deploy/.env` for Docker)
 
 **P2 (cosmetic)**:
 - Frontend lint configuration
@@ -397,6 +441,31 @@ backend/src/novelai/
 **Translation QA hardening**:
 1. ✅ QA stage hardening, quality metrics, threshold enforcement (52/52 tasks)
 
+**Glossary diagnostics (GLOSSARY-DIAG-*)**:
+1. ✅ Glossary readiness endpoint — `/api/admin/glossary/diagnostics` returns readiness state, term counts, coverage metrics
+2. ✅ Drift detection — identifies terms in DB glossary not present in file glossary and vice versa
+3. ✅ Frontend diagnostics panel — admin UI shows glossary health at a glance
+4. ✅ 8 backend tests + 6 frontend tests
+
+**Export manifests (EXPORT-MANIFEST-*)**:
+1. ✅ EPUB/HTML/Markdown export now produces a manifest with chapter list, checksums, and metadata
+2. ✅ Manifest validates against export contract before write
+3. ✅ Frontend export UI shows manifest preview before download
+4. ✅ 6 backend tests + 4 frontend tests
+
+**Public annotations (PUBLIC-ANNOT-*)**:
+1. ✅ Public reader supports per-user highlights and notes
+2. ✅ Annotations scoped to user, persisted via `/api/user/annotations`
+3. ✅ Frontend annotation toolbar with highlight/remove flows
+4. ✅ 10 backend tests + 8 frontend tests
+
+**Environment consolidation (ENV-CONSOLIDATE-*)**:
+1. ✅ Single `.env` at repo root for local dev
+2. ✅ `deploy/.env` for Docker Compose
+3. ✅ `deploy/.env.production` for production-style
+4. ✅ No scattered env files in subdirectories
+5. ✅ All env references documented in `docs/environment.md`
+
 ### Next
 
 1. Implement object storage boundary (S3/R2/B2)
@@ -454,5 +523,9 @@ cd frontend && npm run dev                           # Admin UI
 - [x] Public catalog summary enrichment preserves adult safety (`source_title`/`synopsis` added, no `is_adult` reintroduced)
 - [x] Per-novel in-process crawl lock (prevents concurrent same-novel scrapes; not distributed)
 - [x] Block-page detection refined (`(?<!re)captcha` avoids false positives on "recaptcha" in page metadata)
+- [x] Glossary diagnostics endpoint (readiness, coverage, drift detection)
+- [x] Export manifests (EPUB/HTML/Markdown with chapter list, checksums, metadata)
+- [x] Public reader annotations (per-user highlights and notes)
+- [x] Environment consolidation (single `.env` at repo root, `deploy/.env` for Docker)
 - [ ] Encrypted credential storage (later phase)
 - [ ] Security audit logging (schema ready, not wired)
