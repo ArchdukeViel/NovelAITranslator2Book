@@ -34,8 +34,6 @@ class TranslationActivityRequest(BaseModel):
     chapters: str = "all"
     provider_key: str | None = None
     provider_model: str | None = None
-    provider: str | None = None
-    model: str | None = None
     allow_cross_provider_fallback: bool = True
     skip_glossary_gate: bool = False
     metadata: dict[str, Any] | None = None
@@ -173,8 +171,8 @@ async def create_translation_activity(
             source_key=body.source_key,
             kind=body.kind,
             chapters=body.chapters,
-            provider=body.provider_key or body.provider,
-            model=body.provider_model or body.model,
+            provider=body.provider_key,
+            model=body.provider_model,
             metadata=metadata,
         ))
     except ValueError as exc:

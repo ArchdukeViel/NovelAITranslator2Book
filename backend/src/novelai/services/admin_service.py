@@ -245,12 +245,9 @@ class AdminService:
             else self.resolve_default_model(normalized_provider)
         )
         return {
-            "provider": normalized_provider,
             "provider_key": normalized_provider,
             "configured": self._provider_configured(normalized_provider),
-            "preferred_provider": preferred_provider,
             "preferred_provider_key": preferred_provider,
-            "model": model,
             "provider_model": model,
             "fallback_models": model_candidates(normalized_provider, model),
             "label": credential.get("label") or PROVIDER_LABELS.get(normalized_provider, normalized_provider),
@@ -805,9 +802,7 @@ class AdminService:
             "candidates": [
                 {
                     "priority_order": 0,
-                    "provider": provider,
                     "provider_key": provider,
-                    "model": model,
                     "provider_model": model,
                     "credential_id": provider,
                     "enabled": True,
@@ -838,9 +833,7 @@ class AdminService:
         quota = DEFAULT_QUOTA_HINTS.get((provider, model), {})
         return {
             "priority_order": _optional_nonnegative_int(item.get("priority_order")) if _optional_nonnegative_int(item.get("priority_order")) is not None else index,
-            "provider": provider,
             "provider_key": provider,
-            "model": model,
             "provider_model": model,
             "credential_id": credential_id,
             "enabled": item.get("enabled", True) is not False,
@@ -964,6 +957,23 @@ class AdminService:
                 "rpm_limit": item.get("rpm_limit"),
                 "rpd_limit": item.get("rpd_limit"),
             })
+
+        # Load persisted scheduler runtime state from most recent job
+        runtime_state = self._load_latest_scheduler_state()
+        if runtime_state:
+            for model in health:
+                key = (model["provider_key"], model["provider_model"])
+                if key in runtime_state:
+                    state = runtime_state[key]
+                    model["status"] = state.get("status", "available")
+                    model["requests_this_minute"] = state.get("requests_this_minute", 0)
+                    model["requests_today"] = state.get("requests_today", 0)
+                    model["cooldown_until"] = state.get("cooldown_until")
+                    model["exhausted_until"] = state.get("exhausted_until")
+                    model["failed_at"] = state.get("failed_at")
+                    model["last_error_code"] = state.get("last_error_code")
+                    model["last_error_message"] = state.get("last_error_message")
+
         default_provider = str(policy.get("default_provider", "gemini"))
         default_model = str(policy.get("default_model", ""))
         return {
@@ -975,6 +985,26 @@ class AdminService:
             },
             "models": health,
         }
+
+    def _load_latest_scheduler_state(self) -> dict[tuple[str, str], dict[str, Any]] | None:
+        """Load the most recent scheduler runtime state from storage."""
+        try:
+            all_states = self.storage.load_all_scheduler_states()
+            if not all_states:
+                return None
+            # Find the most recently updated state
+            latest = max(all_states.values(), key=lambda s: s.get("updated_at", ""))
+            model_states = latest.get("model_states", [])
+            result = {}
+            for state in model_states:
+                if isinstance(state, dict):
+                    pk = state.get("provider_key")
+                    pm = state.get("provider_model")
+                    if pk and pm:
+                        result[(pk, pm)] = state
+            return result if result else None
+        except Exception:
+            return None
 
     def worker_status(self) -> dict[str, Any]:
         return self.activity_runner.status()

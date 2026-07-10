@@ -25,7 +25,7 @@ function makeNovel(overrides: Partial<NovelSummary> = {}): NovelSummary {
   return {
     novel_id: "sample-novel",
     title: "Sample Novel",
-    source: "syosetu_ncode",
+    source_key: "syosetu_ncode",
     source_url: "https://example.com/sample",
     publication_status: "ongoing",
     chapter_count: 5,

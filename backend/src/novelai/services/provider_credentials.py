@@ -152,16 +152,14 @@ class ProviderCredentialService:
     @staticmethod
     def safe_response(credential: ProviderCredential) -> dict[str, Any]:
         return {
-            "id": str(credential.provider),
+            "provider_key": str(credential.provider),
             "db_id": credential.id,
-            "provider": credential.provider,
+            "provider_model": credential.model,
             "label": credential.label,
             "is_active": credential.is_active,
             "configured": True,
             "last4": credential.last4,
             "fingerprint": credential.key_fingerprint,
-            "model": credential.model,
-            "provider_model": credential.model,
             "validation_status": credential.validation_status,
             "validation_message": credential.validation_message,
             "last_validated_at": credential.last_validated_at.isoformat().replace("+00:00", "Z")

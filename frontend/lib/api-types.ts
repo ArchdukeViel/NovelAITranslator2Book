@@ -13,7 +13,7 @@ export type NovelSummary = {
   title?: string | null;
   source_title?: string | null;
   author?: string | null;
-  source?: string | null;
+  source_key?: string | null;
   source_url?: string | null;
   publication_status?: string | null;
   chapter_count: number;
@@ -795,4 +795,58 @@ export type GlossaryProviderCandidateResult = {
   scanned_chapter_count: number;
   highest_scanned_chapter_number: number | null;
   candidates: GlossaryProviderCandidateSummary[];
+};
+
+// ===========================================
+// Export Manifests
+// ===========================================
+
+export type ExportManifestFreshness = "current" | "stale" | "unknown_legacy_manifest" | "current_state_unavailable";
+
+export type ExportManifestStatus = "pending" | "running" | "succeeded" | "failed" | "deleted" | "legacy_unknown";
+
+export type ExportManifestFailureCode =
+  | "missing_translation"
+  | "missing_asset"
+  | "render_error"
+  | "write_error"
+  | "verify_error"
+  | "storage_error"
+  | "invalid_options"
+  | "unknown";
+
+export type ExportManifest = {
+  manifest_key: string;
+  novel_id: string;
+  format: string;
+  status: ExportManifestStatus;
+  output_filename: string | null;
+  artifact_key: string | null;
+  chapter_count: number | null;
+  source_chapter_count: number | null;
+  file_size_bytes: number | null;
+  checksum: string | null;
+  glossary_revision: number | null;
+  glossary_hash: string | null;
+  translation_version_count: number | null;
+  translation_versions_hash: string | null;
+  novel_updated_at: string | null;
+  export_options: Record<string, unknown> | null;
+  failure_code: ExportManifestFailureCode | null;
+  failure_message: string | null;
+  previous_manifest_key: string | null;
+  created_at: string;
+  updated_at: string;
+  freshness?: ExportManifestFreshness;
+};
+
+export type ExportManifestListResponse = {
+  novel_id: string;
+  manifests: ExportManifest[];
+};
+
+export type LatestExportResponse = {
+  novel_id: string;
+  export_format: string;
+  manifest: ExportManifest | null;
 };

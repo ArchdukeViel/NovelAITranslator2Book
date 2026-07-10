@@ -222,6 +222,7 @@ def test_router_path_method_snapshot() -> None:
         (("DELETE",), "/activity/{activity_id}"),
         (("DELETE",), "/jobs/{activity_id}"),
         (("GET",), "/"),
+        (("GET",), "/catalog-health"),
         (("GET",), "/activity"),
         (("GET",), "/activity/source-health"),
         (("GET",), "/activity/source-health/{source_key}"),
@@ -231,10 +232,14 @@ def test_router_path_method_snapshot() -> None:
             (("GET",), "/admin/providers/credentials"),
             (("GET",), "/admin/providers/fallback-policy"),
             (("GET",), "/admin/providers/models"),
-            (("GET",), "/admin/providers/{provider}"),
-            (("GET",), "/admin/provider-api-key/{provider}"),
+            (("GET",), "/admin/providers/{provider_key}"),
+            (("GET",), "/admin/provider-api-key/{provider_key}"),
         (("GET",), "/admin/runtime-state"),
         (("GET",), "/admin/worker"),
+        (("GET",), "/admin/translation/scheduler-health"),
+        (("GET",), "/admin/health/errors"),
+        (("GET",), "/admin/novels/{novel_id}/exports/latest/{export_format}"),
+        (("GET",), "/admin/novels/{novel_id}/exports"),
         (("GET",), "/input-adapters"),
         (("GET",), "/jobs"),
         (("GET",), "/jobs/source-health"),
@@ -250,8 +255,11 @@ def test_router_path_method_snapshot() -> None:
         (("GET",), "/{novel_id}/chapters/{chapter_id}/translated/edit-history"),
         (("GET",), "/{novel_id}/chapters/{chapter_id}/translated/versions"),
         (("GET",), "/{novel_id}/progress"),
+        (("GET",), "/{novel_id}/checkpoints"),
+        (("GET",), "/{novel_id}/translate-status"),
         (("GET",), "/{novel_id}/reader"),
         (("GET",), "/{novel_id}/reader/chapters/{chapter_id}"),
+        (("GET",), "/{novel_id}/catalog-projection-health"),
         (("GET",), "/{novel_id}/source-metadata"),
         (("GET",), "/{novel_id}/source-metadata/history"),
         (("GET",), "/{novel_id}/source-metadata/history/diff"),
@@ -265,10 +273,12 @@ def test_router_path_method_snapshot() -> None:
             (("POST",), "/admin/providers"),
             (("POST",), "/admin/providers/credentials"),
             (("POST",), "/admin/providers/credentials/{credential_id}/test"),
-            (("POST",), "/admin/providers/{provider}/validate"),
+            (("POST",), "/admin/providers/{provider_key}/validate"),
         (("POST",), "/admin/provider-api-key"),
         (("POST",), "/admin/provider-api-key/validate"),
         (("POST",), "/admin/runtime-state/{state_key}/refresh"),
+        (("POST",), "/admin/runtime-state/cleanup"),
+        (("POST",), "/admin/novels/{novel_id}/cache/invalidate"),
         (("POST",), "/activity/crawl"),
         (("POST",), "/activity/run-next"),
         (("POST",), "/activity/translation"),
@@ -280,6 +290,7 @@ def test_router_path_method_snapshot() -> None:
         (("POST",), "/jobs/{activity_id}/retry"),
         (("POST",), "/jobs/{activity_id}/run"),
         (("POST",), "/refresh-catalog-projections"),
+        (("POST",), "/"),
         (("POST",), "/requests"),
         (("POST",), "/requests/{request_id}/source-candidates"),
         (("POST",), "/requests/{request_id}/vote"),
@@ -292,12 +303,16 @@ def test_router_path_method_snapshot() -> None:
         (("POST",), "/{novel_id}/scrape"),
         (("POST",), "/{novel_id}/translate"),
         (("POST",), "/{novel_id}/unpublish"),
+        (("POST",), "/{novel_id}/onboarding/cancel"),
+        (("POST",), "/{novel_id}/onboarding/resume"),
+        (("POST",), "/{novel_id}/retranslate-stale"),
+        (("POST",), "/{novel_id}/chapters/{chapter_id}/translated/lint"),
             (("PUT",), "/{novel_id}/chapters/{chapter_id}/translated"),
             (("PUT",), "/admin/providers/fallback-policy"),
             (("PATCH",), "/admin/providers/credentials/{credential_id}"),
             (("DELETE",), "/admin/providers/credentials/{credential_id}"),
-            (("DELETE",), "/admin/providers/{provider}"),
-        (("DELETE",), "/admin/provider-api-key/{provider}"),
+            (("DELETE",), "/admin/providers/{provider_key}"),
+        (("DELETE",), "/admin/provider-api-key/{provider_key}"),
         (("DELETE",), "/admin/runtime-state/{state_key}"),
     }
     current_routes = _get_routes_from_router(novels.router)
@@ -2600,7 +2615,7 @@ class TestAdmin:
         assert canonical_status_resp.json()["provider_key"] == "gemini"
         credential_resp = c.get("/api/admin/providers/gemini")
         assert credential_resp.status_code == 200
-        assert credential_resp.json()["id"] == "gemini"
+        assert credential_resp.json()["provider_key"] == "gemini"
         assert credential_resp.json()["configured"] is False
         assert credential_resp.json()["validation_status"] == "Unchecked"
 
@@ -2612,9 +2627,7 @@ class TestAdmin:
 
         assert set_resp.status_code == 200
         assert set_resp.json()["configured"] is True
-        assert set_resp.json()["preferred_provider"] == "gemini"
         assert set_resp.json()["preferred_provider_key"] == "gemini"
-        assert set_resp.json()["model"] == "gemini-3.1-flash-lite"
         assert set_resp.json()["provider_model"] == "gemini-3.1-flash-lite"
         assert set_resp.json()["validation_status"] == "working"
         assert preferences.get_api_key("gemini") == "AIza-test-key"
@@ -2698,10 +2711,10 @@ class TestAdmin:
         created = owner.post(
             "/api/admin/providers/credentials",
             json={
-                "provider": "gemini",
+                "provider_key": "gemini",
                 "api_key": "AIza-admin-safe-key",
                 "label": "Primary Gemini",
-                "model": "gemini-3.1-flash-lite",
+                "provider_model": "gemini-3.1-flash-lite",
                 "is_active": True,
             },
             headers=_csrf_headers(owner),
@@ -2709,8 +2722,7 @@ class TestAdmin:
         assert created.status_code == 200
         payload = created.json()
         encoded = json.dumps(payload)
-        assert payload["id"] == "gemini"
-        assert payload["provider"] == "gemini"
+        assert payload["provider_key"] == "gemini"
         assert payload["label"] == "Primary Gemini"
         assert payload["last4"] == "-key"
         assert "AIza-admin-safe-key" not in encoded
@@ -2772,7 +2784,7 @@ class TestAdmin:
 
         resp = c.post(
             "/api/admin/providers/credentials",
-            json={"provider": "gemini", "api_key": "AIza-should-not-store"},
+            json={"provider_key": "gemini", "api_key": "AIza-should-not-store"},
             headers=_csrf_headers(c),
         )
 
@@ -2792,7 +2804,7 @@ class TestAdmin:
         headers = _csrf_headers(c)
         resp = c.post(
             "/api/admin/providers/credentials",
-            json={"provider": "gemini", "api_key": "AIza-policy-key", "model": "gemma-4-31b-it", "is_active": True},
+            json={"provider_key": "gemini", "api_key": "AIza-policy-key", "provider_model": "gemma-4-31b-it", "is_active": True},
             headers=headers,
         )
         assert resp.status_code == 200
@@ -2808,8 +2820,8 @@ class TestAdmin:
                 "candidates": [
                     {
                         "priority_order": 0,
-                        "provider": "gemini",
-                        "model": "gemma-4-31b-it",
+                        "provider_key": "gemini",
+                        "provider_model": "gemma-4-31b-it",
                         "credential_id": "gemini",
                         "enabled": True,
                     },
@@ -2824,7 +2836,7 @@ class TestAdmin:
         assert policy["allow_cross_provider_fallback"] is False
         assert policy["fallback_on_qa_failure"] is False
         assert "qa_failure" in policy["disallowed_failure_reasons"]
-        assert [(item["provider"], item["model"]) for item in policy["candidates"]] == [
+        assert [(item["provider_key"], item["provider_model"]) for item in policy["candidates"]] == [
             ("gemini", "gemma-4-31b-it"),
         ]
 

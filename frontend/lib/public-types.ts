@@ -64,6 +64,22 @@ export type PublicReaderBlock =
       text?: string;
     };
 
+export interface PublicGlossaryAnnotation {
+  term_id: string;
+  canonical_term: string;
+  display_term: string;
+  reading?: string | null;
+  term_type?: string | null;
+  short_definition?: string | null;
+  aliases?: string[];
+  matches: {
+    surface: string;
+    block_index: number;
+    start: number;
+    end: number;
+  }[];
+}
+
 export interface PublicChapterDetail {
   novel_id: string;
   slug?: string | null;
@@ -77,6 +93,7 @@ export interface PublicChapterDetail {
   next_chapter_id: string | null; // Req 5.5
   previous_chapter_unavailable?: boolean;
   next_chapter_unavailable?: boolean;
+  glossary_annotations?: PublicGlossaryAnnotation[];
 }
 
 // ---- Auth (from routers/auth.py) ----
