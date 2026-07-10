@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
-import { Noto_Serif_JP, DM_Sans, DM_Mono } from "next/font/google";
+import type { ReactNode } from "react";
+import { DM_Mono, DM_Sans, Noto_Serif_JP } from "next/font/google";
 
-import "@/app/globals.css";
+import "./globals.css";
+
 import { QueryProvider } from "@/lib/query-client";
 
 const notoSerifJp = Noto_Serif_JP({
@@ -36,9 +38,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${notoSerifJp.variable} ${dmSans.variable} ${dmMono.variable}`}>
+    <html
+      lang="en"
+      className={`${notoSerifJp.variable} ${dmSans.variable} ${dmMono.variable}`}
+    >
       <body className="font-sans">
         <QueryProvider>{children}</QueryProvider>
       </body>
