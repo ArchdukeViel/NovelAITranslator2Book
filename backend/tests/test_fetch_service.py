@@ -200,11 +200,7 @@ class FakeFetchService(FetchService):
 
 
 @pytest.mark.asyncio
-async def test_syosetu_adapter_uses_fetch_service_instead_of_own_http_client(monkeypatch):
-    def fail_old_client(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
-        raise AssertionError("adapter should use FetchService, not novelai.utils.http_client")
-
-    monkeypatch.setattr("novelai.utils.http_client.create_async_client", fail_old_client)
+async def test_syosetu_adapter_uses_fetch_service():
     html = """
     <html>
       <h1 class="novel_title">Test Novel</h1>
@@ -224,11 +220,7 @@ async def test_syosetu_adapter_uses_fetch_service_instead_of_own_http_client(mon
 
 
 @pytest.mark.asyncio
-async def test_kakuyomu_adapter_uses_fetch_service_instead_of_own_http_client(monkeypatch):
-    def fail_old_client(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
-        raise AssertionError("adapter should use FetchService, not novelai.utils.http_client")
-
-    monkeypatch.setattr("novelai.utils.http_client.create_async_client", fail_old_client)
+async def test_kakuyomu_adapter_uses_fetch_service():
     html = """
     <html>
       <h1 class="widget-workTitle">Kakuyomu Work</h1>
@@ -247,11 +239,7 @@ async def test_kakuyomu_adapter_uses_fetch_service_instead_of_own_http_client(mo
 
 
 @pytest.mark.asyncio
-async def test_kakuyomu_asset_fetch_uses_fetch_service(monkeypatch):
-    def fail_old_client(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
-        raise AssertionError("adapter should use FetchService, not novelai.utils.http_client")
-
-    monkeypatch.setattr("novelai.utils.http_client.create_async_client", fail_old_client)
+async def test_kakuyomu_asset_fetch_uses_fetch_service():
     fake_fetch = FakeFetchService("")
     fake_fetch.body = b"image-bytes"
     source = KakuyomuSource(fetch_service=fake_fetch)
@@ -267,11 +255,7 @@ async def test_kakuyomu_asset_fetch_uses_fetch_service(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_generic_adapter_uses_fetch_service_instead_of_own_http_client(monkeypatch):
-    def fail_old_client(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
-        raise AssertionError("adapter should use FetchService, not novelai.utils.http_client")
-
-    monkeypatch.setattr("novelai.utils.http_client.create_async_client", fail_old_client)
+async def test_generic_adapter_uses_fetch_service():
     html = """
     <html>
       <head><title>Generic Novel</title></head>

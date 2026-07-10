@@ -38,7 +38,7 @@
 | Structured error handling + logging | ✅ | StructuredHTTPException, PipelineContext, JsonFormatter, /health/errors endpoint, trace_id propagation |
 | Advanced translation caching | ✅ | TranslationCacheService (SHA-256 keys, sharded file storage, TTL), pipeline integration, glossary invalidation, /api/admin/cache/* endpoints |
 | Glossary auto-population | ✅ | SuggestionExtractor, GlossarySuggestionService, review/reject/apply API, pipeline integration |
-| Microservice-split readiness | ✅ | main_reader/main_admin entry points, DEPLOY_MODE dispatch, novelai_shared facade, Docker Compose + Caddy split routing, 14 contract tests |
+| Microservice-split readiness | ✅ | main_reader/main_admin entry points, DEPLOY_MODE dispatch, Docker Compose + Caddy split routing, 14 contract tests |
 | Source pipeline hardening | ✅ | GenericSource ruby/preflight/confidence, KakuyomuSource preflight/UTF-8/UA/Kakuyomu URL canonicalization, per-chapter partial failure, in-process crawl lock, block-page regex refined |
 | Storage layer | ✅ | File-backed, chapter-based, runtime contracts; `cleanup_expired_runtime_data()` added for TTL-based purge (14 days) |
 | Provider errors | ✅ | `ProviderError` / `ProviderErrorCode` classification, API error mapping |
