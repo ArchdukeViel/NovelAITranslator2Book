@@ -29,7 +29,7 @@ chapter-level parallel translation via asyncio.Semaphore + bounded gather
 NVIDIA provider removed; Gemini-only fallback chain
 S3 storage fields restored to settings (not yet active)
 pipeline/scheduler hardened: job-runtime persistence, model-state tracking
-microservice-split readiness: dual entry points, DEPLOY_MODE, novelai_shared facade
+microservice-split readiness: dual entry points, DEPLOY_MODE
 ```
 
 NovelAI is currently a web-based Japanese novel ingestion, translation, editing,
@@ -375,7 +375,7 @@ owner  - authenticated single owner; dangerous operations
 | Production session secret fail-closed | Implemented. |
 | Structured error handling + logging system | Implemented. StructuredHTTPException, PipelineContext, JsonFormatter, /health/errors endpoint, trace_id propagation. |
 | Glossary auto-population | Implemented. SuggestionExtractor, GlossarySuggestionService, review/reject/apply API, pipeline integration. |
-| Microservice-split readiness | Implemented. main_reader/main_admin entry points, DEPLOY_MODE dispatch (monolith/split), novelai_shared facade package, Docker Compose + Caddy split routing, 14 contract tests. |
+| Microservice-split readiness | Implemented. main_reader/main_admin entry points, DEPLOY_MODE dispatch (monolith/split), Docker Compose + Caddy split routing, 14 contract tests. |
 | Advanced translation caching | Implemented. TranslationCacheService (SHA-256 keys, sharded file storage, TTL), pipeline integration, glossary invalidation, /api/admin/cache/* endpoints. |
 | Adapter plugin system | Implemented. SourceAdapter ABC, AdapterRegistry (pkgutil auto-discovery, get_by_key, list_adapters), all adapters refactored, bootstrap registration. |
 | Public contribution credential backend lifecycle | Deferred. |

@@ -69,7 +69,7 @@ This document summarizes completion status, known flaws, and remaining debt.
 - **Debt:** None.
 
 ### microservice-split (30/34 — 4 tasks remaining)
-- **Implemented:** main_reader/main_admin entry points, DEPLOY_MODE dispatch, novelai_shared facade, Docker Compose + Caddy split routing, 14 contract tests.
+- **Implemented:** main_reader/main_admin entry points, DEPLOY_MODE dispatch, Docker Compose + Caddy split routing, 14 contract tests.
 - **Remaining:** Rename `deploy/backend.Dockerfile` to `deploy/admin.Dockerfile` (task 4.4), update CI/CD to build/test both services (tasks 5.1, 5.2).
 - **Debt:** Dockerfile rename + CI/CD dual-service build.
 

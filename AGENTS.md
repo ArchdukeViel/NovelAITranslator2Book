@@ -146,7 +146,6 @@ No:
   - `novelai.main_reader:app` (port 8001) — public reader, no session, no CSRF.
   - `novelai.api.app:app` — monolith (default). `DEPLOY_MODE=split` runs both via multiprocessing.
 - CLI launcher is `novelaibook` (installed via `pip install -e .`). Subcommands: `web`, `worker`, `doctor`, `create-user`, `adminweb`, `publicweb`.
-- `novelai_shared` is the cross-domain facade package for microservice-split readiness.
 - Frontend route groups: `frontend/app/(admin)/admin/*` and `frontend/app/(public)/*`.
 - Frontend API clients: `frontend/lib/api.ts` (admin) and `frontend/lib/public-api.ts` (public) are the only allowed direct-fetch files.
 
