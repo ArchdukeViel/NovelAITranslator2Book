@@ -30,7 +30,7 @@ from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.sources.base import SourceAdapter
 from novelai.storage.service import StorageService
-from novelai.utils.retry_decorator import Retrier, RetryConfig, RetryError
+from novelai.infrastructure.http.retry import Retrier, RetryConfig, RetryError
 from tests.conftest import TESTS_TMP_ROOT
 
 # ---------------------------------------------------------------------------
