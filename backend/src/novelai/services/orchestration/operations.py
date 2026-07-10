@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -19,6 +18,12 @@ from novelai.services.export_manifest_service import (
 )
 from novelai.services.export_service import ExportService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
+from novelai.services.orchestration.operations_helpers import (
+    ExportOperationResult,
+    OperationError,
+    get_novel_translation_lock,
+    require_novel_meta,
+)
 from novelai.services.orchestration.preliminary import (
     chapter_count,
     chapter_rows,
@@ -31,28 +36,6 @@ from novelai.sources.registry import detect_source
 from novelai.storage.service import StorageService
 
 logger = logging.getLogger(__name__)
-
-# Novel-level concurrency guard - prevents concurrent translation runs per novel
-_novel_translation_locks: dict[str, asyncio.Lock] = {}
-
-def _get_novel_translation_lock(novel_id: str) -> asyncio.Lock:
-    if novel_id not in _novel_translation_locks:
-        _novel_translation_locks[novel_id] = asyncio.Lock()
-    return _novel_translation_locks[novel_id]
-
-
-@dataclass(frozen=True)
-class ExportOperationResult:
-    path: str
-    media_type: str
-    filename: str
-
-
-class OperationError(Exception):
-    def __init__(self, status_code: int, detail: Any) -> None:
-        super().__init__(str(detail))
-        self.status_code = status_code
-        self.detail = detail
 
 
 class OperationsService:
@@ -316,11 +299,10 @@ class OperationsService:
         skip_glossary_gate: bool = False,
     ) -> dict[str, str]:
         # Guard: novel must exist before translation (REQ-3.1, REQ-3.2)
-        if self.storage.load_metadata(novel_id) is None:
-            raise OperationError(404, {"error": "Novel not found", "novel_id": novel_id})
+        require_novel_meta(self.storage, novel_id)
 
         # Novel-level concurrency guard
-        novel_lock = _get_novel_translation_lock(novel_id)
+        novel_lock = get_novel_translation_lock(novel_id)
         if novel_lock.locked():
             raise OperationError(409, f"Translation already in progress for novel {novel_id}")
         await novel_lock.acquire()
@@ -355,9 +337,7 @@ class OperationsService:
         novel_id: str,
     ) -> dict[str, Any]:
         """Return per-chapter translation state summary."""
-        meta = self.storage.load_metadata(novel_id)
-        if meta is None:
-            raise OperationError(404, {"error": "Novel not found", "novel_id": novel_id})
+        meta = require_novel_meta(self.storage, novel_id)
 
         chapters: list[dict[str, Any]] = []
         for chapter in meta.get("chapters", []):
@@ -393,9 +373,7 @@ class OperationsService:
         }
 
     def export_novel(self, *, novel_id: str, export_format: str) -> ExportOperationResult:
-        meta = self.storage.load_metadata(novel_id)
-        if meta is None:
-            raise OperationError(404, "Novel not found")
+        meta = require_novel_meta(self.storage, novel_id)
 
         chapters: list[dict[str, Any]] = []
         for chapter in meta.get("chapters", []):
@@ -568,9 +546,7 @@ class OperationsService:
         novel_id: str,
         chapters: str = "all",
     ) -> dict[str, Any]:
-        meta = self.storage.load_metadata(novel_id)
-        if meta is None:
-            raise OperationError(404, {"error": "Novel not found", "novel_id": novel_id})
+        meta = require_novel_meta(self.storage, novel_id)
 
         current_status = self.storage.resolve_onboarding_status(novel_id)
         if current_status in ("ready_for_translation", "cancelled"):
@@ -642,9 +618,7 @@ class OperationsService:
         }
 
     def cancel_onboarding(self, *, novel_id: str) -> dict[str, Any]:
-        meta = self.storage.load_metadata(novel_id)
-        if meta is None:
-            raise OperationError(404, {"error": "Novel not found", "novel_id": novel_id})
+        meta = require_novel_meta(self.storage, novel_id)
 
         current_status = self.storage.resolve_onboarding_status(novel_id)
         cancellable = {"metadata_discovered", "glossary_pending", "chapters_pending", "failed"}
@@ -682,9 +656,7 @@ class OperationsService:
             compute_glossary_freshness,
         )
 
-        meta = self.storage.load_metadata(novel_id)
-        if meta is None:
-            raise OperationError(404, {"error": "Novel not found", "novel_id": novel_id})
+        meta = require_novel_meta(self.storage, novel_id)
 
         chapters = meta.get("chapters", [])
         if not isinstance(chapters, list):
