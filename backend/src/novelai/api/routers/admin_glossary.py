@@ -2028,7 +2028,7 @@ async def accept_glossary_suggestion(
             decision_source="owner",
         )
         # Invalidate translation cache
-        from novelai.services.cache.translation_cache import TranslationCacheService
+        from novelai.services.translation_cache import TranslationCacheService
         try:
             TranslationCacheService().invalidate(novel_id)
         except Exception:

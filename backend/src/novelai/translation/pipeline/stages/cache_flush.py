@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from novelai.config.settings import settings
-from novelai.services.cache.translation_cache import TranslationCacheService
+from novelai.services.translation_cache import TranslationCacheService
 from novelai.translation.pipeline.context import PipelineContext
 from novelai.translation.pipeline.stages.base import PipelineStage
 

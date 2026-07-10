@@ -21,7 +21,7 @@ from novelai.prompts import build_translation_request
 from novelai.prompts.models import TranslationRequest
 from novelai.providers.base import TranslationProvider
 from novelai.providers.model_fallbacks import model_candidates
-from novelai.services.cache.translation_cache import TranslationCacheService
+from novelai.services.translation_cache import TranslationCacheService
 from novelai.services.glossary_diagnostics import (
     normalize_glossary_diagnostics,
     aggregate_glossary_diagnostics,
@@ -865,7 +865,7 @@ class TranslateStage(PipelineStage):
 
         if settings.TRANSLATION_CACHE_ENABLED:
             try:
-                from novelai.services.cache.translation_cache import make_cache_key
+                from novelai.services.translation_cache import make_cache_key
                 source_language = self._infer_source_language(context) or "auto"
                 target_language = context.metadata.get("target_language") or settings.TRANSLATION_TARGET_LANGUAGE
                 g_hash = glossary_hash or ""
@@ -980,7 +980,7 @@ class TranslateStage(PipelineStage):
         entry: CacheEntry | None = None
         if settings.TRANSLATION_CACHE_ENABLED:
             try:
-                from novelai.services.cache.translation_cache import CacheEntry, make_cache_key
+                from novelai.services.translation_cache import CacheEntry, make_cache_key
                 source_language = self._infer_source_language(context) or "auto"
                 target_language = context.metadata.get("target_language") or settings.TRANSLATION_TARGET_LANGUAGE
                 g_hash = glossary_hash or ""

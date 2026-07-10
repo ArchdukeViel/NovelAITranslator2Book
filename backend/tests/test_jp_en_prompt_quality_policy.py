@@ -27,7 +27,7 @@ from novelai.prompts.templates import (
     JP_EN_PROMPT_POLICY_VERSION,
     PROMPT_TEMPLATE_VERSION,
 )
-from novelai.services.cache.translation_cache import make_cache_key
+from novelai.services.translation_cache import make_cache_key
 from novelai.translation.qa import normalize_translation_output
 
 # ---------------------------------------------------------------------------
