@@ -38,7 +38,7 @@ export default function SchedulerHealthPage() {
       <ErrorBanner error={health.error} fallback="Failed to load scheduler health." className="mb-4 rounded-md border" />
 
       {health.isLoading ? (
-        <LoadingRows label="Loading scheduler health..." />
+        <LoadingRows colSpan={5} label="Loading scheduler health..." />
       ) : health.data ? (
         <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
           <Panel>

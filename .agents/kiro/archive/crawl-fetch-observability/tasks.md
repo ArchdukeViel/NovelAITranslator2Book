@@ -21,7 +21,7 @@ Scope boundaries:
   - [x] 1.3 Inspect `backend/src/novelai/activity/queue.py` for `update_activity_status`, activity storage shape, source-health methods, and existing locks.
   - [x] 1.4 Inspect `backend/src/novelai/api/routers/activity.py` and response models for activity and source-health routes.
   - [x] 1.5 Inspect `backend/src/novelai/services/orchestration/crawler.py` for `_scrape_chapters_impl`, failure construction, image handling, quality gates, and `progress_callback`.
-  - [x] 1.6 Inspect `backend/src/novelai/utils/retry_decorator.py` for retry attempt numbering and backoff flow.
+  - [x] 1.6 Inspect `backend/src/novelai/infrastructure/http/retry.py` (moved from `utils/retry_decorator.py`) for retry attempt numbering and backoff flow.
   - [x] 1.7 Inspect `backend/src/novelai/infrastructure/http/fetch_service.py` and source adapter `fetch_chapter_payload` signatures.
   - [x] 1.8 Confirm whether source adapters share a protocol or abstract base class that needs an `on_retry` signature update.
   - [x] 1.9 Inspect existing crawler/activity tests and fixtures for local conventions.

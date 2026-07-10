@@ -3,7 +3,7 @@
 ## Task List
 
 - [x] 1. Create `TranslationCacheService`
-  - [x] 1.1 Create `backend/src/novelai/services/cache/translation_cache.py` (REQ-3)
+  - [x] 1.1 Create `backend/src/novelai/services/translation_cache.py` (REQ-3) (was `services/cache/translation_cache.py` before merge)
   - [x] 1.2 Implement `make_cache_key` with SHA-256 hashing (REQ-1)
   - [x] 1.3 Implement `CacheEntry` Pydantic model (REQ-2.2)
   - [x] 1.4 Implement sharded file storage (`storage/novel_library/translation_cache/`) (REQ-2.1)

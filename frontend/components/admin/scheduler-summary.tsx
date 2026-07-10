@@ -59,7 +59,7 @@ export function SchedulerSummaryPanel({ summary, className }: { summary: Schedul
           <div className="mb-1 text-xs font-medium text-muted-foreground">Skip Reasons</div>
           <div className="flex flex-wrap gap-1.5">
             {Object.entries(summary.skip_reason_counts).map(([reason, count]) => (
-              <Badge key={reason} tone={count > 5 ? "warning" : "neutral"}>
+              <Badge key={reason} tone={count > 5 ? "amber" : "neutral"}>
                 {displayToken(reason)}: {count}
               </Badge>
             ))}

@@ -1,24 +1,26 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { DM_Mono, DM_Sans, Noto_Serif_JP } from "next/font/google";
+import localFont from "next/font/local";
 
 import "./globals.css";
 
 import { QueryProvider } from "@/lib/query-client";
 
-const notoSerifJp = Noto_Serif_JP({
-  subsets: ["latin"],
+const notoSerifJp = localFont({
+  src: "../public/fonts/Noto_Serif_JP.ttf",
   variable: "--font-noto-serif-jp",
 });
 
-const dmSans = DM_Sans({
-  subsets: ["latin"],
+const dmSans = localFont({
+  src: "../public/fonts/DM_Sans.ttf",
   variable: "--font-dm-sans",
 });
 
-const dmMono = DM_Mono({
-  weight: ["400", "500"],
-  subsets: ["latin"],
+const dmMono = localFont({
+  src: [
+    { path: "../public/fonts/DM_Mono_400.ttf", weight: "400" },
+    { path: "../public/fonts/DM_Mono_500.ttf", weight: "500" },
+  ],
   variable: "--font-dm-mono",
 });
 

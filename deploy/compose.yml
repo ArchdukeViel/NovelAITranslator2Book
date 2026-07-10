@@ -1,25 +1,6 @@
 name: novel-ai
 
 services:
-  postgres:
-    networks:
-      - novelai-net
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-novelai}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-novelai}
-      POSTGRES_DB: ${POSTGRES_DB:-novelai}
-    ports:
-      - "${POSTGRES_HOST_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-novelai} -d ${POSTGRES_DB:-novelai}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
   redis:
     image: redis:7-alpine
     volumes:
@@ -69,13 +50,10 @@ services:
       context: ..
       dockerfile: deploy/admin.Dockerfile
     working_dir: /app/backend
-    command: ["alembic", "-c", "/app/backend/alembic.ini", "upgrade", "head"]
+    entrypoint: ["alembic", "-c", "/app/backend/alembic.ini", "upgrade", "head"]
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-novelai}@postgres:5432/${POSTGRES_DB:-novelai}}
+      - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL}
       - PROVIDER_CREDENTIAL_ENCRYPTION_KEY=${PROVIDER_CREDENTIAL_ENCRYPTION_KEY:-}
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - novelai-net
     restart: "no"
@@ -92,8 +70,6 @@ services:
     build:
       context: ..
       dockerfile: deploy/admin.Dockerfile
-    ports:
-      - "8000:8000"
     environment:
       - ENV=${ENV:-production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -129,15 +105,13 @@ services:
       - GOOGLE_OAUTH_CLIENT_ID
       - GOOGLE_OAUTH_CLIENT_SECRET
       - GOOGLE_OAUTH_REDIRECT_URI
-      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-novelai}@postgres:5432/${POSTGRES_DB:-novelai}}
+      - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ../storage/novel_library:/app/storage/novel_library
     depends_on:
       migrate:
         condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -146,8 +120,6 @@ services:
     build:
       context: ..
       dockerfile: deploy/reader.Dockerfile
-    ports:
-      - "8001:8001"
     environment:
       - ENV=${ENV:-production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -155,15 +127,13 @@ services:
       - WEB_PORT=8001
       - WEB_CORS_ORIGINS=${WEB_CORS_ORIGINS:-[]}
       - NOVEL_LIBRARY_DIR=/app/storage/novel_library
-      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-novelai}:${POSTGRES_PASSWORD:-novelai}@postgres:5432/${POSTGRES_DB:-novelai}}
+      - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ../storage/novel_library:/app/storage/novel_library
     depends_on:
       migrate:
         condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -173,7 +143,6 @@ services:
 volumes:
   caddy_data:
   caddy_config:
-  postgres_data:
   redis_data:
 
 networks:
