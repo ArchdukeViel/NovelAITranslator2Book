@@ -664,6 +664,8 @@ def normalize_model_configs(raw_items: Any, *, default_provider_key: str, defaul
         for index, item in enumerate(raw_items):
             if not isinstance(item, dict):
                 continue
+            # ponytail: legacy "provider"/"model" keys accepted for reading stored configs.
+            # Remove fallback when no stored config uses old keys.
             provider_key = _optional_str(item.get("provider_key") or item.get("provider") or default_provider_key)
             provider_model = _optional_str(item.get("provider_model") or item.get("model"))
             if provider_key is None or provider_model is None:

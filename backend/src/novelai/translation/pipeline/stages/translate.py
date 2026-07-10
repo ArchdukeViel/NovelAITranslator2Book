@@ -22,7 +22,10 @@ from novelai.prompts.models import TranslationRequest
 from novelai.providers.base import TranslationProvider
 from novelai.providers.model_fallbacks import model_candidates
 from novelai.services.cache.translation_cache import TranslationCacheService
-from novelai.services.glossary_prompt_injection import GlossaryPromptInjectionService, PromptGlossaryBlock
+from novelai.services.glossary_diagnostics import (
+    normalize_glossary_diagnostics,
+    aggregate_glossary_diagnostics,
+)
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
@@ -1464,5 +1467,7 @@ class TranslateStage(PipelineStage):
             }
             for term in sorted(glossary_state.values(), key=lambda item: (item.source.casefold(), item.source))
         ]
+        # Wire glossary diagnostics into translation context (REQ-1.1)
+        context.metadata["glossary_diagnostics"] = normalize_glossary_diagnostics(context.metadata)
         logger.info(f"Translation complete: {len(context.translations)} chunks processed")
         return context

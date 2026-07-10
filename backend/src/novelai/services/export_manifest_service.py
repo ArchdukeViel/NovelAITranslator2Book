@@ -7,13 +7,17 @@ admin visibility without storing chapter text or provider payloads.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from novelai.storage.service import StorageService
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Status values  (REQ-5)
@@ -234,3 +238,86 @@ def compute_export_freshness(
             return "stale"
 
     return "current"
+
+
+# ---------------------------------------------------------------------------
+# Scheduled freshness check  (REQ-10)
+# ---------------------------------------------------------------------------
+
+
+async def check_all_exports_freshness(
+    storage: StorageService,
+    *,
+    interval_seconds: int = 3600,
+    stop_event: asyncio.Event | None = None,
+) -> None:
+    """Background task that periodically checks export freshness for all novels.
+
+    Args:
+        storage: Storage service instance
+        interval_seconds: How often to run the check (default: 1 hour)
+        stop_event: Optional event to signal shutdown
+    """
+    logger.info("Starting export freshness check task (interval=%ds)", interval_seconds)
+    while True:
+        if stop_event and stop_event.is_set():
+            logger.info("Export freshness check task stopped")
+            break
+
+        try:
+            await _check_all_exports_freshness_once(storage)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Export freshness check failed: %s", exc)
+
+        if stop_event:
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+            except TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                break
+        else:
+            await asyncio.sleep(interval_seconds)
+
+
+async def _check_all_exports_freshness_once(storage: StorageService) -> None:
+    """Run a single pass of freshness checking across all novels."""
+    try:
+        novel_ids = storage.list_novels()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to list novels for freshness check: %s", exc)
+        return
+
+    for novel_id in novel_ids:
+        try:
+            manifests = list_manifests(storage, novel_id)
+            if not manifests:
+                continue
+
+            meta = storage.load_metadata(novel_id) or {}
+            current_rev = meta.get("glossary_revision")
+            current_updated = meta.get("updated_at")
+
+            for manifest in manifests:
+                if manifest.get("status") != "succeeded":
+                    continue
+
+                freshness = compute_export_freshness(
+                    storage,
+                    novel_id,
+                    manifest,
+                    current_glossary_revision=current_rev,
+                    current_novel_updated_at=current_updated,
+                )
+
+                if freshness != manifest.get("freshness"):
+                    manifest["freshness"] = freshness
+                    write_manifest(storage, novel_id, manifest)
+                    logger.info(
+                        "Updated export freshness for %s/%s: %s",
+                        novel_id,
+                        manifest.get("export_id"),
+                        freshness,
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Freshness check failed for novel %s: %s", novel_id, exc)

@@ -73,12 +73,13 @@ def bootstrap_exporters() -> None:
     from novelai.export.epub_exporter import EPUBExporter
     from novelai.export.html_exporter import HTMLExporter
     from novelai.export.markdown_exporter import MarkdownExporter
+    from novelai.export.pdf_exporter import PDFExporter
     from novelai.export.registry import register_exporter
 
     register_exporter("epub", lambda: EPUBExporter())
     register_exporter("html", lambda: HTMLExporter())
     register_exporter("md", lambda: MarkdownExporter())
-    # PDF exporter is not yet implemented (requires reportlab or weasyprint).
+    register_exporter("pdf", lambda: PDFExporter())
 
 
 def bootstrap_provider_credentials() -> list[dict[str, object]]:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -7,6 +8,8 @@ from typing import Any
 from novelai.activity.queue import ActivityQueueService
 from novelai.core.errors import ProviderError
 from novelai.core.platform import CrawlJobKind, JobStatus, TranslationJobKind
+from novelai.services.export_manifest_service import check_all_exports_freshness
+from novelai.services.glossary_diagnostics import aggregate_glossary_diagnostics
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 
 logger = logging.getLogger(__name__)
@@ -331,6 +334,10 @@ class ActivityWorkerService:
             scheduler_summary = summary.get("scheduler_summary")
             if isinstance(scheduler_summary, dict):
                 result["scheduler_summary"] = scheduler_summary
+            # Aggregate glossary diagnostics across chapters (REQ-1.2)
+            chapter_diagnostics = summary.get("glossary_diagnostics")
+            if isinstance(chapter_diagnostics, list):
+                result["glossary_diagnostics_summary"] = aggregate_glossary_diagnostics(chapter_diagnostics)
         return result
 
     async def run_activity(self, activity_id: str) -> dict[str, Any] | None:
@@ -455,3 +462,20 @@ class ActivityWorkerService:
 
 
 JobWorkerService = ActivityWorkerService
+
+
+async def run_export_freshness_check(
+    storage,
+    *,
+    interval_seconds: int = 3600,
+    stop_event: asyncio.Event | None = None,
+) -> None:
+    """Run the export freshness check as a background task.
+
+    This can be started as a background task alongside the activity worker.
+    """
+    await check_all_exports_freshness(
+        storage,
+        interval_seconds=interval_seconds,
+        stop_event=stop_event,
+    )
