@@ -368,15 +368,27 @@ class OperationsService:
                 "id": chapter_id,
                 "title": chapter.get("title"),
                 "translated": translated is not None,
-                "state": state["current_state"].value if state else "unknown",
+                "state": state["current_state"].value if state else "pending",
+                "translation_state": state["current_state"].value if state else "pending",
                 "error_count": state.get("error_count", 0) if state else 0,
             })
 
         translated_count = sum(1 for c in chapters if c["translated"])
+        failed_count = sum(1 for c in chapters if c["state"] == "failed")
+        in_progress_count = sum(1 for c in chapters if c["state"] in ("translating", "queued"))
+        if failed_count > 0:
+            overall_state = "failed"
+        elif translated_count == len(chapters) and len(chapters) > 0:
+            overall_state = "completed"
+        else:
+            overall_state = "pending"
         return {
             "novel_id": novel_id,
             "total_chapters": len(chapters),
-            "translated_chapters": translated_count,
+            "completed_chapters": translated_count,
+            "failed_chapters": failed_count,
+            "in_progress_chapters": in_progress_count,
+            "overall_state": overall_state,
             "chapters": chapters,
         }
 

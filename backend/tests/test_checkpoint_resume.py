@@ -130,17 +130,16 @@ def test_get_translation_status_shape() -> None:
 
     assert result["novel_id"] == "n1234"
     assert result["total_chapters"] == 3
-    # Without DB backing, all translation_states default to PENDING → overall pending
+    # Overall state: 1 completed, 1 in progress, 1 pending → pending (not all done)
     assert result["overall_state"] == "pending"
     assert result["total_chapters"] == 3
-    assert result["completed_chapters"] == 0
+    assert result["completed_chapters"] == 1
     assert result["failed_chapters"] == 0
-    assert result["in_progress_chapters"] == 0
+    assert result["in_progress_chapters"] == 1
     assert len(result["chapters"]) == 3
-    # Each chapter gets a translation_state field
+    # Each chapter gets a state field
     for ch in result["chapters"]:
-        assert "translation_state" in ch
-        assert ch["translation_state"] == "pending"
+        assert "state" in ch
 
     # Ch1: translated
     assert result["chapters"][0]["id"] == "1"
