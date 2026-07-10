@@ -1,0 +1,53 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Explicitly declare text files to always use LF
+*.md text eol=lf
+*.txt text eol=lf
+*.py text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+*.conf text eol=lf
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.dockerfile text eol=lf
+*.sql text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.xml text eol=lf
+
+# Binary files - no line ending conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.lock binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+*.bak binary
+*.log binary
+*.tmp binary
+*.tmp/* binary
+*.cache binary
+*.cache/* binary
