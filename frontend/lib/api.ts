@@ -26,10 +26,10 @@ import type {
   GlossaryQAResponse,
   GlossaryOverride,
   GlossaryQAResult,
-  GlossaryQAFinding,
-  GlossaryQAFindingCreatePayload,
-  GlossaryQAFindingListFilters,
-  GlossaryQAFindingStatusPayload,
+  GlossaryQaFinding,
+  GlossaryQaFindingCreatePayload,
+  GlossaryQaFindingListFilters,
+  GlossaryQaFindingStatusPayload,
   GlossaryBatchApproveResult,
   GlossaryStatusTransitionPayload,
   GlossaryStatusTransitionResult,
@@ -45,6 +45,7 @@ import type {
   PreliminaryCrawlResult,
   ProviderApiKeyStatus,
   ProviderApiKeyValidationPayload,
+  ProviderCredential,
   ReaderChapter,
   ReaderNovel,
   RuntimeStateItem,
@@ -576,7 +577,40 @@ function glossaryEntryPath(novelId: RouteId, entryId: RouteId): string {
 // All admin endpoints targeting /api/admin/*
 // Sends session cookie, never a bearer key
 // ===========================================
-export const adminApi = {
+type AdminApi = {
+  listGlossaryEntries: (novelId: RouteId, filters?: GlossaryEntryListFilters) => Promise<GlossaryEntry[]>;
+  createGlossaryEntry: (novelId: RouteId, payload: GlossaryEntryCreatePayload) => Promise<GlossaryEntry>;
+  previewGlossaryCandidateImport: (novelId: RouteId, payload?: GlossaryCandidateImportRequest) => Promise<GlossaryCandidateImportResult>;
+  applyGlossaryCandidateImport: (novelId: RouteId, payload?: GlossaryCandidateImportRequest) => Promise<GlossaryCandidateImportResult>;
+  previewGlossaryProviderCandidates: (novelId: RouteId, payload?: GlossaryProviderCandidateRequest) => Promise<GlossaryProviderCandidateResult>;
+  applyGlossaryProviderCandidates: (novelId: RouteId, payload?: GlossaryProviderCandidateRequest) => Promise<GlossaryProviderCandidateResult>;
+  getGlossaryEntry: (novelId: RouteId, entryId: RouteId) => Promise<GlossaryEntry>;
+  updateGlossaryEntry: (novelId: RouteId, entryId: RouteId, payload: GlossaryEntryUpdatePayload) => Promise<GlossaryEntry>;
+  changeGlossaryEntryStatus: (novelId: RouteId, entryId: RouteId, payload: GlossaryEntryStatusPayload) => Promise<GlossaryEntry>;
+  lockGlossaryEntry: (novelId: RouteId, entryId: RouteId, payload?: GlossaryDecisionPayload) => Promise<GlossaryEntry>;
+  unlockGlossaryEntry: (novelId: RouteId, entryId: RouteId, payload?: GlossaryDecisionPayload) => Promise<GlossaryEntry>;
+  deprecateGlossaryEntry: (novelId: RouteId, entryId: RouteId, payload?: GlossaryDecisionPayload) => Promise<GlossaryEntry>;
+  listGlossaryAliases: (novelId: RouteId, entryId: RouteId) => Promise<GlossaryAlias[]>;
+  addGlossaryAlias: (novelId: RouteId, entryId: RouteId, payload: GlossaryAliasCreatePayload) => Promise<GlossaryAlias>;
+  updateGlossaryAlias: (novelId: RouteId, aliasId: RouteId, payload: GlossaryAliasUpdatePayload) => Promise<GlossaryAlias>;
+  deprecateGlossaryAlias: (novelId: RouteId, aliasId: RouteId, payload?: GlossaryDecisionPayload) => Promise<GlossaryAlias>;
+  listGlossaryProvenanceForEntry: (novelId: RouteId, entryId: RouteId) => Promise<GlossaryProvenance[]>;
+  listGlossaryProvenanceForNovel: (novelId: RouteId) => Promise<GlossaryProvenance[]>;
+  addGlossaryProvenance: (novelId: RouteId, entryId: RouteId, payload: GlossaryProvenanceCreatePayload) => Promise<GlossaryProvenance>;
+  listGlossaryDecisionEvents: (novelId: RouteId, entryId?: RouteId) => Promise<GlossaryDecisionEvent[]>;
+  listGlossaryQaFindings: (novelId: RouteId, filters?: GlossaryQaFindingListFilters) => Promise<GlossaryQaFinding[]>;
+  createGlossaryQaFinding: (novelId: RouteId, payload: GlossaryQaFindingCreatePayload) => Promise<GlossaryQaFinding>;
+  updateGlossaryQaFindingStatus: (novelId: RouteId, findingId: RouteId, payload: GlossaryQaFindingStatusPayload) => Promise<GlossaryQaFinding>;
+  transitionGlossaryStatus: (novelId: RouteId, payload: GlossaryStatusTransitionPayload) => Promise<GlossaryStatusTransitionResult>;
+  batchApproveGlossaryCandidates: (novelId: RouteId, payload?: GlossaryDecisionPayload) => Promise<GlossaryBatchApproveResult>;
+  providerCredential: (provider?: string) => Promise<ProviderCredential>;
+  resumeOnboarding: (novelId: string, chapters?: string) => Promise<{ novel_id: string; onboarding_status: string; activity_id: string | null }>;
+  cancelOnboarding: (novelId: string) => Promise<{ novel_id: string; onboarding_status: string }>;
+  listExportManifests: (novelId: RouteId) => Promise<import("./api-types").ExportManifestListResponse>;
+  getLatestExportManifest: (novelId: RouteId, format: string) => Promise<import("./api-types").LatestExportResponse>;
+};
+
+export const adminApi: AdminApi = {
   listGlossaryEntries: (novelId: RouteId, filters: GlossaryEntryListFilters = {}) => {
     const search = new URLSearchParams();
     if (filters.status) search.set("status", filters.status);
@@ -719,4 +753,9 @@ export const adminApi = {
       `/novels/${encodeURIComponent(novelId)}/onboarding/cancel`,
       { method: "POST", body: JSON.stringify({}) }
     ),
+  // Export manifests
+  listExportManifests: (novelId: RouteId) =>
+    request<import("./api-types").ExportManifestListResponse>(`/admin/novels/${routeId(novelId)}/exports`),
+  getLatestExportManifest: (novelId: RouteId, format: string) =>
+    request<import("./api-types").LatestExportResponse>(`/admin/novels/${routeId(novelId)}/exports/latest?format=${encodeURIComponent(format)}`),
 };

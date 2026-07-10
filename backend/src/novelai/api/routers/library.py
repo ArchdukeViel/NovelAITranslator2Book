@@ -39,7 +39,7 @@ class NovelSummary(BaseModel):
     title: str | None = None
     source_title: str | None = None
     author: str | None = None
-    source: str | None = None
+    source_key: str | None = None
     source_url: str | None = None
     publication_status: str = "unknown"
     chapter_count: int = 0
@@ -71,7 +71,7 @@ class SourceMetadataInspection(BaseModel):
     title: str | None = None
     source_title: str | None = None
     author: str | None = None
-    source: str | None = None
+    source_key: str | None = None
     source_url: str | None = None
     publication_status: str = "unknown"
     raw_status: str | None = None
@@ -438,7 +438,7 @@ def _source_metadata_inspection_payload(
         title=display_title,
         source_title=source_title,
         author=author,
-        source=_optional_string(meta.get("source")),
+        source_key=_optional_string(meta.get("source")),
         source_url=_optional_string(meta.get("source_url")),
         publication_status=publication_status,
         raw_status=_optional_string(meta.get("source_publication_status")) or _optional_string(meta.get("raw_status")),
@@ -466,7 +466,7 @@ def _db_novel_summary(novel: Novel, storage: StorageService) -> NovelSummary:
         title=_optional_string(novel.title) or novel.slug,
         source_title=_optional_string(novel.original_title),
         author=_optional_string(novel.author),
-        source=_optional_string(novel.source_site),
+        source_key=_optional_string(novel.source_site),
         source_url=_optional_string(novel.source_url),
         publication_status=publication_status,
         chapter_count=novel.chapter_count,
@@ -577,7 +577,7 @@ def _storage_novel_summary(
         title=_optional_string(meta.get("translated_title")) or _optional_string(meta.get("title")) or novel_id,
         source_title=_optional_string(meta.get("title")),
         author=_optional_string(meta.get("translated_author")) or _optional_string(meta.get("author")),
-        source=_optional_string(meta.get("source")),
+        source_key=_optional_string(meta.get("source")),
         source_url=_optional_string(meta.get("source_url")),
         publication_status=publication_status,
         chapter_count=chapter_count,

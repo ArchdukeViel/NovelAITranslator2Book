@@ -60,7 +60,7 @@ class ExportRequest(BaseModel):
 
 class ImportRequest(BaseModel):
     adapter_key: str
-    source: str
+    source_key: str
     max_units: int | None = None
 
 
@@ -139,7 +139,7 @@ async def import_document(
         return await service.import_document(
             novel_id=novel_id,
             adapter_key=body.adapter_key,
-            source=body.source,
+            source=body.source_key,
             max_units=body.max_units,
         )
     except OperationError as exc:

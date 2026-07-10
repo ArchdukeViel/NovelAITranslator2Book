@@ -14,7 +14,7 @@ import type { PublicNovelSummary } from "@/lib/public-types";
 
 type DiscoveryNovel = PublicNovelSummary & {
   cover_url?: string | null;
-  source?: string | null;
+  source_key?: string | null;
   updated_at?: string | null;
 };
 
@@ -80,7 +80,7 @@ export function NovelCard({ novel }: NovelCardProps) {
             className="mt-3"
             chapterCount={novel.chapter_count}
             translatedCount={novel.translated_count}
-            source={novel.source ?? novel.language}
+            source={novel.source_key ?? novel.language}
             status={novel.status}
             updatedAt={novel.updated_at}
           />

@@ -8,28 +8,23 @@ from pydantic import BaseModel
 
 
 class ProviderApiKeyRequest(BaseModel):
-    provider: str = "gemini"
-    provider_key: str | None = None
+    provider_key: str = "gemini"
     api_key: str
-    model: str | None = None
     provider_model: str | None = None
     apply_globally: bool = True
     validate_connection: bool = True
 
 
 class ProviderApiKeyValidationRequest(BaseModel):
-    provider: str = "gemini"
-    provider_key: str | None = None
+    provider_key: str = "gemini"
     api_key: str | None = None
-    model: str | None = None
     provider_model: str | None = None
 
 
 class ProviderCredentialCreateRequest(BaseModel):
-    provider: str
+    provider_key: str
     api_key: str
     label: str | None = None
-    model: str | None = None
     provider_model: str | None = None
     is_active: bool = True
     notes: str | None = None
@@ -38,7 +33,6 @@ class ProviderCredentialCreateRequest(BaseModel):
 
 class ProviderCredentialUpdateRequest(BaseModel):
     label: str | None = None
-    model: str | None = None
     provider_model: str | None = None
     is_active: bool | None = None
     notes: str | None = None
@@ -55,7 +49,7 @@ class ProviderFallbackPolicyRequest(BaseModel):
 
 
 def provider_credential_response(status: dict[str, Any]) -> dict[str, Any]:
-    provider = str(status.get("provider_key") or status.get("provider") or "gemini")
+    provider_key = str(status.get("provider_key") or "gemini")
     validation_status = {
         "working": "Working",
         "failed": "Failed",
@@ -64,14 +58,13 @@ def provider_credential_response(status: dict[str, Any]) -> dict[str, Any]:
     }.get(str(status.get("validation_status") or "unchecked").lower(), "Unchecked")
     configured = bool(status.get("configured"))
     return {
-        "id": provider,
-        "provider": provider,
+        "provider_key": provider_key,
         "masked_token": "Configured" if configured else "",
         "configured": configured,
-        "is_active": configured and status.get("preferred_provider_key", status.get("preferred_provider")) == provider,
+        "is_active": configured and status.get("preferred_provider_key") == provider_key,
         "validation_status": validation_status,
         "validation_message": status.get("validation_message"),
-        "model": status.get("provider_model") or status.get("model"),
+        "provider_model": status.get("provider_model"),
     }
 
 

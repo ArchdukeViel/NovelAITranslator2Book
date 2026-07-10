@@ -19,7 +19,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
 import { compareSortableValues, useSortableTable } from "@/hooks/use-sortable-table";
-import { api, type ActivityRecord, type ChapterSummary, type NovelMetadata, type NovelPublicationSummary, type NovelSummary } from "@/lib/api";
+import {
+  adminApi,
+  api,
+  type ActivityRecord,
+  type ChapterSummary,
+  type NovelMetadata,
+  type NovelPublicationSummary,
+  type NovelSummary,
+} from "@/lib/api";
 
 type LibrarySortKey = "novel" | "source" | "listed" | "raw" | "translated" | "status";
 type LibraryAction = "translate" | "recrawl" | "delete";
@@ -29,23 +37,29 @@ const TRANSLATION_LANGUAGES = ["English", "Indonesian"] as const;
 function translationState(novel: NovelSummary) {
   const total = novel.chapter_count;
   const translated = novel.translated_count ?? 0;
+
   if (total > 0 && translated >= total) {
     return "translated";
   }
+
   if (translated > 0) {
     return "partial";
   }
+
   return "untranslated";
 }
 
 function translationBadge(novel: NovelSummary) {
   const state = translationState(novel);
+
   if (state === "translated") {
     return <Badge tone="green">Translated</Badge>;
   }
+
   if (state === "partial") {
     return <Badge tone="amber">Partial</Badge>;
   }
+
   return <Badge tone="neutral">Untranslated</Badge>;
 }
 
@@ -53,18 +67,23 @@ function sortValue(novel: NovelSummary, key: LibrarySortKey) {
   if (key === "novel") {
     return `${novel.title || novel.novel_id} ${novel.author || ""}`.toLowerCase();
   }
+
   if (key === "source") {
-    return `${novel.source || ""} ${novel.source_url || ""}`.toLowerCase();
+    return `${novel.source_key || ""} ${novel.source_url || ""}`.toLowerCase();
   }
+
   if (key === "listed") {
     return novel.chapter_count;
   }
+
   if (key === "raw") {
     return novel.scraped_count ?? 0;
   }
+
   if (key === "translated") {
     return novel.translated_count ?? 0;
   }
+
   return translationState(novel);
 }
 
@@ -95,6 +114,7 @@ function chapterSortValue(chapter: ChapterSummary) {
 
 export default function LibraryPage() {
   const queryClient = useQueryClient();
+
   const [selectedNovelIds, setSelectedNovelIds] = React.useState<Set<string>>(new Set());
   const { sortKey, sortDirection, handleSort } = useSortableTable<LibrarySortKey>("novel", "asc");
   const [pendingDeleteRows, setPendingDeleteRows] = React.useState<NovelSummary[] | null>(null);
@@ -104,48 +124,60 @@ export default function LibraryPage() {
   const [translationLanguage, setTranslationLanguage] = React.useState<(typeof TRANSLATION_LANGUAGES)[number]>("English");
   const [selectedTranslationChapterIds, setSelectedTranslationChapterIds] = React.useState<Set<string>>(new Set());
   const [retranslateStaleNovel, setRetranslateStaleNovel] = React.useState<NovelSummary | null>(null);
-  // Note: activeGeminiToken removed - provider credential now comes from Admin_API, server-managed (Task 4)
+
   const translationNovelId = translationNovel?.novel_id;
 
   const novels = useQuery({
     queryKey: ["novels"],
-    queryFn: () => api.novels()
+    queryFn: () => api.novels(),
   });
+
   const rows = Array.isArray(novels.data) ? novels.data : [];
   const unexpectedPayload = novels.data && !Array.isArray(novels.data);
+
   const translationMetadata = useQuery({
     queryKey: ["novel", translationNovelId],
     queryFn: () => api.novel(translationNovelId ?? ""),
-    enabled: Boolean(translationNovelId)
+    enabled: Boolean(translationNovelId),
   });
+
   const translationChapters = useQuery({
     queryKey: ["chapters", translationNovelId],
     queryFn: () => api.chapters(translationNovelId ?? ""),
-    enabled: Boolean(translationNovelId)
+    enabled: Boolean(translationNovelId),
   });
+
   const translationChapterRows = React.useMemo(() => {
     return Array.isArray(translationChapters.data)
       ? [...translationChapters.data].sort((left, right) => {
           const leftValue = chapterSortValue(left);
           const rightValue = chapterSortValue(right);
+
           if (leftValue !== rightValue) {
             return leftValue - rightValue;
           }
+
           return left.id.localeCompare(right.id);
         })
       : [];
   }, [translationChapters.data]);
+
   const selectedTranslationCount = selectedTranslationChapterIds.size;
+
   const allTranslationChaptersSelected =
-    translationChapterRows.length > 0 && translationChapterRows.every((chapter) => selectedTranslationChapterIds.has(chapter.id));
+    translationChapterRows.length > 0 &&
+    translationChapterRows.every((chapter) => selectedTranslationChapterIds.has(chapter.id));
+
   const translationChapterSelection = React.useMemo(() => {
     return [...selectedTranslationChapterIds]
       .sort((left, right) => {
         const leftNumber = Number(left);
         const rightNumber = Number(right);
+
         if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber !== rightNumber) {
           return leftNumber - rightNumber;
         }
+
         return left.localeCompare(right);
       })
       .join(";");
@@ -153,15 +185,16 @@ export default function LibraryPage() {
 
   const selectedRows = React.useMemo(
     () => rows.filter((novel) => selectedNovelIds.has(novel.novel_id)),
-    [rows, selectedNovelIds]
+    [rows, selectedNovelIds],
   );
 
   React.useEffect(() => {
     if (!translationNovelId || !Array.isArray(translationChapters.data)) {
       return;
     }
+
     setSelectedTranslationChapterIds(
-      new Set(translationChapters.data.filter((chapter) => !chapter.translated).map((chapter) => chapter.id))
+      new Set(translationChapters.data.filter((chapter) => !chapter.translated).map((chapter) => chapter.id)),
     );
   }, [translationNovelId, translationChapters.data]);
 
@@ -183,50 +216,53 @@ export default function LibraryPage() {
   const runLibraryAction = useMutation({
     mutationFn: async ({ action, novels: actionRows }: { action: LibraryAction; novels: NovelSummary[] }) => {
       const completed: Array<ActivityRecord | void> = [];
+
       for (const novel of actionRows) {
         if (action === "delete") {
           completed.push(await api.deleteNovel(novel.novel_id));
           continue;
         }
 
-        if (!novel.source) {
+        if (!novel.source_key) {
           throw new Error(`${novel.novel_id} has no source key.`);
         }
 
         if (action === "recrawl") {
           const activity = await api.createCrawlActivity({
             novel_id: novel.novel_id,
-            source_key: novel.source,
+            source_key: novel.source_key,
             kind: "chapters",
             chapters: "all",
             source_url: novel.source_url || undefined,
-            metadata: { library_action: "recrawl" }
+            metadata: { library_action: "recrawl" },
           });
+
           completed.push(await api.runActivity(activity.id));
           continue;
         }
 
-        // Provider credential now managed server-side via Admin_API
         const activity = await api.createTranslationActivity({
           novel_id: novel.novel_id,
-          source_key: novel.source,
+          source_key: novel.source_key,
           kind: "translate",
           chapters: "all",
           provider_key: "gemini",
           metadata: {
             library_action: "translate",
-            target_language: "English"
-          }
+            target_language: "English",
+          },
         });
+
         completed.push(await api.runActivity(activity.id));
       }
+
       return completed;
     },
     onSuccess: () => {
       invalidateLibrary();
       setSelectedNovelIds(new Set());
       setPendingDeleteRows(null);
-    }
+    },
   });
 
   const runTranslationDialog = useMutation({
@@ -234,26 +270,28 @@ export default function LibraryPage() {
       if (!translationNovel) {
         throw new Error("No novel selected for translation.");
       }
-      if (!translationNovel.source) {
+
+      if (!translationNovel.source_key) {
         throw new Error(`${translationNovel.novel_id} has no source key.`);
       }
+
       if (!translationChapterSelection) {
         throw new Error("Select at least one chapter to translate.");
       }
 
-      // Provider credential now managed server-side via Admin_API - no client-side token sync needed
       const activity = await api.createTranslationActivity({
         novel_id: translationNovel.novel_id,
-        source_key: translationNovel.source,
+        source_key: translationNovel.source_key,
         kind: "translate",
         chapters: translationChapterSelection,
         provider_key: "gemini",
         metadata: {
           library_action: "translate",
           target_language: translationLanguage,
-          selected_chapter_count: selectedTranslationChapterIds.size
-        }
+          selected_chapter_count: selectedTranslationChapterIds.size,
+        },
       });
+
       return api.runActivity(activity.id);
     },
     onSuccess: () => {
@@ -261,13 +299,19 @@ export default function LibraryPage() {
       void queryClient.invalidateQueries({ queryKey: ["chapters", translationNovelId] });
       setTranslationNovel(null);
       setSelectedTranslationChapterIds(new Set());
-    }
+    },
   });
 
   const runRetranslateStale = useMutation({
     mutationFn: async (options: { includeLegacy: boolean; activate: boolean }) => {
-      if (!retranslateStaleNovel) throw new Error("No novel selected.");
-      if (!retranslateStaleNovel.source) throw new Error(`${retranslateStaleNovel.novel_id} has no source key.`);
+      if (!retranslateStaleNovel) {
+        throw new Error("No novel selected.");
+      }
+
+      if (!retranslateStaleNovel.source_key) {
+        throw new Error(`${retranslateStaleNovel.novel_id} has no source key.`);
+      }
+
       return api.retranslateStale(retranslateStaleNovel.novel_id, {
         include_legacy_unknown: options.includeLegacy,
         activate: options.activate,
@@ -277,7 +321,7 @@ export default function LibraryPage() {
     },
     onSuccess: () => {
       setRetranslateStaleNovel(null);
-      queryClient.invalidateQueries({ queryKey: ["novels"] });
+      void queryClient.invalidateQueries({ queryKey: ["novels"] });
     },
   });
 
@@ -288,29 +332,30 @@ export default function LibraryPage() {
     onSuccess: (result) => {
       queryClient.setQueryData<NovelSummary[]>(["novels"], (current) =>
         Array.isArray(current)
-          ? current.map((row) => row.novel_id === result.novel_id ? applyPublicationSummary(row, result) : row)
-          : current
+          ? current.map((row) => (row.novel_id === result.novel_id ? applyPublicationSummary(row, result) : row))
+          : current,
       );
+
       setPublicationNotice(
         result.visibility_warnings.includes("adult_hidden_by_default")
           ? "Published adult novels remain hidden from the default public catalog."
-          : null
+          : null,
       );
-    }
+    },
   });
 
   const resumeOnboarding = useMutation({
-    mutationFn: async (novel: NovelSummary) => api.resumeOnboarding(novel.novel_id),
+    mutationFn: async (novel: NovelSummary) => adminApi.resumeOnboarding(novel.novel_id),
     onSuccess: () => {
       invalidateLibrary();
-    }
+    },
   });
 
   const cancelOnboarding = useMutation({
-    mutationFn: async (novel: NovelSummary) => api.cancelOnboarding(novel.novel_id),
+    mutationFn: async (novel: NovelSummary) => adminApi.cancelOnboarding(novel.novel_id),
     onSuccess: () => {
       invalidateLibrary();
-    }
+    },
   });
 
   const toggleAllRows = () => {
@@ -320,11 +365,13 @@ export default function LibraryPage() {
   const toggleNovel = (novelId: string) => {
     setSelectedNovelIds((current) => {
       const next = new Set(current);
+
       if (next.has(novelId)) {
         next.delete(novelId);
       } else {
         next.add(novelId);
       }
+
       return next;
     });
   };
@@ -340,6 +387,7 @@ export default function LibraryPage() {
     if (runTranslationDialog.isPending) {
       return;
     }
+
     setTranslationNovel(null);
     setSelectedTranslationChapterIds(new Set());
   };
@@ -347,18 +395,20 @@ export default function LibraryPage() {
   const toggleTranslationChapter = (chapterId: string) => {
     setSelectedTranslationChapterIds((current) => {
       const next = new Set(current);
+
       if (next.has(chapterId)) {
         next.delete(chapterId);
       } else {
         next.add(chapterId);
       }
+
       return next;
     });
   };
 
   const toggleAllTranslationChapters = () => {
     setSelectedTranslationChapterIds(
-      allTranslationChaptersSelected ? new Set() : new Set(translationChapterRows.map((chapter) => chapter.id))
+      allTranslationChaptersSelected ? new Set() : new Set(translationChapterRows.map((chapter) => chapter.id)),
     );
   };
 
@@ -374,14 +424,17 @@ export default function LibraryPage() {
     if (actionRows.length === 0 || runLibraryAction.isPending) {
       return;
     }
+
     if (action === "translate") {
       openTranslationDialog(actionRows[0]);
       return;
     }
+
     if (action === "delete") {
       setPendingDeleteRows(actionRows);
       return;
     }
+
     runLibraryAction.mutate({ action, novels: actionRows });
   };
 
@@ -389,6 +442,7 @@ export default function LibraryPage() {
     if (publishNovel.isPending) {
       return;
     }
+
     setPublicationNotice(null);
     publishNovel.mutate({ novel, publish });
   };
@@ -399,15 +453,18 @@ export default function LibraryPage() {
     metadataText(translationMetadata.data, "title") ||
     translationNovel?.novel_id ||
     "-";
+
   const dialogAuthor =
     metadataText(translationMetadata.data, "translated_author") ||
     translationNovel?.author ||
     metadataText(translationMetadata.data, "author") ||
     "-";
+
   const dialogSynopsis =
     metadataText(translationMetadata.data, "translated_synopsis") ||
     metadataText(translationMetadata.data, "synopsis") ||
     "-";
+
   const translationDialogLoading = translationMetadata.isLoading || translationChapters.isLoading;
   const translationDialogError = translationMetadata.error || translationChapters.error;
 
@@ -426,6 +483,7 @@ export default function LibraryPage() {
               {selectedRows.length ? `${selectedRows.length} selected` : `${rows.length} novel(s) stored`}
             </p>
           </div>
+
           <div className="flex flex-wrap justify-end gap-2">
             <Button
               variant="outline"
@@ -437,6 +495,7 @@ export default function LibraryPage() {
               <Languages className="h-4 w-4" />
               Translate selected
             </Button>
+
             <Button
               variant="outline"
               size="sm"
@@ -446,6 +505,7 @@ export default function LibraryPage() {
               <RefreshCw className="h-4 w-4" />
               Recrawl selected
             </Button>
+
             <Button
               variant="destructive"
               size="sm"
@@ -455,27 +515,32 @@ export default function LibraryPage() {
               <Trash2 className="h-4 w-4" />
               Delete selected
             </Button>
+
             <Button variant="outline" size="sm" onClick={() => void novels.refetch()} disabled={novels.isFetching}>
               <RotateCw className="h-4 w-4" />
               Refresh
             </Button>
           </div>
         </PanelHeader>
+
         <ErrorBanner error={runLibraryAction.error} fallback="Failed to run library action." />
         <ErrorBanner error={publishNovel.error} fallback="Failed to update publication state." />
         <ErrorBanner error={resumeOnboarding.error} fallback="Failed to resume onboarding." />
         <ErrorBanner error={cancelOnboarding.error} fallback="Failed to cancel onboarding." />
         <ErrorBanner error={novels.error} fallback="Failed to load novels." />
+
         {publicationNotice ? (
           <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
             {publicationNotice}
           </div>
         ) : null}
+
         {unexpectedPayload ? (
           <div className="border-t px-4 py-3 text-sm text-destructive">
             Unexpected novels payload. Expected an array.
           </div>
         ) : null}
+
         <PanelBody className="p-0">
           <div className="seamless-scrollbar max-h-[640px] overflow-auto">
             <table className="w-full text-left text-sm">
@@ -484,16 +549,58 @@ export default function LibraryPage() {
                   <th className="w-12 px-4 py-3">
                     <TableCheckbox checked={allRowsSelected} onChange={toggleAllRows} aria-label="Select all novels" />
                   </th>
-                  <SortableHeader label="Novel" sortKey="novel" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="min-w-[280px]" />
-                  <SortableHeader label="Source" sortKey="source" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
-                  <SortableHeader label="Listed chapters" sortKey="listed" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-36" />
-                  <SortableHeader label="Raw chapters" sortKey="raw" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-32" />
-                  <SortableHeader label="Translated chapters" sortKey="translated" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-44" />
-                  <SortableHeader label="Status" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={handleSort} className="w-36" />
+                  <SortableHeader
+                    label="Novel"
+                    sortKey="novel"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="min-w-[280px]"
+                  />
+                  <SortableHeader
+                    label="Source"
+                    sortKey="source"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="Listed chapters"
+                    sortKey="listed"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-36"
+                  />
+                  <SortableHeader
+                    label="Raw chapters"
+                    sortKey="raw"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-32"
+                  />
+                  <SortableHeader
+                    label="Translated chapters"
+                    sortKey="translated"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-44"
+                  />
+                  <SortableHeader
+                    label="Status"
+                    sortKey="status"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-36"
+                  />
                   <th className="px-4 py-3">Onboarding</th>
                   <th className="w-[360px] px-4 py-3">Action</th>
                 </tr>
               </thead>
+
               <tbody>
                 {novels.isLoading ? (
                   <LoadingRows colSpan={9} label="Loading library..." />
@@ -507,9 +614,10 @@ export default function LibraryPage() {
                     const rawChapters = novel.scraped_count ?? 0;
                     const translatedChapters = novel.translated_count ?? 0;
                     const listedChapters = novel.chapter_count;
-                    const missingSource = !novel.source;
+                    const missingSource = !novel.source_key;
                     const onboardingStatus = novel.onboarding_status;
                     const showOnboardingBadge = onboardingStatus != null && onboardingStatus !== "ready_for_translation";
+
                     return (
                       <tr className="border-b last:border-0" key={novel.novel_id}>
                         <td className="px-4 py-3">
@@ -519,13 +627,15 @@ export default function LibraryPage() {
                             aria-label={`Select ${novel.novel_id}`}
                           />
                         </td>
+
                         <td className="px-4 py-3">
                           <div className="font-medium">{novel.title || novel.novel_id}</div>
                           <div className="mt-1 font-mono text-xs text-muted-foreground">{novel.novel_id}</div>
                           {novel.author ? <div className="mt-1 text-xs text-muted-foreground">{novel.author}</div> : null}
                         </td>
+
                         <td className="max-w-[240px] px-4 py-3">
-                          <div className="font-medium">{novel.source || "-"}</div>
+                          <div className="font-medium">{novel.source_key || "-"}</div>
                           {sourceUrl ? (
                             <a
                               className="mt-1 block truncate text-xs text-muted-foreground hover:text-primary"
@@ -538,20 +648,27 @@ export default function LibraryPage() {
                             </a>
                           ) : null}
                         </td>
+
                         <td className="px-4 py-3 font-medium">{listedChapters}</td>
+
                         <td className="px-4 py-3">
                           <div className="font-medium">{rawChapters}</div>
                           <div className="mt-1 text-xs text-muted-foreground">
                             {listedChapters ? `${Math.round((rawChapters / listedChapters) * 100)}% raw` : "no chapter list"}
                           </div>
                         </td>
+
                         <td className="px-4 py-3">
                           <div className="font-medium">{translatedChapters}</div>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            {listedChapters ? `${Math.round((translatedChapters / listedChapters) * 100)}% translated` : "no chapter list"}
+                            {listedChapters
+                              ? `${Math.round((translatedChapters / listedChapters) * 100)}% translated`
+                              : "no chapter list"}
                           </div>
                         </td>
+
                         <td className="px-4 py-3">{translationBadge(novel)}</td>
+
                         <td className="px-4 py-3">
                           {showOnboardingBadge ? (
                             <div className="space-y-1">
@@ -560,10 +677,10 @@ export default function LibraryPage() {
                                   onboardingStatus === "failed"
                                     ? "red"
                                     : onboardingStatus === "scraping_chapters" ||
-                                      onboardingStatus === "chapters_pending" ||
-                                      onboardingStatus === "glossary_pending"
-                                    ? "amber"
-                                    : "neutral"
+                                        onboardingStatus === "chapters_pending" ||
+                                        onboardingStatus === "glossary_pending"
+                                      ? "amber"
+                                      : "neutral"
                                 }
                               >
                                 {onboardingStatus === "scraping_chapters"
@@ -580,6 +697,7 @@ export default function LibraryPage() {
                                             ? "Cancelled"
                                             : onboardingStatus}
                               </Badge>
+
                               {onboardingStatus === "failed" && novel.onboarding_error_message ? (
                                 <div className="max-w-[200px] truncate text-xs text-destructive" title={novel.onboarding_error_message}>
                                   {novel.onboarding_error_message}
@@ -588,6 +706,7 @@ export default function LibraryPage() {
                             </div>
                           ) : null}
                         </td>
+
                         <td className="px-4 py-3">
                           <LibraryRowActions
                             novel={novel}
@@ -664,11 +783,7 @@ export default function LibraryPage() {
         auditNotice="This action is recorded in the audit log."
       />
 
-      <TaxonomyDialog
-        open={Boolean(taxonomyNovel)}
-        novel={taxonomyNovel}
-        onClose={closeTaxonomyDialog}
-      />
+      <TaxonomyDialog open={Boolean(taxonomyNovel)} novel={taxonomyNovel} onClose={closeTaxonomyDialog} />
 
       <RetranslateStaleDialog
         open={Boolean(retranslateStaleNovel)}
