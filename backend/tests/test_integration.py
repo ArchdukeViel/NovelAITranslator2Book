@@ -20,7 +20,7 @@ from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.post_process import PostProcessStage
 from novelai.translation.pipeline.stages.segment import SegmentStage, SmartSegmentStage
 from novelai.translation.pipeline.stages.translate import TranslateStage
-from novelai.utils.logging import setup_logging
+from novelai.logging_config import setup_logging
 from tests.conftest import (
     create_test_fixture,
 )
@@ -475,7 +475,7 @@ def test_logging_integration():
 
     import logging
 
-    from novelai.utils.logging import get_logger
+    from novelai.logging_config import get_logger
 
     logger = get_logger("test")
     assert logger is not None

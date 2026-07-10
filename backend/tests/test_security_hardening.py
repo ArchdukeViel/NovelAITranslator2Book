@@ -19,7 +19,7 @@ from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.storage.service import StorageService
-from novelai.utils.logging import SimpleFormatter, StructuredFormatter
+from novelai.logging_config import SimpleFormatter, StructuredFormatter
 
 
 @pytest.fixture

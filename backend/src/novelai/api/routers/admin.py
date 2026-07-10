@@ -385,7 +385,7 @@ async def invalidate_novel_cache(
     novel_id: str,
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
-    from novelai.services.cache.translation_cache import TranslationCacheService
+    from novelai.services.translation_cache import TranslationCacheService
     try:
         service = TranslationCacheService()
         count = service.invalidate(novel_id)

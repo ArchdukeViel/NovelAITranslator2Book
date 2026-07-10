@@ -470,7 +470,7 @@ class TestSchedulerSelection:
 
 class TestCacheIdentity:
     def _make_entry(self, key: str, text: str = "translated") -> Any:
-        from novelai.services.cache.translation_cache import CacheEntry
+        from novelai.services.translation_cache import CacheEntry
         return CacheEntry(
             key=key,
             source_text="source",
@@ -483,7 +483,7 @@ class TestCacheIdentity:
 
     def test_cache_hit_on_unchanged(self, tmp_path: Path) -> None:
         from novelai.config.settings import settings
-        from novelai.services.cache.translation_cache import TranslationCacheService
+        from novelai.services.translation_cache import TranslationCacheService
         # Cache may be disabled in test env; verify set/get contract when enabled
         cache = TranslationCacheService(cache_dir=tmp_path / "cache")
         entry = self._make_entry("key-a", "value-a")
@@ -497,7 +497,7 @@ class TestCacheIdentity:
             assert result is None
 
     def test_cache_miss_after_key_change(self, tmp_path: Path) -> None:
-        from novelai.services.cache.translation_cache import TranslationCacheService
+        from novelai.services.translation_cache import TranslationCacheService
         cache = TranslationCacheService(cache_dir=tmp_path / "cache")
         entry = self._make_entry("key-old", "val")
         cache.set("key-old", entry)
@@ -505,7 +505,7 @@ class TestCacheIdentity:
 
     def test_cache_invalidate(self, tmp_path: Path) -> None:
         from novelai.config.settings import settings
-        from novelai.services.cache.translation_cache import CacheEntry, TranslationCacheService
+        from novelai.services.translation_cache import CacheEntry, TranslationCacheService
         cache = TranslationCacheService(cache_dir=tmp_path / "cache")
         entry = CacheEntry(
             key="key-x", source_text="src", translated_text="val-x",

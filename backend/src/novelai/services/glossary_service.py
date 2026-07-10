@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from novelai.services.cache.translation_cache import TranslationCacheService
+from novelai.services.translation_cache import TranslationCacheService
 
 logger = logging.getLogger(__name__)
 

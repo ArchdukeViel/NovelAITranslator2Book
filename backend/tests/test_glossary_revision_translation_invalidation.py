@@ -29,7 +29,7 @@ from novelai.translation.glossary_freshness import (
     compute_glossary_freshness,
     compute_stale_active_translation_counts,
 )
-from novelai.services.cache.translation_cache import make_cache_key
+from novelai.services.translation_cache import make_cache_key
 
 # ---------------------------------------------------------------------------
 # Task 2: GlossarySnapshot

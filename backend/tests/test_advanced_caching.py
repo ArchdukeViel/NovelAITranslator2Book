@@ -20,7 +20,7 @@ from novelai.api.routers.dependencies import get_db_session
 from novelai.config.settings import settings
 from novelai.db.base import Base
 from novelai.db.models.novel import Novel
-from novelai.services.cache.translation_cache import CacheEntry, TranslationCacheService, make_cache_key
+from novelai.services.translation_cache import CacheEntry, TranslationCacheService, make_cache_key
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.translation.pipeline.context import PipelineContext
 from novelai.translation.pipeline.stages.translate import TranslateStage
@@ -308,7 +308,7 @@ class TestPipelineIntegration:
         # Pre-seed the cache entry before second run (simulates CacheFlushStage)
         from datetime import UTC, datetime
 
-        from novelai.services.cache.translation_cache import CacheEntry, make_cache_key
+        from novelai.services.translation_cache import CacheEntry, make_cache_key
         from novelai.translation.pipeline.stages.translate import _hash_text
         glossary_hash = _hash_text("")
         ck = make_cache_key("hello", "ja", "en", glossary_hash, provider_key="mock", provider_model="mock-model", prompt_version="translation_request_v1")
@@ -481,7 +481,7 @@ class TestManualInvalidationEndpoint:
 async def test_cache_flush_stage_writes_pending_entries(cache_dir: Path) -> None:
     """CacheFlushStage writes all pending cache entries to the cache service."""
 
-    from novelai.services.cache.translation_cache import TranslationCacheService
+    from novelai.services.translation_cache import TranslationCacheService
     from novelai.translation.pipeline.stages.cache_flush import CacheFlushStage
 
     svc = TranslationCacheService(cache_dir=cache_dir)
@@ -523,7 +523,7 @@ async def test_cache_flush_stage_writes_pending_entries(cache_dir: Path) -> None
 @pytest.mark.asyncio
 async def test_cache_flush_stage_skips_empty_pending(cache_dir: Path) -> None:
     """CacheFlushStage does nothing when no pending entries exist."""
-    from novelai.services.cache.translation_cache import TranslationCacheService
+    from novelai.services.translation_cache import TranslationCacheService
     from novelai.translation.pipeline.stages.cache_flush import CacheFlushStage
 
     svc = TranslationCacheService(cache_dir=cache_dir)
@@ -543,7 +543,7 @@ async def test_cache_flush_stage_skips_empty_pending(cache_dir: Path) -> None:
 @pytest.mark.asyncio
 async def test_cache_flush_stage_disabled_when_cache_off(cache_dir: Path) -> None:
     """CacheFlushStage does nothing when TRANSLATION_CACHE_ENABLED is False."""
-    from novelai.services.cache.translation_cache import TranslationCacheService
+    from novelai.services.translation_cache import TranslationCacheService
     from novelai.translation.pipeline.stages.cache_flush import CacheFlushStage
 
     svc = TranslationCacheService(cache_dir=cache_dir)
@@ -575,7 +575,7 @@ async def test_translate_stage_progress_counts_hits_and_misses(cache_dir: Path) 
     """TranslateStage updates cache_hits and cache_misses in progress dict."""
     from unittest.mock import MagicMock
 
-    from novelai.services.cache.translation_cache import TranslationCacheService
+    from novelai.services.translation_cache import TranslationCacheService
     from novelai.services.translation_cache import TranslationCache
     from novelai.storage.service import StorageService
     from novelai.translation.pipeline.stages.translate import TranslateStage
@@ -667,7 +667,7 @@ async def test_translate_stage_appends_pending_cache_entries(cache_dir: Path) ->
     """TranslateStage defers cache writes to _pending_cache_entries instead of writing directly."""
     from unittest.mock import MagicMock
 
-    from novelai.services.cache.translation_cache import TranslationCacheService
+    from novelai.services.translation_cache import TranslationCacheService
     from novelai.storage.service import StorageService
     from novelai.translation.pipeline.stages.translate import TranslateStage
 
