@@ -9,10 +9,10 @@ Last updated: 2026-06-16
 
 ## 0. Repository Integration
 
-Canonical path recommendation:
+Canonical path:
 
 ```text
-docs/frontend-design.md
+docs/architecture/frontend-design.md
 ```
 
 This file is a design contract, not an implementation checklist. Codex or any implementation agent should read it before frontend design work and treat deviations as drift unless this document is intentionally updated first.
