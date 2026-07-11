@@ -452,6 +452,7 @@ cookies, or frontend-only flags.
 - ✅ Source adapter FetchService migration — legacy `_with_retry`/`_rate_limit` removed from `base.py`.
 - ✅ Object storage boundary spike — `S3Backend` implemented and integrated into storage factory.
 - ✅ `operations.py` thinning — 11 standalone helpers extracted to `preliminary.py` (630→498 lines). `admin.py` still pending.
+- ✅ God file splits — all 6 largest routers split into focused files (operations, translate, library, public, admin_glossary, translation). Core files re-export split symbols. See `docs/backend_god_file_debt.md`.
 - Legacy aliases need planned migration.
 - Storage backward compatibility needs continued discipline.
 - Source parser fixtures are representative, not exhaustive against live-site

@@ -466,6 +466,14 @@ backend/src/novelai/
 4. ✅ No scattered env files in subdirectories
 5. ✅ All env references documented in `docs/environment.md`
 
+**God file splits (2026-07-11)**:
+1. ✅ `operations.py` (689→667) + `operations_helpers.py` (32L)
+2. ✅ `translate.py` (1392→993) + 3 helper files (617L total)
+3. ✅ `library.py` (1027→383) + `library_detail.py` + `library_actions.py`
+4. ✅ `public.py` (1215→385) + `public_catalog.py` + `public_novel.py` + `public_chapter.py`
+5. ✅ `admin_glossary.py` (1941→1321) + 4 router files (713L total)
+6. ✅ `translation.py` (2259→1053) + `translation_metadata.py` + `translation_lineage.py` + `translation_resume.py` + `translation_progress.py`
+
 ### Next
 
 1. Implement object storage boundary (S3/R2/B2)
