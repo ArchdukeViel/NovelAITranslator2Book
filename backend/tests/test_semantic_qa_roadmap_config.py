@@ -5,8 +5,6 @@ These tests verify REQ-4.3: both features must be disabled by default.
 
 from __future__ import annotations
 
-import pytest
-
 from novelai.config.settings import settings
 
 

@@ -9,12 +9,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from novelai.db.base import Base
-from novelai.db.models.novel import Novel
 from novelai.db.models.chapter import Chapter
-from novelai.db.models.users import (
-    LibraryItem, NovelRequest, ReadingHistory, ReadingProgress, Review, User,
-)
+from novelai.db.models.novel import Novel
 from novelai.db.models.system import AuditLog, SystemSetting
+from novelai.db.models.users import (
+    LibraryItem,
+    NovelRequest,
+    ReadingHistory,
+    ReadingProgress,
+    Review,
+    User,
+)
 
 _SQLITE = "sqlite:///:memory:"
 

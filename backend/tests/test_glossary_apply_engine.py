@@ -16,15 +16,9 @@ from novelai.db.base import Base
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.glossary import NovelGlossaryEntry
 from novelai.db.models.novel import Novel
-from novelai.services.glossary_apply_preview import (
-    GlossaryApplyPreviewRequest,
-    GlossaryApplyPreviewService,
-)
-from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.glossary_rewrite import apply_glossary_replacements
 from novelai.services.orchestration.glossary import (
     ApplyGlossaryResult,
-    ChapterApplyResult,
     apply_glossary_to_chapters,
 )
 
@@ -524,7 +518,7 @@ def test_apply_partial_failure_continues(session, novel, storage, orchestrator, 
 
     # Patch save to fail
     def _patched(*args, **kwargs):
-        raise IOError("simulated failure")
+        raise OSError("simulated failure")
 
     monkeypatch.setattr(storage, "save_translated_chapter", _patched)
 

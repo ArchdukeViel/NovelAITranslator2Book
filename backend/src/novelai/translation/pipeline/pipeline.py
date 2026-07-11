@@ -93,9 +93,9 @@ class TranslationPipeline:
                         message=str(exc),
                     ),
                 )
-                setattr(exc, "pipeline_context", context)
-                setattr(exc, "pipeline_events", list(context.pipeline_events))
-                setattr(exc, "failed_stage_name", stage_name)
+                exc.pipeline_context = context
+                exc.pipeline_events = list(context.pipeline_events)
+                exc.failed_stage_name = stage_name
                 raise
             context.current_stage = stage_name
             _append_event(

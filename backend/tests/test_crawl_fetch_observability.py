@@ -24,13 +24,13 @@ import pytest
 from novelai.activity.queue import ActivityQueueService
 from novelai.activity.worker import ActivityWorkerService
 from novelai.core.errors import SourceError
+from novelai.infrastructure.http.retry import Retrier, RetryConfig, RetryError
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.sources.base import SourceAdapter
 from novelai.storage.service import StorageService
-from novelai.infrastructure.http.retry import Retrier, RetryConfig, RetryError
 from tests.conftest import TESTS_TMP_ROOT
 
 # ---------------------------------------------------------------------------

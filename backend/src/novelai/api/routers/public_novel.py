@@ -10,22 +10,17 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 
 from novelai.api.routers.dependencies import (
-    get_db_session,
-    get_storage,
+    get_public_catalog_service,
     metadata_chapters,
 )
 from novelai.api.routers.public import (
     PublicChapterSummary,
     PublicNovelSummary,
-    _load_taxonomy_for_novel,
-    _novel_summary,
     _optional_str,
-    _resolve_public_novel,
 )
-from novelai.storage.service import StorageService
+from novelai.services.public_catalog_service import PublicCatalogService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 logger = logging.getLogger(__name__)
@@ -40,29 +35,28 @@ logger = logging.getLogger(__name__)
 async def get_novel(
     slug: str,
     include_adult: bool = Query(default=False, description="Include adult/R18 taxonomy terms"),
-    storage: StorageService = Depends(get_storage),
-    db: Session = Depends(get_db_session),
+    service: PublicCatalogService = Depends(get_public_catalog_service),
 ) -> PublicNovelSummary:
     """Public novel detail."""
-    resolved = _resolve_public_novel(slug, storage)
+    resolved = service._resolve_public_novel(slug)
     if resolved is None:
         raise HTTPException(status_code=404, detail="Novel not found.")
     novel_id, meta, _public_slug = resolved
-    genres, tags, _ = _load_taxonomy_for_novel(db, novel_id, include_adult=include_adult)
-    return _novel_summary(novel_id, meta, storage, genres=genres, tags=tags)
+    genres, tags, _ = service._load_taxonomy_for_novel(novel_id, include_adult=include_adult)
+    return service._novel_summary(novel_id, meta, genres=genres, tags=tags)
 
 
 @router.get("/novels/{slug}/chapters", response_model=list[PublicChapterSummary])
 async def list_chapters(
     slug: str,
-    storage: StorageService = Depends(get_storage),
+    service: PublicCatalogService = Depends(get_public_catalog_service),
 ) -> list[PublicChapterSummary]:
     """Public chapter list for a novel."""
-    resolved = _resolve_public_novel(slug, storage)
+    resolved = service._resolve_public_novel(slug)
     if resolved is None:
         raise HTTPException(status_code=404, detail="Novel not found.")
     novel_id, meta, _public_slug = resolved
-    translated_ids = set(storage.list_translated_chapters(novel_id))
+    translated_ids = set(service.storage.list_translated_chapters(novel_id))
     result = []
     for idx, ch in enumerate(metadata_chapters(meta)):
         chapter_id = str(ch.get("id", ""))

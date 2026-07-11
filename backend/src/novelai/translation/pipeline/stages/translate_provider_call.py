@@ -15,6 +15,8 @@ from novelai.prompts.models import TranslationRequest
 from novelai.translation.pipeline.context import PipelineContext
 from novelai.translation.pipeline.stages.translate_result_assembly import (
     glossary_hash as _glossary_hash,
+)
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     hash_text,
     prompt_version,
     translation_run_id,

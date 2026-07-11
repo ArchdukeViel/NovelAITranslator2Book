@@ -354,6 +354,7 @@ class TestCatalogServiceIntegration:
     def test_get_or_create_novel_calls_persist_taxonomy(self, session) -> None:
         _seed_genres(session)
         from pathlib import Path
+
         from novelai.services.catalog_service import CatalogService
         from novelai.storage.service import StorageService
 
@@ -380,6 +381,7 @@ class TestCatalogServiceIntegration:
     def test_get_or_create_existing_novel_replaces_scraper_assignments(self, session) -> None:
         _seed_genres(session)
         from pathlib import Path
+
         from novelai.services.catalog_service import CatalogService
         from novelai.storage.service import StorageService
 

@@ -6,8 +6,8 @@ from uuid import uuid4
 
 import pytest
 
-from novelai.core.platform import JobStatus
 from novelai.activity.queue import ActivityQueueService
+from novelai.core.platform import JobStatus
 from tests.conftest import TESTS_TMP_ROOT
 
 

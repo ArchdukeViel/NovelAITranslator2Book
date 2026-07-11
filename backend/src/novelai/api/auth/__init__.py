@@ -19,4 +19,4 @@ from __future__ import annotations
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.session import SessionUser, get_current_user
 
-__all__ = ["require_role", "get_current_user", "SessionUser"]
+__all__ = ["SessionUser", "get_current_user", "require_role"]

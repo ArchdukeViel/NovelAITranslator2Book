@@ -11,7 +11,7 @@ from novelai.services.email import NoopAuthEmailService, SMTPAuthEmailService
 
 
 class FakeSMTP:
-    instances: list["FakeSMTP"] = []
+    instances: list[FakeSMTP] = []
 
     def __init__(self, host: str, port: int, *, timeout: float) -> None:
         self.host = host
@@ -23,13 +23,13 @@ class FakeSMTP:
         self.closed = False
         FakeSMTP.instances.append(self)
 
-    def starttls(self, *, context) -> None:  # noqa: ANN001
+    def starttls(self, *, context) -> None:
         self.started_tls = True
 
     def login(self, username: str, password: str) -> None:
         self.login_args = (username, password)
 
-    def send_message(self, message) -> None:  # noqa: ANN001
+    def send_message(self, message) -> None:
         self.messages.append(message)
 
     def quit(self) -> None:
@@ -160,7 +160,7 @@ def test_smtp_missing_config_returns_safe_delivery_failure(caplog):
 
 def test_smtp_send_failure_returns_safe_delivery_failure(caplog):
     class FailingSMTP(FakeSMTP):
-        def send_message(self, message) -> None:  # noqa: ANN001
+        def send_message(self, message) -> None:
             raise RuntimeError("send failed")
 
     service = SMTPAuthEmailService(

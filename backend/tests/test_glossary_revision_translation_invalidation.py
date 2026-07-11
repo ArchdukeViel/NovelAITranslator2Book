@@ -15,21 +15,21 @@ from __future__ import annotations
 
 import pytest
 
+from novelai.services.translation_cache import make_cache_key
 from novelai.translation.glossary_freshness import (
     FRESHNESS_FRESH,
     FRESHNESS_LEGACY_UNKNOWN,
     FRESHNESS_STALE,
     FRESHNESS_UNKNOWN,
-    GlossarySnapshot,
     STALE_REASON_CURRENT_SNAPSHOT_UNAVAILABLE,
     STALE_REASON_FRESH,
     STALE_REASON_HASH_MISMATCH,
     STALE_REASON_LEGACY_MISSING_REVISION,
     STALE_REASON_REVISION_MISMATCH,
+    GlossarySnapshot,
     compute_glossary_freshness,
     compute_stale_active_translation_counts,
 )
-from novelai.services.translation_cache import make_cache_key
 
 # ---------------------------------------------------------------------------
 # Task 2: GlossarySnapshot

@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 import webbrowser
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -63,7 +63,7 @@ def _doctor_check() -> tuple[int, list[str]]:
                 text=True,
                 timeout=8,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             warnings += 1
             lines.append(f"WARN: Failed to execute launcher probe: {exc}")
         else:
@@ -81,8 +81,8 @@ def _doctor_check() -> tuple[int, list[str]]:
 
 
 async def _run_worker_once() -> None:
-    from novelai.runtime.container import container  # noqa: PLC0415
-    runner = getattr(container, "activity_runner", None) or getattr(container, "job_runner")
+    from novelai.runtime.container import container
+    runner = getattr(container, "activity_runner", None) or container.job_runner
     activity = await runner.run_once()
     if activity is None:
         print("No pending job.")
@@ -91,8 +91,8 @@ async def _run_worker_once() -> None:
 
 
 async def _run_worker_forever(poll_seconds: float | None) -> None:
-    from novelai.runtime.container import container  # noqa: PLC0415
-    runner = getattr(container, "activity_runner", None) or getattr(container, "job_runner")
+    from novelai.runtime.container import container
+    runner = getattr(container, "activity_runner", None) or container.job_runner
     if poll_seconds is not None:
         runner.poll_seconds = max(0.05, float(poll_seconds))
 
@@ -199,11 +199,11 @@ def main(argv: list[str] | None = None) -> None:
         )
         return
 
-    from novelai.runtime.bootstrap import bootstrap  # noqa: PLC0415
+    from novelai.runtime.bootstrap import bootstrap
     bootstrap()
 
     if command == "web":
-        from novelai.api.server import main as web_main  # noqa: PLC0415
+        from novelai.api.server import main as web_main
         web_main(reload=bool(getattr(args, "reload", False)))
         return
 
@@ -219,9 +219,9 @@ def main(argv: list[str] | None = None) -> None:
 
     if command == "create-user":
         # Lazy imports — argon2 is an optional dependency
-        from novelai.api.auth.passwords import hash_password  # noqa: PLC0415
-        from novelai.db.engine import session_scope  # noqa: PLC0415
-        from novelai.db.models.users import User  # noqa: PLC0415
+        from novelai.api.auth.passwords import hash_password
+        from novelai.db.engine import session_scope
+        from novelai.db.models.users import User
 
         email = args.email.strip().lower()
         if not email:
@@ -237,7 +237,7 @@ def main(argv: list[str] | None = None) -> None:
             display_name=args.display_name,
             role=args.role,
             password_hash=pw_hash,
-            email_verified_at=datetime.now(timezone.utc),
+            email_verified_at=datetime.now(UTC),
             is_active=True,
         )
         try:

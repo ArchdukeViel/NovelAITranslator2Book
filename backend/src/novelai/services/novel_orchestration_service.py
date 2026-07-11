@@ -9,6 +9,7 @@ from typing import Any
 from novelai.config.workflow_profiles import normalize_workflow_profile_step
 from novelai.inputs.base import DocumentAdapter
 from novelai.providers.base import TranslationProvider
+from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.services.orchestration.common import PreflightIssue, _utc_now_iso
 from novelai.services.orchestration.crawler import scrape_chapters, scrape_metadata
 from novelai.services.orchestration.glossary import (
@@ -25,13 +26,12 @@ from novelai.services.orchestration.translation import (
     _preflight_translation,
     _translate_metadata_fields,
     _translate_text,
-    polish_low_confidence_chapters,
     estimate_translation_requests,
+    polish_low_confidence_chapters,
     retranslate_chapter,
     run_phased_translation_pipeline,
     translate_chapters,
 )
-from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService

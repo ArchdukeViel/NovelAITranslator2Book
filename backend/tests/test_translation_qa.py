@@ -14,8 +14,8 @@ from novelai.translation.pipeline.stages.fetch import FetchStage
 from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.post_process import PostProcessStage
 from novelai.translation.pipeline.stages.segment import SmartSegmentStage
-from novelai.translation.pipeline.stages.translation_qa import TranslationQAStage
 from novelai.translation.pipeline.stages.translate import TranslateStage
+from novelai.translation.pipeline.stages.translation_qa import TranslationQAStage
 from novelai.translation.qa import (
     TranslationQAError,
     evaluate_translation_quality,

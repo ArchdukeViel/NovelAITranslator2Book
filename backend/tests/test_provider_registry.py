@@ -15,6 +15,7 @@ from novelai.providers.registry import (
 )
 from novelai.runtime.bootstrap import bootstrap_providers
 
+
 class _FakeProvider(TranslationProvider):
     """Minimal provider for registry tests."""
 

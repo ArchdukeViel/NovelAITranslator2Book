@@ -4,7 +4,6 @@ from typing import Any
 
 from novelai.api.models import ActivityListResponse, ActivityRecordResponse
 
-
 _PROGRESS_KEYS = (
     "current_stage",
     "current_label",

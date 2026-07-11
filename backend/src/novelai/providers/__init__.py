@@ -5,8 +5,8 @@ from novelai.providers.gemini_provider import GeminiProvider
 from novelai.providers.registry import get_provider
 
 __all__ = [
+    "GeminiProvider",
     "ProviderFactory",
     "TranslationProvider",
-    "GeminiProvider",
     "get_provider",
 ]

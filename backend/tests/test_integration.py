@@ -7,12 +7,12 @@ from zipfile import ZipFile
 
 import pytest
 
-from novelai.runtime.bootstrap import bootstrap
 from novelai.core.chapter_state import ChapterState
 from novelai.core.errors import ProviderError, ProviderErrorCode
+from novelai.logging_config import setup_logging
 from novelai.providers.base import TranslationProvider
+from novelai.runtime.bootstrap import bootstrap
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
-from novelai.translation.service import TranslationService
 from novelai.translation.pipeline.context import PipelineState
 from novelai.translation.pipeline.pipeline import TranslationPipeline
 from novelai.translation.pipeline.stages.fetch import FetchStage
@@ -21,7 +21,7 @@ from novelai.translation.pipeline.stages.post_process import PostProcessStage
 from novelai.translation.pipeline.stages.segment import SegmentStage, SmartSegmentStage
 from novelai.translation.pipeline.stages.translate import TranslateStage
 from novelai.translation.scheduler import SchedulerPausedError
-from novelai.logging_config import setup_logging
+from novelai.translation.service import TranslationService
 from tests.conftest import (
     create_test_fixture,
 )

@@ -9,8 +9,9 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
-from hypothesis import HealthCheck, given, strategies as st
+from hypothesis import HealthCheck, given
 from hypothesis import settings as hypothesis_settings
+from hypothesis import strategies as st
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -23,8 +24,8 @@ from novelai.inputs.models import ImportedDocument, ImportedUnit
 from novelai.providers.base import TranslationProvider
 from novelai.providers.model_fallbacks import model_candidates
 from novelai.services.glossary_repository import GlossaryRepository
-from novelai.services.orchestration import crawler as crawler_module
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
+from novelai.services.orchestration import crawler as crawler_module
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService

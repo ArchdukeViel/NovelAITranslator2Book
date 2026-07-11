@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -12,7 +12,7 @@ import pytest
 from novelai.core.chapter_state import ChapterState, TranslationState
 from novelai.core.errors import TranslationInProgressError
 from novelai.services.orchestration.operations import OperationError, OperationsService
-from novelai.services.pipeline.checkpoint import Checkpoint, CheckpointManager, CHECKPOINT_MAX_AGE_DAYS
+from novelai.services.pipeline.checkpoint import CHECKPOINT_MAX_AGE_DAYS, Checkpoint, CheckpointManager
 
 
 @pytest.mark.asyncio
@@ -219,7 +219,7 @@ class TestCheckpointManager:
     def test_load_stale(self, tmp_path: Path) -> None:
         """7.8: Stale checkpoint (>CHECKPOINT_MAX_AGE_DAYS) is invalidated."""
         mgr = CheckpointManager(tmp_path)
-        old_ts = (datetime.now(timezone.utc) - timedelta(days=CHECKPOINT_MAX_AGE_DAYS + 1)).isoformat()
+        old_ts = (datetime.now(UTC) - timedelta(days=CHECKPOINT_MAX_AGE_DAYS + 1)).isoformat()
         cp = Checkpoint(
             chapter_id="42",
             state=TranslationState.TRANSLATING,

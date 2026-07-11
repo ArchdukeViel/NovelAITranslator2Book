@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from novelai.api.routers.dependencies import (
     get_db_session,
-    get_storage,
+    get_public_catalog_service,
     metadata_chapters,
     reader_title,
 )
@@ -28,10 +28,10 @@ from novelai.api.routers.public import (
     VALID_UNAVAILABLE_POLICIES,
     PublicTagSearchResult,
     _optional_str,
-    _resolve_public_novel,
 )
 from novelai.config.settings import settings
 from novelai.db.models.tag import Tag
+from novelai.services.public_catalog_service import PublicCatalogService
 from novelai.services.public_glossary_annotations import (
     find_annotations,
     select_public_terms,
@@ -423,11 +423,10 @@ async def get_chapter(
     chapter_id: str,
     version_id: str | None = Query(default=None),
     request: Request = None,  # type: ignore[assignment]
-    storage: StorageService = Depends(get_storage),
-    db: Session = Depends(get_db_session),
+    service: PublicCatalogService = Depends(get_public_catalog_service),
 ) -> dict[str, Any]:
     """Public translated chapter reader."""
-    resolved = _resolve_public_novel(slug, storage, db=db)
+    resolved = service._resolve_public_novel(slug)
     if resolved is None:
         raise HTTPException(status_code=404, detail="Novel not found.")
     novel_id, meta, public_slug = resolved
@@ -447,25 +446,25 @@ async def get_chapter(
     is_active_version = True
 
     if effective_version_id is not None:
-        translated = storage.load_translated_chapter_by_version_id(
+        translated = service.storage.load_translated_chapter_by_version_id(
             novel_id,
             chapter_id,
             effective_version_id,
         )
         if translated is None:
             raise HTTPException(status_code=404, detail="Version not found.")
-        active = storage.load_translated_chapter(novel_id, chapter_id)
+        active = service.storage.load_translated_chapter(novel_id, chapter_id)
         active_version_id = active.get("version_id") if isinstance(active, dict) else None
         is_active_version = active_version_id == effective_version_id
     else:
-        translated = storage.load_translated_chapter(novel_id, chapter_id)
+        translated = service.storage.load_translated_chapter(novel_id, chapter_id)
         is_active_version = True
 
     if not _has_reader_text(translated):
         policy = _resolve_unavailable_policy(meta)
 
         if policy == "latest_version":
-            versions = storage.list_translated_chapter_versions(novel_id, chapter_id)
+            versions = service.storage.list_translated_chapter_versions(novel_id, chapter_id)
             latest = _latest_version_with_text(versions)
             if latest is not None:
                 translated = _translated_from_version(chapter_id, latest)
@@ -483,7 +482,7 @@ async def get_chapter(
                 chapter_id=chapter_id,
                 chapter=chapter,
                 chapters=chapters,
-                storage=storage,
+                storage=service.storage,
             )
 
         if policy == "hard_404":
@@ -502,11 +501,11 @@ async def get_chapter(
     paragraph_map = translated.get("paragraph_map")
     raw_chapter: dict[str, Any] = {}
     if not paragraph_map or not isinstance(paragraph_map, list) or not paragraph_map:
-        raw_chapter = storage.load_chapter(novel_id, chapter_id) or {}
+        raw_chapter = service.storage.load_chapter(novel_id, chapter_id) or {}
 
     index = chapter_ids.index(chapter_id)
     chapter = chapters[index]
-    translated_ids = set(storage.list_translated_chapters(novel_id))
+    translated_ids = set(service.storage.list_translated_chapters(novel_id))
     previous_adjacent_id = chapter_ids[index - 1] if index > 0 else None
     next_adjacent_id = chapter_ids[index + 1] if index + 1 < len(chapter_ids) else None
     previous_chapter_id = previous_adjacent_id if previous_adjacent_id in translated_ids else None

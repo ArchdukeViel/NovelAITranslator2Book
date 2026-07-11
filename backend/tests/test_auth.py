@@ -5,10 +5,10 @@ Uses FastAPI TestClient with SessionMiddleware; no real DB required.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import create_engine
@@ -16,25 +16,22 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
 
+# Import all models so Base.metadata has every FK target before create_all.
+import novelai.db.models.chapter
+import novelai.db.models.jobs
+import novelai.db.models.system  # noqa: F401
 from novelai.api.auth.google_oauth import GoogleOAuthProfile, get_google_oauth_client
 from novelai.api.auth.passwords import hash_password, verify_password
+from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import reset_public_rate_limits
 from novelai.api.auth.session import GUEST, SessionUser, get_current_user
-from novelai.api.auth.roles import require_role
 from novelai.api.routers import auth as auth_module
-from novelai.api.routers.dependencies import get_db_session
 from novelai.api.routers.auth import router as auth_router
+from novelai.api.routers.dependencies import get_db_session
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.db.base import Base
-from novelai.db.models.novel import Novel
 from novelai.db.models.users import EmailVerificationToken, PasswordResetToken, User
 from novelai.services.email import EmailDeliveryResult, InMemoryAuthEmailService
-
-# Import all models so Base.metadata has every FK target before create_all.
-import novelai.db.models.chapter  # noqa: F401
-import novelai.db.models.jobs  # noqa: F401
-import novelai.db.models.system  # noqa: F401
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -733,8 +730,8 @@ class TestPublicPasswordReset:
             PasswordResetToken(
                 user_id=user.id,
                 token_hash=auth_module._hash_password_reset_token("expired-reset-token"),
-                created_at=datetime.now(timezone.utc) - timedelta(hours=2),
-                expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+                created_at=datetime.now(UTC) - timedelta(hours=2),
+                expires_at=datetime.now(UTC) - timedelta(minutes=1),
             )
         )
         db_session.commit()
@@ -1035,7 +1032,7 @@ class TestPublicEmailVerification:
                     role="user",
                     auth_provider="password",
                     password_hash=hash_password("long-enough-password"),
-                    email_verified_at=datetime.now(timezone.utc),
+                    email_verified_at=datetime.now(UTC),
                     is_active=True,
                 ),
             ]
@@ -1125,8 +1122,8 @@ class TestPublicEmailVerification:
             EmailVerificationToken(
                 user_id=user.id,
                 token_hash=auth_module._hash_email_verification_token("expired-verify-token"),
-                created_at=datetime.now(timezone.utc) - timedelta(days=2),
-                expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+                created_at=datetime.now(UTC) - timedelta(days=2),
+                expires_at=datetime.now(UTC) - timedelta(minutes=1),
             )
         )
         db_session.commit()

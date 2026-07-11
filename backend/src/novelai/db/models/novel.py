@@ -7,7 +7,7 @@ this table stores metadata, storage keys, and checksums only.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Index, Integer, String, Text, func
@@ -29,7 +29,7 @@ GLOSSARY_STATUS_VALUES: frozenset[str] = frozenset({
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Novel(Base):
@@ -120,4 +120,4 @@ class Novel(Base):
 
 # Bottom import registers Chapter with the mapper registry so the
 # string-based relationship("Chapter") can resolve at configuration time.
-from novelai.db.models.chapter import Chapter  # noqa: E402, F401
+from novelai.db.models.chapter import Chapter  # noqa: E402

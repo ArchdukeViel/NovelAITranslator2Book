@@ -48,7 +48,7 @@ def get_sessionmaker(url: str | None = None) -> sessionmaker[Session]:
 
 
 @contextmanager
-def session_scope(url: str | None = None) -> Generator[Session, None, None]:
+def session_scope(url: str | None = None) -> Generator[Session]:
     """Context manager that provides a transactional database session.
 
     Commits on clean exit, rolls back on exception, always closes.

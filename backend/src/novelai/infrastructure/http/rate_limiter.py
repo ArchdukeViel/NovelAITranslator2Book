@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Mapping
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 try:
     import redis
@@ -74,11 +73,11 @@ class RedisRateLimiter(RateLimiter):
     ) -> None:
         if redis is None:
             raise ImportError("The 'redis' package is required for the redis rate limiter backend.")
-        
+
         redis_url = settings.REDIS_URL
         if not redis_url:
             raise ValueError("REDIS_URL environment variable is required when WEB_RATE_LIMITER_BACKEND=redis")
-            
+
         self.window = int(window_seconds)
         self.limits = dict(limits or {})
         self._redis = redis.from_url(redis_url)
@@ -87,16 +86,16 @@ class RedisRateLimiter(RateLimiter):
         limit = int(self.limits.get(action, 0))
         if limit <= 0:
             return True
-        
+
         window_id = int(time.time() // self.window)
         key = f"rate_limit:{client_id}:{action}:{window_id}"
-        
+
         try:
             count = self._redis.incr(key)
             if count == 1:
                 self._redis.expire(key, self.window + 1)
             return count <= limit
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             # Fail closed: if Redis is unreachable, deny the request to protect the service
             raise RuntimeError(f"Redis rate limiter unavailable: {exc}") from exc
 
@@ -160,7 +159,7 @@ def get_default_rate_limiter(
 ) -> RateLimiter:
     global _DEFAULT, _DEFAULT_SIGNATURE
     signature = (backend.strip().lower(), tuple(sorted((limits or {}).items())), int(window_seconds))
-    if _DEFAULT is None or _DEFAULT_SIGNATURE != signature:
+    if _DEFAULT is None or signature != _DEFAULT_SIGNATURE:
         _DEFAULT = create_rate_limiter(
             backend,
             limits=limits,

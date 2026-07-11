@@ -20,8 +20,8 @@ from novelai.api.routers.dependencies import get_db_session
 from novelai.config.settings import settings
 from novelai.db.base import Base
 from novelai.db.models.novel import Novel
-from novelai.services.translation_cache import CacheEntry, TranslationCacheService, make_cache_key
 from novelai.services.glossary_repository import GlossaryRepository
+from novelai.services.translation_cache import CacheEntry, TranslationCacheService, make_cache_key
 from novelai.translation.pipeline.context import PipelineContext
 from novelai.translation.pipeline.stages.translate import TranslateStage
 
@@ -575,8 +575,7 @@ async def test_translate_stage_progress_counts_hits_and_misses(cache_dir: Path) 
     """TranslateStage updates cache_hits and cache_misses in progress dict."""
     from unittest.mock import MagicMock
 
-    from novelai.services.translation_cache import TranslationCacheService
-    from novelai.services.translation_cache import TranslationCache
+    from novelai.services.translation_cache import TranslationCache, TranslationCacheService
     from novelai.storage.service import StorageService
     from novelai.translation.pipeline.stages.translate import TranslateStage
 

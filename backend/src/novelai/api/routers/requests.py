@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -52,7 +52,7 @@ class SourceCandidateCreateRequest(BaseModel):
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _normalize_status(status: str | None) -> str | None:
@@ -186,11 +186,7 @@ async def update_novel_request_status(
         if status == NovelRequestStatus.REJECTED.value:
             item.rejection_reason = body.rejection_reason.strip() if body.rejection_reason else None
             item.approved_novel_id = None
-        elif status == NovelRequestStatus.APPROVED.value:
-            item.rejection_reason = None
-            if body.approved_novel_id is not None:
-                item.approved_novel_id = _get_novel_by_id(body.approved_novel_id, session).id
-        elif status == NovelRequestStatus.RELEASED.value:
+        elif status == NovelRequestStatus.APPROVED.value or status == NovelRequestStatus.RELEASED.value:
             item.rejection_reason = None
             if body.approved_novel_id is not None:
                 item.approved_novel_id = _get_novel_by_id(body.approved_novel_id, session).id

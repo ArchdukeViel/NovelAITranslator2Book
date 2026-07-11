@@ -10,10 +10,11 @@ import hashlib
 import logging
 import smtplib
 import ssl
+from collections.abc import Callable
 from dataclasses import dataclass
 from email.message import EmailMessage
 from email.utils import formataddr
-from typing import Callable, Protocol
+from typing import Protocol
 from urllib.parse import urlencode
 
 from pydantic import SecretStr

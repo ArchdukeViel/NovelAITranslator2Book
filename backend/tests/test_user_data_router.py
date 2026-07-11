@@ -10,23 +10,21 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
 
-from novelai.api.auth.session import SessionUser, get_current_user
+import novelai.db.models.chapter
+import novelai.db.models.jobs
+import novelai.db.models.novel
+import novelai.db.models.system
+import novelai.db.models.users  # noqa: F401
 from novelai.api.auth.security import reset_public_rate_limits
-from novelai.api.routers.dependencies import get_db_session
+from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.auth import router as auth_router
+from novelai.api.routers.dependencies import get_db_session
 from novelai.api.routers.requests import router as admin_requests_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.db.base import Base
-
-import novelai.db.models.chapter  # noqa: F401
-import novelai.db.models.jobs  # noqa: F401
-import novelai.db.models.novel  # noqa: F401
-import novelai.db.models.system  # noqa: F401
-import novelai.db.models.users  # noqa: F401
-
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
-from novelai.db.models.users import LibraryItem, ReadingProgress, Review, User
+from novelai.db.models.users import ReadingProgress, Review
 
 _SQLITE = "sqlite:///:memory:"
 

@@ -8,10 +8,10 @@ from novelai.glossary.glossary import (
     Glossary,
     GlossaryTerm,
     glossary_status_counts,
-    rank_glossary_terms_for_text,
-    summarize_term_context,
     normalize_glossary_entries,
     normalize_glossary_entry,
+    rank_glossary_terms_for_text,
+    summarize_term_context,
 )
 
 

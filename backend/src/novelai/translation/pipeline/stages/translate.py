@@ -36,6 +36,11 @@ from novelai.translation.pipeline.stages.translate_cache_lookup import (
     save_chunk_output,
     save_chunk_records,
 )
+from novelai.translation.pipeline.stages.translate_provider_call import (
+    provider_error_from_generic,
+    provider_error_metadata,
+    provider_request_record,
+)
 from novelai.translation.pipeline.stages.translate_result_assembly import (
     build_prompt_request,
     glossary_prompt_options,
@@ -80,12 +85,6 @@ from novelai.translation.pipeline.stages.translate_result_assembly import (
 from novelai.translation.pipeline.stages.translate_result_assembly import (
     translation_run_id as run_id_h,
 )
-from novelai.translation.pipeline.stages.translate_provider_call import (
-    provider_error_from_generic,
-    provider_error_metadata,
-    provider_request_record,
-)
-
 from novelai.translation.scheduler import (
     SchedulerDecisionRecorder,
     SchedulerPausedError,

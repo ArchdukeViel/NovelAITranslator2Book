@@ -6,14 +6,14 @@ server-side session. Clients never submit or choose ``user_id``.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 from sqlalchemy.orm import Session
 
-from novelai.api.auth.security import require_csrf_token, require_public_rate_limit
 from novelai.api.auth.roles import require_role
+from novelai.api.auth.security import require_csrf_token, require_public_rate_limit
 from novelai.api.auth.session import SessionUser
 from novelai.api.routers.dependencies import get_db_session
 from novelai.db.models.chapter import Chapter
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/api/user", tags=["user"])
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _get_novel(slug: str, session: Session) -> Novel:
@@ -392,7 +392,7 @@ class RequestCreate(BaseModel):
     details: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
-    def validate_request_type(self) -> "RequestCreate":
+    def validate_request_type(self) -> RequestCreate:
         if self.request_type not in {"novel", "chapter"}:
             raise ValueError("request_type must be 'novel' or 'chapter'")
         if self.request_type == "novel" and self.source_url is None:

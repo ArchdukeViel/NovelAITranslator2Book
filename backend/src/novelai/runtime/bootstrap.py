@@ -13,7 +13,9 @@ bootstrap() is idempotent: it can be called multiple times safely.
 """
 
 import logging
+
 from novelai.logging_config import configure_logging
+
 configure_logging()
 
 _BOOTSTRAPPED = False

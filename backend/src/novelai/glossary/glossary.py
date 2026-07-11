@@ -5,7 +5,6 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-
 TERM_STATUSES = {"pending", "approved", "ignored", "translated"}
 _CJK_TERM_PATTERN = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]{2,12}")
 _LATIN_TERM_PATTERN = re.compile(r"\b[A-Z][A-Za-z]{2,}(?:\s+[A-Z][A-Za-z]{2,}){0,2}\b")

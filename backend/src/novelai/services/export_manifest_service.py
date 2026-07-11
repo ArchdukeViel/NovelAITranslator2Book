@@ -266,7 +266,7 @@ async def check_all_exports_freshness(
 
         try:
             await _check_all_exports_freshness_once(storage)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("Export freshness check failed: %s", exc)
 
         if stop_event:
@@ -284,7 +284,7 @@ async def _check_all_exports_freshness_once(storage: StorageService) -> None:
     """Run a single pass of freshness checking across all novels."""
     try:
         novel_ids = storage.list_novels()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("Failed to list novels for freshness check: %s", exc)
         return
 
@@ -319,5 +319,5 @@ async def _check_all_exports_freshness_once(storage: StorageService) -> None:
                         manifest.get("export_id"),
                         freshness,
                     )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("Freshness check failed for novel %s: %s", novel_id, exc)

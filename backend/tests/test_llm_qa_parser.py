@@ -7,10 +7,7 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from novelai.translation.qa import (
-    TranslationQAResult,
     evaluate_translation_quality,
     normalized_translation_text,
 )

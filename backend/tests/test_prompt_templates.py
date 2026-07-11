@@ -7,8 +7,6 @@ workflow defaults normalization.
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from novelai.glossary.glossary import GlossaryTerm
@@ -21,9 +19,7 @@ from novelai.prompts.builders import (
     build_system_prompt,
     build_translation_request,
     build_user_prompt,
-    normalize_style_preset,
 )
-from novelai.prompts.models import TranslationRequest
 from novelai.prompts.templates import (
     HONORIFIC_POLICY_BLOCKS,
     PROMPT_TEMPLATE_VERSION,
@@ -31,7 +27,6 @@ from novelai.prompts.templates import (
     STYLE_PRESET_TEMPLATES,
 )
 from novelai.services.translation_cache import build_translation_cache_key
-
 
 # ============================================================================
 # Snapshot: constants
@@ -347,7 +342,7 @@ class TestCacheKey:
 
 class TestWorkflowDefaults:
     def test_default_workflow_defaults(self) -> None:
-        from novelai.config.workflow_profiles import default_workflow_defaults, normalize_workflow_defaults
+        from novelai.config.workflow_profiles import default_workflow_defaults
 
         defaults = default_workflow_defaults()
         assert defaults == {

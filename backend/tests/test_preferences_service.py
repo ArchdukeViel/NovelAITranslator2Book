@@ -7,8 +7,8 @@ from uuid import uuid4
 
 import pytest
 
-from novelai.config.workflow_profiles import WORKFLOW_PROFILE_STEPS
 from novelai.config.settings import settings
+from novelai.config.workflow_profiles import WORKFLOW_PROFILE_STEPS
 from novelai.services.preferences_service import PreferencesService
 
 _TMP = Path(__file__).resolve().parent / ".tmp" / "prefs"
