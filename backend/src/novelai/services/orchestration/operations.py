@@ -642,7 +642,6 @@ class OperationsService:
         self,
         *,
         novel_id: str,
-        source_key: str,
         chapter_ids: list[str] | None = None,
         include_legacy_unknown: bool = False,
         activate: bool = False,
@@ -657,6 +656,9 @@ class OperationsService:
         )
 
         meta = require_novel_meta(self.storage, novel_id)
+        source_key = str(meta.get("source") or "")
+        if not source_key.strip():
+            raise OperationError(400, {"error": "Novel has no source_key in metadata", "novel_id": novel_id})
 
         chapters = meta.get("chapters", [])
         if not isinstance(chapters, list):
