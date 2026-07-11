@@ -19,15 +19,8 @@ from novelai.api.routers.admin_schemas import (
 from novelai.api.routers.dependencies import (
     get_admin_db_service,
     get_admin_service,
-    get_storage,
 )
 from novelai.services.admin_service import AdminService
-from novelai.services.export_manifest_service import (
-    compute_export_freshness,
-    latest_export,
-    list_manifests,
-)
-from novelai.storage.service import StorageService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
@@ -413,35 +406,23 @@ async def health_errors(
 @router.get("/admin/novels/{novel_id}/exports")
 async def list_novel_exports(
     novel_id: str,
-    storage: StorageService = Depends(get_storage),
+    service: AdminService = Depends(get_admin_db_service),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
-    if storage.load_metadata(novel_id) is None:
-        raise HTTPException(status_code=404, detail="Novel not found")
-    manifests = list_manifests(storage, novel_id)
-    # Annotate with freshness
-    for m in manifests:
-        meta = storage.load_metadata(novel_id)
-        current_rev = (meta or {}).get("glossary_revision")
-        current_updated = (meta or {}).get("updated_at")
-        m["freshness"] = compute_export_freshness(
-            storage, novel_id, m,
-            current_glossary_revision=current_rev,
-            current_novel_updated_at=current_updated,
-        )
-    return {"novel_id": novel_id, "manifests": manifests}
+    try:
+        return service.list_novel_exports(novel_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/admin/novels/{novel_id}/exports/latest/{export_format}")
 async def latest_novel_export(
     novel_id: str,
     export_format: str,
-    storage: StorageService = Depends(get_storage),
+    service: AdminService = Depends(get_admin_db_service),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
-    if storage.load_metadata(novel_id) is None:
-        raise HTTPException(status_code=404, detail="Novel not found")
-    latest = latest_export(storage, novel_id, export_format)
-    if latest is None:
-        raise HTTPException(status_code=404, detail="No export found for format")
-    return latest
+    try:
+        return service.latest_novel_export(novel_id, export_format)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

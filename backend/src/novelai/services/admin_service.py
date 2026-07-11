@@ -11,6 +11,11 @@ from novelai.activity.runner import BackgroundActivityRunner
 from novelai.config.settings import settings
 from novelai.config.workflow_profiles import WORKFLOW_PROFILE_STEPS
 from novelai.providers.model_fallbacks import model_candidates
+from novelai.services.export_manifest_service import (
+    compute_export_freshness,
+    latest_export,
+    list_manifests,
+)
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.provider_credentials import ProviderCredentialService
 from novelai.services.translation_cache import TranslationCache
@@ -1022,3 +1027,29 @@ class AdminService:
             "job": activity,
             "worker": self.activity_runner.status(),
         }
+
+    def list_novel_exports(self, novel_id: str) -> dict[str, Any]:
+        if self.storage is None:
+            raise ValueError("storage is not configured")
+        meta = self.storage.load_metadata(novel_id)
+        if meta is None:
+            raise KeyError("Novel not found")
+        manifests = list_manifests(self.storage, novel_id)
+        for m in manifests:
+            m["freshness"] = compute_export_freshness(
+                self.storage, novel_id, m,
+                current_glossary_revision=meta.get("glossary_revision"),
+                current_novel_updated_at=meta.get("updated_at"),
+            )
+        return {"novel_id": novel_id, "manifests": manifests}
+
+    def latest_novel_export(self, novel_id: str, export_format: str) -> dict[str, Any]:
+        if self.storage is None:
+            raise ValueError("storage is not configured")
+        meta = self.storage.load_metadata(novel_id)
+        if meta is None:
+            raise KeyError("Novel not found")
+        latest = latest_export(self.storage, novel_id, export_format)
+        if latest is None:
+            raise KeyError("No export found for format")
+        return latest
