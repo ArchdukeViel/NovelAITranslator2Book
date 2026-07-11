@@ -4,13 +4,16 @@ This document tracks the god files identified for splitting in the backend
 reorganization. Each entry includes the current line count, the proposed split,
 and the risk assessment.
 
-## Status: Deferred
+## Status: Partially addressed
 
-These splits were identified during the backend audit but deferred due to
-scope and risk. Each requires deep understanding of the codebase and careful
-extraction of shared helpers, Pydantic models, and router registrations.
+The following splits were completed:
+- **1.** `operations.py` (748 L → 370 L + helpers) — `get_novel_translation_lock`,
+  `ExportOperationResult`, `OperationError`, `require_novel_meta` extracted to
+  `operations_helpers.py`.
+- **2.** `translate.py` (1473 L → 1130 L + helpers) — 20+ static/context helpers
+  extracted to `translate_context_helpers.py`.
 
-## Files
+The remaining files:
 
 ### 1. `backend/src/novelai/services/orchestration/translation.py` (2489 L)
 
