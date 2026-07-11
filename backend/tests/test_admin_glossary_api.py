@@ -15,6 +15,7 @@ from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
 
 import novelai.api.routers.admin_glossary as admin_glossary
+import novelai.api.routers.admin_glossary_provider as admin_glossary_provider
 
 # Import all DB models so Base.metadata.create_all sees FK targets.
 import novelai.db.models.chapter
@@ -215,7 +216,7 @@ def _provider_payload(*, confidence: float = 0.86) -> dict[str, Any]:
 
 
 def _patch_provider(monkeypatch: pytest.MonkeyPatch, provider: FakeGlossaryProvider) -> FakeGlossaryProvider:
-    monkeypatch.setattr(admin_glossary, "get_provider", lambda _key=None: provider)
+    monkeypatch.setattr(admin_glossary_provider, "get_provider", lambda _key=None: provider)
     return provider
 
 
@@ -710,7 +711,7 @@ def test_provider_suggestion_routes_reject_guest_user_and_missing_csrf(
 
 def test_provider_suggestion_route_handles_missing_provider_config(owner_client, db_session, monkeypatch) -> None:
     novel = _seed_novel(db_session, "provider-missing")
-    monkeypatch.setattr(admin_glossary, "get_provider", lambda _key=None: (_ for _ in ()).throw(KeyError("missing")))
+    monkeypatch.setattr(admin_glossary_provider, "get_provider", lambda _key=None: (_ for _ in ()).throw(KeyError("missing")))
 
     resp = owner_client.post(
         f"/api/admin/novels/{novel.id}/glossary/candidates/provider/preview",
