@@ -10,8 +10,9 @@ The following splits were completed:
 - **1.** `operations.py` (748 L -> 370 L + helpers) -- `get_novel_translation_lock`,
   `ExportOperationResult`, `OperationError`, `require_novel_meta` extracted to
   `operations_helpers.py`.
-- **2.** `translate.py` (1473 L -> 1130 L + helpers) -- 20+ static/context helpers
-  extracted to `translate_context_helpers.py`.
+- **2.** `translate.py` (1473 L -> 1130 L + 2 helper files) -- 20+ static/context
+  helpers extracted to `translate_context_helpers.py` (context/extraction/prompt)
+  and `translate_provider_call.py` (provider error mapping + audit records).
 - **3.** `library.py` (1173 L -> 880 L + detail router) -- catalog projection,
   publish/unpublish, and health endpoints extracted to `library_detail.py`.
   `novels.py` updated to include both routers.
