@@ -1,27 +1,19 @@
+"""Novel request moderation endpoints — thin HTTP adapter."""
+
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
-from novelai.api.routers.dependencies import get_db_session
+from novelai.api.routers.dependencies import get_novel_request_service
 from novelai.core.platform import NovelRequestStatus
-from novelai.db.models.novel import Novel
-from novelai.db.models.users import NovelRequest
+from novelai.services.novel_request_service import NovelRequestService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
-
-_VALID_STATUSES = {item.value for item in NovelRequestStatus}
-_RESOLVED_STATUSES = {
-    NovelRequestStatus.APPROVED.value,
-    NovelRequestStatus.REJECTED.value,
-    NovelRequestStatus.RELEASED.value,
-}
 
 
 class NovelRequestCreateRequest(BaseModel):
@@ -51,87 +43,24 @@ class SourceCandidateCreateRequest(BaseModel):
     notes: str | None = None
 
 
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
-
-
-def _normalize_status(status: str | None) -> str | None:
-    if status is None:
-        return None
-    normalized = status.strip().lower()
-    if normalized not in _VALID_STATUSES:
-        raise HTTPException(status_code=400, detail="Invalid request status")
-    return normalized
-
-
-def _request_pk(request_id: str) -> int:
-    try:
-        return int(request_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail="Novel request not found") from exc
-
-
-def _novel_slug(novel_id: int | None, session: Session) -> str | None:
-    if novel_id is None:
-        return None
-    novel = session.query(Novel).filter_by(id=novel_id).one_or_none()
-    return novel.slug if novel else None
-
-
-def _get_novel_by_id(novel_id: int, session: Session) -> Novel:
-    novel = session.get(Novel, novel_id)
-    if novel is None:
-        raise HTTPException(status_code=404, detail="Approved novel not found")
-    return novel
-
-
-def _request_response(item: NovelRequest, session: Session) -> dict[str, Any]:
-    request_id = str(item.id)
-    return {
-        "id": request_id,
-        "request_id": request_id,
-        "db_id": item.id,
-        "user_id": item.user_id,
-        "request_type": item.request_type,
-        "status": item.status,
-        "source_url": item.source_url,
-        "slug": _novel_slug(item.novel_id, session),
-        "chapter_id": None,
-        "created_at": item.created_at,
-        "updated_at": item.updated_at,
-        "resolved_at": item.resolved_at,
-        "rejection_reason": item.rejection_reason,
-        "approved_novel_id": item.approved_novel_id,
-        "approved_slug": _novel_slug(item.approved_novel_id, session),
-    }
-
-
-def _get_request(request_id: str, session: Session) -> NovelRequest:
-    item = session.get(NovelRequest, _request_pk(request_id))
-    if item is None:
-        raise HTTPException(status_code=404, detail="Novel request not found")
-    return item
-
-
 @router.get("/requests")
 async def list_novel_requests(
     status: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
-    session: Session = Depends(get_db_session),
+    service: NovelRequestService = Depends(get_novel_request_service),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
-    normalized_status = _normalize_status(status)
-    query = session.query(NovelRequest)
-    if normalized_status is not None:
-        query = query.filter(NovelRequest.status == normalized_status)
-    items = query.order_by(NovelRequest.created_at.desc()).limit(limit).all()
-    return {"requests": [_request_response(item, session) for item in items]}
+    # Validate status first (returns 400 for invalid status)
+    if status is not None:
+        normalized = status.strip().lower()
+        if normalized not in {item.value for item in NovelRequestStatus}:
+            raise HTTPException(status_code=400, detail="Invalid request status")
+    return {"requests": service.list_requests(status=status, limit=limit)}
 
 
 @router.post("/requests")
 async def create_novel_request(
     _body: NovelRequestCreateRequest,
-    _session: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     # Admin request creation used to write to the legacy file-backed queue. The
@@ -145,17 +74,19 @@ async def create_novel_request(
 @router.get("/requests/{request_id}")
 async def get_novel_request(
     request_id: str,
-    session: Session = Depends(get_db_session),
+    service: NovelRequestService = Depends(get_novel_request_service),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
-    return _request_response(_get_request(request_id, session), session)
+    try:
+        return service.get_request(request_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/requests/{request_id}/vote")
 async def vote_novel_request(
     request_id: str,
     _body: NovelRequestVoteRequest,
-    _session: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     # Voting belongs to the legacy file-backed request queue and has no DB
@@ -170,36 +101,28 @@ async def vote_novel_request(
 async def update_novel_request_status(
     request_id: str,
     body: NovelRequestStatusRequest,
-    session: Session = Depends(get_db_session),
+    service: NovelRequestService = Depends(get_novel_request_service),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
-    status = _normalize_status(body.status)
-    assert status is not None
-    item = _get_request(request_id, session)
-    item.status = status
-    if status == NovelRequestStatus.PENDING.value:
-        item.resolved_at = None
-        item.rejection_reason = None
-        item.approved_novel_id = None
-    elif status in _RESOLVED_STATUSES:
-        item.resolved_at = item.resolved_at or _utcnow()
-        if status == NovelRequestStatus.REJECTED.value:
-            item.rejection_reason = body.rejection_reason.strip() if body.rejection_reason else None
-            item.approved_novel_id = None
-        elif status == NovelRequestStatus.APPROVED.value or status == NovelRequestStatus.RELEASED.value:
-            item.rejection_reason = None
-            if body.approved_novel_id is not None:
-                item.approved_novel_id = _get_novel_by_id(body.approved_novel_id, session).id
-    item.updated_at = _utcnow()
-    session.flush()
-    return _request_response(item, session)
+    # Validate status first (returns 400 for invalid status, 404 for not found)
+    normalized = body.status.strip().lower() if body.status else None
+    if normalized not in {item.value for item in NovelRequestStatus}:
+        raise HTTPException(status_code=400, detail="Invalid request status")
+    try:
+        return service.update_request_status(
+            request_id,
+            body.status,
+            rejection_reason=body.rejection_reason,
+            approved_novel_id=body.approved_novel_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/requests/{request_id}/source-candidates")
 async def add_source_candidate(
     request_id: str,
     _body: SourceCandidateCreateRequest,
-    _session: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     # Source candidates are still legacy file-backed data. A future phase should
