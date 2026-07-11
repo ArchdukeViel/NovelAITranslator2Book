@@ -27,10 +27,18 @@ from novelai.shared.pipeline import ChunkAttemptStatus, ChunkTranslationStatus
 from novelai.storage.service import StorageService
 from novelai.translation.pipeline.context import PipelineContext, TranslationChunk
 from novelai.translation.pipeline.stages.base import PipelineStage
+from novelai.translation.pipeline.stages.translate_cache_lookup import (
+    cached_translation,
+    load_existing_chunk_output,
+    load_persisted_chunk_states,
+    persist_chunk_state,
+    save_chunk_attempt,
+    save_chunk_output,
+    save_chunk_records,
+)
 from novelai.translation.pipeline.stages.translate_context_helpers import (
     build_prompt_request,
     glossary_prompt_options,
-    hash_text,
     infer_source_language,
     nonnegative_int,
     normalize_runtime_glossary,
@@ -324,54 +332,12 @@ class TranslateStage(PipelineStage):
             self._last_admin_policy_skips = context_skips
         return configs
 
+    # Backward-compat shims for extracted cache methods
     def _save_chunk_records(self, context: PipelineContext, chunks: list[str | TranslationChunk]) -> None:
-        novel_id = context.novel_id
-        if not isinstance(novel_id, str) or not novel_id.strip():
-            return
-        records: list[dict[str, Any]] = []
-        for index, chunk in enumerate(chunks):
-            text = chunk_text_h(chunk)
-            cid = chunk_id_h(chunk, index)
-            records.append(
-                {
-                    "chunk_id": cid,
-                    "novel_id": novel_id,
-                    "request_id": context.metadata.get("request_id"),
-                    "translation_run_id": run_id_h(context),
-                    "chapter_ids": chapter_ids_h(context, chunk),
-                    "paragraph_ids": paragraph_ids_h(chunk),
-                    "paragraph_hashes": paragraph_hashes_h(chunk),
-                    "paragraph_lineage": paragraph_lineage_h(chunk),
-                    "source_text": text,
-                    "source_text_hash": hash_text(text),
-                    "char_count": len(text),
-                    "status": context.chunk_states.get(cid, {}).get("status", ChunkTranslationStatus.PENDING.value),
-                }
-            )
-        if records:
-            self._storage.save_translation_chunks(novel_id, records)
+        save_chunk_records(self._storage, context, chunks)
 
     def _load_persisted_chunk_states(self, context: PipelineContext) -> None:
-        novel_id = context.novel_id
-        if not isinstance(novel_id, str) or not novel_id.strip():
-            return
-        stored_states = self._storage.load_chunk_states(
-            novel_id=novel_id,
-            chapter_id=context.chapter_id,
-            translation_run_id=run_id_h(context),
-        )
-        if not stored_states and not explicit_run_id_h(context):
-            stored_states = self._storage.load_chunk_states(
-                novel_id=novel_id,
-                chapter_id=context.chapter_id,
-            )
-        for stored in stored_states:
-            chunk_id = stored.get("chunk_id") if isinstance(stored, dict) else None
-            if isinstance(chunk_id, str) and chunk_id.strip():
-                context.chunk_states[chunk_id] = {
-                    **context.chunk_states.get(chunk_id, {}),
-                    **dict(stored),
-                }
+        load_persisted_chunk_states(self._storage, context)
 
     def _load_existing_chunk_output(
         self,
@@ -382,42 +348,11 @@ class TranslateStage(PipelineStage):
         chapter_ids: list[str],
         glossary_hash: str | None = None,
     ) -> str | None:
-        novel_id = context.novel_id
-        if not isinstance(novel_id, str) or not novel_id.strip():
-            return None
-        existing_state = context.chunk_states.get(chunk_id, {})
-        if existing_state.get("status") != ChunkTranslationStatus.TRANSLATED.value:
-            return None
-        stored = self._storage.read_translation_output(
-            novel_id,
-            chunk_id=chunk_id,
-            translation_run_id=run_id_h(context),
-            chapter_ids=chapter_ids,
+        return load_existing_chunk_output(
+            self._storage, context,
+            chunk_id=chunk_id, chunk_text=chunk_text,
+            chapter_ids=chapter_ids, glossary_hash=glossary_hash,
         )
-        if not stored and not explicit_run_id_h(context):
-            stored = self._storage.read_translation_output(
-                novel_id,
-                chunk_id=chunk_id,
-                chapter_ids=chapter_ids,
-            )
-        if not isinstance(stored, list) or not stored:
-            return None
-        latest = stored[-1]
-        if not isinstance(latest, dict):
-            return None
-        expected = {
-            "source_text_hash": hash_text(chunk_text),
-            "prompt_version": prompt_version(context),
-            "glossary_hash": glossary_hash or glossary_hash_h(context),
-            "style_preset": context.metadata.get("style_preset"),
-            "json_output": bool(context.metadata.get("json_output", False)),
-            "consistency_mode": bool(context.metadata.get("consistency_mode", False)),
-        }
-        for key, value in expected.items():
-            if latest.get(key) != value:
-                return None
-        text = latest.get("translated_text")
-        return text if isinstance(text, str) else None
 
     def _save_chunk_attempt(
         self,
@@ -435,32 +370,14 @@ class TranslateStage(PipelineStage):
         qa_score: float | None = None,
         qa_status: str | None = None,
     ) -> None:
-        novel_id = context.novel_id
-        if not isinstance(novel_id, str) or not novel_id.strip():
-            return
-        cid = chunk_id_h(chunk, chunk_index)
-        text = chunk_text_h(chunk)
-        self._storage.save_chunk_attempt_record(
-            {
-                "chunk_id": cid,
-                "novel_id": novel_id,
-                "request_id": context.metadata.get("request_id"),
-                "translation_run_id": run_id_h(context),
-                "chapter_ids": chapter_ids_h(context, chunk),
-                "paragraph_ids": paragraph_ids_h(chunk),
-                "paragraph_hashes": paragraph_hashes_h(chunk),
-                "paragraph_lineage": paragraph_lineage_h(chunk),
-                "source_text_hash": hash_text(text),
-                "attempt_number": attempt_number,
-                "provider_key": provider_key,
-                "provider_model": provider_model,
-                "scheduler_policy": scheduler_policy,
-                "selection_reason": selection_reason,
-                "status": status,
-                "error_code": error_code,
-                "qa_score": qa_score,
-                "qa_status": qa_status,
-            }
+        save_chunk_attempt(
+            self._storage, context,
+            chunk=chunk, chunk_index=chunk_index,
+            attempt_number=attempt_number,
+            provider_key=provider_key, provider_model=provider_model,
+            scheduler_policy=scheduler_policy, selection_reason=selection_reason,
+            status=status, error_code=error_code,
+            qa_score=qa_score, qa_status=qa_status,
         )
 
     def _save_chunk_output(
@@ -478,54 +395,18 @@ class TranslateStage(PipelineStage):
         selection_reason: str | None,
         glossary_hash: str | None = None,
     ) -> None:
-        novel_id = context.novel_id
-        if not isinstance(novel_id, str) or not novel_id.strip():
-            return
-        cid = chunk_id_h(chunk, chunk_index)
-        text = chunk_text_h(chunk)
-        self._storage.save_translation_output(
-            {
-                "output_id": f"{cid}:attempt_{attempt_number:04d}",
-                "chunk_id": cid,
-                "novel_id": novel_id,
-                "translation_run_id": run_id_h(context),
-                "chapter_ids": chapter_ids_h(context, chunk),
-                "paragraph_ids": paragraph_ids_h(chunk),
-                "paragraph_hashes": paragraph_hashes_h(chunk),
-                "paragraph_lineage": paragraph_lineage_h(chunk),
-                "translated_text": translated_text,
-                "source_text_hash": hash_text(text),
-                "output_hash": hash_text(translated_text),
-                "provider_key": provider_key,
-                "provider_model": provider_model,
-                "prompt_version": prompt_version(context),
-                "glossary_hash": glossary_hash or glossary_hash_h(context),
-                "glossary_revision": int(context.metadata.get("glossary_revision", 0) or 0),
-                "glossary_injected_term_count": int(
-                    context.metadata.get("glossary_injected_term_count", 0) or 0
-                ),
-                "style_preset": context.metadata.get("style_preset"),
-                "json_output": bool(context.metadata.get("json_output", False)),
-                "consistency_mode": bool(context.metadata.get("consistency_mode", False)),
-                "scheduler_policy": scheduler_policy,
-                "selection_reason": selection_reason,
-                "attempt_number": attempt_number,
-                "qa_status": "pending",
-                "cache_hit": cache_hit,
-            }
+        save_chunk_output(
+            self._storage, context,
+            chunk=chunk, chunk_index=chunk_index,
+            translated_text=translated_text,
+            provider_key=provider_key, provider_model=provider_model,
+            cache_hit=cache_hit, attempt_number=attempt_number,
+            scheduler_policy=scheduler_policy, selection_reason=selection_reason,
+            glossary_hash=glossary_hash,
         )
 
     def _persist_chunk_state(self, context: PipelineContext, chunk_id: str) -> None:
-        state = context.chunk_states.get(chunk_id)
-        if not isinstance(state, dict):
-            return
-        state["translation_run_id"] = run_id_h(context)
-        self._storage.upsert_chunk_state(state)
-        novel_id = state.get("novel_id") or context.novel_id
-        status = state.get("status")
-        if isinstance(novel_id, str) and novel_id.strip() and isinstance(status, str) and status.strip():
-            fields = {key: value for key, value in state.items() if key not in {"chunk_id", "novel_id", "status"}}
-            self._storage.update_translation_chunk_status(novel_id, chunk_id, status, **fields)
+        persist_chunk_state(self._storage, context, chunk_id)
 
     def _build_prompt_glossary_block(
         self,
@@ -568,34 +449,12 @@ class TranslateStage(PipelineStage):
         request: TranslationRequest | None,
         glossary_hash: str | None = None,
     ) -> tuple[str, str, str, bool] | None:
-        provider_key, provider_model = self._resolve_provider_and_model(provider_key, provider_model)
-        provider = self._provider_factory(provider_key)
-
-        if settings.TRANSLATION_CACHE_ENABLED:
-            try:
-                from novelai.services.translation_cache import make_cache_key
-                source_language = infer_source_language(context) or "auto"
-                target_language = context.metadata.get("target_language") or settings.TRANSLATION_TARGET_LANGUAGE
-                g_hash = glossary_hash or ""
-                prompt_version = context.metadata.get("prompt_version") or ""
-                cache_key = make_cache_key(
-                    chunk, source_language, target_language, g_hash,
-                    provider_key=provider.key,
-                    provider_model=provider_model,
-                    prompt_version=prompt_version,
-                )
-                entry = self._cache_service.get(cache_key)
-                if entry is not None:
-                    logger.debug("Cache hit for chunk: key=%s, cache_hit=True", cache_key[:16])
-                    return entry.translated_text, provider.key, provider_model, True
-            except Exception as exc:
-                logger.warning("Cache read error: %s", exc)
-
-        cache_key = request.cache_key() if request is not None else chunk
-        cached = self._cache.get(cache_key, provider.key, provider_model)
-        if cached is None:
-            return None
-        return cached, provider.key, provider_model, True
+        p_key, p_model = self._resolve_provider_and_model(provider_key, provider_model)
+        return cached_translation(
+            self._cache, self._cache_service, context,
+            provider_key=p_key, provider_model=p_model,
+            chunk=chunk, request=request, glossary_hash=glossary_hash,
+        )
 
     async def _translate_with_model(
         self,
@@ -760,8 +619,8 @@ class TranslateStage(PipelineStage):
             state["provider_model"] for state in scheduler.to_model_state_list()
             if state.get("provider_key") == provider_key
         ]
-        self._load_persisted_chunk_states(context)
-        self._save_chunk_records(context, chunks)
+        load_persisted_chunk_states(self._storage, context)
+        save_chunk_records(self._storage, context, chunks)
         self._save_scheduler_state(context, scheduler)
 
         # Resolve platform_novel_id once if not already in context
@@ -955,7 +814,7 @@ class TranslateStage(PipelineStage):
                                 "cache_hit": True,
                                 "updated_at": utc_now_iso(),
                             }
-                            self._persist_chunk_state(context, chunk_id)
+                            persist_chunk_state(self._storage, context, chunk_id)
                             self._save_chunk_attempt(
                                 context,
                                 chunk=chunk,
@@ -1002,7 +861,7 @@ class TranslateStage(PipelineStage):
                                 "latest_error_message": last_provider_error_message,
                                 "updated_at": utc_now_iso(),
                             }
-                            self._persist_chunk_state(context, chunk_id)
+                            persist_chunk_state(self._storage, context, chunk_id)
                             raise self._max_attempts_exceeded_error(
                                 context,
                                 chunk_id=chunk_id,
@@ -1031,7 +890,7 @@ class TranslateStage(PipelineStage):
                             "status": ChunkTranslationStatus.TRANSLATING.value,
                             "updated_at": utc_now_iso(),
                         }
-                        self._persist_chunk_state(context, chunk_id)
+                        persist_chunk_state(self._storage, context, chunk_id)
                         self._save_chunk_attempt(
                             context,
                             chunk=chunk,
@@ -1083,7 +942,7 @@ class TranslateStage(PipelineStage):
                                 "error_code": exc.provider_error_code.value,
                                 "updated_at": utc_now_iso(),
                             }
-                            self._persist_chunk_state(context, chunk_id)
+                            persist_chunk_state(self._storage, context, chunk_id)
                             self._save_chunk_attempt(
                                 context,
                                 chunk=chunk,
@@ -1120,7 +979,7 @@ class TranslateStage(PipelineStage):
                             "error_code": None,
                             "updated_at": utc_now_iso(),
                         }
-                        self._persist_chunk_state(context, chunk_id)
+                        persist_chunk_state(self._storage, context, chunk_id)
                         self._save_chunk_attempt(
                             context,
                             chunk=chunk,
