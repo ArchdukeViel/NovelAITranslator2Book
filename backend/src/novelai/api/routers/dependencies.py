@@ -13,14 +13,15 @@ from novelai.activity.queue import ActivityQueueService
 from novelai.activity.runner import BackgroundActivityRunner
 from novelai.activity.worker import ActivityWorkerService
 from novelai.config.settings import settings
+from novelai.infrastructure.http.rate_limiter import get_default_rate_limiter
 from novelai.runtime.container import container
 from novelai.services.admin_service import AdminService
+from novelai.services.library_service import LibraryService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.storage.service import StorageService
-from novelai.infrastructure.http.rate_limiter import get_default_rate_limiter
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -132,9 +133,10 @@ def get_db_session():
     Requires DATABASE_URL to be configured. Raises 503 if not.
     Override in tests via app.dependency_overrides[get_db_session].
     """
-    from novelai.db.engine import get_sessionmaker
-    from novelai.config.settings import settings
     from fastapi import HTTPException
+
+    from novelai.config.settings import settings
+    from novelai.db.engine import get_sessionmaker
 
     if not settings.DATABASE_URL:
         raise HTTPException(
@@ -200,3 +202,10 @@ def get_admin_db_service(
         storage=storage,
         db_session=db_session,
     )
+
+
+def get_library_service(
+    storage: StorageService = Depends(get_storage),
+    db_session: Session = Depends(get_db_session),
+) -> LibraryService:
+    return LibraryService(storage=storage, db_session=db_session)
