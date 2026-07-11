@@ -98,7 +98,7 @@ This document summarizes completion status, known flaws, and remaining debt.
 | Scheduler runtime state not persisted | `TranslationScheduler._runtime_states` | Health API can't show live cooldown/exhausted/failed states |
 | Glossary diagnostics not wired into translate stage | `TranslateStage` | Diagnostics normalizer exists but never called during translation |
 | Glossary diagnostics not aggregated in activity worker | `ActivityWorker` | No chapter-level diagnostics summary in activity metadata |
-| Public glossary annotations not wired into reader API | `public.py` | Term selection + matching implemented but not called in chapter response |
+| Public glossary annotations not wired into reader API | `public_chapter.py` | Term selection + matching implemented but not called in chapter response |
 | PDF exporter stubbed but not registered | `bootstrap.py` | `export_pdf()` raises `KeyError` at runtime |
 
 ### Medium Priority
