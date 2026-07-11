@@ -6,7 +6,7 @@ lives in file/object storage; this table stores the keys and status only.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -16,7 +16,7 @@ from novelai.db.base import Base
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Chapter(Base):
@@ -67,7 +67,7 @@ class Chapter(Base):
     )
 
     # Relationship back to Novel
-    novel: Mapped["Novel"] = relationship(  # type: ignore[name-defined]  # noqa: F821
+    novel: Mapped[Novel] = relationship(  # type: ignore[name-defined]  # noqa: F821
         "Novel", back_populates="chapters"
     )
 

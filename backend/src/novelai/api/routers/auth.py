@@ -16,11 +16,11 @@ Architecture rules (architecture.md §19):
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import secrets
-import hashlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -199,7 +199,7 @@ def _hash_email_verification_token(token: str) -> str:
 
 
 def _is_expired(expires_at: datetime) -> bool:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if expires_at.tzinfo is None:
         return expires_at <= now.replace(tzinfo=None)
     return expires_at <= now
@@ -336,8 +336,8 @@ def _upsert_google_user(profile: GoogleOAuthProfile, session: Session) -> User:
         if profile.display_name:
             user.display_name = profile.display_name
         if user.email_verified_at is None:
-            user.email_verified_at = datetime.now(timezone.utc)
-        user.last_login_at = datetime.now(timezone.utc)
+            user.email_verified_at = datetime.now(UTC)
+        user.last_login_at = datetime.now(UTC)
         session.flush()
         return user
 
@@ -347,9 +347,9 @@ def _upsert_google_user(profile: GoogleOAuthProfile, session: Session) -> User:
         role="user",
         auth_provider="google",
         auth_provider_subject=profile.subject,
-        email_verified_at=datetime.now(timezone.utc),
+        email_verified_at=datetime.now(UTC),
         is_active=True,
-        last_login_at=datetime.now(timezone.utc),
+        last_login_at=datetime.now(UTC),
     )
     session.add(user)
     session.flush()
@@ -418,7 +418,7 @@ async def register(
             detail="An account already exists for this email.",
         )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     user = User(
         email=email,
         display_name=display_name,
@@ -476,7 +476,7 @@ async def password_login(
         logger.warning("Failed public password login attempt.")
         raise generic_error
 
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     session.flush()
     _set_session_user(request, user)
     logger.info("Public password login succeeded for user_id=%s.", user.id)
@@ -512,7 +512,7 @@ async def password_reset_request(
     ):
         return PasswordResetResponse(status="ok")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     session.query(PasswordResetToken).filter(
         PasswordResetToken.user_id == user.id,
         PasswordResetToken.used_at.is_(None),
@@ -566,7 +566,7 @@ async def password_reset_confirm(
     ):
         raise generic_error
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     user.password_hash = hash_password(payload.new_password)
     reset_token.used_at = now
     session.query(PasswordResetToken).filter(
@@ -609,7 +609,7 @@ async def email_verification_request(
     ):
         return EmailVerificationResponse(status="ok")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     session.query(EmailVerificationToken).filter(
         EmailVerificationToken.user_id == user.id,
         EmailVerificationToken.used_at.is_(None),
@@ -670,7 +670,7 @@ async def email_verification_confirm(
     ):
         raise generic_error
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if user.email_verified_at is None:
         user.email_verified_at = now
     verification_token.used_at = now

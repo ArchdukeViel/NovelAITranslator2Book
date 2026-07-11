@@ -344,11 +344,11 @@ class TestJunctionTables:
 class TestPublicGenreEndpoint:
     @pytest.fixture()
     def client(self):
-        from starlette.middleware.sessions import SessionMiddleware
         from sqlalchemy.pool import StaticPool
+        from starlette.middleware.sessions import SessionMiddleware
 
-        from novelai.api.routers.public import router as public_router
         from novelai.api.routers.dependencies import get_db_session
+        from novelai.api.routers.public import router as public_router
 
         engine = create_engine(
             _SQLITE,

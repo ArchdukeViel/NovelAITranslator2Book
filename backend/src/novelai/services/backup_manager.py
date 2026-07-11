@@ -16,8 +16,6 @@ from typing import Any, TypedDict
 from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.utils import atomic_write
 
-
-
 logger = logging.getLogger(__name__)
 
 

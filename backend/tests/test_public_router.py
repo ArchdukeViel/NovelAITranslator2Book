@@ -6,7 +6,7 @@ Uses FastAPI TestClient + temp dir StorageService; DB session via SQLAlchemy.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -22,7 +22,6 @@ from novelai.db.base import Base
 from novelai.db.models.genre import Genre
 from novelai.db.models.novel import Novel
 from novelai.storage.service import StorageService
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -129,8 +128,8 @@ def _seed_db_catalog_novel(
         publication_status=publication_status or status,
         synopsis=synopsis,
         is_published=is_published,
-        created_at=created_at or datetime(2024, 1, 1, tzinfo=timezone.utc),
-        updated_at=updated_at or datetime(2024, 1, 1, tzinfo=timezone.utc),
+        created_at=created_at or datetime(2024, 1, 1, tzinfo=UTC),
+        updated_at=updated_at or datetime(2024, 1, 1, tzinfo=UTC),
         chapter_count=chapter_count,
         translated_count=translated_count,
         latest_chapter_id=latest_chapter_id,
@@ -358,8 +357,8 @@ class TestCatalog:
             db_session,
             "novel-old",
             title="Old Novel",
-            created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
-            updated_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            created_at=datetime(2024, 1, 1, tzinfo=UTC),
+            updated_at=datetime(2024, 1, 1, tzinfo=UTC),
         )
         _seed_db_catalog_novel(
             db_session,
@@ -368,14 +367,14 @@ class TestCatalog:
             source_title="新しい小説",
             author="Author",
             synopsis="Stored synopsis.",
-            created_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
-            updated_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
+            created_at=datetime(2024, 6, 1, tzinfo=UTC),
+            updated_at=datetime(2024, 6, 1, tzinfo=UTC),
             chapter_count=9,
             translated_count=3,
             latest_chapter_id="ch009",
             latest_chapter_number=9,
             latest_chapter_title="Chapter 9",
-            latest_chapter_updated_at=datetime(2024, 6, 2, tzinfo=timezone.utc),
+            latest_chapter_updated_at=datetime(2024, 6, 2, tzinfo=UTC),
         )
         storage.save_metadata(
             "novel-new",
@@ -389,8 +388,8 @@ class TestCatalog:
             db_session,
             "novel-mid",
             title="Mid Novel",
-            created_at=datetime(2024, 3, 1, tzinfo=timezone.utc),
-            updated_at=datetime(2024, 3, 1, tzinfo=timezone.utc),
+            created_at=datetime(2024, 3, 1, tzinfo=UTC),
+            updated_at=datetime(2024, 3, 1, tzinfo=UTC),
         )
         monkeypatch.setattr(
             storage,
@@ -431,14 +430,14 @@ class TestCatalog:
         _seed_db_catalog_novel(
             db_session,
             "created-old-updated-new",
-            created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
-            updated_at=datetime(2024, 12, 1, tzinfo=timezone.utc),
+            created_at=datetime(2024, 1, 1, tzinfo=UTC),
+            updated_at=datetime(2024, 12, 1, tzinfo=UTC),
         )
         _seed_db_catalog_novel(
             db_session,
             "created-new-updated-old",
-            created_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
-            updated_at=datetime(2024, 2, 1, tzinfo=timezone.utc),
+            created_at=datetime(2024, 6, 1, tzinfo=UTC),
+            updated_at=datetime(2024, 2, 1, tzinfo=UTC),
         )
         monkeypatch.setattr(
             storage,
@@ -461,18 +460,18 @@ class TestCatalog:
         db_session,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        created_at = datetime(2024, 3, 1, tzinfo=timezone.utc)
+        created_at = datetime(2024, 3, 1, tzinfo=UTC)
         _seed_db_catalog_novel(
             db_session,
             "first",
             created_at=created_at,
-            updated_at=datetime(2024, 5, 1, tzinfo=timezone.utc),
+            updated_at=datetime(2024, 5, 1, tzinfo=UTC),
         )
         _seed_db_catalog_novel(
             db_session,
             "second",
             created_at=created_at,
-            updated_at=datetime(2024, 4, 1, tzinfo=timezone.utc),
+            updated_at=datetime(2024, 4, 1, tzinfo=UTC),
         )
         monkeypatch.setattr(
             storage,
@@ -503,7 +502,7 @@ class TestCatalog:
         client: TestClient,
         db_session,
     ) -> None:
-        _seed_db_catalog_novel(db_session, "novel-tax", updated_at=datetime(2024, 6, 1, tzinfo=timezone.utc))
+        _seed_db_catalog_novel(db_session, "novel-tax", updated_at=datetime(2024, 6, 1, tzinfo=UTC))
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー", display_order=2)
         _seed_genre_for_tests(db_session, "romance", "恋愛", display_order=1)
         _assign_genre_for_tests(db_session, "novel-tax", "fantasy")
@@ -1288,7 +1287,6 @@ class TestCatalogSort:
         self, client: TestClient, storage: StorageService
     ) -> None:
         # Write metadata directly to have updated_at but no scraped_at
-        import json
         novel_dir = storage.novels_dir / "novel-001"
         novel_dir.mkdir(parents=True, exist_ok=True)
         meta = {
@@ -1334,8 +1332,6 @@ class TestCatalogSort:
             "chapters": [{"id": "ch001", "title": "Ch 1", "num": 1}],
         }
         # Overwrite to strip scraped_at/updated_at that save_metadata auto-sets
-        import json
-        from pathlib import Path
         novel_dir = storage.novels_dir / "novel-nodate"
         novel_dir.mkdir(parents=True, exist_ok=True)
         meta_path = novel_dir / "metadata.json"
@@ -1485,6 +1481,7 @@ class TestCatalogTaxonomy:
 
     def _assign_tag(self, db_session, novel_slug: str, tag_name: str) -> None:
         from sqlalchemy import text
+
         from novelai.db.models.tag import Tag
         tag = db_session.query(Tag).filter_by(name=tag_name).one_or_none()
         if tag is None:
@@ -1697,6 +1694,7 @@ def _assign_genre_for_tests(db_session, novel_slug: str, genre_slug: str) -> Non
 
 def _assign_tag_for_tests(db_session, novel_slug: str, tag_name: str) -> None:
     from sqlalchemy import text
+
     from novelai.db.models.tag import Tag
     tag = db_session.query(Tag).filter_by(name=tag_name).one_or_none()
     if tag is None:

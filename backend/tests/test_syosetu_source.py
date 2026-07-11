@@ -20,7 +20,7 @@ def test_normalize_novel_id_accepts_chapter_and_infotop_urls() -> None:
 def test_decode_page_response_uses_utf8_when_charset_is_missing() -> None:
     response = httpx.Response(
         200,
-        content="TS刑事　如月真琴の憂鬱".encode("utf-8"),
+        content="TS刑事　如月真琴の憂鬱".encode(),
         headers={"content-type": "text/html"},
     )
 

@@ -64,10 +64,9 @@ class TestSessionScope:
 
     def test_rolls_back_on_exception(self) -> None:
         """Session is rolled back and closed even when an exception is raised."""
-        with pytest.raises(ValueError, match="intentional"):
-            with session_scope(_SQLITE) as session:
-                session.execute(text("SELECT 1"))
-                raise ValueError("intentional")
+        with pytest.raises(ValueError, match="intentional"), session_scope(_SQLITE) as session:
+            session.execute(text("SELECT 1"))
+            raise ValueError("intentional")
 
     def test_session_closed_after_context(self) -> None:
         """Context manager exits cleanly without raising."""

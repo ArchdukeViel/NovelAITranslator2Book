@@ -6,20 +6,17 @@ without inventing fake genres, tags, or assignments.
 
 from __future__ import annotations
 
-import pytest
-
-from novelai.sources.syosetu_ncode import SyosetuNcodeSource
-from novelai.sources.novel18_syosetu import Novel18SyosetuSource
-from novelai.sources.kakuyomu import KakuyomuSource
 from novelai.sources.generic import GenericSource
+from novelai.sources.kakuyomu import KakuyomuSource
+from novelai.sources.novel18_syosetu import Novel18SyosetuSource
+from novelai.sources.syosetu_ncode import SyosetuNcodeSource
 from novelai.sources.taxonomy import (
-    SYOSETU_GENRE_MAP,
-    NOVEL18_GENRE_MAP,
     KAKUYOMU_GENRE_MAP,
+    NOVEL18_GENRE_MAP,
+    SYOSETU_GENRE_MAP,
     map_genre,
     normalize_keywords,
 )
-
 
 # ---------------------------------------------------------------------------
 # Taxonomy mapping unit tests

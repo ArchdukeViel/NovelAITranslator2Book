@@ -8,6 +8,7 @@ Chapter reader and tags search are in ``public_chapter.py``.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, true
@@ -15,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from novelai.api.routers.dependencies import (
     get_db_session,
-    get_storage,
+    get_public_catalog_service,
 )
 from novelai.api.routers.public import (
     DEFAULT_ORDER,
@@ -25,21 +26,14 @@ from novelai.api.routers.public import (
     PublicCatalogResponse,
     PublicGenreResponse,
     PublicNovelSummary,
-    _db_novel_summary,
-    _db_row_allows_storage_catalog_entry,
-    _is_db_catalog_base_request,
-    _load_taxonomy_for_novel,
-    _novel_matches_search,
-    _novel_summary,
     _optional_str,
     _parse_csv_filter,
-    _publication_status_from_metadata,
 )
 from novelai.db.models.genre import Genre
 from novelai.db.models.novel import Novel
 from novelai.db.models.tag import Tag
+from novelai.services.public_catalog_service import PublicCatalogService
 from novelai.sources.status import normalize_publication_status
-from novelai.storage.service import StorageService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 logger = logging.getLogger(__name__)
@@ -65,9 +59,8 @@ def _published_db_catalog_query(db: Session, *, include_adult: bool):
 
 
 def _catalog_from_db_page(
-    db: Session,
     *,
-    storage: StorageService,
+    service: PublicCatalogService,
     q: str | None,
     status: str | None,
     language: str | None,
@@ -83,6 +76,9 @@ def _catalog_from_db_page(
     page_size: int,
     order: str,
 ) -> PublicCatalogResponse | None:
+    db = service.db_session
+    if db is None:
+        return None
     query = _published_db_catalog_query(db, include_adult=include_adult)
     has_published_db_catalog = query.count() > 0
     if not has_published_db_catalog:
@@ -159,7 +155,7 @@ def _catalog_from_db_page(
     novels = query.order_by(*order_columns).offset(offset).limit(page_size).all()
     return PublicCatalogResponse(
         novels=[
-            _db_novel_summary(novel, include_adult=include_adult, storage=storage)
+            PublicNovelSummary(**service._db_novel_summary(novel, include_adult=include_adult))
             for novel in novels
         ],
         total=total,
@@ -170,6 +166,7 @@ def _catalog_from_db_page(
 
 def _catalog_from_storage(
     *,
+    service: PublicCatalogService,
     q: str | None,
     status: str | None,
     language: str | None,
@@ -184,21 +181,19 @@ def _catalog_from_storage(
     include_adult: bool,
     page: int,
     page_size: int,
-    storage: StorageService,
-    db: Session,
 ) -> PublicCatalogResponse:
-    novels: list[PublicNovelSummary] = []
-    for novel_id in storage.list_novels():
-        if not _db_row_allows_storage_catalog_entry(db, novel_id):
+    novels: list[dict[str, Any]] = []
+    for novel_id in service.storage.list_novels():
+        if not service._db_row_allows_storage_catalog_entry(novel_id):
             continue
-        meta = storage.load_metadata(novel_id) or {}
-        if q and not _novel_matches_search(meta, q):
+        meta = service.storage.load_metadata(novel_id) or {}
+        if q and not service.novel_matches_search(meta, q):
             continue
-        if status and _publication_status_from_metadata(meta) != status:
+        if status and service.publication_status_from_metadata(meta) != status:
             continue
         if language and _optional_str(meta.get("language")) != language:
             continue
-        genres, tags, is_adult = _load_taxonomy_for_novel(db, novel_id, include_adult=include_adult)
+        genres, tags, is_adult = service._load_taxonomy_for_novel(novel_id, include_adult=include_adult)
         if not include_adult and is_adult:
             continue
         novel_genre_set = set(genres)
@@ -211,20 +206,20 @@ def _catalog_from_storage(
             continue
         if tag_exclude_set and novel_tag_set.intersection(tag_exclude_set):
             continue
-        summary = _novel_summary(novel_id, meta, storage, genres=genres, tags=tags)
-        if min_chapters is not None and summary.chapter_count < min_chapters:
+        summary = service._novel_summary(novel_id, meta, genres=genres, tags=tags)
+        if min_chapters is not None and summary["chapter_count"] < min_chapters:
             continue
-        if max_chapters is not None and summary.chapter_count > max_chapters:
+        if max_chapters is not None and summary["chapter_count"] > max_chapters:
             continue
         novels.append(summary)
 
-    def _sort_key(novel: PublicNovelSummary) -> str | int:
+    def _sort_key(novel: dict[str, Any]) -> str | int:
         if effective_sort_by == "title":
-            return (novel.title or "").lower()
+            return (novel.get("title") or "").lower()
         if effective_sort_by == "chapter_count":
-            return novel.chapter_count
-        if novel.added_at:
-            return novel.added_at
+            return novel.get("chapter_count", 0)
+        if novel.get("added_at"):
+            return novel["added_at"]
         return "" if reverse else "9999-12-31T23:59:59"
 
     novels.sort(key=_sort_key, reverse=reverse)
@@ -232,7 +227,7 @@ def _catalog_from_storage(
     total = len(novels)
     start = (page - 1) * page_size
     return PublicCatalogResponse(
-        novels=novels[start : start + page_size],
+        novels=[PublicNovelSummary(**n) for n in novels[start : start + page_size]],
         total=total,
         page=page,
         page_size=page_size,
@@ -262,8 +257,7 @@ async def catalog(
     include_adult: bool = Query(default=False, description="Include novels with adult/R18 genres"),
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(default=24, ge=1, le=100, description="Items per page"),
-    storage: StorageService = Depends(get_storage),
-    db: Session = Depends(get_db_session),
+    service: PublicCatalogService = Depends(get_public_catalog_service),
 ) -> PublicCatalogResponse:
     """Paginated public novel catalog with optional search, filter, and sort."""
     effective_status = normalize_publication_status(status) if status else None
@@ -288,7 +282,7 @@ async def catalog(
     tag_include_set = set(_parse_csv_filter(tag_include))
     tag_exclude_set = set(_parse_csv_filter(tag_exclude))
 
-    if _is_db_catalog_base_request(
+    if service.is_db_catalog_base_request(
         q=q,
         status=publication_status_filter,
         language=language,
@@ -301,8 +295,7 @@ async def catalog(
         tag_exclude_set=tag_exclude_set,
     ):
         db_response = _catalog_from_db_page(
-            db,
-            storage=storage,
+            service=service,
             q=q,
             status=publication_status_filter,
             language=language,
@@ -323,6 +316,7 @@ async def catalog(
         logger.warning("DB catalog fell back to storage scan — no DB projection found")
 
     return _catalog_from_storage(
+        service=service,
         q=q,
         status=publication_status_filter,
         language=language,
@@ -337,8 +331,6 @@ async def catalog(
         include_adult=include_adult,
         page=page,
         page_size=page_size,
-        storage=storage,
-        db=db,
     )
 
 

@@ -13,13 +13,11 @@ import json
 import tarfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
-from unittest.mock import ANY, patch
+from unittest.mock import patch
 
 import pytest
 
 from novelai.services.backup_manager import BackupManager
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -5,8 +5,8 @@ Uses fakeredis — no real Redis required.
 
 from __future__ import annotations
 
-import pytest
 import fakeredis
+import pytest
 from rq import Queue
 
 from novelai.worker.queue import (

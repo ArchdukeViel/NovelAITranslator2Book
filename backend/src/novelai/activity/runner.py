@@ -90,7 +90,7 @@ class BackgroundActivityRunner:
                 continue
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # noqa: BLE001 - runner must survive activity-layer failures.
+            except Exception as exc:
                 self._error_count += 1
                 self._last_error = str(exc)
                 try:

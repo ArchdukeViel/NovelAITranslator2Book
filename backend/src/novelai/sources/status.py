@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 PUBLICATION_STATUS_VALUES = {"ongoing", "completed", "hiatus", "unknown"}
 
 _COMPLETED_MARKERS = (

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -17,11 +17,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import novelai.db.models  # noqa: F401
+from novelai.activity.queue import ActivityQueueService
+from novelai.activity.runner import BackgroundActivityRunner
+from novelai.activity.worker import ActivityWorkerService
 from novelai.api import error_handlers as error_handler_module
-from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.app import create_app
-from novelai.api.routers.dependencies import get_db_session
+from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers import novels
+from novelai.api.routers.dependencies import get_db_session
 from novelai.api.routers.novels import (
     get_activity_log,
     get_activity_runner,
@@ -33,12 +37,16 @@ from novelai.api.routers.novels import (
     get_usage,
 )
 from novelai.config.settings import settings
-from novelai.core.errors import ConfigError, ExportError, NovelAIError, PipelineError, ProviderError, ProviderErrorCode, StorageError
-from novelai.activity.queue import ActivityQueueService
-from novelai.activity.runner import BackgroundActivityRunner
-from novelai.activity.worker import ActivityWorkerService
+from novelai.core.errors import (
+    ConfigError,
+    ExportError,
+    NovelAIError,
+    PipelineError,
+    ProviderError,
+    ProviderErrorCode,
+    StorageError,
+)
 from novelai.db.base import Base
-import novelai.db.models  # noqa: F401
 from novelai.db.models.genre import Genre
 from novelai.db.models.novel import Novel
 from novelai.db.models.system import ProviderCredential
@@ -101,7 +109,7 @@ def _seed_db_novel(
         publication_status=publication_status,
         chapter_count=chapter_count,
         translated_count=translated_count,
-        updated_at=updated_at or datetime(2024, 1, 1, tzinfo=timezone.utc),
+        updated_at=updated_at or datetime(2024, 1, 1, tzinfo=UTC),
         is_published=is_published,
     )
     session.add(novel)
@@ -1182,7 +1190,7 @@ class TestListDetail:
             isolated_db_session,
             "old-db",
             title="Old DB Novel",
-            updated_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            updated_at=datetime(2024, 1, 1, tzinfo=UTC),
         )
         new_db = _seed_db_novel(
             isolated_db_session,
@@ -1195,7 +1203,7 @@ class TestListDetail:
             chapter_count=12,
             translated_count=4,
             is_published=True,
-            updated_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
+            updated_at=datetime(2024, 6, 1, tzinfo=UTC),
         )
         new_db.original_title = "新しいDB小説"
         new_db.latest_chapter_id = "4"
@@ -1237,9 +1245,9 @@ class TestListDetail:
         isolated_db_session: Session,
     ) -> None:
         storage = _fresh_storage()
-        _seed_db_novel(isolated_db_session, "first", updated_at=datetime(2024, 3, 1, tzinfo=timezone.utc))
-        _seed_db_novel(isolated_db_session, "second", updated_at=datetime(2024, 2, 1, tzinfo=timezone.utc))
-        _seed_db_novel(isolated_db_session, "third", updated_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+        _seed_db_novel(isolated_db_session, "first", updated_at=datetime(2024, 3, 1, tzinfo=UTC))
+        _seed_db_novel(isolated_db_session, "second", updated_at=datetime(2024, 2, 1, tzinfo=UTC))
+        _seed_db_novel(isolated_db_session, "third", updated_at=datetime(2024, 1, 1, tzinfo=UTC))
         c = _make_app(storage, db_session=isolated_db_session)
 
         resp = c.get("/api/admin/novels?limit=1&offset=1")

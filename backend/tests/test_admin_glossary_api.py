@@ -14,7 +14,6 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
 
-import novelai.api.routers.admin_glossary as admin_glossary
 import novelai.api.routers.admin_glossary_provider as admin_glossary_provider
 
 # Import all DB models so Base.metadata.create_all sees FK targets.

@@ -15,12 +15,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from novelai.storage.chapters import _load_chapter_bundle
-from novelai.storage.jobs import load_chapter_state
-from novelai.storage.glossary import load_glossary
-from novelai.storage.runtime_contracts import _read_json_file
 from novelai.services.backup_manager import BackupManager
-
+from novelai.storage.chapters import _load_chapter_bundle
+from novelai.storage.glossary import load_glossary
+from novelai.storage.jobs import load_chapter_state
+from novelai.storage.runtime_contracts import _read_json_file
 
 # ---------------------------------------------------------------------------
 # Helpers

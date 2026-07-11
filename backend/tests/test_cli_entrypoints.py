@@ -9,6 +9,7 @@ import pytest
 from novelai import __main__ as package_main
 from novelai.runtime import cli
 
+
 def _patch_bootstrap(monkeypatch, fn):
     """Patch the bootstrap function. novelai.runtime.bootstrap is re-exported
     as a function in __init__.py, so we need to patch the actual module."""

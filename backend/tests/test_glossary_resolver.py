@@ -10,10 +10,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from novelai.db.base import Base
-from novelai.db.models.glossary import NovelGlossaryEntry
 from novelai.db.models.novel import Novel
 from novelai.services.glossary_repository import GlossaryRepository
-from novelai.services.glossary_resolver import GlossaryResolver, ResolvedGlossary
+from novelai.services.glossary_resolver import GlossaryResolver
 
 _SQLITE = "sqlite:///:memory:"
 

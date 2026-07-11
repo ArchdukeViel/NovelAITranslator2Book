@@ -363,7 +363,7 @@ class GeminiProvider(TranslationProvider):
             response = await asyncio.to_thread(_invoke)
         except ProviderError:
             raise
-        except Exception as exc:  # noqa: BLE001 - SDK exceptions vary by installed google-genai version.
+        except Exception as exc:
             raise self._provider_error_from_exception(exc, model_name=model_name) from exc
         text = self._extract_text(response)
         response_error = self._response_error(
@@ -401,7 +401,7 @@ class GeminiProvider(TranslationProvider):
 
         try:
             await asyncio.to_thread(_invoke)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return False, f"Validation failed: {exc}"
 
         return True, "Gemini API key is valid and the service is reachable."

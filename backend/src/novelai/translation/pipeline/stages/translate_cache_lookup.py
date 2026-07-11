@@ -15,16 +15,30 @@ from novelai.storage.service import StorageService
 from novelai.translation.pipeline.context import PipelineContext, TranslationChunk
 from novelai.translation.pipeline.stages.translate_result_assembly import (
     chapter_ids as chapter_ids_fn,
+)
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     chunk_id as chunk_id_fn,
+)
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     chunk_text as chunk_text_fn,
+)
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     explicit_translation_run_id,
-    glossary_hash as glossary_hash_fn,
     hash_text,
-    paragraph_hashes as paragraph_hashes_fn,
-    paragraph_ids as paragraph_ids_fn,
-    paragraph_lineage as paragraph_lineage_fn,
     prompt_version,
     translation_run_id,
+)
+from novelai.translation.pipeline.stages.translate_result_assembly import (
+    glossary_hash as glossary_hash_fn,
+)
+from novelai.translation.pipeline.stages.translate_result_assembly import (
+    paragraph_hashes as paragraph_hashes_fn,
+)
+from novelai.translation.pipeline.stages.translate_result_assembly import (
+    paragraph_ids as paragraph_ids_fn,
+)
+from novelai.translation.pipeline.stages.translate_result_assembly import (
+    paragraph_lineage as paragraph_lineage_fn,
 )
 
 

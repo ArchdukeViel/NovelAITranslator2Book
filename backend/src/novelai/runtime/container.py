@@ -11,10 +11,10 @@ from novelai.services.email import AuthEmailService, NoopAuthEmailService, SMTPA
 from novelai.services.export_service import ExportService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
-from novelai.storage.service import StorageService
 from novelai.services.translation_cache import TranslationCache
-from novelai.translation.service import TranslationService
 from novelai.services.usage_service import UsageService
+from novelai.storage.service import StorageService
+from novelai.translation.service import TranslationService
 
 
 @dataclass
@@ -142,8 +142,8 @@ class Container:
             from novelai.translation.pipeline.stages.parse import ParseStage
             from novelai.translation.pipeline.stages.post_process import PostProcessStage
             from novelai.translation.pipeline.stages.segment import SegmentStage
-            from novelai.translation.pipeline.stages.translation_qa import TranslationQAStage
             from novelai.translation.pipeline.stages.translate import TranslateStage
+            from novelai.translation.pipeline.stages.translation_qa import TranslationQAStage
 
             stages = [
                 FetchStage(),

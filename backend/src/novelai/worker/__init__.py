@@ -14,8 +14,8 @@ from novelai.worker.queue import get_queue, get_redis_connection
 from novelai.worker.tasks import enqueue_crawl_job, enqueue_translation_job
 
 __all__ = [
-    "get_redis_connection",
-    "get_queue",
     "enqueue_crawl_job",
     "enqueue_translation_job",
+    "get_queue",
+    "get_redis_connection",
 ]

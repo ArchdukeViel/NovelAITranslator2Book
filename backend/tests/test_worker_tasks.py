@@ -8,8 +8,8 @@ a full bootstrap; those are covered by integration tests.
 
 from __future__ import annotations
 
-import pytest
 import fakeredis
+import pytest
 from rq import Queue
 
 from novelai.worker.queue import QUEUE_CRAWL, QUEUE_TRANSLATION

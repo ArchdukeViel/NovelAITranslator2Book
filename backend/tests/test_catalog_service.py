@@ -5,15 +5,16 @@ Uses SQLite in-memory + temp dir StorageService; no Postgres required.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from uuid import uuid4
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from hypothesis import HealthCheck, given, settings, strategies as st
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
@@ -137,7 +138,7 @@ class TestGetOrCreateNovel:
         assert result.publication_status == "ongoing"
 
     def test_model_accepts_catalog_projection_fields(self, db_session) -> None:
-        scraped_at = datetime(2026, 6, 19, 1, 2, 3, tzinfo=timezone.utc)
+        scraped_at = datetime(2026, 6, 19, 1, 2, 3, tzinfo=UTC)
         novel = Novel(
             slug="projected-novel",
             title="Projected Novel",
@@ -159,14 +160,14 @@ class TestGetOrCreateNovel:
         result = db_session.query(Novel).filter_by(slug="projected-novel").one()
         assert result.publication_status == "completed"
         assert result.source_updated_at is not None
-        assert result.source_updated_at.replace(tzinfo=timezone.utc) == scraped_at
+        assert result.source_updated_at.replace(tzinfo=UTC) == scraped_at
         assert result.chapter_count == 12
         assert result.translated_count == 4
         assert result.latest_chapter_id == "ch004"
         assert result.latest_chapter_number == 4
         assert result.latest_chapter_title == "Fourth Chapter"
         assert result.latest_chapter_updated_at is not None
-        assert result.latest_chapter_updated_at.replace(tzinfo=timezone.utc) == scraped_at
+        assert result.latest_chapter_updated_at.replace(tzinfo=UTC) == scraped_at
 
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture], database=None)
     @given(
@@ -207,8 +208,8 @@ class TestGetOrCreateNovel:
         assert result.publication_status == "completed"
         assert result.status == "completed"
         assert result.source_updated_at is not None
-        assert result.source_updated_at.replace(tzinfo=timezone.utc) == datetime(
-            2026, 6, 19, 1, 2, 3, tzinfo=timezone.utc
+        assert result.source_updated_at.replace(tzinfo=UTC) == datetime(
+            2026, 6, 19, 1, 2, 3, tzinfo=UTC
         )
 
     def test_updates_existing_publication_status_when_metadata_provides_it(
@@ -434,14 +435,14 @@ def test_reconcile_catalog_projection_updates_stale_counts(storage, db_session, 
     assert repaired.translated_count == 0
     assert repaired.publication_status == "completed"
     assert repaired.source_updated_at is not None
-    assert repaired.source_updated_at.replace(tzinfo=timezone.utc) == datetime(
+    assert repaired.source_updated_at.replace(tzinfo=UTC) == datetime(
         2026,
         6,
         19,
         1,
         2,
         3,
-        tzinfo=timezone.utc,
+        tzinfo=UTC,
     )
 
 

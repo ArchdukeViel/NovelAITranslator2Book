@@ -9,11 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from novelai.config.settings import settings
 from novelai.prompts.builders import (
     _format_additional_instructions,
     build_translation_request,
-    build_user_prompt,
 )
 from novelai.prompts.templates import CONTEXT_OVERLAP_PROMPT_BLOCK
 from novelai.translation.pipeline.context import (
@@ -22,6 +20,7 @@ from novelai.translation.pipeline.context import (
     paragraph_source_hash,
 )
 from novelai.translation.pipeline.stages.segment import SmartSegmentStage
+
 # These were previously exported from translate.py but inlined in a refactor.
 # Keep local definitions so the test stands independently.
 _CONTEXT_OVERLAP_OPEN = "[CONTEXT OVERLAP]"

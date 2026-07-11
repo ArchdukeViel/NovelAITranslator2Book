@@ -12,9 +12,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import novelai.db.models  # noqa: F401
 from novelai.config.settings import AppSettings, settings
 from novelai.db.base import Base
-import novelai.db.models  # noqa: F401
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.provider_credentials import ProviderCredentialService, hydrate_active_provider_credentials
 

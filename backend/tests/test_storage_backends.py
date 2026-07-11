@@ -10,7 +10,6 @@ from novelai.storage.backends import _reset_backend, get_storage_backend
 from novelai.storage.backends.base import StorageBackend
 from novelai.storage.backends.filesystem import FilesystemBackend, _try_unlink
 
-
 # ── FilesystemBackend ────────────────────────────────────────────────
 
 class TestFilesystemBackend:

@@ -20,9 +20,7 @@ from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.sources.base import SourceAdapter
 from novelai.storage.service import StorageService
-from novelai.translation.service import TranslationService
 from tests.conftest import TESTS_TMP_ROOT
-
 
 # ---------------------------------------------------------------------------
 # Stub source adapters

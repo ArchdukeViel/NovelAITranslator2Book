@@ -7,8 +7,8 @@ from uuid import uuid4
 
 import pytest
 
-from novelai.storage.service import StorageService
 from novelai.storage.novels import VALID_ONBOARDING_STATUSES
+from novelai.storage.service import StorageService
 from tests.conftest import TESTS_TMP_ROOT
 
 

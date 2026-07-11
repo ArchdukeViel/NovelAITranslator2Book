@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from unittest.mock import patch
 
 import pytest
@@ -77,7 +76,7 @@ class TestRedisRateLimiter:
             limiter = RedisRateLimiter(limits={"test_action": 1}, window_seconds=1)
             assert limiter.hit("client1", "test_action") is True
             assert limiter.hit("client1", "test_action") is False
-            
+
             # Simulate time passing to the next window
             with patch("novelai.infrastructure.http.rate_limiter.time.time", return_value=1002.0):
                 assert limiter.hit("client1", "test_action") is True

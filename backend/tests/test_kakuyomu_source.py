@@ -518,7 +518,7 @@ class TestKakuyomuDecoding:
     """KakuyomuSource must force-decode responses as UTF-8."""
 
     def test_decode_utf8_body(self) -> None:
-        body = "日本語テキスト".encode("utf-8")
+        body = "日本語テキスト".encode()
         result = KakuyomuSource._decode_page_body(body)
         assert result == "日本語テキスト"
 

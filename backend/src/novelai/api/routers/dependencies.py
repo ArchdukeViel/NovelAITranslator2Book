@@ -20,6 +20,7 @@ from novelai.services.editor_service import EditorService
 from novelai.services.library_service import LibraryService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
+from novelai.services.public_catalog_service import PublicCatalogService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.storage.service import StorageService
@@ -217,3 +218,10 @@ def get_editor_service(
     db_session: Session = Depends(get_db_session),
 ) -> EditorService:
     return EditorService(storage=storage, db_session=db_session)
+
+
+def get_public_catalog_service(
+    storage: StorageService = Depends(get_storage),
+    db_session: Session = Depends(get_db_session),
+) -> PublicCatalogService:
+    return PublicCatalogService(storage=storage, db_session=db_session)

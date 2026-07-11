@@ -2,7 +2,17 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from novelai.api.routers import activity, admin, editor, library, library_actions, library_detail, operations, requests, sources
+from novelai.api.routers import (
+    activity,
+    admin,
+    editor,
+    library,
+    library_actions,
+    library_detail,
+    operations,
+    requests,
+    sources,
+)
 from novelai.api.routers.dependencies import (
     _hits,
     _rate_limit,

@@ -14,12 +14,12 @@ from novelai.api.error_handlers import add_error_handlers
 from novelai.core.errors import ProviderError, ProviderErrorCode, SourceError
 from novelai.core.security import redact_secret_text, redact_sensitive
 from novelai.infrastructure.http.client import validate_safe_url
+from novelai.logging_config import SimpleFormatter, StructuredFormatter
 from novelai.services.admin_service import AdminService
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.storage.service import StorageService
-from novelai.logging_config import SimpleFormatter, StructuredFormatter
 
 
 @pytest.fixture
