@@ -16,6 +16,7 @@ from novelai.config.settings import settings
 from novelai.infrastructure.http.rate_limiter import get_default_rate_limiter
 from novelai.runtime.container import container
 from novelai.services.admin_service import AdminService
+from novelai.services.editor_service import EditorService
 from novelai.services.library_service import LibraryService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
@@ -209,3 +210,10 @@ def get_library_service(
     db_session: Session = Depends(get_db_session),
 ) -> LibraryService:
     return LibraryService(storage=storage, db_session=db_session)
+
+
+def get_editor_service(
+    storage: StorageService = Depends(get_storage),
+    db_session: Session = Depends(get_db_session),
+) -> EditorService:
+    return EditorService(storage=storage, db_session=db_session)
