@@ -36,7 +36,7 @@ from novelai.translation.pipeline.stages.translate_cache_lookup import (
     save_chunk_output,
     save_chunk_records,
 )
-from novelai.translation.pipeline.stages.translate_context_helpers import (
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     build_prompt_request,
     glossary_prompt_options,
     infer_source_language,
@@ -50,34 +50,34 @@ from novelai.translation.pipeline.stages.translate_context_helpers import (
     select_chunk_glossary,
     utc_now_iso,
 )
-from novelai.translation.pipeline.stages.translate_context_helpers import (
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     chapter_ids as chapter_ids_h,
 )
-from novelai.translation.pipeline.stages.translate_context_helpers import (
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     chunk_id as chunk_id_h,
 )
-from novelai.translation.pipeline.stages.translate_context_helpers import (
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     chunk_text as chunk_text_h,
 )
-from novelai.translation.pipeline.stages.translate_context_helpers import (
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     explicit_translation_run_id as explicit_run_id_h,
 )
-from novelai.translation.pipeline.stages.translate_context_helpers import (
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     force_retranslate as force_retranslate_h,
 )
-from novelai.translation.pipeline.stages.translate_context_helpers import (
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     glossary_hash as glossary_hash_h,
 )
-from novelai.translation.pipeline.stages.translate_context_helpers import (
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     paragraph_hashes as paragraph_hashes_h,
 )
-from novelai.translation.pipeline.stages.translate_context_helpers import (
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     paragraph_ids as paragraph_ids_h,
 )
-from novelai.translation.pipeline.stages.translate_context_helpers import (
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     paragraph_lineage as paragraph_lineage_h,
 )
-from novelai.translation.pipeline.stages.translate_context_helpers import (
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     translation_run_id as run_id_h,
 )
 from novelai.translation.pipeline.stages.translate_provider_call import (

@@ -1,6 +1,6 @@
 """Provider error mapping and request audit record helpers.
 
-Extracted from translate_context_helpers.py. These functions handle:
+Extracted from translate_result_assembly.py. These functions handle:
 - Normalising generic exceptions into ``ProviderError`` with appropriate codes
 - Building the ``provider_request_record`` audit payload
 - Constructing provider error metadata for logging/observation
@@ -13,7 +13,7 @@ from typing import Any
 from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.prompts.models import TranslationRequest
 from novelai.translation.pipeline.context import PipelineContext
-from novelai.translation.pipeline.stages.translate_context_helpers import (
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     glossary_hash as _glossary_hash,
     hash_text,
     prompt_version,

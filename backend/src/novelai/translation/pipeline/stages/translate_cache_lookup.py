@@ -13,7 +13,7 @@ from novelai.services.translation_cache import TranslationCache, TranslationCach
 from novelai.shared.pipeline import ChunkTranslationStatus
 from novelai.storage.service import StorageService
 from novelai.translation.pipeline.context import PipelineContext, TranslationChunk
-from novelai.translation.pipeline.stages.translate_context_helpers import (
+from novelai.translation.pipeline.stages.translate_result_assembly import (
     chapter_ids as chapter_ids_fn,
     chunk_id as chunk_id_fn,
     chunk_text as chunk_text_fn,
@@ -260,7 +260,7 @@ def cached_translation(
     glossary_hash: str | None = None,
 ) -> tuple[str, str, str, bool] | None:
     from novelai.config.settings import settings
-    from novelai.translation.pipeline.stages.translate_context_helpers import infer_source_language
+    from novelai.translation.pipeline.stages.translate_result_assembly import infer_source_language
 
     if settings.TRANSLATION_CACHE_ENABLED:
         try:
