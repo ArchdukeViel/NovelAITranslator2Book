@@ -55,7 +55,8 @@ import type {
   TranslatedChapter,
   TranslationEditHistory,
   TranslationVersion,
-  WorkerStatus
+  WorkerStatus,
+  ExportManifest,
 } from "@/lib/api-types";
 
 export type * from "@/lib/api-types";
@@ -547,7 +548,11 @@ export const api = {
     apiFetch<NovelTaxonomyResponse>(`/admin/novels/${encodeURIComponent(novelId)}/taxonomy`, {
       method: "PUT",
       body: JSON.stringify(payload)
-    })
+    }),
+  listExportManifests: (novelId: string) =>
+    apiFetch<{ manifests?: ExportManifest[]; exports?: ExportManifest[] }>(
+      `/admin/novels/${encodeURIComponent(novelId)}/exports`
+    ),
 };
 // ===========================================
 // Admin Auth namespace (Task 3.2)

@@ -25,12 +25,6 @@ type ExportManifestListResponse = {
   exports?: ExportManifest[];
 };
 
-type ApiWithExportManifests = typeof api & {
-  listExportManifests?: (
-    novelId: string,
-  ) => Promise<ExportManifestListResponse>;
-};
-
 type BadgeConfig = {
   label: string;
   className?: string;
@@ -146,48 +140,11 @@ function formatDateTime(dateStr?: string | null): string {
   }
 }
 
-async function readErrorMessage(response: Response): Promise<string> {
-  try {
-    const payload = (await response.json()) as {
-      detail?: unknown;
-      message?: unknown;
-      error?: unknown;
-    };
-
-    const detail = payload.detail ?? payload.message ?? payload.error;
-    if (typeof detail === "string" && detail.trim()) {
-      return detail;
-    }
-  } catch {
-    // Ignore JSON parse errors and fall back to status text.
-  }
-
-  return response.statusText || `Request failed with ${response.status}`;
-}
-
 async function listExportManifests(
   novelId: string,
 ): Promise<ExportManifest[]> {
-  const client = api as ApiWithExportManifests;
-
-  if (typeof client.listExportManifests === "function") {
-    const response = await client.listExportManifests(novelId);
-    return response.manifests ?? response.exports ?? [];
-  }
-
-  const response = await fetch(
-    `/api/admin/novels/${encodeURIComponent(novelId)}/exports`,
-    {
-      credentials: "include",
-    },
-  );
-
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
-  }
-
-  const payload = (await response.json()) as ExportManifestListResponse;
-  return payload.manifests ?? payload.exports ?? [];
+  const response = await api.listExportManifests(novelId);
+  return response.manifests ?? response.exports ?? [];
 }
 
 export default function ExportsPage() {

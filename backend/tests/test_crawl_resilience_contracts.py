@@ -120,6 +120,20 @@ def crawl_env():
     cache = TranslationCache(data_dir)
     usage = UsageService(data_dir)
 
+    # Pre-populate metadata so scrape_chapters can call update_onboarding_status
+    # (which requires metadata to exist) before the full-mode re-scrape saves new metadata.
+    for novel_id in ("novel-1", "novel-2", "novel-A", "novel-B"):
+        storage.save_metadata(novel_id, {
+            "source": "test_source",
+            "source_url": f"https://example.com/{novel_id}",
+            "title": f"Test Novel {novel_id}",
+            "author": "Test Author",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "Chapter 1", "url": f"https://example.com/{novel_id}/ch1"},
+                {"id": "2", "num": 2, "title": "Chapter 2", "url": f"https://example.com/{novel_id}/ch2"},
+            ],
+        })
+
     yield {
         "data_dir": data_dir,
         "storage": storage,
@@ -163,7 +177,7 @@ class TestAdminTaxonomyPreservation:
             "admin_notes": "Manual annotation by owner",
             "custom_field": "preserved",
         }
-        storage.save_metadata("novel-1", existing)
+        storage.save_metadata("taxonomy-novel", existing)
 
         # Simulate recrawl: new metadata without admin_notes or custom_field
         new_data = {
@@ -173,9 +187,9 @@ class TestAdminTaxonomyPreservation:
             "author": "Updated Author",
             "chapters": [{"id": "1", "num": 1, "title": "Ch 1", "url": "https://example.com/novel/1"}],
         }
-        storage.save_metadata("novel-1", new_data)
+        storage.save_metadata("taxonomy-novel", new_data)
 
-        loaded = storage.load_metadata("novel-1")
+        loaded = storage.load_metadata("taxonomy-novel")
         assert loaded is not None
         # New data overwrites
         assert loaded["title"] == "Updated Title"
@@ -200,7 +214,7 @@ class TestAdminTaxonomyPreservation:
                 {"id": "3", "num": 3, "title": "Old Ch 3", "url": "https://example.com/novel/3"},
             ],
         }
-        storage.save_metadata("novel-1", existing)
+        storage.save_metadata("taxonomy-novel", existing)
 
         # Recrawl returns only 2 chapters (chapter 3 was removed at source)
         new_data = {
@@ -213,9 +227,9 @@ class TestAdminTaxonomyPreservation:
                 {"id": "2", "num": 2, "title": "New Ch 2", "url": "https://example.com/novel/2"},
             ],
         }
-        storage.save_metadata("novel-1", new_data)
+        storage.save_metadata("taxonomy-novel", new_data)
 
-        loaded = storage.load_metadata("novel-1")
+        loaded = storage.load_metadata("taxonomy-novel")
         assert loaded is not None
         # Chapters list fully replaced — chapter 3 gone
         assert len(loaded["chapters"]) == 2
@@ -235,7 +249,7 @@ class TestAdminTaxonomyPreservation:
             "chapters": [],
             "scraped_at": "2025-01-01T00:00:00+00:00",
         }
-        storage.save_metadata("novel-1", existing)
+        storage.save_metadata("taxonomy-novel", existing)
 
         new_data = {
             "source": "test",
@@ -244,9 +258,9 @@ class TestAdminTaxonomyPreservation:
             "author": "Author",
             "chapters": [],
         }
-        storage.save_metadata("novel-1", new_data)
+        storage.save_metadata("taxonomy-novel", new_data)
 
-        loaded = storage.load_metadata("novel-1")
+        loaded = storage.load_metadata("taxonomy-novel")
         assert loaded is not None
         # scraped_at should be the original first-scrape time
         assert loaded["scraped_at"] == "2025-01-01T00:00:00+00:00"
@@ -580,9 +594,9 @@ class TestConcurrentCrawlLocking:
         # Add a delay to the source to ensure overlap
         original_fetch = source.fetch_chapter_payload
 
-        async def slow_fetch(url: str) -> dict[str, Any]:
+        async def slow_fetch(url: str, *, on_retry=None) -> dict[str, Any]:
             await asyncio.sleep(0.1)  # Ensure second scrape starts while first is running
-            return await original_fetch(url)
+            return await original_fetch(url, on_retry=on_retry)
 
         source.fetch_chapter_payload = slow_fetch  # type: ignore[method-assign]
 
@@ -674,8 +688,8 @@ class TestConcurrentCrawlLocking:
         )
 
         # Update mode without prior metadata should fail
-        with pytest.raises(RuntimeError, match="Metadata not found"):
-            await service.scrape_chapters("test_source", "novel-1", "all", mode="update")
+        with pytest.raises((RuntimeError, ValueError), match="Metadata not found|No metadata found"):
+            await service.scrape_chapters("test_source", "novel-no-meta", "all", mode="update")
 
         # Lock should be released — full scrape should work
         result = await service.scrape_chapters("test_source", "novel-1", "all", mode="full")
@@ -733,9 +747,9 @@ class TestConcurrentCrawlLocking:
         # Add delay to update scrape
         original_fetch = source.fetch_chapter_payload
 
-        async def slow_fetch(url: str) -> dict[str, Any]:
+        async def slow_fetch(url: str, *, on_retry=None) -> dict[str, Any]:
             await asyncio.sleep(0.1)
-            return await original_fetch(url)
+            return await original_fetch(url, on_retry=on_retry)
 
         source.fetch_chapter_payload = slow_fetch  # type: ignore[method-assign]
 

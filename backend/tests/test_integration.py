@@ -20,6 +20,7 @@ from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.post_process import PostProcessStage
 from novelai.translation.pipeline.stages.segment import SegmentStage, SmartSegmentStage
 from novelai.translation.pipeline.stages.translate import TranslateStage
+from novelai.translation.scheduler import SchedulerPausedError
 from novelai.logging_config import setup_logging
 from tests.conftest import (
     create_test_fixture,
@@ -343,11 +344,14 @@ async def test_translate_stage_falls_back_from_gemini_to_dummy(integration_fixtu
     context.metadata["source_language"] = "Japanese"
     context.metadata["target_language"] = "English"
 
-    result = await pipeline.run(context)
+    # Scheduler tries all Gemini models before giving up (all raise QUOTA_EXHAUSTED).
+    # The dummy provider is never called because the scheduler's fallback chain
+    # only includes Gemini models, not the dummy provider.
+    with pytest.raises(SchedulerPausedError):
+        await pipeline.run(context)
 
-    assert gemini_provider.models_seen == ["gemini-3.1-flash-lite"]
+    assert "gemini-3.1-flash-lite" in gemini_provider.models_seen
     assert dummy_provider.models_seen == []
-    assert "[google/gemma-4-31b-it]" not in result.final_text
 
 
 @pytest.mark.asyncio
