@@ -179,19 +179,11 @@ async def retranslate_stale(
     novel_id: str,
     body: RetranslateStaleRequest,
     service: OperationsService = Depends(get_operations_service),
-    storage: StorageService = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     try:
-        meta = storage.load_metadata(novel_id)
-        if meta is None:
-            raise HTTPException(status_code=404, detail="Novel not found")
-        source_key = str(meta.get("source") or "")
-        if not source_key.strip():
-            raise HTTPException(status_code=400, detail="Novel has no source_key in metadata")
         return await service.retranslate_stale(
             novel_id=novel_id,
-            source_key=source_key,
             chapter_ids=body.chapter_ids,
             include_legacy_unknown=body.include_legacy_unknown,
             activate=body.activate,
