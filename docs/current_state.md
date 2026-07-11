@@ -474,20 +474,17 @@ backend/src/novelai/
 5. ✅ `admin_glossary.py` (1941→1321) + 4 router files (713L total)
 6. ✅ `translation.py` (2259→1053) + `translation_metadata.py` + `translation_lineage.py` + `translation_resume.py` + `translation_progress.py`
 
-### Next
+### Next — Features
 
 1. Implement object storage boundary (S3/R2/B2)
 2. Production deployment (DEP1)
 3. Monitor Gemini metadata batch structured output on broader real inputs
-4. TAXONOMY-5C: tag `name_ja` display (frontend-only)
-5. TAXONOMY-5D: public genre enrichment / label payload decision
-6. PUBLIC-LATEST-1: latest updates time grouping
-7. PUBLIC-COPY-1: de-AI public copy polish
-8. SOURCE-PIPELINE-FIX-4: novel status extraction (ongoing/completed/hiatus)
-9. SOURCE-PIPELINE-FIX-5: storage safety (cache TTL, metadata backup, event pruning)
-10. GenericSource live smoke (once a safe public disposable URL is identified)
-11. Admin provider credential UI (currently env-based only)
-12. Broader real-source smoke / manual verification
+4. PUBLIC-LATEST-1: latest updates time grouping
+5. PUBLIC-COPY-1: de-AI public copy polish
+6. GenericSource live smoke (once a safe public disposable URL is identified)
+7. Broader real-source smoke / manual verification
+
+Debt/cleanup items (TAXONOMY-5C, TAXONOMY-5D, SOURCE-PIPELINE-FIX-4/5, admin provider credential UI) moved to [`docs/DEBT.md`](DEBT.md).
 
 ---
 

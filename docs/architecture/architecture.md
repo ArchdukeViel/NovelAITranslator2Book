@@ -435,35 +435,7 @@ cookies, or frontend-only flags.
 
 ## 15. Current Debt Register
 
-**P0 - correctness/security risk**:
-
-- Public auth must remain on Google OAuth and email/password public endpoints
-  and must not be routed through owner bootstrap login.
-- Public user frontend actions must continue using tested `/api/user/*`
-  contracts and must not accept client-supplied `user_id`.
-- Public contribution credentials must remain gated until Section 13 is met.
-- Runtime storage must stay isolated from frontend/static serving.
-- Future admin endpoints must not be advertised as exported frontend methods
-  before backend routes exist.
-
-**P1 - maintainability/reliability risk**:
-
-- ✅ Temporary bundle lifecycle hardening — `cleanup_expired_runtime_data()` added (14-day TTL, scans all 5 runtime files).
-- ✅ Source adapter FetchService migration — legacy `_with_retry`/`_rate_limit` removed from `base.py`.
-- ✅ Object storage boundary spike — `S3Backend` implemented and integrated into storage factory.
-- ✅ `operations.py` thinning — 11 standalone helpers extracted to `preliminary.py` (630→498 lines). `admin.py` still pending.
-- ✅ God file splits — all 6 largest routers split into focused files (operations, translate, library, public, admin_glossary, translation). Core files re-export split symbols. See `docs/backend_god_file_debt.md`.
-- Legacy aliases need planned migration.
-- Storage backward compatibility needs continued discipline.
-- Source parser fixtures are representative, not exhaustive against live-site
-  drift.
-
-**P2 - cleanup/cosmetic**:
-
-- Frontend lint is not configured non-interactively.
-- Backend package flattening remains deferred.
-- More examples for provider request records, chunk outputs, and bundle
-  lifecycle may help future maintainers.
+See consolidated register: [`docs/DEBT.md`](../DEBT.md).
 
 ## 16. Dependency-Aware Roadmap
 

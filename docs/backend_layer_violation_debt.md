@@ -5,6 +5,8 @@ backend audit. Per architecture.md §3, routers should not import
 `db.models.*` or `storage.service.StorageService` directly — use-case
 logic belongs in `services/`.
 
+> Consolidated register: [`docs/DEBT.md`](DEBT.md)
+
 ## Status: Partially addressed
 
 The following quick wins were completed:
