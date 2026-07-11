@@ -1,3 +1,8 @@
+"""Admin library CRT endpoints: novel list, create, get, delete.
+Source metadata, chapters, reader, progress, and checkpoints are in
+``library_actions.py``. Catalog projection and health are in ``library_detail.py``.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -10,19 +15,16 @@ from sqlalchemy.orm import Session, object_session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
-from novelai.api.response_helpers import translated_chapter_response
 from novelai.api.routers.dependencies import (
     _rate_limit,
     get_db_session,
     get_storage,
-    metadata_chapters,
-    reader_author,
-    reader_title,
 )
 from novelai.core.security import redact_sensitive
 from novelai.db.models.chapter import Chapter as ChapterModel
 from novelai.db.models.glossary import NovelGlossaryEntry
 from novelai.db.models.novel import Novel
+from novelai.services.catalog_service import CatalogService
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
 
@@ -55,76 +57,14 @@ class NovelSummary(BaseModel):
     body_scrape_required: bool | None = None
 
 
-class SourceMetadataExtraction(BaseModel):
-    publication_status: str
-    source_title: str | None = None
-    synopsis_present: bool = False
-    author_present: bool = False
+class ChapterCheckpointFile(BaseModel):
+    name: str
+    timestamp: str | None = None
 
 
-class SourceMetadataInspection(BaseModel):
-    novel_id: str
-    title: str | None = None
-    source_title: str | None = None
-    author: str | None = None
-    source_key: str | None = None
-    source_url: str | None = None
-    publication_status: str = "unknown"
-    raw_status: str | None = None
-    synopsis: str | None = None
-    language: str | None = None
-    last_scraped_at: str | None = None
-    updated_at: str | None = None
-    chapter_count: int = 0
-    source_metadata_keys: list[str] = []
-    extraction: SourceMetadataExtraction
-    warnings: list[str] = []
-
-
-class SourceMetadataHistoryEntry(BaseModel):
-    snapshot_id: str
-    created_at: str | None = None
-    size_bytes: int = 0
-    is_current: bool = False
-    publication_status: str = "unknown"
-    title: str | None = None
-    source_title: str | None = None
-    author: str | None = None
-
-
-class SourceMetadataHistoryResponse(BaseModel):
-    novel_id: str
-    entries: list[SourceMetadataHistoryEntry]
-    limit: int
-
-
-class SourceMetadataSnapshotDetail(BaseModel):
-    novel_id: str
-    snapshot_id: str
-    is_current: bool
-    created_at: str | None = None
-    size_bytes: int = 0
-    metadata: dict[str, Any]
-    metadata_keys: list[str]
-    warnings: list[str] = []
-
-
-class SourceMetadataChangedField(BaseModel):
-    key: str
-    before: Any = None
-    after: Any = None
-
-
-class SourceMetadataSnapshotDiff(BaseModel):
-    novel_id: str
-    from_snapshot: str
-    to_snapshot: str
-    added_keys: list[str]
-    removed_keys: list[str]
-    changed: list[SourceMetadataChangedField]
-    unchanged_count: int = 0
-    warnings: list[str] = []
-    truncated: bool = False
+class ChapterCheckpoints(BaseModel):
+    chapter_id: str
+    checkpoints: list[ChapterCheckpointFile]
 
 
 class NovelCheckpointsResponse(BaseModel):
@@ -132,10 +72,22 @@ class NovelCheckpointsResponse(BaseModel):
     chapters: list[ChapterCheckpoints]
 
 
-class ChapterSummary(BaseModel):
-    id: str
-    title: str | None = None
-    translated: bool = False
+class NovelCreateRequest(BaseModel):
+    novel_id: str
+    title: str
+    source_url: str | None = None
+    source_key: str | None = None
+    language: str = "ja"
+
+
+class NovelCreateResponse(BaseModel):
+    novel_id: str
+    title: str
+    source_url: str | None = None
+    source_key: str | None = None
+    language: str
+    created_at: str
+    db_id: int
 
 
 def _optional_string(value: Any) -> str | None:
@@ -148,31 +100,16 @@ def _metadata_chapter_count(meta: dict[str, Any]) -> int:
 
 
 _INSPECTION_EXCLUDED_KEY_PARTS = (
-    "api_key",
-    "authorization",
-    "credential",
-    "cookie",
-    "password",
-    "secret",
-    "session",
-    "token",
+    "api_key", "authorization", "credential", "cookie", "password", "secret", "session", "token",
 )
 _INSPECTION_EXCLUDED_KEYS = {
-    "html",
-    "page_html",
-    "raw_html",
-    "raw_payload",
-    "raw_source",
-    "raw_source_html",
-    "response_body",
-    "source_body",
-    "source_html",
+    "html", "page_html", "raw_html", "raw_payload", "raw_source", "raw_source_html",
+    "response_body", "source_body", "source_html",
 }
 _DETAIL_MAX_STRING_LENGTH = 1000
 _DETAIL_MAX_LIST_ITEMS = 25
 _DETAIL_MAX_DICT_ITEMS = 50
 _DETAIL_MAX_DEPTH = 4
-_DIFF_MAX_CHANGED_FIELDS = 50
 
 
 def _safe_metadata_keys(meta: dict[str, Any]) -> list[str]:
@@ -201,12 +138,7 @@ def _is_raw_payload_key(key: str) -> bool:
 
 
 def _sanitize_metadata_value(
-    key: str,
-    value: Any,
-    *,
-    warnings: list[str],
-    path: str,
-    depth: int = 0,
+    key: str, value: Any, *, warnings: list[str], path: str, depth: int = 0,
 ) -> Any:
     if _is_sensitive_metadata_key(key):
         warnings.append(f"redacted:{path}")
@@ -214,7 +146,6 @@ def _sanitize_metadata_value(
     if _is_raw_payload_key(key):
         warnings.append(f"omitted_raw_payload:{path}")
         return None
-
     value = redact_sensitive(value)
     if isinstance(value, str):
         if "<html" in value.lower() or "<!doctype" in value.lower():
@@ -247,11 +178,7 @@ def _sanitize_metadata_value(
             child_key_text = str(child_key)
             child_path = f"{path}.{child_key_text}"
             sanitized_value = _sanitize_metadata_value(
-                child_key_text,
-                child_value,
-                warnings=warnings,
-                path=child_path,
-                depth=depth + 1,
+                child_key_text, child_value, warnings=warnings, path=child_path, depth=depth + 1,
             )
             if sanitized_value is not None:
                 sanitized[child_key_text] = sanitized_value
@@ -268,66 +195,6 @@ def _sanitize_metadata_snapshot(meta: dict[str, Any]) -> tuple[dict[str, Any], l
         if sanitized_value is not None:
             sanitized[key_text] = sanitized_value
     return sanitized, sorted(sanitized.keys()), sorted(set(warnings))
-
-
-def _load_sanitized_metadata_snapshot(
-    storage: StorageService,
-    novel_id: str,
-    snapshot_id: str,
-) -> tuple[dict[str, Any] | None, dict[str, Any] | None, list[str]]:
-    snapshot = storage.load_metadata_snapshot(novel_id, snapshot_id)
-    if snapshot is None:
-        return None, None, []
-    raw_metadata_raw = snapshot.get("metadata")
-    raw_metadata: dict[str, Any] = raw_metadata_raw if isinstance(raw_metadata_raw, dict) else {}
-    sanitized_metadata, _metadata_keys, sanitize_warnings = _sanitize_metadata_snapshot(raw_metadata)
-    return snapshot, sanitized_metadata, sanitize_warnings
-
-
-def _metadata_snapshot_diff(
-    novel_id: str,
-    from_snapshot_id: str,
-    from_metadata: dict[str, Any],
-    to_snapshot_id: str,
-    to_metadata: dict[str, Any],
-    warnings: list[str],
-) -> SourceMetadataSnapshotDiff:
-    from_keys = set(from_metadata)
-    to_keys = set(to_metadata)
-    added_keys = sorted(to_keys - from_keys)
-    removed_keys = sorted(from_keys - to_keys)
-    changed_keys = sorted(key for key in from_keys & to_keys if from_metadata[key] != to_metadata[key])
-    unchanged_count = len([key for key in from_keys & to_keys if from_metadata[key] == to_metadata[key]])
-    truncated = len(changed_keys) > _DIFF_MAX_CHANGED_FIELDS
-    if truncated:
-        warnings.append("truncated:changed_fields")
-    safe_warnings: list[str] = []
-    for warning in warnings:
-        if warning.startswith("redacted:"):
-            safe_warnings.append("redacted_sensitive_fields")
-        elif warning.startswith("omitted_raw_payload:"):
-            safe_warnings.append("omitted_raw_payload_fields")
-        else:
-            safe_warnings.append(warning)
-    changed = [
-        SourceMetadataChangedField(
-            key=key,
-            before=from_metadata[key],
-            after=to_metadata[key],
-        )
-        for key in changed_keys[:_DIFF_MAX_CHANGED_FIELDS]
-    ]
-    return SourceMetadataSnapshotDiff(
-        novel_id=novel_id,
-        from_snapshot=from_snapshot_id,
-        to_snapshot=to_snapshot_id,
-        added_keys=added_keys,
-        removed_keys=removed_keys,
-        changed=changed,
-        unchanged_count=unchanged_count,
-        warnings=sorted(set(safe_warnings)),
-        truncated=truncated,
-    )
 
 
 def _source_metadata_warnings(meta: dict[str, Any], *, metadata_missing: bool) -> list[str]:
@@ -347,39 +214,36 @@ def _source_metadata_warnings(meta: dict[str, Any], *, metadata_missing: bool) -
 
 
 def _source_metadata_inspection_payload(
-    novel_id: str,
-    meta: dict[str, Any],
-    *,
-    metadata_missing: bool,
-) -> SourceMetadataInspection:
+    novel_id: str, meta: dict[str, Any], *, metadata_missing: bool,
+) -> dict[str, Any]:
     publication_status = normalize_publication_status(meta.get("publication_status") or meta.get("status"))
     source_title = _optional_string(meta.get("title"))
     synopsis = _optional_string(meta.get("description")) or _optional_string(meta.get("synopsis"))
     author = _optional_string(meta.get("translated_author")) or _optional_string(meta.get("author"))
     display_title = _optional_string(meta.get("translated_title")) or source_title or novel_id
-    return SourceMetadataInspection(
-        novel_id=novel_id,
-        title=display_title,
-        source_title=source_title,
-        author=author,
-        source_key=_optional_string(meta.get("source")),
-        source_url=_optional_string(meta.get("source_url")),
-        publication_status=publication_status,
-        raw_status=_optional_string(meta.get("source_publication_status")) or _optional_string(meta.get("raw_status")),
-        synopsis=synopsis,
-        language=_optional_string(meta.get("language")),
-        last_scraped_at=_optional_string(meta.get("scraped_at")),
-        updated_at=_optional_string(meta.get("updated_at")),
-        chapter_count=_metadata_chapter_count(meta),
-        source_metadata_keys=_safe_metadata_keys(meta),
-        extraction=SourceMetadataExtraction(
-            publication_status=publication_status,
-            source_title=source_title,
-            synopsis_present=synopsis is not None,
-            author_present=author is not None,
-        ),
-        warnings=_source_metadata_warnings(meta, metadata_missing=metadata_missing),
-    )
+    return {
+        "novel_id": novel_id,
+        "title": display_title,
+        "source_title": source_title,
+        "author": author,
+        "source_key": _optional_string(meta.get("source")),
+        "source_url": _optional_string(meta.get("source_url")),
+        "publication_status": publication_status,
+        "raw_status": _optional_string(meta.get("source_publication_status")) or _optional_string(meta.get("raw_status")),
+        "synopsis": synopsis,
+        "language": _optional_string(meta.get("language")),
+        "last_scraped_at": _optional_string(meta.get("scraped_at")),
+        "updated_at": _optional_string(meta.get("updated_at")),
+        "chapter_count": _metadata_chapter_count(meta),
+        "source_metadata_keys": _safe_metadata_keys(meta),
+        "extraction": {
+            "publication_status": publication_status,
+            "source_title": source_title,
+            "synopsis_present": synopsis is not None,
+            "author_present": author is not None,
+        },
+        "warnings": _source_metadata_warnings(meta, metadata_missing=metadata_missing),
+    }
 
 
 def _db_novel_summary(novel: Novel, storage: StorageService) -> NovelSummary:
@@ -418,43 +282,16 @@ def _pending_glossary_count(novel: Novel) -> int:
     stmt = (
         select(func.count())
         .select_from(NovelGlossaryEntry)
-        .where(
-            NovelGlossaryEntry.novel_id == novel.id,
-            NovelGlossaryEntry.status.in_(("candidate", "recommended")),
-        )
+        .where(NovelGlossaryEntry.novel_id == novel.id, NovelGlossaryEntry.status.in_(("candidate", "recommended")))
     )
     return int(session.scalar(stmt) or 0)
 
 
-class NovelCreateRequest(BaseModel):
-    novel_id: str
-    title: str
-    source_url: str | None = None
-    source_key: str | None = None
-    language: str = "ja"
-
-
-class NovelCreateResponse(BaseModel):
-    novel_id: str
-    title: str
-    source_url: str | None = None
-    source_key: str | None = None
-    language: str
-    created_at: str
-    db_id: int
-
-
 def _validate_novel_id(novel_id: str) -> str:
-    """Validate and normalise a novel_id slug.
-
-    Allows lowercase alphanumeric, hyphens, and underscores.
-    Rejects: empty, path traversal attempts, uppercase, special chars.
-    """
     cleaned = novel_id.strip()
     if not cleaned:
         raise ValueError("novel_id must not be empty")
     import re
-
     if not re.match(r"^[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?$", cleaned):
         raise ValueError(
             "novel_id must be lowercase alphanumeric, may contain hyphens and underscores, "
@@ -463,11 +300,7 @@ def _validate_novel_id(novel_id: str) -> str:
     return cleaned
 
 
-def _storage_novel_summary(
-    novel_id: str,
-    meta: dict[str, Any],
-    storage: StorageService,
-) -> NovelSummary:
+def _storage_novel_summary(novel_id: str, meta: dict[str, Any], storage: StorageService) -> NovelSummary:
     scraped_count = storage.count_stored_chapters(novel_id)
     translated_count = storage.count_translated_chapters(novel_id)
     chapter_count = _metadata_chapter_count(meta) or max(scraped_count, translated_count)
@@ -508,7 +341,6 @@ async def list_novels(
         if limit is not None:
             query = query.limit(limit)
         return [_db_novel_summary(novel, storage) for novel in query.all()]
-
     summaries: list[NovelSummary] = []
     for novel_id in storage.list_novels():
         meta = storage.load_metadata(novel_id) or {}
@@ -525,17 +357,14 @@ async def create_novel(
     db: Session = Depends(get_db_session),
     _owner=Depends(require_role("owner")),
 ) -> NovelCreateResponse:
-    """Create a new novel with minimal metadata (REQ-1.1)."""
     try:
         novel_id = _validate_novel_id(body.novel_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-
     existing_meta = storage.load_metadata(novel_id)
     existing_db = db.query(Novel).filter_by(slug=novel_id).one_or_none()
     if existing_meta is not None or existing_db is not None:
         raise HTTPException(status_code=409, detail="Novel already exists")
-
     minimal_meta: dict[str, Any] = {
         "title": body.title.strip(),
         "source_url": body.source_url,
@@ -545,12 +374,8 @@ async def create_novel(
         "chapters": [],
     }
     storage.save_metadata(novel_id, minimal_meta)
-
-    novel = CatalogService(storage=storage, session=db).get_or_create_novel(
-        novel_id, minimal_meta
-    )
+    novel = CatalogService(storage=storage, session=db).get_or_create_novel(novel_id, minimal_meta)
     db.flush()
-
     return NovelCreateResponse(
         novel_id=novel_id,
         title=novel.title or body.title,
@@ -559,111 +384,6 @@ async def create_novel(
         language=novel.language,
         created_at=novel.created_at.isoformat(),
         db_id=novel.id,
-    )
-
-
-@router.get("/{novel_id}/source-metadata", response_model=SourceMetadataInspection)
-async def inspect_source_metadata(
-    novel_id: str,
-    storage: StorageService = Depends(get_storage),
-    _owner=Depends(require_role("owner")),
-) -> SourceMetadataInspection:
-    meta = storage.load_metadata(novel_id)
-    if meta is None:
-        if novel_id not in storage.list_novels():
-            raise HTTPException(status_code=404, detail="Novel not found")
-        return _source_metadata_inspection_payload(novel_id, {}, metadata_missing=True)
-    return _source_metadata_inspection_payload(novel_id, meta, metadata_missing=False)
-
-
-@router.get("/{novel_id}/source-metadata/history", response_model=SourceMetadataHistoryResponse)
-async def inspect_source_metadata_history(
-    novel_id: str,
-    limit: int = Query(default=10, ge=1, le=25),
-    storage: StorageService = Depends(get_storage),
-    _owner=Depends(require_role("owner")),
-) -> SourceMetadataHistoryResponse:
-    entries = storage.list_metadata_history(novel_id, limit=limit)
-    if not entries and novel_id not in storage.list_novels():
-        raise HTTPException(status_code=404, detail="Novel not found")
-    return SourceMetadataHistoryResponse(
-        novel_id=novel_id,
-        entries=[SourceMetadataHistoryEntry(**entry) for entry in entries],
-        limit=limit,
-    )
-
-
-@router.get("/{novel_id}/source-metadata/history/diff", response_model=SourceMetadataSnapshotDiff)
-async def diff_source_metadata_history_snapshots(
-    novel_id: str,
-    from_snapshot: str = Query(...),
-    to_snapshot: str = Query(default="current"),
-    storage: StorageService = Depends(get_storage),
-    _owner=Depends(require_role("owner")),
-) -> SourceMetadataSnapshotDiff:
-    try:
-        from_snapshot_entry, from_metadata, from_warnings = _load_sanitized_metadata_snapshot(
-            storage,
-            novel_id,
-            from_snapshot,
-        )
-        to_snapshot_entry, to_metadata, to_warnings = _load_sanitized_metadata_snapshot(
-            storage,
-            novel_id,
-            to_snapshot,
-        )
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid snapshot id") from None
-
-    if from_snapshot_entry is None or to_snapshot_entry is None:
-        if novel_id not in storage.list_novels():
-            raise HTTPException(status_code=404, detail="Novel not found")
-        raise HTTPException(status_code=404, detail="Metadata snapshot not found")
-
-    return _metadata_snapshot_diff(
-        novel_id,
-        str(from_snapshot_entry["snapshot_id"]),
-        from_metadata or {},
-        str(to_snapshot_entry["snapshot_id"]),
-        to_metadata or {},
-        [*from_warnings, *to_warnings],
-    )
-
-
-@router.get("/{novel_id}/source-metadata/history/{snapshot_id}", response_model=SourceMetadataSnapshotDetail)
-async def inspect_source_metadata_snapshot_detail(
-    novel_id: str,
-    snapshot_id: str,
-    storage: StorageService = Depends(get_storage),
-    _owner=Depends(require_role("owner")),
-) -> SourceMetadataSnapshotDetail:
-    try:
-        snapshot = storage.load_metadata_snapshot(novel_id, snapshot_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid snapshot id") from None
-
-    if snapshot is None:
-        if novel_id not in storage.list_novels():
-            raise HTTPException(status_code=404, detail="Novel not found")
-        raise HTTPException(status_code=404, detail="Metadata snapshot not found")
-
-    raw_metadata: dict[str, Any] = snapshot.get("metadata") if isinstance(snapshot.get("metadata"), dict) else {}
-    if raw_metadata is None:
-        raw_metadata = {}
-    sanitized_metadata, metadata_keys, sanitize_warnings = _sanitize_metadata_snapshot(raw_metadata)
-    warnings = sorted(
-        set(sanitize_warnings)
-        | set(_source_metadata_warnings(raw_metadata, metadata_missing=False))
-    )
-    return SourceMetadataSnapshotDetail(
-        novel_id=novel_id,
-        snapshot_id=str(snapshot["snapshot_id"]),
-        is_current=bool(snapshot["is_current"]),
-        created_at=snapshot.get("created_at") if isinstance(snapshot.get("created_at"), str) else None,
-        size_bytes=int(snapshot.get("size_bytes", 0) or 0),
-        metadata=sanitized_metadata,
-        metadata_keys=metadata_keys,
-        warnings=warnings,
     )
 
 
@@ -683,13 +403,9 @@ async def get_novel(
         payload["glossary_status"] = novel.glossary_status
         payload["glossary_revision"] = novel.glossary_revision
         payload["glossary_pending_count"] = _pending_glossary_count(novel)
-
-        # Enrich chapters with DB-level translation state
         chapter_records = {
             c.chapter_number: c
-            for c in db.query(ChapterModel).filter(
-                ChapterModel.novel_id == novel.id
-            ).all()
+            for c in db.query(ChapterModel).filter(ChapterModel.novel_id == novel.id).all()
         }
         enriched_chapters = []
         for ch in payload.get("chapters", []):
@@ -718,166 +434,3 @@ async def delete_novel(
     if storage.load_metadata(novel_id) is None:
         raise HTTPException(status_code=404, detail="Novel not found")
     storage.delete_novel(novel_id)
-
-
-@router.get("/{novel_id}/chapters", response_model=list[ChapterSummary])
-async def list_chapters(
-    novel_id: str,
-    storage: StorageService = Depends(get_storage),
-    _owner=Depends(require_role("owner")),
-) -> list[ChapterSummary]:
-    meta = storage.load_metadata(novel_id)
-    if meta is None:
-        raise HTTPException(status_code=404, detail="Novel not found")
-
-    translated_ids = set(storage.list_translated_chapters(novel_id))
-    return [
-        ChapterSummary(
-            id=str(chapter.get("id")),
-            title=chapter.get("title") or chapter.get("translated_title"),
-            translated=str(chapter.get("id")) in translated_ids,
-        )
-        for chapter in meta.get("chapters", [])
-        if isinstance(chapter, dict)
-    ]
-
-
-@router.get("/{novel_id}/chapters/{chapter_id}")
-async def get_chapter(
-    novel_id: str,
-    chapter_id: str,
-    storage: StorageService = Depends(get_storage),
-    _owner=Depends(require_role("owner")),
-) -> dict[str, Any]:
-    chapter = storage.load_chapter(novel_id, chapter_id)
-    if chapter is None:
-        raise HTTPException(status_code=404, detail="Chapter not found")
-    text = chapter.get("text")
-    if not isinstance(text, str):
-        raise HTTPException(status_code=500, detail="Stored chapter is malformed")
-    return {"novel_id": novel_id, "chapter_id": chapter_id, "text": text}
-
-
-@router.get("/{novel_id}/chapters/{chapter_id}/translated")
-async def get_translated_chapter(
-    novel_id: str,
-    chapter_id: str,
-    storage: StorageService = Depends(get_storage),
-    _owner=Depends(require_role("owner")),
-) -> dict[str, Any]:
-    translated = storage.load_translated_chapter(novel_id, chapter_id)
-    if translated is None:
-        raise HTTPException(status_code=404, detail="Translated chapter not found")
-    return translated_chapter_response(novel_id, chapter_id, translated)
-
-
-@router.get("/{novel_id}/reader")
-async def get_reader_novel(
-    novel_id: str,
-    storage: StorageService = Depends(get_storage),
-    _owner=Depends(require_role("owner")),
-) -> dict[str, Any]:
-    meta = storage.load_metadata(novel_id)
-    if meta is None:
-        raise HTTPException(status_code=404, detail="Novel not found")
-
-    translated_ids = set(storage.list_translated_chapters(novel_id))
-    chapters = []
-    for chapter in metadata_chapters(meta):
-        chapter_id = str(chapter.get("id"))
-        chapters.append(
-            {
-                "id": chapter_id,
-                "num": chapter.get("num"),
-                "title": chapter.get("translated_title") or chapter.get("title"),
-                "source_title": chapter.get("title"),
-                "translated": chapter_id in translated_ids,
-            }
-        )
-
-    return {
-        "novel_id": novel_id,
-        "title": reader_title(meta),
-        "source_title": meta.get("title"),
-        "author": reader_author(meta),
-        "source_author": meta.get("author"),
-        "source": meta.get("source"),
-        "source_url": meta.get("source_url"),
-        "chapter_count": len(chapters),
-        "translated_count": len(translated_ids),
-        "chapters": chapters,
-    }
-
-
-@router.get("/{novel_id}/reader/chapters/{chapter_id}")
-async def get_reader_chapter(
-    novel_id: str,
-    chapter_id: str,
-    storage: StorageService = Depends(get_storage),
-    _owner=Depends(require_role("owner")),
-) -> dict[str, Any]:
-    meta = storage.load_metadata(novel_id)
-    if meta is None:
-        raise HTTPException(status_code=404, detail="Novel not found")
-
-    chapters = metadata_chapters(meta)
-    chapter_ids = [str(chapter.get("id")) for chapter in chapters]
-    if chapter_id not in chapter_ids:
-        raise HTTPException(status_code=404, detail="Chapter not found")
-
-    translated = storage.load_translated_chapter(novel_id, chapter_id)
-    if translated is None or not isinstance(translated.get("text"), str):
-        raise HTTPException(status_code=404, detail="Translated chapter not found")
-
-    index = chapter_ids.index(chapter_id)
-    chapter = chapters[index]
-    return {
-        "novel_id": novel_id,
-        "chapter_id": chapter_id,
-        "novel_title": reader_title(meta),
-        "title": chapter.get("translated_title") or chapter.get("title"),
-        "source_title": chapter.get("title"),
-        "text": translated.get("text"),
-        "version_id": translated.get("version_id"),
-        "version_kind": translated.get("version_kind"),
-        "previous_chapter_id": chapter_ids[index - 1] if index > 0 else None,
-        "next_chapter_id": chapter_ids[index + 1] if index + 1 < len(chapter_ids) else None,
-    }
-
-
-@router.get("/{novel_id}/progress")
-async def get_progress(
-    novel_id: str,
-    storage: StorageService = Depends(get_storage),
-    _owner=Depends(require_role("owner")),
-) -> dict[str, Any]:
-    meta = storage.load_metadata(novel_id)
-    if meta is None:
-        raise HTTPException(status_code=404, detail="Novel not found")
-    total = len(meta.get("chapters", []))
-    scraped = storage.count_stored_chapters(novel_id)
-    translated = storage.count_translated_chapters(novel_id)
-    return {"novel_id": novel_id, "total": total, "scraped": scraped, "translated": translated}
-
-
-@router.get("/{novel_id}/checkpoints", response_model=NovelCheckpointsResponse)
-async def list_novel_checkpoints(
-    novel_id: str,
-    storage: StorageService = Depends(get_storage),
-    _owner=Depends(require_role("owner")),
-) -> NovelCheckpointsResponse:
-    """List all checkpoints per chapter for a novel. Read-only."""
-    chapters: list[ChapterCheckpoints] = []
-    for chapter_id in storage.list_stored_chapters(novel_id):
-        cps = storage.list_checkpoints(novel_id, chapter_id)
-        if cps:
-            chapters.append(
-                ChapterCheckpoints(
-                    chapter_id=chapter_id,
-                    checkpoints=[
-                        ChapterCheckpointFile(name=cp["checkpoint_name"], timestamp=cp.get("timestamp"))
-                        for cp in cps
-                    ],
-                )
-            )
-    return NovelCheckpointsResponse(novel_id=novel_id, chapters=chapters)

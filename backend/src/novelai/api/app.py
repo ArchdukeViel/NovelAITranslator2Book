@@ -15,6 +15,7 @@ from novelai.api.routers import (
     admin_taxonomy,
     editor,
     library,
+    library_actions,
     library_detail,
     novels,
     operations,
@@ -96,6 +97,7 @@ def create_app() -> FastAPI:
     app.include_router(operations.router, prefix="/api/admin/novels", tags=["admin-api"])
     app.include_router(library.router, prefix="/api/admin/novels", tags=["admin-api"])
     app.include_router(library_detail.router, prefix="/api/admin/novels", tags=["admin-api"])
+    app.include_router(library_actions.router, prefix="/api/admin/novels", tags=["admin-api"])
     app.add_api_route(
         "/api/admin/novels",
         list_novels,
