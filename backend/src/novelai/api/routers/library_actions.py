@@ -16,7 +16,6 @@ from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.response_helpers import translated_chapter_response
 from novelai.api.routers.dependencies import (
-    get_db_session,
     get_storage,
     metadata_chapters,
     reader_author,
@@ -26,15 +25,12 @@ from novelai.api.routers.library import (
     ChapterCheckpointFile,
     ChapterCheckpoints,
     NovelCheckpointsResponse,
-    _metadata_chapter_count,
-    _optional_string,
-    _safe_metadata_keys,
+)
+from novelai.services.library_service import (
     _sanitize_metadata_snapshot,
     _source_metadata_inspection_payload,
     _source_metadata_warnings,
 )
-from novelai.db.models.novel import Novel
-from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
