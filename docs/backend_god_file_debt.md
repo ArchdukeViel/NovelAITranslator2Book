@@ -10,12 +10,17 @@ The following splits were completed:
 - **1.** `operations.py` (748 L -> 370 L + helpers) -- `get_novel_translation_lock`,
   `ExportOperationResult`, `OperationError`, `require_novel_meta` extracted to
   `operations_helpers.py`.
-- **2.** `translate.py` (1473 L -> 1130 L + 2 helper files) -- 20+ static/context
-  helpers extracted to `translate_context_helpers.py` (context/extraction/prompt)
-  and `translate_provider_call.py` (provider error mapping + audit records).
-- **3.** `library.py` (1173 L -> 880 L + detail router) -- catalog projection,
-  publish/unpublish, and health endpoints extracted to `library_detail.py`.
-  `novels.py` updated to include both routers.
+- **2.** `translate.py` (1473 L -> 810 L + 3 helper files) -- context/extraction/prompt
+  helpers in `translate_context_helpers.py`, provider error mapping + audit records
+  in `translate_provider_call.py`, cache lookup + chunk persistence in
+  `translate_cache_lookup.py`. This matches the original 4-file plan.
+- **3.** `library.py` (1173 L -> 370 L + 2 routers) -- catalog projection + publish/
+  unpublish + health in `library_detail.py`; source-metadata, chapters, reader,
+  progress, checkpoints in `library_actions.py`. Matches original 3-file plan.
+
+All 6 original god files in the priority list have been addressed. Remaining
+work: `admin_glossary.py` and `translation.py` were not in the original priority
+list (they were added as optional extras).
 
 The remaining files:
 
