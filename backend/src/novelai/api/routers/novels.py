@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from novelai.api.routers import activity, admin, editor, library, operations, requests, sources
+from novelai.api.routers import activity, admin, editor, library, library_detail, operations, requests, sources
 from novelai.api.routers.dependencies import (
     _hits,
     _rate_limit,
@@ -26,6 +26,7 @@ router.include_router(admin.router)
 router.include_router(editor.router)
 router.include_router(operations.router)
 router.include_router(library.router)
+router.include_router(library_detail.router)
 
 __all__ = [
     "_hits",
