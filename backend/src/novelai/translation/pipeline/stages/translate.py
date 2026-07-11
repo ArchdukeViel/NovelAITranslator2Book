@@ -37,9 +37,6 @@ from novelai.translation.pipeline.stages.translate_context_helpers import (
     observe_chunk_context,
     platform_novel_id,
     prompt_version,
-    provider_error_from_generic,
-    provider_error_metadata,
-    provider_request_record,
     record_prompt_glossary_metadata,
     safe_job_id,
     select_chunk_glossary,
@@ -75,6 +72,12 @@ from novelai.translation.pipeline.stages.translate_context_helpers import (
 from novelai.translation.pipeline.stages.translate_context_helpers import (
     translation_run_id as run_id_h,
 )
+from novelai.translation.pipeline.stages.translate_provider_call import (
+    provider_error_from_generic,
+    provider_error_metadata,
+    provider_request_record,
+)
+
 from novelai.translation.scheduler import (
     SchedulerDecisionRecorder,
     SchedulerPausedError,
