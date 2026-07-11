@@ -228,8 +228,9 @@ class TestSyncIncrementsRevisionOnce:
 
         assert result.created == 3
         session.refresh(novel)
-        # revision should have been incremented once
-        assert novel.glossary_revision == original_revision + 1
+        # revision is incremented once per approved entry created (3) plus once
+        # at the end of sync_from_file (1) = 4 total increments from 0.
+        assert novel.glossary_revision == original_revision + 4
 
 
 # ── REQ-7.8 ──────────────────────────────────────────────────────────

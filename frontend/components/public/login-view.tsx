@@ -8,6 +8,7 @@ import {
   useRegister,
   useStartGoogleOAuth,
 } from "@/hooks/public/use-auth";
+import { authApi } from "@/lib/public-api";
 
 interface LoginViewProps {
   onClose: () => void;
@@ -79,11 +80,8 @@ export function LoginView({
   const handleGoogleLogin = async () => {
     setError(null);
     try {
-      const response = await fetch("/api/auth/google/start", {
-        method: "HEAD",
-        redirect: "manual",
-      });
-      if (response.status === 503) {
+      const result = await authApi.googleStartCheck();
+      if (!result.available) {
         setGoogleUnavailable(true);
         return;
       }

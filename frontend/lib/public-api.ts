@@ -190,6 +190,11 @@ async function publicDelete(path: string): Promise<void> {
   await publicFetch(path, { method: "DELETE" });
 }
 
+async function publicHead(path: string): Promise<{ available: boolean }> {
+  const response = await publicFetch(path, { method: "HEAD" });
+  return { available: response.status !== 503 };
+}
+
 function safeRelativeReturnPath(returnTo?: string): string {
   if (!returnTo || !returnTo.startsWith("/") || returnTo.startsWith("//")) {
     return DEFAULT_PUBLIC_RETURN_TO;
@@ -299,6 +304,10 @@ export const authApi = {
 
   googleStart(returnTo?: string): string {
     return googleOAuthStartUrl(returnTo);
+  },
+
+  googleStartCheck(): Promise<{ available: boolean }> {
+    return publicHead("/api/auth/google/start");
   },
 
   passwordLogin(input: EmailPasswordAuthInput): Promise<AuthUser> {
