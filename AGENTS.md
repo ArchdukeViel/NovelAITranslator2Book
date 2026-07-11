@@ -51,9 +51,11 @@ You do not:
 
 - Prefer `replace_string_in_file` with enough surrounding context to
   be unambiguous.
-- Don't silently rename things, change response shapes, or break
-  public contracts. If a contract must change, update backend schema,
-  frontend types, tests, and docs in the same change.
+- **Change things whole.** Do not leave backward-compatibility shims,
+  re-export aliases, or dual code paths for the sake of "not breaking"
+  callers. Update all callers, types, tests, and docs in the same change.
+  If a contract must change, update backend schema, frontend types,
+  tests, and docs in the same change.
 
 ### When You Commit
 
@@ -98,15 +100,19 @@ Hard no's, regardless of context:
 - Exposing secrets, raw paths, or internal IDs in API responses.
 - Running destructive commands against real data or storage.
 - Adding dependencies when a few lines of stdlib do the job.
+- Leaving backward-compatibility shims, re-exports, or alias fields
+  "just in case." Change the contract, update all callers.
 
 ## Anti-Patterns You Will Reject
 
 - New abstraction layer with exactly one implementation.
 - Factory, registry, or DI container for one product.
 - Config file for a value that never changes.
-- A test that doesn't actually test the behavior it claims to.
+- A test that doesn't actually test the behavior it claims.
 - A doc that contradicts the code without being labeled "stale."
 - A `TODO` with no owner and no follow-up date.
+- A re-export or alias added "for backward compatibility" when the
+  caller count is small enough to update in one pass.
 
 ## Voice Examples
 
@@ -172,10 +178,143 @@ Use these. Don't invent aliases.
 `requesting_user_id`, `credential_owner_user_id`, `prompt_version`,
 `glossary_hash`.
 
-Compatibility aliases (tolerated debt, do not extend): `id`, `source`,
-`provider`, `model`, `slug`.
+Do not introduce new aliases for these. If you find a legacy alias
+(`id`, `source`, `provider`, `model`, `slug`) in code you're touching,
+rename it to the canonical name and update all callers in the same
+change.
 
-### Verification Commands (run from repo root unless noted)
+## File-Type Handling
+
+### Backend (`backend/src/novelai/`)
+
+- Routers in `api/routers/` stay thin. If you find yourself importing
+  `db.models.*` or `storage.service.StorageService` directly in a router,
+  extract the logic to `services/` first. See
+  `docs/backend_layer_violation_debt.md` for the current violation list.
+- Use SQLAlchemy models only. No raw SQL.
+- Async I/O: use `httpx` for outbound HTTP, `asyncio.Semaphore` for
+  bounded concurrency, `asyncio.gather(..., return_exceptions=True)` for
+  fan-out where per-task failure must not abort siblings.
+- Settings come from `novelai.config.settings.settings` (pydantic-settings).
+  Don't read `os.environ` directly outside that module.
+- Logging: call `novelai.logging_config.configure_logging()` at startup.
+  Don't scatter `basicConfig` per module.
+- Migrations: `alembic -c backend/alembic.ini upgrade head`. New schema
+  changes require a new migration file under `backend/alembic/versions/`.
+  Never edit a committed migration — add a new one.
+
+### Frontend (`frontend/`)
+
+- Route groups: `(admin)/admin/*` for owner UI, `(public)/*` for guest
+  and authenticated-user UI. Don't cross the boundary.
+- API calls go through `lib/api.ts` (admin) or `lib/public-api.ts`
+  (public). No direct `fetch()` in components or hooks.
+- State: `@tanstack/react-query` for server state, `zustand` for client
+  state. Don't introduce Redux or other state libs.
+- Styling: Tailwind + `clsx` + `tailwind-merge` (via `lib/utils.ts`
+  `cn()`). Don't add CSS modules or styled-components.
+- Components: `frontend/components/` for shared, `frontend/app/` for
+  route-local. Don't put business logic in components — extract to hooks.
+- Token display: use `lib/mask-token.ts` for any credential shown in
+  the UI. Never render a raw API key or token.
+
+### Deploy (`deploy/`)
+
+- Docker Compose is the production layout. `compose.yml` is the canonical
+  service graph; `compose.dev.yml` overlays dev-only settings.
+- Three Dockerfiles: `admin.Dockerfile` (port 8000), `reader.Dockerfile`
+  (port 8001), `frontend.Dockerfile` (Next.js standalone).
+- Caddy is the reverse proxy. `Caddyfile` routes `/api/*` to backend,
+  `/api/public/*` to reader, everything else to frontend.
+- Migrations run as a one-shot `migrate` service before `backend` starts.
+  Don't run migrations from inside the backend container.
+- Environment: `deploy/.env` for local dev, `deploy/.env.production`
+  for production. Required in production: `SESSION_SECRET_KEY`,
+  `OWNER_BOOTSTRAP_SECRET`, `PUBLIC_FRONTEND_URL`, `DATABASE_URL`.
+- Lockfiles: `requirements.lock`, `requirements-dev.lock`, `uv.lock`.
+  Regenerate with `deploy/update-lockfiles.ps1` after dependency changes.
+
+### Docs (`docs/`)
+
+- `docs/architecture/architecture.md` is authoritative. If another doc
+  disagrees, the architecture doc wins and the conflict should be
+  reported before implementation.
+- Per-topic docs live under `docs/` (e.g., `docs/glossary/`,
+  `docs/reference/`). Don't duplicate content — link to the canonical doc.
+- Debt docs (`docs/backend_god_file_debt.md`,
+  `docs/backend_layer_violation_debt.md`) track known issues. When you
+  address a debt item, update the doc in the same change.
+- Spec files live under `.agents/` (tracked in git). Don't edit specs
+  without owner sign-off.
+
+### General Files
+
+- `.env`, `.env.local`, `*.pem`, `*.key`: never commit. `.gitignore`
+  covers most, but double-check before staging.
+- Lockfiles (`requirements*.lock`, `uv.lock`, `package-lock.json`):
+  commit them. Don't edit by hand.
+- Generated files (`*.pb.go`, `*.gen.ts`, `__pycache__/`): don't commit.
+  `.gitignore` covers most.
+- Scratch output: write to OS temp dir, not repo root. `.opencode/` is
+  gitignored agent scratch.
+
+## Security Risks
+
+### Secrets and Credentials
+
+- Never log, echo, or return secrets in API responses. Use
+  `lib/mask-token.ts` (frontend) or equivalent masking in backend.
+- `SESSION_SECRET_KEY` must be set in production. The app fails closed
+  when left at the default.
+- `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is required before storing
+  admin-managed provider API keys in the database.
+- `OWNER_BOOTSTRAP_SECRET` is the only way to seed the owner. Don't
+  expose it in logs, error messages, or API responses.
+- `.env` files contain secrets. Never commit them. Never read them in
+  code outside `novelai.config.settings`.
+
+### Auth and Authorization
+
+- Single owner-admin model. Owner is seeded via `OWNER_BOOTSTRAP_SECRET`,
+  not public signup.
+- Public auth (Google OAuth + email/password) creates `role="user"`
+  sessions only. Never creates or promotes an owner.
+- CSRF enforcement is required for cookie-authenticated state-changing
+  endpoints. Don't bypass it in tests — use the test client properly.
+- Do not accept client-supplied `user_id` for user-owned data. Always
+  derive from the session.
+- Do not implement public contribution credentials until the
+  contribution readiness gate (architecture.md §13) is met.
+
+### Input Validation
+
+- All API inputs go through Pydantic models. Don't accept raw dicts.
+- File paths from user input must be validated against the storage root.
+  Never serve `storage/novel_library` as static files.
+- URLs from user input must go through SSRF checks in
+  `infrastructure/http/`. Don't fetch arbitrary URLs from request handlers.
+
+### Data Exposure
+
+- API responses must not include raw filesystem paths, internal IDs
+  (DB primary keys), or storage keys.
+- Raw scraped chapter files should not be silently deleted after
+  translation. They're audit data.
+- `cleanup_expired_runtime_data()` purges runtime files with a 14-day
+  TTL. Don't shorten this without owner approval.
+
+### Deployment Security
+
+- Production `SESSION_SECRET_KEY` fails closed when left at default.
+  Verify in CI before deploy.
+- `WEB_CORS_ORIGINS` must be set explicitly in production. Don't allow
+  `*` in production.
+- `AUTH_EMAIL_DELIVERY_MODE=noop` by default. Set to `smtp` only after
+  SMTP vars are ready and tested.
+- `DEPLOY_MODE=monolith|split` controls backend process layout. Split
+  mode requires Redis for rate limiting and job queue.
+
+## Verification Commands (run from repo root unless noted)
 
 - **Lint:** `python -m ruff check .`
 - **Typecheck:** `python -m pyright` (uses `pyrightconfig.json`, includes `backend/src` + `backend/tests`)
@@ -188,14 +327,14 @@ Compatibility aliases (tolerated debt, do not extend): `id`, `source`,
 - **Migrations:** `alembic -c backend/alembic.ini upgrade head` (requires `DATABASE_URL`)
 - **Workflow:** lint → typecheck → test before commit.
 
-### Dependencies
+## Dependencies
 
 - `pyproject.toml` is authoritative. **No `requirements.txt`** by design.
 - Lockfiles: `requirements.lock` (runtime), `requirements-dev.lock` (dev), `uv.lock` (uv). Regenerate with `deploy/update-lockfiles.ps1`.
 - Install dev deps: `pip install -e ".[dev]"` from the repo root.
 - To run the full pipeline: `pip install -e ".[dev,db,worker,s3,documents]"` (or any combination of the available extras: `auth`, `db`, `dev`, `documents`, `gemini`, `openai`, `s3`, `test`, `worker`).
 
-### Testing Conventions
+## Testing Conventions
 
 - Fixtures live in `backend/tests/conftest.py`. `TestFixture` class provides isolated storage, mock providers, mock sources, and a wired `Container`.
 - `TESTS_TMP_ROOT` (`backend/tests/.tmp/fixtures`) and `TESTS_RUNTIME_ROOT` (`backend/tests/.tmp/runtime`) are the scratch roots; both are gitignored.
@@ -206,12 +345,12 @@ Compatibility aliases (tolerated debt, do not extend): `id`, `source`,
 - pyright: `pythonPlatform: "Windows"`, `typeCheckingMode: "standard"`, `reportUnusedImport: "warning"`.
 - ruff: `target-version = "py313"`, `line-length = 120`. Ignores: `E501`, `B008`, `B023`, `RUF001`, `RUF012`, `SIM102`, `SIM108`.
 
-### Logging
+## Logging
 
 - Central config: `novelai.logging_config.configure_logging()` (emits JSON when `LOG_FORMAT=json`).
 - Call it at startup; don't scatter `basicConfig` per module.
 
-### Translation Pipeline
+## Translation Pipeline
 
 - Context is paramount — QA stage must see glossary + previous chapter state.
 - **Onboarding status** gates translation: `onboarding_status` must be `ready_for_translation` for translation to proceed (checked in `_preflight_translation`).
@@ -219,7 +358,7 @@ Compatibility aliases (tolerated debt, do not extend): `id`, `source`,
 - `TranslationCacheService` uses SHA-256 keys, sharded file storage, TTL. Glossary invalidation triggers cache invalidation.
 - `GlossarySuggestionService` handles suggestion/review/apply workflow.
 
-### Data Handling
+## Data Handling
 
 - SQLAlchemy models only; no raw SQL.
 - Raw scraped chapter files should not be silently deleted after translation.
@@ -227,19 +366,7 @@ Compatibility aliases (tolerated debt, do not extend): `id`, `source`,
 - `cleanup_expired_runtime_data()` purges runtime files with a 14-day TTL.
 - `STORAGE_BACKEND=filesystem|s3` controls storage backend. `NOVEL_LIBRARY_DIR` is the local base reference path.
 
-### Auth and Security
-
-- Single owner-admin model. Owner is seeded via `OWNER_BOOTSTRAP_SECRET`, not public signup.
-- Public auth: Google OAuth + email/password. `POST /api/auth/login` is owner bootstrap only; public login uses `/api/auth/password/login` or `/api/auth/google/*`.
-- Public auth creates `role="user"` sessions only; never creates or promotes an owner.
-- CSRF enforcement for cookie-authenticated state-changing endpoints.
-- Production `SESSION_SECRET_KEY` fails closed when left at default.
-- `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` required before storing admin-managed provider API keys in the database.
-- **Do not implement public contribution credentials** until the contribution readiness gate (architecture.md §13) is met.
-- Do not accept client-supplied `user_id` for user-owned data.
-- Do not add fake `/api/admin/*` endpoints; implement backend first, then export frontend methods.
-
-### Environment
+## Environment
 
 - `.env` at repo root for local dev. `deploy/.env` for Docker Compose. `deploy/.env.production` for production-style.
 - Required in production: `SESSION_SECRET_KEY`, `OWNER_BOOTSTRAP_SECRET`, `PUBLIC_FRONTEND_URL`.
@@ -248,13 +375,13 @@ Compatibility aliases (tolerated debt, do not extend): `id`, `source`,
 - `AUTH_EMAIL_DELIVERY_MODE=noop` by default (no email sent); set to `smtp` only after SMTP vars are ready.
 - `DEPLOY_MODE=monolith|split` controls backend process layout.
 
-### Tooling
+## Tooling
 
 - **Windows:** use `powershell` native cmdlets; chain with `; if ($?) { next }` instead of `&&`.
 - **Python:** use `python -m <tool>` rather than assuming `<tool>` is in PATH.
 - **File writes — critical:** never use `write` to overwrite an existing file. Use `edit` to change existing files. Before creating a *new* file with `write`, verify it doesn't exist: on Windows use `Test-Path -LiteralPath "<path>"`; on bash use `git ls-files --error-unmatch "<path>" 2>/dev/null || echo "new"`.
 
-### Scratch Artifacts
+## Scratch Artifacts
 
 - `.gitignore` covers `cache/`, `venv/`, `node_modules/`, `*.log`, `*.bak`, `.pytest_cache/`, `.ruff_cache/`, `backend/tests/.tmp/`, `storage/novel_library/`.
 - Never write scratch `.txt` dumps to the repo root — use the OS temp dir.
