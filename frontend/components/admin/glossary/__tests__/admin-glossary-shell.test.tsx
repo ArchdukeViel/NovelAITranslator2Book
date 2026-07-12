@@ -65,6 +65,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
 const approvedEntry: GlossaryEntry = {
   id: 1,
   novel_id: 42,
+  scope: "novel",
   canonical_term: "Ellen",
   term_type: "character",
   approved_translation: "Ellen",
