@@ -67,16 +67,19 @@ This document summarizes completion status, known flaws, and remaining debt.
 - **Implemented:** Glossary columns on Novel ORM, catalog projection, GlossaryStatusService, translation guard, bootstrap hook, audit metadata, ReadinessBadge, GlossaryOnboardingActions.
 - **Remaining:** 2 checkpoints (tasks 8, 12) marked `[~]` — verification checkpoints, no code changes needed.
 - **Debt:** None.
+- **DEBT.md links:** None
 
 ### microservice-split (30/34 — 4 tasks remaining)
 - **Implemented:** main_reader/main_admin entry points, DEPLOY_MODE dispatch, Docker Compose + Caddy split routing, 14 contract tests.
 - **Remaining:** Rename `deploy/backend.Dockerfile` to `deploy/admin.Dockerfile` (task 4.4), update CI/CD to build/test both services (tasks 5.1, 5.2).
 - **Debt:** Dockerfile rename + CI/CD dual-service build.
+- **DEBT.md links:** DEBT-002 (CI/CD build verification), DEBT-048 (resolved)
 
 ### translation-scheduler-observability (198/283 — 85 tasks in-progress)
 - **Implemented:** Scheduler health admin API, scheduler summary in activity/version detail, admin UI health view + summary panel, decision record schema, quota/cooldown tracking.
 - **In-progress:** Identity fields in decision records (request_id, activity_id, job_id, chapter_id), checkpoint/resume observability integration, chapter parallelization safety.
 - **Debt:** Persist scheduler runtime state to allow health API to show live cooldown/exhausted/failed timestamps.
+- **DEBT.md links:** DEBT-036 (scheduler runtime state persistence)
 
 ---
 
@@ -86,6 +89,7 @@ This document summarizes completion status, known flaws, and remaining debt.
 - **Implemented:** 7 prerequisite/infrastructure tasks.
 - **Remaining:** Complete prerequisites (exact translation memory metrics), build evaluation fixtures, design semantic cache storage (embedding/index backend, idempotent write contract, credential isolation), design LLM QA output (structured finding schema, review-flag behavior), add disabled-by-default config checks.
 - **Debt:** This is a roadmap spec — implementation deferred until prerequisites are met.
+- **DEBT.md links:** None (roadmap, not debt)
 
 ---
 
@@ -112,3 +116,13 @@ See consolidated register: [`docs/DEBT.md`](DEBT.md).
 ## Deferred Test Debt
 
 See consolidated register: [`docs/DEBT.md`](DEBT.md) — deferred test debt section.
+
+---
+
+## Phase Verification Summary
+
+| Phase | Status | Evidence | Remaining Debt |
+|-------|--------|----------|----------------|
+| Phase 0 (Foundation & CI/CD) | ✅ Verified Complete | CI pipeline, Dockerfiles, test fixes (local) | DEBT-002 (CI build verify), DEBT-003 (CI Postgres), DEBT-004, DEBT-005 |
+| Phase 1 (Glossary & Translation) | ✅ Verified Complete (with 1 new blocker) | 5 glossary routers, sync bridge, prompt injection, apply engine, provider suggestions, pipeline hardening | DEBT-006 (circular import) |
+| Phase 2+ (Remaining specs) | ⚠️ In Progress | 3 partial specs, 1 not started | 69 active debt entries in DEBT.md |

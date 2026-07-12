@@ -189,8 +189,7 @@ change.
 
 - Routers in `api/routers/` stay thin. If you find yourself importing
   `db.models.*` or `storage.service.StorageService` directly in a router,
-  extract the logic to `services/` first. See
-  `docs/backend_layer_violation_debt.md` for the current violation list.
+  extract the logic to `services/` first. See `docs/DEBT.md` for the current violation list.
 - Use SQLAlchemy models only. No raw SQL.
 - Async I/O: use `httpx` for outbound HTTP, `asyncio.Semaphore` for
   bounded concurrency, `asyncio.gather(..., return_exceptions=True)` for
@@ -241,8 +240,7 @@ change.
   reported before implementation.
 - Per-topic docs live under `docs/` (e.g., `docs/glossary/`,
   `docs/reference/`). Don't duplicate content — link to the canonical doc.
-- Debt docs (`docs/backend_god_file_debt.md`,
-  `docs/backend_layer_violation_debt.md`) track known issues. When you
+- Debt docs (`docs/DEBT.md`) track known issues. When you
   address a debt item, update the doc in the same change.
 - Spec files live under `.agents/` (tracked in git). Don't edit specs
   without owner sign-off.
@@ -256,7 +254,7 @@ change.
 - Generated files (`*.pb.go`, `*.gen.ts`, `__pycache__/`): don't commit.
   `.gitignore` covers most.
 - Scratch output: write to OS temp dir, not repo root. `.opencode/` is
-  gitignored agent scratch.
+  gitignored agent scratch. `.agents/` is tracked in git (spec files).
 
 ## Security Risks
 
@@ -330,7 +328,7 @@ change.
 ## Dependencies
 
 - `pyproject.toml` is authoritative. **No `requirements.txt`** by design.
-- Lockfiles: `requirements.lock` (runtime), `requirements-dev.lock` (dev), `uv.lock` (uv). Regenerate with `deploy/update-lockfiles.ps1`.
+- Lockfiles: `requirements.lock` (runtime), `requirements-dev.lock` (dev), `uv.lock` (uv). Regenerate with `deploy/update-lockfiles.ps1` after dependency changes.
 - Install dev deps: `pip install -e ".[dev]"` from the repo root.
 - To run the full pipeline: `pip install -e ".[dev,db,worker,s3,documents]"` (or any combination of the available extras: `auth`, `db`, `dev`, `documents`, `gemini`, `openai`, `s3`, `test`, `worker`).
 
@@ -386,3 +384,66 @@ change.
 - `.gitignore` covers `cache/`, `venv/`, `node_modules/`, `*.log`, `*.bak`, `.pytest_cache/`, `.ruff_cache/`, `backend/tests/.tmp/`, `storage/novel_library/`.
 - Never write scratch `.txt` dumps to the repo root — use the OS temp dir.
 - `.opencode/` is gitignored (agent scratch). `.agents/` is tracked in git (spec files).
+
+## CI / Router Layer Guard
+
+CI runs a grep-based layer violation check on every PR:
+
+```bash
+grep -rn "^from novelai\.(db\.models|storage\.service|sources\.)" \
+  backend/src/novelai/api/routers/ \
+  --exclude="dependencies.py"
+```
+
+If this finds any matches, the build fails. Routers must not import
+`db.models.*`, `storage.service.*`, or `sources.*` directly — extract
+logic to `services/` instead. The only exception is `dependencies.py`
+which holds DI factories.
+
+## Model Registration
+
+All ORM models are registered via a session-scoped autouse fixture in
+`backend/tests/conftest.py`:
+
+```python
+@pytest.fixture(scope="session", autouse=True)
+def register_orm_models() -> None:
+    register_database_models()
+```
+
+The function lives in `novelai/db/model_registry.py` and calls
+`configure_mappers()` idempotently. Tests no longer import individual
+model modules for side effects — the fixture handles registration.
+
+## Service Extraction Pattern
+
+9 services extracted from routers (LibraryService, EditorService,
+PublicCatalogService, NovelRequestService, UserLibraryService,
+ReadingService, ReviewService, AuthService, GlossaryWorkflowService).
+Pattern: create service class, add factory to `dependencies.py`, thin
+router to pure HTTP adapter. See `docs/DEBT.md` for current status.
+
+## Type Checking Status
+
+- **Pyright: 0 errors, 0 warnings** (as of latest commit)
+- **Ruff:** 0 errors (pre-existing B904/W291/E402 remain in unrelated code)
+- **No `# noqa: F401` or `# pyright: ignore[reportUnusedImport]` suppressions remain**
+
+## Debt Tracking
+
+`docs/DEBT.md` is the single source of truth for technical debt.
+`docs/backend_layer_violation_debt.md` was renamed to `docs/DEBT.md`.
+When you address a debt item, update the doc in the same change.
+
+## Key Learnings (from recent work)
+
+1. **Router layer violations** — 9 services extracted from 9 routers.
+   CI grep guard prevents regression.
+2. **Model registration** — Centralized via `register_database_models()`
+   fixture. No more side-effect imports in tests.
+3. **Pyright clean** — 0 errors, 0 warnings. No suppressions.
+3. **Service extraction pattern** — Extract to `services/`, add factory
+   to `dependencies.py`, thin router to pure HTTP adapter.
+4. **No suppressions** — All `# noqa: F401` and `# pyright: ignore`
+   removed. Use explicit registration instead.
+5. **CI guard** — Router layer violation check in CI prevents regression.
