@@ -10,21 +10,18 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
-from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_token, require_public_rate_limit
 from novelai.api.auth.session import SessionUser
-from novelai.api.routers.dependencies import get_db_session
-from novelai.db.models.chapter import Chapter
-from novelai.db.models.novel import Novel
-from novelai.db.models.users import (
-    LibraryItem,
-    NovelRequest,
-    ReadingHistory,
-    ReadingProgress,
-    Review,
+from novelai.api.routers.dependencies import (
+    get_reading_service,
+    get_review_service,
+    get_user_library_service,
 )
+from novelai.services.reading_service import ReadingService
+from novelai.services.review_service import ReviewService
+from novelai.services.user_library_service import UserLibraryService
 
 router = APIRouter(prefix="/api/user", tags=["user"])
 
@@ -33,66 +30,32 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def _get_novel(slug: str, session: Session) -> Novel:
-    novel = session.query(Novel).filter_by(slug=slug).one_or_none()
-    if novel is None:
-        raise HTTPException(status_code=404, detail="Novel not found.")
-    return novel
-
-
-def _get_chapter_for_novel(chapter_id: str | None, novel_id: int, session: Session) -> int | None:
-    if chapter_id is None:
-        return None
-    try:
-        chapter_db_id = int(chapter_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail="Chapter not found.") from exc
-    chapter = session.query(Chapter).filter_by(id=chapter_db_id, novel_id=novel_id).one_or_none()
-    if chapter is None:
-        raise HTTPException(status_code=404, detail="Chapter not found.")
-    return chapter.id
-
-
-def _novel_slug(novel_id: int | None, session: Session) -> str | None:
-    if novel_id is None:
-        return None
-    novel = session.query(Novel).filter_by(id=novel_id).one_or_none()
-    return novel.slug if novel else None
-
-
 class LibraryItemResponse(BaseModel):
     slug: str
     status: str
     added_at: datetime
 
 
-def _library_response(item: LibraryItem, slug: str) -> LibraryItemResponse:
-    return LibraryItemResponse(slug=slug, status=item.status, added_at=item.added_at)
-
-
 @router.get("/library", response_model=list[LibraryItemResponse])
 def list_library(
     user: SessionUser = Depends(require_role("user")),
-    session: Session = Depends(get_db_session),
+    service: UserLibraryService = Depends(get_user_library_service),
 ) -> list[LibraryItemResponse]:
-    items = session.query(LibraryItem).filter_by(user_id=user.user_id).all()
-    result: list[LibraryItemResponse] = []
-    for item in items:
-        result.append(_library_response(item, _novel_slug(item.novel_id, session) or str(item.novel_id)))
-    return result
+    items = service.list_library(user.user_id)
+    return [LibraryItemResponse(**item) for item in items]
 
 
 @router.get("/library/{slug}", response_model=LibraryItemResponse)
 def get_library_item(
     slug: str,
     user: SessionUser = Depends(require_role("user")),
-    session: Session = Depends(get_db_session),
+    service: UserLibraryService = Depends(get_user_library_service),
 ) -> LibraryItemResponse:
-    novel = _get_novel(slug, session)
-    item = session.query(LibraryItem).filter_by(user_id=user.user_id, novel_id=novel.id).one_or_none()
-    if item is None:
-        raise HTTPException(status_code=404, detail="Library item not found.")
-    return _library_response(item, slug)
+    try:
+        item = service.get_library_item(user.user_id, slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return LibraryItemResponse(**item)
 
 
 @router.post(
@@ -105,17 +68,14 @@ def add_to_library(
     slug: str,
     request: Request,
     user: SessionUser = Depends(require_role("user")),
-    session: Session = Depends(get_db_session),
+    service: UserLibraryService = Depends(get_user_library_service),
 ) -> LibraryItemResponse:
     require_public_rate_limit(request, "library_mutation", user_id=user.user_id)
-    novel = _get_novel(slug, session)
-    existing = session.query(LibraryItem).filter_by(user_id=user.user_id, novel_id=novel.id).one_or_none()
-    if existing:
-        return _library_response(existing, slug)
-    item = LibraryItem(user_id=user.user_id, novel_id=novel.id)
-    session.add(item)
-    session.flush()
-    return _library_response(item, slug)
+    try:
+        item = service.add_to_library(user.user_id, slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return LibraryItemResponse(**item)
 
 
 @router.delete(
@@ -127,13 +87,13 @@ def remove_from_library(
     slug: str,
     request: Request,
     user: SessionUser = Depends(require_role("user")),
-    session: Session = Depends(get_db_session),
+    service: UserLibraryService = Depends(get_user_library_service),
 ) -> None:
     require_public_rate_limit(request, "library_mutation", user_id=user.user_id)
-    novel = _get_novel(slug, session)
-    item = session.query(LibraryItem).filter_by(user_id=user.user_id, novel_id=novel.id).one_or_none()
-    if item:
-        session.delete(item)
+    try:
+        service.remove_from_library(user.user_id, slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 class ProgressUpdate(BaseModel):
@@ -155,24 +115,10 @@ class ProgressResponse(BaseModel):
 def get_progress(
     slug: str,
     user: SessionUser = Depends(require_role("user")),
-    session: Session = Depends(get_db_session),
+    service: ReadingService = Depends(get_reading_service),
 ) -> ProgressResponse:
-    novel = _get_novel(slug, session)
-    rp = session.query(ReadingProgress).filter_by(user_id=user.user_id, novel_id=novel.id).one_or_none()
-    if rp is None:
-        return ProgressResponse(slug=slug, progress_percent=0.0, chapter_id=None, updated_at=_utcnow())
-    chapter_number: int | None = None
-    if rp.chapter_id is not None:
-        ch = session.query(Chapter.chapter_number).filter_by(id=rp.chapter_id).one_or_none()
-        if ch:
-            chapter_number = ch[0]
-    return ProgressResponse(
-        slug=slug,
-        progress_percent=rp.progress_percent,
-        chapter_id=str(rp.chapter_id) if rp.chapter_id is not None else None,
-        chapter_number=chapter_number,
-        updated_at=rp.updated_at,
-    )
+    progress = service.get_progress(user.user_id, slug)
+    return ProgressResponse(**progress)
 
 
 @router.put(
@@ -185,31 +131,16 @@ def update_progress(
     payload: ProgressUpdate,
     request: Request,
     user: SessionUser = Depends(require_role("user")),
-    session: Session = Depends(get_db_session),
+    service: ReadingService = Depends(get_reading_service),
 ) -> ProgressResponse:
     require_public_rate_limit(request, "progress_write", user_id=user.user_id)
-    novel = _get_novel(slug, session)
-    chapter_db_id = _get_chapter_for_novel(payload.chapter_id, novel.id, session)
-    rp = session.query(ReadingProgress).filter_by(user_id=user.user_id, novel_id=novel.id).one_or_none()
-    if rp is None:
-        rp = ReadingProgress(user_id=user.user_id, novel_id=novel.id)
-        session.add(rp)
-    rp.progress_percent = payload.progress_percent
-    rp.chapter_id = chapter_db_id
-    rp.updated_at = _utcnow()
-    session.flush()
-    chapter_number: int | None = None
-    if rp.chapter_id is not None:
-        ch = session.query(Chapter.chapter_number).filter_by(id=rp.chapter_id).one_or_none()
-        if ch:
-            chapter_number = ch[0]
-    return ProgressResponse(
-        slug=slug,
-        progress_percent=rp.progress_percent,
-        chapter_id=str(rp.chapter_id) if rp.chapter_id is not None else None,
-        chapter_number=chapter_number,
-        updated_at=rp.updated_at,
-    )
+    try:
+        progress = service.update_progress(
+            user.user_id, slug, payload.chapter_id, payload.progress_percent
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ProgressResponse(**progress)
 
 
 class HistoryRecordRequest(BaseModel):
@@ -244,58 +175,28 @@ def record_history(
     slug: str | None = Query(default=None),
     chapter_id: str | None = Query(default=None),
     user: SessionUser = Depends(require_role("user")),
-    session: Session = Depends(get_db_session),
+    service: ReadingService = Depends(get_reading_service),
 ) -> HistoryEntryResponse:
     require_public_rate_limit(request, "history_record", user_id=user.user_id)
     effective_slug = payload.slug if payload else slug
     effective_chapter_id = payload.chapter_id if payload else chapter_id
     if effective_slug is None:
         raise HTTPException(status_code=400, detail="slug is required.")
-    novel = _get_novel(effective_slug, session)
-    chapter_db_id = _get_chapter_for_novel(effective_chapter_id, novel.id, session)
-    entry = ReadingHistory(user_id=user.user_id, novel_id=novel.id, chapter_id=chapter_db_id)
-    session.add(entry)
-    session.flush()
-    chapter_number: int | None = None
-    if entry.chapter_id is not None:
-        ch = session.query(Chapter.chapter_number).filter_by(id=entry.chapter_id).one_or_none()
-        if ch:
-            chapter_number = ch[0]
-    return HistoryEntryResponse(
-        id=entry.id,
-        slug=effective_slug,
-        chapter_id=str(entry.chapter_id) if entry.chapter_id is not None else None,
-        chapter_number=chapter_number,
-        read_at=entry.read_at,
-    )
+    try:
+        entry = service.record_history(user.user_id, effective_slug, effective_chapter_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return HistoryEntryResponse(**entry)
 
 
 @router.get("/history", response_model=HistoryListResponse)
 def list_history(
     limit: int = Query(default=50, ge=1, le=100),
     user: SessionUser = Depends(require_role("user")),
-    session: Session = Depends(get_db_session),
+    service: ReadingService = Depends(get_reading_service),
 ) -> HistoryListResponse:
-    results = (
-        session.query(ReadingHistory, Chapter.chapter_number)
-        .outerjoin(Chapter, ReadingHistory.chapter_id == Chapter.id)
-        .filter(ReadingHistory.user_id == user.user_id)
-        .order_by(ReadingHistory.read_at.desc())
-        .limit(limit)
-        .all()
-    )
-    return HistoryListResponse(
-        items=[
-            HistoryEntryResponse(
-                id=entry.id,
-                slug=_novel_slug(entry.novel_id, session) or str(entry.novel_id),
-                chapter_id=str(entry.chapter_id) if entry.chapter_id is not None else None,
-                chapter_number=chapter_number,
-                read_at=entry.read_at,
-            )
-            for entry, chapter_number in results
-        ]
-    )
+    items = service.list_history(user.user_id, limit=limit)
+    return HistoryListResponse(items=[HistoryEntryResponse(**item) for item in items])
 
 
 class ReviewCreate(BaseModel):
@@ -309,26 +210,8 @@ class ReviewResponse(BaseModel):
     slug: str
     rating: int | None
     body: str | None
-    status: str
+    created_at: datetime
     updated_at: datetime
-
-
-def _upsert_review(slug: str, payload: ReviewCreate, user: SessionUser, session: Session) -> ReviewResponse:
-    novel = _get_novel(slug, session)
-    review = session.query(Review).filter_by(user_id=user.user_id, novel_id=novel.id).one_or_none()
-    if review is None:
-        review = Review(user_id=user.user_id, novel_id=novel.id)
-        session.add(review)
-    review.rating = payload.rating
-    review.body = payload.body
-    session.flush()
-    return ReviewResponse(
-        slug=slug,
-        rating=review.rating,
-        body=review.body,
-        status="pending",
-        updated_at=review.created_at,
-    )
 
 
 @router.put(
@@ -341,10 +224,14 @@ def put_review(
     payload: ReviewCreate,
     request: Request,
     user: SessionUser = Depends(require_role("user")),
-    session: Session = Depends(get_db_session),
+    service: ReviewService = Depends(get_review_service),
 ) -> ReviewResponse:
     require_public_rate_limit(request, "review_mutation", user_id=user.user_id)
-    return _upsert_review(slug, payload, user, session)
+    try:
+        review = service.upsert_review(user.user_id, slug, payload.rating, payload.body)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ReviewResponse(**review)
 
 
 @router.post(
@@ -358,10 +245,14 @@ def post_review(
     payload: ReviewCreate,
     request: Request,
     user: SessionUser = Depends(require_role("user")),
-    session: Session = Depends(get_db_session),
+    service: ReviewService = Depends(get_review_service),
 ) -> ReviewResponse:
     require_public_rate_limit(request, "review_mutation", user_id=user.user_id)
-    return _upsert_review(slug, payload, user, session)
+    try:
+        review = service.upsert_review(user.user_id, slug, payload.rating, payload.body)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ReviewResponse(**review)
 
 
 @router.delete(
@@ -373,123 +264,10 @@ def delete_review(
     slug: str,
     request: Request,
     user: SessionUser = Depends(require_role("user")),
-    session: Session = Depends(get_db_session),
+    service: ReviewService = Depends(get_review_service),
 ) -> None:
     require_public_rate_limit(request, "review_mutation", user_id=user.user_id)
-    novel = _get_novel(slug, session)
-    review = session.query(Review).filter_by(user_id=user.user_id, novel_id=novel.id).one_or_none()
-    if review is not None:
-        session.delete(review)
-
-
-class RequestCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    request_type: str
-    source_url: HttpUrl | None = None
-    slug: str | None = None
-    chapter_id: str | None = None
-    details: str | None = Field(default=None, max_length=2000)
-
-    @model_validator(mode="after")
-    def validate_request_type(self) -> RequestCreate:
-        if self.request_type not in {"novel", "chapter"}:
-            raise ValueError("request_type must be 'novel' or 'chapter'")
-        if self.request_type == "novel" and self.source_url is None:
-            raise ValueError("source_url is required for novel requests")
-        if self.request_type == "chapter" and self.slug is None:
-            raise ValueError("slug is required for chapter requests")
-        return self
-
-
-class RequestResponse(BaseModel):
-    id: int
-    request_type: str
-    status: str
-    source_url: str | None
-    slug: str | None
-    chapter_id: str | None
-    created_at: datetime
-    updated_at: datetime
-    rejection_reason: str | None
-    approved_novel_id: int | None
-    approved_slug: str | None
-
-
-class RequestListResponse(BaseModel):
-    items: list[RequestResponse]
-    next_cursor: str | None = None
-
-
-def _request_response(req: NovelRequest, session: Session) -> RequestResponse:
-    return RequestResponse(
-        id=req.id,
-        request_type=req.request_type,
-        status=req.status,
-        source_url=req.source_url,
-        slug=_novel_slug(req.novel_id, session),
-        chapter_id=None,
-        created_at=req.created_at,
-        updated_at=req.updated_at,
-        rejection_reason=(
-            req.rejection_reason if req.status == "rejected" else None
-        ),
-        approved_novel_id=req.approved_novel_id,
-        approved_slug=_novel_slug(req.approved_novel_id, session),
-    )
-
-
-@router.post(
-    "/requests",
-    status_code=201,
-    response_model=RequestResponse,
-    dependencies=[Depends(require_csrf_token)],
-)
-def create_request(
-    payload: RequestCreate,
-    request: Request,
-    user: SessionUser = Depends(require_role("user")),
-    session: Session = Depends(get_db_session),
-) -> RequestResponse:
-    require_public_rate_limit(request, "request_create", user_id=user.user_id)
-    novel_id = None
-    if payload.slug is not None:
-        novel = _get_novel(payload.slug, session)
-        novel_id = novel.id
-        _get_chapter_for_novel(payload.chapter_id, novel_id, session)
-    source_url = str(payload.source_url) if payload.source_url is not None else None
-    existing = session.query(NovelRequest).filter_by(
-        user_id=user.user_id,
-        request_type=payload.request_type,
-        novel_id=novel_id,
-        source_url=source_url,
-        status="pending",
-    ).one_or_none()
-    if existing is not None:
-        return _request_response(existing, session)
-    req = NovelRequest(
-        user_id=user.user_id,
-        request_type=payload.request_type,
-        novel_id=novel_id,
-        source_url=source_url,
-        status="pending",
-    )
-    session.add(req)
-    session.flush()
-    return _request_response(req, session)
-
-
-@router.get("/requests", response_model=RequestListResponse)
-def list_requests(
-    limit: int = Query(default=50, ge=1, le=100),
-    user: SessionUser = Depends(require_role("user")),
-    session: Session = Depends(get_db_session),
-) -> RequestListResponse:
-    reqs = (
-        session.query(NovelRequest)
-        .filter_by(user_id=user.user_id)
-        .order_by(NovelRequest.created_at.desc())
-        .limit(limit)
-        .all()
-    )
-    return RequestListResponse(items=[_request_response(req, session) for req in reqs])
+    try:
+        service.delete_review(user.user_id, slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

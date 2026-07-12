@@ -16,14 +16,17 @@ from novelai.config.settings import settings
 from novelai.infrastructure.http.rate_limiter import get_default_rate_limiter
 from novelai.runtime.container import container
 from novelai.services.admin_service import AdminService
+from novelai.services.auth_service import AuthService
 from novelai.services.editor_service import EditorService
 from novelai.services.library_service import LibraryService
-from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.novel_request_service import NovelRequestService
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.public_catalog_service import PublicCatalogService
+from novelai.services.reading_service import ReadingService
+from novelai.services.review_service import ReviewService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
+from novelai.services.user_library_service import UserLibraryService
 from novelai.storage.service import StorageService
 
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -158,6 +161,12 @@ def get_db_session():
         session.close()
 
 
+def get_auth_service(
+    db_session: Session = Depends(get_db_session),
+) -> AuthService:
+    return AuthService(db_session=db_session, mailer=container.auth_email)
+
+
 def metadata_chapters(meta: dict[str, Any]) -> list[dict[str, Any]]:
     chapters = meta.get("chapters")
     return [chapter for chapter in chapters if isinstance(chapter, dict)] if isinstance(chapters, list) else []
@@ -225,6 +234,24 @@ def get_novel_request_service(
     db_session: Session = Depends(get_db_session),
 ) -> NovelRequestService:
     return NovelRequestService(db_session=db_session)
+
+
+def get_user_library_service(
+    db_session: Session = Depends(get_db_session),
+) -> UserLibraryService:
+    return UserLibraryService(db_session=db_session)
+
+
+def get_reading_service(
+    db_session: Session = Depends(get_db_session),
+) -> ReadingService:
+    return ReadingService(db_session=db_session)
+
+
+def get_review_service(
+    db_session: Session = Depends(get_db_session),
+) -> ReviewService:
+    return ReviewService(db_session=db_session)
 
 
 def get_public_catalog_service(
