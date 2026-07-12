@@ -22,6 +22,20 @@ jobs:
       - run: pip install -e ".[documents,gemini,dev]"
       - run: ruff check .
       - run: pyright
+      - name: Router layer violation check
+        run: |
+          set -e
+          # No router file (except dependencies.py, which holds DI factories)
+          # should import from db.models, storage.service, or sources
+          violations=$(grep -rn "^from novelai\.\(db\.models\|storage\.service\|sources\.\)" \
+            backend/src/novelai/api/routers/ \
+            --exclude="dependencies.py" || true)
+          if [ -n "$violations" ]; then
+            echo "Layer violations found in routers:"
+            echo "$violations"
+            exit 1
+          fi
+          echo "No router layer violations found."
 
   backend-tests:
     runs-on: ubuntu-latest
