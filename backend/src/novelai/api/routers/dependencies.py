@@ -259,3 +259,12 @@ def get_public_catalog_service(
     db_session: Session = Depends(get_db_session),
 ) -> PublicCatalogService:
     return PublicCatalogService(storage=storage, db_session=db_session)
+
+
+def get_glossary_workflow_service(
+    storage: StorageService = Depends(get_storage),
+    db_session: Session = Depends(get_db_session),
+) -> GlossaryWorkflowService:
+    from novelai.services.glossary_workflow_service import GlossaryWorkflowService
+
+    return GlossaryWorkflowService(storage=storage, db_session=db_session)
