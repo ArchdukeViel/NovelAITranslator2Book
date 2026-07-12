@@ -6,7 +6,7 @@ Status and details are updated directly as release verification progresses.
 ---
 
 ## Milestone M0 — CI Confidence
-- **Status:** Blocked
+- **Status:** In progress
 - **Description:** Stabilize deployment builds and integration testing in the CI environment.
 - **Scope:**
   - Add PostgreSQL service and required `DATABASE_URL` to GitHub Actions workflow.

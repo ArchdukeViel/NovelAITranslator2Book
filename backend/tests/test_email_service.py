@@ -83,7 +83,7 @@ def test_container_invalid_email_delivery_mode_fails_clearly(monkeypatch):
     monkeypatch.setattr(settings, "AUTH_EMAIL_DELIVERY_MODE", "bad-mode")
 
     with pytest.raises(ValueError, match="Unsupported AUTH_EMAIL_DELIVERY_MODE"):
-        Container().auth_email
+        _ = Container().auth_email
 
 
 def test_smtp_service_sends_password_reset_email_through_fake_smtp(caplog):

@@ -8,6 +8,28 @@ from novelai.translation.pipeline.context import PipelineContext
 from novelai.translation.pipeline.stages.base import PipelineStage
 
 
+class PipelineStageError(RuntimeError):
+    """Exception raised when a pipeline stage fails.
+
+    Carries the pipeline context, events, and failed stage name so callers
+    can inspect what happened without re-running the pipeline.
+    """
+
+    def __init__(
+        self,
+        original: BaseException,
+        *,
+        pipeline_context: PipelineContext,
+        pipeline_events: list[dict[str, Any]],
+        failed_stage_name: str,
+    ) -> None:
+        super().__init__(str(original))
+        self.original = original
+        self.pipeline_context = pipeline_context
+        self.pipeline_events = pipeline_events
+        self.failed_stage_name = failed_stage_name
+
+
 def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
@@ -93,10 +115,12 @@ class TranslationPipeline:
                         message=str(exc),
                     ),
                 )
-                exc.pipeline_context = context
-                exc.pipeline_events = list(context.pipeline_events)
-                exc.failed_stage_name = stage_name
-                raise
+                raise PipelineStageError(
+                    exc,
+                    pipeline_context=context,
+                    pipeline_events=list(context.pipeline_events),
+                    failed_stage_name=stage_name,
+                ) from exc
             context.current_stage = stage_name
             _append_event(
                 context,

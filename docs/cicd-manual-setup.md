@@ -108,7 +108,8 @@ To test this:
 2. Go to **Actions** tab
 3. Verify the **Build and Push** workflow is triggered on push to `main`
 4. Verify Docker images are pushed to GHCR (GitHub Container Registry):
-   - `ghcr.io/{owner}/{repo}/novelai-backend`
+   - `ghcr.io/{owner}/{repo}/novelai-admin`
+   - `ghcr.io/{owner}/{repo}/novelai-reader`
    - `ghcr.io/{owner}/{repo}/novelai-frontend`
 
 ### Step 7.4: Verify Image Tags

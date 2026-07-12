@@ -40,10 +40,11 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone M0 (CI Confidence)
 - **Category:** Testing | CI/CD
 - **Priority:** Blocker
-- **Status:** Blocked
+- **Status:** In progress (Postgres service added to ci.yml; awaiting real CI run to confirm green)
 - **Affected areas:** `.github/workflows/ci.yml`, test files
-- **Description:** CI workflow lacks PostgreSQL service. Real DB tests fail on Actions run.
+- **Description:** CI workflow lacked PostgreSQL service. Real DB tests fail on Actions run.
 - **Completion criteria:** Actions yaml has `services.postgres` setup and all web/integration tests pass.
+- **Implementation note:** Added `services.postgres` (postgres:16, user/password/db `novelai`, port 5432, healthcheck) and `DATABASE_URL=postgresql+psycopg://novelai:novelai@localhost:5432/novelai` env to the `backend-tests` job in `.github/workflows/ci.yml`. Existing tests use SQLite in-memory; the Postgres service makes `DATABASE_URL` available for any test that reads it from settings. A real CI run is required to confirm green before marking Resolved.
 
 ### DEBT-006 — Circular import in admin_glossary routers
 - **Milestone:** Milestone M1 (Glossary/Router Repair)

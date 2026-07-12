@@ -34,12 +34,12 @@ _backend_src = Path(__file__).resolve().parents[3]
 if str(_backend_src) not in sys.path:
     sys.path.insert(0, str(_backend_src))
 
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import create_engine, select  # noqa: E402
+from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 
-from novelai.config.settings import settings
-from novelai.db.models import Chapter, Novel
-from novelai.storage.service import StorageService
+from novelai.config.settings import settings  # noqa: E402
+from novelai.db.models import Chapter, Novel  # noqa: E402
+from novelai.storage.service import StorageService  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

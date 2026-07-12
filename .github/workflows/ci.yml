@@ -40,6 +40,23 @@ jobs:
   backend-tests:
     runs-on: ubuntu-latest
     needs: backend-lint
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: novelai
+          POSTGRES_PASSWORD: novelai
+          POSTGRES_DB: novelai
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U novelai"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://novelai:novelai@localhost:5432/novelai
+      ENV: test
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

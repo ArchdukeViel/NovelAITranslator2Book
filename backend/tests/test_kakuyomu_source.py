@@ -438,7 +438,7 @@ class TestKakuyomuPreflightChecks:
         """
         try:
             KakuyomuSource._preflight_check(html, "https://kakuyomu.jp/works/123")
-            assert False, "Expected SourceError for Cloudflare block page"
+            raise AssertionError("Expected SourceError for Cloudflare block page")
         except SourceError as e:
             assert "blocked" in str(e).lower()
 
@@ -454,7 +454,7 @@ class TestKakuyomuPreflightChecks:
         """
         try:
             KakuyomuSource._preflight_check(html, "https://kakuyomu.jp/works/123")
-            assert False, "Expected SourceError for access denied page"
+            raise AssertionError("Expected SourceError for access denied page")
         except SourceError as e:
             assert "blocked" in str(e).lower()
 
@@ -471,7 +471,7 @@ class TestKakuyomuPreflightChecks:
         """
         try:
             KakuyomuSource._preflight_check(html, "https://kakuyomu.jp/works/123")
-            assert False, "Expected SourceError for age gate page"
+            raise AssertionError("Expected SourceError for age gate page")
         except SourceError as e:
             assert "age" in str(e).lower() or "verification" in str(e).lower()
 

@@ -6,6 +6,7 @@ CRUD, candidates, apply, and provider endpoints are in other split files.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -104,10 +105,8 @@ async def accept_glossary_suggestion(
             decision_source="owner",
         )
         from novelai.services.translation_cache import TranslationCacheService
-        try:
+        with suppress(Exception):
             TranslationCacheService().invalidate(novel_id)
-        except Exception:
-            pass
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to create glossary entry: {exc}") from exc
 

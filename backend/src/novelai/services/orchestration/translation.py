@@ -100,7 +100,12 @@ def _load_db_translation_state(novel_id: str, chapter_id: str) -> str:
 
 def _pipeline_context_from_exception(exc: BaseException) -> Any | None:
     context = getattr(exc, "pipeline_context", None)
-    return context if context is not None else None
+    if context is not None:
+        return context
+    cause = getattr(exc, "__cause__", None)
+    if cause is not None:
+        return getattr(cause, "pipeline_context", None)
+    return None
 
 
 def _metadata_platform_novel_id(meta: dict[str, Any]) -> int | None:
@@ -141,6 +146,10 @@ def _resolve_glossary_revision(novel_id: str, platform_novel_id: int | None) -> 
 def _pipeline_events_from_exception(exc: BaseException) -> list[dict[str, Any]]:
     events = getattr(exc, "pipeline_events", None)
     if not isinstance(events, list):
+        cause = getattr(exc, "__cause__", None)
+        if cause is not None:
+            events = getattr(cause, "pipeline_events", None)
+    if not isinstance(events, list):
         context = _pipeline_context_from_exception(exc)
         events = getattr(context, "pipeline_events", None)
     if not isinstance(events, list):
@@ -150,6 +159,10 @@ def _pipeline_events_from_exception(exc: BaseException) -> list[dict[str, Any]]:
 
 def _failed_stage_name_from_exception(exc: BaseException) -> str:
     failed_stage = getattr(exc, "failed_stage_name", None)
+    if not isinstance(failed_stage, str) or not failed_stage.strip():
+        cause = getattr(exc, "__cause__", None)
+        if cause is not None:
+            failed_stage = getattr(cause, "failed_stage_name", None)
     if isinstance(failed_stage, str) and failed_stage.strip():
         return failed_stage.strip()
     for event in reversed(_pipeline_events_from_exception(exc)):
@@ -1129,7 +1142,7 @@ async def retranslate_chapter(
 # Re-exports — backward compatibility for novel_orchestration_service.py
 # ---------------------------------------------------------------------------
 
-from novelai.services.orchestration.translation_lineage import (
+from novelai.services.orchestration.translation_lineage import (  # noqa: E402
     _compare_lineage,
     _count_pending_glossary_entries,
     _estimate_delta_requests,
@@ -1138,17 +1151,17 @@ from novelai.services.orchestration.translation_lineage import (
     _old_lineage_by_chapter,
     _try_delta_translate_chapter,
 )
-from novelai.services.orchestration.translation_metadata import (
+from novelai.services.orchestration.translation_metadata import (  # noqa: E402
     _translate_metadata_batch,
     _translate_metadata_fields,
     _translate_metadata_items,
     _translate_text,
     estimate_translation_requests,
 )
-from novelai.services.orchestration.translation_progress import (
+from novelai.services.orchestration.translation_progress import (  # noqa: E402
     _build_chapter_summary,
 )
-from novelai.services.orchestration.translation_resume import (
+from novelai.services.orchestration.translation_resume import (  # noqa: E402
     _check_chapter_resume_state,
     _init_checkpoint_manager,
     _restore_checkpoint_for_chapter,

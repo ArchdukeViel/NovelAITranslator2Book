@@ -145,7 +145,7 @@ class TestGenericPreflightChecks:
         """
         try:
             GenericSource._preflight_check(html, "https://example.com/novel")
-            assert False, "Expected SourceError for Cloudflare block page"
+            raise AssertionError("Expected SourceError for Cloudflare block page")
         except SourceError as e:
             assert "blocked" in str(e).lower()
 
@@ -162,7 +162,7 @@ class TestGenericPreflightChecks:
         """
         try:
             GenericSource._preflight_check(html, "https://example.com/novel")
-            assert False, "Expected SourceError for age gate page"
+            raise AssertionError("Expected SourceError for age gate page")
         except SourceError as e:
             assert "age" in str(e).lower() or "verification" in str(e).lower()
 

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import Enum, StrEnum
 
 
-class TranslationState(str, Enum):
+class TranslationState(StrEnum):
     """Fine-grained translation pipeline state for DB tracking.
 
     Mirrors the pipeline stage sequence.

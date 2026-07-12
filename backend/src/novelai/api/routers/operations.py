@@ -100,7 +100,7 @@ async def scrape_novel(
         )
     except OperationError as exc:
         _raise_operation_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.post("/{novel_id}/preliminary-crawl")
@@ -122,7 +122,7 @@ async def preliminary_crawl_novel(
         )
     except OperationError as exc:
         _raise_operation_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.post("/{novel_id}/import")
@@ -143,7 +143,7 @@ async def import_document(
         )
     except OperationError as exc:
         _raise_operation_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.post("/{novel_id}/translate")
@@ -170,7 +170,7 @@ async def translate_novel(
         )
     except OperationError as exc:
         _raise_operation_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.post("/{novel_id}/retranslate-stale")
@@ -191,7 +191,7 @@ async def retranslate_stale(
         )
     except OperationError as exc:
         _raise_operation_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.get("/{novel_id}/translate-status")
@@ -205,7 +205,7 @@ async def translate_status(
         return service.get_translation_status(novel_id=novel_id)
     except OperationError as exc:
         _raise_operation_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 class ResumeOnboardingRequest(BaseModel):
@@ -232,7 +232,7 @@ async def resume_onboarding(
         )
     except OperationError as exc:
         _raise_operation_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.post("/{novel_id}/onboarding/cancel")
@@ -246,7 +246,7 @@ async def cancel_onboarding(
         return service.cancel_onboarding(novel_id=novel_id)
     except OperationError as exc:
         _raise_operation_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.post("/{novel_id}/export")
@@ -262,5 +262,5 @@ async def export_novel(
         result = service.export_novel(novel_id=novel_id, export_format=body.format)
     except OperationError as exc:
         _raise_operation_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
     return FileResponse(result.path, media_type=result.media_type, filename=result.filename)

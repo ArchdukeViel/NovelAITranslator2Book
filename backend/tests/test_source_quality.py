@@ -137,7 +137,7 @@ async def test_generic_low_confidence_toc_marks_needs_review(monkeypatch):
 def test_syosetu_age_gate_html_is_classified_before_body_selector_error():
     source = SyosetuNcodeSource()
 
-    with pytest.raises(SourceError, match="age gate|auth redirect"):
+    with pytest.raises(SourceError, match=r"age gate|auth redirect"):
         source._parse_chapter_payload(
             "<html><body>redirect/ageauth/ 年齢確認 18歳未満 over18</body></html>",
             "https://novel18.syosetu.com/n1234ab/1/",
