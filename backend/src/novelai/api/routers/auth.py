@@ -25,9 +25,6 @@ from novelai.api.auth.security import (
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import get_auth_service
 from novelai.config.settings import settings
-from novelai.db.models.users import (
-    User,
-)
 from novelai.services.auth_service import AuthService
 
 logger = logging.getLogger(__name__)
@@ -134,10 +131,10 @@ def _frontend_redirect(path: str) -> str:
     return f"{base}{safe_path}"
 
 
-def _set_session_user(request: Request, user: User) -> None:
-    request.session["user_id"] = user.id
-    request.session["email"] = user.email
-    request.session["role"] = user.role
+def _set_session_user(request: Request, user_data: dict) -> None:
+    request.session["user_id"] = user_data["user_id"]
+    request.session["email"] = user_data["email"]
+    request.session["role"] = user_data["role"]
 
 
 def _clear_google_oauth_session(request: Request) -> None:
@@ -184,9 +181,8 @@ async def register(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    user = _get_user_by_id(svc.db_session, result["user_id"])
-    _set_session_user(request, user)
-    return _user_response(SessionUser(user_id=user.id, email=user.email, role=user.role))
+    _set_session_user(request, result)
+    return _user_response(SessionUser(user_id=result["user_id"], email=result["email"], role=result["role"]))
 
 
 @router.post("/password/login")
@@ -202,7 +198,7 @@ async def password_login(
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
-    _set_session_user(request, _get_user_by_id(svc.db_session, result["user_id"]))
+    _set_session_user(request, result)
     return _user_response(SessionUser(user_id=result["user_id"], email=result["email"], role=result["role"]))
 
 
@@ -310,7 +306,7 @@ async def google_callback(
             redirect_uri=settings.GOOGLE_OAUTH_REDIRECT_URI or "",
         )
         user = svc.upsert_google_user(profile)
-        _set_session_user(request, user)
+        _set_session_user(request, {"user_id": user.id, "email": user.email, "role": user.role})
         return RedirectResponse(_frontend_redirect(return_to), status_code=status.HTTP_302_FOUND)
     except HTTPException:
         raise
@@ -346,10 +342,3 @@ async def me(user: SessionUser = Depends(get_current_user)) -> UserResponse:
 async def me_owner_only(user: SessionUser = Depends(require_role("owner"))) -> UserResponse:
     """Test endpoint — proves require_role('owner') works end-to-end."""
     return _user_response(user)
-
-
-def _get_user_by_id(session, user_id: int) -> User:
-    user = session.get(User, user_id)
-    if user is None:
-        raise RuntimeError(f"User {user_id} not found after registration")
-    return user
