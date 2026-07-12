@@ -159,16 +159,14 @@ class NovelRequestService:
             novel_id = novel.id
 
         # Validate chapter_id belongs to the novel
-        chapter_db_id = None
         if chapter_id is not None:
             try:
-                cid = int(chapter_id)
+                _cid = int(chapter_id)
             except ValueError:
                 raise ValueError("Chapter not found")
-            ch = self.db_session.query(ChapterModel).filter_by(id=cid, novel_id=novel_id).one_or_none()
+            ch = self.db_session.query(ChapterModel).filter_by(id=_cid, novel_id=novel_id).one_or_none()
             if ch is None:
                 raise ValueError("Chapter not found")
-            chapter_db_id = cid
 
         existing = self.db_session.query(NovelRequest).filter_by(
             user_id=user_id,
