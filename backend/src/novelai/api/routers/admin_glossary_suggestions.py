@@ -16,8 +16,6 @@ from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.admin_glossary import _owner_user_id, _repo, _require_novel
 from novelai.api.routers.dependencies import get_db_session, get_storage
-from novelai.storage.service import StorageService
-
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
 
@@ -50,7 +48,7 @@ class BulkActionResult(BaseModel):
     items: list[SuggestionResponse]
 
 
-def _suggestion_service(storage: StorageService = Depends(get_storage)) -> Any:
+def _suggestion_service(storage: Any = Depends(get_storage)) -> Any:
     from novelai.services.glossary.suggestion_service import GlossarySuggestionService
 
     return GlossarySuggestionService(base_dir=storage.base_dir)
@@ -82,7 +80,7 @@ async def accept_glossary_suggestion(
     body: SuggestionAcceptRequest,
     session: Session = Depends(get_db_session),
     sug_svc: Any = Depends(_suggestion_service),
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     owner=Depends(require_role("owner")),
 ) -> SuggestionResponse:
     """Accept a suggestion and add it as a glossary entry."""

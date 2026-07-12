@@ -30,9 +30,10 @@ class ReviewService:
         return {
             "slug": slug,
             "rating": review.rating,
-            "review_text": review.body,
+            "body": review.body,
+            "status": "pending",
             "created_at": review.created_at,
-            "updated_at": review.updated_at,
+            "updated_at": review.created_at,
         }
 
     def upsert_review(
@@ -68,3 +69,13 @@ class ReviewService:
         novel = self._get_novel(slug)
         reviews = self.db_session.query(Review).filter_by(novel_id=novel.id).all()
         return [self._review_response(review, slug) for review in reviews]
+
+    def delete_review(self, user_id: int, slug: str) -> None:
+        novel = self._get_novel(slug)
+        review = (
+            self.db_session.query(Review)
+            .filter_by(user_id=user_id, novel_id=novel.id)
+            .one_or_none()
+        )
+        if review is not None:
+            self.db_session.delete(review)

@@ -7,7 +7,7 @@ CRUD, candidates, apply, and suggestion endpoints are in other split files.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import cast
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -32,8 +32,6 @@ from novelai.services.glossary_provider_suggestion import (
     GlossaryProviderSuggestionService,
     ProviderGlossarySuggestionResult,
 )
-from novelai.storage.service import StorageService
-
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
 
@@ -143,7 +141,7 @@ async def preview_glossary_provider_suggestions(
     novel_id: str,
     body: GlossaryProviderSuggestionRequest,
     session: Session = Depends(get_db_session),
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> GlossaryProviderSuggestionResponse:
     novel = _require_novel(session, novel_id)
@@ -175,7 +173,7 @@ async def apply_glossary_provider_suggestions(
     novel_id: str,
     body: GlossaryProviderSuggestionRequest,
     session: Session = Depends(get_db_session),
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> GlossaryProviderSuggestionResponse:
     novel = _require_novel(session, novel_id)

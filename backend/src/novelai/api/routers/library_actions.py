@@ -31,8 +31,6 @@ from novelai.services.library_service import (
     _source_metadata_inspection_payload,
     _source_metadata_warnings,
 )
-from novelai.storage.service import StorageService
-
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 logger = logging.getLogger(__name__)
 
@@ -119,7 +117,7 @@ _DIFF_MAX_CHANGED_FIELDS = 50
 
 
 def _load_sanitized_metadata_snapshot(
-    storage: StorageService,
+    storage: Any,
     novel_id: str,
     snapshot_id: str,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, list[str]]:
@@ -181,7 +179,7 @@ def _metadata_snapshot_diff(
 @router.get("/{novel_id}/source-metadata", response_model=SourceMetadataInspection)
 async def inspect_source_metadata(
     novel_id: str,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> SourceMetadataInspection:
     meta = storage.load_metadata(novel_id)
@@ -196,7 +194,7 @@ async def inspect_source_metadata(
 async def inspect_source_metadata_history(
     novel_id: str,
     limit: int = Query(default=10, ge=1, le=25),
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> SourceMetadataHistoryResponse:
     entries = storage.list_metadata_history(novel_id, limit=limit)
@@ -214,7 +212,7 @@ async def diff_source_metadata_history_snapshots(
     novel_id: str,
     from_snapshot: str = Query(...),
     to_snapshot: str = Query(default="current"),
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> SourceMetadataSnapshotDiff:
     try:
@@ -246,7 +244,7 @@ async def diff_source_metadata_history_snapshots(
 async def inspect_source_metadata_snapshot_detail(
     novel_id: str,
     snapshot_id: str,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> SourceMetadataSnapshotDetail:
     try:
@@ -282,7 +280,7 @@ async def inspect_source_metadata_snapshot_detail(
 @router.get("/{novel_id}/chapters", response_model=list[ChapterSummary])
 async def list_chapters(
     novel_id: str,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> list[ChapterSummary]:
     meta = storage.load_metadata(novel_id)
@@ -305,7 +303,7 @@ async def list_chapters(
 async def get_chapter(
     novel_id: str,
     chapter_id: str,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     chapter = storage.load_chapter(novel_id, chapter_id)
@@ -321,7 +319,7 @@ async def get_chapter(
 async def get_translated_chapter(
     novel_id: str,
     chapter_id: str,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     translated = storage.load_translated_chapter(novel_id, chapter_id)
@@ -333,7 +331,7 @@ async def get_translated_chapter(
 @router.get("/{novel_id}/reader")
 async def get_reader_novel(
     novel_id: str,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     meta = storage.load_metadata(novel_id)
@@ -370,7 +368,7 @@ async def get_reader_novel(
 async def get_reader_chapter(
     novel_id: str,
     chapter_id: str,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     meta = storage.load_metadata(novel_id)
@@ -405,7 +403,7 @@ async def get_reader_chapter(
 @router.get("/{novel_id}/progress")
 async def get_progress(
     novel_id: str,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     meta = storage.load_metadata(novel_id)
@@ -420,7 +418,7 @@ async def get_progress(
 @router.get("/{novel_id}/checkpoints", response_model=NovelCheckpointsResponse)
 async def list_novel_checkpoints(
     novel_id: str,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> NovelCheckpointsResponse:
     chapters: list[ChapterCheckpoints] = []

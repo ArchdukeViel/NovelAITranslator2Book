@@ -9,16 +9,18 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_token, require_public_rate_limit
 from novelai.api.auth.session import SessionUser
 from novelai.api.routers.dependencies import (
+    get_novel_request_service,
     get_reading_service,
     get_review_service,
     get_user_library_service,
 )
+from novelai.services.novel_request_service import NovelRequestService
 from novelai.services.reading_service import ReadingService
 from novelai.services.review_service import ReviewService
 from novelai.services.user_library_service import UserLibraryService
@@ -117,7 +119,10 @@ def get_progress(
     user: SessionUser = Depends(require_role("user")),
     service: ReadingService = Depends(get_reading_service),
 ) -> ProgressResponse:
-    progress = service.get_progress(user.user_id, slug)
+    try:
+        progress = service.get_progress(user.user_id, slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return ProgressResponse(**progress)
 
 
@@ -139,7 +144,9 @@ def update_progress(
             user.user_id, slug, payload.chapter_id, payload.progress_percent
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        detail = str(exc)
+        status = 404 if "not found" in detail.lower() else 400
+        raise HTTPException(status_code=status, detail=detail) from exc
     return ProgressResponse(**progress)
 
 
@@ -210,7 +217,7 @@ class ReviewResponse(BaseModel):
     slug: str
     rating: int | None
     body: str | None
-    created_at: datetime
+    status: str
     updated_at: datetime
 
 
@@ -271,3 +278,83 @@ def delete_review(
         service.delete_review(user.user_id, slug)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# -- Requests -----------------------------------------------------------------
+
+
+class RequestCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_type: str
+    source_url: str | None = None
+    slug: str | None = None
+    chapter_id: str | None = None
+    details: str | None = None
+
+    @model_validator(mode="after")
+    def validate_type(self) -> RequestCreate:
+        if self.request_type not in {"novel", "chapter"}:
+            raise ValueError("request_type must be 'novel' or 'chapter'")
+        if self.request_type == "novel" and self.source_url is None:
+            raise ValueError("source_url is required for novel requests")
+        if self.request_type == "chapter" and self.slug is None:
+            raise ValueError("slug is required for chapter requests")
+        return self
+
+
+class RequestResponse(BaseModel):
+    id: int
+    request_type: str
+    status: str
+    source_url: str | None = None
+    slug: str | None = None
+    chapter_id: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    rejection_reason: str | None = None
+    approved_novel_id: int | None = None
+    approved_slug: str | None = None
+
+
+class RequestListResponse(BaseModel):
+    items: list[RequestResponse]
+    next_cursor: str | None = None
+
+
+@router.post(
+    "/requests",
+    status_code=201,
+    response_model=RequestResponse,
+    dependencies=[Depends(require_csrf_token)],
+)
+def create_request(
+    payload: RequestCreate,
+    request: Request,
+    user: SessionUser = Depends(require_role("user")),
+    service: NovelRequestService = Depends(get_novel_request_service),
+) -> RequestResponse:
+    require_public_rate_limit(request, "request_create", user_id=user.user_id)
+    try:
+        result = service.create_user_request(
+            user.user_id, payload.request_type,
+            source_url=payload.source_url,
+            slug=payload.slug,
+            chapter_id=payload.chapter_id,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if "not found" in detail.lower():
+            raise HTTPException(status_code=404, detail=detail) from exc
+        raise HTTPException(status_code=400, detail=detail) from exc
+    return RequestResponse(**result)
+
+
+@router.get("/requests", response_model=RequestListResponse)
+def list_requests(
+    limit: int = Query(default=50, ge=1, le=100),
+    user: SessionUser = Depends(require_role("user")),
+    service: NovelRequestService = Depends(get_novel_request_service),
+) -> RequestListResponse:
+    items = service.list_user_requests(user.user_id, limit=limit)
+    return RequestListResponse(items=[RequestResponse(**item) for item in items])
