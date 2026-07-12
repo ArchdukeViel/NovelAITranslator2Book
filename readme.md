@@ -4,7 +4,7 @@ Novel AI is a web-first Japanese novel platform for crawling source sites, queue
 
 The project is now oriented toward a production-style web deployment, similar in shape to a WTR-Lab style site: a Next.js frontend for public/admin pages, a FastAPI backend under `/api`, file-backed canonical novel metadata and content, Postgres catalog/user domain rows, and an in-process activity worker (with optional standalone worker or Redis/RQ support).
 
-Current mode is single-owner / controlled-admin transitioning to a public platform. The project has 40 archived specs under `.agents/kiro/archive/` and 19 active specs under `.agents/kiro/specs/` covering:
+Current mode is single-owner / controlled-admin transitioning to a public platform. The project has 45 archived specs under `.agents/kiro/archive/` and 21 active specs under `.agents/kiro/specs/` covering:
 - Scheduler-enabled admin-owned provider/model routing
 - PostgreSQL 16 with SQLAlchemy 2.x + Alembic migrations (metadata, users, jobs)
 - Redis 7 + RQ background workers
@@ -140,27 +140,24 @@ http://127.0.0.1:8000/api/health
 
 ## Quick Start with Docker
 
-The fastest way to run the full stack (PostgreSQL, Redis, backend, frontend, Caddy):
+The fastest way to run the full stack (Redis, backend, frontend, Caddy; PostgreSQL must be provided externally):
 
 ```powershell
 # 1. Create env file from example
 Copy-Item deploy\.env.example deploy\.env
 
 # 2. Edit deploy\.env — set at minimum:
-#    SESSION_SECRET_KEY, OWNER_BOOTSTRAP_SECRET, PUBLIC_FRONTEND_URL
+#    DATABASE_URL, SESSION_SECRET_KEY, OWNER_BOOTSTRAP_SECRET, PUBLIC_FRONTEND_URL
 notepad deploy\.env
 
 # 3. Build and start all services
 docker compose -f deploy\compose.yml up --build -d
 
-# 4. Run database migrations
-docker compose -f deploy\compose.yml run --rm migrate
-
-# 5. Open the app and log in
+# 4. Open the app and log in
 start http://localhost/admin
 ```
 
-Compose reads `deploy/.env` automatically. The `migrate` service runs Alembic then exits.
+Compose reads `deploy/.env` automatically. The `migrate` service runs Alembic before backend/reader start.
 
 **First login**: use the value of `OWNER_BOOTSTRAP_SECRET` from `deploy/.env` as the secret on the login page. This creates an owner session without needing a registration.
 

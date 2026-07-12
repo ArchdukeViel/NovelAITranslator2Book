@@ -52,25 +52,33 @@ Status and details are updated directly as release verification progresses.
   - Configure Caddy routes matching ordered admin/auth/public split backend targets.
   - Setup ESLint configs and check within the CI build. (DEBT-026, DEBT-032)
   - Verify S3 storage backend with real integration checks. (DEBT-061)
+  - Implement production configuration validator and startup checks. (DEBT-055)
+  - Harden TLS, proxy, CORS, CSRF, cookies, and security headers. (DEBT-055)
+  - Add deploy smoke checks, rollback procedure, and migration gate. (DEBT-055)
 
 ## Milestone M4 — Reader and Catalog UX
 - **Status:** Planned
-- **Description:** Polish discovery index, tags, SEO, and inline highlighter components.
+- **Description:** Polish discovery index, tags, SEO, accessibility, performance, error states, and legal/takedown workflow.
 - **Scope:**
   - Integrate public reader glossary highlighter. (DEBT-037)
   - Configure public SEO tags, sitemaps, and robots.txt. (DEBT-038)
   - Enable Japanese tag name translation badge display. (DEBT-029)
   - Enforce taxonomy genre payload contracts. (DEBT-030)
+  - Add shared frontend error/empty/loading states. (DEBT-056)
+  - Establish public reader accessibility baseline. (DEBT-058)
+  - Establish public reader performance budget and cache contract. (DEBT-059)
+  - Implement legal/takedown workflow with HTTP 451 enforcement. (DEBT-060)
 
 ## Milestone M5 — Admin Operations Polish
 - **Status:** Planned
-- **Description:** Admin dashboards, user control, alerts, and credential management.
+- **Description:** Admin dashboards, user control, alerts, audit viewer, and credential management.
 - **Scope:**
   - Admin user management CRUD endpoints. (DEBT-008)
   - Provider credentials settings management page. (DEBT-023)
   - Scheduled export freshness checker tasks. (DEBT-033)
   - Aggregated metrics collectors and Grafana panels. (DEBT-011, DEBT-040, DEBT-052)
   - Enable LLM-based translation QA checks. (DEBT-053)
+  - Implement owner-only audit log viewer. (DEBT-054)
 
 ## Milestone M6 — Gated Community Features (Phase 3)
 - **Status:** Deferred
@@ -78,3 +86,19 @@ Status and details are updated directly as release verification progresses.
 - **Gated requirements:**
   - Do not implement public contribution credentials until section 13 readiness gate is met.
   - Do not enable catalog search rankings before spam moderation rules are implemented.
+
+## Milestone M7 — Launch Readiness
+- **Status:** Planned
+- **Description:** Final operator go/no-go evidence collection and launch decision.
+- **Scope:**
+  - Verify core product flows end-to-end.
+  - Verify public reader safety, accessibility, performance, and SEO.
+  - Verify admin operations, audit viewer, and takedown workflow.
+  - Verify backups, restore drill, health checks, and maintenance.
+  - Verify production hardening, security, and privacy.
+  - Verify monitoring and rollback readiness.
+  - Document known issues and launch blockers.
+  - Provide a clear go/no-go decision process.
+- **Acceptance gates:**
+  - `docs/operations/launch-checklist.md` exists with status, owner, evidence, blocker, waiver, and decision fields.
+  - All M0-M5 dependencies resolved or explicitly waived.

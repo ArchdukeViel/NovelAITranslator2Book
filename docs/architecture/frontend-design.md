@@ -55,9 +55,13 @@ This document governs the public frontend implementation inside the Novel AI mai
 | Reviews/ratings (`/account/reviews`) | ✅ Implemented | Rate-limited, moderation-ready |
 | Novel/chapter requests (`/account/requests`) | ✅ Implemented | History table with rejection reasons |
 | Contribution (`/account/contribute`) | 🚫 Gated | UI exists but backend not implemented (DEBT-009) |
-| Legal pages (About, Privacy, Terms, DMCA, Contact, Cookie Policy) | ❌ Not implemented | DEBT-043 |
+| Legal pages (About, Privacy, Terms, DMCA, Contact, Cookie Policy) | ⚠️ Partial | Static pages exist; takedown intake workflow not implemented (DEBT-060) |
 | SEO/discovery (sitemap, robots, JSON-LD, OG tags) | ❌ Not implemented | DEBT-038 |
-| Glossary annotations in reader | ⚠️ Feature-flagged | `PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED=false` (DEBT-037) |
+| Glossary annotations in reader | ⚠️ Feature-flagged | `PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED=false`; highlighter imported but not rendered (DEBT-037) |
+| Frontend error/empty/loading states | ⚠️ Partial | Route-local states only; no shared components (DEBT-056) |
+| Public reader accessibility | ⚠️ Partial | Nested `<main>` landmarks, no skip link, no reduced-motion rules (DEBT-058) |
+| Public reader performance budget | ❌ Not implemented | No documented budgets, no cache-control headers (DEBT-059) |
+| Admin audit log viewer | ❌ Not implemented | AuditLog model exists; no writer, API, or UI (DEBT-054) |
 | Route naming (legacy vs approved) | ⚠️ Drift exists | See §8.1 |
 
 **Key:** ✅ = implemented and wired to backend; ⚠️ = partially implemented or feature-flagged; ❌ = not started; 🚫 = intentionally gated.

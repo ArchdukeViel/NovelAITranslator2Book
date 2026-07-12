@@ -368,7 +368,7 @@ git ls-files | grep "\.env"
 deploy/compose.yml
   reads → deploy/.env (automatically)
   references → Dockerfile in deploy/
-  depends on → postgres, redis, migrate services
+  depends on → redis, migrate services
 ```
 
 ### Variable Precedence (highest to lowest)
@@ -379,20 +379,24 @@ deploy/compose.yml
 
 ### DATABASE_URL Resolution
 
-The `compose.yml` now supports both local PostgreSQL and Supabase/managed Postgres:
+The `compose.yml` does **not** provision a PostgreSQL service. An external database instance must be provided via `DATABASE_URL`.
 
 - **If `DATABASE_URL` is set** in `deploy/.env` or process environment → all services use it
-- **If `DATABASE_URL` is NOT set** → services construct the URL from `POSTGRES_*` variables, pointing to the local `postgres` container
+- **If `DATABASE_URL` is NOT set** → services fail to start (compose requires it)
 
-To use Supabase, add to `deploy/.env`:
+To use Supabase or any managed PostgreSQL, add to `deploy/.env`:
 
 ```bash
-DATABASE_URL=postgresql://postgres:your-password@db.your-project.supabase.co:5432/postgres
+DATABASE_URL=postgresql+psycopg://postgres:your-password@db.your-project.supabase.co:5432/postgres
 ```
 
-To use local PostgreSQL (default), keep the `POSTGRES_*` variables in `deploy/.env` — the `postgres` container handles it automatically.
+To use a locally running PostgreSQL (not managed by Compose), set `DATABASE_URL` to point at it:
 
-> **Note:** When using Supabase, you can comment out or remove the `postgres` service in `deploy/compose.yml` to avoid running an unnecessary container.
+```bash
+DATABASE_URL=postgresql+psycopg://novelai:novelai@host.docker.internal:5432/novelai
+```
+
+> **Note:** Compose only provisions Redis, Caddy, frontend, backend, reader, and the migration service. PostgreSQL must be provided externally.
 
 ---
 

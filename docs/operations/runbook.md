@@ -6,13 +6,18 @@ Operational checklists for monitoring service health, worker status, and log par
 
 ## Health Check Observability
 
-Ingress controllers or container managers query these endpoints to detect system faults:
+Current health endpoints are static and do not perform real dependency probes:
 
-- `GET /health` or `GET /api/health`: Main aggregate status. Returns overall system state.
+- `GET /health` or `GET /api/health`: Returns `{"status": "ok"}`.
+- `GET /api/admin/health`: Returns static admin health.
+- `GET /api/public/health`: Returns static public health.
+
+Real liveness/readiness probes (database, storage, worker) are planned under Milestone 2a (DEBT-001). Once implemented, the following endpoints will be available:
+
 - `GET /health/live` or `GET /api/health/live`: Liveness check. Returns `200 OK` if the FastAPI process executes handlers.
 - `GET /health/ready` or `GET /api/health/ready`: Readiness check. Returns `200 OK` if all database and storage connectivity checks succeed. Returns `503 Service Unavailable` on connection failure.
 
-Diagnostics payload format (no credentials or tracebacks exposed):
+Planned diagnostics payload format (no credentials or tracebacks exposed):
 
 ```json
 {
@@ -56,3 +61,14 @@ If translation cache needs clearing for a specific novel ID, run the invalidatio
 POST /api/admin/novels/{novel_id}/cache/invalidate
 ```
 This drops matching files under `storage/novel_library/cache/` to force new provider requests.
+
+---
+
+## Backup and Recovery
+
+Scheduled and manual backup endpoints are planned under Milestone 2c (DEBT-010). Once implemented:
+
+- `POST /api/admin/backups`: Owner-only manual backup trigger.
+- Scheduled backups run based on `BACKUP_SCHEDULE_CRON`.
+
+See [`docs/operations/data-recovery.md`](data-recovery.md) for restore procedures.
