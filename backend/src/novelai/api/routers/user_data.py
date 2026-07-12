@@ -240,7 +240,7 @@ def put_review(
 ) -> ReviewResponse:
     require_public_rate_limit(request, "review_mutation", user_id=_uid(user))
     try:
-        review = service.upsert_review(_uid(user), slug, payload.rating, payload.body)
+        review = service.upsert_review(_uid(user), slug, payload.rating or 0, payload.body)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return ReviewResponse(**review)
@@ -261,7 +261,7 @@ def post_review(
 ) -> ReviewResponse:
     require_public_rate_limit(request, "review_mutation", user_id=_uid(user))
     try:
-        review = service.upsert_review(_uid(user), slug, payload.rating, payload.body)
+        review = service.upsert_review(_uid(user), slug, payload.rating or 0, payload.body)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return ReviewResponse(**review)

@@ -13,11 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
 
-# Import all models so Base.metadata.create_all picks up every FK target.
-import novelai.db.models.chapter
-import novelai.db.models.jobs
-import novelai.db.models.system
-import novelai.db.models.users  # noqa: F401
+# ORM models are registered by the session-scoped autouse fixture in conftest.py.
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.admin_taxonomy import router as admin_taxonomy_router
 from novelai.api.routers.auth import router as auth_router
@@ -464,7 +460,7 @@ class TestAdminTaxonomyPut:
         self, owner_client: TestClient, db_session,
     ) -> None:
         """PUT replaces previous admin assignments with new ones."""
-        novel = _seed_novel(db_session, "n001")
+        _seed_novel(db_session, "n001")
         _seed_genre(db_session, "fantasy", "ファンタジー")
         _seed_genre(db_session, "romance", "恋愛")
 

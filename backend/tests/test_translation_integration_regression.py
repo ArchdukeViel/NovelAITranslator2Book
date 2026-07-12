@@ -313,12 +313,14 @@ class TestCoreTranslationStorage:
     def test_active_version_loads_expected_text(self, tmp_storage: StorageService) -> None:
         save_version(tmp_storage, "n4", "1", text="Active text")
         loaded = tmp_storage.load_translated_chapter("n4", "1")
+        assert loaded is not None
         assert loaded["text"] == "Active text"
         assert loaded.get("version_kind") == "machine_translation"
 
     def test_provider_model_stored(self, tmp_storage: StorageService) -> None:
         save_version(tmp_storage, "n5", "1", provider="test-p", model="test-m")
         loaded = tmp_storage.load_translated_chapter("n5", "1")
+        assert loaded is not None
         assert loaded.get("provider") == "test-p"
         assert loaded.get("model") == "test-m"
 
@@ -327,6 +329,7 @@ class TestCoreTranslationStorage:
         v2 = save_version(tmp_storage, "n6", "1", text="Second")
         assert v1 != v2
         loaded = tmp_storage.load_translated_chapter("n6", "1")
+        assert loaded is not None
         assert loaded["text"] == "Second"
 
     def test_old_version_remains_listable(self, tmp_storage: StorageService) -> None:
@@ -538,12 +541,14 @@ class TestVersioningRetranslation:
         v2 = save_version(tmp_storage, "n14b", "1", text="v2")
         assert v1 != v2
         loaded = tmp_storage.load_translated_chapter("n14b", "1")
+        assert loaded is not None
         assert loaded["text"] == "v2"
 
     def test_old_active_preserved_on_failed_attempt(self, tmp_storage: StorageService) -> None:
         save_version(tmp_storage, "n14c", "1", text="original")
         save_version(tmp_storage, "n14c", "1", text="failed attempt", auto_activate=False)
         loaded = tmp_storage.load_translated_chapter("n14c", "1")
+        assert loaded is not None
         assert loaded["text"] == "original"
 
     def test_versions_listable_after_retranslation(self, tmp_storage: StorageService) -> None:
@@ -557,6 +562,7 @@ class TestVersioningRetranslation:
     def test_version_metadata_includes_provider_model(self, tmp_storage: StorageService) -> None:
         save_version(tmp_storage, "n14e", "1", provider="p1", model="m1")
         loaded = tmp_storage.load_translated_chapter("n14e", "1")
+        assert loaded is not None
         assert loaded.get("provider") == "p1"
         assert loaded.get("model") == "m1"
 
@@ -570,11 +576,13 @@ class TestGlossaryRevisionInvalidation:
     def test_version_stores_glossary_revision(self, tmp_storage: StorageService) -> None:
         save_version(tmp_storage, "n15", "1", glossary_revision=5, glossary_hash="gh5")
         loaded = tmp_storage.load_translated_chapter("n15", "1")
+        assert loaded is not None
         assert loaded.get("glossary_revision") == 5
 
     def test_version_stores_glossary_hash(self, tmp_storage: StorageService) -> None:
         save_version(tmp_storage, "n15b", "1", glossary_hash="abc-hash")
         loaded = tmp_storage.load_translated_chapter("n15b", "1")
+        assert loaded is not None
         assert loaded.get("glossary_hash") == "abc-hash"
 
     def test_legacy_version_without_glossary_metadata_loadable(self, tmp_storage: StorageService) -> None:
@@ -703,6 +711,7 @@ class TestFailureSafety:
         save_version(tmp_storage, "n19b", "1", text="Existing")
         tmp_storage.save_translated_chapter("n19b", "1", "partial_fail", provider="g", model="m", auto_activate=False)
         loaded = tmp_storage.load_translated_chapter("n19b", "1")
+        assert loaded is not None
         assert loaded["text"] == "Existing"
 
     def test_no_capacity_records_failure(self) -> None:
@@ -715,6 +724,7 @@ class TestFailureSafety:
         save_version(tmp_storage, "n19c", "1", text="original")
         tmp_storage.save_translated_chapter("n19c", "1", "fail", provider="g", model="m", auto_activate=False)
         loaded = tmp_storage.load_translated_chapter("n19c", "1")
+        assert loaded is not None
         assert loaded["text"] == "original"
 
 
@@ -796,6 +806,7 @@ class TestBackwardCompatibility:
         path = tmp_storage.save_translated_chapter("n22", "1", "BC text", provider="g", model="m")
         assert path.exists()
         loaded = tmp_storage.load_translated_chapter("n22", "1")
+        assert loaded is not None
         assert loaded["text"] == "BC text"
 
 
@@ -810,6 +821,7 @@ class TestFinalAcceptance:
     def test_synthetic_chapter_to_versioned_storage(self, tmp_storage: StorageService) -> None:
         save_version(tmp_storage, "final", "1", text="Final acceptance test text.")
         loaded = tmp_storage.load_translated_chapter("final", "1")
+        assert loaded is not None
         assert loaded["text"] == "Final acceptance test text."
         versions = tmp_storage.list_translated_chapter_versions("final", "1")
         assert len(versions) >= 1

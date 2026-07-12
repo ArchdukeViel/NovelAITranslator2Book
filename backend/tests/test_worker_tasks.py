@@ -126,4 +126,4 @@ class TestTaskFunctionsAreCallable:
 
     def test_run_translation_activity_returns_empty_for_unknown_id(self) -> None:
         """run_translation_activity returns {} for an activity_id not in the queue."""
-        result = run_translation_activity("nonexistent_translation_id")
+        _result = run_translation_activity("nonexistent_translation_id")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import shutil
+from collections.abc import Generator
 from pathlib import Path
 from uuid import uuid4
 from zipfile import ZipFile
@@ -18,7 +19,7 @@ from tests.conftest import TESTS_TMP_ROOT
 
 
 @pytest.fixture
-def temp_root() -> Path:
+def temp_root() -> Generator[Path]:
     TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     root = TESTS_TMP_ROOT / f"inputs_{uuid4().hex}"
     root.mkdir(parents=True, exist_ok=False)

@@ -4,7 +4,9 @@ import json
 import logging
 import os
 import shutil
+from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -14,7 +16,7 @@ from tests.conftest import TESTS_TMP_ROOT
 
 
 @pytest.fixture()
-def storage() -> StorageService:
+def storage() -> Generator[StorageService]:
     TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     data_dir = TESTS_TMP_ROOT / f"atomic_recovery_{uuid4().hex}"
     data_dir.mkdir(parents=True, exist_ok=False)
@@ -59,10 +61,10 @@ def test_atomic_write_uses_unique_temp_names(
     seen: list[Path] = []
     original_replace = os.replace
 
-    def _spy(src: object, dst: object, *args: object, **kwargs: object) -> object:
+    def _spy(src: Any, dst: Any, *args: Any, **kwargs: Any) -> Any:
         if Path(dst) == target:
-            seen.append(Path(src))  # type: ignore[arg-type]
-        return original_replace(src, dst, *args, **kwargs)  # type: ignore[arg-type]
+            seen.append(Path(src))
+        return original_replace(src, dst, *args, **kwargs)
 
     monkeypatch.setattr(os, "replace", _spy)
 
@@ -166,7 +168,7 @@ def test_chapter_bundle_write_uses_atomic_helper(
     calls: list[Path] = []
     original = storage._write_text_atomic
 
-    def _spy(path: Path, content: str, **kwargs: object) -> None:
+    def _spy(path: Path, content: str, **kwargs: Any) -> None:
         calls.append(path)
         original(path, content, **kwargs)
 
@@ -182,7 +184,7 @@ def test_translation_bundle_write_uses_atomic_helper(
     calls: list[Path] = []
     original = storage._write_text_atomic
 
-    def _spy(path: Path, content: str, **kwargs: object) -> None:
+    def _spy(path: Path, content: str, **kwargs: Any) -> None:
         calls.append(path)
         original(path, content, **kwargs)
 

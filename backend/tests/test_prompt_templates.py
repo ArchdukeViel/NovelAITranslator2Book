@@ -235,7 +235,7 @@ class TestConflictSuppression:
 
     def test_multiple_conflicts_all_reported(self) -> None:
         terms = [GlossaryTerm(source="a", target="b"), GlossaryTerm(source="c", target="d")]
-        additional, warnings = _format_additional_instructions(
+        _, warnings = _format_additional_instructions(
             glossary_entries=terms,
             prompt_glossary_block="Block",
             target_language="English",

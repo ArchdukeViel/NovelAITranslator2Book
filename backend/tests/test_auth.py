@@ -16,10 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
 
-# Import all models so Base.metadata has every FK target before create_all.
-import novelai.db.models.chapter
-import novelai.db.models.jobs
-import novelai.db.models.system  # noqa: F401
+# ORM models are registered by the session-scoped autouse fixture in conftest.py.
 from novelai.api.auth.google_oauth import GoogleOAuthProfile, get_google_oauth_client
 from novelai.api.auth.passwords import hash_password, verify_password
 from novelai.api.auth.roles import require_role
@@ -547,6 +544,7 @@ class TestPublicPasswordReset:
         )
         assert confirm.status_code == 200
         db_session.refresh(user)
+        assert user.password_hash is not None
         assert verify_password("new-password-long", user.password_hash)
 
     def test_reset_request_generic_for_existing_and_missing_email(self, oauth_client, db_session, monkeypatch):
@@ -673,6 +671,7 @@ class TestPublicPasswordReset:
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
         db_session.refresh(user)
+        assert user.password_hash is not None
         assert verify_password("new-password-long", user.password_hash)
         assert not verify_password("old-password-long", user.password_hash)
         stored_token = db_session.query(PasswordResetToken).one()
@@ -744,6 +743,7 @@ class TestPublicPasswordReset:
         assert resp.status_code == 400
         assert resp.json()["detail"] == "Invalid or expired reset token."
         db_session.refresh(user)
+        assert user.password_hash is not None
         assert verify_password("old-password-long", user.password_hash)
 
     def test_reset_confirm_missing_invalid_token_fails_generically(self, oauth_client):
@@ -854,6 +854,7 @@ class TestPublicPasswordReset:
         )
         assert confirm.status_code == 200
         db_session.refresh(user)
+        assert user.password_hash is not None
         assert verify_password("new-password-long", user.password_hash)
 
     def test_reset_request_rate_limit_eventually_returns_429(self, oauth_client):

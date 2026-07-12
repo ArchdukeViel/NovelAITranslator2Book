@@ -281,7 +281,7 @@ class TestChangedChapterUpdate:
         # First scrape (full mode) — populate chapters
         service = NovelOrchestrationService(
             storage=storage,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
             source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
@@ -319,7 +319,7 @@ class TestChangedChapterUpdate:
             translation_cache=crawl_env["cache"],
             usage_service=crawl_env["usage"],
             source_factory=lambda k: source,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
         )
         await service.scrape_chapters("changing_source", "novel-1", "all", mode="full")
 
@@ -352,7 +352,7 @@ class TestChangedChapterUpdate:
             translation_cache=crawl_env["cache"],
             usage_service=crawl_env["usage"],
             source_factory=lambda k: source,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
         )
         await service.scrape_chapters("changing_source", "novel-1", "all", mode="full")
 
@@ -392,7 +392,7 @@ class TestSingleChapterFailure:
 
         service = NovelOrchestrationService(
             storage=storage,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
             source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
@@ -420,7 +420,7 @@ class TestSingleChapterFailure:
 
         service = NovelOrchestrationService(
             storage=storage,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
             source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
@@ -445,7 +445,7 @@ class TestSingleChapterFailure:
 
         service = NovelOrchestrationService(
             storage=storage,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
             source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
@@ -474,7 +474,7 @@ class TestSingleChapterFailure:
 
         service = NovelOrchestrationService(
             storage=storage,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
             source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
@@ -498,7 +498,7 @@ class TestSingleChapterFailure:
 
         service = NovelOrchestrationService(
             storage=storage,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
             source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
@@ -527,14 +527,14 @@ class TestSingleChapterFailure:
 
         service = NovelOrchestrationService(
             storage=storage,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
             source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
             usage_service=crawl_env["usage"],
         )
 
-        result = await service.scrape_chapters(
+        _result = await service.scrape_chapters(
             "test_source", "novel-1", "all", mode="full",
             progress_callback=events.append,
         )
@@ -555,7 +555,7 @@ class TestSingleChapterFailure:
 
         service = NovelOrchestrationService(
             storage=storage,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
             source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
@@ -600,7 +600,7 @@ class TestConcurrentCrawlLocking:
 
         service = NovelOrchestrationService(
             storage=storage,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
             source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
@@ -629,7 +629,7 @@ class TestConcurrentCrawlLocking:
 
         service = NovelOrchestrationService(
             storage=storage,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
             source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
@@ -653,7 +653,7 @@ class TestConcurrentCrawlLocking:
 
         service = NovelOrchestrationService(
             storage=storage,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
             source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
@@ -678,7 +678,7 @@ class TestConcurrentCrawlLocking:
 
         service = NovelOrchestrationService(
             storage=storage,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
             source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
@@ -703,7 +703,7 @@ class TestConcurrentCrawlLocking:
 
         service = NovelOrchestrationService(
             storage=storage,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
             source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
@@ -719,8 +719,11 @@ class TestConcurrentCrawlLocking:
 
         # Both should succeed (different lock keys)
         assert all(not isinstance(r, Exception) for r in results)
-        assert results[0]["succeeded"] == 2
-        assert results[1]["succeeded"] == 2
+        first = results[0]
+        second = results[1]
+        assert isinstance(first, dict) and isinstance(second, dict)
+        assert first["succeeded"] == 2
+        assert second["succeeded"] == 2
 
     @pytest.mark.asyncio
     async def test_update_mode_uses_same_lock(self, crawl_env) -> None:
@@ -732,7 +735,7 @@ class TestConcurrentCrawlLocking:
 
         service = NovelOrchestrationService(
             storage=storage,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
             source_factory=lambda k: source,
             settings_service=crawl_env["settings"],
             translation_cache=crawl_env["cache"],
@@ -784,7 +787,7 @@ class TestFullModeDestructive:
             translation_cache=crawl_env["cache"],
             usage_service=crawl_env["usage"],
             source_factory=lambda k: source,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
         )
 
         # First scrape
@@ -810,7 +813,7 @@ class TestFullModeDestructive:
             translation_cache=crawl_env["cache"],
             usage_service=crawl_env["usage"],
             source_factory=lambda k: source,
-            translation=_NoopTranslationService(),
+            translation=_NoopTranslationService(),  # type: ignore[arg-type]
         )
 
         # First scrape

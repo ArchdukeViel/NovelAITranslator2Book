@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from fastapi.routing import APIRoute
+
 from novelai.api.routers import sources
 
 
@@ -9,7 +11,7 @@ class TestSourcesRouter:
     """
 
     def test_router_has_expected_routes(self) -> None:
-        route_paths = {route.path for route in sources.router.routes}
+        route_paths = {route.path for route in sources.router.routes if isinstance(route, APIRoute)}
         assert "/sources" in route_paths
         assert "/input-adapters" in route_paths
 

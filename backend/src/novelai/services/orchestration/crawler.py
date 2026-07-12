@@ -129,11 +129,13 @@ def _bootstrap_source_texts(storage: Any, novel_id: str, meta: dict[str, Any]) -
     load_chapter = getattr(storage, "load_chapter", None)
     if callable(list_chapters) and callable(load_chapter):
         with contextlib.suppress(Exception):
-            for chapter_id in list_chapters(novel_id):
-                chapter = load_chapter(novel_id, str(chapter_id))
-                text = chapter.get("text") if isinstance(chapter, dict) else None
-                if isinstance(text, str) and text.strip():
-                    texts.append(text)
+            chapter_ids = list_chapters(novel_id)
+            if isinstance(chapter_ids, list):
+                for chapter_id in chapter_ids:
+                    chapter = load_chapter(novel_id, str(chapter_id))
+                    text = chapter.get("text") if isinstance(chapter, dict) else None
+                    if isinstance(text, str) and text.strip():
+                        texts.append(text)
     if texts:
         return texts
 

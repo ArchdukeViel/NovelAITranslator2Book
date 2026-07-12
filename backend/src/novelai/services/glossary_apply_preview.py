@@ -339,7 +339,8 @@ class GlossaryApplyPreviewService:
     def _translated_chapter_ids(self, storage_novel_id: str) -> list[str]:
         list_translated = getattr(self.storage, "list_translated_chapters", None)
         if callable(list_translated):
-            return list_translated(storage_novel_id)
+            result = list_translated(storage_novel_id)
+            return result if isinstance(result, list) else []
         return self.storage.list_stored_chapters(storage_novel_id)
 
     def _chapter_metadata(self, novel_id: int) -> dict[str, tuple[int | None, int | None]]:

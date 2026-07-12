@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import novelai.db.models.users  # noqa: F401
+# ORM models are registered by the session-scoped autouse fixture in conftest.py.
 from novelai.db.base import Base
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.glossary import NovelGlossaryDecisionEvent, NovelGlossaryEntry

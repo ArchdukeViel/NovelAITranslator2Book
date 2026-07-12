@@ -73,7 +73,7 @@ class TestGetOrCreateNovel:
                 {"id": "ch002", "num": 2, "title": "Chapter 2"},
             ],
         }
-        novel = catalog.get_or_create_novel("new-novel", metadata)
+        _novel = catalog.get_or_create_novel("new-novel", metadata)
         db_session.commit()
         result = db_session.query(Novel).filter_by(slug="new-novel").one()
         assert result.title == "New Novel"

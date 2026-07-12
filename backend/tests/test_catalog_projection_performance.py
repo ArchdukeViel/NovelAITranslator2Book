@@ -13,22 +13,17 @@ Covers:
 
 from __future__ import annotations
 
-# Register all models for FK targets.
-import novelai.db.models.chapter
-import novelai.db.models.glossary
-import novelai.db.models.jobs
-import novelai.db.models.system
-import novelai.db.models.users  # noqa: F401
-from novelai.api.routers.public import (
-    PublicCatalogResponse,
-    _latest_translated_chapter,
-    _resolve_public_novel,
-)
+# ORM models are registered by the session-scoped autouse fixture in conftest.py.
+from novelai.api.routers.public import PublicCatalogResponse
 from novelai.services.catalog_service import (
     _PROJECTION_REFRESH_FAILURES,
     _clear_projection_refresh_failure,
     _record_projection_refresh_failure,
     get_projection_refresh_failures,
+)
+from novelai.services.public_catalog_service import (
+    _latest_translated_chapter,
+    _resolve_public_novel,
 )
 
 # ---------------------------------------------------------------------------

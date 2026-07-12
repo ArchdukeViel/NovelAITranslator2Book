@@ -16,6 +16,7 @@ from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.admin_glossary import _owner_user_id, _repo, _require_novel
 from novelai.api.routers.dependencies import get_db_session, get_storage
+
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
 

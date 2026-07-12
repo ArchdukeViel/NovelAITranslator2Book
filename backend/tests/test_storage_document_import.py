@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Generator
 from uuid import uuid4
 
 import pytest
@@ -10,7 +11,7 @@ from tests.conftest import TESTS_TMP_ROOT
 
 
 @pytest.fixture
-def storage() -> StorageService:
+def storage() -> Generator[StorageService]:
     TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     data_dir = TESTS_TMP_ROOT / f"storage_doc_{uuid4().hex}"
     data_dir.mkdir(parents=True, exist_ok=False)

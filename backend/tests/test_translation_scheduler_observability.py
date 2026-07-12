@@ -624,10 +624,10 @@ class TestSchedulerHealthData:
             "clear": lambda self: None,
         })()
         return AdminService(
-            preferences=fake_prefs,
-            translation_cache=type("FakeCache", (), {"cache_file": "nope"})(),
-            usage=type("FakeUsage", (), {"usage_path": "nope", "reload": lambda self: None, "clear": lambda self: None})(),
-            activity_runner=type("FakeRunner", (), {"status": lambda self: {}})(),
+            preferences=fake_prefs,  # type: ignore[arg-type]
+            translation_cache=type("FakeCache", (), {"cache_file": "nope"})(),  # type: ignore[arg-type]
+            usage=type("FakeUsage", (), {"usage_path": "nope", "reload": lambda self: None, "clear": lambda self: None})(),  # type: ignore[arg-type]
+            activity_runner=type("FakeRunner", (), {"status": lambda self: {}})(),  # type: ignore[arg-type]
         )
 
     def test_health_structure(self) -> None:

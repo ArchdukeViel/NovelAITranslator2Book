@@ -16,6 +16,7 @@ import pytest
 
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState
+from novelai.db.model_registry import register_database_models
 from novelai.glossary.glossary import Glossary
 from novelai.providers.base import TranslationProvider
 from novelai.runtime.container import Container
@@ -139,6 +140,15 @@ def auto_cleanup_test_outputs() -> Iterator[None]:
     cleanup_test_artifacts(include_pytest_managed=True)
     yield
     cleanup_test_artifacts(include_pytest_managed=True)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def register_orm_models() -> None:
+    """Register all ORM models with SQLAlchemy before any test runs.
+
+    Replaces scattered side-effect imports of individual model modules.
+    """
+    register_database_models()
 
 
 @pytest.fixture(scope="session", autouse=True)

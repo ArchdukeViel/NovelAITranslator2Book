@@ -670,15 +670,12 @@ def normalize_model_configs(raw_items: Any, *, default_provider_key: str, defaul
             provider_model = _optional_str(item.get("provider_model") or item.get("model"))
             if provider_key is None or provider_model is None:
                 continue
+            priority = _optional_nonnegative_int(item.get("priority_order"))
             configs.append(
                 SchedulerModelConfig(
                     provider_key=provider_key,
                     provider_model=provider_model,
-                    priority_order=(
-                        _optional_nonnegative_int(item.get("priority_order"))
-                        if _optional_nonnegative_int(item.get("priority_order")) is not None
-                        else index
-                    ),
+                    priority_order=priority if priority is not None else index,
                     quality_priority_order=_optional_nonnegative_int(item.get("quality_priority_order")),
                     rpm_limit=_optional_positive_int(item.get("rpm_limit")),
                     rpd_limit=_optional_positive_int(item.get("rpd_limit")),

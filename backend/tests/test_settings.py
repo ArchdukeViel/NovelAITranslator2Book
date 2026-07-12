@@ -12,7 +12,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import novelai.db.models  # noqa: F401
+# ORM models are registered by the session-scoped autouse fixture in conftest.py.
 from novelai.config.settings import AppSettings, settings
 from novelai.db.base import Base
 from novelai.services.preferences_service import PreferencesService

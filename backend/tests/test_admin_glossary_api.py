@@ -16,12 +16,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 import novelai.api.routers.admin_glossary_provider as admin_glossary_provider
 
-# Import all DB models so Base.metadata.create_all sees FK targets.
-import novelai.db.models.chapter
-import novelai.db.models.genre
-import novelai.db.models.jobs
-import novelai.db.models.system
-import novelai.db.models.tag  # noqa: F401
+# ORM models are registered by the session-scoped autouse fixture in conftest.py.
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.admin_glossary import router as admin_glossary_router
 from novelai.api.routers.auth import router as auth_router

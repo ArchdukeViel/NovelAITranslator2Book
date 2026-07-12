@@ -31,6 +31,7 @@ from novelai.services.library_service import (
     _source_metadata_inspection_payload,
     _source_metadata_warnings,
 )
+
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 logger = logging.getLogger(__name__)
 
@@ -181,7 +182,7 @@ async def inspect_source_metadata(
     novel_id: str,
     storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
-) -> SourceMetadataInspection:
+) -> dict[str, Any]:
     meta = storage.load_metadata(novel_id)
     if meta is None:
         if novel_id not in storage.list_novels():

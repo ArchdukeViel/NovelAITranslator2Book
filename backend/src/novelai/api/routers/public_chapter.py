@@ -545,7 +545,19 @@ async def get_chapter(
 
                 if platform_novel_id is not None:
                     entries = repository.list_glossary_entries_for_novel(platform_novel_id)
-                    public_terms = select_public_terms(entries)
+                    entry_dicts = [
+                        {
+                            "id": e.id,
+                            "canonical_term": e.canonical_term,
+                            "approved_translation": e.approved_translation,
+                            "term_type": e.term_type,
+                            "status": e.status,
+                            "aliases": [{"alias": a.alias, "alias_type": a.alias_type}
+                                        for a in getattr(e, "aliases", [])] if hasattr(e, "aliases") else [],
+                        }
+                        for e in entries
+                    ]
+                    public_terms = select_public_terms(entry_dicts)
                     reader_blocks = response.get("reader_blocks", [])
                     annotations = find_annotations(public_terms, response.get("text", ""), reader_blocks)
                     if annotations:

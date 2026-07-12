@@ -402,14 +402,14 @@ class TestGenericTaxonomyFields:
     def test_generic_returns_empty_taxonomy_fields(self) -> None:
         """Generic adapter must not guess genre/tags from prose."""
         source = GenericSource()
-        html = """
+        _html = """
         <html><body>
           <h1>Fantasy Story About Magic</h1>
           <meta name="author" content="Some Author">
-          <p>A wonderful tale of magic and adventure in a fantasy world.</p>
+          <p>A wonderful tale of magic and adventure in a fantasy world</p>
           <a href="/chapter/1">Chapter 1</a>
           <a href="/chapter/2">Chapter 2</a>
-        </body></html>
+       </body</html>
         """
         # We can't easily test fetch_metadata (it's async and does HTTP),
         # but we can verify the return shape by checking the dict construction
