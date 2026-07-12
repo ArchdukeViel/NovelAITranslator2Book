@@ -6,20 +6,27 @@ For the technical debt register and launch blockers, see the register: [`docs/DE
 
 ---
 
+## Launch Status
+
+- **Launch readiness:** Not ready. Seven new Kiro specs (admin audit viewer, deployment hardening, frontend error states, launch checklist, public reader accessibility, public reader performance, terms/DMCA takedown) are planned but not implemented.
+- **V1 launch blockers:** 4 (DEBT-001 health probes, DEBT-002 CI build verification, DEBT-003 CI Postgres, DEBT-006 admin glossary circular import).
+
+---
+
 ## Core Infrastructure Config
 
 - **Backend:** FastAPI monolith (default) with split deployment options under `DEPLOY_MODE=split`.
 - **Frontend:** Next.js 15 App Router.
 - **Storage:** Storage backend files are canonical for novel metadata, chapters, translations, assets, and exports. PostgreSQL database holds derived projections (catalog, novels, chapters) and canonical domain rows (users, auth, glossary, requests, audits).
 - **Worker:** Background activity worker defaults to in-process (`JOB_WORKER_ENABLED=true`). Async queue support via Redis/RQ exists.
-- **Settings:** Configured via `pydantic-settings` in `backend/src/novelai/config/settings.py`.
+- **Settings:** Configured via `pydantic-settings` in `backend/src/novelai/config/settings.py`. Canonical environment variable is `ENV` (not `APP_ENV`).
 
 ---
 
 ## Technical Debt and Blockers Summary
 
 - **V1 Launch Blockers:** Health probes (DEBT-001), CI build checks (DEBT-002), CI Postgres setup (DEBT-003), and admin glossary circular imports (DEBT-006).
-- **Technical Debt Register:** Consolidated active registry is in [`docs/DEBT.md`](DEBT.md). Duplicated records have been cleaned.
+- **Technical Debt Register:** Consolidated active registry is in [`docs/DEBT.md`](DEBT.md). 33 active entries.
 
 ---
 
@@ -31,3 +38,16 @@ For the technical debt register and launch blockers, see the register: [`docs/DE
 - **Frontend Typecheck:** Next.js type check passes.
 - **Frontend Build:** Production build finishes clean.
 - **Docker builds:** Local admin, reader, and frontend Dockerfiles build successfully.
+- **CI:** Database-dependent tests blocked (DEBT-003). Image build verification pending (DEBT-002).
+
+---
+
+## Known Gaps (Not Launch-Ready)
+
+- Health endpoints are static; no real DB/storage/worker probes.
+- No scheduled backups; no retention cleanup.
+- No audit log writer or owner-only audit viewer.
+- No takedown workflow; no HTTP 451 enforcement.
+- No measured performance or accessibility gate.
+- No launch readiness evidence or go/no-go decision.
+- No production config validator; no deploy smoke checks.

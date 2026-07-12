@@ -7,7 +7,7 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 
 ## Executive Summary
 
-- **Total active debt entries:** 26
+- **Total active debt entries:** 33
 - **V1 launch blockers:** 4
 - **Critical security/data integrity:** 0
 
@@ -291,3 +291,84 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Affected areas:** QA services
 - **Description:** Translation QA heuristics exist but LLM-based grading disabled by default.
 - **Completion criteria:** LLM checker activated on translation, triggers retry on low confidence.
+
+### DEBT-054 — Admin audit log viewer missing
+- **Milestone:** Milestone M5 (Admin Operations)
+- **Category:** Backend | Frontend
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** `backend/src/novelai/api/routers/admin.py`, `frontend/app/(admin)/admin/audit/`
+- **Description:** AuditLog model exists but no writer, API, or owner-only viewer. Audit events are not generated for sensitive actions.
+- **Completion criteria:** Owner-only audit list/detail APIs, server-side redaction, frontend viewer with filters and pagination.
+
+### DEBT-055 — Deployment production hardening gaps
+- **Milestone:** Milestone M3 (Deployment)
+- **Category:** Backend | DevOps
+- **Priority:** High
+- **Status:** Pending
+- **Affected areas:** `backend/src/novelai/config/settings.py`, `backend/src/novelai/api/app.py`, `deploy/compose.yml`, `deploy/Caddyfile`
+- **Description:** No production config validator, no trusted proxy/host policy, no security headers, no deploy smoke checks, no rollback procedure. Compose healthcheck targets wrong service.
+- **Completion criteria:** Production validator, trusted proxy/host config, security headers, deploy smoke checks, rollback procedure, corrected healthcheck.
+
+### DEBT-056 — Frontend error boundaries and empty states
+- **Milestone:** Milestone M4 (Reader/Catalog UX)
+- **Category:** Frontend
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** `frontend/app/`, `frontend/components/`, `frontend/lib/public-api.ts`
+- **Description:** No shared loading/empty/error/unavailable states. Public API error parsing exposes raw backend messages. No route-level error boundaries.
+- **Completion criteria:** Shared state components, API error normalizer, route-level error/loading/not-found boundaries, safe frontend logging.
+
+### DEBT-057 — Launch readiness checklist missing
+- **Milestone:** Milestone M7 (Launch Readiness)
+- **Category:** Operations
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** `docs/operations/launch-checklist.md`
+- **Description:** No operator go/no-go artifact. No evidence collection, waiver tracking, or rollback validation.
+- **Completion criteria:** `docs/operations/launch-checklist.md` exists with status, owner, evidence, blocker, waiver, and decision fields.
+
+### DEBT-058 — Public reader accessibility baseline
+- **Milestone:** Milestone M4 (Reader/Catalog UX)
+- **Category:** Frontend
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** `frontend/components/public/public-shell.tsx`, `frontend/app/(public)/`
+- **Description:** Nested `<main>` landmarks, no skip link, no reduced-motion rules, no focus management, glossary annotations not rendered.
+- **Completion criteria:** Single main landmark, skip link, reduced-motion CSS, focus management, accessible reader controls.
+
+### DEBT-059 — Public reader performance budget
+- **Milestone:** Milestone M4 (Reader/Catalog UX)
+- **Category:** Frontend | Backend
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** `frontend/app/(public)/`, `backend/src/novelai/api/routers/public_*.py`
+- **Description:** No documented latency/payload budgets, no cache-control headers, no bundle analysis, no request-count tests.
+- **Completion criteria:** Documented budgets, cache-control headers, bundle analysis, request-count tests, annotation cap.
+
+### DEBT-060 — Terms/DMCA takedown workflow missing
+- **Milestone:** Milestone M4 (Reader/Catalog UX)
+- **Category:** Backend | Frontend
+- **Priority:** High
+- **Status:** Pending
+- **Affected areas:** `backend/src/novelai/api/routers/`, `frontend/app/(public)/dmca/`
+- **Description:** No takedown models, intake endpoint, admin APIs/UI, enforcement checks, HTTP 451 tombstone, cache invalidation, sitemap exclusion, audit events.
+- **Completion criteria:** Takedown models, public intake, owner-only admin APIs/UI, HTTP 451 enforcement, cache/sitemap invalidation, audit events.
+
+### DEBT-061 — S3 storage backend validation
+- **Milestone:** Milestone M3 (Deployment)
+- **Category:** Storage
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** `backend/src/novelai/storage/backends/s3.py`
+- **Description:** S3 backend fields restored to settings but not validated in production deployment.
+- **Completion criteria:** Real S3 integration tests, production config validation, backup/restore drill with S3.
+
+### DEBT-073 — Glossary prompt injection test drift
+- **Milestone:** Milestone M1 (Glossary/Router Repair)
+- **Category:** Backend | Testing
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** `backend/tests/test_glossary_prompt_injection.py`
+- **Description:** Test expects stale prompt text after prompt policy update.
+- **Completion criteria:** Test assertions updated to match current prompt policy.

@@ -14,6 +14,8 @@ Docker Compose launches the following services as defined in `deploy/compose.yml
 - `reader`: FastAPI public-reader instance handling catalog browsing and chapter reading (port 8001).
 - `migrate`: Short-lived job that runs database migrations before API services boot.
 
+PostgreSQL is **not** provisioned by Compose. An external database instance must be provided via `DATABASE_URL`.
+
 ---
 
 ## Reverse Proxy Routing
@@ -42,3 +44,20 @@ The environment variable `DEPLOY_MODE` controls API service registration:
 
 The Docker Compose configuration does not provision a PostgreSQL service. An external database instance must be provided via the `DATABASE_URL` setting.
 If running DB-backed actions, configure `DATABASE_URL` in the `.env` template before launching containers.
+
+---
+
+## Health and Readiness
+
+Current health endpoints are static:
+
+- `GET /health` and `GET /api/health` return `{"status": "ok"}`.
+- `GET /api/admin/health` and `GET /api/public/health` return static responses.
+
+Real liveness/readiness probes (database, storage, worker) are planned under Milestone 2a (DEBT-001).
+
+---
+
+## Worker and Maintenance
+
+The backend container runs an optional in-process activity worker when `JOB_WORKER_ENABLED=true`. There is no dedicated worker, scheduler, or backup container in the current Compose topology. Scheduled backup creation, retention cleanup, and maintenance tasks are planned under Milestone 2c (DEBT-010, DEBT-025).

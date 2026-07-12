@@ -8,7 +8,7 @@ Procedures for storage backups, database snapshotting, and system recovery.
 
 Backup archives are written to local disk. Only file storage domains (novels, metadata, translations, assets) are packaged by `BackupManager`.
 
-Manual backup trigger (admin endpoint):
+Manual backup trigger (admin endpoint, planned under DEBT-010):
 ```bash
 POST /api/admin/backups
 ```
@@ -20,7 +20,7 @@ This queues a background backup activity. Response format:
 }
 ```
 
-Scheduled backups run based on `BACKUP_SCHEDULE_CRON`. 
+Scheduled backups run based on `BACKUP_SCHEDULE_CRON` (planned under DEBT-010).
 **Notice:** If `STORAGE_BACKEND=s3` is active, backup generation is disabled. S3 storage requires external bucket snapshot procedures.
 
 ---
@@ -49,3 +49,9 @@ If a storage or database failure occurs, execute recovery in this sequence:
    POST /api/admin/catalog/rebuild
    ```
    This reads all metadata files under `storage/novel_library/` and updates Postgres tables.
+
+---
+
+## Canonical Ownership
+
+See [`docs/storage-contract.md`](../storage-contract.md) for the full canonical ownership matrix and restore rules.

@@ -6,25 +6,32 @@ For live debt items, see the register: [`docs/DEBT.md`](DEBT.md).
 
 ---
 
-## Active Specs (14)
+## Active Specs (21)
 
 These designs represent planned features or ongoing roadmap items.
 Checklist files (`tasks.md`) inside active spec directories contain non-binding planning records.
 
+- `admin-audit-log-viewer` -> DEBT-054 (Milestone M5)
 - `admin-user-management` -> DEBT-008 (Milestone M5)
 - `analytics-baseline` -> DEBT-011 (Milestone M5)
 - `contact-support-legal-pages` -> DEBT-043 (Milestone M4)
 - `deep-health-readiness-checks` -> DEBT-001 (Milestone M2a)
+- `deployment-production-hardening` -> DEBT-055 (Milestone M3)
+- `frontend-error-boundary-and-empty-states` -> DEBT-056 (Milestone M4)
+- `launch-readiness-checklist` -> DEBT-057 (Milestone M7)
 - `maintenance-cron` -> DEBT-042 (Milestone M2c)
 - `metric-dashboard-baseline` -> DEBT-040 (Milestone M3)
 - `notification-system` -> DEBT-009 (Milestone M5)
 - `pdf-exporter=registration` -> DEBT-007 (Milestone 2b)
+- `public-reader-accessibility-baseline` -> DEBT-058 (Milestone M4)
 - `public-reader-graceful-degradation` -> Milestone M4
+- `public-reader-performance-budget` -> DEBT-059 (Milestone M4)
 - `public-reader-seo-discovery-baseline` -> DEBT-038 (Milestone M4)
 - `rate-limit-and-abuse-protection-baseline` -> DEBT-039 (Milestone M3)
 - `scheduled-backups-and-restore-drills` -> DEBT-010 (Milestone 2c)
 - `scheduled-export-freshness-check` -> DEBT-033 (Milestone M5)
 - `scheduler-runtime-state-persistence` -> DEBT-036 (Milestone 2c)
+- `terms-dmca-takedown-workflow` -> DEBT-060 (Milestone M4)
 
 ---
 
