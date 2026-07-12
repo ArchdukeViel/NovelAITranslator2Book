@@ -564,6 +564,7 @@ async def search_tags(
     db: Session = Depends(get_db_session),
 ) -> list[PublicTagSearchResult]:
     """Search tags by name (case-insensitive). No tags are created."""
+    from novelai.db.models.tag import Tag
 
     query_str = q.strip()
     if len(query_str) < 2:

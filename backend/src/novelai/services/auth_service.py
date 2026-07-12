@@ -291,13 +291,13 @@ class AuthService:
         if self.mailer is None:
             logger.info("Password reset email delivery skipped (no mailer configured) for user_id=%s.", user_id)
             return
-        self.mailer.send_password_reset_email(email=email, token=token, user_id=user_id)
+        self.mailer.send_password_reset_email(email=email, token=token)
 
     def _deliver_email_verification_email(self, email: str, token: str, user_id: int) -> None:
         if self.mailer is None:
             logger.info("Email verification delivery skipped (no mailer configured) for user_id=%s.", user_id)
             return
-        self.mailer.send_email_verification_email(email=email, token=token, user_id=user_id)
+        self.mailer.send_email_verification_email(email=email, token=token)
 
     # -- Google OAuth -----------------------------------------------------------
 

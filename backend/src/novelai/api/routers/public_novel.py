@@ -36,7 +36,7 @@ async def get_novel(
     slug: str,
     include_adult: bool = Query(default=False, description="Include adult/R18 taxonomy terms"),
     service: PublicCatalogService = Depends(get_public_catalog_service),
-) -> PublicNovelSummary:
+) -> dict[str, Any]:
     """Public novel detail."""
     resolved = service._resolve_public_novel(slug)
     if resolved is None:
