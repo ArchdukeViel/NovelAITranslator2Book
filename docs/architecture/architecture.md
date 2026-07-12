@@ -15,7 +15,7 @@ before implementation.
 single-owner / controlled-admin public reading platform
 FastAPI backend under /api
 Next.js public reader + owner/admin UI
-Postgres-backed metadata, file-backed chapter content
+File-backed canonical novel metadata and content, Postgres catalog/user domain rows
 background crawl/translation activity worker
 own server session auth implemented for dangerous admin operations
 guest public catalog / novel detail / chapter reader implemented
@@ -30,8 +30,6 @@ NVIDIA provider removed; Gemini-only fallback chain
 S3 storage fields restored to settings (not yet active)
 pipeline/scheduler hardened: job-runtime persistence, model-state tracking
 microservice-split readiness: dual entry points, DEPLOY_MODE
-router layer violations: 9 routers import db/storage/sources directly (DEBT-054)
-circular import in admin_glossary routers (DEBT-006)
 ```
 
 NovelAI is currently a web-based Japanese novel ingestion, translation, editing,
@@ -455,81 +453,7 @@ See consolidated register: [`docs/DEBT.md`](../DEBT.md).
 
 ## 16. Dependency-Aware Roadmap
 
-**Phase A — Safety/contract stabilization: complete**
-
-- Owner-session auth boundary stabilized.
-- Dangerous backend routes protected by `require_role("owner")`.
-- Legacy API-key behavior fails closed.
-- Canonical `/api/admin/*` aliases added for implemented admin behavior.
-- Public contribution credential UI gated.
-- Public auth UX gated.
-- Public `/api/user/*` frontend API/hooks quarantined.
-- Future admin API surface quarantined.
-- Tests protect these gates.
-
-**Phase A2 — Infrastructure & platform features: complete**
-
-- Adapter plugin system with SourceAdapter ABC and pkgutil auto-discovery.
-- Structured error handling/logging with trace_id propagation and JsonFormatter.
-- Advanced translation caching with SHA-256 sharded file storage.
-- Glossary auto-population with suggestion/review/apply workflow.
-- Microservice-split readiness: dual entry points, DEPLOY_MODE dispatch, Docker Compose + Caddy split routing, novelai_core facade package.
-
-**Phase B — Public auth contract design: complete for current public auth**
-
-- Choose and document Google OAuth plus email/password public auth flow.
-- Define user session semantics separately from owner bootstrap login.
-- Define object ownership rules for user-owned data.
-- Define `/api/user/*` request/response contracts.
-- Add backend/frontend contract tests before re-enabling UI.
-- Contract source: `docs/architecture/public-auth-contract.md`.
-
-**Phase C — Public user features: largely complete**
-
-- Re-enable library only after auth and ownership tests pass.
-- Re-enable progress/history only after request/response contract tests pass.
-- Re-enable ratings/reviews with moderation and abuse rules.
-- Re-enable public requests with requester identity, rate limits, and owner
-  approval semantics.
-
-**Phase B6 — Security hardening: complete**
-
-- CSRF enforcement for session-authenticated mutations.
-- Public rate limits for auth, user data, and engagement operations.
-- Production session secret fail-closed.
-
-**Next phase: deployment (DEP1)**
-
-- Docker Compose production deployment with Caddy reverse proxy.
-- Object storage boundary (S3/R2/B2) for covers/chapters at scale.
-- Scheduler runtime persistence hardening.
-- **Router layer violation cleanup (DEBT-054):** Extract 9 services, thin 9 routers.
-- **Circular import fix (DEBT-006):** Resolve `admin_glossary.py` ↔ `admin_glossary_provider.py` circular import.
-- **CI/CD build verification (DEBT-002):** Verify `build.yml` runs green on push to main.
-- **CI Postgres (DEBT-003):** Add PostgreSQL service to GitHub Actions for DB-dependent tests.
-- **Health probes (DEBT-001):** Implement real liveness/readiness probes.
-
-**Phase D - Guest reader/catalog UX**
-
-- Improve catalog/discovery, novel detail metadata, chapter navigation, and
-  reader polish.
-- Add tags/filtering/finder only against stable metadata contracts.
-- Add rankings/trending only after event metrics and anti-abuse rules exist.
-
-**Phase E - Admin operations polish**
-
-- Improve import/crawl/translation workflows.
-- Improve request moderation and job monitoring.
-- Add destructive-action safety and audit coverage.
-- Do not add fake `/api/admin/*` endpoints; implement backend first, then export
-  frontend methods.
-
-**Phase F - Community/contribution features**
-
-- Community folders/lists after public auth and moderation are real.
-- Rankings/leaderboards after metrics are trustworthy.
-- Public contributed credentials only after Section 13's lifecycle,
-  encryption, ledger, owner approval, and abuse controls exist.
+Roadmap phases and release gates are documented in the central roadmap file: [`docs/roadmap.md`](../roadmap.md).
 
 ## 17. Do Not Build Yet
 

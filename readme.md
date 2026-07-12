@@ -2,9 +2,9 @@
 
 Novel AI is a web-first Japanese novel platform for crawling source sites, queueing translation jobs, editing translated chapters, exporting books, and serving a public reader UI.
 
-The project is now oriented toward a production-style web deployment, similar in shape to a WTR-Lab style site: a Next.js frontend for public/admin pages, a FastAPI backend under `/api`, PostgreSQL-backed metadata, file/object-backed chapter content, and Redis/RQ background workers for crawler/translation activity.
+The project is now oriented toward a production-style web deployment, similar in shape to a WTR-Lab style site: a Next.js frontend for public/admin pages, a FastAPI backend under `/api`, file-backed canonical novel metadata and content, Postgres catalog/user domain rows, and an in-process activity worker (with optional standalone worker or Redis/RQ support).
 
-Current mode is single-owner / controlled-admin transitioning to a public platform. The project has 41 completed specs in `.agents/kiro/archive/` (37 fully complete, 3 partial, 1 not started) covering:
+Current mode is single-owner / controlled-admin transitioning to a public platform. The project has 40 archived specs under `.agents/kiro/archive/` and 19 active specs under `.agents/kiro/specs/` covering:
 - Scheduler-enabled admin-owned provider/model routing
 - PostgreSQL 16 with SQLAlchemy 2.x + Alembic migrations (metadata, users, jobs)
 - Redis 7 + RQ background workers
@@ -68,10 +68,10 @@ cd "C:\Akmal\Novel AI"
 Copy-Item .env.example .env
 ```
 
-Start PostgreSQL and Redis via Docker:
+Start Redis via Docker (PostgreSQL must be provided externally or running locally; Compose does not spin up a database container):
 
 ```powershell
-docker compose -f deploy/compose.yml up -d postgres redis
+docker compose -f deploy/compose.yml up -d redis
 ```
 
 Run database migrations:
@@ -136,7 +136,7 @@ http://127.0.0.1:8000/api/health
 4. Queue translations and exports in `/admin/translation`.
 5. Monitor crawler/translation activity in `/admin/activity` and `/admin/activity/[activityId]`.
 6. Review and edit chapter versions in `/admin/editor`.
-7. Read public chapters under `/novel/[slug]`.
+7. Read public chapters under `/novels/[novel_id]`.
 
 ## Quick Start with Docker
 
@@ -192,12 +192,7 @@ Open:
 http://127.0.0.1:8080/admin
 ```
 
-The reverse proxy routes:
-
-```text
-/api/* -> FastAPI backend
-/*     -> Next.js frontend
-```
+The reverse proxy routes requests to `/api/admin/*`, `/api/auth/*`, `/api/novels/*`, and `/novels/*` to the backend, `/api/public/*` to the reader, and catch-all to the frontend.
 
 Runtime data is mounted from `storage/novel_library`.
 
@@ -237,4 +232,4 @@ npm run build
 - [docs/environment.md](docs/environment.md): environment variables reference (single `.env` at repo root, `deploy/.env` for Docker)
 - [docs/cicd-manual-setup.md](docs/cicd-manual-setup.md): CI/CD pipeline setup guide (GitHub Actions)
 - [docs/current_state.md](docs/current_state.md): implementation status snapshot and test baseline
-- [SPECS_COMPLETION.md](SPECS_COMPLETION.md): all 14 specs completion summary
+- [docs/SPECS_COMPLETION.md](docs/SPECS_COMPLETION.md): all specs completion ledger and index

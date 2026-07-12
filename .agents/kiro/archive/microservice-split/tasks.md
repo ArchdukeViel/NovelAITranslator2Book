@@ -23,14 +23,14 @@
   - [x] 4.1 Add `reader` service to `deploy/compose.yml` (REQ-4.1)
   - [x] 4.2 Rename backend service to `admin` in `deploy/compose.yml` (REQ-4.2)
   - [x] 4.3 Create `deploy/reader.Dockerfile` (REQ-4.1)
-  - [ ] 4.4 Rename `deploy/backend.Dockerfile` to `deploy/admin.Dockerfile`
+  - [x] 4.4 Rename `deploy/backend.Dockerfile` to `deploy/admin.Dockerfile`
   - [x] 4.5 Update `deploy/Caddyfile` for dual-service routing (REQ-2.1)
   - [x] 4.6 Add health check directives to Caddyfile (REQ-2.2)
   - [x] 4.7 Add per-service rate limiting to Caddyfile (REQ-2.3)
 
-- [ ] 5. Update CI/CD
-  - [ ] 5.1 Update `.github/workflows/ci.yml` to build and test both services (REQ-5.1)
-  - [ ] 5.2 Update Docker image tagging for service names (REQ-5.2)
+- [x] 5. Update CI/CD
+  - [x] 5.1 Update `.github/workflows/ci.yml` to build and test both services (REQ-5.1)
+  - [x] 5.2 Update Docker image tagging for service names (REQ-5.2)
 
 - [x] 6. Write tests
   - [x] 6.1 Test monolith mode serves all endpoints

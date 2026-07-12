@@ -1,128 +1,80 @@
-# Specs Completion Summary
+# Specs Completion Ledger
 
-All 41 specs in `.agents/kiro/archive/` have been assessed.
-Each spec includes `design.md`, `requirements.md`, and `tasks.md`.
-
-This document summarizes completion status, known flaws, and remaining debt.
-
----
-
-## Overall Status
-
-| Category | Count |
-|----------|-------|
-| Total specs | 41 |
-| Fully complete | 37 |
-| Partial (in-progress tasks) | 3 |
-| Not started | 1 |
+This is a historical inventory of spec files located under `.agents/kiro/`.
+For current milestones and active work items, see the roadmap: [`docs/roadmap.md`](roadmap.md).
+For live debt items, see the register: [`docs/DEBT.md`](DEBT.md).
 
 ---
 
-## Fully Complete Specs (37)
+## Active Specs (14)
 
-| Spec | Tasks | Notes |
-|------|-------|-------|
-| adapter-plugin-system | 33/33 | SourceAdapter ABC, AdapterRegistry, all adapters refactored |
-| advanced-caching | 32/32 | TranslationCacheService, SHA-256 keys, sharded storage, TTL, glossary invalidation |
-| atomic-json-storage-recovery | 116/116 | JSON storage atomic write recovery with backup/restore |
-| auth-authorization | 34/34 | HTTP-only sessions, guest/user/owner roles, require_role(), Google OAuth + email/password |
-| chapter-parallelization | 25/25 | asyncio.Semaphore + bounded asyncio.gather, per-chapter failure isolation |
-| checkpoint-resume-pipeline | 40/40 | Checkpoint/resume for translation pipeline, runtime state persistence |
-| cicd-pipeline | 32/32 | CI (lint+test+e2e), build (Docker GHCR push), deploy (SSH). Tasks 6-7 require GitHub UI |
-| cloud-storage-s3 | 37/37 | S3/R2/B2 storage backend boundary, STORAGE_BACKEND env switch |
-| crawl-fetch-observability | 222/222 | Crawl progress, source health aggregation, dark chapter detection, image failure tracking |
-| create-novel-lifecycle | 28/28 | End-to-end novel creation flow through all layers |
-| dockerize-application | 28/28 | Docker Compose, Caddy reverse proxy, split routing, migrate service |
-| e2e-integration-testing | 31/31 | Deterministic integration regression suite |
-| error-handling-logging | 29/29 | StructuredHTTPException, PipelineContext, JsonFormatter, /health/errors, trace_id |
-| exact-translation-memory | 23/23 | Exact match detection, memory guard, retranslation avoidance |
-| export-storage-observability | 294/294 | ExportManifestService, manifest schema, write/read/list, freshness, admin API endpoints |
-| gemini-provider-only | 36/36 | Gemini provider, structured JSON handling, metadata batching |
-| glossary-apply-safety | 55/55 | Preview, validation, rollback for glossary application |
-| glossary-auto-population | 38/38 | SuggestionExtractor, GlossarySuggestionService, review/reject/apply API |
-| glossary-aware-editor-qa | 275/275 | GlossaryEditorQAService, lint endpoint, saved-time QA, approve-translation-change |
-| glossary-diagnostics-admin-surfacing | 239/239 | GlossaryDiagnosticsService, normalizer, aggregation helper, admin API |
-| glossary-management-consolidation | 24/24 | Glossary management consolidation across file-glossary and DB glossary |
-| glossary-revision-translation-invalidation | 246/246 | Glossary revision tracking, stale version detection, retranslate-stale workflow |
-| glossary-sync-bridge | 49/49 | Background glossary sync between storage and DB |
-| jp-en-prompt-quality-policy | 192/192 | JP-EN prompt policy verification, snapshot/fixture/cache-key/checklist tests |
-| novel-onboarding-state-machine | 148/148 | OnboardingStateMachine, valid transitions, storage callbacks, error handling |
-| operational-safety-observability | 53/53 | atomic_write, parse failure logging, catalog refresh hook, request_id correlation |
-| prompt-translation-hardening | 57/57 | Prompt structure hardening, injection resistance, test coverage |
-| public-path-performance | 49/49 | Bundle size audit, image optimization, lazy loading, pagination, backend caching |
-| public-reader-availability | 179/179 | Public reader, hard_404, chapter_shell, latest_version fallback, owner preview |
-| public-reader-glossary-annotations | 296/296 | PublicGlossaryAnnotationsService, term selection, case-insensitive matching |
-| smart-chunking-context | 21/21 | Adaptive balanced chunking, conditional overlap, paragraph hash lineage |
-| storage-boundary-consolidation | 18/18 | File-backed, chapter-based, runtime contracts, cleanup_expired_runtime_data |
-| storage-contract-and-schema-tests | 109/109 | Storage contract tests for manifest write/read/list, export helpers |
-| translation-integration-test-suite | 275/275 | Deterministic integration regression suite (58 tests) |
-| translation-qa-hardening | 52/52 | QA stage hardening, quality metrics, threshold enforcement |
-| translation-resume-hardening | 46/46 | Scheduler resume hardening, runtime state persistence, chunk attempt tracking |
+These designs represent planned features or ongoing roadmap items.
+Checklist files (`tasks.md`) inside active spec directories contain non-binding planning records.
+
+- `admin-user-management` -> DEBT-008 (Milestone M5)
+- `analytics-baseline` -> DEBT-011 (Milestone M5)
+- `contact-support-legal-pages` -> DEBT-043 (Milestone M4)
+- `deep-health-readiness-checks` -> DEBT-001 (Milestone M2a)
+- `maintenance-cron` -> DEBT-042 (Milestone M2c)
+- `metric-dashboard-baseline` -> DEBT-040 (Milestone M3)
+- `notification-system` -> DEBT-009 (Milestone M5)
+- `pdf-exporter=registration` -> DEBT-007 (Milestone 2b)
+- `public-reader-graceful-degradation` -> Milestone M4
+- `public-reader-seo-discovery-baseline` -> DEBT-038 (Milestone M4)
+- `rate-limit-and-abuse-protection-baseline` -> DEBT-039 (Milestone M3)
+- `scheduled-backups-and-restore-drills` -> DEBT-010 (Milestone 2c)
+- `scheduled-export-freshness-check` -> DEBT-033 (Milestone M5)
+- `scheduler-runtime-state-persistence` -> DEBT-036 (Milestone 2c)
 
 ---
 
-## Partial Specs (3)
+## Archived Specs (45)
 
-### glossary-first-onboarding (53/55 — 2 checkpoints in-progress)
-- **Implemented:** Glossary columns on Novel ORM, catalog projection, GlossaryStatusService, translation guard, bootstrap hook, audit metadata, ReadinessBadge, GlossaryOnboardingActions.
-- **Remaining:** 2 checkpoints (tasks 8, 12) marked `[~]` — verification checkpoints, no code changes needed.
-- **Debt:** None.
-- **DEBT.md links:** None
+Archived designs represent historical feature work.
+Checklists inside archived directories are historical records and may conflict with current code.
 
-### microservice-split (30/34 — 4 tasks remaining)
-- **Implemented:** main_reader/main_admin entry points, DEPLOY_MODE dispatch, Docker Compose + Caddy split routing, 14 contract tests.
-- **Remaining:** Rename `deploy/backend.Dockerfile` to `deploy/admin.Dockerfile` (task 4.4), update CI/CD to build/test both services (tasks 5.1, 5.2).
-- **Debt:** Dockerfile rename + CI/CD dual-service build.
-- **DEBT.md links:** DEBT-002 (CI/CD build verification), DEBT-048 (resolved)
-
-### translation-scheduler-observability (198/283 — 85 tasks in-progress)
-- **Implemented:** Scheduler health admin API, scheduler summary in activity/version detail, admin UI health view + summary panel, decision record schema, quota/cooldown tracking.
-- **In-progress:** Identity fields in decision records (request_id, activity_id, job_id, chapter_id), checkpoint/resume observability integration, chapter parallelization safety.
-- **Debt:** Persist scheduler runtime state to allow health API to show live cooldown/exhausted/failed timestamps.
-- **DEBT.md links:** DEBT-036 (scheduler runtime state persistence)
-
----
-
-## Not Started (1)
-
-### semantic-qa-and-cache-roadmap (7/18 — 11 tasks remaining)
-- **Implemented:** 7 prerequisite/infrastructure tasks.
-- **Remaining:** Complete prerequisites (exact translation memory metrics), build evaluation fixtures, design semantic cache storage (embedding/index backend, idempotent write contract, credential isolation), design LLM QA output (structured finding schema, review-flag behavior), add disabled-by-default config checks.
-- **Debt:** This is a roadmap spec — implementation deferred until prerequisites are met.
-- **DEBT.md links:** None (roadmap, not debt)
-
----
-
-## Known Flaws and Technical Debt
-
-See consolidated register: [`docs/DEBT.md`](DEBT.md).
-
----
-
-## Stats
-
-| Metric | Value |
-|--------|-------|
-| Total specs | 41 |
-| Total spec files | 123 (41 specs × 3 files each) |
-| Fully complete specs | 37 |
-| Total tasks across all specs | 3,700+ |
-| Completed tasks | 3,500+ |
-| In-progress tasks | 87 |
-| Remaining tasks | 15 |
-
----
-
-## Deferred Test Debt
-
-See consolidated register: [`docs/DEBT.md`](DEBT.md) — deferred test debt section.
-
----
-
-## Phase Verification Summary
-
-| Phase | Status | Evidence | Remaining Debt |
-|-------|--------|----------|----------------|
-| Phase 0 (Foundation & CI/CD) | ✅ Verified Complete | CI pipeline, Dockerfiles, test fixes (local) | DEBT-002 (CI build verify), DEBT-003 (CI Postgres), DEBT-004, DEBT-005 |
-| Phase 1 (Glossary & Translation) | ✅ Verified Complete (with 1 new blocker) | 5 glossary routers, sync bridge, prompt injection, apply engine, provider suggestions, pipeline hardening | DEBT-006 (circular import) |
-| Phase 2+ (Remaining specs) | ⚠️ In Progress | 3 partial specs, 1 not started | 69 active debt entries in DEBT.md |
+- `adapter-plugin-system`
+- `advanced-caching`
+- `atomic-json-storage-recovery`
+- `auth-authorization`
+- `chapter-parallelization`
+- `checkpoint-resume-pipeline`
+- `cicd-pipeline`
+- `cloud-storage-s3`
+- `crawl-fetch-observability`
+- `create-novel-lifecycle`
+- `dockerize-application`
+- `e2e-integration-testing`
+- `error-handling-logging`
+- `exact-translation-memory`
+- `export-manifest-admin-ui`
+- `export-storage-observability`
+- `frontend-glossary-annotation-rendering`
+- `gemini-provider-only`
+- `glossary-apply-safety`
+- `glossary-auto-population`
+- `glossary-aware-editor-qa`
+- `glossary-diagnostic-pipeline-wiring`
+- `glossary-diagnostics-admin-surfacing`
+- `glossary-first-onboarding`
+- `glossary-management-consolidation`
+- `glossary-revision-translation-invalidation`
+- `glossary-sync-bridge`
+- `jp-en-prompt-quality-policy`
+- `microservice-split`
+- `novel-onboarding-state-machine`
+- `operational-safety-observability`
+- `prompt-translation-hardening`
+- `public-glossary-annotation-setting`
+- `public-path-performance`
+- `public-reader-availability`
+- `public-reader-glossary-annotations`
+- `public-reader-glossary-annotations-wiring`
+- `semantic-qa-and-cache-roadmap`
+- `smart-chunking-context`
+- `storage-boundary-consolidation`
+- `storage-contract-and-schema-tests`
+- `translation-integration-test-suite`
+- `translation-qa-hardening`
+- `translation-resume-hardening`
+- `translation-scheduler-observability`
