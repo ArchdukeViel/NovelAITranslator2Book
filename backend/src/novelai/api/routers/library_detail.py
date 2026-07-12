@@ -19,8 +19,6 @@ from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.dependencies import get_db_session, get_storage
 from novelai.services.catalog_service import CatalogService, get_projection_refresh_failures
-from novelai.storage.service import StorageService
-
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 logger = logging.getLogger(__name__)
 
@@ -129,7 +127,7 @@ async def refresh_catalog_projections(
     dry_run: bool = Query(default=True),
     limit: int | None = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
     db: Session = Depends(get_db_session),
 ) -> CatalogProjectionBulkRefreshResponse:
@@ -175,7 +173,7 @@ async def refresh_catalog_projections(
 )
 async def refresh_catalog_projection(
     novel_id: str,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
     db: Session = Depends(get_db_session),
 ) -> CatalogProjectionRefreshResponse:
@@ -194,7 +192,7 @@ async def refresh_catalog_projection(
 @router.post("/{novel_id}/publish", response_model=CatalogPublicationResponse)
 async def publish_novel(
     novel_id: str,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
     db: Session = Depends(get_db_session),
 ) -> CatalogPublicationResponse:
@@ -216,7 +214,7 @@ async def publish_novel(
 @router.post("/{novel_id}/unpublish", response_model=CatalogPublicationResponse)
 async def unpublish_novel(
     novel_id: str,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
     db: Session = Depends(get_db_session),
 ) -> CatalogPublicationResponse:
@@ -234,7 +232,7 @@ async def unpublish_novel(
 
 @router.get("/catalog-health", response_model=CatalogHealthResponse)
 async def catalog_health(
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
     db: Session = Depends(get_db_session),
 ) -> CatalogHealthResponse:
@@ -278,7 +276,7 @@ async def catalog_health(
 @router.get("/{novel_id}/catalog-projection-health", response_model=NovelProjectionHealthResponse)
 async def novel_projection_health(
     novel_id: str,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
     db: Session = Depends(get_db_session),
 ) -> NovelProjectionHealthResponse:

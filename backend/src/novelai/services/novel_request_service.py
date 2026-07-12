@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from novelai.core.platform import NovelRequestStatus
+from novelai.db.models.chapter import Chapter as ChapterModel
 from novelai.db.models.novel import Novel
 from novelai.db.models.users import NovelRequest
 
@@ -132,3 +133,70 @@ class NovelRequestService:
         item.updated_at = self._utcnow()
         self.db_session.flush()
         return self._request_response(item)
+
+    # -- user-facing -----------------------------------------------------------
+
+    def create_user_request(
+        self,
+        user_id: int,
+        request_type: str,
+        source_url: str | None = None,
+        slug: str | None = None,
+        chapter_id: str | None = None,
+    ) -> dict[str, Any]:
+        if request_type not in {"novel", "chapter"}:
+            raise ValueError("request_type must be 'novel' or 'chapter'")
+        if request_type == "novel" and source_url is None:
+            raise ValueError("source_url is required for novel requests")
+        if request_type == "chapter" and slug is None:
+            raise ValueError("slug is required for chapter requests")
+
+        novel_id = None
+        if slug is not None:
+            novel = self.db_session.query(Novel).filter_by(slug=slug).one_or_none()
+            if novel is None:
+                raise ValueError("Novel not found")
+            novel_id = novel.id
+
+        # Validate chapter_id belongs to the novel
+        chapter_db_id = None
+        if chapter_id is not None:
+            try:
+                cid = int(chapter_id)
+            except ValueError:
+                raise ValueError("Chapter not found")
+            ch = self.db_session.query(ChapterModel).filter_by(id=cid, novel_id=novel_id).one_or_none()
+            if ch is None:
+                raise ValueError("Chapter not found")
+            chapter_db_id = cid
+
+        existing = self.db_session.query(NovelRequest).filter_by(
+            user_id=user_id,
+            request_type=request_type,
+            novel_id=novel_id,
+            source_url=source_url,
+            status="pending",
+        ).one_or_none()
+        if existing is not None:
+            return self._request_response(existing)
+
+        req = NovelRequest(
+            user_id=user_id,
+            request_type=request_type,
+            novel_id=novel_id,
+            source_url=source_url,
+            status="pending",
+        )
+        self.db_session.add(req)
+        self.db_session.flush()
+        return self._request_response(req)
+
+    def list_user_requests(self, user_id: int, limit: int = 50) -> list[dict[str, Any]]:
+        reqs = (
+            self.db_session.query(NovelRequest)
+            .filter_by(user_id=user_id)
+            .order_by(NovelRequest.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [self._request_response(req) for req in reqs]

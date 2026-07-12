@@ -30,13 +30,11 @@ from novelai.api.routers.public import (
     _optional_str,
 )
 from novelai.config.settings import settings
-from novelai.db.models.tag import Tag
 from novelai.services.public_catalog_service import PublicCatalogService
 from novelai.services.public_glossary_annotations import (
     find_annotations,
     select_public_terms,
 )
-from novelai.storage.service import StorageService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 logger = logging.getLogger(__name__)
@@ -345,7 +343,7 @@ def _chapter_shell_response(
     chapter_id: str,
     chapter: dict[str, Any],
     chapters: list[dict[str, Any]],
-    storage: StorageService,
+    storage: Any,
 ) -> dict[str, Any]:
     """Build a reader-safe chapter shell response with no translated text."""
     chapter_ids = [str(ch.get("id", "")) for ch in chapters]
@@ -566,6 +564,7 @@ async def search_tags(
     db: Session = Depends(get_db_session),
 ) -> list[PublicTagSearchResult]:
     """Search tags by name (case-insensitive). No tags are created."""
+
     query_str = q.strip()
     if len(query_str) < 2:
         return []

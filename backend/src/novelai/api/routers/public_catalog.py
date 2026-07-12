@@ -29,11 +29,7 @@ from novelai.api.routers.public import (
     _optional_str,
     _parse_csv_filter,
 )
-from novelai.db.models.genre import Genre
-from novelai.db.models.novel import Novel
-from novelai.db.models.tag import Tag
 from novelai.services.public_catalog_service import PublicCatalogService
-from novelai.sources.status import normalize_publication_status
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 logger = logging.getLogger(__name__)
@@ -45,6 +41,9 @@ logger = logging.getLogger(__name__)
 
 
 def _published_db_catalog_query(db: Session, *, include_adult: bool):
+    from novelai.db.models.genre import Genre
+    from novelai.db.models.novel import Novel
+
     query = db.query(Novel).filter(Novel.is_published.is_(True))
     if not include_adult:
         query = query.filter(
@@ -79,6 +78,10 @@ def _catalog_from_db_page(
     db = service.db_session
     if db is None:
         return None
+    from novelai.db.models.genre import Genre
+    from novelai.db.models.novel import Novel
+    from novelai.db.models.tag import Tag
+
     query = _published_db_catalog_query(db, include_adult=include_adult)
     has_published_db_catalog = query.count() > 0
     if not has_published_db_catalog:
@@ -260,6 +263,8 @@ async def catalog(
     service: PublicCatalogService = Depends(get_public_catalog_service),
 ) -> PublicCatalogResponse:
     """Paginated public novel catalog with optional search, filter, and sort."""
+    from novelai.sources.status import normalize_publication_status
+
     effective_status = normalize_publication_status(status) if status else None
     effective_publication_status = (
         normalize_publication_status(publication_status)

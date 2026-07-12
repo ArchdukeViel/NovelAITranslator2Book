@@ -34,7 +34,6 @@ from novelai.services.glossary_apply_preview import (
 from novelai.services.glossary_apply_preview import (
     GlossaryApplyPreviewService,
 )
-from novelai.storage.service import StorageService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
@@ -91,7 +90,7 @@ async def preview_glossary_apply(
     novel_id: str,
     body: GlossaryApplyPreviewRequest,
     session: Session = Depends(get_db_session),
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> GlossaryApplyPreviewResponse:
     if not body.entry_ids and not body.include_all_approved:
@@ -123,7 +122,7 @@ async def commit_glossary_apply(
     novel_id: str,
     body: GlossaryApplyCommitRequest,
     session: Session = Depends(get_db_session),
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     orchestrator=Depends(get_orchestrator),
     _owner=Depends(require_role("owner")),
 ) -> GlossaryApplyCommitResponse:
@@ -214,7 +213,7 @@ async def commit_glossary_apply(
 async def rollback_glossary_apply(
     novel_id: str,
     body: GlossaryApplyRollbackRequest,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> GlossaryApplyRollbackResponse:
     """Revert all glossary-apply versions created in a given batch.
@@ -286,7 +285,7 @@ async def activate_chapter_version(
     novel_id: str,
     chapter_id: str,
     version_id: str,
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> ChapterVersionActivateResponse:
     """Activate a specific translation version for a chapter."""

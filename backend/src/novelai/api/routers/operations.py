@@ -13,7 +13,6 @@ from novelai.api.routers.dependencies import _rate_limit, get_activity_log, get_
 from novelai.runtime.container import container
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.orchestration.operations import OperationError, OperationsService
-from novelai.storage.service import StorageService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
@@ -67,7 +66,7 @@ class ImportRequest(BaseModel):
 def get_operations_service(
     orchestrator: NovelOrchestrationService = Depends(get_orchestrator),
     activity_log: ActivityQueueService = Depends(get_activity_log),
-    storage: StorageService = Depends(get_storage),
+    storage: Any = Depends(get_storage),
 ) -> OperationsService:
     return OperationsService(
         orchestrator=orchestrator,
