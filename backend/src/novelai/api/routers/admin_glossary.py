@@ -17,18 +17,8 @@ from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
-from novelai.api.routers.dependencies import get_db_session, get_storage
+from novelai.api.routers.dependencies import get_glossary_workflow_service
 from novelai.core.errors import ProviderError, ProviderErrorCode
-from novelai.db.models.glossary import (
-    NovelGlossaryAlias,
-    NovelGlossaryDecisionEvent,
-    NovelGlossaryEntry,
-    NovelGlossaryQAFinding,
-    NovelGlossarySourceProvenance,
-)
-from novelai.db.models.novel import Novel
-from novelai.services.glossary_repository import GlossaryRepository
-from novelai.storage.service import StorageService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
@@ -502,7 +492,9 @@ def _body_fields(body: BaseModel) -> dict[str, Any]:
     return {name: payload[name] for name in fields if name in payload}
 
 
-def _require_novel(session: Session, novel_ref: str) -> Novel:
+def _require_novel(session: Session, novel_ref: str) -> Any:
+    from novelai.db.models.novel import Novel
+
     novel = session.execute(select(Novel).where(Novel.slug == novel_ref)).scalar_one_or_none()
     if novel is None and novel_ref.isdigit():
         novel = session.get(Novel, int(novel_ref))
@@ -511,7 +503,9 @@ def _require_novel(session: Session, novel_ref: str) -> Novel:
     return novel
 
 
-def _repo(session: Session) -> GlossaryRepository:
+def _repo(session: Session) -> Any:
+    from novelai.services.glossary_repository import GlossaryRepository
+
     return GlossaryRepository(session)
 
 
@@ -527,110 +521,24 @@ def _raise_repo_error(exc: Exception) -> None:
     raise exc
 
 
-def _entry_response(entry: NovelGlossaryEntry) -> GlossaryEntryResponse:
-    return GlossaryEntryResponse(
-        id=entry.id,
-        novel_id=entry.novel_id,
-        scope=entry.scope,
-        canonical_term=entry.canonical_term,
-        term_type=entry.term_type,
-        approved_translation=entry.approved_translation,
-        status=entry.status,
-        enforcement_level=entry.enforcement_level,
-        owner_locked=entry.owner_locked,
-        public_visible=entry.public_visible,
-        public_description=entry.public_description,
-        admin_notes=entry.admin_notes,
-        confidence=entry.confidence,
-        replacement_policy=entry.replacement_policy,
-        matching_policy=entry.matching_policy,
-        first_seen_chapter_id=entry.first_seen_chapter_id,
-        first_seen_chapter_number=entry.first_seen_chapter_number,
-        last_seen_chapter_id=entry.last_seen_chapter_id,
-        last_seen_chapter_number=entry.last_seen_chapter_number,
-        created_by_user_id=entry.created_by_user_id,
-        updated_by_user_id=entry.updated_by_user_id,
-        created_at=entry.created_at,
-        updated_at=entry.updated_at,
-        deprecated_at=entry.deprecated_at,
-    )
+def _entry_response(entry: Any) -> GlossaryEntryResponse:
+    return GlossaryEntryResponse.model_validate(entry, from_attributes=True)
 
 
-def _alias_response(alias: NovelGlossaryAlias) -> GlossaryAliasResponse:
-    return GlossaryAliasResponse(
-        id=alias.id,
-        glossary_entry_id=alias.glossary_entry_id,
-        novel_id=alias.novel_id,
-        alias_text=alias.alias_text,
-        alias_type=alias.alias_type,
-        language=alias.language,
-        text_origin=alias.text_origin,
-        applies_to=alias.applies_to,
-        matching_policy=alias.matching_policy,
-        notes=alias.notes,
-        created_at=alias.created_at,
-        updated_at=alias.updated_at,
-    )
+def _alias_response(alias: Any) -> GlossaryAliasResponse:
+    return GlossaryAliasResponse.model_validate(alias, from_attributes=True)
 
 
-def _provenance_response(item: NovelGlossarySourceProvenance) -> GlossaryProvenanceResponse:
-    return GlossaryProvenanceResponse(
-        id=item.id,
-        glossary_entry_id=item.glossary_entry_id,
-        novel_id=item.novel_id,
-        source_site=item.source_site,
-        source_adapter=item.source_adapter,
-        source_novel_id=item.source_novel_id,
-        source_url=item.source_url,
-        source_chapter_id=item.source_chapter_id,
-        source_chapter_number=item.source_chapter_number,
-        chapter_id=item.chapter_id,
-        raw_source_term=item.raw_source_term,
-        observed_translated_term=item.observed_translated_term,
-        evidence_ref=item.evidence_ref,
-        local_reference=item.local_reference,
-        evidence_quality=item.evidence_quality,
-        confidence=item.confidence,
-        first_seen_at=item.first_seen_at,
-        last_seen_at=item.last_seen_at,
-        created_at=item.created_at,
-        updated_at=item.updated_at,
-    )
+def _provenance_response(item: Any) -> GlossaryProvenanceResponse:
+    return GlossaryProvenanceResponse.model_validate(item, from_attributes=True)
 
 
-def _event_response(event: NovelGlossaryDecisionEvent) -> GlossaryDecisionEventResponse:
-    return GlossaryDecisionEventResponse(
-        id=event.id,
-        novel_id=event.novel_id,
-        glossary_entry_id=event.glossary_entry_id,
-        alias_id=event.alias_id,
-        actor_user_id=event.actor_user_id,
-        event_type=event.event_type,
-        old_value_json=event.old_value_json,
-        new_value_json=event.new_value_json,
-        rationale=event.rationale,
-        decision_source=event.decision_source,
-        created_at=event.created_at,
-    )
+def _event_response(event: Any) -> GlossaryDecisionEventResponse:
+    return GlossaryDecisionEventResponse.model_validate(event, from_attributes=True)
 
 
-def _qa_response(finding: NovelGlossaryQAFinding) -> GlossaryQAFindingResponse:
-    return GlossaryQAFindingResponse(
-        id=finding.id,
-        novel_id=finding.novel_id,
-        chapter_id=finding.chapter_id,
-        glossary_entry_id=finding.glossary_entry_id,
-        finding_type=finding.finding_type,
-        severity=finding.severity,
-        matched_text=finding.matched_text,
-        suggested_text=finding.suggested_text,
-        context_ref=finding.context_ref,
-        status=finding.status,
-        reviewer_user_id=finding.reviewer_user_id,
-        reviewer_notes=finding.reviewer_notes,
-        created_at=finding.created_at,
-        resolved_at=finding.resolved_at,
-    )
+def _qa_response(finding: Any) -> GlossaryQAFindingResponse:
+    return GlossaryQAFindingResponse.model_validate(finding, from_attributes=True)
 
 
 def _provider_error_status(exc: ProviderError) -> int:
@@ -672,30 +580,32 @@ async def list_glossary_entries(
     status: str | None = None,
     term_type: str | None = None,
     public_visible: bool | None = None,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryEntryResponse]:
-    novel_key: int = _require_novel(session, novel_id).id
-    entries = _repo(session).list_glossary_entries_for_novel(
-        novel_key,
-        status=status,
-        term_type=term_type,
-        public_visible=public_visible,
-    )
-    return [_entry_response(entry) for entry in entries]
+    try:
+        entries = svc.list_glossary_entries(
+            novel_id,
+            status=status,
+            term_type=term_type,
+            public_visible=public_visible,
+        )
+        return [_entry_response(entry) for entry in entries]
+    except (LookupError, ValueError) as exc:
+        _raise_repo_error(exc)
+        raise AssertionError("unreachable") from exc
 
 
 @router.post("/novels/{novel_id}/glossary", response_model=GlossaryEntryResponse)
 async def create_glossary_entry(
     novel_id: str,
     body: GlossaryEntryCreateRequest,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    novel_key: int = _require_novel(session, novel_id).id
     try:
-        entry = _repo(session).create_glossary_entry(
-            novel_id=novel_key,
+        entry = svc.create_glossary_entry(
+            novel_id,
             scope=body.scope,
             canonical_term=body.canonical_term,
             term_type=body.term_type,
@@ -727,14 +637,15 @@ async def create_glossary_entry(
 async def get_glossary_entry(
     novel_id: str,
     entry_id: int,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     _owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    novel_key: int = _require_novel(session, novel_id).id
-    entry = _repo(session).get_glossary_entry(entry_id, novel_id=novel_key)
-    if entry is None:
-        raise HTTPException(status_code=404, detail="Glossary entry not found")
-    return _entry_response(entry)
+    try:
+        entry = svc.get_glossary_entry(novel_id, entry_id)
+        return _entry_response(entry)
+    except (LookupError, ValueError) as exc:
+        _raise_repo_error(exc)
+        raise AssertionError("unreachable") from exc
 
 
 @router.patch("/novels/{novel_id}/glossary/entries/{entry_id}", response_model=GlossaryEntryResponse)
@@ -742,14 +653,13 @@ async def update_glossary_entry(
     novel_id: str,
     entry_id: int,
     body: GlossaryEntryUpdateRequest,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    novel_key: int = _require_novel(session, novel_id).id
     try:
-        entry = _repo(session).update_glossary_entry(
+        entry = svc.update_glossary_entry(
+            novel_id,
             entry_id,
-            novel_id=novel_key,
             actor_user_id=_owner_user_id(owner),
             **_body_fields(body),
         )
@@ -764,18 +674,16 @@ async def change_glossary_entry_status(
     novel_id: str,
     entry_id: int,
     body: GlossaryEntryStatusRequest,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    novel_key: int = _require_novel(session, novel_id).id
     try:
-        entry = _repo(session).change_glossary_entry_status(
+        entry = svc.change_glossary_entry_status(
+            novel_id,
             entry_id,
-            novel_id=novel_key,
             status=body.status,
             actor_user_id=_owner_user_id(owner),
             rationale=body.rationale,
-            decision_source="owner",
         )
         return _entry_response(entry)
     except (LookupError, ValueError) as exc:
@@ -788,16 +696,15 @@ async def lock_glossary_entry(
     novel_id: str,
     entry_id: int,
     body: GlossaryDecisionRequest | None = None,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    novel_key: int = _require_novel(session, novel_id).id
     try:
-        entry = _repo(session).lock_glossary_entry(
+        entry = svc.lock_glossary_entry(
+            novel_id,
             entry_id,
-            novel_id=novel_key,
-            actor_user_id=_owner_user_id(owner),
             rationale=body.rationale if body else None,
+            actor_user_id=_owner_user_id(owner),
         )
         return _entry_response(entry)
     except (LookupError, ValueError) as exc:
@@ -810,16 +717,15 @@ async def unlock_glossary_entry(
     novel_id: str,
     entry_id: int,
     body: GlossaryDecisionRequest | None = None,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    novel_key: int = _require_novel(session, novel_id).id
     try:
-        entry = _repo(session).unlock_glossary_entry(
+        entry = svc.unlock_glossary_entry(
+            novel_id,
             entry_id,
-            novel_id=novel_key,
-            actor_user_id=_owner_user_id(owner),
             rationale=body.rationale if body else None,
+            actor_user_id=_owner_user_id(owner),
         )
         return _entry_response(entry)
     except (LookupError, ValueError) as exc:
@@ -832,16 +738,15 @@ async def deprecate_glossary_entry(
     novel_id: str,
     entry_id: int,
     body: GlossaryDecisionRequest | None = None,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    novel_key: int = _require_novel(session, novel_id).id
     try:
-        entry = _repo(session).deprecate_glossary_entry(
+        entry = svc.deprecate_glossary_entry(
+            novel_id,
             entry_id,
-            novel_id=novel_key,
-            actor_user_id=_owner_user_id(owner),
             rationale=body.rationale if body else None,
+            actor_user_id=_owner_user_id(owner),
         )
         return _entry_response(entry)
     except (LookupError, ValueError) as exc:
@@ -870,52 +775,24 @@ async def approve_translation_change(
     novel_id: str,
     entry_id: int,
     body: ApproveTranslationChangeRequest,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> ApproveTranslationChangeResponse:
-    """Approve an edited translation as the new approved glossary translation."""
-    novel_key: int = _require_novel(session, novel_id).id
-    actor_id = _owner_user_id(owner)
     try:
-        repo = _repo(session)
-        from novelai.db.models.glossary import NovelGlossaryEntry
-        from novelai.db.models.novel import Novel
-
-        entry = session.get(NovelGlossaryEntry, entry_id)
-        if entry is None:
-            raise LookupError("Glossary entry not found")
-        if entry.scope == "novel" and entry.novel_id != novel_key:
-            raise LookupError("Entry does not belong to this novel")
-        if entry.owner_locked and actor_id is None:
-            raise LookupError("Owner-locked entry requires owner permission")
-
-        updated = repo.update_glossary_entry(
+        result = svc.approve_translation_change(
+            novel_id,
             entry_id,
-            novel_id=novel_key,
-            actor_user_id=actor_id,
-            approved_translation=body.new_translation,
-        )
-
-        repo.create_decision_event(
-            novel_id=novel_key,
-            event_type="approve",
-            glossary_entry_id=entry_id,
-            actor_user_id=actor_id,
-            old_value={"approved_translation": entry.approved_translation},
-            new_value={"approved_translation": body.new_translation},
+            new_translation=body.new_translation,
             rationale=body.rationale,
-            decision_source="owner",
+            actor_user_id=_owner_user_id(owner),
         )
-
-        novel = session.get(Novel, novel_key)
-        glossary_revision = int(novel.glossary_revision) if novel else None
-
+        entry = result["entry"]
         return ApproveTranslationChangeResponse(
-            entry_id=updated.id,
-            canonical_term=updated.canonical_term,
-            approved_translation=updated.approved_translation or "",
-            glossary_revision=glossary_revision,
-            updated_at=updated.updated_at.isoformat() if updated.updated_at else None,
+            entry_id=entry.id,
+            canonical_term=entry.canonical_term,
+            approved_translation=entry.approved_translation or "",
+            glossary_revision=result["glossary_revision"],
+            updated_at=entry.updated_at.isoformat() if entry.updated_at else None,
         )
     except (LookupError, ValueError) as exc:
         _raise_repo_error(exc)
@@ -926,12 +803,11 @@ async def approve_translation_change(
 async def list_glossary_aliases(
     novel_id: str,
     entry_id: int,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryAliasResponse]:
-    novel_key: int = _require_novel(session, novel_id).id
     try:
-        return [_alias_response(alias) for alias in _repo(session).list_aliases_for_entry(entry_id, novel_id=novel_key)]
+        return [_alias_response(alias) for alias in svc.list_glossary_aliases(novel_id, entry_id)]
     except (LookupError, ValueError) as exc:
         _raise_repo_error(exc)
         raise AssertionError("unreachable") from exc
@@ -942,14 +818,13 @@ async def add_glossary_alias(
     novel_id: str,
     entry_id: int,
     body: GlossaryAliasCreateRequest,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryAliasResponse:
-    novel_key: int = _require_novel(session, novel_id).id
     try:
-        alias = _repo(session).add_glossary_alias(
-            entry_id=entry_id,
-            novel_id=novel_key,
+        alias = svc.add_glossary_alias(
+            novel_id,
+            entry_id,
             alias_text=body.alias_text,
             alias_type=body.alias_type,
             language=body.language,
@@ -971,16 +846,15 @@ async def update_glossary_alias(
     novel_id: str,
     alias_id: int,
     body: GlossaryAliasUpdateRequest,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryAliasResponse:
-    novel_key: int = _require_novel(session, novel_id).id
     fields = _body_fields(body)
     rationale = fields.pop("rationale", None)
     try:
-        alias = _repo(session).update_glossary_alias(
+        alias = svc.update_glossary_alias(
+            novel_id,
             alias_id,
-            novel_id=novel_key,
             actor_user_id=_owner_user_id(owner),
             rationale=rationale,
             **fields,
@@ -996,16 +870,15 @@ async def deprecate_glossary_alias(
     novel_id: str,
     alias_id: int,
     body: GlossaryDecisionRequest | None = None,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryAliasResponse:
-    novel_key: int = _require_novel(session, novel_id).id
     try:
-        alias = _repo(session).remove_or_deprecate_glossary_alias(
+        alias = svc.deprecate_glossary_alias(
+            novel_id,
             alias_id,
-            novel_id=novel_key,
-            actor_user_id=_owner_user_id(owner),
             rationale=body.rationale if body else None,
+            actor_user_id=_owner_user_id(owner),
         )
         return _alias_response(alias)
     except (LookupError, ValueError) as exc:
@@ -1016,25 +889,27 @@ async def deprecate_glossary_alias(
 @router.get("/novels/{novel_id}/glossary/provenance", response_model=list[GlossaryProvenanceResponse])
 async def list_novel_glossary_provenance(
     novel_id: str,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryProvenanceResponse]:
-    novel_key: int = _require_novel(session, novel_id).id
-    return [_provenance_response(item) for item in _repo(session).list_source_provenance_for_novel(novel_key)]
+    try:
+        return [_provenance_response(item) for item in svc.list_novel_provenance(novel_id)]
+    except (LookupError, ValueError) as exc:
+        _raise_repo_error(exc)
+        raise AssertionError("unreachable") from exc
 
 
 @router.get("/novels/{novel_id}/glossary/entries/{entry_id}/provenance", response_model=list[GlossaryProvenanceResponse])
 async def list_entry_glossary_provenance(
     novel_id: str,
     entry_id: int,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryProvenanceResponse]:
-    novel_key: int = _require_novel(session, novel_id).id
     try:
         return [
             _provenance_response(item)
-            for item in _repo(session).list_source_provenance_for_entry(entry_id, novel_id=novel_key)
+            for item in svc.list_entry_provenance(novel_id, entry_id)
         ]
     except (LookupError, ValueError) as exc:
         _raise_repo_error(exc)
@@ -1046,14 +921,13 @@ async def add_glossary_provenance(
     novel_id: str,
     entry_id: int,
     body: GlossaryProvenanceCreateRequest,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     _owner=Depends(require_role("owner")),
 ) -> GlossaryProvenanceResponse:
-    novel_key: int = _require_novel(session, novel_id).id
     try:
-        item = _repo(session).add_source_provenance(
-            novel_id=novel_key,
-            entry_id=entry_id,
+        item = svc.add_provenance(
+            novel_id,
+            entry_id,
             source_site=body.source_site,
             source_adapter=body.source_adapter,
             source_novel_id=body.source_novel_id,
@@ -1077,25 +951,27 @@ async def add_glossary_provenance(
 @router.get("/novels/{novel_id}/glossary/events", response_model=list[GlossaryDecisionEventResponse])
 async def list_novel_glossary_decision_events(
     novel_id: str,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryDecisionEventResponse]:
-    novel_key: int = _require_novel(session, novel_id).id
-    return [_event_response(event) for event in _repo(session).list_decision_events_for_novel(novel_key)]
+    try:
+        return [_event_response(event) for event in svc.list_novel_decision_events(novel_id)]
+    except (LookupError, ValueError) as exc:
+        _raise_repo_error(exc)
+        raise AssertionError("unreachable") from exc
 
 
 @router.get("/novels/{novel_id}/glossary/entries/{entry_id}/events", response_model=list[GlossaryDecisionEventResponse])
 async def list_entry_glossary_decision_events(
     novel_id: str,
     entry_id: int,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryDecisionEventResponse]:
-    novel_key: int = _require_novel(session, novel_id).id
     try:
         return [
             _event_response(event)
-            for event in _repo(session).list_decision_events_for_entry(entry_id, novel_id=novel_key)
+            for event in svc.list_entry_decision_events(novel_id, entry_id)
         ]
     except (LookupError, ValueError) as exc:
         _raise_repo_error(exc)
@@ -1107,29 +983,31 @@ async def list_glossary_qa_findings(
     novel_id: str,
     chapter_id: int | None = None,
     status: str | None = None,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryQAFindingResponse]:
-    novel_key: int = _require_novel(session, novel_id).id
-    repo = _repo(session)
-    if chapter_id is not None:
-        findings = repo.list_qa_findings_for_chapter(chapter_id, novel_id=novel_key, status=status)
-    else:
-        findings = repo.list_qa_findings_for_novel(novel_key, status=status)
-    return [_qa_response(finding) for finding in findings]
+    try:
+        findings = svc.list_qa_findings(
+            novel_id,
+            chapter_id=chapter_id,
+            status=status,
+        )
+        return [_qa_response(finding) for finding in findings]
+    except (LookupError, ValueError) as exc:
+        _raise_repo_error(exc)
+        raise AssertionError("unreachable") from exc
 
 
 @router.post("/novels/{novel_id}/glossary/qa-findings", response_model=GlossaryQAFindingResponse)
 async def create_manual_glossary_qa_finding(
     novel_id: str,
     body: GlossaryQAFindingCreateRequest,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     _owner=Depends(require_role("owner")),
 ) -> GlossaryQAFindingResponse:
-    novel_key: int = _require_novel(session, novel_id).id
     try:
-        finding = _repo(session).create_qa_finding(
-            novel_id=novel_key,
+        finding = svc.create_qa_finding(
+            novel_id,
             finding_type=body.finding_type,
             severity=body.severity,
             status=body.status,
@@ -1150,14 +1028,13 @@ async def update_glossary_qa_finding_status(
     novel_id: str,
     finding_id: int,
     body: GlossaryQAFindingStatusRequest,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryQAFindingResponse:
-    novel_key: int = _require_novel(session, novel_id).id
     try:
-        finding = _repo(session).update_qa_finding_status(
+        finding = svc.update_qa_finding_status(
+            novel_id,
             finding_id,
-            novel_id=novel_key,
             status=body.status,
             reviewer_user_id=_owner_user_id(owner),
             reviewer_notes=body.reviewer_notes,
@@ -1175,46 +1052,25 @@ async def update_glossary_qa_finding_status(
 async def batch_approve_glossary_candidates(
     novel_id: str,
     body: GlossaryDecisionRequest,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryBatchApproveResponse:
-    """Approve all non-approved glossary candidates and mark the novel ready."""
-    from novelai.services.glossary_status_service import GlossaryStatusService
-
-    novel = _require_novel(session, novel_id)
-    repo = _repo(session)
-    actor_user_id = _owner_user_id(owner)
-    approved_count = 0
-    for entry in repo.list_glossary_entries_for_novel(novel.id):
-        if entry.status not in {"candidate", "recommended"}:
-            continue
-        if not isinstance(entry.approved_translation, str) or not entry.approved_translation.strip():
-            repo.update_glossary_entry(
-                entry.id,
-                novel_id=novel.id,
-                approved_translation=entry.canonical_term,
-                actor_user_id=actor_user_id,
-            )
-        repo.change_glossary_entry_status(
-            entry.id,
-            novel_id=novel.id,
-            status="approved",
-            actor_user_id=actor_user_id,
-            rationale=body.rationale or "Owner approved all glossary candidates during onboarding.",
-            decision_source="owner",
+    try:
+        result = svc.batch_approve_candidates(
+            novel_id,
+            rationale=body.rationale,
+            actor_user_id=_owner_user_id(owner),
         )
-        approved_count += 1
-    updated = GlossaryStatusService(session).transition_status(
-        novel.slug,
-        target_status="glossary_ready",
-        actor_user_id=actor_user_id,
-    )
-    return GlossaryBatchApproveResponse(
-        novel_id=updated.id,
-        approved_count=approved_count,
-        glossary_status=updated.glossary_status,
-        glossary_revision=updated.glossary_revision,
-    )
+        novel = result["novel"]
+        return GlossaryBatchApproveResponse(
+            novel_id=novel.id,
+            approved_count=result["approved_count"],
+            glossary_status=novel.glossary_status,
+            glossary_revision=novel.glossary_revision,
+        )
+    except (LookupError, ValueError) as exc:
+        _raise_repo_error(exc)
+        raise AssertionError("unreachable") from exc
 
 
 @router.patch(
@@ -1224,24 +1080,11 @@ async def batch_approve_glossary_candidates(
 async def transition_glossary_status(
     novel_id: str,
     body: GlossaryStatusTransitionRequest,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryStatusTransitionResponse:
-    """Transition a novel's glossary_status to a new value.
-
-    - Requires ``owner`` role (HTTP 403 otherwise).
-    - Returns HTTP 404 when the novel does not exist.
-    - Returns HTTP 422 when ``target_status`` is not a recognised value
-      (Pydantic ``Literal`` rejects it before the handler is invoked).
-    - Increments ``glossary_revision`` when ``target_status`` is
-      ``glossary_ready``; leaves it unchanged otherwise.
-    - Writes a ``NovelGlossaryDecisionEvent`` audit record for every
-      successful transition.
-    """
-    from novelai.services.glossary_status_service import GlossaryStatusService
-
     try:
-        novel = GlossaryStatusService(session).transition_status(
+        novel = svc.transition_glossary_status(
             novel_id,
             target_status=body.target_status,
             actor_user_id=_owner_user_id(owner),
@@ -1259,9 +1102,6 @@ async def transition_glossary_status(
 
 
 # ── Glossary Sync Bridge ─────────────────────────────────────────────
-
-_LAST_SYNC_TIMESTAMPS: dict[str, str] = {}
-
 
 class GlossarySyncRequest(BaseModel):
     dry_run: bool = False
@@ -1293,25 +1133,13 @@ class GlossarySyncStatusResponse(BaseModel):
 async def sync_glossary_to_db(
     novel_id: str,
     body: GlossarySyncRequest,
-    session: Session = Depends(get_db_session),
-    storage: StorageService = Depends(get_storage),
+    svc=Depends(get_glossary_workflow_service),
     _owner=Depends(require_role("owner")),
 ) -> GlossarySyncResponse:
-    """Sync file-glossary entries into the DB glossary table (owner-only).
-
-    Returns HTTP 404 when the novel does not exist in storage.
-    Returns HTTP 422 with ``"novel_not_in_db"`` when the novel slug has
-    no corresponding rows table row.
-    """
-    from novelai.services.glossary_sync_service import GlossarySyncService
-
-    if storage.load_metadata(novel_id) is None:
-        raise HTTPException(status_code=404, detail="Novel not found in storage")
-
     try:
-        result = GlossarySyncService(
-            GlossaryRepository(session), storage
-        ).sync_from_file(novel_id, dry_run=body.dry_run)
+        result = svc.sync_from_file(novel_id, dry_run=body.dry_run)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         msg = str(exc)
         if "novel_not_in_db" in msg:
@@ -1322,11 +1150,7 @@ async def sync_glossary_to_db(
         raise HTTPException(status_code=422, detail=msg) from exc
 
     if not body.dry_run:
-        from datetime import UTC, datetime
-
-        _LAST_SYNC_TIMESTAMPS[novel_id] = datetime.now(UTC).isoformat().replace(
-            "+00:00", "Z"
-        )
+        svc.record_sync_timestamp(novel_id)
 
     return GlossarySyncResponse(
         novel_id=result.novel_id,
@@ -1345,55 +1169,15 @@ async def sync_glossary_to_db(
 )
 async def get_glossary_sync_status(
     novel_id: str,
-    session: Session = Depends(get_db_session),
-    storage: StorageService = Depends(get_storage),
+    svc=Depends(get_glossary_workflow_service),
     _owner=Depends(require_role("owner")),
 ) -> GlossarySyncStatusResponse:
-    """Return sync status between file and DB glossaries (owner-only, read-only)."""
-    from novelai.db.models.novel import Novel
-
-    # Count file approved entries
-    file_entries = storage.load_glossary(novel_id)
-    file_approved_count = sum(
-        1
-        for e in file_entries
-        if isinstance(e, dict) and str(e.get("status") or "").strip().lower() == "approved"
-    )
-
-    # Count DB approved entries
-    novel_row: Novel | None = (
-        session.query(Novel).filter(Novel.slug == novel_id).one_or_none()
-    )
-    db_approved_count = 0
-    if novel_row is not None:
-        db_approved_count = len(
-            [
-                e
-                for e in GlossaryRepository(session).list_glossary_entries_for_novel(
-                    novel_row.id, status="approved"
-                )
-            ]
-        )
-
-    in_sync = file_approved_count == db_approved_count and db_approved_count > 0
-
-    if in_sync:
-        recommendation = "healthy"
-    elif file_approved_count > 0 and db_approved_count == 0:
-        recommendation = "sync_required"
-    elif file_approved_count == 0 and db_approved_count == 0:
-        recommendation = "empty"
-    else:
-        recommendation = "sync_required"
-
-    return GlossarySyncStatusResponse(
-        novel_id=novel_id,
-        file_approved_count=file_approved_count,
-        db_approved_count=db_approved_count,
-        in_sync=in_sync,
-        last_sync_at=_LAST_SYNC_TIMESTAMPS.get(novel_id),
-        recommendation=recommendation,
-    )
+    try:
+        status_data = svc.get_sync_status(novel_id)
+        return GlossarySyncStatusResponse(**status_data)
+    except (LookupError, ValueError) as exc:
+        _raise_repo_error(exc)
+        raise AssertionError("unreachable") from exc
 
 
 # ── Global glossary endpoints ────────────────────────────────────
@@ -1403,26 +1187,29 @@ async def list_global_glossary_entries(
     status: str | None = None,
     term_type: str | None = None,
     public_visible: bool | None = None,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     _owner=Depends(require_role("owner")),
 ) -> list[GlossaryEntryResponse]:
-    entries = _repo(session).list_glossary_entries_global(
-        status=status,
-        term_type=term_type,
-        public_visible=public_visible,
-    )
-    return [_entry_response(entry) for entry in entries]
+    try:
+        entries = svc.list_global_glossary_entries(
+            status=status,
+            term_type=term_type,
+            public_visible=public_visible,
+        )
+        return [_entry_response(entry) for entry in entries]
+    except (LookupError, ValueError) as exc:
+        _raise_repo_error(exc)
+        raise AssertionError("unreachable") from exc
+
 
 @router.post("/glossary/global", response_model=GlossaryEntryResponse)
 async def create_global_glossary_entry(
     body: GlossaryEntryCreateRequest,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
     try:
-        entry = _repo(session).create_glossary_entry(
-            novel_id=None,
-            scope="global",
+        entry = svc.create_global_glossary_entry(
             canonical_term=body.canonical_term,
             term_type=body.term_type,
             approved_translation=body.approved_translation,
@@ -1448,26 +1235,31 @@ async def create_global_glossary_entry(
         _raise_repo_error(exc)
         raise AssertionError("unreachable") from exc
 
+
 @router.get("/glossary/global/{entry_id}", response_model=GlossaryEntryResponse)
 async def get_global_glossary_entry(
     entry_id: int,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     _owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
-    entry = _repo(session)._require_entry_global(entry_id)
-    return _entry_response(entry)
+    try:
+        entry = svc.get_global_glossary_entry(entry_id)
+        return _entry_response(entry)
+    except (LookupError, ValueError) as exc:
+        _raise_repo_error(exc)
+        raise AssertionError("unreachable") from exc
+
 
 @router.patch("/glossary/global/{entry_id}", response_model=GlossaryEntryResponse)
 async def update_global_glossary_entry(
     entry_id: int,
     body: GlossaryEntryUpdateRequest,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
     try:
-        entry = _repo(session).update_glossary_entry(
+        entry = svc.update_global_glossary_entry(
             entry_id,
-            novel_id=None,
             actor_user_id=_owner_user_id(owner),
             **_body_fields(body),
         )
@@ -1476,17 +1268,17 @@ async def update_global_glossary_entry(
         _raise_repo_error(exc)
         raise AssertionError("unreachable") from exc
 
+
 @router.post("/glossary/global/{entry_id}/status", response_model=GlossaryEntryResponse)
 async def change_global_glossary_entry_status(
     entry_id: int,
     body: GlossaryEntryStatusRequest,
-    session: Session = Depends(get_db_session),
+    svc=Depends(get_glossary_workflow_service),
     owner=Depends(require_role("owner")),
 ) -> GlossaryEntryResponse:
     try:
-        entry = _repo(session).change_glossary_entry_status(
+        entry = svc.change_global_glossary_entry_status(
             entry_id,
-            novel_id=None,
             status=body.status,
             actor_user_id=_owner_user_id(owner),
             rationale=body.rationale,
