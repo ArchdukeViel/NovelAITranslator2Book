@@ -3,7 +3,7 @@
 > **Comprehensive reference for all environment variables.**
 > Source of truth: `backend/src/novelai/config/settings.py`
 > Example files: `.env.example`, `deploy/.env.example`
-> Last updated: 2026-07-10 — environment consolidation complete, legacy `provider`/`model` API aliases removed
+> Last updated: 2026-07-12 — documentation reconciliation
 
 ---
 

@@ -3,7 +3,7 @@
 Status: Canonical frontend design contract  
 Repository: `ArchdukeViel/NovelAITranslator2Book`  
 Scope: Public frontend implementation under `/frontend`, especially `frontend/app/(public)` and `frontend/components/public`  
-Last updated: 2026-06-16
+Last updated: 2026-07-12 (documentation reconciliation)
 
 ---
 
@@ -38,6 +38,29 @@ When implementation disagrees with this file, the implementation should be treat
 This frontend is a public web-novel reading platform. It should feel like a quiet Japanese reading hall crossed with a modern translation dashboard: warm, restrained, readable, premium, and slightly mysterious. It should not feel like a generic SaaS admin panel, a neon anime forum, or a gambling leaderboard site.
 
 This document governs the public frontend implementation inside the Novel AI main project. It must keep public UI design boundaries clear, especially from backend implementation, admin UI, deployment work, and provider/credential internals.
+
+---
+
+## 1A. Implementation Status (as of 2026-07-12)
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Public catalog (`/`) | ✅ Implemented | Paginated novel list, filters, search |
+| Novel detail (`/novels/[slug]`) | ✅ Implemented | Cover, metadata, chapter list, start reading |
+| Chapter reader (`/novels/[slug]/chapter/[chapterId]`) | ✅ Implemented | Reader themes (light/dark/sepia), font size, prev/next, progress |
+| Public auth (Google OAuth + email/password) | ✅ Implemented | Login, register, password reset (noop/smtp), email verification |
+| User library (`/account/library`) | ✅ Implemented | Currently reading, history, dropped, updates tabs |
+| Reading progress (`/account/progress`) | ✅ Implemented | TanStack Query + Zustand sync |
+| Reading history (`/account/history`) | ✅ Implemented | Paginated, filterable |
+| Reviews/ratings (`/account/reviews`) | ✅ Implemented | Rate-limited, moderation-ready |
+| Novel/chapter requests (`/account/requests`) | ✅ Implemented | History table with rejection reasons |
+| Contribution (`/account/contribute`) | 🚫 Gated | UI exists but backend not implemented (DEBT-009) |
+| Legal pages (About, Privacy, Terms, DMCA, Contact, Cookie Policy) | ❌ Not implemented | DEBT-043 |
+| SEO/discovery (sitemap, robots, JSON-LD, OG tags) | ❌ Not implemented | DEBT-038 |
+| Glossary annotations in reader | ⚠️ Feature-flagged | `PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED=false` (DEBT-037) |
+| Route naming (legacy vs approved) | ⚠️ Drift exists | See §8.1 |
+
+**Key:** ✅ = implemented and wired to backend; ⚠️ = partially implemented or feature-flagged; ❌ = not started; 🚫 = intentionally gated.
 
 ---
 

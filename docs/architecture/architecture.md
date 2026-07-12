@@ -3,7 +3,7 @@
 ## 0. Document Status
 
 **Status**: canonical project architecture
-**Last reviewed**: 2026-07-07 (post-chapter-parallelization update)
+**Last reviewed**: 2026-07-12 (post-Phase 0/1 documentation reconciliation)
 
 This is the single active architecture reasoning file for NovelAI. If another document
 disagrees with this one, this document wins and the conflict should be reported
@@ -30,6 +30,8 @@ NVIDIA provider removed; Gemini-only fallback chain
 S3 storage fields restored to settings (not yet active)
 pipeline/scheduler hardened: job-runtime persistence, model-state tracking
 microservice-split readiness: dual entry points, DEPLOY_MODE
+router layer violations: 9 routers import db/storage/sources directly (DEBT-054)
+circular import in admin_glossary routers (DEBT-006)
 ```
 
 NovelAI is currently a web-based Japanese novel ingestion, translation, editing,
@@ -88,6 +90,20 @@ backend/src/novelai/
 - Prompt construction belongs in `prompts/*`.
 - Persistence belongs behind `storage/*` and `db/*` boundaries.
 - Scheduler policy belongs in backend translation/service/job layers, not React.
+
+**Router layer violations (deferred — see DEBT-054):**
+
+| Router | Violations | Target Service |
+|--------|------------|----------------|
+| `library.py` | 3 `db.models` imports, 1 `sources.status`, 1 `StorageService`, ~30 storage calls | `LibraryService` |
+| `admin_glossary.py` + 4 split routers | 6 `db.models.glossary`, `Novel`, 2 `providers.*`, `StorageService`, 6 storage calls | `GlossaryWorkflowService` |
+| `auth.py` | 3 `db.models.users`, ~25 `session.*` CRUD calls | `AuthService` |
+| `user_data.py` | 7 `db.models` symbols, 27 `session.*` CRUD calls | `UserLibraryService`, `ReadingService`, `ReviewService` |
+| `public.py` | 3 `db.models` symbols, 1 `sources.status`, `StorageService`, ~18 storage calls | `PublicCatalogService` |
+| `editor.py` | 1 inline `db.models.novel`, `StorageService`, 12 storage calls | `EditorService` |
+| `requests.py` | 2 `db.models` symbols, full CRUD | `NovelRequestService` |
+| `admin.py` | `StorageService`, 3 preflight `storage.load_metadata` | `AdminService` |
+| `operations.py` | `StorageService`, 1 preflight `storage.load_metadata` | `OperationsService` |
 
 **Dependency direction**:
 
@@ -487,6 +503,11 @@ See consolidated register: [`docs/DEBT.md`](../DEBT.md).
 - Docker Compose production deployment with Caddy reverse proxy.
 - Object storage boundary (S3/R2/B2) for covers/chapters at scale.
 - Scheduler runtime persistence hardening.
+- **Router layer violation cleanup (DEBT-054):** Extract 9 services, thin 9 routers.
+- **Circular import fix (DEBT-006):** Resolve `admin_glossary.py` ↔ `admin_glossary_provider.py` circular import.
+- **CI/CD build verification (DEBT-002):** Verify `build.yml` runs green on push to main.
+- **CI Postgres (DEBT-003):** Add PostgreSQL service to GitHub Actions for DB-dependent tests.
+- **Health probes (DEBT-001):** Implement real liveness/readiness probes.
 
 **Phase D - Guest reader/catalog UX**
 

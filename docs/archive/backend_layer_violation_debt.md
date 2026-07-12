@@ -1,11 +1,17 @@
-# Backend Layer Violation Debt
+# Backend Layer Violation Debt (ARCHIVED)
+
+**Archived:** 2026-07-12
+**Reason:** Superseded by [`docs/DEBT.md`](../DEBT.md) as the canonical debt register.
+**Canonical entries:** DEBT-054 (consolidated router layer violations), DEBT-006 (circular import in admin_glossary routers), DEBT-012 through DEBT-020 (individual service extractions).
+
+---
 
 This document tracks the router layer violations identified during the
 backend audit. Per architecture.md §3, routers should not import
 `db.models.*` or `storage.service.StorageService` directly — use-case
 logic belongs in `services/`.
 
-> Consolidated register: [`docs/DEBT.md`](DEBT.md)
+> **Note:** This file is archived. Active debt entries are in [`docs/DEBT.md`](../DEBT.md).
 
 ## Status: Partially addressed
 

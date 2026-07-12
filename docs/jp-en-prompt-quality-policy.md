@@ -2,6 +2,9 @@
 
 This document defines the Japanese-to-English (JP-EN) prompt quality policy for the Novel AI translation system. It is a contract for generated prompts, not a separate translation feature.
 
+**Last updated:** 2026-07-12 (documentation reconciliation)
+**Implementation status:** See §12 below.
+
 ## Scope
 
 The policy applies to prompts generated for Japanese-to-English translation. It does not replace the prompt builder, duplicate glossary injection, rewrite parser behavior, or change translation scheduling/provider routing.
@@ -171,3 +174,42 @@ Every future JP-EN prompt change must pass this checklist:
 - No translation provider behavior is changed.
 - No scheduler behavior is changed.
 - No public reader behavior is changed.
+
+---
+
+## 12. Implementation Status (as of 2026-07-12)
+
+| Policy Rule | Implementation Status | Evidence |
+|-------------|----------------------|----------|
+| Core Rules 1-6 (factual meaning, glossary, tone, natural English, no invention, preserve ambiguity) | ✅ Implemented | `prompts/builders.py` JP-EN policy injection |
+| Glossary Compliance | ✅ Implemented | `GlossaryPromptInjectionService` + `TranslateStage` |
+| Honorific Policy (retain/translate/omit) | ✅ Implemented | `prompts/builders.py` honorific block |
+| Dialogue & Register Preservation | ✅ Implemented | Prompt instructions in `builders.py` |
+| Ambiguous Pronouns/Omitted Subjects | ✅ Implemented | Prompt instructions in `builders.py` |
+| Structure & Formatting | ✅ Implemented | Prompt instructions in `builders.py` |
+| JSON Review Metadata | ⚠️ Partial | Parser supports optional fields; not all prompts request it |
+| Prompt Length Control | ✅ Implemented | Shared system prompt section, no per-chunk duplication |
+| Cache Identity (includes policy version) | ✅ Implemented | `TranslationCacheService` key includes `prompt_policy_version` |
+| Quality Checklist (CI gate) | ❌ Not automated | Manual checklist in this doc; no CI enforcement |
+| Snapshot Tests | ✅ Implemented | `backend/tests/test_jp_en_prompt_quality_policy.py` |
+| Backward Compatibility | ✅ Verified | Existing builder callers work; non-JP-EN unchanged |
+
+**Legend:** ✅ = Implemented and tested; ⚠️ = Partially implemented; ❌ = Not implemented.
+
+### Known Gaps
+
+1. **JSON Review Metadata not universally requested** — Only some prompt templates request the optional review metadata fields. Full coverage would require updating all JP-EN prompt templates.
+
+2. **Quality Checklist not enforced in CI** — The checklist in §11 is a manual review gate. No automated test fails if a prompt change violates a rule.
+
+3. **Honorific policy configuration** — The policy defines three modes (`retain`, `translate`, `omit`) but the current implementation may not expose all three as configurable per-novel settings.
+
+4. **Style preset integration** — The policy mentions style presets in cache identity but the interaction between style presets and JP-EN policy rules is not fully documented.
+
+### Regression Test Coverage
+
+- `test_jp_en_prompt_quality_policy.py` — Snapshot tests for prompt output, cache key verification, parser compatibility with/without review metadata.
+- `test_prompts.py` — General prompt builder tests.
+- `test_translation_integration_regression.py` — End-to-end translation regression tests.
+
+Run with: `python -m pytest backend/tests/test_jp_en_prompt_quality_policy.py -v`

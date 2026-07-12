@@ -3,7 +3,7 @@
 ## 0. Status
 
 **Status**: design contract, largely implemented
-**Last reviewed**: 2026-06-18 (public email/password auth sync)
+**Last reviewed**: 2026-07-12 (documentation reconciliation)
 **Authority**: subordinate to `docs/architecture/architecture.md`
 
 This document defines the target contract for public user authentication and
@@ -27,6 +27,27 @@ and unavailable.
 | Public auth frontend | `frontend/lib/public-api.ts`, `frontend/hooks/public/use-auth.ts` | Public client exposes `authApi.me`, `authApi.logout`, `authApi.csrf`, `authApi.googleStart`, public email/password sign-in, and public sign-up. No `/api/auth/login` call from public UI. |
 | Public user frontend | `frontend/hooks/public/index.ts`, `frontend/lib/public-api.ts` | Guest reader hooks and `/api/user/*` public client methods for library, progress, history, reviews, and requests are re-exported and active. |
 | Public UI gates | `frontend/components/public/*`, `frontend/app/(public)/account/*` | Login uses Google OAuth plus email/password sign-in/sign-up. Library, progress, history, reviews, and requests UI are active for authenticated users. Contribution UI remains gated/unavailable. |
+
+## 1A. Implementation Status Summary (as of 2026-07-12)
+
+| Feature | Status | Notes |
+|---|---|---|
+| Google OAuth (backend + frontend) | ✅ Implemented | `/api/auth/google/start`, `/callback`; frontend `authApi.googleStart` |
+| Email/password auth (backend + frontend) | ✅ Implemented | `/api/auth/register`, `/api/auth/password/login`; frontend sign-in/sign-up |
+| Owner bootstrap login | ✅ Implemented | `/api/auth/login` (secret only); hidden from public UI |
+| Session management | ✅ Implemented | HTTP-only cookies, `same_site="lax"`, `https_only` in prod |
+| Role enforcement (`guest`/`user`/`owner`) | ✅ Implemented | `require_role("user")` on all `/api/user/*` |
+| User library (save/remove/list) | ✅ Implemented | `GET/POST/DELETE /api/user/library/{slug}` |
+| Reading progress | ✅ Implemented | `GET/PUT /api/user/progress/{slug}` |
+| Reading history | ✅ Implemented | `GET/POST /api/user/history` |
+| Reviews/ratings | ✅ Implemented | `PUT/DELETE /api/user/reviews/{slug}`; moderation status |
+| Novel/chapter requests | ✅ Implemented | `GET/POST /api/user/requests`; owner moderation separate |
+| Password reset | ❌ Not implemented | Deferred to dedicated phase |
+| Email verification | ❌ Not implemented | Deferred to dedicated phase |
+| Contribution credentials | 🚫 Gated | Intentionally unavailable (architecture.md §13) |
+| Community features | 🚫 Gated | Requires moderation/abuse controls first |
+
+**Key:** ✅ = implemented and tested; ❌ = not started; 🚫 = intentionally gated.
 
 ## 2. Public Auth Model
 
