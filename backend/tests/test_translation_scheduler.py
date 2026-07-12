@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
-from collections.abc import Mapping
+from collections.abc import Generator, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -68,7 +68,7 @@ class ScheduledProvider(TranslationProvider):
 
 
 @pytest.fixture()
-def scheduler_storage() -> StorageService:
+def scheduler_storage() -> Generator[StorageService]:
     TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     data_dir = TESTS_TMP_ROOT / f"scheduler_{uuid4().hex}"
     data_dir.mkdir(parents=True, exist_ok=False)
@@ -741,6 +741,7 @@ async def test_translate_stage_stops_after_max_retriable_attempts(
 
     assert caught.value.error_code == "max_attempts_exceeded"
     details = caught.value.details
+    assert details is not None
     assert details["chunk_id"] == "c0001"
     assert details["attempt_count"] == 2
     assert details["max_attempts"] == 2
@@ -797,9 +798,11 @@ async def test_translate_stage_resume_counts_persisted_failed_attempts_toward_ce
     assert provider.calls == []
     assert caught.value.error_code == "max_attempts_exceeded"
     details = caught.value.details
+    assert details is not None
     assert details["attempt_count"] == 3
     assert details["max_attempts"] == 3
     context = caught.value.pipeline_context
+    assert context is not None
     assert context.chunk_states["c0001"]["attempt_number"] == 3
     assert context.chunk_states["c0001"]["error_code"] == "max_attempts_exceeded"
 
@@ -927,7 +930,9 @@ async def test_translate_stage_force_retranslate_obeys_max_attempt_ceiling(
 
     assert provider.calls == ["fast"]
     assert caught.value.error_code == "max_attempts_exceeded"
-    assert caught.value.details["attempt_count"] == 1
+    details = caught.value.details
+    assert details is not None
+    assert details["attempt_count"] == 1
 
 
 @pytest.mark.asyncio

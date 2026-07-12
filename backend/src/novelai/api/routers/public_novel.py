@@ -7,9 +7,8 @@ Chapter reader and tags search are in ``public_chapter.py``.
 
 from __future__ import annotations
 
-from typing import Any
-
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 

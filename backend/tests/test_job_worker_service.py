@@ -52,7 +52,7 @@ def worker_env():
     storage = StorageService(data_dir)
     activity_log = ActivityQueueService(data_dir)
     orchestrator = StubOrchestrator(storage)
-    yield storage, activity_log, orchestrator, ActivityWorkerService(activity_log, orchestrator)
+    yield storage, activity_log, orchestrator, ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
     shutil.rmtree(data_dir, ignore_errors=True)
 
 
@@ -175,7 +175,7 @@ async def test_run_translation_activity_falls_back_to_legacy_provider_fields(wor
 @pytest.mark.asyncio
 async def test_run_failed_activity_records_error(worker_env) -> None:
     _storage, activity_log, orchestrator, _worker = worker_env
-    failing_worker = ActivityWorkerService(activity_log, StubOrchestrator(orchestrator.storage, fail=True))
+    failing_worker = ActivityWorkerService(activity_log, StubOrchestrator(orchestrator.storage, fail=True))  # type: ignore[arg-type]
     activity = activity_log.create_crawl_activity(novel_id="novel-1", source_key="syosetu_ncode", kind="chapters")
 
     result = await failing_worker.run_activity(activity["id"])

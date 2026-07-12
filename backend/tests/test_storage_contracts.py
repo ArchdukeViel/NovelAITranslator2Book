@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -71,7 +72,7 @@ def assert_edit_history_contract(payload: dict[str, Any]) -> None:
 
 
 @pytest.fixture()
-def storage() -> StorageService:
+def storage() -> Generator[StorageService]:
     TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     data_dir = TESTS_TMP_ROOT / f"storage_contracts_{uuid4().hex}"
     data_dir.mkdir(parents=True, exist_ok=False)

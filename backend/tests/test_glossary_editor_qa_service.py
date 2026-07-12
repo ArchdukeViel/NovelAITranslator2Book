@@ -72,7 +72,7 @@ class FakeRepo:
 
 class TestGlossaryEditorQAService:
     def _service(self, entries=None, revision=1):
-        return GlossaryEditorQAService(repository=FakeRepo(entries, revision))
+        return GlossaryEditorQAService(repository=FakeRepo(entries, revision))  # type: ignore[arg-type]
 
     def test_empty_glossary_returns_passed(self) -> None:
         svc = self._service(entries=[])

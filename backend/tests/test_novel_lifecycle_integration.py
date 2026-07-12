@@ -28,12 +28,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from starlette.middleware.sessions import SessionMiddleware
 
-# Register all models so Base.metadata.create_all picks up FK targets.
-import novelai.db.models.chapter
-import novelai.db.models.glossary
-import novelai.db.models.jobs
-import novelai.db.models.system
-import novelai.db.models.users  # noqa: F401
+# ORM models are registered by the session-scoped autouse fixture in conftest.py.
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.dependencies import get_db_session, get_storage

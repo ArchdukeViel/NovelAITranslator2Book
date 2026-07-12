@@ -19,6 +19,7 @@ from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.dependencies import get_db_session, get_storage
 from novelai.services.catalog_service import CatalogService, get_projection_refresh_failures
+
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 logger = logging.getLogger(__name__)
 

@@ -27,7 +27,7 @@ class StubWorker:
 @pytest.mark.asyncio
 async def test_runner_start_stop_status() -> None:
     worker = StubWorker()
-    runner = BackgroundActivityRunner(worker, poll_seconds=0.05)
+    runner = BackgroundActivityRunner(worker, poll_seconds=0.05)  # type: ignore[arg-type]
 
     started = await runner.start()
     stopped = await runner.stop()
@@ -41,7 +41,7 @@ async def test_runner_start_stop_status() -> None:
 @pytest.mark.asyncio
 async def test_runner_processes_pending_activity_in_background() -> None:
     worker = StubWorker([{"id": "activity-1"}])
-    runner = BackgroundActivityRunner(worker, poll_seconds=0.05, activity_type="crawl")
+    runner = BackgroundActivityRunner(worker, poll_seconds=0.05, activity_type="crawl")  # type: ignore[arg-type]
 
     await runner.start()
     await asyncio.wait_for(worker.processed.wait(), timeout=1.0)
@@ -56,7 +56,7 @@ async def test_runner_processes_pending_activity_in_background() -> None:
 @pytest.mark.asyncio
 async def test_runner_run_once_reports_idle() -> None:
     worker = StubWorker()
-    runner = BackgroundActivityRunner(worker, poll_seconds=0.05)
+    runner = BackgroundActivityRunner(worker, poll_seconds=0.05)  # type: ignore[arg-type]
 
     activity = await runner.run_once()
     status = runner.status()

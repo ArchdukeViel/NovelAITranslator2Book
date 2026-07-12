@@ -26,6 +26,7 @@ from novelai.services.glossary_candidate_import import (
     GlossaryCandidateImporter,
     GlossaryCandidateImportResult,
 )
+
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
 

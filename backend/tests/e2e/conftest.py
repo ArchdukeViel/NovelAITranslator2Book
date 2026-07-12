@@ -55,7 +55,6 @@ def mock_provider():
 @pytest.fixture(scope="session")
 def e2e_db_session_factory():
     """Create in-memory SQLite engine with all tables, return a session factory."""
-    import novelai.db.models  # noqa: F401
     from novelai.db.base import Base
 
     engine = create_engine(
@@ -120,7 +119,6 @@ def e2e_test_client(
     import novelai.services.catalog_service as _catalog_svc
     import novelai.services.orchestration.crawler as _crawler
     import novelai.services.orchestration.glossary as _glossary_svc
-    import novelai.services.orchestration.operations as _operations_svc
     import novelai.services.orchestration.translation as _translation_svc
 
     for _mod in (_catalog_svc, _crawler, _translation_svc):
@@ -194,7 +192,8 @@ def e2e_test_client(
 
     # Clear stale asyncio locks from previous aborted runs (module-level state)
     _translation_svc._translation_locks.clear()
-    _operations_svc._novel_translation_locks.clear()
+    from novelai.services.orchestration.operations_helpers import _novel_translation_locks
+    _novel_translation_locks.clear()
 
     # Step 8b: Disable translation cache to prevent cross-test cache hits
     # (identical chunk text across different novels hits the same cache key).
@@ -278,7 +277,7 @@ def fresh_db(e2e_test_client: TestClient) -> Session:
     """Return a fresh DB session for direct DB assertions."""
     from novelai.api.routers.dependencies import get_db_session as _get_db
 
-    gen = e2e_test_client.app.dependency_overrides[_get_db]()
+    gen = e2e_test_client.app.dependency_overrides[_get_db]()  # type: ignore[attr-defined]
     session = next(gen)
     return session
 

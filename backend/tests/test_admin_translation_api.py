@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from fastapi.routing import APIRoute
 
 
 class TestSchedulerHealthHandler:
@@ -30,10 +31,10 @@ class TestSchedulerHealthHandler:
         })()
 
         svc = AdminService(
-            preferences=fake_prefs,
-            translation_cache=type("FakeCache", (), {"cache_file": "nope", "reload": lambda: None, "clear": lambda: None})(),
-            usage=type("FakeUsage", (), {"usage_path": "nope", "reload": lambda: None, "clear": lambda: None})(),
-            activity_runner=type("FakeRunner", (), {"status": lambda self: {}})(),
+            preferences=fake_prefs,  # type: ignore[arg-type]
+            translation_cache=type("FakeCache", (), {"cache_file": "nope", "reload": lambda: None, "clear": lambda: None})(),  # type: ignore[arg-type]
+            usage=type("FakeUsage", (), {"usage_path": "nope", "reload": lambda: None, "clear": lambda: None})(),  # type: ignore[arg-type]
+            activity_runner=type("FakeRunner", (), {"status": lambda self: {}})(),  # type: ignore[arg-type]
         )
         svc.scheduler_policy_models = lambda **kw: [
             {"provider_key": "gemini", "provider_model": "g-1", "priority_order": 0, "rpm_limit": 10, "rpd_limit": 100},
@@ -100,7 +101,7 @@ class TestSchedulerHealthHandler:
 
         found = False
         for route in admin_router.router.routes:
-            if hasattr(route, "path") and "scheduler-health" in route.path:
+            if isinstance(route, APIRoute) and "scheduler-health" in route.path:
                 found = True
                 break
         assert found

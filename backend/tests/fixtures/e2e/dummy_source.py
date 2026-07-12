@@ -27,9 +27,8 @@ class DummySource(SourceAdapter):
     def key(self) -> str:
         return self.source_key
 
-    @classmethod
-    def can_handle(cls, source: str) -> bool:
-        return source == "dummy://test-novel"
+    def can_handle(self, identifier_or_url: str) -> bool:
+        return identifier_or_url == "dummy://test-novel"
 
     def matches_url(self, identifier_or_url: str) -> bool:
         return identifier_or_url == "dummy://test-novel"
@@ -42,7 +41,7 @@ class DummySource(SourceAdapter):
         for el in soup.select(".chapter"):
             ch_id_str = el.get("id", "")
             # Crawler expects integer chapter IDs
-            ch_id = int(ch_id_str) if ch_id_str.isdigit() else len(chapters) + 1
+            ch_id = int(str(ch_id_str)) if str(ch_id_str).isdigit() else len(chapters) + 1
             title_el = el.find("h2")
             title = title_el.get_text(strip=True) if title_el else ""
             chapters.append({

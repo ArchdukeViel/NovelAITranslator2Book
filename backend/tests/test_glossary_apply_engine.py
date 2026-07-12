@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import novelai.db.models.users  # noqa: F401
+# ORM models are registered by the session-scoped autouse fixture in conftest.py.
 from novelai.core.platform import ChapterVersionKind
 from novelai.db.base import Base
 from novelai.db.models.chapter import Chapter
@@ -110,9 +110,9 @@ class FakeStorage:
             "version_kind": version_kind.value,
         }
         if isinstance(glossary_revision, int):
-            version["glossary_revision"] = glossary_revision
+            version["glossary_revision"] = glossary_revision  # type: ignore[assignment]
         if isinstance(glossary_injected_term_count, int):
-            version["glossary_injected_term_count"] = glossary_injected_term_count
+            version["glossary_injected_term_count"] = glossary_injected_term_count  # type: ignore[assignment]
         if isinstance(base_version_id, str) and base_version_id.strip():
             version["base_version_id"] = base_version_id
         if isinstance(batch_id, str) and batch_id.strip():

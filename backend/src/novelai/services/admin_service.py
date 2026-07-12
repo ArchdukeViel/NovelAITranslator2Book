@@ -993,6 +993,8 @@ class AdminService:
 
     def _load_latest_scheduler_state(self) -> dict[tuple[str, str], dict[str, Any]] | None:
         """Load the most recent scheduler runtime state from storage."""
+        if self.storage is None:
+            return None
         try:
             all_states = self.storage.load_all_scheduler_states()
             if not all_states:

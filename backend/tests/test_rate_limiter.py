@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from unittest.mock import patch
 
 import pytest
@@ -13,12 +14,7 @@ from novelai.infrastructure.http.rate_limiter import (
     set_default_rate_limiter,
 )
 
-try:
-    import fakeredis
-    HAS_FAKEREDIS = True
-except ImportError:
-    HAS_FAKEREDIS = False
-    fakeredis = None  # type: ignore
+HAS_FAKEREDIS = importlib.util.find_spec("fakeredis") is not None
 
 
 class TestInMemoryRateLimiter:

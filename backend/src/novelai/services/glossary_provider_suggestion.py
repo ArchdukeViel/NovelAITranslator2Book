@@ -222,6 +222,7 @@ class GlossaryProviderSuggestionService:
             warnings=warnings,
         )
         response_text = self.provider.suggest_glossary_candidates(prompt)
+        assert not isawaitable(response_text), "Sync suggestion received awaitable — use async variant"
         candidates = self._parse_provider_response(
             response_text,
             chapters,
@@ -353,8 +354,10 @@ class GlossaryProviderSuggestionService:
         for storage_id in chapter_ids:
             raw = self.storage.load_chapter(storage_novel_id, storage_id) or {}
             translated = self.storage.load_translated_chapter(storage_novel_id, storage_id) or {}
-            raw_text = raw.get("text") if isinstance(raw.get("text"), str) else ""
-            translated_text = translated.get("text") if isinstance(translated.get("text"), str) else ""
+            raw_text_val = raw.get("text")
+            translated_text_val = translated.get("text")
+            raw_text = raw_text_val if isinstance(raw_text_val, str) else ""
+            translated_text = translated_text_val if isinstance(translated_text_val, str) else ""
             if not raw_text and not translated_text:
                 continue
             raw_seen = raw_seen or bool(raw_text)
@@ -431,10 +434,12 @@ class GlossaryProviderSuggestionService:
     def _stored_chapter_ids(self, storage_novel_id: str) -> list[str]:
         list_stored = getattr(self.storage, "list_stored_chapters", None)
         if callable(list_stored):
-            return list_stored(storage_novel_id)
+            result = list_stored(storage_novel_id)
+            return result if isinstance(result, list) else []
         list_translated = getattr(self.storage, "list_translated_chapters", None)
         if callable(list_translated):
-            return list_translated(storage_novel_id)
+            result = list_translated(storage_novel_id)
+            return result if isinstance(result, list) else []
         return []
 
     def _chapter_metadata(self, novel_id: int) -> dict[str, tuple[int | None, int | None]]:

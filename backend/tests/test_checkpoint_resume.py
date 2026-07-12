@@ -29,7 +29,7 @@ async def test_translate_novel_409_on_translation_in_progress() -> None:
         export_service=MagicMock(),
     )
     # Guard: load_metadata returns non-None
-    svc.storage.load_metadata.return_value = {"novel_id": "n1234"}
+    svc.storage.load_metadata.return_value = {"novel_id": "n1234"}  # type: ignore[attr-defined]
 
     with pytest.raises(OperationError) as exc_info:
         await svc.translate_novel(
@@ -57,7 +57,7 @@ async def test_translate_novel_504_on_timeout() -> None:
         storage=MagicMock(),
         export_service=MagicMock(),
     )
-    svc.storage.load_metadata.return_value = {"novel_id": "n5678"}
+    svc.storage.load_metadata.return_value = {"novel_id": "n5678"}  # type: ignore[attr-defined]
 
     with pytest.raises(OperationError) as exc_info:
         await svc.translate_novel(
@@ -82,7 +82,7 @@ async def test_translate_novel_404_on_missing_novel() -> None:
         storage=MagicMock(),
         export_service=MagicMock(),
     )
-    svc.storage.load_metadata.return_value = None
+    svc.storage.load_metadata.return_value = None  # type: ignore[attr-defined]
 
     with pytest.raises(OperationError) as exc_info:
         await svc.translate_novel(
@@ -106,7 +106,7 @@ def test_get_translation_status_shape() -> None:
         storage=MagicMock(),
         export_service=MagicMock(),
     )
-    svc.storage.load_metadata.return_value = {
+    svc.storage.load_metadata.return_value = {  # type: ignore[attr-defined]
         "novel_id": "n1234",
         "title": "Test",
         "chapters": [
@@ -115,12 +115,12 @@ def test_get_translation_status_shape() -> None:
             {"id": "3", "title": "Ch3"},
         ],
     }
-    svc.storage.load_chapter_state.side_effect = [
+    svc.storage.load_chapter_state.side_effect = [  # type: ignore[attr-defined]
         {"current_state": ChapterState.TRANSLATED, "error_count": 0},
         {"current_state": ChapterState.TRANSLATING, "error_count": 0},
         None,
     ]
-    svc.storage.load_translated_chapter.side_effect = [
+    svc.storage.load_translated_chapter.side_effect = [  # type: ignore[attr-defined]
         {"text": "done"},
         None,
         None,
@@ -166,7 +166,7 @@ def test_get_translation_status_404() -> None:
         storage=MagicMock(),
         export_service=MagicMock(),
     )
-    svc.storage.load_metadata.return_value = None
+    svc.storage.load_metadata.return_value = None  # type: ignore[attr-defined]
 
     with pytest.raises(OperationError) as exc_info:
         svc.get_translation_status(novel_id="nonexistent")
@@ -305,7 +305,7 @@ async def test_force_resets_all_chapters_to_pending() -> None:
         storage=MagicMock(),
         export_service=MagicMock(),
     )
-    svc.storage.load_metadata.return_value = {"novel_id": "n1"}
+    svc.storage.load_metadata.return_value = {"novel_id": "n1"}  # type: ignore[attr-defined]
 
     result = await svc.translate_novel(
         novel_id="n1",
@@ -340,7 +340,7 @@ async def test_skip_already_complete_chapters() -> None:
         storage=MagicMock(),
         export_service=MagicMock(),
     )
-    svc.storage.load_metadata.return_value = {"novel_id": "n1"}
+    svc.storage.load_metadata.return_value = {"novel_id": "n1"}  # type: ignore[attr-defined]
 
     result = await svc.translate_novel(
         novel_id="n1",

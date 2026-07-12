@@ -17,7 +17,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import novelai.db.models  # noqa: F401
+# ORM models are registered by the session-scoped autouse fixture in conftest.py.
 from novelai.activity.queue import ActivityQueueService
 from novelai.activity.runner import BackgroundActivityRunner
 from novelai.activity.worker import ActivityWorkerService
@@ -342,7 +342,7 @@ def test_json_error_encodes_non_json_native_details() -> None:
         trace_id="trace-123",
     )
 
-    payload = json.loads(response.body.decode("utf-8"))
+    payload = json.loads(bytes(response.body).decode("utf-8"))
 
     assert payload["code"] == "STORAGE_ERROR"
     assert payload["category"] == "storage"

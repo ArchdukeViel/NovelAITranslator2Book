@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Generator
 from pathlib import Path
 from uuid import uuid4
 
@@ -69,7 +70,7 @@ class StubTranslationService(TranslationService):
 
 
 @pytest.fixture
-def env() -> dict[str, object]:
+def env() -> Generator[dict[str, object]]:
     TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     data_dir = TESTS_TMP_ROOT / f"doc_orch_{uuid4().hex}"
     data_dir.mkdir(parents=True, exist_ok=False)
@@ -87,17 +88,17 @@ def env() -> dict[str, object]:
 async def test_import_document_persists_units_and_metadata(env: dict[str, object]) -> None:
     translation = StubTranslationService()
     orchestrator = NovelOrchestrationService(
-        storage=env["storage"],
+        storage=env["storage"],  # type: ignore[arg-type]
         translation=translation,
         input_adapter_factory=lambda key: StubDocumentAdapter(),
         provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
-        settings_service=env["settings"],
-        translation_cache=env["cache"],
-        usage_service=env["usage"],
+        settings_service=env["settings"],  # type: ignore[arg-type]
+        translation_cache=env["cache"],  # type: ignore[arg-type]
+        usage_service=env["usage"],  # type: ignore[arg-type]
     )
 
     metadata = await orchestrator.import_document("text", "novel-1", "C:/story.txt")
-    chapter = env["storage"].load_chapter("novel-1", "1")
+    chapter = env["storage"].load_chapter("novel-1", "1")  # type: ignore[attr-defined]
 
     assert metadata["document_type"] == "text"
     assert metadata["input_adapter_key"] == "text"
@@ -110,13 +111,13 @@ async def test_import_document_persists_units_and_metadata(env: dict[str, object
 async def test_translate_chapters_uses_imported_raw_text_without_source_adapter(env: dict[str, object]) -> None:
     translation = StubTranslationService()
     orchestrator = NovelOrchestrationService(
-        storage=env["storage"],
+        storage=env["storage"],  # type: ignore[arg-type]
         translation=translation,
         input_adapter_factory=lambda key: StubDocumentAdapter(),
         provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
-        settings_service=env["settings"],
-        translation_cache=env["cache"],
-        usage_service=env["usage"],
+        settings_service=env["settings"],  # type: ignore[arg-type]
+        translation_cache=env["cache"],  # type: ignore[arg-type]
+        usage_service=env["usage"],  # type: ignore[arg-type]
     )
     await orchestrator.import_document("text", "novel-1", "C:/story.txt")
 
@@ -124,7 +125,7 @@ async def test_translate_chapters_uses_imported_raw_text_without_source_adapter(
 
     assert translation.calls
     assert translation.calls[0]["raw_text"] == "勇者 Aria entered the city. 勇者 Aria returned victorious."
-    translated = env["storage"].load_translated_chapter("novel-1", "1")
+    translated = env["storage"].load_translated_chapter("novel-1", "1")  # type: ignore[attr-defined]
     assert translated is not None
     assert translated["text"] == "[TRANSLATED] Imported"
 
@@ -133,18 +134,18 @@ async def test_translate_chapters_uses_imported_raw_text_without_source_adapter(
 async def test_extract_glossary_terms_builds_pending_candidates(env: dict[str, object]) -> None:
     translation = StubTranslationService()
     orchestrator = NovelOrchestrationService(
-        storage=env["storage"],
+        storage=env["storage"],  # type: ignore[arg-type]
         translation=translation,
         input_adapter_factory=lambda key: StubDocumentAdapter(),
         provider_factory=lambda key: MockTranslationProvider(key="mock", model="mock-1.0"),
-        settings_service=env["settings"],
-        translation_cache=env["cache"],
-        usage_service=env["usage"],
+        settings_service=env["settings"],  # type: ignore[arg-type]
+        translation_cache=env["cache"],  # type: ignore[arg-type]
+        usage_service=env["usage"],  # type: ignore[arg-type]
     )
     await orchestrator.import_document("text", "novel-1", "C:/story.txt")
 
     summary = await orchestrator.extract_glossary_terms("novel-1")
-    entries = env["storage"].load_glossary("novel-1")
+    entries = env["storage"].load_glossary("novel-1")  # type: ignore[attr-defined]
 
     assert summary["added"] >= 1
     assert any(entry.get("status") == "pending" for entry in entries)

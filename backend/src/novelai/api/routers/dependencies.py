@@ -18,7 +18,9 @@ from novelai.runtime.container import container
 from novelai.services.admin_service import AdminService
 from novelai.services.auth_service import AuthService
 from novelai.services.editor_service import EditorService
+from novelai.services.glossary_workflow_service import GlossaryWorkflowService
 from novelai.services.library_service import LibraryService
+from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.novel_request_service import NovelRequestService
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.public_catalog_service import PublicCatalogService

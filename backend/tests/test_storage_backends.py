@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -88,7 +89,7 @@ class TestS3Backend:
     """S3 backend tested against a moto mock."""
 
     @pytest.fixture
-    def s3(self) -> StorageBackend:
+    def s3(self) -> Generator[StorageBackend]:
         _reset_backend()
         from moto import mock_aws
 

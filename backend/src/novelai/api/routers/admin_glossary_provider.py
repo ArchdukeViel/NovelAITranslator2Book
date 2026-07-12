@@ -32,6 +32,7 @@ from novelai.services.glossary_provider_suggestion import (
     GlossaryProviderSuggestionService,
     ProviderGlossarySuggestionResult,
 )
+
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
 

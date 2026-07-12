@@ -121,7 +121,7 @@ class TestGlossaryMetadata:
             "severity",
         )
 
-        constraints = {constraint.name for constraint in UserGlossaryDisplayOverride.__table__.constraints}
+        constraints = {constraint.name for constraint in UserGlossaryDisplayOverride.__table__.constraints}  # type: ignore[attr-defined]
         assert "uq_user_glossary_display_overrides_user_novel_entry" in constraints
 
 

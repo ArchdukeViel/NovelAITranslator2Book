@@ -308,8 +308,8 @@ class TestPipelineIntegration:
         # Pre-seed the cache entry before second run (simulates CacheFlushStage)
         from datetime import UTC, datetime
 
+        from novelai.services.glossary_apply import _hash_text
         from novelai.services.translation_cache import CacheEntry, make_cache_key
-        from novelai.translation.pipeline.stages.translate import _hash_text
         glossary_hash = _hash_text("")
         ck = make_cache_key("hello", "ja", "en", glossary_hash, provider_key="mock", provider_model="mock-model", prompt_version="translation_request_v1")
         seed_entry = CacheEntry(key=ck, source_text="hello", translated_text="translated: hello",
@@ -631,7 +631,7 @@ async def test_translate_stage_progress_counts_hits_and_misses(cache_dir: Path) 
     # Must match exact glossary_hash the stage computes: _hash_text("")
     from datetime import UTC, datetime
 
-    from novelai.translation.pipeline.stages.translate import _hash_text
+    from novelai.services.glossary_apply import _hash_text
     glossary_hash = _hash_text("")
     ck = make_cache_key("hello", "ja", "en", glossary_hash, provider_key="mock", provider_model="mock-model", prompt_version="translation_request_v1")
     seed_entry = CacheEntry(key=ck, source_text="hello", translated_text="translated: hello",

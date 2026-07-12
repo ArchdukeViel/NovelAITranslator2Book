@@ -1129,7 +1129,7 @@ async def retranslate_chapter(
 # Re-exports — backward compatibility for novel_orchestration_service.py
 # ---------------------------------------------------------------------------
 
-from novelai.services.orchestration.translation_lineage import (  # noqa: E402, F401
+from novelai.services.orchestration.translation_lineage import (
     _compare_lineage,
     _count_pending_glossary_entries,
     _estimate_delta_requests,
@@ -1138,18 +1138,37 @@ from novelai.services.orchestration.translation_lineage import (  # noqa: E402, 
     _old_lineage_by_chapter,
     _try_delta_translate_chapter,
 )
-from novelai.services.orchestration.translation_metadata import (  # noqa: E402, F401
+from novelai.services.orchestration.translation_metadata import (
     _translate_metadata_batch,
     _translate_metadata_fields,
     _translate_metadata_items,
     _translate_text,
     estimate_translation_requests,
 )
-from novelai.services.orchestration.translation_progress import (  # noqa: E402
+from novelai.services.orchestration.translation_progress import (
     _build_chapter_summary,
 )
-from novelai.services.orchestration.translation_resume import (  # noqa: E402, F401
+from novelai.services.orchestration.translation_resume import (
     _check_chapter_resume_state,
     _init_checkpoint_manager,
     _restore_checkpoint_for_chapter,
 )
+
+__all__ = [
+    "_build_chapter_summary",
+    "_check_chapter_resume_state",
+    "_compare_lineage",
+    "_count_pending_glossary_entries",
+    "_estimate_delta_requests",
+    "_init_checkpoint_manager",
+    "_lineage_from_paragraphs",
+    "_lineage_signature",
+    "_old_lineage_by_chapter",
+    "_restore_checkpoint_for_chapter",
+    "_translate_metadata_batch",
+    "_translate_metadata_fields",
+    "_translate_metadata_items",
+    "_translate_text",
+    "_try_delta_translate_chapter",
+    "estimate_translation_requests",
+]

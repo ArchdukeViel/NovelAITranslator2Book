@@ -33,6 +33,7 @@ from novelai.db.models.users import (
 )
 
 __all__ = [
+    "REGISTERED_MODELS",
     "AuditLog",
     "Chapter",
     "CrawlJob",
@@ -60,3 +61,30 @@ __all__ = [
     "novel_genres",
     "novel_tags",
 ]
+
+REGISTERED_MODELS = (
+    AuditLog,
+    Chapter,
+    CrawlJob,
+    EmailVerificationToken,
+    Genre,
+    LibraryItem,
+    Novel,
+    NovelGlossaryAlias,
+    NovelGlossaryDecisionEvent,
+    NovelGlossaryEntry,
+    NovelGlossaryQAFinding,
+    NovelGlossarySourceProvenance,
+    NovelRequest,
+    PasswordResetToken,
+    ProviderCredential,
+    ProviderRequest,
+    ReadingHistory,
+    ReadingProgress,
+    Review,
+    SystemSetting,
+    Tag,
+    TranslationJob,
+    User,
+    UserGlossaryDisplayOverride,
+)

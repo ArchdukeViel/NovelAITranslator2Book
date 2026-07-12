@@ -618,7 +618,7 @@ class OperationsService:
         }
 
     def cancel_onboarding(self, *, novel_id: str) -> dict[str, Any]:
-        meta = require_novel_meta(self.storage, novel_id)
+        require_novel_meta(self.storage, novel_id)
 
         current_status = self.storage.resolve_onboarding_status(novel_id)
         cancellable = {"metadata_discovered", "glossary_pending", "chapters_pending", "failed"}

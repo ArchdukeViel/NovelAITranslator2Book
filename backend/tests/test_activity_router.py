@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from fastapi.routing import APIRoute
+
 from novelai.api.routers import activity
 
 
@@ -14,7 +16,7 @@ class TestActivityRouterStructure:
         assert len(deps) > 0, "activity router should have CSRF dependency"
 
     def test_router_has_expected_routes(self) -> None:
-        route_paths = {route.path for route in activity.router.routes}
+        route_paths = {route.path for route in activity.router.routes if isinstance(route, APIRoute)}
         assert "/activity" in route_paths
         assert "/activity/{activity_id}" in route_paths
         assert "/activity/run-next" in route_paths

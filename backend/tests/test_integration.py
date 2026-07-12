@@ -331,7 +331,7 @@ async def test_translate_stage_falls_back_from_gemini_to_dummy(integration_fixtu
             ParseStage(),
             SegmentStage(),
             TranslateStage(
-                provider_factory=lambda key: gemini_provider if key == "gemini" else dummy_provider,
+                provider_factory=lambda key: gemini_provider if key == "gemini" else dummy_provider,  # type: ignore[arg-type]
                 cache=fixture.cache,
                 settings_service=fixture.settings_service,
                 usage_service=fixture.usage_service,
