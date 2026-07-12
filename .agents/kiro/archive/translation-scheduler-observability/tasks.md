@@ -52,16 +52,16 @@ Scope boundaries:
   - [x] 2.12 Ensure the structure is JSON-serializable.
   - [x] 2.13 Exclude secrets, prompts, source text, translated text, and raw provider responses.
 
-- [~] 3. Add Identity Fields to Decision Records
-  - [~] 3.1 Include `request_id` when available.
-  - [~] 3.2 Include `activity_id` when available.
-  - [~] 3.3 Include `job_id` when available.
-  - [~] 3.4 Include `chapter_id` when available.
-  - [~] 3.5 Include attempt number when available.
-  - [~] 3.6 Include checkpoint ID or checkpoint reference when available.
-  - [~] 3.7 Include parallel slot when available.
-  - [~] 3.8 Ensure missing identity fields do not break translation execution.
-  - [~] 3.9 Reuse existing request ID propagation instead of creating a separate correlation system.
+- [x] 3. Add Identity Fields to Decision Records
+  - [x] 3.1 Include `request_id` when available.
+  - [x] 3.2 Include `activity_id` when available.
+  - [x] 3.3 Include `job_id` when available.
+  - [x] 3.4 Include `chapter_id` when available.
+  - [x] 3.5 Include attempt number when available.
+  - [x] 3.6 Include checkpoint ID or checkpoint reference when available.
+  - [x] 3.7 Include parallel slot when available.
+  - [x] 3.8 Ensure missing identity fields do not break translation execution.
+  - [x] 3.9 Reuse existing request ID propagation instead of creating a separate correlation system.
 
 - [x] 4. Define Skip and Failure Reason Codes
   - [x] 4.1 Add stable reason constants or enum values.
@@ -110,56 +110,56 @@ Scope boundaries:
   - [x] 7.4 Preserve existing no-capacity error behavior.
   - [x] 7.5 Ensure no-capacity observability does not trigger independent retry or rerouting.
 
-- [~] 8. Integrate Checkpoint and Resume Observability
-  - [~] 8.1 Include checkpoint reference in decision records when available.
-  - [~] 8.2 Preserve prior scheduler decision metadata when a resumed chapter already has it.
-  - [~] 8.3 Create a new decision record when resume triggers a new provider/model selection.
-  - [~] 8.4 Count resumed work in activity summary when existing metadata supports it.
-  - [~] 8.5 Count checkpoint-blocked states with `checkpoint_blocked`.
-  - [~] 8.6 Ensure observability does not change checkpoint write timing.
-  - [~] 8.7 Ensure observability does not change resume eligibility.
+- [x] 8. Integrate Checkpoint and Resume Observability
+  - [x] 8.1 Include checkpoint reference in decision records when available.
+  - [x] 8.2 Preserve prior scheduler decision metadata when a resumed chapter already has it.
+  - [x] 8.3 Create a new decision record when resume triggers a new provider/model selection.
+  - [x] 8.4 Count resumed work in activity summary when existing metadata supports it.
+  - [x] 8.5 Count checkpoint-blocked states with `checkpoint_blocked`.
+  - [x] 8.6 Ensure observability does not change checkpoint write timing.
+  - [x] 8.7 Ensure observability does not change resume eligibility.
 
-- [~] 9. Integrate Chapter Parallelization Safely
-  - [~] 9.1 Tie every decision record to a stable chapter ID when available.
-  - [~] 9.2 Include attempt number, request ID, or job ID to distinguish duplicate chapter attempts.
-  - [~] 9.3 Ensure parallel workers do not overwrite each other’s scheduler metadata.
-  - [~] 9.4 Ensure activity summary aggregation is concurrency-safe.
-  - [~] 9.5 Aggregate by decision/attempt rather than lossy chapter-only keys where retries/resumes exist.
-  - [~] 9.6 Preserve existing chapter parallelization limits and behavior.
+- [x] 9. Integrate Chapter Parallelization Safely
+  - [x] 9.1 Tie every decision record to a stable chapter ID when available.
+  - [x] 9.2 Include attempt number, request ID, or job ID to distinguish duplicate chapter attempts.
+  - [x] 9.3 Ensure parallel workers do not overwrite each other’s scheduler metadata.
+  - [x] 9.4 Ensure activity summary aggregation is concurrency-safe.
+  - [x] 9.5 Aggregate by decision/attempt rather than lossy chapter-only keys where retries/resumes exist.
+  - [x] 9.6 Preserve existing chapter parallelization limits and behavior.
 
-- [~] 10. Integrate Exact Memory Observability
-  - [~] 10.1 Reuse existing exact memory tracking if available.
-  - [~] 10.2 Add `exact_memory_bytes` to decision metadata when available.
-  - [~] 10.3 Add `memory_limit_bytes` when available.
-  - [~] 10.4 Add `memory_pressure` when available.
-  - [~] 10.5 Count memory pressure events in activity summary.
-  - [~] 10.6 Count memory-blocked events in activity summary when available.
-  - [~] 10.7 Track peak exact memory in activity summary when available.
-  - [~] 10.8 Do not add a second memory accounting system.
-  - [~] 10.9 Do not change memory guard behavior.
+- [x] 10. Integrate Exact Memory Observability
+  - [x] 10.1 Reuse existing exact memory tracking if available.
+  - [x] 10.2 Add `exact_memory_bytes` to decision metadata when available.
+  - [x] 10.3 Add `memory_limit_bytes` when available.
+  - [x] 10.4 Add `memory_pressure` when available.
+  - [x] 10.5 Count memory pressure events in activity summary.
+  - [x] 10.6 Count memory-blocked events in activity summary when available.
+  - [x] 10.7 Track peak exact memory in activity summary when available.
+  - [x] 10.8 Do not add a second memory accounting system.
+  - [x] 10.9 Do not change memory guard behavior.
 
-- [~] 11. Attach Decision to Per-Chapter Translation Metadata
-  - [~] 11.1 Pass scheduler decision from scheduler to translation orchestration.
-  - [~] 11.2 Store decision in per-chapter translation result metadata.
-  - [~] 11.3 Store decision in translation version metadata where provider/model metadata is already stored.
-  - [~] 11.4 Keep scheduler metadata compact.
-  - [~] 11.5 Ensure metadata is additive.
-  - [~] 11.6 Ensure translation versions without scheduler metadata still load.
-  - [~] 11.7 Ensure scheduler metadata does not duplicate prompt, source, or translated text.
+- [x] 11. Attach Decision to Per-Chapter Translation Metadata
+  - [x] 11.1 Pass scheduler decision from scheduler to translation orchestration.
+  - [x] 11.2 Store decision in per-chapter translation result metadata.
+  - [x] 11.3 Store decision in translation version metadata where provider/model metadata is already stored.
+  - [x] 11.4 Keep scheduler metadata compact.
+  - [x] 11.5 Ensure metadata is additive.
+  - [x] 11.6 Ensure translation versions without scheduler metadata still load.
+  - [x] 11.7 Ensure scheduler metadata does not duplicate prompt, source, or translated text.
 
-- [~] 12. Add Activity Scheduler Summary
-  - [~] 12.1 Define `scheduler_summary` activity metadata shape.
-  - [~] 12.2 Count `chapters_with_decisions`.
-  - [~] 12.3 Count fallback selections.
-  - [~] 12.4 Count no-capacity decisions.
-  - [~] 12.5 Aggregate skip reason counts.
-  - [~] 12.6 Aggregate selected model counts.
-  - [~] 12.7 Aggregate provider counts.
-  - [~] 12.8 Aggregate quota/cooldown counts.
-  - [~] 12.9 Aggregate checkpoint/resume counts when available.
-  - [~] 12.10 Aggregate memory pressure and memory blocked counts when available.
-  - [~] 12.11 Persist summary in translation activity metadata.
-  - [~] 12.12 Ensure summary updates are safe under parallel chapter execution.
+- [x] 12. Add Activity Scheduler Summary
+  - [x] 12.1 Define `scheduler_summary` activity metadata shape.
+  - [x] 12.2 Count `chapters_with_decisions`.
+  - [x] 12.3 Count fallback selections.
+  - [x] 12.4 Count no-capacity decisions.
+  - [x] 12.5 Aggregate skip reason counts.
+  - [x] 12.6 Aggregate selected model counts.
+  - [x] 12.7 Aggregate provider counts.
+  - [x] 12.8 Aggregate quota/cooldown counts.
+  - [x] 12.9 Aggregate checkpoint/resume counts when available.
+  - [x] 12.10 Aggregate memory pressure and memory blocked counts when available.
+  - [x] 12.11 Persist summary in translation activity metadata.
+  - [x] 12.12 Ensure summary updates are safe under parallel chapter execution.
 
 - [x] 13. Add Scheduler Health Admin API
   - [x] 13.1 Prefer extending an existing admin operations/runtime-state route.
@@ -204,36 +204,36 @@ Scope boundaries:
   - [x] 15.12 Show provider/model health states.
   - [x] 15.13 Confirm secrets and account identifiers are not rendered.
 
-- [~] 16. Safety and Size Review
-  - [~] 16.1 Confirm candidate decision list is bounded.
-  - [~] 16.2 Confirm truncation metadata is present when needed.
-  - [~] 16.3 Confirm reason codes are used instead of long raw errors.
-  - [~] 16.4 Confirm provider secrets are redacted.
-  - [~] 16.5 Confirm account identifiers are redacted.
-  - [~] 16.6 Confirm prompts are not stored.
-  - [~] 16.7 Confirm source text is not stored.
-  - [~] 16.8 Confirm translated text is not stored inside scheduler metadata.
-  - [~] 16.9 Confirm raw provider responses are not stored.
-  - [~] 16.10 Confirm activity summaries remain compact.
+- [x] 16. Safety and Size Review
+  - [x] 16.1 Confirm candidate decision list is bounded.
+  - [x] 16.2 Confirm truncation metadata is present when needed.
+  - [x] 16.3 Confirm reason codes are used instead of long raw errors.
+  - [x] 16.4 Confirm provider secrets are redacted.
+  - [x] 16.5 Confirm account identifiers are redacted.
+  - [x] 16.6 Confirm prompts are not stored.
+  - [x] 16.7 Confirm source text is not stored.
+  - [x] 16.8 Confirm translated text is not stored inside scheduler metadata.
+  - [x] 16.9 Confirm raw provider responses are not stored.
+  - [x] 16.10 Confirm activity summaries remain compact.
 
-- [~] 17. Add Backend Tests
-  - [~] 17.1 Create `backend/tests/test_translation_scheduler_observability.py`.
-  - [~] 17.2 Test selected model decision is recorded.
-  - [~] 17.3 Test decision includes request ID, job ID, and chapter ID when available.
-  - [~] 17.4 Test checkpoint ID is recorded when available.
-  - [~] 17.5 Test cooldown skip reason is recorded.
-  - [~] 17.6 Test RPM skip reason is recorded.
-  - [~] 17.7 Test RPD skip reason is recorded.
-  - [~] 17.8 Test quota/exhausted skip reason is recorded.
-  - [~] 17.9 Test memory pressure skip reason is recorded when memory guard state exists.
-  - [~] 17.10 Test checkpoint blocked skip reason is recorded when checkpoint state blocks execution.
-  - [~] 17.11 Test fallback selection records skipped candidates.
-  - [~] 17.12 Test no-capacity failure records `selected=null` and `failure_reason="no_capacity"`.
-  - [~] 17.13 Test candidate list is bounded.
-  - [~] 17.14 Test truncation metadata is recorded.
-  - [~] 17.15 Test per-chapter translation metadata includes scheduler decision.
-  - [~] 17.16 Test legacy translations without scheduler metadata still load.
-  - [~] 17.17 Ensure tests do not call live translation providers.
+- [x] 17. Add Backend Tests
+  - [x] 17.1 Create `backend/tests/test_translation_scheduler_observability.py`.
+  - [x] 17.2 Test selected model decision is recorded.
+  - [x] 17.3 Test decision includes request ID, job ID, and chapter ID when available.
+  - [x] 17.4 Test checkpoint ID is recorded when available.
+  - [x] 17.5 Test cooldown skip reason is recorded.
+  - [x] 17.6 Test RPM skip reason is recorded.
+  - [x] 17.7 Test RPD skip reason is recorded.
+  - [x] 17.8 Test quota/exhausted skip reason is recorded.
+  - [x] 17.9 Test memory pressure skip reason is recorded when memory guard state exists.
+  - [x] 17.10 Test checkpoint blocked skip reason is recorded when checkpoint state blocks execution.
+  - [x] 17.11 Test fallback selection records skipped candidates.
+  - [x] 17.12 Test no-capacity failure records `selected=null` and `failure_reason="no_capacity"`.
+  - [x] 17.13 Test candidate list is bounded.
+  - [x] 17.14 Test truncation metadata is recorded.
+  - [x] 17.15 Test per-chapter translation metadata includes scheduler decision.
+  - [x] 17.16 Test legacy translations without scheduler metadata still load.
+  - [x] 17.17 Ensure tests do not call live translation providers.
 
 - [x] 18. Add Activity, Parallelism, and Resume Tests
   - [x] 18.1 Test activity metadata includes scheduler summary.

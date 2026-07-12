@@ -172,7 +172,7 @@ removed.
       is unchanged
     - **Validates: Requirements 8.4**
 
-- [~] 8. Checkpoint — Ensure all tests pass, ask the user if questions arise.
+- [x] 8. Checkpoint — Ensure all tests pass, ask the user if questions arise.
 
 - [x] 9. Implement the glossary bootstrap hook in the onboarding orchestrator
   - [x] 9.1 Add `bootstrap_glossary_if_needed` async helper to
@@ -249,7 +249,7 @@ removed.
       response JSON contains all three fields with values consistent with DB state
     - **Validates: Requirements 5.5**
 
-- [~] 12. Checkpoint — Ensure all tests pass, ask the user if questions arise.
+- [x] 12. Checkpoint — Ensure all tests pass, ask the user if questions arise.
 
 - [x] 13. Build `ReadinessBadge` frontend component
   - [x] 13.1 Create `frontend/src/components/admin/ReadinessBadge.tsx`

@@ -11,10 +11,22 @@ relational state and projections derived from these files.
 
 ## Canonical vs Derived State
 
-| State | Store | Notes |
-|---|---|---|
-| Novel metadata, raw chapters, translated versions, edit history, image assets | File storage (canonical) | Source of truth for content. |
-| `Novel` / `Chapter` SQL rows, catalog projection | PostgreSQL (derived) | Searchable status and workflow state; rebuildable from files. |
+### Ownership Matrix
+
+| Domain | Canonical store | Derived/rebuildable | Notes |
+|---|---|---|---|
+| Novel metadata, raw chapters, translated versions, edit history, image assets | File storage (canonical) | PostgreSQL `Novel`/`Chapter` rows | Source of truth for content. SQL rows are projections used for catalog indices. |
+| Users, sessions, auth identities | PostgreSQL | None | Primary authentication tables. |
+| Glossary, reviews, novel requests, provider credentials, audit logs | PostgreSQL | None | Related storage exports may copy data, but Postgres is authoritative. |
+| Runtime cache, pipeline events, activity logs, scheduler state | Storage runtime files | None | Transient logs. Prunable and disposable. |
+| Exports, export manifests, full backups | Storage backend | None | Historical output artifacts. |
+
+### Restore Rules
+When performing a database or system restore, the following sequence must be respected:
+1. **Restore Storage Backend First:** Deploy canonical filesystem or S3 artifacts back to the target directory.
+2. **Restore PostgreSQL Tables Second:** Deploy dump files for database-owned domains (users, credentials, glossary, audits).
+3. **Rebuild Catalog Projections Third:** Trigger `catalog_service.refresh_catalog_projection` to reconstruct relational `Novel` and `Chapter` tables entirely from the restored storage files.
+4. **Verify Manifests Fourth:** Enumerate and load the restored export and backup manifest JSON records to align runtime indexes.
 
 ## Artifact Index
 
