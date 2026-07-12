@@ -6,6 +6,8 @@ CRUD, candidates, provider, and suggestion endpoints are in other split files.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 

@@ -345,6 +345,7 @@ async def list_genres(
     db: Session = Depends(get_db_session),
 ) -> list[PublicGenreResponse]:
     """Return active genres ordered by display_order then name."""
+    from novelai.db.models.genre import Genre
     query = db.query(Genre).filter(Genre.is_active.is_(True))
     if not include_adult:
         query = query.filter(Genre.is_adult.is_(False))

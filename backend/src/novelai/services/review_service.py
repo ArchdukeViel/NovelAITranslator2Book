@@ -50,7 +50,6 @@ class ReviewService:
             self.db_session.add(review)
         review.rating = rating
         review.body = review_text
-        review.updated_at = self._utcnow()
         self.db_session.flush()
         return self._review_response(review, slug)
 
