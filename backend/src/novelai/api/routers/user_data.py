@@ -28,6 +28,11 @@ from novelai.services.user_library_service import UserLibraryService
 router = APIRouter(prefix="/api/user", tags=["user"])
 
 
+def _uid(user: SessionUser) -> int:
+    assert _uid(user) is not None, "Authenticated route requires user_id"
+    return _uid(user)
+
+
 def _utcnow() -> datetime:
     return datetime.now(UTC)
 
@@ -43,7 +48,7 @@ def list_library(
     user: SessionUser = Depends(require_role("user")),
     service: UserLibraryService = Depends(get_user_library_service),
 ) -> list[LibraryItemResponse]:
-    items = service.list_library(user.user_id)
+    items = service.list_library(_uid(user))
     return [LibraryItemResponse(**item) for item in items]
 
 
@@ -54,7 +59,7 @@ def get_library_item(
     service: UserLibraryService = Depends(get_user_library_service),
 ) -> LibraryItemResponse:
     try:
-        item = service.get_library_item(user.user_id, slug)
+        item = service.get_library_item(_uid(user), slug)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return LibraryItemResponse(**item)
@@ -72,9 +77,9 @@ def add_to_library(
     user: SessionUser = Depends(require_role("user")),
     service: UserLibraryService = Depends(get_user_library_service),
 ) -> LibraryItemResponse:
-    require_public_rate_limit(request, "library_mutation", user_id=user.user_id)
+    require_public_rate_limit(request, "library_mutation", user_id=_uid(user))
     try:
-        item = service.add_to_library(user.user_id, slug)
+        item = service.add_to_library(_uid(user), slug)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return LibraryItemResponse(**item)
@@ -91,9 +96,9 @@ def remove_from_library(
     user: SessionUser = Depends(require_role("user")),
     service: UserLibraryService = Depends(get_user_library_service),
 ) -> None:
-    require_public_rate_limit(request, "library_mutation", user_id=user.user_id)
+    require_public_rate_limit(request, "library_mutation", user_id=_uid(user))
     try:
-        service.remove_from_library(user.user_id, slug)
+        service.remove_from_library(_uid(user), slug)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -120,7 +125,7 @@ def get_progress(
     service: ReadingService = Depends(get_reading_service),
 ) -> ProgressResponse:
     try:
-        progress = service.get_progress(user.user_id, slug)
+        progress = service.get_progress(_uid(user), slug)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return ProgressResponse(**progress)
@@ -138,10 +143,10 @@ def update_progress(
     user: SessionUser = Depends(require_role("user")),
     service: ReadingService = Depends(get_reading_service),
 ) -> ProgressResponse:
-    require_public_rate_limit(request, "progress_write", user_id=user.user_id)
+    require_public_rate_limit(request, "progress_write", user_id=_uid(user))
     try:
         progress = service.update_progress(
-            user.user_id, slug, payload.chapter_id, payload.progress_percent
+            _uid(user), slug, payload.chapter_id, payload.progress_percent
         )
     except ValueError as exc:
         detail = str(exc)
@@ -184,13 +189,13 @@ def record_history(
     user: SessionUser = Depends(require_role("user")),
     service: ReadingService = Depends(get_reading_service),
 ) -> HistoryEntryResponse:
-    require_public_rate_limit(request, "history_record", user_id=user.user_id)
+    require_public_rate_limit(request, "history_record", user_id=_uid(user))
     effective_slug = payload.slug if payload else slug
     effective_chapter_id = payload.chapter_id if payload else chapter_id
     if effective_slug is None:
         raise HTTPException(status_code=400, detail="slug is required.")
     try:
-        entry = service.record_history(user.user_id, effective_slug, effective_chapter_id)
+        entry = service.record_history(_uid(user), effective_slug, effective_chapter_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return HistoryEntryResponse(**entry)
@@ -202,7 +207,7 @@ def list_history(
     user: SessionUser = Depends(require_role("user")),
     service: ReadingService = Depends(get_reading_service),
 ) -> HistoryListResponse:
-    items = service.list_history(user.user_id, limit=limit)
+    items = service.list_history(_uid(user), limit=limit)
     return HistoryListResponse(items=[HistoryEntryResponse(**item) for item in items])
 
 
@@ -233,9 +238,9 @@ def put_review(
     user: SessionUser = Depends(require_role("user")),
     service: ReviewService = Depends(get_review_service),
 ) -> ReviewResponse:
-    require_public_rate_limit(request, "review_mutation", user_id=user.user_id)
+    require_public_rate_limit(request, "review_mutation", user_id=_uid(user))
     try:
-        review = service.upsert_review(user.user_id, slug, payload.rating, payload.body)
+        review = service.upsert_review(_uid(user), slug, payload.rating, payload.body)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return ReviewResponse(**review)
@@ -254,9 +259,9 @@ def post_review(
     user: SessionUser = Depends(require_role("user")),
     service: ReviewService = Depends(get_review_service),
 ) -> ReviewResponse:
-    require_public_rate_limit(request, "review_mutation", user_id=user.user_id)
+    require_public_rate_limit(request, "review_mutation", user_id=_uid(user))
     try:
-        review = service.upsert_review(user.user_id, slug, payload.rating, payload.body)
+        review = service.upsert_review(_uid(user), slug, payload.rating, payload.body)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return ReviewResponse(**review)
@@ -273,9 +278,9 @@ def delete_review(
     user: SessionUser = Depends(require_role("user")),
     service: ReviewService = Depends(get_review_service),
 ) -> None:
-    require_public_rate_limit(request, "review_mutation", user_id=user.user_id)
+    require_public_rate_limit(request, "review_mutation", user_id=_uid(user))
     try:
-        service.delete_review(user.user_id, slug)
+        service.delete_review(_uid(user), slug)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -334,10 +339,10 @@ def create_request(
     user: SessionUser = Depends(require_role("user")),
     service: NovelRequestService = Depends(get_novel_request_service),
 ) -> RequestResponse:
-    require_public_rate_limit(request, "request_create", user_id=user.user_id)
+    require_public_rate_limit(request, "request_create", user_id=_uid(user))
     try:
         result = service.create_user_request(
-            user.user_id, payload.request_type,
+            _uid(user), payload.request_type,
             source_url=payload.source_url,
             slug=payload.slug,
             chapter_id=payload.chapter_id,
@@ -356,5 +361,5 @@ def list_requests(
     user: SessionUser = Depends(require_role("user")),
     service: NovelRequestService = Depends(get_novel_request_service),
 ) -> RequestListResponse:
-    items = service.list_user_requests(user.user_id, limit=limit)
+    items = service.list_user_requests(_uid(user), limit=limit)
     return RequestListResponse(items=[RequestResponse(**item) for item in items])

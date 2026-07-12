@@ -544,7 +544,7 @@ async def get_chapter(
                         platform_novel_id = novel_row.id
 
                 if platform_novel_id is not None:
-                    entries = repository.get_entries_for_novel(platform_novel_id)
+                    entries = repository.list_glossary_entries_for_novel(platform_novel_id)
                     public_terms = select_public_terms(entries)
                     reader_blocks = response.get("reader_blocks", [])
                     annotations = find_annotations(public_terms, response.get("text", ""), reader_blocks)
