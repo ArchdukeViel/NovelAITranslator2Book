@@ -1,0 +1,23 @@
+# -----------------------------------------------------------------------------
+# NovelAITranslator2Book - .graphifyignore
+# Graphify also respects .gitignore; only Graphify-specific exclusions go here.
+# -----------------------------------------------------------------------------
+
+# Historical completion/review records can dominate architecture queries.
+docs/history/
+
+# Generated Graphify output
+graphify-out/
+
+# Frontend static media does not contribute to code architecture.
+frontend/public/**/*.png
+frontend/public/**/*.jpg
+frontend/public/**/*.jpeg
+frontend/public/**/*.gif
+frontend/public/**/*.webp
+frontend/public/**/*.ico
+
+# Generated source maps and minified bundles
+**/*.map
+**/*.min.js
+**/*.min.css
