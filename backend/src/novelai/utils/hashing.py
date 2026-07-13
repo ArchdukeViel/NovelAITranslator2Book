@@ -3,12 +3,13 @@
 Note: CodeQL py/weak-sensitive-data-hashing flags BLAKE2B because it is not
 a computationally expensive hash. That rule targets *password* hashing; we
 use these helpers only for token / fingerprint / cache-key hashing, none of
-which require password-hashing slowness.  # codeql[py/weak-sensitive-data-hashing]
+which require password-hashing slowness.
 """
 
 import hashlib
 
 
+# codeql[py/weak-sensitive-data-hashing]
 def hexdigest(data: str, *, length: int = 64) -> str:
     """Return a blake2b hex digest of *data*.
 
@@ -18,6 +19,7 @@ def hexdigest(data: str, *, length: int = 64) -> str:
     return hashlib.blake2b(data.encode("utf-8"), digest_size=32).hexdigest()[:length]
 
 
+# codeql[py/weak-sensitive-data-hashing]
 def digest32(data: str) -> bytes:
     """Return a 32-byte blake2b digest — suitable for Fernet key derivation."""
     return hashlib.blake2b(data.encode("utf-8"), digest_size=32).digest()
