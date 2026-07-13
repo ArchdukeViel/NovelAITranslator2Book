@@ -30,8 +30,7 @@ def register_provider(key: str, factory: Callable[[], TranslationProvider]) -> N
         _PROVIDER_REGISTRY[key] = factory
         return
     logger.warning(
-        "Provider key %r ignored: only Gemini is supported. NVIDIA provider has been removed.",
-        key,
+        "Ignoring unsupported provider registration — only Gemini is available.",
     )
 
 
@@ -62,8 +61,7 @@ def get_provider(key: str | None = None) -> TranslationProvider:
     """
     if key is not None and key not in {"gemini", "dummy"}:
         logger.warning(
-            "Provider key %r requested but only Gemini is available. Falling back to Gemini.",
-            key,
+            "Requested provider key is not available — only Gemini is supported. Falling back.",
         )
 
     factory = _PROVIDER_REGISTRY.get(key or "gemini") or _PROVIDER_REGISTRY["gemini"]

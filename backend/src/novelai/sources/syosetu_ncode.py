@@ -587,7 +587,7 @@ class SyosetuNcodeSource(SourceAdapter):
                 continue
             href = attribute_to_str(anchor.get("href")) or ""
             parsed = urlparse(href)
-            if parsed.hostname and "syosetu.com" in parsed.hostname and parsed.path and "/genre/" in parsed.path:
+            if parsed.hostname and parsed.hostname.endswith(".syosetu.com") and parsed.path and parsed.path.startswith("/genre/"):
                 text = anchor.get_text(strip=True)
                 if text:
                     slug = map_genre(text, self._genre_map)
@@ -627,7 +627,7 @@ class SyosetuNcodeSource(SourceAdapter):
                     continue
                 href = attribute_to_str(anchor.get("href")) or ""
                 parsed = urlparse(href)
-                if parsed.hostname and "syosetu.com" in parsed.hostname and parsed.path and "/tag/" in parsed.path:
+                if parsed.hostname and parsed.hostname.endswith(".syosetu.com") and parsed.path and parsed.path.startswith("/tag/"):
                     text = anchor.get_text(strip=True)
                     if text:
                         keywords.append(text)

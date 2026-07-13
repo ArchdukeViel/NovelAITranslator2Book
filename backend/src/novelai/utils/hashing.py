@@ -1,4 +1,10 @@
-"""Secure hashing helpers — blake2b for all non-legacy hashing needs."""
+"""Secure hashing helpers — blake2b for all non-legacy hashing needs.
+
+Note: CodeQL py/weak-sensitive-data-hashing flags BLAKE2B because it is not
+a computationally expensive hash. That rule targets *password* hashing; we
+use these helpers only for token / fingerprint / cache-key hashing, none of
+which require password-hashing slowness.  # codeql[py/weak-sensitive-data-hashing]
+"""
 
 import hashlib
 
