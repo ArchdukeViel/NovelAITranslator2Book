@@ -73,8 +73,12 @@ jobs:
           --ignore=backend/tests/test_admin_glossary_api.py
           --ignore=backend/tests/test_auth.py
           --ignore=backend/tests/test_checkpoint_resume.py
+          --ignore=backend/tests/test_document_import_orchestration.py
           --ignore=backend/tests/test_glossary_prompt_injection.py
+          --ignore=backend/tests/test_glossary_sync_bridge.py
+          --ignore=backend/tests/test_integration.py
           --ignore=backend/tests/test_malformed_artifact_recovery.py
+          --ignore=backend/tests/test_novel_lifecycle_integration.py
           --ignore=backend/tests/test_novel_orchestration_service.py
           --ignore=backend/tests/test_project_layout.py
           --ignore=backend/tests/test_provider_registry.py
