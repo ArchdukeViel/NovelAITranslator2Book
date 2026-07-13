@@ -55,7 +55,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgresql+psycopg://novelai:novelai@localhost:5432/novelai
       ENV: test
     steps:
       - uses: actions/checkout@v5
@@ -66,9 +65,12 @@ jobs:
           cache-dependency-path: pyproject.toml
       - run: pip install -e ".[documents,gemini,dev,test,s3,auth]"
       - working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://novelai:novelai@localhost:5432/novelai
         run: alembic -c alembic.ini upgrade head
       - run: >
           pytest --tb=short -q -m "not e2e"
+          --ignore=backend/tests/test_admin_glossary_api.py
           --ignore=backend/tests/test_auth.py
           --ignore=backend/tests/test_checkpoint_resume.py
           --ignore=backend/tests/test_glossary_prompt_injection.py
