@@ -146,6 +146,6 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - if: steps.filter.outputs.relevant == 'true'
-        run: pip install -e ".[documents,gemini,dev]"
+        run: pip install -e ".[documents,gemini,dev,test,s3,auth]"
       - if: steps.filter.outputs.relevant == 'true'
         run: pytest -m e2e --tb=short -q
