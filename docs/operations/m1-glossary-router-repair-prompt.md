@@ -22,12 +22,12 @@ Latest commit: 16f41ffe.
 7. `docs/operations/deployment.md` — container topology, reverse proxy routing.
 8. `docs/operations/runbook.md` — health, worker, cache invalidation procedures.
 9. `docs/operations/data-recovery.md` — backup and restore procedures.
-10. `.agents/kiro/archive/glossary-management-consolidation/design.md` — glossary resolution contract, data model, API shape, non-goals.
-11. `.agents/kiro/archive/glossary-management-consolidation/requirements.md` — numbered requirements (REQ-N).
-12. `.agents/kiro/archive/glossary-management-consolidation/tasks.md` — implementation checklist with REQ-N tags.
-13. `.agents/kiro/archive/jp-en-prompt-quality-policy/design.md` — JP-EN prompt quality policy contract, activation rules, test design.
-14. `.agents/kiro/archive/jp-en-prompt-quality-policy/requirements.md` — numbered requirements (REQ-N).
-15. `.agents/kiro/archive/jp-en-prompt-quality-policy/tasks.md` — implementation checklist with REQ-N tags.
+10. `.agents/kiro/specs/glossary-management-consolidation/design.md` — glossary resolution contract, data model, API shape, non-goals.
+11. `.agents/kiro/specs/glossary-management-consolidation/requirements.md` — numbered requirements (REQ-N).
+12. `.agents/kiro/specs/glossary-management-consolidation/tasks.md` — implementation checklist with REQ-N tags.
+13. `.agents/kiro/specs/jp-en-prompt-quality-policy/design.md` — JP-EN prompt quality policy contract, activation rules, test design.
+14. `.agents/kiro/specs/jp-en-prompt-quality-policy/requirements.md` — numbered requirements (REQ-N).
+15. `.agents/kiro/specs/jp-en-prompt-quality-policy/tasks.md` — implementation checklist with REQ-N tags.
 16. `docs/glossary/glossary-system.md` — glossary system overview, known issues, implementation status.
 
 ## 2. Your Task

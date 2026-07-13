@@ -4,7 +4,7 @@ Novel AI is a web-first Japanese novel platform for crawling source sites, queue
 
 The project is now oriented toward a production-style web deployment, similar in shape to a WTR-Lab style site: a Next.js frontend for public/admin pages, a FastAPI backend under `/api`, file-backed canonical novel metadata and content, Postgres catalog/user domain rows, and an in-process activity worker (with optional standalone worker or Redis/RQ support).
 
-Current mode is single-owner / controlled-admin transitioning to a public platform. The project has 45 archived specs under `.agents/kiro/archive/` and 21 active specs under `.agents/kiro/specs/` covering:
+Current mode is single-owner / controlled-admin transitioning to a public platform. The project has 66 active specs under `.agents/kiro/specs/` covering:
 - Scheduler-enabled admin-owned provider/model routing
 - PostgreSQL 16 with SQLAlchemy 2.x + Alembic migrations (metadata, users, jobs)
 - Redis 7 + RQ background workers

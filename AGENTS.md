@@ -1,192 +1,777 @@
 # AGENTS.md
 
-Compact instruction file for AI coding assistants. Read before touching anything non-trivial.
+Compact project instructions for AI coding assistants. Read this file before any non-trivial investigation, plan, edit, review, or debugging task.
 
-For architecture, contracts, and security rules: `docs/architecture/architecture.md` (authoritative).
-For active debt: `docs/DEBT.md`. For roadmap: `docs/roadmap.md`.
+## Sources of Truth
+
+Use these sources in this order:
+
+1. `docs/architecture/architecture.md` — architecture, contracts, security boundaries, and dependency direction.
+2. The active specification under `.agents/kiro/specs/<spec-name>/`.
+3. Existing production code and tests.
+4. `docs/DEBT.md` — active technical debt.
+5. `docs/roadmap.md` — project roadmap.
+
+When two sources disagree:
+
+* Architecture wins over other documentation.
+* An active approved specification wins over archived specifications.
+* Report the conflict before implementing.
+* Do not silently choose one interpretation.
+
+Do not pre-load every document. Read only the references relevant to the current task.
+
+---
 
 ## Verification Commands
 
-Run from repo root. Workflow order: lint → typecheck → test.
+Run commands from the repository root unless the command changes directory explicitly.
 
-| Command | Purpose |
-|---|---|
-| `python -m ruff check .` | Lint (pre-existing errors exist in unrelated code; don't fix unless in scope) |
-| `python -m pyright` | Typecheck (uses `pyrightconfig.json`, covers `backend/src` + `backend/tests`) |
-| `python -m pytest backend/tests/test_<name>.py` | Focused test — run one file, not the whole suite (~90 files, slow) |
-| `python -m pytest backend/tests/e2e/` | E2e tests (slower, requires fixtures; pre-existing failures ignored in CI) |
-| `cd frontend; npm run typecheck` | Frontend typecheck |
-| `cd frontend; npm run build` | Frontend build |
-| `cd frontend; npm run test` | Frontend tests (vitest) |
-| `alembic -c backend/alembic.ini upgrade head` | Migrations (requires `DATABASE_URL`; run from `backend/` dir) |
+Workflow order:
 
-Router layer guard (must return no matches):
-```
+1. Focused lint or architecture guards.
+2. Type checking.
+3. Focused tests.
+4. Broader checks only when justified by the change.
+
+| Command                                           | Purpose                                                                                          |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `python -m ruff check .`                          | Backend lint. Pre-existing unrelated errors may exist; do not fix them unless they are in scope. |
+| `python -m pyright`                               | Backend type checking using `pyrightconfig.json`; covers `backend/src` and `backend/tests`.      |
+| `python -m pytest backend/tests/test_<name>.py`   | Focused backend test file. Prefer this over the complete suite.                                  |
+| `python -m pytest backend/tests/e2e/`             | Backend end-to-end tests; slower and dependent on e2e fixtures.                                  |
+| `cd frontend; npm run typecheck`                  | Frontend TypeScript checking.                                                                    |
+| `cd frontend; npm run test`                       | Frontend Vitest suite.                                                                           |
+| `cd frontend; npm run build`                      | Production frontend build.                                                                       |
+| `cd backend; alembic -c alembic.ini upgrade head` | Apply migrations; requires `DATABASE_URL`.                                                       |
+
+The backend suite contains many test files and known unrelated failures. Run the smallest test set that proves the changed behavior.
+
+### Router-layer guard
+
+This command must return no matches:
+
+```powershell
 rg -n "^from novelai\.(db\.models|storage\.service|sources\.)" backend/src/novelai/api/routers/ --glob "!dependencies.py"
 ```
 
-## Structure
+---
 
-- **Backend:** `backend/src/novelai/` (FastAPI + SQLAlchemy). Package root is `backend/src`.
-- **Frontend:** `frontend/` (Next.js 15 App Router). Independent package.
-- **Deploy:** `deploy/` — Docker Compose (`compose.yml`), three Dockerfiles (`admin.Dockerfile` port 8000, `reader.Dockerfile` port 8001, `frontend.Dockerfile`), Caddy reverse proxy.
+## Project Structure
 
-### Backend entry points
+### Backend
 
-- `novelai.api.app:app` — monolith (default).
-- `novelai.main_admin:app` — admin-only (port 8000, session + CSRF).
-- `novelai.main_reader:app` — public reader (port 8001, no session).
-- `DEPLOY_MODE=split` runs both via multiprocessing.
-- CLI: `novelaibook` (installed via `pip install -e .`). Subcommands: `web`, `worker`, `doctor`, `create-user`, `adminweb`, `publicweb`.
+* Root: `backend/src/novelai/`
+* Frameworks: FastAPI, SQLAlchemy, Pydantic.
+* Python package root: `backend/src`.
+* Tests: `backend/tests/`.
+* Database migrations: `backend/alembic/versions/`.
+* Explicit database-policy SQL: `backend/sql/`.
 
-### Frontend route groups
+### Frontend
 
-- `frontend/app/(admin)/admin/*` — owner UI.
-- `frontend/app/(public)/*` — guest + authenticated user UI. Don't cross the boundary.
-- API calls only through `frontend/lib/api.ts` (admin) or `frontend/lib/public-api.ts` (public). No direct `fetch()` in components.
+* Root: `frontend/`
+* Framework: Next.js 15 App Router.
+* Frontend is an independent Node package.
 
-## Layer Rules
+### Deployment
 
-Dependency direction: `api → services → domain modules → storage/db/providers/sources/export`.
+* Root: `deploy/`
+* Canonical Compose file: `compose.yml`
+* Development overlay: `compose.dev.yml`
+* Containers:
 
-- API routers stay thin. Use-case logic in `services/` or `services/orchestration/`.
-- Source parsing in `sources/*`. HTTP fetching/SSRF in `infrastructure/http/*`. Provider API in `providers/*`. Prompts in `prompts/*`. Persistence behind `storage/*` and `db/*`.
-- Routers must not import `db.models.*`, `storage.service.*`, or `sources.*` directly — extract to `services/`. Exception: `dependencies.py` (DI factories). CI enforces this via grep.
-- Scheduler policy in backend translation/service/job layers, not React.
+  * `admin.Dockerfile` — admin API on port 8000.
+  * `reader.Dockerfile` — public reader API on port 8001.
+  * `frontend.Dockerfile` — frontend.
+* Reverse proxy: Caddy.
+
+### Specifications
+
+* Active specifications: `.agents/kiro/specs/`
+* Do not edit anything under `.agents/` without owner approval.
+
+### Local agent files
+
+* `.opencode/` contains local OpenCode plugins, goals, commands, and scratch state.
+* `.opencode/` is gitignored.
+* Do not commit files from `.opencode/`.
+
+---
+
+## Backend Entry Points
+
+* `novelai.api.app:app` — default monolithic application.
+* `novelai.main_admin:app` — admin-only application on port 8000; session and CSRF protected.
+* `novelai.main_reader:app` — public reader on port 8001; no admin session.
+* `DEPLOY_MODE=split` runs the admin and reader processes separately.
+* CLI executable: `novelaibook`.
+
+CLI subcommands include:
+
+* `web`
+* `worker`
+* `doctor`
+* `create-user`
+* `adminweb`
+* `publicweb`
+
+---
+
+## Frontend Route Boundaries
+
+* `frontend/app/(admin)/admin/*` — owner/admin interface.
+* `frontend/app/(public)/*` — guest and authenticated public-user interface.
+* Do not move behavior across these route-group boundaries without an explicit architecture change.
+
+API access must go through:
+
+* `frontend/lib/api.ts` for admin API calls.
+* `frontend/lib/public-api.ts` for public API calls.
+
+Do not issue direct `fetch()` calls from components.
+
+---
+
+## Architecture and Layer Rules
+
+Dependency direction:
+
+```text
+api
+  → services
+    → domain modules
+      → storage / db / providers / sources / export
+```
+
+Rules:
+
+* API routers stay thin.
+* Put use-case behavior in `services/` or `services/orchestration/`.
+* Put source parsing in `sources/`.
+* Put outbound HTTP, SSRF protection, retries, and fetch caching in `infrastructure/http/`.
+* Put provider API integration in `providers/`.
+* Put translation prompts and prompt assembly in `prompts/`.
+* Put persistence behind `storage/` and `db/`.
+* Put scheduler policy in backend translation, service, or job layers—not React.
+* Do not let lower layers import API routers or frontend concepts.
+
+Routers must not directly import:
+
+* `novelai.db.models.*`
+* `novelai.storage.service.*`
+* `novelai.sources.*`
+
+The exception is `api/routers/dependencies.py`, which contains dependency-injection factories.
+
+---
 
 ## Canonical Names
 
-Use these. Don't invent aliases. If you find legacy aliases (`id`, `source`, `provider`, `model`, `slug`) in code you're touching, rename to canonical and update all callers in the same change.
+Use these names. Do not invent aliases:
 
-`source_key`, `source_novel_id`, `source_url`, `novel_id`, `chapter_id`, `paragraph_id`, `chunk_id`, `bundle_id`, `provider_key`, `provider_model`, `activity_id`, `job_id`, `request_id`, `credential_id`, `requesting_user_id`, `credential_owner_user_id`, `prompt_version`, `glossary_hash`.
+```text
+source_key
+source_novel_id
+source_url
+novel_id
+chapter_id
+paragraph_id
+chunk_id
+bundle_id
+provider_key
+provider_model
+activity_id
+job_id
+request_id
+credential_id
+requesting_user_id
+credential_owner_user_id
+prompt_version
+glossary_hash
+```
+
+When code being changed still uses ambiguous legacy aliases such as:
+
+```text
+id
+source
+provider
+model
+slug
+```
+
+replace the alias with the correct canonical name and update directly affected callers, types, tests, and documentation in the same change.
+
+Do not perform unrelated repository-wide renames.
+
+---
 
 ## Backend Conventions
 
-- SQLAlchemy models only. No raw SQL.
-- Settings from `novelai.config.settings.settings` (pydantic-settings). Don't read `os.environ` outside that module.
-- Logging: `novelai.logging_config.configure_logging()` at startup. Don't scatter `basicConfig`.
-- Migrations: new schema → new file under `backend/alembic/versions/`. Never edit a committed migration.
-- Async I/O: `httpx` for outbound HTTP, `asyncio.Semaphore` for bounded concurrency, `asyncio.gather(..., return_exceptions=True)` for fan-out.
-- All API inputs through Pydantic models. No raw dicts.
+* Application persistence uses SQLAlchemy.
+* Do not add raw SQL to routers, services, orchestration, or domain code.
+* Alembic migrations and explicit database-policy scripts under `backend/sql/` are the only raw-SQL exceptions.
+* Read settings through `novelai.config.settings.settings`.
+* Do not read `os.environ` outside the settings module.
+* Configure logging through `novelai.logging_config.configure_logging()`.
+* Do not scatter `logging.basicConfig()` calls.
+* A schema change requires a new migration under `backend/alembic/versions/`.
+* Never edit an already committed migration.
+* Use `httpx` for outbound HTTP.
+* Use `asyncio.Semaphore` for bounded asynchronous concurrency.
+* For independent fan-out work, use `asyncio.gather(..., return_exceptions=True)` when partial failure is part of the intended behavior.
+* Validate API inputs with Pydantic models.
+* Do not pass unvalidated request dictionaries into use-case code.
+* Keep provider-specific behavior behind provider interfaces.
+* Keep storage-backend differences behind storage abstractions.
+
+---
 
 ## Frontend Conventions
 
-- State: `@tanstack/react-query` for server, `zustand` for client. No Redux.
-- Styling: Tailwind + `clsx` + `tailwind-merge` (via `lib/utils.ts` `cn()`). No CSS modules or styled-components.
-- Business logic in hooks, not components. Shared: `frontend/components/`, route-local: `frontend/app/`.
-- Token display: `lib/mask-token.ts` for any credential. Never render raw API keys.
+* Use `@tanstack/react-query` for server state.
+* Use `zustand` for client-only state.
+* Do not introduce Redux.
+* Use Tailwind CSS for styling.
+* Use `clsx` and `tailwind-merge` through `frontend/lib/utils.ts` and its `cn()` helper.
+* Do not introduce CSS modules or styled-components.
+* Put business and data-flow logic in hooks rather than components.
+* Shared components belong in `frontend/components/`.
+* Route-local components belong under their route in `frontend/app/`.
+* Mask credentials through `frontend/lib/mask-token.ts`.
+* Never render raw API keys, access tokens, secrets, or complete credential values.
 
-### CI Gotchas
+---
 
-- `ci.yml` `backend-tests` job has `services.postgres` (postgres:16). `DATABASE_URL` is scoped to the **alembic step only** (not job-level) — unit tests use SQLite in-memory.
-- `ENV: test` at job level prevents bootstrap credential hydration against CI Postgres.
-- Alembic needs `working-directory: backend` because `script_location` in `alembic.ini` is relative.
-- `pip install` extras needed for CI: `documents,gemini,dev,test,s3,auth`.
-- YAML `>` joins lines with spaces — don't use `\` continuation.
-- ~40 pre-existing test failures exist — ignored in CI via `--ignore` flags in the pytest command.
+## Exploration and Search Policy
+
+Use the `explore` subagent for broad repository discovery. Keep the primary agent’s context focused on decisions, implementation, debugging, and verification.
+
+### Delegate to `explore` when
+
+Delegate when one or more of these apply:
+
+* Relevant files or entry points are unknown.
+* The task requires architecture mapping.
+* The task requires cross-layer or cross-subsystem tracing.
+* The request asks for a thorough repository inventory.
+* The task requires impact analysis across many files.
+* The request asks to locate implementations, tests, migrations, registrations, configuration, storage, lifecycle, or dependency wiring.
+* The investigation would require repeated broad searches or many file reads.
+* The task explicitly asks to explore the codebase thoroughly.
+
+### Keep exploration in the primary agent when
+
+The primary agent may directly use Read, Grep, Glob, List, LSP, and targeted `rg` for:
+
+* reading a named target file;
+* reading files immediately before editing them;
+* verifying an exploration report;
+* finding usages of a known symbol;
+* inspecting directly affected callers;
+* reading two neighboring implementations;
+* locating focused tests;
+* examining a known error path;
+* reviewing changed files;
+* running architecture guards;
+* confirming that a change is complete.
+
+Do not delegate a small localized task when the target files are already known.
+
+### Exploration sequence
+
+For broad exploration:
+
+1. If `graphify-out/graph.json` exists, use Graphify for initial orientation.
+2. Use `git ls-files` as the default inventory of tracked project files.
+3. Use `rg --files` only when untracked files may matter.
+4. Use focused `rg -n` queries to locate exact symbols and relationships.
+5. Read the directly relevant implementations and tests.
+6. Verify Graphify relationships against the actual source.
+7. Produce an evidence-based report.
+
+Graphify is an orientation tool, not authoritative proof.
+
+### Default exploration exclusions
+
+Ignore these unless the task specifically concerns them:
+
+* `.agents/kiro/specs/`
+* `.hypothesis/`
+* `.opencode/`
+* `.venv/`
+* `node_modules/`
+* frontend build output
+* generated coverage output
+* runtime storage
+* downloaded novel content
+* logs
+* backups
+* caches
+* generated Graphify output
+* lockfiles, except for dependency or supply-chain tasks
+
+Do not use:
+
+* recursive `tree /F` over the repository;
+* unrestricted filesystem walks;
+* broad reads of every document;
+* recursive searches through ignored runtime or cache directories.
+
+### Exploration report format
+
+Every broad exploration report must include:
+
+1. Scope searched.
+2. Exclusions applied.
+3. Relevant files with repository-relative paths.
+4. Precise 1-based line numbers or line ranges.
+5. Execution, dependency, or data flow.
+6. Configuration and registration wiring.
+7. Persistence and lifecycle behavior.
+8. Existing tests and what behavior they actually verify.
+9. Missing implementation or coverage.
+10. Conflicts and unresolved uncertainty.
+11. A checklist covering every requested item.
+
+Do not present guesses as confirmed findings.
+
+---
+
+## CI Gotchas
+
+* The `backend-tests` job in `.github/workflows/ci.yml` includes PostgreSQL 16 as a service.
+* `DATABASE_URL` is scoped to the Alembic step rather than the complete job.
+* Unit tests use SQLite in memory.
+* Job-level `ENV: test` prevents bootstrap credential hydration against CI PostgreSQL.
+* Alembic needs `backend` as its working directory because `script_location` in `backend/alembic.ini` is relative.
+* CI dependency installation needs the relevant extras, including:
+
+  * `documents`
+  * `gemini`
+  * `dev`
+  * `test`
+  * `s3`
+  * `auth`
+* YAML folded blocks using `>` join lines with spaces. Do not use shell `\` continuation inside them.
+* Known pre-existing failures are excluded by CI. Do not use them to hide newly introduced failures.
+* When changing CI behavior, compare local commands with the exact workflow commands.
+
+For manual GitHub configuration and CI verification, read:
+
+```text
+docs/cicd-manual-setup.md
+```
+
+Load that document only for CI, GitHub Actions, package publishing, or deployment tasks.
+
+---
 
 ## Testing
 
-- Fixtures in `backend/tests/conftest.py`. `TestFixture` class provides isolated storage, mock providers, mock sources, wired `Container`.
-- DB-backed tests use SQLite in-memory (`sqlite:///:memory:`) via local `db_session` fixtures — no Postgres required for unit tests. E2e fixtures in `backend/tests/e2e/conftest.py`.
-- `TESTS_TMP_ROOT` (`backend/tests/.tmp/fixtures`) and `TESTS_RUNTIME_ROOT` (`backend/tests/.tmp/runtime`) are scratch roots; both gitignored.
-- ORM models registered via session-scoped autouse fixture calling `register_database_models()` from `novelai/db/model_registry.py`. Tests don't import individual model modules for side effects.
-- Source tests use offline fixtures only — no live HTTP.
-- pytest config: `pythonpath = ["backend/src", "backend"]`, `addopts = "-p no:cacheprovider"`, markers: `e2e`.
-- pyright: `pythonPlatform: "Windows"`, `typeCheckingMode: "standard"`.
-- ruff: `target-version = "py313"`, `line-length = 120`.
+* Shared fixtures live in `backend/tests/conftest.py`.
+* `TestFixture` provides isolated storage, mock providers, mock sources, and a wired dependency container.
+* Database-backed unit tests use SQLite in memory through local `db_session` fixtures.
+* Unit tests do not require PostgreSQL unless the test explicitly says otherwise.
+* End-to-end fixtures live in `backend/tests/e2e/conftest.py`.
+* Scratch fixture root:
 
-## GitHub Security Tools
+  * `backend/tests/.tmp/fixtures`
+* Scratch runtime root:
 
-### GitGuardian
+  * `backend/tests/.tmp/runtime`
+* Both scratch roots are gitignored.
+* ORM models are registered through the session-scoped autouse fixture calling `register_database_models()` from `novelai/db/model_registry.py`.
+* Do not import individual ORM modules merely for registration side effects.
+* Source tests must use offline fixtures.
+* Do not access live novel websites in tests.
+* Pytest configuration includes:
 
-- `generic_password_yaml` detector triggers on YAML field names containing "password" (e.g. `POSTGRES_PASSWORD`) — false positive. Ignore via API.
-- API token format: `gg_pat_...`, base URL `https://api.gitguardian.com/v1/`.
-- Endpoints: `GET /v1/sources/{id}`, `GET /v1/incidents/secrets`, `POST /v1/incidents/secrets/{id}/ignore`, `POST /v1/incidents/secrets/{id}/resolve`.
-- Dismissal reason values (with spaces, not underscores): `"false positive"`, `"won't fix"`, `"used in tests"`.
-- `.cache_ggshield/` is GitGuardian's local scan cache — gitignored.
+  * `pythonpath = ["backend/src", "backend"]`
+  * `addopts = "-p no:cacheprovider"`
+  * marker: `e2e`
+* Pyright configuration includes:
 
-### CodeQL Code Scanning
+  * `pythonPlatform: "Windows"`
+  * `typeCheckingMode: "standard"`
+* Ruff configuration includes:
 
-| Rule | What flags | Fix |
-|---|---|---|
-| `py/weak-sensitive-data-hashing` | ALL fast hashes (sha256, blake2b, HMAC) on sensitive data | Only bcrypt/argon2 counts for passwords. For token/fingerprint/cache hashing, dismiss as false positive via API. |
-| `py/clear-text-logging-sensitive-data` | `logger.warning("...%r...", value)` with sensitive values | Remove the value from the log message |
-| `py/incomplete-url-substring-sanitization` | `"domain" in url` substring checks | Use `urlparse(url).hostname` with `endswith`/`startswith` |
+  * `target-version = "py313"`
+  * `line-length = 120`
 
-- Suppression comments (`# codeql[rule-id]`, `# lgtm[rule-id]`) don't always work — API dismissal is more reliable.
-- Dismissal via `PATCH /code-scanning/alerts/{number}` with `-f state=dismissed -f dismissed_reason="false positive"`.
-- `gh api` with complex jq on Windows can fail — use `ConvertFrom-Json` + `Where-Object` instead.
+### Test selection
+
+For a behavior change:
+
+1. Run the closest focused test file.
+2. Add or update tests that directly prove the new behavior.
+3. Run type checking for the affected language.
+4. Run broader checks only when the change crosses several subsystems.
+
+A one-line change still requires at least one runnable verification command.
+
+Never claim a test passed unless it was actually run successfully.
+
+---
 
 ## Dependencies
 
-- `pyproject.toml` is authoritative. No `requirements.txt` by design.
-- Install: `pip install -e ".[dev]"` (or combine extras: `auth`, `db`, `dev`, `documents`, `gemini`, `openai`, `s3`, `test`, `worker`).
-- Lockfiles: `requirements.lock`, `requirements-dev.lock`, `uv.lock`. Regenerate with `deploy/update-lockfiles.ps1` after dependency changes. Don't edit by hand.
+* `pyproject.toml` is authoritative.
+* There is intentionally no `requirements.txt`.
+* Standard editable development install:
 
-## Deploy
+```powershell
+pip install -e ".[dev]"
+```
 
-- `compose.yml` is canonical; `compose.dev.yml` overlays dev settings.
-- Migrations run as one-shot `migrate` service before backend starts. Don't run migrations from inside the backend container.
-- Caddy routes: `/api/admin/*` and `/api/auth/*` → backend:8000, `/api/public/*` → reader:8001, catch-all → frontend:3000.
-- Env files: `.env` (local dev), `deploy/.env` (Compose), `deploy/.env.production`. Required in prod: `SESSION_SECRET_KEY`, `OWNER_BOOTSTRAP_SECRET`, `PUBLIC_FRONTEND_URL`, `DATABASE_URL`.
+Available extras include:
+
+```text
+auth
+db
+dev
+documents
+gemini
+openai
+s3
+test
+worker
+```
+
+Lockfiles:
+
+* `requirements.lock`
+* `requirements-dev.lock`
+* `uv.lock`
+
+After changing dependencies, regenerate lockfiles through:
+
+```powershell
+deploy/update-lockfiles.ps1
+```
+
+Do not edit generated lockfiles manually.
+
+Do not add a dependency when the standard library or an existing dependency adequately solves the problem.
+
+---
+
+## Deployment
+
+* `compose.yml` is canonical.
+* `compose.dev.yml` overlays development configuration.
+* Migrations run as the one-shot `migrate` service before backend startup.
+* Do not run migrations from inside the long-running backend container.
+* Caddy routing:
+
+  * `/api/admin/*` → admin backend on port 8000.
+  * `/api/auth/*` → admin backend on port 8000.
+  * `/api/public/*` → reader backend on port 8001.
+  * all remaining routes → frontend on port 3000.
+* Local environment file: `.env`
+* Compose environment file: `deploy/.env`
+* Production environment file: `deploy/.env.production`
+
+Required production settings include:
+
+```text
+SESSION_SECRET_KEY
+OWNER_BOOTSTRAP_SECRET
+PUBLIC_FRONTEND_URL
+DATABASE_URL
+```
+
+Do not edit deployment secrets or production data unless explicitly requested.
+
+---
 
 ## Security
 
-- Never log/return secrets. Use `lib/mask-token.ts` (frontend) or equivalent backend masking.
-- `SESSION_SECRET_KEY` fails closed at default. `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` required before storing provider API keys in DB.
-- `OWNER_BOOTSTRAP_SECRET` is the only owner seed mechanism. Don't expose in logs/errors/responses.
-- Single owner-admin model. Public auth (Google OAuth + email/password) creates `role="user"` only. Never creates/promotes owner.
-- CSRF required for cookie-auth state-changing endpoints. Don't bypass in tests.
-- Never accept client-supplied `user_id` — derive from session.
-- API responses must not include raw filesystem paths, internal DB keys, or storage keys.
-- `storage/novel_library` never served as static files. Raw scraped chapters not deleted after translation (audit data).
-- `WEB_CORS_ORIGINS` must be explicit in production (no `*`).
-- Don't implement public contribution credentials until architecture.md §13 readiness gate is met.
+* Never log or return secrets.
+* Mask backend credential values using the existing backend masking pattern.
+* Mask frontend credential values through `frontend/lib/mask-token.ts`.
+* `SESSION_SECRET_KEY` must fail closed when left at its default.
+* `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is required before storing provider API keys in the database.
+* `OWNER_BOOTSTRAP_SECRET` is the only owner-seeding mechanism.
+* Never expose the owner bootstrap secret through logs, errors, API responses, or UI.
+* The application uses a single owner-admin model.
+* Public Google OAuth and email/password registration create `role="user"` only.
+* Public authentication must never create or promote an owner.
+* Cookie-authenticated state-changing endpoints require CSRF protection.
+* Do not bypass authorization or CSRF checks to make tests pass.
+* Never accept a client-supplied `user_id` as the authenticated identity.
+* Derive user identity from the authenticated session.
+* API responses must not expose:
+
+  * raw filesystem paths;
+  * internal database keys;
+  * storage keys;
+  * secrets;
+  * complete credential values.
+* `storage/novel_library` must never be served directly as static files.
+* Do not delete raw scraped chapters after translation; they are audit data.
+* Production `WEB_CORS_ORIGINS` must be explicit and must not use `*`.
+* Do not implement public contribution credentials until the readiness gate in `docs/architecture/architecture.md` section 13 is satisfied.
+* Do not read, print, commit, or paste the contents of `.env` or production environment files.
+
+---
 
 ## Environment
 
-- Canonical env var is `ENV` (not `APP_ENV`).
-- `DEPLOY_MODE=monolith|split` — split requires Redis for rate limiting and job queue.
-- `WEB_RATE_LIMITER_BACKEND=memory|redis` — use `redis` for multi-instance.
-- `JOB_WORKER_ENABLED=true` runs in-process activity worker.
-- `AUTH_EMAIL_DELIVERY_MODE=noop` by default. Set to `smtp` only after SMTP vars tested.
-- `STORAGE_BACKEND=filesystem|s3`. `NOVEL_LIBRARY_DIR` is the local base path.
+Canonical environment variable:
 
-## Tooling (Windows)
+```text
+ENV
+```
 
-- Use PowerShell cmdlets. Chain with `; if ($?) { next }` — not `&&`.
-- Use `python -m <tool>` — don't assume `<tool>` is in PATH.
-- `grep` not available on Windows. Use `rg` (ripgrep) or the Grep tool.
-- Use `edit` to modify existing files. Use `write` only for new files (verify non-existence first).
+Do not introduce `APP_ENV`.
 
-### gh CLI on Windows
+Supported deployment modes:
 
-- Complex `--jq` filters with `select()`, `+` concatenation, or pipes may fail due to PowerShell quoting.
-- Workaround: pipe to `ConvertFrom-Json` + `Where-Object` instead of using `--jq`.
-- `gh pr merge --squash` can fail locally but succeed on GitHub — verify with `gh pr view --json state`.
-- Scopes needed: `repo`, `workflow`.
+```text
+DEPLOY_MODE=monolith
+DEPLOY_MODE=split
+```
 
-### Git History
+Split mode requires Redis for shared rate limiting and the distributed job queue.
 
-- `git filter-repo` removes the `origin` remote — re-add with `git remote add origin <url>` before force push.
-- `git filter-repo --force` can run multiple times for additional replacements.
-- After force push, all clones must re-sync: `git fetch origin; git reset --hard origin/main`.
-- Clean up `refs/codex/turn-diffs/checkpoints/` refs with `git update-ref -d <ref>` after filter-repo.
+Rate limiter backends:
 
-## Docs and Specs
+```text
+WEB_RATE_LIMITER_BACKEND=memory
+WEB_RATE_LIMITER_BACKEND=redis
+```
 
-- `docs/architecture/architecture.md` is authoritative. If another doc disagrees, architecture wins — report the conflict before implementing.
-- `docs/DEBT.md` is the single debt register. Update it in the same change that resolves a debt item.
-- Spec files under `.agents/` are tracked in git. Don't edit without owner sign-off.
-- `.opencode/` is gitignored agent scratch. `.agents/` is tracked specs.
+Use Redis for multi-instance deployment.
+
+Worker behavior:
+
+```text
+JOB_WORKER_ENABLED=true
+```
+
+This enables the in-process activity worker.
+
+Email delivery defaults to:
+
+```text
+AUTH_EMAIL_DELIVERY_MODE=noop
+```
+
+Use SMTP only after the SMTP configuration has been tested.
+
+Storage backends:
+
+```text
+STORAGE_BACKEND=filesystem
+STORAGE_BACKEND=s3
+```
+
+`NOVEL_LIBRARY_DIR` is the local filesystem base path.
+
+---
+
+## Tooling on Windows
+
+* Use PowerShell-compatible commands.
+* Chain commands with:
+
+```powershell
+first-command; if ($?) { second-command }
+```
+
+* Do not use `&&`.
+* Run Python tools using:
+
+```powershell
+python -m <tool>
+```
+
+* Do not assume Python console scripts are available on `PATH`.
+* The Unix `grep` executable is not available.
+* Use OpenCode’s Grep tool or `rg`.
+* Use `edit` for existing files.
+* Use `write` only for new files, after confirming they do not already exist.
+* Use `git ls-files` rather than filesystem-wide enumeration when tracked files are sufficient.
+* Quote paths containing spaces.
+* Do not run interactive or TTY-dependent commands unless the interaction is explicitly supported.
+
+---
+
+## GitHub Security Tools
+
+Use this section only for GitGuardian or CodeQL tasks.
+
+### GitGuardian
+
+* `generic_password_yaml` may flag YAML property names containing `password`, such as `POSTGRES_PASSWORD`.
+* Verify the finding before treating it as a secret.
+* GitGuardian API token prefix: `gg_pat_`.
+* API base:
+
+```text
+https://api.gitguardian.com/v1/
+```
+
+Relevant endpoints:
+
+```text
+GET  /v1/sources/{id}
+GET  /v1/incidents/secrets
+POST /v1/incidents/secrets/{id}/ignore
+POST /v1/incidents/secrets/{id}/resolve
+```
+
+Valid dismissal reason values use spaces:
+
+```text
+false positive
+won't fix
+used in tests
+```
+
+`.cache_ggshield/` is a local scan cache and must remain gitignored.
+
+Never display a GitGuardian token in command output, logs, documentation, or chat.
+
+### CodeQL
+
+Common findings:
+
+| Rule                                       | Meaning                                                      | Expected handling                                                                                                      |
+| ------------------------------------------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `py/weak-sensitive-data-hashing`           | Fast hashes may be flagged when applied to sensitive values. | Passwords require bcrypt or Argon2. Verify token, cache, or fingerprint hashing before dismissing as a false positive. |
+| `py/clear-text-logging-sensitive-data`     | Logs may expose a sensitive value.                           | Remove the sensitive value from the log.                                                                               |
+| `py/incomplete-url-substring-sanitization` | URL validation relies on unsafe substring matching.          | Parse the URL and validate `hostname` using explicit prefix or suffix rules.                                           |
+
+Do not rely solely on suppression comments such as:
+
+```text
+# codeql[rule-id]
+# lgtm[rule-id]
+```
+
+When a verified false positive must be dismissed, use the GitHub API and document the justification.
+
+---
+
+## GitHub CLI on Windows
+
+* PowerShell quoting may break complex `gh --jq` filters.
+* Prefer piping JSON to:
+
+  * `ConvertFrom-Json`
+  * `Where-Object`
+  * `ForEach-Object`
+* `gh pr merge --squash` may report a local failure even when GitHub completed the merge.
+* Verify merge state with:
+
+```powershell
+gh pr view --json state
+```
+
+Required scopes may include:
+
+```text
+repo
+workflow
+```
+
+Do not create, merge, close, or modify pull requests unless explicitly requested.
+
+---
+
+## Git History Operations
+
+History rewriting is destructive. Do not perform it without an explicit request.
+
+Important behavior:
+
+* `git filter-repo` removes the `origin` remote.
+* Re-add it afterward with:
+
+```powershell
+git remote add origin <url>
+```
+
+* `git filter-repo --force` may be run again for additional replacements.
+* After a force push, all clones must resynchronize:
+
+```powershell
+git fetch origin
+git reset --hard origin/main
+```
+
+* Remove stale Codex checkpoint refs with:
+
+```powershell
+git update-ref -d <ref>
+```
+
+Only do this for refs under:
+
+```text
+refs/codex/turn-diffs/checkpoints/
+```
+
+Never rewrite history, force-push, delete branches, or reset working files without explicit authorization.
+
+---
+
+## Documentation and Specifications
+
+* `docs/architecture/architecture.md` is authoritative.
+* `docs/DEBT.md` is the single active debt register.
+* Update a debt entry in the same change that resolves it.
+* `docs/roadmap.md` records roadmap direction.
+* Specs under `.agents/` are tracked in Git.
+* Do not edit specifications without owner approval.
+* Do not treat an archived specification as an active requirement.
+* Update documentation when behavior, configuration, contracts, deployment, or operator procedures change.
+* Do not create duplicate documentation when an existing canonical document can be updated.
+
+---
 
 ## Operating Style
 
-- Smallest diff that works. No speculative abstractions, no "for-the-future" hooks.
-- Match existing patterns in the same layer. Read two neighbors before inventing a third.
-- Change things whole — no backward-compat shims, re-exports, or dual code paths. Update all callers, types, tests, docs in the same change.
-- Add/update tests for behavior changes. One runnable check is enough for a one-liner.
-- Run verification commands. If you can't, say why.
-- Report what you actually did, not what you intended. Distinguish verified facts from assumptions.
-- Don't commit/push unless explicitly asked. Don't commit `.env`, secrets, build artifacts, or scratch output.
+* Make the smallest complete change that solves the requested problem.
+* Do not add speculative abstractions.
+* Do not add hooks or extension points solely for hypothetical future use.
+* Match existing patterns in the same layer.
+* Read two neighboring implementations before inventing a third pattern.
+* Change behavior completely rather than introducing compatibility shims, duplicate paths, re-exports, or partially migrated callers.
+* Update directly affected callers, types, tests, migrations, configuration, and documentation in the same change.
+* Do not edit unrelated files.
+* Add or update tests for behavior changes.
+* Run focused verification commands.
+* State clearly when a command could not be run and why.
+* Report completed actions, not intended actions.
+* Separate verified facts from assumptions and inferences.
+* Do not fabricate command output, test results, file contents, line numbers, or repository state.
+* Do not commit, push, merge, or open a pull request unless explicitly requested.
+* Do not commit:
+
+  * `.env`;
+  * secrets;
+  * local OpenCode state;
+  * runtime storage;
+  * logs;
+  * backups;
+  * caches;
+  * generated build artifacts;
+  * Graphify output.
+
+---
+
+## Final Report
+
+After implementing or reviewing work, report:
+
+1. Files changed or reviewed.
+2. Behavior implemented or findings identified.
+3. Verification commands actually run.
+4. Results of those commands.
+5. Remaining risks, known failures, or unverified assumptions.
+
+Keep the final report proportional to the task. Do not claim completion when required behavior or verification remains unresolved.

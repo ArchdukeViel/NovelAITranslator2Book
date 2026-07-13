@@ -60,7 +60,7 @@ When in doubt: **plan, don't code.**
 
 ## What a Plan/Spec Must Include
 
-Follow the existing spec format in `.agents/kiro/archive/` where applicable. A plan should contain:
+Follow the existing spec format in `.agents/kiro/specs/` where applicable. A plan should contain:
 
 1. **Overview** — 1-2 sentences describing the change at a high level
 2. **Requirements** — numbered requirements (REQ-1, REQ-2, ...) with sub-requirements

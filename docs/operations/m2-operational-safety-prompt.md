@@ -26,7 +26,7 @@ Latest commit: 10cc94e.
 12. `.agents/kiro/specs/scheduled-backups-and-restore-drills/design.md`, `requirements.md`, `tasks.md` - backup contract and checklist.
 13. `.agents/kiro/specs/maintenance-cron/design.md`, `requirements.md`, `tasks.md` - retention/cleanup contract and checklist.
 14. `.agents/kiro/specs/scheduler-runtime-state-persistence/design.md`, `requirements.md`, `tasks.md` - DEBT-036 state persistence contract.
-15. `.agents/kiro/archive/atomic-json-storage-recovery/design.md` - atomic storage write contract.
+15. `.agents/kiro/specs/atomic-json-storage-recovery/design.md` - atomic storage write contract.
 
 ## 2. Your Task
 
