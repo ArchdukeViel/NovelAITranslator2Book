@@ -14,11 +14,11 @@ Run from repo root. Workflow order: lint → typecheck → test.
 | `python -m ruff check .` | Lint (pre-existing errors exist in unrelated code; don't fix unless in scope) |
 | `python -m pyright` | Typecheck (uses `pyrightconfig.json`, covers `backend/src` + `backend/tests`) |
 | `python -m pytest backend/tests/test_<name>.py` | Focused test — run one file, not the whole suite (~90 files, slow) |
-| `python -m pytest backend/tests/e2e/` | E2e tests (slower, requires fixtures) |
+| `python -m pytest backend/tests/e2e/` | E2e tests (slower, requires fixtures; pre-existing failures ignored in CI) |
 | `cd frontend; npm run typecheck` | Frontend typecheck |
 | `cd frontend; npm run build` | Frontend build |
 | `cd frontend; npm run test` | Frontend tests (vitest) |
-| `alembic -c backend/alembic.ini upgrade head` | Migrations (requires `DATABASE_URL`) |
+| `alembic -c backend/alembic.ini upgrade head` | Migrations (requires `DATABASE_URL`; run from `backend/` dir) |
 
 Router layer guard (must return no matches):
 ```
@@ -76,6 +76,15 @@ Use these. Don't invent aliases. If you find legacy aliases (`id`, `source`, `pr
 - Business logic in hooks, not components. Shared: `frontend/components/`, route-local: `frontend/app/`.
 - Token display: `lib/mask-token.ts` for any credential. Never render raw API keys.
 
+### CI Gotchas
+
+- `ci.yml` `backend-tests` job has `services.postgres` (postgres:16). `DATABASE_URL` is scoped to the **alembic step only** (not job-level) — unit tests use SQLite in-memory.
+- `ENV: test` at job level prevents bootstrap credential hydration against CI Postgres.
+- Alembic needs `working-directory: backend` because `script_location` in `alembic.ini` is relative.
+- `pip install` extras needed for CI: `documents,gemini,dev,test,s3,auth`.
+- YAML `>` joins lines with spaces — don't use `\` continuation.
+- ~40 pre-existing test failures exist — ignored in CI via `--ignore` flags in the pytest command.
+
 ## Testing
 
 - Fixtures in `backend/tests/conftest.py`. `TestFixture` class provides isolated storage, mock providers, mock sources, wired `Container`.
@@ -86,6 +95,28 @@ Use these. Don't invent aliases. If you find legacy aliases (`id`, `source`, `pr
 - pytest config: `pythonpath = ["backend/src", "backend"]`, `addopts = "-p no:cacheprovider"`, markers: `e2e`.
 - pyright: `pythonPlatform: "Windows"`, `typeCheckingMode: "standard"`.
 - ruff: `target-version = "py313"`, `line-length = 120`.
+
+## GitHub Security Tools
+
+### GitGuardian
+
+- `generic_password_yaml` detector triggers on YAML field names containing "password" (e.g. `POSTGRES_PASSWORD`) — false positive. Ignore via API.
+- API token format: `gg_pat_...`, base URL `https://api.gitguardian.com/v1/`.
+- Endpoints: `GET /v1/sources/{id}`, `GET /v1/incidents/secrets`, `POST /v1/incidents/secrets/{id}/ignore`, `POST /v1/incidents/secrets/{id}/resolve`.
+- Dismissal reason values (with spaces, not underscores): `"false positive"`, `"won't fix"`, `"used in tests"`.
+- `.cache_ggshield/` is GitGuardian's local scan cache — gitignored.
+
+### CodeQL Code Scanning
+
+| Rule | What flags | Fix |
+|---|---|---|
+| `py/weak-sensitive-data-hashing` | ALL fast hashes (sha256, blake2b, HMAC) on sensitive data | Only bcrypt/argon2 counts for passwords. For token/fingerprint/cache hashing, dismiss as false positive via API. |
+| `py/clear-text-logging-sensitive-data` | `logger.warning("...%r...", value)` with sensitive values | Remove the value from the log message |
+| `py/incomplete-url-substring-sanitization` | `"domain" in url` substring checks | Use `urlparse(url).hostname` with `endswith`/`startswith` |
+
+- Suppression comments (`# codeql[rule-id]`, `# lgtm[rule-id]`) don't always work — API dismissal is more reliable.
+- Dismissal via `PATCH /code-scanning/alerts/{number}` with `-f state=dismissed -f dismissed_reason="false positive"`.
+- `gh api` with complex jq on Windows can fail — use `ConvertFrom-Json` + `Where-Object` instead.
 
 ## Dependencies
 
@@ -128,6 +159,20 @@ Use these. Don't invent aliases. If you find legacy aliases (`id`, `source`, `pr
 - Use `python -m <tool>` — don't assume `<tool>` is in PATH.
 - `grep` not available on Windows. Use `rg` (ripgrep) or the Grep tool.
 - Use `edit` to modify existing files. Use `write` only for new files (verify non-existence first).
+
+### gh CLI on Windows
+
+- Complex `--jq` filters with `select()`, `+` concatenation, or pipes may fail due to PowerShell quoting.
+- Workaround: pipe to `ConvertFrom-Json` + `Where-Object` instead of using `--jq`.
+- `gh pr merge --squash` can fail locally but succeed on GitHub — verify with `gh pr view --json state`.
+- Scopes needed: `repo`, `workflow`.
+
+### Git History
+
+- `git filter-repo` removes the `origin` remote — re-add with `git remote add origin <url>` before force push.
+- `git filter-repo --force` can run multiple times for additional replacements.
+- After force push, all clones must re-sync: `git fetch origin; git reset --hard origin/main`.
+- Clean up `refs/codex/turn-diffs/checkpoints/` refs with `git update-ref -d <ref>` after filter-repo.
 
 ## Docs and Specs
 
