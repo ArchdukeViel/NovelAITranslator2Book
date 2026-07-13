@@ -29,8 +29,8 @@ router = APIRouter(prefix="/api/user", tags=["user"])
 
 
 def _uid(user: SessionUser) -> int:
-    assert _uid(user) is not None, "Authenticated route requires user_id"
-    return _uid(user)
+    assert user.user_id is not None, "Authenticated route requires user_id"
+    return user.user_id
 
 
 def _utcnow() -> datetime:

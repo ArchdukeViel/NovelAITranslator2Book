@@ -101,7 +101,7 @@ async def create_novel(
             language=body.language,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/{novel_id}")
