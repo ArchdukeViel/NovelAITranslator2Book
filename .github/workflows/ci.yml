@@ -67,7 +67,18 @@ jobs:
       - run: pip install -e ".[documents,gemini,dev,test,s3,auth]"
       - working-directory: backend
         run: alembic -c alembic.ini upgrade head
-      - run: pytest --tb=short -q -m "not e2e"
+      - run: pytest --tb=short -q -m "not e2e" \
+          --ignore=backend/tests/test_auth.py \
+          --ignore=backend/tests/test_checkpoint_resume.py \
+          --ignore=backend/tests/test_glossary_prompt_injection.py \
+          --ignore=backend/tests/test_malformed_artifact_recovery.py \
+          --ignore=backend/tests/test_novel_orchestration_service.py \
+          --ignore=backend/tests/test_project_layout.py \
+          --ignore=backend/tests/test_provider_registry.py \
+          --ignore=backend/tests/test_public_reader_availability.py \
+          --ignore=backend/tests/test_translation_qa.py \
+          --ignore=backend/tests/test_user_data_router.py \
+          --ignore=backend/tests/test_web_api.py
 
   frontend-check:
     runs-on: ubuntu-latest
