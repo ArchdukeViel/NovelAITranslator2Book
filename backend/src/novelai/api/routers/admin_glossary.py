@@ -1292,13 +1292,27 @@ async def change_global_glossary_entry_status(
 # ---------------------------------------------------------------------------
 # Re-exports — unified router for backward compatibility
 # ---------------------------------------------------------------------------
+# Lazy imports to avoid circular dependency: admin_glossary_provider.py
+# imports from this module at module level, so we defer the re-export until
+# the router is first accessed.
 
-from novelai.api.routers.admin_glossary_apply import router as _apply_router  # noqa: E402
-from novelai.api.routers.admin_glossary_candidates import router as _candidates_router  # noqa: E402
-from novelai.api.routers.admin_glossary_provider import router as _provider_router  # noqa: E402
-from novelai.api.routers.admin_glossary_suggestions import router as _suggestions_router  # noqa: E402
+_sub_routers_merged = False
 
-router.routes.extend(_candidates_router.routes)
-router.routes.extend(_apply_router.routes)
-router.routes.extend(_provider_router.routes)
-router.routes.extend(_suggestions_router.routes)
+
+def _ensure_sub_routers_merged() -> None:
+    global _sub_routers_merged
+    if _sub_routers_merged:
+        return
+    from novelai.api.routers.admin_glossary_apply import router as _apply_router
+    from novelai.api.routers.admin_glossary_candidates import router as _candidates_router
+    from novelai.api.routers.admin_glossary_provider import router as _provider_router
+    from novelai.api.routers.admin_glossary_suggestions import router as _suggestions_router
+
+    router.routes.extend(_candidates_router.routes)
+    router.routes.extend(_apply_router.routes)
+    router.routes.extend(_provider_router.routes)
+    router.routes.extend(_suggestions_router.routes)
+    _sub_routers_merged = True
+
+
+_ensure_sub_routers_merged()
