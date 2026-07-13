@@ -91,7 +91,6 @@ def create_app() -> FastAPI:
     app.include_router(sources.router, prefix="/api/admin", tags=["admin-api"])
     app.include_router(activity.router, prefix="/api/admin", tags=["admin-api"])
     app.include_router(requests.router, prefix="/api/admin", tags=["admin-api"])
-    admin_glossary._ensure_sub_routers_merged()
     app.include_router(admin_glossary.router, prefix="/api/admin", tags=["admin-api"])
     app.include_router(admin_taxonomy.router, prefix="/api/admin/novels", tags=["admin-api"])
     app.include_router(editor.router, prefix="/api/admin/novels", tags=["admin-api"])

@@ -146,9 +146,12 @@ def test_canonical_term_and_translation_render_deterministically(session, repo, 
     assert block.rendered_text == (
         "GLOSSARY FOR THIS NOVEL\n"
         "These are approved owner glossary rules. Use them consistently when the source term appears.\n"
+        "The glossary is authoritative. If a source term appears below you MUST use its approved translation.\n"
         "\n"
-        "Use these approved translations consistently:\n"
+        "LOCKED (override any other translation):\n"
         "- maso => magicules\n"
+        "\n"
+        "APPROVED (preferred translation):\n"
         "- seireikai => Spirit Realm"
     )
 

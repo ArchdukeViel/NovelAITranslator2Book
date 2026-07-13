@@ -25,7 +25,7 @@ Status and details are updated directly as release verification progresses.
   - `build.yml` outputs Docker image tags to registry.
 
 ## Milestone M1 — Glossary and Router Repair
-- **Status:** Blocked
+- **Status:** Done
 - **Description:** Fix the runtime GLOSSARY router dependency cycle and test-drift blocker.
 - **Scope:**
   - Refactor circular glossary module imports.

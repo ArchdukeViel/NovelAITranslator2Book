@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
-from novelai.api.routers.admin_glossary import (
+from novelai.api.routers.dependencies import get_db_session, get_storage
+from novelai.api.schemas.admin_glossary import (
     CandidateImportAction,
     CandidateImportMode,
     GlossaryCandidateImportRequest,
@@ -21,7 +22,6 @@ from novelai.api.routers.admin_glossary import (
     GlossaryCandidateSummary,
     _require_novel,
 )
-from novelai.api.routers.dependencies import get_db_session, get_storage
 from novelai.services.glossary_candidate_import import (
     GlossaryCandidateImporter,
     GlossaryCandidateImportResult,

@@ -45,7 +45,7 @@ class GlossaryWorkflowService:
         if novel is None and novel_ref.isdigit():
             novel = self._db.get(Novel, int(novel_ref))
         if novel is None:
-            raise ValueError("Novel not found")
+            raise LookupError("Novel not found")
         return novel
 
     # ── entry CRUD ──

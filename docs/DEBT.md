@@ -54,10 +54,11 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone M1 (Glossary/Router Repair)
 - **Category:** Backend | Architecture
 - **Priority:** Blocker
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** `backend/src/novelai/api/routers/admin_glossary.py` and related split routers
 - **Description:** Mutual imports between admin glossary and sub-routers block module load and test collection.
 - **Completion criteria:** Extracted helper functions and model schema definitions to a clean non-circular shared file.
+- **Evidence:** Created `backend/src/novelai/api/schemas/admin_glossary.py` with all shared schemas, type aliases, and helpers, outside `api/routers/` to keep the router guard clean. Updated all 5 glossary routers, `app.py`, `main_admin.py`, 2 test files. Replaced lazy `_ensure_sub_routers_merged()` with eager module-level import. `test_admin_glossary_api.py` passes all 53 tests.
 
 ---
 
@@ -373,7 +374,8 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone M1 (Glossary/Router Repair)
 - **Category:** Backend | Testing
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** `backend/tests/test_glossary_prompt_injection.py`
 - **Description:** Test expects stale prompt text after prompt policy update.
 - **Completion criteria:** Test assertions updated to match current prompt policy.
+- **Evidence:** Updated `test_canonical_term_and_translation_render_deterministically` expected string to match current `_render_text()` output (LOCKED/APPROVED sections, authority preamble). `test_glossary_prompt_injection.py` passes all 15 tests.

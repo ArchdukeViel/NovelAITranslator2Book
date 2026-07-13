@@ -15,7 +15,6 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from novelai.api.auth.session import get_current_user
 from novelai.api.routers import editor as editor_router
-from novelai.api.routers.admin_glossary import _ensure_sub_routers_merged
 from novelai.api.routers.admin_glossary import router as admin_glossary_router
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.dependencies import get_db_session, get_storage
@@ -23,8 +22,6 @@ from novelai.db.base import Base
 from novelai.db.models.glossary import NovelGlossaryEntry
 from novelai.db.models.novel import Novel
 from novelai.db.models.users import User
-
-_ensure_sub_routers_merged()
 
 # ---------------------------------------------------------------------------
 # Fixtures

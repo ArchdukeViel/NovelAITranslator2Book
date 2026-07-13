@@ -14,10 +14,10 @@ from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
-from novelai.api.routers.admin_glossary import (
+from novelai.api.routers.dependencies import get_db_session, get_storage
+from novelai.api.schemas.admin_glossary import (
     GlossaryProviderSuggestionRequest,
 )
-from novelai.api.routers.dependencies import get_db_session, get_storage
 from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.providers.base import TranslationProvider
 from novelai.providers.registry import get_provider
@@ -90,7 +90,7 @@ def _provider_suggestion_response(
     *,
     provider_label: str,
 ) -> Any:
-    from novelai.api.routers.admin_glossary import (
+    from novelai.api.schemas.admin_glossary import (
         CandidateImportAction,
         CandidateImportMode,
         GlossaryProviderCandidateSummary,
@@ -147,7 +147,7 @@ async def preview_glossary_provider_suggestions(
     storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> Any:
-    from novelai.api.routers.admin_glossary import (
+    from novelai.api.schemas.admin_glossary import (
         _provider_error_status,
         _require_novel,
         _safe_provider_error_detail,
@@ -185,7 +185,7 @@ async def apply_glossary_provider_suggestions(
     storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
 ) -> Any:
-    from novelai.api.routers.admin_glossary import (
+    from novelai.api.schemas.admin_glossary import (
         _provider_error_status,
         _require_novel,
         _safe_provider_error_detail,

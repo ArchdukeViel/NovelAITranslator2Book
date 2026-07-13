@@ -111,8 +111,8 @@ Two parallel paths feed into the translation prompt:
 
 | Issue | Status | DEBT.md Link |
 |-------|--------|--------------|
-| Circular import: `admin_glossary.py` ↔ `admin_glossary_provider.py` | **Blocker** | DEBT-006 |
-| Router layer violations: 5 glossary routers import `db.models.glossary`, `StorageService` directly | Deferred | DEBT-014, DEBT-054 |
+| Circular import: `admin_glossary.py` ↔ `admin_glossary_provider.py` | **Resolved** — shared schemas/helpers extracted to `api/schemas/admin_glossary.py` | DEBT-006 |
+| Router layer violations: guard returns no matches for `api/routers/` (excluding `dependencies.py`). GlossaryWorkflowService still imports from `storage.service` — routers themselves are thin | Deferred | DEBT-014, DEBT-054 |
 | GlossaryWorkflowService not extracted | Deferred | DEBT-014 |
 | Public glossary annotations feature-flagged off (`PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED=false`) | Implemented, not enabled | DEBT-037 |
 

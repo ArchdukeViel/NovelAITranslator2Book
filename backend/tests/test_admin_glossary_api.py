@@ -18,7 +18,6 @@ import novelai.api.routers.admin_glossary_provider as admin_glossary_provider
 
 # ORM models are registered by the session-scoped autouse fixture in conftest.py.
 from novelai.api.auth.session import SessionUser, get_current_user
-from novelai.api.routers.admin_glossary import _ensure_sub_routers_merged
 from novelai.api.routers.admin_glossary import router as admin_glossary_router
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.dependencies import get_db_session, get_storage
@@ -34,8 +33,6 @@ from novelai.db.models.glossary import (
 from novelai.db.models.novel import Novel
 from novelai.db.models.users import User
 from novelai.services.glossary_repository import GlossaryRepository
-
-_ensure_sub_routers_merged()
 
 
 @pytest.fixture()
