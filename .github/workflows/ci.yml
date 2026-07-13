@@ -65,6 +65,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - run: pip install -e ".[documents,gemini,dev,test,s3,auth]"
+      - run: alembic -c backend/alembic.ini upgrade head
       - run: pytest --tb=short -q -m "not e2e"
 
   frontend-check:
