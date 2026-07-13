@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -20,6 +19,7 @@ from novelai.services.preferences_service import PreferencesService
 from novelai.services.provider_credentials import ProviderCredentialService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
+from novelai.utils.hashing import hexdigest
 
 API_KEY_PROVIDERS = {"gemini"}
 DEFAULT_PROVIDER_MODELS = {
@@ -216,7 +216,7 @@ def _secret_last4(secret: str) -> str:
 
 
 def _secret_fingerprint(secret: str) -> str:
-    return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:12]
+    return hexdigest(secret, length=12)
 
 
 class AdminService:

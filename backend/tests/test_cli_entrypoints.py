@@ -3,6 +3,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlparse
 
 import pytest
 
@@ -60,7 +61,7 @@ def test_cli_publicweb_prints_public_frontend_when_no_open(
     cli.main(["publicweb", "--base-url", "https://novels.example.com", "--no-open"])
 
     assert calls == []
-    assert "https://novels.example.com/" in capsys.readouterr().out
+    assert urlparse(capsys.readouterr().out.split("Public reader at ")[1].strip()).hostname == "novels.example.com"
 
 
 def test_cli_worker_once_runs_one_job(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
@@ -15,6 +14,7 @@ from novelai.api.auth.google_oauth import GoogleOAuthProfile
 from novelai.api.auth.passwords import hash_password, verify_password
 from novelai.db.models.users import EmailVerificationToken, PasswordResetToken, User
 from novelai.services.email import AuthEmailService
+from novelai.utils.hashing import hexdigest
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class AuthService:
 
     @staticmethod
     def hash_password_reset_token(token: str) -> str:
-        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+        return hexdigest(token)
 
     @staticmethod
     def new_email_verification_token() -> str:
@@ -68,7 +68,7 @@ class AuthService:
 
     @staticmethod
     def hash_email_verification_token(token: str) -> str:
-        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+        return hexdigest(token)
 
     @staticmethod
     def is_expired(expires_at: datetime) -> bool:

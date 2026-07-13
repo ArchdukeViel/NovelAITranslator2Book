@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -585,7 +586,8 @@ class SyosetuNcodeSource(SourceAdapter):
             if not isinstance(anchor, Tag):
                 continue
             href = attribute_to_str(anchor.get("href")) or ""
-            if "/genre/" in href and "syosetu.com" in href:
+            parsed = urlparse(href)
+            if parsed.hostname and "syosetu.com" in parsed.hostname and parsed.path and "/genre/" in parsed.path:
                 text = anchor.get_text(strip=True)
                 if text:
                     slug = map_genre(text, self._genre_map)
@@ -624,7 +626,8 @@ class SyosetuNcodeSource(SourceAdapter):
                 if not isinstance(anchor, Tag):
                     continue
                 href = attribute_to_str(anchor.get("href")) or ""
-                if "/tag/" in href and "syosetu.com" in href:
+                parsed = urlparse(href)
+                if parsed.hostname and "syosetu.com" in parsed.hostname and parsed.path and "/tag/" in parsed.path:
                     text = anchor.get_text(strip=True)
                     if text:
                         keywords.append(text)

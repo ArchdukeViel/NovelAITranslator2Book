@@ -6,6 +6,7 @@ Uses FastAPI TestClient with SessionMiddleware; no real DB required.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi import Depends, FastAPI
@@ -532,7 +533,7 @@ class TestPublicPasswordReset:
         assert message.message_type == "password_reset"
         assert message.recipient == "reader@example.com"
         assert message.token
-        assert message.token in message.url
+        assert message.token == parse_qs(urlparse(message.url).query).get("token", [None])[0]
         assert message.url.startswith("http://frontend.test/password/reset?token=")
         token = db_session.query(PasswordResetToken).one()
         assert token.token_hash == auth_module._hash_password_reset_token(message.token)
@@ -884,7 +885,7 @@ class TestPublicEmailVerification:
         assert message.message_type == "email_verification"
         assert message.recipient == "reader@example.com"
         assert message.token
-        assert message.token in message.url
+        assert message.token == parse_qs(urlparse(message.url).query).get("token", [None])[0]
         assert message.url.startswith("http://frontend.test/email/verify?token=")
         token = db_session.query(EmailVerificationToken).one()
         assert token.token_hash == auth_module._hash_email_verification_token(message.token)
@@ -944,7 +945,7 @@ class TestPublicEmailVerification:
         message = auth_email_outbox.outbox[0]
         assert message.message_type == "email_verification"
         assert message.recipient == "reader@example.com"
-        assert message.token in message.url
+        assert message.token == parse_qs(urlparse(message.url).query).get("token", [None])[0]
 
         confirm = oauth_client.post(
             "/api/auth/email/verification/confirm",

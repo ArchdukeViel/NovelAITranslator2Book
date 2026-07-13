@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Callable
 
 from novelai.providers.base import TranslationProvider
@@ -59,18 +58,12 @@ def get_provider(key: str | None = None) -> TranslationProvider:
 
     The *key* argument is accepted for backward compatibility. Any value
     other than ``"gemini"``/``"dummy"`` triggers a warning and falls back
-    to the Gemini provider. If the ``NVIDIA_API_KEY`` environment
-    variable is set, a separate warning is logged.
+    to the Gemini provider.
     """
     if key is not None and key not in {"gemini", "dummy"}:
         logger.warning(
             "Provider key %r requested but only Gemini is available. Falling back to Gemini.",
             key,
-        )
-
-    if os.environ.get("NVIDIA_API_KEY"):
-        logger.warning(
-            "NVIDIA_API_KEY is set but NVIDIA provider has been removed. Use GEMINI_API_KEY instead."
         )
 
     factory = _PROVIDER_REGISTRY.get(key or "gemini") or _PROVIDER_REGISTRY["gemini"]

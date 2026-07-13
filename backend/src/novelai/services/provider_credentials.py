@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -13,6 +12,7 @@ from sqlalchemy.orm import Session
 from novelai.config.settings import settings
 from novelai.db.models import ProviderCredential
 from novelai.services.preferences_service import PreferencesService
+from novelai.utils.hashing import digest32, hexdigest
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ def _utcnow() -> datetime:
 
 
 def secret_fingerprint(secret: str) -> str:
-    return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:12]
+    return hexdigest(secret, length=12)
 
 
 def secret_last4(secret: str) -> str:
@@ -44,7 +44,7 @@ class ProviderCredentialService:
         secret = settings.PROVIDER_CREDENTIAL_ENCRYPTION_KEY
         if secret is None or not secret.get_secret_value().strip():
             raise ValueError("PROVIDER_CREDENTIAL_ENCRYPTION_KEY is required for provider credential storage.")
-        digest = hashlib.sha256(secret.get_secret_value().encode("utf-8")).digest()
+        digest = digest32(secret.get_secret_value())
         return Fernet(base64.urlsafe_b64encode(digest))
 
     def encrypt_api_key(self, api_key: str) -> str:

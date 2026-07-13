@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from bs4 import BeautifulSoup
 
 from novelai.sources.generic import GenericSource
@@ -19,7 +21,8 @@ class TestGenericSourceHelpers:
     def test_normalize_novel_id_from_url(self) -> None:
         src = GenericSource()
         result = src.normalize_novel_id("https://example.com/novels/123")
-        assert "example.com" in result
+        parsed = urlparse(result if "://" in result else f"//{result}")
+        assert parsed.hostname == "example.com"
         assert "123" in result
 
     def test_normalize_novel_id_plain_string(self) -> None:
