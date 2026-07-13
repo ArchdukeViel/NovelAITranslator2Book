@@ -31,19 +31,21 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone M0 (CI Confidence)
 - **Category:** CI/CD
 - **Priority:** Blocker
-- **Status:** Implemented but unverified
+- **Status:** In progress — build.yml verified via CI docker-build job (PR #1); real GHCR push requires merge to main
 - **Affected areas:** `.github/workflows/build.yml`, Dockerfiles
 - **Description:** Actions build file corrected to match current Dockerfile naming but needs remote run check to verify image pushes.
 - **Completion criteria:** Workflow runs green on push to main, writing three GHCR image tags.
+- **Verification:** CI run <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29230504497> docker-build job passes with admin and reader images. Awaiting merge to main for GHCR push.
 
 ### DEBT-003 — DB-dependent tests fail on CI (no Postgres runner)
 - **Milestone:** Milestone M0 (CI Confidence)
 - **Category:** Testing | CI/CD
 - **Priority:** Blocker
-- **Status:** Blocked
+- **Status:** Resolved
 - **Affected areas:** `.github/workflows/ci.yml`, test files
-- **Description:** CI workflow lacks PostgreSQL service. Real DB tests fail on Actions run.
+- **Description:** CI workflow lacked PostgreSQL service. Real DB tests fail on Actions run.
 - **Completion criteria:** Actions yaml has `services.postgres` setup and all web/integration tests pass.
+- **Resolution:** Added `services.postgres` (postgres:16, port 5432, healthcheck) to backend-tests job. DATABASE_URL is set for alembic migration only; unit tests use SQLite in-memory isolation. ENV=test prevents bootstrap credential hydration. Verified green: <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29230504497>
 
 ### DEBT-006 — Circular import in admin_glossary routers
 - **Milestone:** Milestone M1 (Glossary/Router Repair)

@@ -277,7 +277,6 @@ describe("admin glossary API client", () => {
 
     await adminApi.transitionGlossaryStatus("novel/one", {
       target_status: "glossary_skipped",
-      rationale: "Owner chose to translate now.",
     });
 
     const [, mutationInit] = fetchMock.mock.calls[1];

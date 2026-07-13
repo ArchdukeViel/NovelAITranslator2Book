@@ -163,7 +163,7 @@ class NovelRequestService:
             try:
                 _cid = int(chapter_id)
             except ValueError:
-                raise ValueError("Chapter not found")
+                raise ValueError("Chapter not found") from None
             ch = self.db_session.query(ChapterModel).filter_by(id=_cid, novel_id=novel_id).one_or_none()
             if ch is None:
                 raise ValueError("Chapter not found")

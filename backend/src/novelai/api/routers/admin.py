@@ -51,7 +51,7 @@ async def get_provider_api_key_status(
         return service.provider_api_key_status(provider_key)
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.get("/admin/providers")
@@ -96,7 +96,7 @@ async def create_provider_credential(
         )
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.patch("/admin/providers/credentials/{credential_id}")
@@ -116,7 +116,7 @@ async def update_provider_credential(
         )
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.delete("/admin/providers/credentials/{credential_id}")
@@ -129,7 +129,7 @@ async def delete_provider_credential(
         return service.delete_provider_credential(credential_id)
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.post("/admin/providers/credentials/{credential_id}/test")
@@ -147,7 +147,7 @@ async def test_provider_credential(
         )
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.get("/admin/providers/fallback-policy")
@@ -168,7 +168,7 @@ async def set_provider_fallback_policy(
         return service.set_provider_fallback_policy(model_payload(body))
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.get("/admin/providers/{provider_key}")
@@ -181,7 +181,7 @@ async def get_provider_credential(
         return provider_credential_response(service.provider_api_key_status(provider_key))
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.post("/admin/provider-api-key")
@@ -205,7 +205,7 @@ async def set_provider_api_key(
         return status
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.post("/admin/providers")
@@ -229,7 +229,7 @@ async def set_provider_credential(
         return provider_credential_response(status)
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.post("/admin/provider-api-key/validate")
@@ -246,7 +246,7 @@ async def validate_provider_api_key(
         )
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.post("/admin/providers/{provider_key}/validate")
@@ -265,7 +265,7 @@ async def validate_provider_credential(
         return provider_credential_response(status)
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.delete("/admin/provider-api-key/{provider_key}")
@@ -278,7 +278,7 @@ async def clear_provider_api_key(
         return service.clear_provider_api_key(provider_key)
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.delete("/admin/providers/{provider_key}")
@@ -291,7 +291,7 @@ async def clear_provider_credential(
         return provider_credential_response(service.clear_provider_api_key(provider_key))
     except (KeyError, ValueError) as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.get("/admin/runtime-state")
@@ -312,7 +312,7 @@ async def refresh_runtime_state(
         return service.refresh_runtime_state(state_key)
     except KeyError as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.post("/admin/runtime-state/cleanup")
@@ -338,7 +338,7 @@ async def clear_runtime_state(
         return service.clear_runtime_state(state_key)
     except KeyError as exc:
         _raise_admin_error(exc)
-        raise AssertionError("unreachable")
+        raise AssertionError("unreachable") from None
 
 
 @router.get("/admin/worker")

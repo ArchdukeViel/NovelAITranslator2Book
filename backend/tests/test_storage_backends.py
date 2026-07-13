@@ -108,7 +108,7 @@ class TestS3Backend:
         assert s3.load("hello.txt") == b"world"
 
     def test_load_missing_raises(self, s3: StorageBackend) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(FileNotFoundError):
             s3.load("does-not-exist.txt")
 
     def test_overwrite(self, s3: StorageBackend) -> None:

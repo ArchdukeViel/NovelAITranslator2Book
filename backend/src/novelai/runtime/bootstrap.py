@@ -12,9 +12,9 @@ implementations are registered in a given runtime (e.g., tests).
 bootstrap() is idempotent: it can be called multiple times safely.
 """
 
-import logging
+import logging  # noqa: E402
 
-from novelai.logging_config import configure_logging
+from novelai.logging_config import configure_logging  # noqa: E402
 
 configure_logging()
 

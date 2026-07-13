@@ -366,11 +366,10 @@ class SmartSegmentStage(PipelineStage):
             return True
         if self._has_protected_marker(previous_paragraph) or self._has_protected_marker(next_paragraph):
             return True
-        if not self._ends_with_sentence_punctuation(previous_paragraph) and (
-            previous_paragraph.char_count <= 160 or next_paragraph.char_count <= 160
-        ):
-            return True
-        return False
+        return (
+            not self._ends_with_sentence_punctuation(previous_paragraph)
+            and (previous_paragraph.char_count <= 160 or next_paragraph.char_count <= 160)
+        )
 
     def _source_overlap_for_boundary(
         self,

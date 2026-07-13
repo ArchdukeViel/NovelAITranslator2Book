@@ -686,7 +686,7 @@ class TestConcurrentCrawlLocking:
         )
 
         # Update mode without prior metadata should fail
-        with pytest.raises((RuntimeError, ValueError), match="Metadata not found|No metadata found"):
+        with pytest.raises((RuntimeError, ValueError), match=r"Metadata not found|No metadata found"):
             await service.scrape_chapters("test_source", "novel-no-meta", "all", mode="update")
 
         # Lock should be released — full scrape should work

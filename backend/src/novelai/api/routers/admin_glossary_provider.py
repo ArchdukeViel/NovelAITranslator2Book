@@ -15,14 +15,7 @@ from sqlalchemy.orm import Session
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.admin_glossary import (
-    CandidateImportAction,
-    CandidateImportMode,
-    GlossaryProviderCandidateSummary,
     GlossaryProviderSuggestionRequest,
-    GlossaryProviderSuggestionResponse,
-    _provider_error_status,
-    _require_novel,
-    _safe_provider_error_detail,
 )
 from novelai.api.routers.dependencies import get_db_session, get_storage
 from novelai.core.errors import ProviderError, ProviderErrorCode
@@ -70,15 +63,15 @@ class _TranslationProviderGlossarySuggestionAdapter:
         return text
 
 
-def _provider_suggestion_action(mode: CandidateImportMode, action: str | None) -> CandidateImportAction:
+def _provider_suggestion_action(mode: str, action: str | None) -> str:
     if mode == "preview":
         return "preview"
     if action in {"created", "merged", "skipped", "conflict"}:
-        return cast(CandidateImportAction, action)
+        return cast("str", action)
     return "skipped"
 
 
-def _provider_suggestion_note(action: CandidateImportAction, skipped_reason: str | None) -> str | None:
+def _provider_suggestion_note(action: str, skipped_reason: str | None) -> str | None:
     if skipped_reason == "blocked_alias_conflict":
         return "Candidate matches a rejected or banned alias for this novel."
     if skipped_reason == "approved_entry_exists":
@@ -92,14 +85,23 @@ def _provider_suggestion_note(action: CandidateImportAction, skipped_reason: str
 
 def _provider_suggestion_response(
     novel_id: int,
-    mode: CandidateImportMode,
+    mode: str,
     result: ProviderGlossarySuggestionResult,
     *,
     provider_label: str,
-) -> GlossaryProviderSuggestionResponse:
+) -> Any:
+    from novelai.api.routers.admin_glossary import (
+        CandidateImportAction,
+        CandidateImportMode,
+        GlossaryProviderCandidateSummary,
+        GlossaryProviderSuggestionResponse,
+    )
+
+    mode_typed: CandidateImportMode = mode  # type: ignore[assignment]
     candidates: list[GlossaryProviderCandidateSummary] = []
     for candidate in result.candidates:
-        action = _provider_suggestion_action(mode, candidate.action)
+        action_str = _provider_suggestion_action(mode, candidate.action)
+        action: CandidateImportAction = action_str  # type: ignore[assignment]
         aliases = [alias.alias_text for alias in candidate.aliases[:5]]
         candidates.append(
             GlossaryProviderCandidateSummary(
@@ -118,7 +120,7 @@ def _provider_suggestion_response(
         )
     return GlossaryProviderSuggestionResponse(
         novel_id=novel_id,
-        mode=mode,
+        mode=mode_typed,
         provider_mode="configured_translation_provider",
         provider_label=provider_label,
         candidates_found=result.candidates_found,
@@ -136,7 +138,7 @@ def _provider_suggestion_response(
 
 @router.post(
     "/novels/{novel_id}/glossary/candidates/provider/preview",
-    response_model=GlossaryProviderSuggestionResponse,
+    response_model=None,
 )
 async def preview_glossary_provider_suggestions(
     novel_id: str,
@@ -144,7 +146,13 @@ async def preview_glossary_provider_suggestions(
     session: Session = Depends(get_db_session),
     storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
-) -> GlossaryProviderSuggestionResponse:
+) -> Any:
+    from novelai.api.routers.admin_glossary import (
+        _provider_error_status,
+        _require_novel,
+        _safe_provider_error_detail,
+    )
+
     novel = _require_novel(session, novel_id)
     try:
         provider = get_provider(body.provider)
@@ -168,7 +176,7 @@ async def preview_glossary_provider_suggestions(
 
 @router.post(
     "/novels/{novel_id}/glossary/candidates/provider/apply",
-    response_model=GlossaryProviderSuggestionResponse,
+    response_model=None,
 )
 async def apply_glossary_provider_suggestions(
     novel_id: str,
@@ -176,7 +184,13 @@ async def apply_glossary_provider_suggestions(
     session: Session = Depends(get_db_session),
     storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
-) -> GlossaryProviderSuggestionResponse:
+) -> Any:
+    from novelai.api.routers.admin_glossary import (
+        _provider_error_status,
+        _require_novel,
+        _safe_provider_error_detail,
+    )
+
     novel = _require_novel(session, novel_id)
     try:
         provider = get_provider(body.provider)

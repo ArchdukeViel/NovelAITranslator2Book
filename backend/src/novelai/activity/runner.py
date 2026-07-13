@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from datetime import UTC, datetime
 from typing import Any
 
@@ -58,10 +59,8 @@ class BackgroundActivityRunner:
         task = self._task
         if task is not None and not task.done():
             task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
         self._task = None
         self._stop_event = None

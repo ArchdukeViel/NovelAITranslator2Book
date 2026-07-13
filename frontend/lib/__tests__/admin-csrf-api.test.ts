@@ -181,6 +181,7 @@ describe("admin API CSRF wiring", () => {
     await api.createTranslationActivity({
       novel_id: "novel-1",
       source_key: "kakuyomu",
+      kind: "translation",
       chapters: "1",
       skip_glossary_gate: true,
     });

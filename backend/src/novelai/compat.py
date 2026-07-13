@@ -8,12 +8,12 @@ the web-focused folder reorganization without scattering tiny shim files across
 the package.
 """
 
-import importlib
-import importlib.abc
-import importlib.machinery
-import importlib.util
-import sys
-from types import ModuleType
+import importlib  # noqa: E402
+import importlib.abc  # noqa: E402
+import importlib.machinery  # noqa: E402
+import importlib.util  # noqa: E402
+import sys  # noqa: E402
+from types import ModuleType  # noqa: E402
 
 LEGACY_MODULE_ALIASES: dict[str, str] = {
     "novelai.interfaces": "novelai.runtime",

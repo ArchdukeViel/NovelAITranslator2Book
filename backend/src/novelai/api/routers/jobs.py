@@ -5,7 +5,7 @@ from __future__ import annotations
 New code should import from ``novelai.api.routers.activity``.
 """
 
-from novelai.api.routers.activity import (
+from novelai.api.routers.activity import (  # noqa: E402
     ActivityStatusUpdateRequest,
     CrawlActivityRequest,
     CrawlJobRequest,

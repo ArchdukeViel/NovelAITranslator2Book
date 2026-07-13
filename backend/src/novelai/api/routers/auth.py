@@ -191,9 +191,10 @@ async def register(
     try:
         result = svc.register(payload.email, payload.password, payload.display_name)
     except ValueError as exc:
-        if "Invalid email" in str(exc):
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        msg = str(exc)
+        if "Invalid email" in msg or "Password" in msg:
+            raise HTTPException(status_code=400, detail=msg) from exc
+        raise HTTPException(status_code=409, detail=msg) from exc
 
     _set_session_user(request, result)
     return _user_response(SessionUser(user_id=result["user_id"], email=result["email"], role=result["role"]))
@@ -324,6 +325,9 @@ async def google_callback(
         return RedirectResponse(_frontend_redirect(return_to), status_code=status.HTTP_302_FOUND)
     except HTTPException:
         raise
+    except ValueError as exc:
+        logger.warning("Google OAuth callback failed: %s", exc.__class__.__name__)
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:
         logger.warning("Google OAuth callback failed: %s", exc.__class__.__name__)
         raise HTTPException(status_code=400, detail="Google OAuth login failed.") from exc

@@ -51,7 +51,10 @@ class S3Backend(StorageBackend):
     def load(self, path: str | Path) -> bytes:
         key = self._key(path)
         logger.debug("S3 load: bucket=%s key=%s", self._bucket, key)
-        resp = self._client.get_object(Bucket=self._bucket, Key=key)
+        try:
+            resp = self._client.get_object(Bucket=self._bucket, Key=key)
+        except self._client.exceptions.NoSuchKey as exc:
+            raise FileNotFoundError(f"S3 key not found: {key}") from exc
         body = resp["Body"].read()
         resp["Body"].close()
         return body

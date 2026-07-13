@@ -22,6 +22,7 @@ from novelai.services.provider_credentials import ProviderCredentialService, hyd
 def test_default_settings() -> None:
     s = AppSettings(
         _env_file=None,  # type: ignore[call-arg]
+        ENV="development",
     )
     assert s.ENV == "development"
     assert s.LOG_LEVEL == "INFO"

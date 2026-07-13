@@ -14,7 +14,7 @@ from novelai.providers.base import TranslationProvider
 from novelai.runtime.bootstrap import bootstrap
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.translation.pipeline.context import PipelineState
-from novelai.translation.pipeline.pipeline import TranslationPipeline
+from novelai.translation.pipeline.pipeline import PipelineStageError, TranslationPipeline
 from novelai.translation.pipeline.stages.fetch import FetchStage
 from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.post_process import PostProcessStage
@@ -145,7 +145,7 @@ async def _run_trace_failure(
     job_id: str,
 ) -> list[dict[str, Any]]:
     _seed_trace_chapter(fixture)
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError):
         await orchestrator.translate_chapters(
             source_key="mock_source",
             novel_id="trace_novel",
@@ -347,8 +347,9 @@ async def test_translate_stage_falls_back_from_gemini_to_dummy(integration_fixtu
     # Scheduler tries all Gemini models before giving up (all raise QUOTA_EXHAUSTED).
     # The dummy provider is never called because the scheduler's fallback chain
     # only includes Gemini models, not the dummy provider.
-    with pytest.raises(SchedulerPausedError):
+    with pytest.raises(PipelineStageError) as exc_info:
         await pipeline.run(context)
+    assert isinstance(exc_info.value.__cause__, SchedulerPausedError)
 
     assert "gemini-3.1-flash-lite" in gemini_provider.models_seen
     assert dummy_provider.models_seen == []

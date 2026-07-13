@@ -6,8 +6,9 @@ Status and details are updated directly as release verification progresses.
 ---
 
 ## Milestone M0 — CI Confidence
-- **Status:** Blocked
+- **Status:** Done
 - **Description:** Stabilize deployment builds and integration testing in the CI environment.
+- **Evidence:** PR #1 CI run <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29230504497> — all gates pass (backend-lint, backend-tests, frontend-check, docker-build). Awaiting merge to main for build.yml GHCR push verification.
 - **Scope:**
   - Add PostgreSQL service and required `DATABASE_URL` to GitHub Actions workflow.
   - Run database-dependent tests in CI instead of skipping.
