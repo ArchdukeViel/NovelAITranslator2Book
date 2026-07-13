@@ -1,23 +1,44 @@
-# -----------------------------------------------------------------------------
-# NovelAITranslator2Book - .graphifyignore
-# Graphify also respects .gitignore; only Graphify-specific exclusions go here.
-# -----------------------------------------------------------------------------
+# Secrets and local environments
+.env
+.env.*
+**/.env
+**/.env.*
 
-# Historical completion/review records can dominate architecture queries.
-docs/history/
+# Keep safe templates visible
+!**/.env.example
+!**/.env.sample
 
-# Generated Graphify output
+# Graphify helper and outputs
+run-graphify.ps1
 graphify-out/
+graphify-out-*/
 
-# Frontend static media does not contribute to code architecture.
-frontend/public/**/*.png
-frontend/public/**/*.jpg
-frontend/public/**/*.jpeg
-frontend/public/**/*.gif
-frontend/public/**/*.webp
-frontend/public/**/*.ico
+# Python/runtime caches
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.pyright/
+**/*.pyc
 
-# Generated source maps and minified bundles
-**/*.map
-**/*.min.js
-**/*.min.css
+# Frontend generated outputs
+**/node_modules/
+**/.next/
+**/dist/
+**/build/
+**/coverage/
+
+# Virtual environments
+.venv/
+venv/
+**/.venv/
+
+# Test payload fixtures that produced zero AST nodes
+backend/tests/fixtures/storage_contract/legacy_metadata.json
+backend/tests/fixtures/storage_contract/legacy_chapter_bundle.json
+backend/tests/fixtures/storage_contract/legacy_translation_bundle.json
+backend/tests/fixtures/storage_contract/legacy_edit_history.json
+
+# Example source payloads, when they are only static fixtures
+**/kakuyomu_example.json
+**/syosetu_example.json
