@@ -14,6 +14,9 @@ from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
+from novelai.api.routers.admin_glossary import (
+    GlossaryProviderSuggestionRequest,
+)
 from novelai.api.routers.dependencies import get_db_session, get_storage
 from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.providers.base import TranslationProvider
@@ -139,7 +142,7 @@ def _provider_suggestion_response(
 )
 async def preview_glossary_provider_suggestions(
     novel_id: str,
-    body: Any,
+    body: GlossaryProviderSuggestionRequest,
     session: Session = Depends(get_db_session),
     storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),
@@ -177,7 +180,7 @@ async def preview_glossary_provider_suggestions(
 )
 async def apply_glossary_provider_suggestions(
     novel_id: str,
-    body: Any,
+    body: GlossaryProviderSuggestionRequest,
     session: Session = Depends(get_db_session),
     storage: Any = Depends(get_storage),
     _owner=Depends(require_role("owner")),

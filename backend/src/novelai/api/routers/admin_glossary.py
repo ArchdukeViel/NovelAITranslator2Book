@@ -1315,4 +1315,6 @@ def _ensure_sub_routers_merged() -> None:
     _sub_routers_merged = True
 
 
-_ensure_sub_routers_merged()
+# Don't call _ensure_sub_routers_merged() at module level — it would trigger
+# a circular import with admin_glossary_provider.py. Callers that need the
+# unified router should call _ensure_sub_routers_merged() first.
