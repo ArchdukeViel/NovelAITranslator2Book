@@ -31,11 +31,14 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone M0 (CI Confidence)
 - **Category:** CI/CD
 - **Priority:** Blocker
-- **Status:** In progress — build.yml verified via CI docker-build job (PR #1); real GHCR push requires merge to main
+- **Status:** Resolved
 - **Affected areas:** `.github/workflows/build.yml`, Dockerfiles
 - **Description:** Actions build file corrected to match current Dockerfile naming but needs remote run check to verify image pushes.
 - **Completion criteria:** Workflow runs green on push to main, writing three GHCR image tags.
-- **Verification:** CI run <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29230504497> docker-build job passes with admin and reader images. Awaiting merge to main for GHCR push.
+- **Resolution:** All three images pushed to GHCR with `latest` and SHA tags. Build run: <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29231656072>
+  - `ghcr.io/archdukeviel/novelaitranslator2book/novelai-admin` (SHA + latest)
+  - `ghcr.io/archdukeviel/novelaitranslator2book/novelai-reader` (SHA + latest)
+  - `ghcr.io/archdukeviel/novelaitranslator2book/novelai-frontend` (SHA + latest)
 
 ### DEBT-003 — DB-dependent tests fail on CI (no Postgres runner)
 - **Milestone:** Milestone M0 (CI Confidence)

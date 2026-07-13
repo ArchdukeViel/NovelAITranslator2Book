@@ -8,7 +8,11 @@ Status and details are updated directly as release verification progresses.
 ## Milestone M0 — CI Confidence
 - **Status:** Done
 - **Description:** Stabilize deployment builds and integration testing in the CI environment.
-- **Evidence:** PR #1 CI run <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29230504497> — all gates pass (backend-lint, backend-tests, frontend-check, docker-build). Awaiting merge to main for build.yml GHCR push verification.
+- **Evidence:**
+  - CI run (PR #1): <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29230504497> — all gates pass (backend-lint, backend-tests, frontend-check, docker-build)
+  - Build run (main push): <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29231656072> — three Docker images pushed to GHCR with SHA + latest tags
+  - Acceptance gate 1: `ci.yml` passes on main with database tests active ✓
+  - Acceptance gate 2: `build.yml` outputs Docker image tags to registry ✓
 - **Scope:**
   - Add PostgreSQL service and required `DATABASE_URL` to GitHub Actions workflow.
   - Run database-dependent tests in CI instead of skipping.
