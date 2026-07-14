@@ -14,6 +14,7 @@ from novelai.api.routers import (
     admin_glossary,
     admin_taxonomy,
     editor,
+    health,
     library,
     library_actions,
     library_detail,
@@ -23,6 +24,7 @@ from novelai.api.routers import (
     sources,
 )
 from novelai.api.routers.auth import router as auth_router
+from novelai.api.routers.health import admin_router as health_admin_router
 from novelai.api.routers.library import NovelSummary, list_novels
 from novelai.api.routers.public import router as public_router
 from novelai.api.routers.user_data import router as user_data_router
@@ -35,11 +37,15 @@ from novelai.runtime.container import container
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if settings.JOB_WORKER_ENABLED:
         await container.activity_runner.start()
+    if settings.BACKUP_ENABLED or settings.MAINTENANCE_ENABLED:
+        container.scheduler_service.start()
     try:
         yield
     finally:
         if container.activity_runner.is_running():
             await container.activity_runner.stop()
+        if container.scheduler_service.is_running:
+            await container.scheduler_service.stop()
 
 
 def create_app() -> FastAPI:
@@ -123,13 +129,8 @@ def create_app() -> FastAPI:
         include_in_schema=False,
     )
 
-    @app.get("/api/health", tags=["health"])
-    async def api_health() -> dict[str, str]:
-        return {"status": "ok"}
-
-    @app.get("/health", tags=["health"], include_in_schema=False)
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
+    app.include_router(health.router)
+    app.include_router(health_admin_router, prefix="/api", tags=["health"])
 
     return app
 

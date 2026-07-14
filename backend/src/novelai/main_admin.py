@@ -19,6 +19,7 @@ from novelai.api.routers import (
     admin_glossary,
     admin_taxonomy,
     editor,
+    health,
     library,
     novels,
     operations,
@@ -26,6 +27,7 @@ from novelai.api.routers import (
     sources,
 )
 from novelai.api.routers.auth import router as auth_router
+from novelai.api.routers.health import admin_router as health_admin_router
 from novelai.api.routers.library import NovelSummary, list_novels
 from novelai.config.settings import settings
 from novelai.runtime.bootstrap import bootstrap
@@ -39,11 +41,15 @@ if settings.ENV == "production" and settings.SESSION_SECRET_KEY == "changeme-gen
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if settings.JOB_WORKER_ENABLED:
         await container.activity_runner.start()
+    if settings.BACKUP_ENABLED or settings.MAINTENANCE_ENABLED:
+        container.scheduler_service.start()
     try:
         yield
     finally:
         if container.activity_runner.is_running():
             await container.activity_runner.stop()
+        if container.scheduler_service.is_running:
+            await container.scheduler_service.stop()
 
 
 bootstrap()
@@ -109,6 +115,5 @@ app.add_api_route(
 )
 
 
-@app.get("/api/admin/health", tags=["health"])
-async def admin_health() -> dict[str, str]:
-    return {"status": "ok"}
+app.include_router(health.router)
+app.include_router(health_admin_router, prefix="/api", tags=["health"])

@@ -19,6 +19,7 @@ from novelai.services.admin_service import AdminService
 from novelai.services.auth_service import AuthService
 from novelai.services.editor_service import EditorService
 from novelai.services.glossary_workflow_service import GlossaryWorkflowService
+from novelai.services.health_service import HealthService
 from novelai.services.library_service import LibraryService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.novel_request_service import NovelRequestService
@@ -26,6 +27,7 @@ from novelai.services.preferences_service import PreferencesService
 from novelai.services.public_catalog_service import PublicCatalogService
 from novelai.services.reading_service import ReadingService
 from novelai.services.review_service import ReviewService
+from novelai.services.scheduler_runtime_state_service import SchedulerRuntimeStateService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.services.user_library_service import UserLibraryService
@@ -270,3 +272,13 @@ def get_glossary_workflow_service(
     from novelai.services.glossary_workflow_service import GlossaryWorkflowService
 
     return GlossaryWorkflowService(storage=storage, db_session=db_session)
+
+
+def get_scheduler_runtime_state_service() -> SchedulerRuntimeStateService:
+    """FastAPI dependency for the scheduler runtime state service."""
+    return container.scheduler_runtime_state
+
+
+def get_health_service() -> HealthService:
+    """FastAPI dependency for the health probe service."""
+    return container.health_service

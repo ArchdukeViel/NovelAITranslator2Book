@@ -7,10 +7,15 @@ from novelai.activity.runner import BackgroundActivityRunner
 from novelai.activity.worker import ActivityWorkerService
 from novelai.config.settings import settings
 from novelai.providers.registry import get_provider
+from novelai.services.backup_service import BackupService
 from novelai.services.email import AuthEmailService, NoopAuthEmailService, SMTPAuthEmailService
 from novelai.services.export_service import ExportService
+from novelai.services.health_service import HealthService
+from novelai.services.maintenance_service import MaintenanceService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
+from novelai.services.scheduler_runtime_state_service import SchedulerRuntimeStateService
+from novelai.services.scheduler_service import SchedulerService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.storage.service import StorageService
@@ -39,6 +44,11 @@ class Container:
     _activity_worker: ActivityWorkerService | None = None
     _activity_runner: BackgroundActivityRunner | None = None
     _auth_email: AuthEmailService | None = None
+    _scheduler_runtime_state: SchedulerRuntimeStateService | None = None
+    _backup_service: BackupService | None = None
+    _maintenance_service: MaintenanceService | None = None
+    _scheduler_service: SchedulerService | None = None
+    _health_service: HealthService | None = None
 
     @property
     def storage(self) -> StorageService:
@@ -134,6 +144,12 @@ class Container:
         return self._auth_email
 
     @property
+    def scheduler_runtime_state(self) -> SchedulerRuntimeStateService:
+        if self._scheduler_runtime_state is None:
+            self._scheduler_runtime_state = SchedulerRuntimeStateService()
+        return self._scheduler_runtime_state
+
+    @property
     def translation(self) -> TranslationService:
         if self._translation is None:
             # Build translation service with all dependencies
@@ -178,6 +194,44 @@ class Container:
                 source_factory=get_source,
             )
         return self._orchestrator
+
+    @property
+    def backup_service(self) -> BackupService:
+        if self._backup_service is None:
+            from novelai.services.backup_manager import BackupManager
+            backup_manager = BackupManager(base_dir=settings.DATA_DIR / "backups")
+            self._backup_service = BackupService(backup_manager=backup_manager)
+        return self._backup_service
+
+    @property
+    def maintenance_service(self) -> MaintenanceService:
+        if self._maintenance_service is None:
+            self._maintenance_service = MaintenanceService(
+                storage=self.storage,
+                activity_log=self.activity_log,
+                scheduler_runtime_state_service=self.scheduler_runtime_state,
+            )
+        return self._maintenance_service
+
+    @property
+    def scheduler_service(self) -> SchedulerService:
+        if self._scheduler_service is None:
+            from novelai.db.engine import session_scope
+            self._scheduler_service = SchedulerService(
+                backup_service=self.backup_service,
+                maintenance_service=self.maintenance_service,
+                db_session_scope_factory=session_scope,
+            )
+        return self._scheduler_service
+
+    @property
+    def health_service(self) -> HealthService:
+        if self._health_service is None:
+            self._health_service = HealthService(
+                storage=self.storage,
+                activity_runner=self.activity_runner,
+            )
+        return self._health_service
 
 
 # Global singleton container used by application entrypoints.

@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from novelai.api.error_handlers import add_error_handlers
+from novelai.api.routers.health import router as health_router
 from novelai.api.routers.public import router as public_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.config.settings import settings
@@ -36,8 +37,5 @@ app.include_router(public_router)
 # User data endpoints (auth'd, but auth is per-request — reader has no session)
 app.include_router(user_data_router)
 
-
-# Health
-@app.get("/api/public/health", tags=["health"])
-async def reader_health() -> dict[str, str]:
-    return {"status": "ok"}
+# Health (liveness + readiness only — no admin health on reader)
+app.include_router(health_router)
