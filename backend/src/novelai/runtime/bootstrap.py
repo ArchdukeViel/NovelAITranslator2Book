@@ -71,17 +71,22 @@ def bootstrap_input_adapters() -> None:
 
 
 def bootstrap_exporters() -> None:
-    """Register all known export formats."""
+    """Register all known export formats.
+
+    PDF export is deprecated (DEBT-007). The ``PDFExporter`` stub is not
+    registered. ``ExportService.export("pdf", ...)`` returns a controlled
+    ``OperationError`` instead of a raw ``KeyError`` or ``NotImplementedError``.
+    Historical manifests with ``format: "pdf"`` are preserved but new PDF
+    export requests are rejected.
+    """
     from novelai.export.epub_exporter import EPUBExporter
     from novelai.export.html_exporter import HTMLExporter
     from novelai.export.markdown_exporter import MarkdownExporter
-    from novelai.export.pdf_exporter import PDFExporter
     from novelai.export.registry import register_exporter
 
     register_exporter("epub", lambda: EPUBExporter())
     register_exporter("html", lambda: HTMLExporter())
     register_exporter("md", lambda: MarkdownExporter())
-    register_exporter("pdf", lambda: PDFExporter())
 
 
 def bootstrap_provider_credentials() -> list[dict[str, object]]:

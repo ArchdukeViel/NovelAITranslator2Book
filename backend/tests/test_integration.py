@@ -471,7 +471,8 @@ async def test_bootstrap_and_registry(integration_fixture):
     # Providers and sources should be registered
     available = available_exporters()
     assert "epub" in available
-    # PDF exporter not registered (not yet implemented)
+    # PDF exporter is deprecated (DEBT-007) and not registered.
+    assert "pdf" not in available
 
 
 def test_logging_integration():

@@ -16,7 +16,7 @@ from novelai.services.export_manifest_service import (
     build_manifest,
     write_manifest,
 )
-from novelai.services.export_service import ExportService
+from novelai.services.export_service import ExportService, UnsupportedExportFormatError
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.orchestration.operations_helpers import (
     ExportOperationResult,
@@ -436,6 +436,19 @@ class OperationsService:
                 media_type="application/epub+zip" if export_format == "epub" else "application/octet-stream",
                 filename=f"{novel_id}.{export_format}",
             )
+        except UnsupportedExportFormatError as exc:
+            failed = build_manifest(
+                novel_id=novel_id,
+                export_format=export_format,
+                status=STATUS_FAILED,
+                failure_code=exc.error_code,
+                failure_message=exc.detail[:200],
+                source_chapter_count=len(meta.get("chapters", [])),
+                chapter_count=len(chapters),
+                previous_manifest_key=manifest["manifest_key"],
+            )
+            write_manifest(self.storage, novel_id, failed)
+            raise OperationError(400, {"error": exc.error_code, "format": exc.format, "message": exc.detail}) from exc
         except Exception as exc:
             failed = build_manifest(
                 novel_id=novel_id,

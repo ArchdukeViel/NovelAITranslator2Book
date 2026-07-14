@@ -15,7 +15,7 @@ from novelai.export.registry import (
     get_exporter,
     register_exporter,
 )
-from novelai.services.export_service import ExportService
+from novelai.services.export_service import ExportService, UnsupportedExportFormatError
 
 _TMP = Path(__file__).resolve().parent / ".tmp" / "export_svc"
 
@@ -73,5 +73,5 @@ class TestExportService:
 
     def test_export_raises_for_unknown_format(self) -> None:
         svc = ExportService()
-        with pytest.raises(KeyError):
+        with pytest.raises(UnsupportedExportFormatError, match="not supported"):
             svc.export("nope", novel_id="x", chapters=[], output_path="x")
