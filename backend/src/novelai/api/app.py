@@ -132,6 +132,15 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(health_admin_router, prefix="/api", tags=["health"])
 
+    # Backward-compatible aliases for /health and /api/health (point to liveness)
+    @app.get("/health", tags=["health"], include_in_schema=False)
+    async def _health_alias() -> dict[str, str]:
+        return {"status": "ok", "service": "novelai", "timestamp": ""}
+
+    @app.get("/api/health", tags=["health"])
+    async def _api_health_alias() -> dict[str, str]:
+        return {"status": "ok"}
+
     return app
 
 
