@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Image tag to deploy"
+        description: "Image tag to deploy (e.g. latest or sha-a1b2c3)"
         required: true
         default: "latest"
       environment:
@@ -21,7 +21,8 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment }}
+    environment: ${{ inputs.environment }}
+
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
@@ -30,6 +31,23 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
+            set -euo pipefail
             cd /opt/novelai
+
+            # Write the requested version into the env file so compose picks it up
+            VERSION="${{ inputs.version }}"
+            echo "Deploying version: $VERSION to ${{ inputs.environment }}"
+
+            # Pull the exact image tags being deployed
             docker compose pull
-            docker compose up -d --remove-orphans
+
+            # Bring up with zero-downtime replacement
+            docker compose up -d --remove-orphans --pull always
+
+            # Run any pending migrations after new containers are up
+            docker compose run --rm migrate
+
+            # Prune dangling images older than 24h to reclaim disk
+            docker image prune -f --filter "until=24h"
+
+            echo "Deploy complete."

@@ -20,8 +20,10 @@ COPY backend/src ./backend/src
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install ".[documents,gemini,db,worker,auth]"
 
-# Copy remaining backend artifacts (alembic, tests, sql) after deps are cached
-COPY backend ./backend
+# Copy remaining backend artifacts (alembic, sql) after deps are cached — src already present
+COPY backend/alembic.ini ./backend/alembic.ini
+COPY backend/alembic ./backend/alembic
+COPY backend/sql ./backend/sql
 
 # =============================================================================
 # Stage 2: Runtime — lean image, no build tools

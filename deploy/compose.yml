@@ -36,7 +36,7 @@ services:
       context: ..
       dockerfile: deploy/frontend.Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: http://backend:8000
+        NEXT_PUBLIC_API_BASE_URL: /api
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_BASE_URL: /api
@@ -49,6 +49,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/admin.Dockerfile
+    user: root
     working_dir: /app/backend
     entrypoint: ["alembic", "-c", "/app/backend/alembic.ini", "upgrade", "head"]
     environment:
@@ -62,7 +63,7 @@ services:
     networks:
       - novelai-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live').read()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/live').read()"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -137,6 +138,12 @@ services:
     build:
       context: ..
       dockerfile: deploy/reader.Dockerfile
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health/live').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     environment:
       - ENV=${ENV:-production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
