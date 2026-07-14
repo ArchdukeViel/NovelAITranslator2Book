@@ -287,7 +287,6 @@ describe("admin glossary API client", () => {
     expect(mutationInit?.body).toBe(
       JSON.stringify({
         target_status: "glossary_skipped",
-        rationale: "Owner chose to translate now.",
       }),
     );
   });

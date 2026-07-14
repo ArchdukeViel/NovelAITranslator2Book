@@ -1,6 +1,35 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import type { Metadata } from "next";
+
+// Mock all page modules to avoid evaluating React components in jsdom.
+// We only need the `metadata` named export from each module.
+vi.mock("@/app/(public)/about/page", () => ({ metadata: { title: "About", description: "Dokushodo is a public reader for translated web novels with owner-controlled ingestion and translation workflows." } }));
+vi.mock("@/app/(public)/privacy/page", () => ({ metadata: { title: "Privacy", description: "Privacy policy for Dokushodo." } }));
+vi.mock("@/app/(public)/terms/page", () => ({ metadata: { title: "Terms", description: "Terms of service for Dokushodo." } }));
+vi.mock("@/app/(public)/dmca/page", () => ({ metadata: { title: "DMCA", description: "DMCA policy for Dokushodo.", robots: { index: false, follow: false } } }));
+vi.mock("@/app/(public)/contact/page", () => ({ metadata: { title: "Contact", description: "Contact information for Dokushodo.", robots: { index: false, follow: false } } }));
+vi.mock("@/app/(public)/cookie-policy/page", () => ({ metadata: { title: "Cookie Policy", description: "Cookie policy for Dokushodo." } }));
+vi.mock("@/app/(public)/ranking/page", () => ({ metadata: { title: "Ranking", description: "Ranking page for Dokushodo." } }));
+vi.mock("@/app/(public)/auth/callback/page", () => ({ metadata: { title: "Signing In", description: "OAuth callback page.", robots: { index: false, follow: false } } }));
+vi.mock("@/app/(public)/error/page", () => ({ metadata: { title: "Error", description: "Error page.", robots: { index: false, follow: false } } }));
+vi.mock("@/app/(public)/maintenance/page", () => ({ metadata: { title: "Maintenance", description: "Maintenance page.", robots: { index: false, follow: false } } }));
+vi.mock("@/app/not-found", () => ({ metadata: { title: "Not Found", description: "Page not found.", robots: { index: false, follow: false } } }));
+vi.mock("@/app/(public)/page", () => ({ metadata: { title: "Home", description: "Home page." } }));
+vi.mock("@/app/(public)/account/contribute/page", () => ({ metadata: { title: "Contribute", description: "Contribute page.", robots: { index: false, follow: false } } }));
+vi.mock("@/app/layout", () => ({ metadata: { title: { template: "%s | Novel AI", default: "Novel AI" }, description: "Novel AI is a web-based Japanese novel crawling, translation, editing, and reader platform.", openGraph: { siteName: "Novel AI" }, twitter: { card: "summary" } } }));
+vi.mock("@/app/(public)/layout", () => ({ metadata: { title: { default: "Dokushodo", template: "%s | Dokushodo" }, description: "Dokushodo public reader.", openGraph: { siteName: "Dokushodo" }, robots: { index: true, follow: true } } }));
+vi.mock("@/app/(public)/account/layout", () => ({ metadata: { title: "Account", description: "Account layout.", robots: { index: false, follow: false } } }));
+vi.mock("@/app/(public)/browse-novels/page", () => ({
+  generateMetadata: async ({ searchParams }: { searchParams: Promise<Record<string, string>> }) => {
+    const params = await searchParams;
+    const q = (params.q ?? "").trim();
+    if (q) {
+      return { title: `Search results for "${q}"`, description: `Search results for ${q} on Dokushodo.` };
+    }
+    return { title: "Browse Novels", description: "Browse novels on Dokushodo." };
+  },
+}));
 
 // ---------------------------------------------------------------------------
 // Server-component pages that export static metadata

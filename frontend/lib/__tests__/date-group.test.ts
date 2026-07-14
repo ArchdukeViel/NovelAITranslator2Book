@@ -142,8 +142,8 @@ describe("todayTimeLabel", () => {
     // Today at 8:30 AM
     const label = todayTimeLabel("2026-06-17T08:30:00Z");
     expect(label).toBeTruthy();
-    // Should look like a time (digits + separator + digits) — locale-dependent
-    expect(label).toMatch(/^\d{1,2}[:.]\d{2}$/);
+    // Should look like a time (digits + separator + digits, optionally followed by AM/PM)
+    expect(label).toMatch(/^\d{1,2}[:.]\d{2}(\s?(AM|PM))?$/i);
   });
 
   it("returns null for yesterday dates", () => {

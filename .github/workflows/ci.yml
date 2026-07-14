@@ -112,6 +112,7 @@ jobs:
 
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test
 
   docker-build:
     runs-on: ubuntu-latest

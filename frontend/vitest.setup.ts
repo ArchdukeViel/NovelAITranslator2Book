@@ -78,3 +78,24 @@ vi.mock("next/font/google", () => {
     DM_Mono: mockFont,
   };
 });
+
+// ---------------------------------------------------------------------------
+// Mock next/navigation for test environments
+// Components use useRouter, usePathname, useSearchParams from next/navigation,
+// which throw "invariant expected app router to be mounted" in jsdom.
+// This shim provides noop implementations.
+// ---------------------------------------------------------------------------
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    refresh: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({}),
+}));

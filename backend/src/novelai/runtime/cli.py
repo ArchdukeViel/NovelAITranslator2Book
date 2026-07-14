@@ -125,13 +125,20 @@ def _open_frontend_page(
     host: str = "127.0.0.1",
     port: int = 3000,
     open_browser: bool = True,
+    label: str | None = None,
 ) -> str:
     url = _frontend_url(path, base_url=base_url, host=host, port=port)
     if open_browser:
         opened = webbrowser.open(url)
-        print(f"Opened {url}" if opened else url)
+        if label:
+            print(f"Opened {label} at {url}" if opened else f"{label} at {url}")
+        else:
+            print(f"Opened {url}" if opened else url)
     else:
-        print(url)
+        if label:
+            print(f"{label} at {url}")
+        else:
+            print(url)
     return url
 
 
@@ -196,6 +203,7 @@ def main(argv: list[str] | None = None) -> None:
             host=args.host,
             port=args.port,
             open_browser=not bool(args.no_open),
+            label="Public reader",
         )
         return
 

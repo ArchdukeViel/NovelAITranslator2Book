@@ -250,24 +250,28 @@ describe("LoginView email sign up", () => {
 describe("LoginView Google OAuth", () => {
   it("shows unavailable message but keeps email/password usable when Google returns 503", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 503 }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response("", { status: 503, statusText: "Service Unavailable" })
+    ));
 
     renderLogin();
 
     await user.click(screen.getByText("Continue with Google"));
 
-    expect(
-      await screen.findByText(
-        "Google sign-in is not available right now. You can still use email and password."
-      )
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Google sign-in is not available right now/)
+      ).toBeInTheDocument();
+    });
     expect(screen.getByLabelText("Email")).toBeEnabled();
     expect(screen.getByLabelText("Password")).toBeEnabled();
   });
 
   it("does not redirect when Google is unavailable", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 503 }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response("", { status: 503, statusText: "Service Unavailable" })
+    ));
 
     renderLogin();
 

@@ -9,6 +9,7 @@ import {
   useStartGoogleOAuth,
 } from "@/hooks/public/use-auth";
 import { authApi } from "@/lib/public-api";
+import { ApiError } from "@/lib/api";
 
 interface LoginViewProps {
   onClose: () => void;
@@ -86,7 +87,11 @@ export function LoginView({
         return;
       }
       startGoogleOAuth();
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 503) {
+        setGoogleUnavailable(true);
+        return;
+      }
       startGoogleOAuth();
     }
   };
@@ -168,9 +173,8 @@ export function LoginView({
       <div className="mb-4 flex flex-col gap-2">
         {googleUnavailable && (
           <p className="text-sm text-muted-foreground">
-            Google sign-in is not available right now. You can still use email
-            and password.
-          </p>
+            Google sign-in is not available right now. You can still use email and password.
+         </p>
         )}
         <Button
           type="button"
