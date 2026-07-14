@@ -6,39 +6,45 @@ Operational checklists for monitoring service health, worker status, and log par
 
 ## Health Check Observability
 
-Current health endpoints are static and do not perform real dependency probes:
+Health endpoints perform real dependency probes (M2a, DEBT-001 resolved):
 
-- `GET /health` or `GET /api/health`: Returns `{"status": "ok"}`.
-- `GET /api/admin/health`: Returns static admin health.
-- `GET /api/public/health`: Returns static public health.
+- `GET /health/live`: Liveness check. Returns `200 OK` with `{"status": "ok", "service": "novelai", "timestamp": "..."}`. No DB/storage/worker calls. Use for container liveness probes.
+- `GET /health/ready`: Readiness check. Returns `200 OK` if all probes are healthy or degraded. Returns `503 Service Unavailable` if any probe is unhealthy. Probes: database (`SELECT 1`), storage (temp file write+delete), worker (runner status), disk space.
+- `GET /api/admin/health`: Owner-only detailed diagnostics. Returns probe status, latency (ms), safe message, and checked timestamp per probe. Still redacted — no raw exceptions, stack traces, credentials, or paths.
 
-Real liveness/readiness probes (database, storage, worker) are planned under Milestone 2a (DEBT-001). Once implemented, the following endpoints will be available:
-
-- `GET /health/live` or `GET /api/health/live`: Liveness check. Returns `200 OK` if the FastAPI process executes handlers.
-- `GET /health/ready` or `GET /api/health/ready`: Readiness check. Returns `200 OK` if all database and storage connectivity checks succeed. Returns `503 Service Unavailable` on connection failure.
-
-Planned diagnostics payload format (no credentials or tracebacks exposed):
+Public-safe readiness response format (no credentials or tracebacks exposed):
 
 ```json
 {
   "status": "healthy",
-  "checked_at": "2026-07-12T21:00:00Z",
+  "service": "novelai",
+  "timestamp": "2026-07-14T12:00:00Z",
   "checks": {
-    "database": {
-      "status": "healthy",
-      "latency_ms": 1.2
-    },
-    "storage": {
-      "status": "healthy",
-      "latency_ms": 4.5
-    },
-    "worker": {
-      "status": "healthy",
-      "last_tick_seconds_ago": 15
-    }
+    "database": {"status": "healthy"},
+    "storage": {"status": "healthy"},
+    "worker": {"status": "healthy"},
+    "disk": {"status": "healthy"}
   }
 }
 ```
+
+Admin health response format (owner-only, includes latency and messages):
+
+```json
+{
+  "status": "healthy",
+  "service": "novelai",
+  "timestamp": "2026-07-14T12:00:00Z",
+  "checks": {
+    "database": {"status": "healthy", "message": "Database responsive", "latency_ms": 1, "checked_at": "..."},
+    "storage": {"status": "healthy", "message": "Storage responsive", "latency_ms": 4, "checked_at": "..."},
+    "worker": {"status": "degraded", "message": "Worker not running", "latency_ms": 0, "checked_at": "..."},
+    "disk": {"status": "healthy", "message": "Disk space sufficient", "free_percent": 75, "latency_ms": 0, "checked_at": "..."}
+  }
+}
+```
+
+Probe states: `healthy`, `degraded`, `unhealthy`. Disk probe reports `degraded` below `HEALTH_DISK_WARNING_FREE_PERCENT` (default 15%) and `unhealthy` below `HEALTH_DISK_CRITICAL_FREE_PERCENT` (default 5%).
 
 ---
 

@@ -8,7 +8,28 @@ Procedures for storage backups, database snapshotting, and system recovery.
 
 Backup archives are written to local disk. Only file storage domains (novels, metadata, translations, assets) are packaged by `BackupManager`.
 
-Manual backup trigger (admin endpoint, planned under DEBT-010):
+### Scheduled Backups
+
+Scheduled backups run via APScheduler when `BACKUP_ENABLED=true`. The schedule is controlled by:
+
+- `BACKUP_SCHEDULE_CRON` (default `0 2 * * *` — daily at 02:00)
+- `BACKUP_TIMEZONE` (default `UTC`)
+
+Backups use a multi-process file lock (`InterProcessFileLock`) to prevent concurrent backup runs. The lock file lives at `<backups_dir>/.backup.lock`.
+
+### Retention Policy
+
+After each successful backup, retention is automatically applied:
+
+- `BACKUP_RETENTION_COUNT` (default 5): Maximum backups to keep by count.
+- `BACKUP_MIN_SUCCESSFUL_TO_KEEP` (default 3): Minimum successful backups always preserved regardless of age. The newest successful backup is never deleted.
+- `BACKUP_MAX_AGE_DAYS` (default 30): Backups older than this are eligible for deletion when beyond the retention count.
+
+Failed or offsite states do not erase local successful artifacts.
+
+### Manual Backup
+
+Manual backup trigger (admin endpoint):
 ```bash
 POST /api/admin/backups
 ```
@@ -20,7 +41,6 @@ This queues a background backup activity. Response format:
 }
 ```
 
-Scheduled backups run based on `BACKUP_SCHEDULE_CRON` (planned under DEBT-010).
 **Notice:** If `STORAGE_BACKEND=s3` is active, backup generation is disabled. S3 storage requires external bucket snapshot procedures.
 
 ---

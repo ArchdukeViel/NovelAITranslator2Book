@@ -228,6 +228,71 @@ Do not perform unrelated repository-wide renames.
 
 ---
 
+## Operational Contracts
+
+These are behavioral contracts that future agents must preserve. Violating them breaks existing functionality.
+
+### Health endpoints (M2a)
+
+* `GET /health/live` — process-only liveness, unauthenticated, no DB/storage/worker calls. Always returns 200.
+* `GET /health/ready` — public-safe readiness, probes DB, storage, worker, disk. Returns 503 if any probe is unhealthy. Never exposes credentials, paths, hostnames, or stack traces.
+* `GET /api/admin/health` — owner-only detailed diagnostics (`require_role("owner")`). Still redacted.
+* Probe states: `healthy`, `degraded`, `unhealthy`. Each probe is bounded by `HEALTH_PROBE_TIMEOUT_MS`; total request by `HEALTH_TOTAL_TIMEOUT_MS`.
+* Implementation: `backend/src/novelai/services/health_service.py` and `backend/src/novelai/api/routers/health.py`.
+
+### PDF export deprecation (M2b, DEBT-007)
+
+* PDF export is deprecated. `PDFExporter` is not registered in the export registry.
+* `ExportService.export("pdf", ...)` and `ExportService.export_pdf()` raise `UnsupportedExportFormatError` with a safe deprecation message.
+* `OperationsService` catches this and returns `OperationError(400)`. Raw `KeyError` or `NotImplementedError` must not reach API callers.
+* Historical manifests with `format: "pdf"` are preserved (manifest service stores format as free-form string). Do not rewrite historical manifests.
+* Do not add a PDF renderer or dependency. PDF is reintroduced only after an approved renderer, font policy, security review, and real export tests.
+
+### Multi-process file lock (M2c, DEBT-035)
+
+* `novelai.storage.file_lock.InterProcessFileLock` is the canonical cross-platform locking primitive.
+* Uses `O_CREAT | O_EXCL` for atomic lockfile creation (works on Windows and POSIX).
+* Windows PID liveness check uses `ctypes.windll.kernel32.OpenProcess`.
+* Bounded retries with configurable backoff (`FILE_LOCK_RETRY_COUNT`, `FILE_LOCK_RETRY_DELAY_SECONDS`).
+* Stale lock detection reclaims locks from crashed processes.
+* Use this for any write/cleanup that must not conflict across processes.
+
+### Scheduler runtime state (M2c, DEBT-036)
+
+* `SchedulerRuntimeState` DB table + `SchedulerRuntimeStateService` is the durable cross-restart store for cooldown, failure, exhausted, heartbeat, and next-eligible state.
+* The file-based `scheduler_states.json` (in `storage/traceability.py`) remains as an in-process cache for per-job model state. Both are written on transitions.
+* State survives process restarts. Do not rely on in-memory scheduler state alone.
+* Canonical identifiers: `job_id`, `source_key`, `provider_key`, `activity_id` in metadata where applicable. No aliases.
+
+### Backup and maintenance scheduling (M2c)
+
+* `BackupManager.apply_retention()` preserves the newest successful backup and `BACKUP_MIN_SUCCESSFUL_TO_KEEP` minimum. Uses `InterProcessFileLock` to prevent concurrent retention runs.
+* `MaintenanceService` runs allowlisted cleanup tasks with dry-run support and path safety. Rejects blank, root, project-root, and symlink-escape paths.
+* `SchedulerService` uses a lightweight asyncio loop (not APScheduler) to check `scheduled_cron_log` for pending backup/maintenance work.
+* `pg_cron` is enabled on the Supabase database with a daily cleanup job for `scheduler_runtime_states` (runs at 03:30 UTC). DB-native cleanup survives container restarts.
+* Do not reintroduce APScheduler. The dependency was removed in M2c.
+
+### Docker health check
+
+* `compose.yml` healthcheck uses `python -c "import urllib.request; ..."` because the image does not include `curl` by default.
+* `admin.Dockerfile` and `reader.Dockerfile` now install `curl` for future use, but the healthcheck still uses `python -c` for portability.
+
+---
+
+## Supabase MCP
+
+The user has Supabase MCP tools available. Use them for database operations:
+
+* `supabase_apply_migration` — apply DDL migrations directly to the remote database.
+* `supabase_execute_sql` — run read-only queries.
+* `supabase_get_advisors` — check security and performance lints.
+* `supabase_list_tables` — inspect schema.
+* `supabase_generate_typescript_types` — generate `database.types.ts` for the frontend.
+
+When applying migrations via MCP, the Alembic migration file must still be created under `backend/alembic/versions/` for version control. The MCP apply is for validation/deployment, not for replacing the migration source of truth.
+
+---
+
 ## Frontend Conventions
 
 * Use `@tanstack/react-query` for server state.
@@ -467,11 +532,16 @@ Do not add a dependency when the standard library or an existing dependency adeq
 
   * `/api/admin/*` → admin backend on port 8000.
   * `/api/auth/*` → admin backend on port 8000.
+  * `/api/novels/*` → admin backend on port 8000.
+  * `/novels/*` → admin backend on port 8000.
   * `/api/public/*` → reader backend on port 8001.
+  * `/health/*` → admin backend on port 8000 (liveness, readiness, admin health).
   * all remaining routes → frontend on port 3000.
 * Local environment file: `.env`
 * Compose environment file: `deploy/.env`
 * Production environment file: `deploy/.env.production`
+* Development overlay: `deploy/compose.dev.yml` (used via `deploy/docker-compose-dev.ps1`).
+* `DATABASE_URL` must use the `postgresql+psycopg://` scheme (psycopg v3), not `postgresql://` (which defaults to psycopg2 and is not installed).
 
 Required production settings include:
 

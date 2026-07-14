@@ -39,15 +39,21 @@ Status and details are updated directly as release verification progresses.
   - Router layer validation script returns green.
 
 ## Milestone M2 — Operational Safety (Phase 2)
-- **Status:** In progress
+- **Status:** Done
 - **Description:** Health checks, PDF resolution, backups, and storage retention safety.
 - **Sub-Milestones:**
-  - **M2a (Health Probes):** Replace static `/health` routes with database, storage, and worker probes. Expose diagnostic details without leaking secrets. (DEBT-001)
-  - **M2b (PDF Exporter):** Remove registered PDF stub exporter from registry. Document formal deprecation. (DEBT-007)
-  - **M2c (Storage & Backups):** Schedule local backups, configure retention times, clean fetch caches, prune events and activity logs, and lock writes atomically. (DEBT-010, DEBT-025, DEBT-034, DEBT-035, DEBT-036)
+  - **M2a (Health Probes):** Replace static `/health` routes with database, storage, and worker probes. Expose diagnostic details without leaking secrets. (DEBT-001) — Resolved
+  - **M2b (PDF Exporter):** Remove registered PDF stub exporter from registry. Document formal deprecation. (DEBT-007) — Resolved
+  - **M2c (Storage & Backups):** Schedule local backups, configure retention times, clean fetch caches, prune events and activity logs, and lock writes atomically. (DEBT-010, DEBT-025, DEBT-034, DEBT-035, DEBT-036) — Resolved
 - **Acceptance gates:**
-  - Focused health tests, backup manager tests, and cleanup execution tests pass.
-  - Multi-process lock mechanism prevents concurrent write conflicts.
+  - Focused health tests, backup manager tests, and cleanup execution tests pass. — Verified (111 focused tests pass)
+  - Multi-process lock mechanism prevents concurrent write conflicts. — Verified (11 file lock tests pass on Windows)
+- **Evidence:**
+  - `python -m ruff check .` — All checks passed
+  - `python -m pyright` — 0 errors, 0 warnings
+  - `python -m pytest` for all focused test files — 111 passed
+  - Router boundary guard — no matches (clean)
+  - `git diff --check` — no integrity issues
 
 ## Milestone M3 — Deployment Readiness
 - **Status:** Planned

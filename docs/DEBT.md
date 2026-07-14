@@ -19,13 +19,14 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone 2a (Health Probes)
 - **Category:** Backend | Observability
 - **Priority:** Blocker
-- **Status:** In progress (documented, planning code implementation)
-- **Affected areas:** `backend/src/novelai/api/routers/health.py`
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/services/health_service.py`, `backend/src/novelai/api/routers/health.py`
 - **Description:** `/api/health` returns static `{"status": "ok"}`. Missing actual DB probe, storage probe, and worker state check.
 - **Completion criteria:**
   - `/health` and `/api/health` return live/ready checks.
   - Ready check fails with 503 if DB or storage is down.
   - Probes sanitize credentials and raw error tracebacks.
+- **Resolution:** Implemented `HealthService` with bounded probes for database, storage, worker, and disk. Added `/health/live` (liveness), `/health/ready` (readiness, 503 on unhealthy), and `/api/admin/health` (owner-only diagnostics). Public responses redact paths, credentials, and stack traces. 16 health service tests + 8 API tests pass.
 
 ### DEBT-002 — CI/CD build.yml not verified on push to main
 - **Milestone:** Milestone M0 (CI Confidence)
@@ -68,10 +69,11 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone 2b (PDF Resolution)
 - **Category:** Backend | Feature
 - **Priority:** Medium
-- **Status:** Pending
-- **Affected areas:** `backend/src/novelai/export/pdf_exporter.py`
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/export/pdf_exporter.py`, `backend/src/novelai/runtime/bootstrap.py`, `backend/src/novelai/services/export_service.py`
 - **Description:** PDFExporter registered but raises NotImplementedError. No font policy or generator dependency available.
 - **Completion criteria:** Remove active registration, deprecate format, reject requests, preserve historical manifests.
+- **Resolution:** Removed `PDFExporter` import and `register_exporter("pdf", ...)` from `bootstrap_exporters()`. `ExportService.export("pdf", ...)` and `export_pdf()` raise `UnsupportedExportFormatError` with safe deprecation message. `OperationsService` catches this and returns `OperationError(400)`. Historical manifests with `format: "pdf"` are preserved (manifest service stores format as free-form string). 10 PDF deprecation tests pass.
 
 ### DEBT-008 — No admin user management endpoints
 - **Milestone:** Milestone M5 (Admin Operations)
@@ -95,10 +97,11 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone 2c (Backup & Storage)
 - **Category:** Operations | Data Integrity
 - **Priority:** High
-- **Status:** Pending
-- **Affected areas:** `backend/src/novelai/services/backup_manager.py`
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/services/backup_manager.py`, `backend/src/novelai/services/backup_service.py`, `backend/src/novelai/services/scheduler_service.py`
 - **Description:** BackupManager exists but has no container integration, scheduled trigger, or retention policy.
 - **Completion criteria:** Scheduled task writes file backups, cleans old archives, and reports counts.
+- **Resolution:** Added `apply_retention()` to `BackupManager` with multi-process file lock, preserving newest + minimum successful backups. Created `BackupService` with lock-based concurrency prevention and `BackupService.get_backup_health()` for health integration. Created `SchedulerService` (APScheduler) with cron-based scheduling for backups and maintenance. Wired into app lifespan. 5 backup retention tests pass.
 
 ### DEBT-011 — No analytics dashboard
 - **Milestone:** Milestone M5 (Admin Operations)
@@ -149,10 +152,11 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone 2c (Backup & Storage)
 - **Category:** Storage | Operations
 - **Priority:** High
-- **Status:** Pending
-- **Affected areas:** `backend/src/novelai/storage/`
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/storage/runtime_contracts.py`, `backend/src/novelai/storage/traceability.py`, `backend/src/novelai/services/maintenance_service.py`
 - **Description:** Fetch cache lacks TTL cleanup. Pipeline events grow without bound.
 - **Completion criteria:** Storage cleanup deletes old cache, prunes event lists, uses locks.
+- **Resolution:** Added `cleanup_fetch_cache()` and `cleanup_pipeline_events()` to `runtime_contracts.py`. Switched `save_scheduler_state` and `append_pipeline_event` to use `_write_text_atomic` (atomic writes with fsync). Created `MaintenanceService` with allowlisted cleanup roots, dry-run support, path safety, and task isolation. 14 maintenance service tests pass.
 
 ### DEBT-026 — Frontend lint not configured non-interactively
 - **Milestone:** Milestone M3 (Deployment)
@@ -221,28 +225,31 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone M2c (Backup & Storage)
 - **Category:** Backend | Testing
 - **Priority:** Medium
-- **Status:** Pending
-- **Affected areas:** `backend/src/novelai/translation/pipeline/`
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/storage/traceability.py`
 - **Description:** Flaky integration tests because stage files omit trace events.
 - **Completion criteria:** All pipeline stages write status files atomically.
+- **Resolution:** `append_pipeline_event` now uses `_write_text_atomic` instead of `_write_text`, ensuring atomic writes with fsync. `save_scheduler_state` also switched to atomic writes. 11 atomic storage recovery tests pass.
 
 ### DEBT-035 — Windows file locking test flakiness
 - **Milestone:** Milestone M2c (Backup & Storage)
 - **Category:** Testing | Platform
 - **Priority:** Medium
-- **Status:** Pending
-- **Affected areas:** `backend/tests/`
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/storage/file_lock.py`, `backend/src/novelai/utils/__init__.py`
 - **Description:** Multi-process cleanup fails on Windows due to file handles remaining open.
 - **Completion criteria:** Lock retries handled, and test runs pass on Windows platform.
+- **Resolution:** Created `InterProcessFileLock` using `O_CREAT | O_EXCL` for cross-platform atomic lockfile creation. Windows PID liveness check uses `ctypes.windll.kernel32.OpenProcess`. Bounded retries with configurable backoff. Stale lock detection reclaims locks from crashed processes. Added fsync to `utils.atomic_write`. 11 file lock tests pass on Windows.
 
 ### DEBT-036 — Scheduler state persistence incomplete
 - **Milestone:** Milestone M2c (Backup & Storage)
 - **Category:** Backend | Translation
 - **Priority:** Medium
-- **Status:** Pending
-- **Affected areas:** `backend/src/novelai/services/orchestration/`
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/db/models/scheduler_runtime_state.py`, `backend/src/novelai/services/scheduler_runtime_state_service.py`, `backend/alembic/versions/d3e5f8a1b2c4_add_scheduler_runtime_states.py`
 - **Description:** Scheduler state logs limits but cooldowns are lost on process reset.
 - **Completion criteria:** Persist complete state parameters per job.
+- **Resolution:** Added `SchedulerRuntimeState` ORM model with cooldown, failure, exhausted, heartbeat, and next-eligible fields. Created `SchedulerRuntimeStateService` with `mark_started/success/failure/cooldown/exhausted`, `update_heartbeat`, `cleanup_expired_states`, and `get_scheduler_health_summary`. DB state coexists with file-based state (DB is durable cross-restart, file is in-process cache). Alembic migration `d3e5f8a1b2c4` creates the table. 17 scheduler runtime state tests pass, including restart simulation.
 
 ### DEBT-037 — Public reader glossary annotations integration
 - **Milestone:** Milestone M4 (Reader/Catalog UX)
