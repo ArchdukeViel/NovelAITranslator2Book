@@ -279,20 +279,6 @@ These are behavioral contracts that future agents must preserve. Violating them 
 
 ---
 
-## Supabase MCP
-
-The user has Supabase MCP tools available. Use them for database operations:
-
-* `supabase_apply_migration` — apply DDL migrations directly to the remote database.
-* `supabase_execute_sql` — run read-only queries.
-* `supabase_get_advisors` — check security and performance lints.
-* `supabase_list_tables` — inspect schema.
-* `supabase_generate_typescript_types` — generate `database.types.ts` for the frontend.
-
-When applying migrations via MCP, the Alembic migration file must still be created under `backend/alembic/versions/` for version control. The MCP apply is for validation/deployment, not for replacing the migration source of truth.
-
----
-
 ## Frontend Conventions
 
 * Use `@tanstack/react-query` for server state.
@@ -421,6 +407,7 @@ Do not present guesses as confirmed findings.
   * `auth`
 * YAML folded blocks using `>` join lines with spaces. Do not use shell `\` continuation inside them.
 * Known pre-existing failures are excluded by CI. Do not use them to hide newly introduced failures.
+* If a pre-existing test failure is NOT excluded by CI, fix it as part of the current work or add it to the CI ignore list with justification.
 * When changing CI behavior, compare local commands with the exact workflow commands.
 
 For manual GitHub configuration and CI verification, read:
@@ -848,13 +835,63 @@ Keep the final report proportional to the task. Do not claim completion when req
 
 ## graphify
 
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+This project has a knowledge graph at `graphify-out/` with god nodes, community structure, and cross-file relationships. The `graphify` CLI is always available (v0.9+).
 
 When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
 
+**Always run graphify proactively** for codebase questions — don't wait for the user to type `/graphify`. The graph is rebuilt automatically on every `git commit` via a post-commit hook.
+
 Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+
+- For codebase questions, first run `graphify query "<question>"` when `graphify-out/graph.json` exists. Use `graphify path "<A>" "<B>" for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than `GRAPH_REPORT.md` or raw grep output.
+- Dirty `graphify-out/` files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
+- If `graphify-out/wiki/index.md` exists, use it for broad navigation instead of raw source browsing.
+- Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- The graph is gitignored — it stays local and is not committed.
+
+---
+
+## Docker
+
+Docker Desktop is available via the bash tool. Use it to inspect and manage the local stack:
+
+```powershell
+docker ps                                    # List running containers
+docker compose -f deploy/compose.yml up -d   # Start the full stack
+docker compose -f deploy/compose.yml logs <service>  # View service logs
+docker exec <container> python -c "..."     # Run commands inside a container
+```
+
+The backend container's health check uses `python -c "import urllib.request; ..."` (not `curl`) because the image does not include `curl` by default. `admin.Dockerfile` and `reader.Dockerfile` install `curl` for future use.
+
+---
+
+## Supabase MCP
+
+The user has Supabase MCP tools available. Use them for database operations:
+
+- `supabase_apply_migration` — apply DDL migrations directly to the remote database.
+- `supabase_execute_sql` — run read-only queries.
+- `supabase_get_advisors` — check security and performance lints.
+- `supabase_list_tables` — inspect schema.
+- `supabase_generate_typescript_types` — generate `database.types.ts` for the frontend.
+
+**Workflow for schema changes:**
+
+1. Create the Alembic migration file under `backend/alembic/versions/` (source of truth).
+2. Apply via `supabase_apply_migration` for validation/deployment.
+3. Verify with `supabase_execute_sql`.
+4. Run `supabase_get_advisors` to check for security/performance issues.
+5. Fix advisor issues by applying additional migrations (RLS policies, indexes, etc.).
+
+When applying migrations via MCP, the Alembic migration file must still be created under `backend/alembic/versions/` for version control. The MCP apply is for validation/deployment, not for replacing the migration source of truth.
+
+**Common advisor issues and fixes:**
+
+- `rls_disabled_in_public` — enable RLS + create policies (owner-only, public-read, user-scoped).
+- `rls_enabled_no_policy` — add policies for tables with RLS but no access rules.
+- `function_search_path_mutable` — recreate functions with `SET search_path = public`.
+- `multiple_permissive_policies` — merge owner conditions into single permissive policies using `OR`.
+- `unindexed_foreign_keys` — add covering indexes for FK columns.
+- `unused_index` — wait for real query activity; these resolve once the app runs against populated tables.
