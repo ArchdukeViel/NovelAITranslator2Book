@@ -209,5 +209,115 @@ class AppSettings(BaseSettings):
     # and returned as annotations for highlighting/tooltips.
     PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED: bool = False
 
+    # --- Health probes (M2a)
+    HEALTH_PROBE_TIMEOUT_MS: int = Field(
+        default=1000,
+        description="Per-probe timeout in milliseconds. A failed probe must not stop unrelated probes.",
+    )
+    HEALTH_TOTAL_TIMEOUT_MS: int = Field(
+        default=3000,
+        description="Total timeout for all probes in a readiness/admin health check.",
+    )
+    HEALTH_CACHE_TTL_SECONDS: int = Field(
+        default=5,
+        description="Short-TTL cache for readiness results to reduce probe load.",
+    )
+    HEALTH_DISK_WARNING_FREE_PERCENT: int = Field(
+        default=15,
+        description="Free disk percentage below which disk probe reports degraded.",
+    )
+    HEALTH_DISK_CRITICAL_FREE_PERCENT: int = Field(
+        default=5,
+        description="Free disk percentage below which disk probe reports unhealthy.",
+    )
+
+    # --- Backups (M2c)
+    BACKUP_ENABLED: bool = Field(
+        default=False,
+        description="Enable scheduled local backups. Local backup target first; offsite is a future milestone.",
+    )
+    BACKUP_SCHEDULE_CRON: str = Field(
+        default="0 2 * * *",
+        description="Cron expression for scheduled backups (APScheduler format). Default: daily at 02:00.",
+    )
+    BACKUP_TIMEZONE: str = Field(
+        default="UTC",
+        description="Timezone for backup schedule evaluation.",
+    )
+    BACKUP_RETENTION_COUNT: int = Field(
+        default=5,
+        description="Maximum number of successful backups to retain by count.",
+    )
+    BACKUP_MIN_SUCCESSFUL_TO_KEEP: int = Field(
+        default=3,
+        description="Minimum successful backups to preserve regardless of age. Never delete the newest successful backup.",
+    )
+    BACKUP_MAX_AGE_DAYS: int = Field(
+        default=30,
+        description="Maximum age in days for successful backups. Older backups are eligible for deletion.",
+    )
+
+    # --- Maintenance cleanup (M2c)
+    MAINTENANCE_ENABLED: bool = Field(
+        default=False,
+        description="Enable scheduled maintenance cleanup.",
+    )
+    MAINTENANCE_SCHEDULE_CRON: str = Field(
+        default="0 3 * * *",
+        description="Cron expression for scheduled maintenance (APScheduler format). Default: daily at 03:00.",
+    )
+    MAINTENANCE_TIMEZONE: str = Field(
+        default="UTC",
+        description="Timezone for maintenance schedule evaluation.",
+    )
+    MAINTENANCE_DRY_RUN: bool = Field(
+        default=False,
+        description="When true, maintenance scans eligible items without deleting. Useful for staging verification.",
+    )
+    MAINTENANCE_ACTIVITY_RETENTION_DAYS: int = Field(
+        default=90,
+        description="Retention in days for completed successful activity records.",
+    )
+    MAINTENANCE_FAILED_ACTIVITY_RETENTION_DAYS: int = Field(
+        default=180,
+        description="Retention in days for failed activity records.",
+    )
+    MAINTENANCE_FETCH_CACHE_MAX_AGE_HOURS: int = Field(
+        default=24,
+        description="Maximum age in hours for fetch cache entries. Older entries are eligible for cleanup.",
+    )
+    MAINTENANCE_PIPELINE_EVENTS_MAX_AGE_DAYS: int = Field(
+        default=30,
+        description="Maximum age in days for pipeline event records.",
+    )
+    MAINTENANCE_SCHEDULER_STATE_RETENTION_DAYS: int = Field(
+        default=14,
+        description="Retention in days for expired scheduler runtime state records.",
+    )
+
+    # --- Scheduler runtime state (M2c, DEBT-036)
+    SCHEDULER_HEARTBEAT_INTERVAL_SECONDS: int = Field(
+        default=30,
+        description="Interval at which the scheduler updates its heartbeat.",
+    )
+    SCHEDULER_STALE_AFTER_SECONDS: int = Field(
+        default=120,
+        description="Heartbeat age after which the scheduler is considered stale.",
+    )
+    SCHEDULER_RUNTIME_STATE_TTL_DAYS: int = Field(
+        default=14,
+        description="TTL in days for expired scheduler runtime state records.",
+    )
+
+    # --- File lock (M2c, DEBT-035)
+    FILE_LOCK_RETRY_COUNT: int = Field(
+        default=10,
+        description="Maximum retries for acquiring a multi-process file lock on Windows.",
+    )
+    FILE_LOCK_RETRY_DELAY_SECONDS: float = Field(
+        default=0.1,
+        description="Delay between retry attempts when acquiring a file lock.",
+    )
+
 
 settings = AppSettings()

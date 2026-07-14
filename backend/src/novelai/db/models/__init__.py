@@ -19,6 +19,7 @@ from novelai.db.models.glossary import (
 )
 from novelai.db.models.jobs import CrawlJob, ProviderRequest, TranslationJob
 from novelai.db.models.novel import Novel
+from novelai.db.models.scheduler_runtime_state import SchedulerRuntimeState
 from novelai.db.models.system import AuditLog, ProviderCredential, SystemSetting
 from novelai.db.models.tag import Tag, novel_tags
 from novelai.db.models.users import (
@@ -53,6 +54,7 @@ __all__ = [
     "ReadingHistory",
     "ReadingProgress",
     "Review",
+    "SchedulerRuntimeState",
     "SystemSetting",
     "Tag",
     "TranslationJob",
@@ -82,6 +84,7 @@ REGISTERED_MODELS = (
     ReadingHistory,
     ReadingProgress,
     Review,
+    SchedulerRuntimeState,
     SystemSetting,
     Tag,
     TranslationJob,

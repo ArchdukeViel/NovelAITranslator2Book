@@ -590,6 +590,58 @@ def cleanup_expired_runtime_data(self: Any, *, max_age_days: int | None = None) 
     return total
 
 
+def cleanup_fetch_cache(self: Any, *, max_age_hours: int = 24) -> int:
+    """Remove fetch cache entries older than *max_age_hours*.
+
+    Returns the count of purged entries.
+    """
+    cutoff = datetime.now(UTC) - timedelta(hours=max_age_hours)
+    path = self._fetch_cache_dir() / "index.json"
+    records = _read_mapping(self, path)
+    if not records:
+        return 0
+    kept: dict[str, Any] = {}
+    purged = 0
+    for key, record in records.items():
+        if not isinstance(record, dict):
+            continue
+        fetched_at = _parse_timestamp(record.get("fetched_at"))
+        if fetched_at is not None and fetched_at < cutoff:
+            purged += 1
+            continue
+        kept[key] = record
+    if purged > 0:
+        _write_mapping(self, path, kept)
+        logger.info("Cleanup: purged %d expired fetch cache entries (max_age=%dh).", purged, max_age_hours)
+    return purged
+
+
+def cleanup_pipeline_events(self: Any, *, max_age_days: int = 30) -> int:
+    """Remove pipeline event records older than *max_age_days*.
+
+    Returns the count of purged events.
+    """
+    cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
+    path = self._trace_dir() / "pipeline_events.json"
+    events = _read_json_file(self, path, [])
+    if not isinstance(events, list) or not events:
+        return 0
+    kept: list[dict[str, Any]] = []
+    purged = 0
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        ts = _parse_timestamp(event.get("timestamp"))
+        if ts is not None and ts < cutoff:
+            purged += 1
+            continue
+        kept.append(event)
+    if purged > 0:
+        self._write_text_atomic(path, json.dumps(kept, ensure_ascii=False, indent=2))
+        logger.info("Cleanup: purged %d expired pipeline events (max_age=%dd).", purged, max_age_days)
+    return purged
+
+
 def _parse_timestamp(value: Any) -> datetime | None:
     if value is None:
         return None

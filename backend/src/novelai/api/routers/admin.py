@@ -19,8 +19,10 @@ from novelai.api.routers.admin_schemas import (
 from novelai.api.routers.dependencies import (
     get_admin_db_service,
     get_admin_service,
+    get_scheduler_runtime_state_service,
 )
 from novelai.services.admin_service import AdminService
+from novelai.services.scheduler_runtime_state_service import SchedulerRuntimeStateService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
@@ -390,9 +392,15 @@ async def invalidate_novel_cache(
 @router.get("/admin/translation/scheduler-health")
 async def scheduler_health(
     service: AdminService = Depends(get_admin_db_service),
+    runtime_state_service: SchedulerRuntimeStateService = Depends(get_scheduler_runtime_state_service),
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
-    return service.scheduler_health()
+    result = service.scheduler_health()
+    try:
+        result["runtime_state_summary"] = runtime_state_service.get_scheduler_health_summary()
+    except Exception:
+        result["runtime_state_summary"] = {"status": "unknown", "error": "runtime state unavailable"}
+    return result
 
 
 @router.get("/admin/health/errors")

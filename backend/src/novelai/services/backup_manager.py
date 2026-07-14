@@ -508,6 +508,89 @@ class BackupManager:
         logger.info(f"Cleanup complete: {deleted_count} backups deleted for {novel_id}")
         return deleted_count
 
+    async def apply_retention(
+        self,
+        novel_id: str | None = None,
+        *,
+        keep_count: int | None = None,
+        min_successful: int | None = None,
+        max_age_days: int | None = None,
+    ) -> int:
+        """Apply retention policy across all backups or for a specific novel.
+
+        Preserves the newest successful backup and at least ``min_successful``
+        successful backups. Deletes backups that are both older than
+        ``max_age_days`` AND beyond the ``keep_count`` threshold.
+
+        Uses a multi-process file lock to prevent concurrent retention runs.
+
+        Args:
+            novel_id: If provided, only clean backups for this novel. If None, clean all.
+            keep_count: Maximum backups to keep by count (default from settings).
+            min_successful: Minimum successful backups to always preserve (default from settings).
+            max_age_days: Maximum age in days for backups (default from settings).
+
+        Returns:
+            Number of backups deleted.
+        """
+        from novelai.config.settings import settings
+        from novelai.storage.file_lock import InterProcessFileLock
+
+        keep = keep_count if keep_count is not None else settings.BACKUP_RETENTION_COUNT
+        min_keep = min_successful if min_successful is not None else settings.BACKUP_MIN_SUCCESSFUL_TO_KEEP
+        max_age = max_age_days if max_age_days is not None else settings.BACKUP_MAX_AGE_DAYS
+
+        lock_path = self.backups_dir / ".retention.lock"
+        lock = InterProcessFileLock(lock_path, retry_count=3, retry_delay=0.5)
+
+        try:
+            lock.acquire()
+        except TimeoutError:
+            logger.warning("Backup retention skipped: another retention run is in progress.")
+            return 0
+
+        try:
+            backups = self.list_backups(novel_id)
+            if not backups:
+                return 0
+
+            # Backups are sorted newest-first by list_backups.
+            # Always preserve the newest min_successful backups.
+            protected = set()
+            for i, backup in enumerate(backups):
+                if i < min_keep:
+                    protected.add(backup.backup_id)
+
+            cutoff_date = _utc_now()
+            deleted_count = 0
+
+            for i, backup in enumerate(backups):
+                if backup.backup_id in protected:
+                    continue
+                if i < keep:
+                    continue
+
+                should_delete = False
+                try:
+                    backup_date = datetime.fromisoformat(backup.timestamp.replace("Z", "+00:00"))
+                    age_days = (cutoff_date - backup_date).days
+                    if age_days > max_age:
+                        should_delete = True
+                except Exception:
+                    logger.debug("Could not parse timestamp for backup %s.", backup.backup_id)
+                    pass
+
+                if should_delete:
+                    if await self.delete_backup(backup.backup_id):
+                        deleted_count += 1
+
+            if deleted_count > 0:
+                logger.info("Retention: deleted %d backups (keep=%d, min=%d, max_age=%dd).",
+                            deleted_count, keep, min_keep, max_age)
+            return deleted_count
+        finally:
+            lock.release()
+
     def get_backup_size(self, novel_id: str) -> int:
         """Get total size of all backups for a novel.
 

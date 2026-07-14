@@ -74,7 +74,7 @@ def append_pipeline_event(self: Any, event: dict[str, Any] | Any) -> dict[str, A
     if not isinstance(events, list):
         events = []
     events.append(payload)
-    self._write_text(path, json.dumps(events, ensure_ascii=False, indent=2))
+    self._write_text_atomic(path, json.dumps(events, ensure_ascii=False, indent=2))
     return dict(payload)
 
 
@@ -181,7 +181,7 @@ def save_scheduler_state(self: Any, job_id: str, model_states: list[dict[str, An
     if not isinstance(states, dict):
         states = {}
     states[normalized_job_id] = payload
-    self._write_text(path, json.dumps(states, ensure_ascii=False, indent=2))
+    self._write_text_atomic(path, json.dumps(states, ensure_ascii=False, indent=2))
     return dict(payload)
 
 
