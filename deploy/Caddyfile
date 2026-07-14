@@ -8,6 +8,10 @@
     Referrer-Policy "strict-origin-when-cross-origin"
   }
 
+  handle /health/* {
+    reverse_proxy backend:8000
+  }
+
   handle /api/admin/* {
     reverse_proxy backend:8000
   }

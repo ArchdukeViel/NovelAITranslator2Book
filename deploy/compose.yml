@@ -62,7 +62,7 @@ services:
     networks:
       - novelai-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/public/catalog"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live').read()"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -107,6 +107,23 @@ services:
       - GOOGLE_OAUTH_REDIRECT_URI
       - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
+      # M2a: Health probe settings
+      - HEALTH_PROBE_TIMEOUT_MS=${HEALTH_PROBE_TIMEOUT_MS:-1000}
+      - HEALTH_TOTAL_TIMEOUT_MS=${HEALTH_TOTAL_TIMEOUT_MS:-3000}
+      - HEALTH_DISK_WARNING_FREE_PERCENT=${HEALTH_DISK_WARNING_FREE_PERCENT:-15}
+      - HEALTH_DISK_CRITICAL_FREE_PERCENT=${HEALTH_DISK_CRITICAL_FREE_PERCENT:-5}
+      # M2c: Backup settings
+      - BACKUP_ENABLED=${BACKUP_ENABLED:-false}
+      - BACKUP_SCHEDULE_CRON=${BACKUP_SCHEDULE_CRON:-0 2 * * *}
+      - BACKUP_RETENTION_COUNT=${BACKUP_RETENTION_COUNT:-5}
+      - BACKUP_MIN_SUCCESSFUL_TO_KEEP=${BACKUP_MIN_SUCCESSFUL_TO_KEEP:-3}
+      - BACKUP_MAX_AGE_DAYS=${BACKUP_MAX_AGE_DAYS:-30}
+      # M2c: Maintenance cleanup settings
+      - MAINTENANCE_ENABLED=${MAINTENANCE_ENABLED:-false}
+      - MAINTENANCE_DRY_RUN=${MAINTENANCE_DRY_RUN:-false}
+      - MAINTENANCE_ACTIVITY_RETENTION_DAYS=${MAINTENANCE_ACTIVITY_RETENTION_DAYS:-90}
+      - MAINTENANCE_FETCH_CACHE_MAX_AGE_HOURS=${MAINTENANCE_FETCH_CACHE_MAX_AGE_HOURS:-24}
+      - MAINTENANCE_PIPELINE_EVENTS_MAX_AGE_DAYS=${MAINTENANCE_PIPELINE_EVENTS_MAX_AGE_DAYS:-30}
     volumes:
       - ../storage/novel_library:/app/storage/novel_library
     depends_on:

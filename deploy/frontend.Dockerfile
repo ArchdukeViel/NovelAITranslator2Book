@@ -1,32 +1,48 @@
-FROM node:22-alpine AS deps
+# =============================================================================
+# Stage 1: deps — restore npm cache layer independently
+# =============================================================================
+FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS deps
 
 WORKDIR /app/frontend
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+COPY frontend/package.json frontend/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --prefer-offline
 
-FROM node:22-alpine AS builder
+# =============================================================================
+# Stage 2: builder — compile Next.js standalone output
+# =============================================================================
+FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS builder
 
 WORKDIR /app/frontend
 ENV NEXT_TELEMETRY_DISABLED=1
 
-ARG NEXT_PUBLIC_API_URL=http://backend:8000
-ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+# Passed in from compose build args; falls back to the rewrite proxy path
+ARG NEXT_PUBLIC_API_BASE_URL=/api
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 
 COPY --from=deps /app/frontend/node_modules ./node_modules
 COPY frontend ./
-RUN mkdir -p public && npm run build
+RUN --mount=type=cache,target=/root/.npm \
+    npm run build
 
-FROM node:22-alpine AS runner
+# =============================================================================
+# Stage 3: runner — minimal production image
+# =============================================================================
+FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS runner
 
 WORKDIR /app
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=3000
-ENV HOSTNAME=0.0.0.0
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
 
-COPY --from=builder /app/frontend/.next/standalone ./
-COPY --from=builder /app/frontend/.next/static ./.next/static
-COPY --from=builder /app/frontend/public ./public
+RUN addgroup --system nodejs && adduser --system --ingroup nodejs nextjs
+
+COPY --from=builder --chown=nextjs:nodejs /app/frontend/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/frontend/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/frontend/public ./public
+
+USER nextjs
 
 EXPOSE 3000
 
