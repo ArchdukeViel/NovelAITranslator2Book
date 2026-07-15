@@ -149,3 +149,83 @@ class TestS3Integration:
         keys = backend.list_keys("sub/")
         assert "sub/x.txt" in keys
         assert "sub/y.txt" in keys
+
+    # ---- has_keys (logical-prefix presence) ----
+
+    def test_has_keys_returns_true_with_descendants(self, s3_backend: tuple[S3Backend, str]) -> None:
+        backend, prefix = s3_backend
+        backend.save("novels/novel-a/chapters/0001.json", b"chapter")
+        backend.save("novels/novel-a/metadata.json", b"meta")
+        backend.save("novels/novel-a/chapters/assets/x.txt", b"asset")
+
+        assert backend.has_keys("novels/novel-a/chapters") is True
+        assert backend.has_keys("novels/novel-a") is True
+
+    def test_has_keys_returns_false_for_absent_prefix(self, s3_backend: tuple[S3Backend, str]) -> None:
+        backend, _ = s3_backend
+        assert backend.has_keys("novels/nonexistent") is False
+
+    def test_has_keys_boundary_separates_prefixes(self, s3_backend: tuple[S3Backend, str]) -> None:
+        backend, _ = s3_backend
+        backend.save("novels/n1/chapters/0001.json", b"c1")
+        backend.save("novels/n10/chapters/0001.json", b"c10")
+
+        assert backend.has_keys("novels/n1") is True
+        assert backend.has_keys("novels/n10") is True
+        assert backend.has_keys("novels/n100") is False
+
+    def test_has_keys_not_fooled_by_partial_prefix(self, s3_backend: tuple[S3Backend, str]) -> None:
+        backend, _ = s3_backend
+        backend.save("novels/something/metadata.json", b"meta")
+
+        assert backend.has_keys("novels/some") is False
+
+    # ---- padded chapter listing ----
+
+    def test_padded_chapter_listing_is_deterministic(self, s3_backend: tuple[S3Backend, str]) -> None:
+        backend, _ = s3_backend
+        backend.save("novels/padded/chapters/0002.json", b'{"id":"2","raw":{"text":"ch2"}}')
+        backend.save("novels/padded/chapters/0001.json", b'{"id":"1","raw":{"text":"ch1"}}')
+        backend.save("novels/padded/chapters/0010.json", b'{"id":"10","raw":{"text":"ch10"}}')
+
+        keys = backend.list_keys("novels/padded/chapters")
+        assert keys == [
+            "novels/padded/chapters/0001.json",
+            "novels/padded/chapters/0002.json",
+            "novels/padded/chapters/0010.json",
+        ]
+
+    def test_padded_listing_recursive(self, s3_backend: tuple[S3Backend, str]) -> None:
+        backend, _ = s3_backend
+        backend.save("novels/padded-rec/chapters/0001.json", b'{"raw":{"text":"a"}}')
+        backend.save("novels/padded-rec/chapters/assets/imgs/a.png", b"image")
+
+        all_keys = backend.list_keys("novels/padded-rec/chapters", recursive=True)
+        rec_key = "novels/padded-rec/chapters/assets/imgs/a.png"
+        assert rec_key in all_keys
+
+        flat_keys = backend.list_keys("novels/padded-rec/chapters")
+        assert rec_key not in flat_keys
+
+    # ---- recursive deletion ----
+
+    def test_recursive_delete_prefix_confined(self, s3_backend: tuple[S3Backend, str]) -> None:
+        backend, _ = s3_backend
+        backend.save("novels/alpha/chapters/0001.json", b'{"raw":{"text":"a"}}')
+        backend.save("novels/beta/chapters/0001.json", b'{"raw":{"text":"b"}}')
+        backend.save("novels/alpha/metadata.json", b'{"novel_id":"alpha"}')
+
+        keys_alpha = backend.list_keys("novels/alpha", recursive=True)
+        for key in keys_alpha:
+            backend.delete(key)
+
+        # alpha should be gone
+        assert backend.has_keys("novels/alpha") is False
+        # beta should survive
+        assert backend.has_keys("novels/beta") is True
+
+    def test_absence_after_recursive_delete(self, s3_backend: tuple[S3Backend, str]) -> None:
+        backend, _ = s3_backend
+        backend.save("novels/gone/chapters/0001.json", b'del')
+        backend.delete("novels/gone/chapters/0001.json")
+        assert backend.has_keys("novels/gone") is False

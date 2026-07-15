@@ -302,6 +302,7 @@ async def scrape_chapters(
     chapters: str,
     mode: str = "update",
     progress_callback: Callable[[str], None] | None = None,
+    cancellation_check: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     """Fetch chapter content from the source site and persist it.
 
@@ -316,6 +317,7 @@ async def scrape_chapters(
 
     Raises ``RuntimeError`` if another scrape is already in progress for the
     same source_key + novel_id combination.
+    Raises ``asyncio.CancelledError`` if *cancellation_check* returns True.
     """
     lock = _get_crawl_lock(source_key, novel_id)
     if lock.locked():
@@ -326,7 +328,7 @@ async def scrape_chapters(
 
     async with lock:
         result = await _scrape_chapters_impl(
-            self, source_key, novel_id, chapters, mode, progress_callback
+            self, source_key, novel_id, chapters, mode, progress_callback, cancellation_check
         )
 
     if result["succeeded"] > 0:
@@ -349,6 +351,7 @@ async def _scrape_chapters_impl(
     chapters: str,
     mode: str,
     progress_callback: Callable[[str], None] | None,
+    cancellation_check: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     """Internal implementation of scrape_chapters (called under lock)."""
     source = self._source_factory(source_key)
@@ -394,6 +397,8 @@ async def _scrape_chapters_impl(
     image_download_failures = 0
 
     for _chapter_index, chapter_num in enumerate(selected_numbers):
+        if cancellation_check is not None and cancellation_check():
+            raise asyncio.CancelledError(f"Scrape cancelled for {source_key}/{novel_id}")
         chapter = chapter_map.get(chapter_num)
         if not chapter:
             continue

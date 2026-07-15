@@ -5,6 +5,18 @@ describes *where* artifacts live and *what* they contain. It does **not** change
 any layout or schema; it documents the current behavior so migrations, backups,
 repair tools, and refactors have an explicit contract to test against.
 
+## Backend-specific behavior
+
+R2/S3 is the canonical persisted storage backend when `STORAGE_BACKEND=s3` is
+configured. Object-store directories are **virtual prefixes** — there is no
+directory-marker object.
+
+Storage-aware code must use the storage abstraction (`StorageService._is_dir_present`,
+`_path_exists` for exact files) rather than direct `Path.exists()` or `Path.is_dir()`
+calls. SQL `chapter_count` and `translated_count` are cached catalog projections, not
+authoritative. Authoritative counts come from `StorageService.count_stored_chapters()`
+and `StorageService.count_translated_chapters()` against R2/S3.
+
 Canonical high-volume artifacts live on the filesystem under `storage/novel_library`
 (the configured `DATA_DIR`, resolved by `StorageService`). PostgreSQL stores
 relational state and projections derived from these files.

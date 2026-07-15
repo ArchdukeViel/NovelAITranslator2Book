@@ -18,9 +18,19 @@ def _chapter_dir(self: Any, novel_id: str) -> Path:
     return chapter_dir
 
 
+def _chapter_filename(chapter_id: str) -> str:
+    """Return zero-padded 4-digit filename for numeric chapter IDs."""
+    raw = str(chapter_id)
+    try:
+        num = int(raw)
+        return f"{num:04d}.json"
+    except (ValueError, TypeError):
+        safe = validate_storage_identifier(raw, "chapter_id")
+        return f"{safe}.json"
+
+
 def _chapter_path(self: Any, novel_id: str, chapter_id: str) -> Path:
-    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
-    return self._chapter_dir(novel_id) / f"{safe_chapter_id}.json"
+    return self._chapter_dir(novel_id) / _chapter_filename(chapter_id)
 
 
 def _load_legacy_raw_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
@@ -226,9 +236,9 @@ def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
     Checks both the unified ``chapters/`` directory and legacy
     ``raw/`` / ``translated/`` directories.
     """
-    stems: set[str] = set()
+    ids: set[str] = set()
     chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
-    if self._path_exists(chapter_dir):
+    if self._is_dir_present(chapter_dir):
         for chapter_path in self._glob(chapter_dir, "*.json"):
             try:
                 payload = json.loads(self._read_text(chapter_path))
@@ -238,19 +248,19 @@ def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
             if not isinstance(payload, dict):
                 continue
             if isinstance(payload.get("raw"), dict) or isinstance(payload.get("translated"), dict):
-                stems.add(chapter_path.stem)
+                ids.add(self._logical_id_from_stem(chapter_path.stem))
 
     for legacy_dirname in ("raw", "translated"):
         legacy_dir = self._novel_dir(novel_id) / legacy_dirname
-        if not self._path_exists(legacy_dir):
+        if not self._is_dir_present(legacy_dir):
             continue
         for path in self._list_dir(legacy_dir):
             if not path.is_file():
                 continue
             if path.suffix.lower() in {".json", ".txt"}:
-                stems.add(path.stem)
+                ids.add(self._logical_id_from_stem(path.stem))
 
-    return sorted(stems)
+    return sorted(ids)
 
 
 def count_stored_chapters(self: Any, novel_id: str) -> int:
@@ -260,7 +270,7 @@ def count_stored_chapters(self: Any, novel_id: str) -> int:
 def get_chapters_by_state(self: Any, novel_id: str, state: ChapterState) -> list[str]:
     """Get all chapters in a specific state."""
     state_dir = self._get_state_dir(novel_id)
-    if not self._path_exists(state_dir):
+    if not self._is_dir_present(state_dir):
         return []
 
     chapters = []
@@ -283,7 +293,7 @@ def get_chapter_progress(self: Any, novel_id: str) -> dict[str, int]:
     progress = {s.value: 0 for s in ChapterState}
 
     state_dir = self._get_state_dir(novel_id)
-    if not self._path_exists(state_dir):
+    if not self._is_dir_present(state_dir):
         return progress
 
     for state_file in self._glob(state_dir, "*.json"):
@@ -305,7 +315,7 @@ def query_chapters(self: Any, novel_id: str) -> ChapterQueryBuilder:
     # Inject backend-aware callables to avoid direct Path I/O
     return ChapterQueryBuilder(
         state_dir,
-        path_exists=lambda: self._path_exists(state_dir),
+        path_exists=lambda: self._is_dir_present(state_dir),
         list_files=lambda: self._glob(state_dir, "*.json"),
         read_file=lambda p: self._read_text(p),
     )
@@ -335,7 +345,7 @@ def get_scraping_progress(self: Any, novel_id: str) -> dict[str, Any]:
     }
 
     state_dir = self._get_state_dir(novel_id)
-    if not self._path_exists(state_dir):
+    if not self._is_dir_present(state_dir):
         return progress
 
     total_files = 0

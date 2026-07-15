@@ -405,3 +405,20 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Description:** Test expects stale prompt text after prompt policy update.
 - **Completion criteria:** Test assertions updated to match current prompt policy.
 - **Evidence:** Updated `test_canonical_term_and_translation_render_deterministically` expected string to match current `_render_text()` output (LOCKED/APPROVED sections, authority preamble). `test_glossary_prompt_injection.py` passes all 15 tests.
+
+### DEBT-063 — Storage abstraction leaks on object-store backends (Phase 1)
+- **Milestone:** Milestone M3 (M3a Production Hardening)
+- **Category:** Backend | Storage
+- **Priority:** Critical
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/storage/backends/{base,s3,filesystem}.py`, `backend/src/novelai/storage/service.py`, `backend/src/novelai/storage/{chapters,novels,translations}.py`
+- **Description:** The S3 backend had no concept of directory presence. Code that called `_path_exists()` on a logical directory (e.g. `chapters/`, `metadata_backups/`) received `False` on S3/R2 because physical directory-marker objects do not exist. This caused `list_stored_chapters`, `list_translated_chapters`, `list_metadata_history`, `_folder_has_novel_data`, `_get_folder_name`, and other storage operations to silently return zero results when using R2. A secondary issue: chapter filenames were unpadded (`1.json`), which broke lexical ordering on object stores (`10.json` sorts before `2.json`).
+- **Resolution:**  
+  - Added `has_keys(prefix) -> bool` to `StorageBackend` interface. S3 implementation uses `list_objects_v2(MaxKeys=1)`. Filesystem implementation uses `iterdir()`.  
+  - Added `StorageService._is_dir_present(path)` — a logical-directory presence check that normalizes the prefix and delegates to `backend.has_keys()`.  
+  - Replaced 14 `_path_exists(directory)` call sites in `chapters.py`, `novels.py`, and `translations.py` with `_is_dir_present(directory)`.  
+  - Chapter filenames changed to 4-digit zero-padded (`0001.json`) via `_chapter_filename()`. `list_stored_chapters` and `list_translated_chapters` convert padded stems back to logical IDs (`0001` → `1`) via `_logical_id_from_stem()`.  
+  - Added `StorageService._logical_id_from_stem()` static method.  
+- **Tests:** 10 unit tests + 10 S3 integration tests covering prefix presence, padding, listing, exclusion, recursive deletion, boundary separation. All pass.  
+- **Verification:** `count_stored_chapters("n2056dn")` returns 9 (was 0 before the fix) against live R2.  
+- **R2 canonical note:** Object-store directories are virtual prefixes. Storage-aware code must use the storage abstraction, not `Path.exists()` or `Path.is_dir()`.

@@ -250,6 +250,17 @@ class StorageService:
                 return stripped
         return default
 
+    @staticmethod
+    def _logical_id_from_stem(stem: str) -> str:
+        """Convert a physical filename stem to a logical chapter ID.
+
+        ``0001`` (zero-padded) → ``1``, ``abc`` → ``abc``.
+        """
+        try:
+            return str(int(stem))
+        except (ValueError, TypeError):
+            return stem
+
 
     def __init__(self, base_dir: Path | None = None, backend: Any | None = None) -> None:
         if backend is not None:
@@ -317,8 +328,20 @@ class StorageService:
         self._write_text_atomic(path, json.dumps(payload, ensure_ascii=False, indent=2), encoding=encoding)
 
     def _path_exists(self, path: Path) -> bool:
-        """Check existence via storage backend."""
+        """Check existence of an exact object via storage backend."""
         return self._backend.exists(self._rel(path))
+
+    def _is_dir_present(self, path: Path) -> bool:
+        """Return True when at least one descendant object exists under *path*.
+
+        Unlike ``_path_exists`` (exact-key check), this tests logical-directory
+        presence.  Works for S3/R2 where directories are virtual prefixes with
+        no marker object.
+        """
+        prefix = str(self._rel(path))
+        if not prefix.endswith("/"):
+            prefix += "/"
+        return self._backend.has_keys(prefix)
 
     def _unlink_path(self, path: Path) -> None:
         """Delete file via storage backend."""
@@ -345,7 +368,7 @@ class StorageService:
     def _rmtree(self, path: Path) -> None:
         """Remove directory tree via storage backend."""
         prefix = self._rel(path)
-        for key in self._backend.list_keys(prefix):
+        for key in self._backend.list_keys(prefix, recursive=True):
             self._backend.delete(key)
 
     def runtime_path(self, *parts: str) -> Path:

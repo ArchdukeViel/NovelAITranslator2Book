@@ -122,7 +122,7 @@ def list_metadata_history(self: Any, novel_id: str, *, limit: int = 10) -> list[
             entries.append(current_entry)
 
     backup_dir = _metadata_backup_dir(novel_dir)
-    if self._path_exists(backup_dir):
+    if self._is_dir_present(backup_dir):
         backups = sorted(
             self._glob(backup_dir, "*.json"),
             key=lambda path: path.name,
@@ -262,7 +262,7 @@ def _compute_folder_name(self: Any, novel_id: str, metadata: dict[str, Any]) -> 
         return self._validate_folder_name(existing_folder)
 
     current_folder = self._get_folder_name(novel_id)
-    if self._path_exists(self._folder_path(current_folder)):
+    if self._is_dir_present(self._folder_path(current_folder)):
         return self._validate_folder_name(current_folder)
 
     source = _storage_slug_source(novel_id, metadata)
@@ -314,11 +314,11 @@ def _get_folder_name(self: Any, novel_id: str) -> str:
         except ValueError:
             logger.warning("Ignoring unsafe folder name in novel index for %s.", normalized_id)
             folder_name = None
-    if folder_name and self._path_exists(self._folder_path(folder_name)):
+    if folder_name and self._is_dir_present(self._folder_path(folder_name)):
         return folder_name
 
     for candidate in self._legacy_folder_candidates(normalized_id):
-        if self._path_exists(self._folder_path(candidate)):
+        if self._is_dir_present(self._folder_path(candidate)):
             return candidate
     if folder_name:
         return folder_name
@@ -466,7 +466,7 @@ def _load_latest_valid_metadata_backup(self: Any, novel_id: str) -> tuple[dict[s
     novel_id = self._normalize_library_novel_id(novel_id) or novel_id
     novel_dir = self._novel_dir(novel_id)
     backup_dir = _metadata_backup_dir(novel_dir)
-    if not self._path_exists(backup_dir):
+    if not self._is_dir_present(backup_dir):
         return None
     backups = sorted(self._glob(backup_dir, "*.json"), key=lambda path: path.name, reverse=True)
     for backup_path in backups:
@@ -576,13 +576,13 @@ def _folder_has_novel_data(self: Any, novel_dir: Path) -> bool:
         return True
     for dirname in ("chapters", "raw", "translated"):
         data_dir = novel_dir / dirname
-        if self._path_exists(data_dir) and any(self._path_exists(path) for path in self._list_dir(data_dir)):
+        if self._is_dir_present(data_dir) and any(self._path_exists(path) for path in self._list_dir(data_dir)):
             return True
     return False
 
 
 def list_novels(self: Any) -> list[str]:
-    if not self._path_exists(self.novels_dir):
+    if not self._is_dir_present(self.novels_dir):
         logger.warning("Novel storage path does not exist: %s", self.novels_dir)
         return []
 

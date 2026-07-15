@@ -121,6 +121,4 @@ SESSION_EXPORT_*.json
 
 # Node dependencies
 node_modules/
-
-# GitGuardian
-.cache_ggshield/
+frontend/node_modules/

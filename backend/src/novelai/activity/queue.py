@@ -494,6 +494,13 @@ class ActivityQueueService:
         pending = self.list_activity(status=JobStatus.PENDING, activity_type=activity_type, limit=1)
         return pending[0] if pending else None
 
+    def is_activity_cancelled(self, activity_id: str) -> bool:
+        """Check if an activity was cancelled (for cooperative cancellation)."""
+        activity = self.get_activity(activity_id)
+        if activity is None:
+            return True
+        return activity.get("status") == JobStatus.CANCELLED.value
+
     def record_source_health(
         self,
         source_key: str,

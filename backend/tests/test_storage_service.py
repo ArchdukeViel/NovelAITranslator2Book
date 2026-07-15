@@ -700,7 +700,7 @@ def test_title_slug_storage_subpaths_resolve_under_mapped_folder(storage):
 
     novel_dir = storage.base_dir / "novels" / "mapped-folder"
 
-    assert (novel_dir / "chapters" / "1.json").exists()
+    assert (novel_dir / "chapters" / "0001.json").exists()
     assert (novel_dir / "checkpoints").exists()
     assert (novel_dir / "assets" / "images" / "1" / "0000.png").exists()
     assert (novel_dir / "metadata_backups").exists()
@@ -924,6 +924,182 @@ def test_legacy_syosetu_folder_wins_when_index_points_to_missing_canonical_folde
     assert storage._get_folder_name("n0813kx") == "0813kx"
     assert storage.load_metadata("n0813kx")["title"] == "Legacy Folder Novel"
     assert storage.count_stored_chapters("n0813kx") == 1
+
+
+# ── _is_dir_present and has_keys ──────────────────────────────────────
+
+
+def test_is_dir_present_returns_true_with_descendants(storage):
+    """A prefix with a descendant object is present."""
+    novel_dir = storage.novels_dir / "is-dir-test"
+    storage._mkdirs(novel_dir)
+    chapter_file = novel_dir / "chapters" / "0001.json"
+    storage._write_text(chapter_file, json.dumps({"raw": {"text": "test"}}))
+
+    assert storage._is_dir_present(novel_dir / "chapters") is True
+
+
+def test_is_dir_present_returns_false_for_absent_prefix(storage):
+    """An absent prefix is not present."""
+    novel_dir = storage.novels_dir / "absent-dir-test"
+    assert storage._is_dir_present(novel_dir / "chapters") is False
+
+
+def test_is_dir_present_boundary_separates_prefixes(storage):
+    """Prefix boundaries distinguish ``1/`` from ``10/``."""
+    novel_dir = storage.novels_dir / "prefix-boundary"
+    storage._mkdirs(novel_dir)
+    storage._write_text(
+        novel_dir / "1" / "file.json",
+        json.dumps({"raw": {"text": "test"}}),
+    )
+    storage._write_text(
+        novel_dir / "10" / "other.json",
+        json.dumps({"raw": {"text": "other"}}),
+    )
+
+    # "1/"" prefix should not match the file under "10/"
+    assert storage._is_dir_present(novel_dir / "1") is True
+    assert storage._is_dir_present(novel_dir / "10") is True
+    assert storage._is_dir_present(novel_dir / "100") is False
+
+
+def test_path_exists_stays_exact(storage):
+    """Exact-file existence is not confused with directory presence."""
+    novel_dir = storage.novels_dir / "exact-test"
+    storage._mkdirs(novel_dir)
+    storage._write_text(novel_dir / "metadata.json", json.dumps({"novel_id": "test"}))
+
+    # Exact file exists
+    assert storage._path_exists(novel_dir / "metadata.json") is True
+    # Non-existent file does not exist
+    assert storage._path_exists(novel_dir / "nonexistent.json") is False
+    # partial prefix of another file does not exist as exact key
+    storage._write_text(novel_dir / "longer-name.json", json.dumps({"a": 1}))
+    assert storage._path_exists(novel_dir / "longer") is False
+
+
+def test_padded_chapter_listing_returns_logical_ids(storage):
+    """Padded chapter files are listed with logical IDs, not padded stems."""
+    novel_dir = storage.novels_dir / "padded-listing"
+    chapter_dir = novel_dir / "chapters"
+    storage._mkdirs(chapter_dir)
+
+    for chapter_id in ("1", "2", "9", "10"):
+        path = chapter_dir / f"{int(chapter_id):04d}.json"  # 0001.json etc.
+        storage._write_text(
+            path,
+            json.dumps({"id": chapter_id, "raw": {"text": f"chapter {chapter_id}"}}),
+        )
+
+    ids = storage.list_stored_chapters("padded-listing")
+    assert ids == ["1", "10", "2", "9"]  # sorted as strings
+
+
+def test_stored_chapter_count_matches_list_length(storage):
+    """count_stored_chapters equals len(list_stored_chapters)."""
+    novel_dir = storage.novels_dir / "count-test"
+    chapter_dir = novel_dir / "chapters"
+    storage._mkdirs(chapter_dir)
+
+    for cid in range(1, 4):
+        path = chapter_dir / f"{cid:04d}.json"
+        storage._write_text(
+            path,
+            json.dumps({"id": str(cid), "raw": {"text": f"body {cid}"}}),
+        )
+
+    assert storage.count_stored_chapters("count-test") == 3
+    assert storage.count_stored_chapters("count-test") == len(storage.list_stored_chapters("count-test"))
+
+
+def test_unrelated_json_excluded_from_chapter_list(storage):
+    """A JSON object that is not a valid chapter payload is excluded."""
+    novel_dir = storage.novels_dir / "exclusion-test"
+    chapter_dir = novel_dir / "chapters"
+    storage._mkdirs(chapter_dir)
+
+    # Valid chapter
+    storage._write_text(
+        chapter_dir / "0001.json",
+        json.dumps({"id": "1", "raw": {"text": "good"}}),
+    )
+    # Unrelated JSON (no raw or translated dict)
+    storage._write_text(
+        chapter_dir / "index.json",
+        json.dumps({"type": "index"}),
+    )
+    # Random non-JSON file
+    storage._write_text(
+        chapter_dir / "notes.txt",
+        "not json",
+    )
+
+    ids = storage.list_stored_chapters("exclusion-test")
+    assert ids == ["1"]
+
+
+def test_empty_chapter_prefix_returns_zero(storage):
+    """An empty chapter directory returns zero stored chapters."""
+    novel_dir = storage.novels_dir / "empty-test"
+    storage._mkdirs(novel_dir / "chapters")
+    assert storage.count_stored_chapters("empty-test") == 0
+
+
+def test_metadata_backup_directory_presence(storage):
+    """Metadata backup directory is detected correctly on all backends."""
+    novel_dir = storage.novels_dir / "backup-test"
+    storage._mkdirs(novel_dir / "metadata_backups")
+
+    # Empty backup dir should not be present
+    assert storage._is_dir_present(novel_dir / "metadata_backups") is False
+
+    storage._write_text(
+        novel_dir / "metadata_backups" / "snap.json",
+        json.dumps({"title": "backup"}),
+    )
+    assert storage._is_dir_present(novel_dir / "metadata_backups") is True
+
+
+# ── has_keys backend stub tests ────────────────────────────────────────
+
+
+class _StubBackend:
+    """Minimal backend stub for has_keys unit tests."""
+
+    def __init__(self):
+        self._keys: set[str] = set()
+
+    def save(self, path: str, data: bytes) -> None:
+        self._keys.add(path)
+
+    def has_keys(self, prefix: str) -> bool:
+        p = prefix if prefix.endswith("/") else prefix + "/"
+        return any(k.startswith(p) or k == prefix.strip("/") for k in self._keys)
+
+
+def test_has_keys_via_stub():
+    """has_keys returns True when a descendant exists under the prefix."""
+    b = _StubBackend()
+    b.save("novels/novel-a/chapters/0001.json", b"data")
+    b.save("novels/novel-a/metadata.json", b"data")
+
+    assert b.has_keys("novels/novel-a/chapters") is True
+    assert b.has_keys("novels/novel-a") is True
+    assert b.has_keys("novels/novel-b") is False
+    assert b.has_keys("novels/novel-a/chapter") is False  # partial prefix match
+
+
+def test_has_keys_exact_key_not_confused(storage):
+    """has_keys returns False for a prefix under an exact object."""
+    novel_dir = storage.novels_dir / "exact-has-key"
+    storage._mkdirs(novel_dir)
+    storage._write_text(novel_dir / "metadata.json", json.dumps({"id": "test"}))
+
+    # noves_dir/exact-has-key/metadata.json exists, but
+    # novels/exact-has-key/metadata.json/subdir/ does not
+    sub = novel_dir / "metadata.json" / "sub"
+    assert storage._is_dir_present(sub) is False
 
 
 if __name__ == "__main__":

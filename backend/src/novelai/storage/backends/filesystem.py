@@ -52,15 +52,32 @@ class FilesystemBackend(StorageBackend):
     def exists(self, path: str | Path) -> bool:
         return self._resolve(path).exists()
 
-    def list_keys(self, prefix: str | Path) -> list[str]:
+    def list_keys(self, prefix: str | Path, *, recursive: bool = False) -> list[str]:
         resolved = self._resolve(prefix)
         if not resolved.exists() or not resolved.is_dir():
             return []
         keys: list[str] = []
-        for child in resolved.iterdir():
-            rel = child.relative_to(self._root)
-            keys.append(str(rel.as_posix()))
+        if recursive:
+            for child in resolved.rglob("*"):
+                if child.is_dir():
+                    continue
+                rel = child.relative_to(self._root)
+                keys.append(str(rel.as_posix()))
+        else:
+            for child in resolved.iterdir():
+                rel = child.relative_to(self._root)
+                keys.append(str(rel.as_posix()))
         return sorted(keys)
+
+    def has_keys(self, prefix: str | Path) -> bool:
+        resolved = self._resolve(prefix)
+        if not resolved.exists() or not resolved.is_dir():
+            return False
+        try:
+            next(iter(resolved.iterdir()))
+            return True
+        except StopIteration:
+            return False
 
     def mkdirs(self, path: str | Path) -> None:
         self._resolve(path).mkdir(parents=True, exist_ok=True)

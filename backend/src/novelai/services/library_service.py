@@ -416,3 +416,8 @@ class LibraryService:
         if self.storage.load_metadata(novel_id) is None:
             raise KeyError(f"Novel {novel_id} not found")
         self.storage.delete_novel(novel_id)
+        if self.db_session is not None:
+            novel = self.db_session.query(Novel).filter_by(slug=novel_id).one_or_none()
+            if novel is not None:
+                self.db_session.delete(novel)
+                self.db_session.flush()

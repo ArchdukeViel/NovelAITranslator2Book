@@ -36,8 +36,18 @@ class StorageBackend(ABC):
         """Return True if *path* exists in storage."""
 
     @abstractmethod
-    def list_keys(self, prefix: str | Path) -> list[str]:
-        """Return all keys under *prefix* (non-recursive by default)."""
+    def list_keys(self, prefix: str | Path, *, recursive: bool = False) -> list[str]:
+        """Return all keys under *prefix*.
+
+        When *recursive* is True, return keys at any depth (default: False)."""
+
+    @abstractmethod
+    def has_keys(self, prefix: str | Path) -> bool:
+        """Return True when at least one key exists under *prefix*.
+
+        Implementations should retrieve at most one matching descendant.
+        Used for logical-directory presence checks on remote backends.
+        """
 
     @abstractmethod
     def mkdirs(self, path: str | Path) -> None:

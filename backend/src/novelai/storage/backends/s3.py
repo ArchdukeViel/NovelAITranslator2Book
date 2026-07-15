@@ -87,30 +87,46 @@ class S3Backend(StorageBackend):
         except Exception:
             return False
 
-    def list_keys(self, prefix: str | Path) -> list[str]:
+    def list_keys(self, prefix: str | Path, *, recursive: bool = False) -> list[str]:
         key = self._key(prefix)
-        # delimiter listing for subdir grouping; empty prefix lists root
         prefix_str = key if not key or key.endswith("/") else f"{key}/"
-        logger.debug("S3 list_keys: bucket=%s prefix=%s", self._bucket, prefix_str)
+        logger.debug("S3 list_keys: bucket=%s prefix=%s recursive=%s", self._bucket, prefix_str, recursive)
+
+        if recursive:
+            keys: list[str] = []
+            paginator = self._client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix_str):
+                for obj in page.get("Contents", []):
+                    k: str = obj["Key"]
+                    if self._key_prefix and k.startswith(self._key_prefix + "/"):
+                        k = k[len(self._key_prefix) + 1:]
+                    keys.append(k)
+            return sorted(keys)
+
+        # Non-recursive: use delimiter for directory grouping
         resp = self._client.list_objects_v2(
             Bucket=self._bucket, Prefix=prefix_str, Delimiter="/"
         )
-        keys: list[str] = []
-        # CommonPrefixes for "directory" entries
+        keys = []
         for cp in resp.get("CommonPrefixes", []):
             k: str = cp["Prefix"]
-            # Strip key_prefix from returned keys
             if self._key_prefix and k.startswith(self._key_prefix + "/"):
                 k = k[len(self._key_prefix) + 1:]
             keys.append(k)
-        # Object keys for files
         for obj in resp.get("Contents", []):
             k: str = obj["Key"]
-            # Strip key_prefix
             if self._key_prefix and k.startswith(self._key_prefix + "/"):
                 k = k[len(self._key_prefix) + 1:]
             keys.append(k)
         return sorted(keys)
+
+    def has_keys(self, prefix: str | Path) -> bool:
+        key = self._key(prefix)
+        prefix_str = key if not key or key.endswith("/") else f"{key}/"
+        resp = self._client.list_objects_v2(
+            Bucket=self._bucket, Prefix=prefix_str, MaxKeys=1
+        )
+        return bool(resp.get("Contents"))
 
     def mkdirs(self, path: str | Path) -> None:
         pass  # S3 has no directories; objects are created implicitly

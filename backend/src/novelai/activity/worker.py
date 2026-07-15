@@ -153,27 +153,37 @@ class ActivityWorkerService:
             return None
         return None
 
+    def _check_cancelled(self, activity_id: str) -> None:
+        """Raise ``CancelledError`` if the activity has been cancelled."""
+        if self.activity_log.is_activity_cancelled(activity_id):
+            raise asyncio.CancelledError(f"Activity {activity_id} was cancelled by user")
+
     async def _run_crawl_activity(self, activity: dict[str, Any]) -> dict[str, Any]:
         kind = str(activity.get("kind") or "")
         metadata = self._activity_metadata(activity)
         novel_id = str(activity.get("novel_id") or "")
         source_key = str(activity.get("source_key") or "")
+        activity_id = str(activity.get("id") or "")
         if not novel_id.strip():
             raise ValueError("Crawl activity is missing novel_id.")
         if not source_key.strip():
             raise ValueError("Crawl activity is missing source_key.")
+
+        self._check_cancelled(activity_id)
 
         mode = str(metadata.get("mode") or "update")
         if kind == CrawlJobKind.METADATA.value:
             max_chapter = metadata.get("max_chapter")
             if not isinstance(max_chapter, int):
                 max_chapter = None
+            self._check_cancelled(activity_id)
             result = await self.orchestrator.scrape_metadata(
                 source_key,
                 novel_id,
                 mode=mode,
                 max_chapter=max_chapter,
             )
+            self._check_cancelled(activity_id)
             return {"chapter_count": len(result.get("chapters", [])) if isinstance(result, dict) else 0}
 
         if kind in {CrawlJobKind.CHAPTERS.value, CrawlJobKind.RECRAWL_CHAPTER.value}:
@@ -185,8 +195,10 @@ class ActivityWorkerService:
             chapter_list = meta.get("chapters")
             total = len(chapter_list) if isinstance(chapter_list, list) else None
 
-            activity_id = str(activity.get("id") or "")
             completed = [0]
+
+            def _cancelled_check() -> bool:
+                return self.activity_log.is_activity_cancelled(activity_id)
 
             def _progress_callback(message: str) -> None:
                 completed[0] += 1
@@ -204,14 +216,17 @@ class ActivityWorkerService:
                 except Exception:
                     logger.debug("Failed to update crawl progress", exc_info=True)
 
+            self._check_cancelled(activity_id)
             result = await self.orchestrator.scrape_chapters(
                 source_key,
                 novel_id,
                 chapters,
                 mode=mode,
                 progress_callback=_progress_callback,
+                cancellation_check=_cancelled_check,
             )
 
+            self._check_cancelled(activity_id)
             crawl_result = {
                 "succeeded": result.get("succeeded", 0),
                 "skipped": result.get("skipped", 0),
@@ -389,6 +404,23 @@ class ActivityWorkerService:
             chapter_summary = getattr(exc, "chapter_summary", None)
             if not isinstance(chapter_summary, dict):
                 chapter_summary = None
+            if isinstance(exc, asyncio.CancelledError):
+                cancelled_metadata: dict[str, Any] = {
+                    **activity_metadata,
+                    "current_stage": "cancelled",
+                    "cancelled_by": "owner",
+                    "errors": [{"message": str(exc), "error_code": "CANCELLED"}],
+                }
+                cancelled = self.activity_log.update_activity_status(
+                    activity_id,
+                    JobStatus.CANCELLED,
+                    error=str(exc),
+                    metadata=cancelled_metadata,
+                )
+                if cancelled is None:
+                    raise
+                return cancelled
+
             paused_status = self._pause_status(exc)
             if paused_status is not None:
                 paused_metadata: dict[str, Any] = {

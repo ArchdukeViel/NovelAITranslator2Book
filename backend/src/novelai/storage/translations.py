@@ -484,9 +484,9 @@ def load_translation_edit_history(self: Any, novel_id: str, chapter_id: str) -> 
 
 def list_translated_chapters(self: Any, novel_id: str) -> list[str]:
     """Return sorted chapter IDs that have translated content on disk."""
-    stems: set[str] = set()
+    ids: set[str] = set()
     chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
-    if self._path_exists(chapter_dir):
+    if self._is_dir_present(chapter_dir):
         for chapter_path in self._glob(chapter_dir, "*.json"):
             try:
                 payload = json.loads(self._read_text(chapter_path))
@@ -494,14 +494,14 @@ def list_translated_chapters(self: Any, novel_id: str) -> list[str]:
                 logger.debug("Skipping unreadable chapter file %s.", chapter_path)
                 continue
             if isinstance(payload, dict) and isinstance(payload.get("translated"), dict):
-                stems.add(chapter_path.stem)
+                ids.add(self._logical_id_from_stem(chapter_path.stem))
 
     legacy_translated_dir = self._novel_dir(novel_id) / "translated"
-    if self._path_exists(legacy_translated_dir):
+    if self._is_dir_present(legacy_translated_dir):
         for path in self._list_dir(legacy_translated_dir):
             if path.suffix.lower() in {".json", ".txt"}:
-                stems.add(path.stem)
-    return sorted(stems)
+                ids.add(self._logical_id_from_stem(path.stem))
+    return sorted(ids)
 
 
 def count_translated_chapters(self: Any, novel_id: str) -> int:
