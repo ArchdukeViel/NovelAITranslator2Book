@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated, Any
 
-from pydantic import AliasChoices, Field, SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import AliasChoices, Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 GEMINI_DEFAULT_MODEL = "gemini-3.1-flash-lite"
@@ -20,6 +21,21 @@ def _resolve_project_path(path: Path) -> Path:
     return PROJECT_ROOT / path
 
 
+def _empty_string_to_empty_list(v: Any) -> Any:
+    """Normalize empty string to empty list for list-typed settings.
+
+    With NoDecode annotation, pydantic-settings passes the raw env string
+    instead of attempting JSON parsing. Empty string is normalized to [].
+    Comma-separated values are split into a list.
+    """
+    if v == "" or v is None:
+        return []
+    if isinstance(v, str):
+        # Handle comma-separated values like "a,b,c"
+        return [item.strip() for item in v.split(",") if item.strip()]
+    return v
+
+
 class AppSettings(BaseSettings):
     """Global configuration for Novel AI."""
 
@@ -28,6 +44,12 @@ class AppSettings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+    )
+
+    # --- Service role (admin or reader)
+    SERVICE_ROLE: str = Field(
+        default="admin",
+        description="Service role: 'admin' (port 8000) or 'reader' (port 8001). Reader skips session/owner validation.",
     )
 
     # --- Runtime
@@ -54,7 +76,19 @@ class AppSettings(BaseSettings):
     )
     S3_ENDPOINT: str | None = Field(
         default=None,
-        description="Custom S3 endpoint URL (e.g. MinIO).",
+        description="Custom S3 endpoint URL (e.g. MinIO, Cloudflare R2).",
+    )
+    S3_ACCESS_KEY_ID: SecretStr | None = Field(
+        default=None,
+        description="S3/R2 access key ID. Required for R2 and other S3-compatible targets without IAM.",
+    )
+    S3_SECRET_ACCESS_KEY: SecretStr | None = Field(
+        default=None,
+        description="S3/R2 secret access key. Required for R2 and other S3-compatible targets without IAM.",
+    )
+    S3_STORAGE_LIMIT_GB: float = Field(
+        default=9.5,
+        description="Storage usage soft limit in GB. Warning at 90%, critical at 95%. Default 9.5 GB (under R2 free tier 10 GB).",
     )
     # Main runtime library: metadata, chapters, exports, preferences, logs.
     NOVEL_LIBRARY_DIR: Path = Field(
@@ -72,11 +106,44 @@ class AppSettings(BaseSettings):
     WEB_HOST: str = "127.0.0.1"
     WEB_PORT: int = 8000
     WEB_API_KEY: SecretStr | None = None
-    WEB_CORS_ORIGINS: list[str] = Field(default_factory=list)
+    WEB_CORS_ORIGINS: Annotated[list[str], NoDecode] = Field(default_factory=list)
     WEB_REQUEST_TIMEOUT_SECONDS: int = 600
     WEB_RATE_LIMITER_BACKEND: str = "memory"
     JOB_WORKER_ENABLED: bool = False
     JOB_WORKER_POLL_SECONDS: float = 2.0
+
+    # --- Production hardening (DEBT-055)
+    TRUSTED_PROXY_CIDRS: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        description="CIDR ranges of trusted reverse proxies. Forwarded headers are honored only from these.",
+    )
+    ALLOWED_HOSTS: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        description="Allowed Host header values. Empty list disables host validation (development only).",
+    )
+    CSRF_TRUSTED_ORIGINS: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        description="Origins trusted for CSRF. Should match WEB_CORS_ORIGINS in production.",
+    )
+    SECURITY_HEADERS_ENABLED: bool = Field(
+        default=True,
+        description="Emit baseline security headers (X-Content-Type-Options, Referrer-Policy, X-Frame-Options).",
+    )
+    HSTS_MAX_AGE_SECONDS: int = Field(
+        default=0,
+        description="HSTS max-age. Set >0 only for HTTPS production domains. 0 disables HSTS.",
+    )
+
+    @field_validator(
+        "WEB_CORS_ORIGINS",
+        "TRUSTED_PROXY_CIDRS",
+        "ALLOWED_HOSTS",
+        "CSRF_TRUSTED_ORIGINS",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_empty_list_env(cls, v: Any) -> Any:
+        return _empty_string_to_empty_list(v)
 
     # --- Provider / Model
     PROVIDER_DEFAULT: str = "gemini"
@@ -159,7 +226,7 @@ class AppSettings(BaseSettings):
     GOOGLE_OAUTH_CLIENT_ID: str | None = None
     GOOGLE_OAUTH_CLIENT_SECRET: SecretStr | None = None
     GOOGLE_OAUTH_REDIRECT_URI: str | None = None
-    PUBLIC_FRONTEND_URL: str = "http://127.0.0.1:3000"
+    PUBLIC_FRONTEND_URL: str | None = None
     AUTH_EMAIL_DELIVERY_MODE: str = "noop"
     AUTH_PASSWORD_RESET_PATH: str = "/password/reset"
     AUTH_EMAIL_VERIFICATION_PATH: str = "/email/verify"

@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from novelai.api.error_handlers import add_error_handlers
+from novelai.api.middleware.security import SecurityHeadersMiddleware
 from novelai.api.routers import (
     activity,
     admin,
@@ -29,12 +30,13 @@ from novelai.api.routers import (
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.health import admin_router as health_admin_router
 from novelai.api.routers.library import NovelSummary, list_novels
+from novelai.config.production_validator import assert_production_config
 from novelai.config.settings import settings
 from novelai.runtime.bootstrap import bootstrap
 from novelai.runtime.container import container
 
-if settings.ENV == "production" and settings.SESSION_SECRET_KEY == "changeme-generate-a-real-secret-in-production":
-    raise RuntimeError("SESSION_SECRET_KEY must be set to a strong secret in production.")
+if settings.ENV == "production":
+    assert_production_config(settings)
 
 
 @asynccontextmanager
@@ -73,6 +75,8 @@ if settings.WEB_CORS_ORIGINS:
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
     )
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 add_error_handlers(app)
 

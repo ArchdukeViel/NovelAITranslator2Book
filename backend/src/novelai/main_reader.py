@@ -10,11 +10,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from novelai.api.error_handlers import add_error_handlers
+from novelai.api.middleware.security import SecurityHeadersMiddleware
 from novelai.api.routers.health import router as health_router
 from novelai.api.routers.public import router as public_router
 from novelai.api.routers.user_data import router as user_data_router
+from novelai.config.production_validator import assert_production_config
 from novelai.config.settings import settings
 from novelai.runtime.bootstrap import bootstrap
+
+if settings.ENV == "production":
+    assert_production_config(settings)
 
 bootstrap()
 
@@ -28,6 +33,8 @@ if settings.WEB_CORS_ORIGINS:
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
     )
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 add_error_handlers(app)
 

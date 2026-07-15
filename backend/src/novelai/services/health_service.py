@@ -108,6 +108,7 @@ class HealthService:
             "storage": self._probe_storage,
             "worker": self._probe_worker,
             "disk": self._probe_disk,
+            "storage_usage": self._probe_storage_usage,
         }
 
         results: dict[str, dict[str, Any]] = {}
@@ -309,6 +310,75 @@ class HealthService:
                 "latency_ms": latency,
             }
 
+    async def _probe_storage_usage(self) -> dict[str, Any]:
+        """Probe S3/R2 storage usage against soft limit (S3_STORAGE_LIMIT_GB).
+
+        For filesystem backend, this probe is skipped (disk probe covers it).
+        Always redacted — never exposes bucket name, credentials, or raw paths.
+        """
+        start = time.monotonic()
+        if settings.STORAGE_BACKEND != "s3":
+            return {
+                "status": STATE_HEALTHY,
+                "message": "Filesystem backend; use disk probe",
+                "latency_ms": 0,
+            }
+        try:
+            from novelai.storage.backends import get_storage_backend as _gsb
+
+            backend = _gsb()
+            if not hasattr(backend, "_client") or not hasattr(backend, "_bucket"):
+                return {"status": STATE_HEALTHY, "message": "Not an S3 backend", "latency_ms": 0}
+
+            used_bytes = 0
+            paginator = backend._client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=backend._bucket):
+                for obj in page.get("Contents", []):
+                    used_bytes += obj.get("Size", 0)
+
+            limit_bytes = int(settings.S3_STORAGE_LIMIT_GB * 1024 ** 3)
+            used_percent = int(used_bytes / limit_bytes * 100) if limit_bytes > 0 else 0
+            free_bytes = max(0, limit_bytes - used_bytes)
+            latency = int((time.monotonic() - start) * 1000)
+
+            if used_percent >= 95:
+                return {
+                    "status": STATE_UNHEALTHY,
+                    "message": "Storage usage critical",
+                    "used_bytes": used_bytes,
+                    "limit_bytes": limit_bytes,
+                    "free_bytes": free_bytes,
+                    "used_percent": used_percent,
+                    "latency_ms": latency,
+                }
+            if used_percent >= 90:
+                return {
+                    "status": STATE_DEGRADED,
+                    "message": "Storage usage warning",
+                    "used_bytes": used_bytes,
+                    "limit_bytes": limit_bytes,
+                    "free_bytes": free_bytes,
+                    "used_percent": used_percent,
+                    "latency_ms": latency,
+                }
+            return {
+                "status": STATE_HEALTHY,
+                "message": "Storage usage within limits",
+                "used_bytes": used_bytes,
+                "limit_bytes": limit_bytes,
+                "free_bytes": free_bytes,
+                "used_percent": used_percent,
+                "latency_ms": latency,
+            }
+        except Exception as exc:
+            latency = int((time.monotonic() - start) * 1000)
+            return {
+                "status": STATE_UNHEALTHY,
+                "message": "Storage usage probe failed",
+                "error_type": type(exc).__name__,
+                "latency_ms": latency,
+            }
+
     @staticmethod
     def _aggregate_status(results: dict[str, dict[str, Any]]) -> str:
         """Aggregate probe results into an overall status."""
@@ -352,6 +422,12 @@ class HealthService:
             }
             if "free_percent" in result:
                 safe[name]["free_percent"] = result["free_percent"]
+            if "used_bytes" in result:
+                safe[name]["used_bytes"] = result["used_bytes"]
+            if "used_percent" in result:
+                safe[name]["used_percent"] = result["used_percent"]
+            if "free_bytes" in result:
+                safe[name]["free_bytes"] = result["free_bytes"]
             if "error_type" in result:
                 safe[name]["error_type"] = result["error_type"]
         return safe
