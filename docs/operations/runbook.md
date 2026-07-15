@@ -78,3 +78,41 @@ Scheduled and manual backup endpoints are planned under Milestone 2c (DEBT-010).
 - Scheduled backups run based on `BACKUP_SCHEDULE_CRON`.
 
 See [`docs/operations/data-recovery.md`](data-recovery.md) for restore procedures.
+
+---
+
+## Redis Rate Limiter (M3)
+
+Production uses `WEB_RATE_LIMITER_BACKEND=redis` for multi-instance safety. Two independent app processes sharing the same Redis see the same rate-limit counters — a burst on one instance blocks the same client on the other.
+
+If Redis is unreachable, the rate limiter **fails closed** — requests raise `RuntimeError` rather than silently falling back to memory. Ensure Redis healthcheck passes before app services start (enforced via `depends_on: redis: condition: service_healthy` in compose.yml).
+
+### Verification
+
+```python
+# From inside any backend container:
+from novelai.infrastructure.http.rate_limiter import RedisRateLimiter
+limiter = RedisRateLimiter(limits={"test": 3}, window_seconds=60)
+print(limiter.hit("client1", "test"))  # True
+print(limiter.hit("client1", "test"))  # True
+print(limiter.hit("client1", "test"))  # True
+print(limiter.hit("client1", "test"))  # False (blocked)
+```
+
+---
+
+## Security Headers (M3)
+
+Production responses include:
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `X-Frame-Options: DENY`
+- `Strict-Transport-Security` (HSTS, only when `HSTS_MAX_AGE_SECONDS > 0`)
+
+Trusted proxy forwarded headers (`X-Forwarded-For`) are honored only when `TRUSTED_PROXY_CIDRS` includes the proxy's CIDR. Spoofed forwarded headers from untrusted clients are ignored.
+
+---
+
+## Secret Rotation
+
+See [`docs/operations/deployment.md`](deployment.md#secret-rotation) for full secret rotation procedures including `SESSION_SECRET_KEY`, R2 API tokens, and `OWNER_BOOTSTRAP_SECRET`.

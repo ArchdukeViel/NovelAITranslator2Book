@@ -162,10 +162,11 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone M3 (Deployment)
 - **Category:** Frontend | CI/CD
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** `frontend/`
 - **Description:** ESLint configuration not run inside CI pipeline.
 - **Completion criteria:** `eslint.config.mjs` present, `npm run lint` checked on Actions.
+- **Resolution:** Created `frontend/eslint.config.mjs` with Next.js flat config. Added `npm run lint` step to `frontend-check` job in CI. Lint runs non-interactively.
 
 ### DEBT-027 — Backend package flattening deferred
 - **Milestone:** Milestone M3 (Deployment)
@@ -207,10 +208,11 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone M3 (Deployment)
 - **Category:** CI/CD
 - **Priority:** Medium
-- **Status:** Pending
-- **Affected areas:** Github actions deploy file
-- **Description:** Deploy workflow triggered only via manual UI dispatch.
+- **Status:** Resolved
+- **Affected areas:** `.github/workflows/deploy.yml`
+- **Description:** Deploy workflow now triggers automatically on version tag push (`v*`) in addition to manual dispatch. Tag-triggered deploys go to production environment.
 - **Completion criteria:** Auto-trigger deploy on pushed version tag.
+- **Resolution:** Added `push: tags: ['v*']` trigger to deploy.yml. Tag name (minus `v` prefix) is used as the image version. Tag-triggered deploys default to production environment. Manual dispatch still available with environment choice.
 
 ### DEBT-033 — No scheduled export freshness check
 - **Milestone:** Milestone M5 (Admin Operations)
@@ -273,10 +275,11 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone M3 (Deployment)
 - **Category:** Backend | Security
 - **Priority:** High
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** Rate limiter dependency
 - **Description:** Redis-backed limit counters not verified in split multi-process deployment.
 - **Completion criteria:** Multi-instance tests confirm Redis rate limits block burst requests.
+- **Resolution:** Verified cross-instance behavior using two independent `RedisRateLimiter` instances sharing the same Redis (docker exec against `novel-ai-redis-1`). Instance A consumed 3/3 hits, Instance B saw the same counter and was blocked on hit 4. Cross-instance test with fakeredis also passes (`test_rate_limiter_redis_integration.py`, 5 tests). Fail-closed behavior verified: Redis connection errors raise `RuntimeError`, no silent memory fallback.
 
 ### DEBT-040 — Prometheus metrics endpoint
 - **Milestone:** Milestone M3 (Deployment)
@@ -318,10 +321,11 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone M3 (Deployment)
 - **Category:** Backend | DevOps
 - **Priority:** High
-- **Status:** Pending
-- **Affected areas:** `backend/src/novelai/config/settings.py`, `backend/src/novelai/api/app.py`, `deploy/compose.yml`, `deploy/Caddyfile`
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/config/settings.py`, `backend/src/novelai/config/production_validator.py`, `backend/src/novelai/api/middleware/security.py`, `backend/src/novelai/api/app.py`, `backend/src/novelai/main_admin.py`, `backend/src/novelai/main_reader.py`, `deploy/compose.yml`, `deploy/Caddyfile`, `deploy/scripts/deploy-smoke.ps1`
 - **Description:** No production config validator, no trusted proxy/host policy, no security headers, no deploy smoke checks, no rollback procedure. Compose healthcheck targets wrong service.
 - **Completion criteria:** Production validator, trusted proxy/host config, security headers, deploy smoke checks, rollback procedure, corrected healthcheck.
+- **Resolution:** Added `production_validator.py` with fatal/warning/info severity, `SecurityHeadersMiddleware` (X-Content-Type-Options, Referrer-Policy, X-Frame-Options, HSTS), `get_client_ip` with trusted proxy CIDR validation, `is_allowed_host` for Host header validation. Added `SERVICE_ROLE` setting to distinguish admin/reader validation. Compose defaults to `WEB_RATE_LIMITER_BACKEND=redis`, `SERVICE_ROLE=admin` for backend, `SERVICE_ROLE=reader` for reader. Fixed healthcheck path (`/health/live` not `/api/health/live`). Added `deploy/scripts/deploy-smoke.ps1` for migration gate, health, route boundary, and security header verification. Rollback procedure documented in `docs/operations/deployment.md`. 18 production config tests + 19 security middleware tests pass.
 
 ### DEBT-056 — Frontend error boundaries and empty states
 - **Milestone:** Milestone M4 (Reader/Catalog UX)
@@ -372,10 +376,25 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone M3 (Deployment)
 - **Category:** Storage
 - **Priority:** Medium
-- **Status:** Pending
-- **Affected areas:** `backend/src/novelai/storage/backends/s3.py`
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/storage/backends/s3.py`, `backend/src/novelai/config/settings.py`, `backend/src/novelai/config/production_validator.py`, `backend/tests/integration/test_s3_integration.py`
 - **Description:** S3 backend fields restored to settings but not validated in production deployment.
 - **Completion criteria:** Real S3 integration tests, production config validation, backup/restore drill with S3.
+- **Resolution:** Added `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` settings for R2/S3-compatible targets. Updated `S3Backend` constructor to accept explicit credentials. Production validator requires credentials when `S3_ENDPOINT` is set. Created `backend/tests/integration/test_s3_integration.py` with 8 integration tests (save, load, overwrite, delete, list, subdir list). All 8 tests pass against real Cloudflare R2 bucket `dokushodo` using isolated `_integration_test_*` prefix with auto-cleanup. R2 backup/restore drill procedure documented in `docs/operations/data-recovery.md`.
+
+### DEBT-062 — pg_net extension in public schema
+- **Milestone:** Milestone M3 (Deployment)
+- **Category:** Database | Security
+- **Priority:** Low
+- **Status:** Pending
+- **Affected areas:** Supabase database `public` schema
+- **Description:** The `pg_net` extension is installed in the `public` schema instead of the `extensions` schema. Exposes internal HTTP functions via PostgREST. The extension is used by `pg_cron` for automated `cleanup_expired_scheduler_states()` calls.
+- **Completion criteria:**
+  1. `CREATE SCHEMA IF NOT EXISTS extensions`
+  2. `ALTER EXTENSION pg_net SET SCHEMA extensions`
+  3. Update `cron.job` command paths to use `extensions.` prefix
+  4. Verify cron job runs at next scheduled time (03:30 UTC) without error
+  5. Confirm no other code references `net.*` without schema qualification
 
 ### DEBT-073 — Glossary prompt injection test drift
 - **Milestone:** Milestone M1 (Glossary/Router Repair)

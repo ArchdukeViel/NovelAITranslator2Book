@@ -5,7 +5,7 @@ All workflow files are already implemented and committed to `.github/workflows/`
 What remains is GitHub UI configuration and verification.
 
 **Last updated:** 2026-07-12 (documentation reconciliation)
-**Current status:** CI workflows implemented; `build.yml` dual-service build not yet verified on push to main (see DEBT-002).
+**Current status:** CI and build workflows verified. Three Docker images pushed to GHCR with SHA + latest tags on main push. Deploy workflow supports manual trigger. M3 adds frontend lint step and production configuration checks.
 
 ---
 

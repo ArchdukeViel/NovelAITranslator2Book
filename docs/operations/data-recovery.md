@@ -10,7 +10,7 @@ Backup archives are written to local disk. Only file storage domains (novels, me
 
 ### Scheduled Backups
 
-Scheduled backups run via APScheduler when `BACKUP_ENABLED=true`. The schedule is controlled by:
+Scheduled backups run via the asyncio-based scheduler loop when `BACKUP_ENABLED=true`. The schedule is controlled by:
 
 - `BACKUP_SCHEDULE_CRON` (default `0 2 * * *` — daily at 02:00)
 - `BACKUP_TIMEZONE` (default `UTC`)
@@ -41,7 +41,36 @@ This queues a background backup activity. Response format:
 }
 ```
 
-**Notice:** If `STORAGE_BACKEND=s3` is active, backup generation is disabled. S3 storage requires external bucket snapshot procedures.
+**Notice:** If `STORAGE_BACKEND=s3` is active with R2, local backup generation is disabled. Use R2 lifecycle rules, cross-region replication, or external bucket snapshot procedures for R2 backups.
+
+---
+
+## R2 Storage Recovery
+
+When using Cloudflare R2 (`STORAGE_BACKEND=s3` with R2 endpoint), recovery differs from filesystem:
+
+### R2 Backup Options
+
+1. **R2 Lifecycle Rules**: Configure object versioning or transition rules in the Cloudflare dashboard.
+2. **Cross-Region Replication**: Replicate to a backup bucket in another region.
+3. **Manual Bucket Snapshot**: Use `aws s3 sync` or boto3 to copy objects to a backup prefix:
+   ```bash
+   aws s3 sync s3://dokushodo/ s3://dokushodo-backup/$(date +%Y-%m-%d)/ \
+     --endpoint-url=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+   ```
+
+### R2 Restore Procedure
+
+1. **Identify backup source**: Determine the backup prefix (e.g. `backups/2026-07-14/`)
+2. **Copy objects back to production prefix**:
+   ```bash
+   aws s3 sync s3://dokushodo/backups/2026-07-14/ s3://dokushodo/ \
+     --endpoint-url=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+   ```
+3. **Rebuild catalog projections**: `POST /api/admin/catalog/rebuild`
+4. **Verify**: Run smoke checks, spot-check novel metadata and chapter content
+
+Never restore into the production prefix without first verifying the backup contents against the expected artifact index (see `docs/storage-contract.md`).
 
 ---
 

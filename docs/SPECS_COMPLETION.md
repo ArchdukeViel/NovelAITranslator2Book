@@ -16,7 +16,7 @@ Checklist files (`tasks.md`) inside active spec directories contain non-binding 
 - `analytics-baseline` -> DEBT-011 (Milestone M5)
 - `contact-support-legal-pages` -> DEBT-043 (Milestone M4)
 - `deep-health-readiness-checks` -> DEBT-001 (Milestone M2a)
-- `deployment-production-hardening` -> DEBT-055 (Milestone M3)
+- `deployment-production-hardening` -> DEBT-055 (Milestone M3, Resolved)
 - `frontend-error-boundary-and-empty-states` -> DEBT-056 (Milestone M4)
 - `launch-readiness-checklist` -> DEBT-057 (Milestone M7)
 - `maintenance-cron` -> DEBT-042 (Milestone M2c)
@@ -27,7 +27,7 @@ Checklist files (`tasks.md`) inside active spec directories contain non-binding 
 - `public-reader-graceful-degradation` -> Milestone M4
 - `public-reader-performance-budget` -> DEBT-059 (Milestone M4)
 - `public-reader-seo-discovery-baseline` -> DEBT-038 (Milestone M4)
-- `rate-limit-and-abuse-protection-baseline` -> DEBT-039 (Milestone M3)
+- `rate-limit-and-abuse-protection-baseline` -> DEBT-039 (Milestone M3, Resolved)
 - `scheduled-backups-and-restore-drills` -> DEBT-010 (Milestone 2c)
 - `scheduled-export-freshness-check` -> DEBT-033 (Milestone M5)
 - `scheduler-runtime-state-persistence` -> DEBT-036 (Milestone 2c)

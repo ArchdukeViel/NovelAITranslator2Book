@@ -1,4 +1,4 @@
-name: Deploy
+﻿name: Deploy
 
 on:
   workflow_dispatch:
@@ -14,6 +14,9 @@ on:
         options:
           - staging
           - production
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: read
@@ -21,9 +24,28 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    environment: >-
+      ${{
+        github.event_name == 'push' && 'production' ||
+        inputs.environment || 'production'
+      }}
 
     steps:
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # Tag-trigger: use the tag name (strip leading 'v')
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "Triggered by tag push: ${GITHUB_REF_NAME}"
+          else
+            # Manual dispatch: use the input
+            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "Triggered by manual dispatch: ${{ inputs.version }}"
+          fi
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -35,8 +57,8 @@ jobs:
             cd /opt/novelai
 
             # Write the requested version into the env file so compose picks it up
-            VERSION="${{ inputs.version }}"
-            echo "Deploying version: $VERSION to ${{ inputs.environment }}"
+            VERSION="${{ steps.version.outputs.value }}"
+            echo "Deploying version: $VERSION to ${{ github.event.inputs.environment || 'production' }}"
 
             # Pull the exact image tags being deployed
             docker compose pull

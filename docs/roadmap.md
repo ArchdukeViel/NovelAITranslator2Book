@@ -56,8 +56,8 @@ Status and details are updated directly as release verification progresses.
   - `git diff --check` — no integrity issues
 
 ## Milestone M3 — Deployment Readiness
-- **Status:** Planned
-- **Description:** Production configs, proxy routing, rate-limit testing, and deployment guide verification.
+- **Status:** Done
+- **Description:** Production config validator, Redis rate limiting with cross-instance verification, security headers/proxy/CORS hardening, Caddy/Compose route verification, frontend ESLint + CI lint step, S3 integration test harness, deploy smoke checks, updated deployment/operations documentation.
 - **Scope:**
   - Set up Redis rate limiting and verify multi-instance behavior. (DEBT-039)
   - Configure Caddy routes matching ordered admin/auth/public split backend targets.

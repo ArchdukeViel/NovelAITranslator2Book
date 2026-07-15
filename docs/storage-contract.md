@@ -153,6 +153,18 @@ Path: `edit_history` list inside the chapter bundle. Written by
 - SQL projection state can be rebuilt from canonical file storage where existing
   code supports it.
 
+## Storage Backends
+
+Canonical high-volume artifacts can be stored on:
+
+| Backend | Setting | Notes |
+|---|---|---|
+| Local filesystem | `STORAGE_BACKEND=filesystem` (default) | `NOVEL_LIBRARY_DIR` is the base path. Backups via `BackupManager` (tar.gz). |
+| Cloudflare R2 | `STORAGE_BACKEND=s3` with `S3_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com` | S3-compatible via boto3. Requires `S3_ACCESS_KEY_ID` + `S3_SECRET_ACCESS_KEY`. R2 lifecycle rules replace local backups. |
+| AWS S3 | `STORAGE_BACKEND=s3` without `S3_ENDPOINT` | Uses IAM role credentials. Standard S3 API. |
+
+All storage backends implement the same `StorageBackend` interface. R2 and S3 differences are handled by the `S3Backend` class — callers never touch boto3 directly.
+
 ## Migration and Repair Notes
 
 - Do not edit canonical JSON by hand unless backups are available.
