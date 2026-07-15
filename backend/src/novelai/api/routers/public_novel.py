@@ -68,5 +68,6 @@ async def list_chapters(
             chapter_number=ch.get("num") or (idx + 1),
             translated=is_translated,
             availability_status="available" if is_translated else "not_translated",
+            part=_optional_str(ch.get("part")) or _optional_str(ch.get("volume")),
         ))
     return result

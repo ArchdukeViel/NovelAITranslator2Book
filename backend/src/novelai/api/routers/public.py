@@ -79,6 +79,7 @@ class PublicChapterSummary(BaseModel):
     chapter_number: int | None = None
     translated: bool = False
     availability_status: str = "not_translated"
+    part: str | None = None
 
 
 class PublicCatalogResponse(BaseModel):

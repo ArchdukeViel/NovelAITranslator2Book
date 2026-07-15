@@ -55,6 +55,7 @@ export interface PublicChapterSummary {
   title: string | null;
   chapter_number: number | null; // sort ascending (Req 4.3)
   translated: boolean; // false -> pending indicator (Req 4.5)
+  part?: string | null; // optional volume/part grouping label
 }
 
 export type PublicReaderBlock =

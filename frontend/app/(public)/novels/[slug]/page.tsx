@@ -53,6 +53,39 @@ function chapterHref(slug: string, chapterId: string): string {
   return publicChapterHref(slug, chapterId);
 }
 
+type VolumeGroup = {
+  label: string;
+  chapters: PublicChapterSummary[];
+};
+
+function groupChaptersByVolume(chapters: PublicChapterSummary[]): VolumeGroup[] {
+  const groups = new Map<string, VolumeGroup>();
+  groups.set("", { label: "Chapters", chapters: [] });
+
+  for (const ch of chapters) {
+    const key = ch.part?.trim() || "";
+    if (!groups.has(key)) {
+      groups.set(key, { label: key, chapters: [] });
+    }
+    groups.get(key)!.chapters.push(ch);
+  }
+
+  // Build result sorted by the first chapter number in each group
+  const groupsArray = Array.from(groups.values());
+  for (const g of groupsArray) {
+    g.chapters.sort(
+      (a, b) => (a.chapter_number ?? 0) - (b.chapter_number ?? 0),
+    );
+  }
+  groupsArray.sort((a, b) => {
+    const aMin = Math.min(...a.chapters.map((c) => c.chapter_number ?? 0));
+    const bMin = Math.min(...b.chapters.map((c) => c.chapter_number ?? 0));
+    return aMin - bMin || a.label.localeCompare(b.label);
+  });
+
+  return groupsArray;
+}
+
 function LoadingState() {
   return (
     <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -354,12 +387,31 @@ export default function NovelDetailPage() {
                   </p>
                 </div>
               ) : (
-                sortedChapters.map((chapter) => (
-                  <ChapterRow
-                    chapter={chapter}
-                    key={chapter.chapter_id}
-                    slug={publicSlug}
-                  />
+                groupChaptersByVolume(sortedChapters).map((group) => (
+                  <details
+                    key={group.label}
+                    open
+                    className="group/volume border-b border-border/70 last:border-b-0"
+                  >
+                    <summary className="flex cursor-pointer items-center justify-between py-3 text-sm font-medium text-foreground select-none hover:text-accent">
+                      <span className="inline-flex items-center gap-2">
+                        <svg className="h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open/volume:rotate-90" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                          <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        <span>{group.label}</span>
+                      </span>
+                      <span className="text-xs text-muted-foreground tabular-nums">{group.chapters.length}</span>
+                    </summary>
+                    <div className="border-t border-border/40">
+                      {group.chapters.map((chapter) => (
+                        <ChapterRow
+                          chapter={chapter}
+                          key={chapter.chapter_id}
+                          slug={publicSlug}
+                        />
+                      ))}
+                    </div>
+                  </details>
                 ))
               )}
             </div>
