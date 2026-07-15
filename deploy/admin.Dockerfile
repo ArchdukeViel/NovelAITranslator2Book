@@ -18,7 +18,7 @@ RUN apt-get update \
 COPY pyproject.toml readme.md ./
 COPY backend/src ./backend/src
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install ".[documents,gemini,db,worker,auth]"
+    pip install ".[documents,gemini,db,worker,auth,s3]"
 
 # Copy remaining backend artifacts (alembic, sql) after deps are cached — src already present
 COPY backend/alembic.ini ./backend/alembic.ini

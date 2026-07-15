@@ -158,8 +158,9 @@ class TestS3Backend:
 class TestGetStorageBackend:
     """Factory behaviour — does not test I/O."""
 
-    def test_default_is_filesystem(self) -> None:
+    def test_default_is_filesystem(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _reset_backend()
+        monkeypatch.setenv("STORAGE_BACKEND", "filesystem")
         backend = get_storage_backend()
         assert isinstance(backend, FilesystemBackend)
 

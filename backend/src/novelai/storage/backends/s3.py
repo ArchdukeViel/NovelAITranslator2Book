@@ -25,12 +25,22 @@ class S3Backend(StorageBackend):
         region: str = "us-east-1",
         key_prefix: str = "",
         endpoint_url: str | None = None,
+        aws_access_key_id: str | None = None,
+        aws_secret_access_key: str | None = None,
     ) -> None:
         import boto3
 
+        self._BACKING: str = "s3"
         self._bucket = bucket
         self._key_prefix = key_prefix.strip("/")
-        self._client: Any = boto3.client("s3", region_name=region, endpoint_url=endpoint_url)
+        client_kwargs: dict[str, Any] = {"region_name": region}
+        if endpoint_url:
+            client_kwargs["endpoint_url"] = endpoint_url
+        if aws_access_key_id:
+            client_kwargs["aws_access_key_id"] = aws_access_key_id
+        if aws_secret_access_key:
+            client_kwargs["aws_secret_access_key"] = aws_secret_access_key
+        self._client: Any = boto3.client("s3", **client_kwargs)
 
     # ── helpers ──────────────────────────────────────────────────────
 

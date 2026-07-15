@@ -63,7 +63,7 @@ services:
     networks:
       - novelai-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/live').read()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live').read()"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -71,14 +71,17 @@ services:
     build:
       context: ..
       dockerfile: deploy/admin.Dockerfile
+    env_file:
+      - ./.env
     environment:
       - ENV=${ENV:-production}
+      - SERVICE_ROLE=admin
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - WEB_HOST=0.0.0.0
       - WEB_PORT=8000
       - WEB_API_KEY
       - WEB_CORS_ORIGINS=${WEB_CORS_ORIGINS:-[]}
-      - WEB_RATE_LIMITER_BACKEND=${WEB_RATE_LIMITER_BACKEND:-memory}
+      - WEB_RATE_LIMITER_BACKEND=${WEB_RATE_LIMITER_BACKEND:-redis}
       - WEB_REQUEST_TIMEOUT_SECONDS=${WEB_REQUEST_TIMEOUT_SECONDS:-120}
       - JOB_WORKER_ENABLED=${JOB_WORKER_ENABLED:-false}
       - JOB_WORKER_POLL_SECONDS=${JOB_WORKER_POLL_SECONDS:-3}
@@ -88,9 +91,18 @@ services:
       - PROVIDER_CREDENTIAL_ENCRYPTION_KEY=${PROVIDER_CREDENTIAL_ENCRYPTION_KEY:-}
       - PROVIDER_OPENAI_API_KEY
       - TRANSLATION_TARGET_LANGUAGE=${TRANSLATION_TARGET_LANGUAGE:-English}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-filesystem}
+      - S3_BUCKET=${S3_BUCKET:-}
+      - S3_REGION=${S3_REGION:-us-east-1}
+      - S3_KEY_PREFIX=${S3_KEY_PREFIX:-}
+      - S3_ENDPOINT=${S3_ENDPOINT:-}
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID:-}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-}
+      - S3_STORAGE_LIMIT_GB=${S3_STORAGE_LIMIT_GB:-9.5}
       - SESSION_SECRET_KEY=${SESSION_SECRET_KEY:?Set SESSION_SECRET_KEY}
       - OWNER_BOOTSTRAP_SECRET=${OWNER_BOOTSTRAP_SECRET:?Set OWNER_BOOTSTRAP_SECRET}
       - PUBLIC_FRONTEND_URL=${PUBLIC_FRONTEND_URL:?Set PUBLIC_FRONTEND_URL to the public frontend origin}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-}
       - AUTH_EMAIL_DELIVERY_MODE=${AUTH_EMAIL_DELIVERY_MODE:-noop}
       - AUTH_PASSWORD_RESET_PATH=${AUTH_PASSWORD_RESET_PATH:-/password/reset}
       - AUTH_EMAIL_VERIFICATION_PATH=${AUTH_EMAIL_VERIFICATION_PATH:-/email/verify}
@@ -144,8 +156,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+    env_file:
+      - ./.env
     environment:
       - ENV=${ENV:-production}
+      - SERVICE_ROLE=reader
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - WEB_HOST=0.0.0.0
       - WEB_PORT=8001
@@ -153,6 +168,14 @@ services:
       - NOVEL_LIBRARY_DIR=/app/storage/novel_library
       - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-filesystem}
+      - S3_BUCKET=${S3_BUCKET:-}
+      - S3_REGION=${S3_REGION:-us-east-1}
+      - S3_KEY_PREFIX=${S3_KEY_PREFIX:-}
+      - S3_ENDPOINT=${S3_ENDPOINT:-}
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID:-}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-}
+      - S3_STORAGE_LIMIT_GB=${S3_STORAGE_LIMIT_GB:-9.5}
     volumes:
       - ../storage/novel_library:/app/storage/novel_library
     depends_on:

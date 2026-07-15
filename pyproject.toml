@@ -99,6 +99,7 @@ python_functions = ["test_*"]
 tmp_path_retention_policy = "none"
 markers = [
     "e2e: end-to-end integration tests (full pipeline, slower, requires fixtures)",
+    "integration: integration tests against external services (S3/R2, Redis, etc.)",
 ]
 
 [tool.ruff]

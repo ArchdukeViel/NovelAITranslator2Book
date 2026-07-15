@@ -59,11 +59,24 @@ def _build_s3_backend() -> StorageBackend:
             "S3_BUCKET is required when STORAGE_BACKEND=s3."
         )
 
+    access_key = (
+        settings.S3_ACCESS_KEY_ID.get_secret_value()
+        if settings.S3_ACCESS_KEY_ID
+        else None
+    )
+    secret_key = (
+        settings.S3_SECRET_ACCESS_KEY.get_secret_value()
+        if settings.S3_SECRET_ACCESS_KEY
+        else None
+    )
+
     return S3Backend(
         bucket=settings.S3_BUCKET,
         region=settings.S3_REGION,
         key_prefix=settings.S3_KEY_PREFIX,
         endpoint_url=settings.S3_ENDPOINT,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
     )
 
 

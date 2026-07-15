@@ -289,7 +289,14 @@ class StorageService:
         it, then replaces the target with ``os.replace`` so readers never see a
         partial file. Best-effort fsyncs the parent directory and removes the
         temp file on failure before the rename.
+
+        For non-local backends (e.g. S3/R2), falls back to direct write since
+        atomic rename is not supported.
         """
+        backing = getattr(self._backend, "_BACKING", "filesystem")
+        if backing == "s3":
+            self._write_text(path, content)
+            return
         self._backend.mkdirs(self._rel(path.parent))
         temp_path = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
         replaced = False
