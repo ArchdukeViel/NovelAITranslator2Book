@@ -103,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(editor.router, prefix="/api/admin/novels", tags=["admin-api"])
     app.include_router(operations.router, prefix="/api/admin/novels", tags=["admin-api"])
     app.include_router(library.router, prefix="/api/admin/novels", tags=["admin-api"])
+    app.include_router(library.read_router, prefix="/api", tags=["admin-api"])
     app.include_router(library_detail.router, prefix="/api/admin/novels", tags=["admin-api"])
     app.include_router(library_actions.router, prefix="/api/admin/novels", tags=["admin-api"])
     app.add_api_route(

@@ -613,6 +613,7 @@ type AdminApi = {
   cancelOnboarding: (novelId: string) => Promise<{ novel_id: string; onboarding_status: string }>;
   listExportManifests: (novelId: RouteId) => Promise<import("./api-types").ExportManifestListResponse>;
   getLatestExportManifest: (novelId: RouteId, format: string) => Promise<import("./api-types").LatestExportResponse>;
+  librarySummary: (params?: { refresh?: boolean }) => Promise<import("./api-types").LibrarySummaryResponse>;
 };
 
 export const adminApi: AdminApi = {
@@ -763,4 +764,11 @@ export const adminApi: AdminApi = {
     request<import("./api-types").ExportManifestListResponse>(`/admin/novels/${routeId(novelId)}/exports`),
   getLatestExportManifest: (novelId: RouteId, format: string) =>
     request<import("./api-types").LatestExportResponse>(`/admin/novels/${routeId(novelId)}/exports/latest?format=${encodeURIComponent(format)}`),
+  librarySummary: (params?: { refresh?: boolean }) => {
+    const search = new URLSearchParams();
+    if (params?.refresh) search.set("refresh", "true");
+    return request<import("./api-types").LibrarySummaryResponse>(
+      appendQuery("/admin/library/summary", search)
+    );
+  },
 };

@@ -31,6 +31,29 @@ export type NovelSummary = {
   onboarding_error_code?: string | null;
   onboarding_error_message?: string | null;
   body_scrape_required?: boolean | null;
+  // Live storage-derived counts (from /api/admin/library/summary)
+  total?: number;
+  failed?: number;
+  pending?: number;
+};
+
+export type LibrarySummaryItem = {
+  novel_id: string;
+  total: number;
+  scraped: number;
+  translated: number;
+  failed: number;
+  pending: number;
+};
+
+export type LibrarySummaryResponse = {
+  generated_at: string;
+  cache: {
+    hit: boolean;
+    ttl_seconds: number;
+  };
+  totals: LibrarySummaryItem;
+  items: LibrarySummaryItem[];
 };
 
 export type NovelPublicationSummary = {

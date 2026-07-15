@@ -12,10 +12,14 @@ from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.dependencies import (
     _rate_limit,
     get_library_service,
+    get_library_summary_service,
 )
 from novelai.services.library_service import LibraryService
+from novelai.services.library_summary_service import LibrarySummaryService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
+# Read-only endpoints (no CSRF needed)
+read_router = APIRouter()
 
 
 class ChapterCheckpointFile(BaseModel):
@@ -128,3 +132,59 @@ async def delete_novel(
         service.delete_novel(novel_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+# ── Live Library summary (no CSRF) ─────────────────────────────────────
+
+
+class _NovelSummaryCountsOut(BaseModel):
+    novel_id: str
+    total: int
+    scraped: int
+    translated: int
+    failed: int
+    pending: int
+
+
+class _CacheInfoOut(BaseModel):
+    hit: bool
+    ttl_seconds: int
+
+
+class _LibrarySummaryResponse(BaseModel):
+    generated_at: str
+    cache: _CacheInfoOut
+    totals: _NovelSummaryCountsOut
+    items: list[_NovelSummaryCountsOut]
+
+
+@read_router.get("/admin/library/summary", response_model=_LibrarySummaryResponse)
+async def library_summary(
+    refresh: bool = Query(default=False),
+    service: LibrarySummaryService = Depends(get_library_summary_service),
+    _owner=Depends(require_role("owner")),
+) -> _LibrarySummaryResponse:
+    resp = service.get_summary(refresh=refresh)
+    return _LibrarySummaryResponse(
+        generated_at=resp.generated_at,
+        cache=_CacheInfoOut(hit=resp.cache["hit"], ttl_seconds=resp.cache["ttl_seconds"]),
+        totals=_NovelSummaryCountsOut(
+            novel_id=resp.totals.novel_id,
+            total=resp.totals.total,
+            scraped=resp.totals.scraped,
+            translated=resp.totals.translated,
+            failed=resp.totals.failed,
+            pending=resp.totals.pending,
+        ),
+        items=[
+            _NovelSummaryCountsOut(
+                novel_id=item.novel_id,
+                total=item.total,
+                scraped=item.scraped,
+                translated=item.translated,
+                failed=item.failed,
+                pending=item.pending,
+            )
+            for item in resp.items
+        ],
+    )

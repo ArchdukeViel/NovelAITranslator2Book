@@ -24,6 +24,8 @@ import {
   api,
   type ActivityRecord,
   type ChapterSummary,
+  type LibrarySummaryItem,
+  type LibrarySummaryResponse,
   type NovelMetadata,
   type NovelPublicationSummary,
   type NovelSummary,
@@ -33,6 +35,25 @@ type LibrarySortKey = "novel" | "source" | "listed" | "raw" | "translated" | "st
 type LibraryAction = "translate" | "recrawl" | "delete";
 
 const TRANSLATION_LANGUAGES = ["English", "Indonesian"] as const;
+
+type NovelWithSummary = NovelSummary & {
+  summary?: LibrarySummaryItem;
+  summaryError?: boolean;
+  summaryLoading?: boolean;
+};
+
+function mergeSummaryWithNovels(
+  novels: NovelSummary[],
+  summary: LibrarySummaryResponse | undefined
+): NovelWithSummary[] {
+  const summaryMap = new Map(summary?.items.map((s) => [s.novel_id, s]) ?? []);
+  return novels.map((novel) => ({
+    ...novel,
+    summary: summaryMap.get(novel.novel_id),
+    summaryError: summary === undefined,
+    summaryLoading: false,
+  }));
+}
 
 function translationState(novel: NovelSummary) {
   const total = novel.chapter_count;
@@ -63,7 +84,7 @@ function translationBadge(novel: NovelSummary) {
   return <Badge tone="neutral">Untranslated</Badge>;
 }
 
-function sortValue(novel: NovelSummary, key: LibrarySortKey) {
+function sortValue(novel: NovelWithSummary, key: LibrarySortKey) {
   if (key === "novel") {
     return `${novel.title || novel.novel_id} ${novel.author || ""}`.toLowerCase();
   }
@@ -73,15 +94,23 @@ function sortValue(novel: NovelSummary, key: LibrarySortKey) {
   }
 
   if (key === "listed") {
-    return novel.chapter_count;
+    return novel.summary?.total ?? novel.chapter_count;
   }
 
   if (key === "raw") {
-    return novel.scraped_count ?? 0;
+    return novel.summary?.scraped ?? novel.scraped_count ?? 0;
   }
 
   if (key === "translated") {
-    return novel.translated_count ?? 0;
+    return novel.summary?.translated ?? novel.translated_count ?? 0;
+  }
+
+  if (key === "failed") {
+    return novel.summary?.failed ?? 0;
+  }
+
+  if (key === "pending") {
+    return novel.summary?.pending ?? 0;
   }
 
   return translationState(novel);
@@ -130,6 +159,11 @@ export default function LibraryPage() {
   const novels = useQuery({
     queryKey: ["novels"],
     queryFn: () => api.novels(),
+  });
+
+  const summary = useQuery({
+    queryKey: ["library-summary"],
+    queryFn: () => adminApi.librarySummary({ refresh: false }),
   });
 
   const rows = Array.isArray(novels.data) ? novels.data : [];
@@ -198,19 +232,27 @@ export default function LibraryPage() {
     );
   }, [translationNovelId, translationChapters.data]);
 
+  const mergedRows = React.useMemo(() => {
+    return mergeSummaryWithNovels(rows, summary.data).map((r) => ({
+      ...r,
+      summaryLoading: summary.isLoading,
+    }));
+  }, [rows, summary.data, summary.isLoading]);
+
   const sortedRows = React.useMemo(() => {
-    return [...rows].sort((left, right) => {
+    return [...mergedRows].sort((left, right) => {
       const leftValue = sortValue(left, sortKey);
       const rightValue = sortValue(right, sortKey);
       return compareSortableValues(leftValue, rightValue, sortDirection);
     });
-  }, [rows, sortDirection, sortKey]);
+  }, [mergedRows, sortDirection, sortKey]);
 
   const allRowsSelected = rows.length > 0 && rows.every((novel) => selectedNovelIds.has(novel.novel_id));
 
   const invalidateLibrary = () => {
     void queryClient.invalidateQueries({ queryKey: ["novels"] });
     void queryClient.invalidateQueries({ queryKey: ["activity"] });
+    void queryClient.invalidateQueries({ queryKey: ["library-summary"] });
   };
 
   const runLibraryAction = useMutation({
@@ -322,6 +364,7 @@ export default function LibraryPage() {
     onSuccess: () => {
       setRetranslateStaleNovel(null);
       void queryClient.invalidateQueries({ queryKey: ["novels"] });
+      void queryClient.invalidateQueries({ queryKey: ["library-summary"] });
     },
   });
 
@@ -341,6 +384,7 @@ export default function LibraryPage() {
           ? "Published adult novels remain hidden from the default public catalog."
           : null,
       );
+      void queryClient.invalidateQueries({ queryKey: ["library-summary"] });
     },
   });
 
@@ -520,6 +564,16 @@ export default function LibraryPage() {
               <RotateCw className="h-4 w-4" />
               Refresh
             </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => summary.refetch({ throwOnError: false })}
+              disabled={summary.isFetching}
+            >
+              <RotateCw className="h-4 w-4" />
+              Refresh summary
+            </Button>
           </div>
         </PanelHeader>
 
@@ -589,6 +643,22 @@ export default function LibraryPage() {
                     className="w-44"
                   />
                   <SortableHeader
+                    label="Failed"
+                    sortKey="failed"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-28"
+                  />
+                  <SortableHeader
+                    label="Pending"
+                    sortKey="pending"
+                    activeKey={sortKey}
+                    direction={sortDirection}
+                    onSort={handleSort}
+                    className="w-28"
+                  />
+                  <SortableHeader
                     label="Status"
                     sortKey="status"
                     activeKey={sortKey}
@@ -603,11 +673,11 @@ export default function LibraryPage() {
 
               <tbody>
                 {novels.isLoading ? (
-                  <LoadingRows colSpan={9} label="Loading library..." />
+                  <LoadingRows colSpan={11} label="Loading library..." />
                 ) : novels.error ? (
-                  <EmptyState title="Failed to load novels." colSpan={9} />
+                  <EmptyState title="Failed to load novels." colSpan={11} />
                 ) : unexpectedPayload ? (
-                  <EmptyState title="Unexpected novels payload." colSpan={9} />
+                  <EmptyState title="Unexpected novels payload." colSpan={11} />
                 ) : sortedRows.length ? (
                   sortedRows.map((novel) => {
                     const sourceUrl = novel.source_url?.trim();
@@ -665,6 +735,14 @@ export default function LibraryPage() {
                               ? `${Math.round((translatedChapters / listedChapters) * 100)}% translated`
                               : "no chapter list"}
                           </div>
+                        </td>
+
+                        <td className="px-4 py-3 font-medium text-destructive">
+                          {novel.summary?.failed ?? 0}
+                        </td>
+
+                        <td className="px-4 py-3 font-medium text-amber-600 dark:text-amber-400">
+                          {novel.summary?.pending ?? 0}
                         </td>
 
                         <td className="px-4 py-3">{translationBadge(novel)}</td>

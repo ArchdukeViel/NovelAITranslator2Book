@@ -422,3 +422,28 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Tests:** 10 unit tests + 10 S3 integration tests covering prefix presence, padding, listing, exclusion, recursive deletion, boundary separation. All pass.  
 - **Verification:** `count_stored_chapters("n2056dn")` returns 9 (was 0 before the fix) against live R2.  
 - **R2 canonical note:** Object-store directories are virtual prefixes. Storage-aware code must use the storage abstraction, not `Path.exists()` or `Path.is_dir()`.
+
+### DEBT-064 — Live admin Library summary and catalog projection validation (Phase 2)
+- **Milestone:** Milestone M3 (M3a Production Hardening)
+- **Category:** Backend | Storage | Admin UI
+- **Priority:** High
+- **Status:** Resolved
+- **Affected areas:**  
+  `backend/src/novelai/services/library_summary_service.py` (new)  
+  `backend/src/novelai/api/routers/library.py` (new `/admin/library/summary` route)  
+  `backend/src/novelai/api/routers/dependencies.py`  
+  `backend/src/novelai/api/routers/novels.py`  
+  `backend/src/novelai/api/app.py` + `main_admin.py` (include the read_router)  
+  `backend/src/novelai/runtime/container.py` (library_summary dependency)  
+  `backend/src/novelai/services/library_service.py` (cache invalidation hook in `delete_novel`)  
+  `frontend/lib/api.ts` + `api-types.ts` (adminApi.librarySummary + types)  
+  `frontend/app/(admin)/admin/library/page.tsx` (Failed/Pending columns, Refresh summary, query invalidation)  
+- **Description:** Admin Library counts were sourced from stale SQL `Novel.chapter_count` and `Novel.translated_count`. Phase 2 introduces a `/admin/library/summary` endpoint that derives counts from a single recursive R2 listing pass and exposes them via React Query `["library-summary"]`. The metadata cache columns stay valid as projections, but the admin Library table no longer trusts them as authoritative.
+- **Resolution:**  
+  - Added `LibrarySummaryService` with in-process 30-second TTL cache, `refresh=true` bypass, and explicit `invalidate_library_summary_cache()` external hook.  
+  - Single `_build_inventory()` call: one recursive R2 listing, in-memory grouping per novel, then per-novel counts from the canonical chapter payload.  
+  - Cache is invalidated after `LibraryService.delete_novel` and (cross-process) via TTL refresh after every other storage-changing operation.  
+  - Frontend: `adminApi.librarySummary({refresh})`, React Query key `["library-summary"]`, `mergeSummaryWithNovels()` helper, new Failed and Pending columns, "Refresh summary" button. Storage-changing mutations invalidate both `["novels"]` and `["library-summary"]`.  
+  - Aggregate totals equal the sum of per-item counts. Formulas cannot produce negative numbers (`failed` capped at `total - scraped`, `pending = max(0, total - scraped - failed)`).  
+- **Tests:** 12 unit tests covering inventory single-pass, padded ID conversion, unrelated JSON exclusion, prefix boundaries, empty library, stale SQL not controlling scraped/translated, `total ≥ scraped/translated`, cache hit/miss/refresh/invalidate/failure-not-cached/concurrent-coalesces.  
+- **Verification:** Live R2 against `n2056dn` returns `{total:10, scraped:9, translated:0, failed:0, pending:1}` — pending=1 because the local activity queue was cleared, so no explicit failure metadata exists. Acceptable per Phase 2 fallback policy (missing metadata ⇒ pending, not failed).

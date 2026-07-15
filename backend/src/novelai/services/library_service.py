@@ -18,6 +18,7 @@ from novelai.db.models.chapter import Chapter as ChapterModel
 from novelai.db.models.glossary import NovelGlossaryEntry
 from novelai.db.models.novel import Novel
 from novelai.services.catalog_service import CatalogService
+from novelai.services.library_summary_service import invalidate_library_summary_cache
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
 
@@ -421,3 +422,4 @@ class LibraryService:
             if novel is not None:
                 self.db_session.delete(novel)
                 self.db_session.flush()
+        invalidate_library_summary_cache()

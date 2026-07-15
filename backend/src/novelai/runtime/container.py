@@ -11,6 +11,7 @@ from novelai.services.backup_service import BackupService
 from novelai.services.email import AuthEmailService, NoopAuthEmailService, SMTPAuthEmailService
 from novelai.services.export_service import ExportService
 from novelai.services.health_service import HealthService
+from novelai.services.library_summary_service import LibrarySummaryService
 from novelai.services.maintenance_service import MaintenanceService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.preferences_service import PreferencesService
@@ -49,6 +50,7 @@ class Container:
     _maintenance_service: MaintenanceService | None = None
     _scheduler_service: SchedulerService | None = None
     _health_service: HealthService | None = None
+    _library_summary: LibrarySummaryService | None = None
 
     @property
     def storage(self) -> StorageService:
@@ -232,6 +234,15 @@ class Container:
                 activity_runner=self.activity_runner,
             )
         return self._health_service
+
+    @property
+    def library_summary(self) -> LibrarySummaryService:
+        if self._library_summary is None:
+            self._library_summary = LibrarySummaryService(
+                storage=self.storage,
+                activity_log=self.activity_log,
+            )
+        return self._library_summary
 
 
 # Global singleton container used by application entrypoints.

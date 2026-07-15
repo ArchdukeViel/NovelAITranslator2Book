@@ -93,6 +93,7 @@ app.include_router(admin_taxonomy.router, prefix="/api/admin/novels", tags=["adm
 app.include_router(editor.router, prefix="/api/admin/novels", tags=["admin-api"])
 app.include_router(operations.router, prefix="/api/admin/novels", tags=["admin-api"])
 app.include_router(library.router, prefix="/api/admin/novels", tags=["admin-api"])
+app.include_router(library.read_router, prefix="/api", tags=["admin-api"])
 app.add_api_route(
     "/api/admin/novels",
     list_novels,

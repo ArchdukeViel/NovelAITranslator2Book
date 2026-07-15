@@ -21,6 +21,7 @@ from novelai.services.editor_service import EditorService
 from novelai.services.glossary_workflow_service import GlossaryWorkflowService
 from novelai.services.health_service import HealthService
 from novelai.services.library_service import LibraryService
+from novelai.services.library_summary_service import LibrarySummaryService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.novel_request_service import NovelRequestService
 from novelai.services.preferences_service import PreferencesService
@@ -225,6 +226,10 @@ def get_library_service(
     db_session: Session = Depends(get_db_session),
 ) -> LibraryService:
     return LibraryService(storage=storage, db_session=db_session)
+
+
+def get_library_summary_service() -> LibrarySummaryService:
+    return container.library_summary
 
 
 def get_editor_service(

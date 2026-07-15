@@ -17,6 +17,30 @@ calls. SQL `chapter_count` and `translated_count` are cached catalog projections
 authoritative. Authoritative counts come from `StorageService.count_stored_chapters()`
 and `StorageService.count_translated_chapters()` against R2/S3.
 
+## Live Admin Library Summary
+
+The admin summary endpoint `GET /api/admin/library/summary` (optionally `?refresh=true`)
+derives per-novel counts from a single recursive storage listing pass:
+
+- `total`: discovered chapters, from metadata `chapters` list when available,
+  else `max(scraped, translated)`. Never less than observed stored counts.
+- `scraped`: count of valid source chapter payloads (containing `raw` key) in storage.
+- `translated`: count of valid translated chapter payloads (containing `translated` key).
+  Only chapters corresponding to known source/canonical chapter IDs are included.
+- `failed`: chapter IDs explicitly recorded as failed in the latest relevant
+  crawl-result metadata, excluding any IDs that are now stored.
+- `pending`: `max(total - scraped - failed, 0)`.
+
+Backend cache: 30-second TTL, in-process, per worker. `refresh=true` bypasses.
+Process-local invalidation is performed after successful storage-changing
+operations (novel deletion, completed chapter scrape, completed translation
+mutation, manual library operations). Cross-process convergence relies on the
+TTL and explicit refresh.
+
+Missing explicit crawl-failure metadata is **not** treated as a confirmed
+failure. Pending is used instead so a missing chapter does not get
+misreported as a failure.
+
 Canonical high-volume artifacts live on the filesystem under `storage/novel_library`
 (the configured `DATA_DIR`, resolved by `StorageService`). PostgreSQL stores
 relational state and projections derived from these files.

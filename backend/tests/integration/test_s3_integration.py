@@ -153,7 +153,7 @@ class TestS3Integration:
     # ---- has_keys (logical-prefix presence) ----
 
     def test_has_keys_returns_true_with_descendants(self, s3_backend: tuple[S3Backend, str]) -> None:
-        backend, prefix = s3_backend
+        backend, _ = s3_backend
         backend.save("novels/novel-a/chapters/0001.json", b"chapter")
         backend.save("novels/novel-a/metadata.json", b"meta")
         backend.save("novels/novel-a/chapters/assets/x.txt", b"asset")
