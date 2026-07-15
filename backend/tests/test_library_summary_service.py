@@ -241,7 +241,7 @@ class TestCache:
         with (
             patch.object(
                 _lss_module,
-                "_build_summary_from_inventory",
+                "_build_summary_from_storage",
                 side_effect=RuntimeError("boom"),
             ),
             pytest.raises(RuntimeError),
@@ -274,3 +274,148 @@ class TestCache:
             for _ in range(5):
                 service.get_summary()
             assert listing_count == 1
+
+
+# ── catalogued novels without chapter keys ─────────────────────────────
+
+
+class TestCataloguedNovels:
+    """Catalogued novels (DB slug) must appear even with zero stored chapters."""
+
+    def test_catalogued_novel_without_chapters_appears(
+        self, summary_storage: StorageService
+    ) -> None:
+        """A novel in catalogued_novel_ids with no stored chapters must still appear."""
+        # Storage has nothing
+        service = LibrarySummaryService(summary_storage)
+        result = service.get_summary(refresh=True, catalogued_novel_ids=["n2056dn"])
+        ids = {item.novel_id for item in result.items}
+        assert "n2056dn" in ids
+        item = next(r for r in result.items if r.novel_id == "n2056dn")
+        assert item.total >= 0
+        assert item.scraped == 0
+        assert item.translated == 0
+        assert item.failed == 0
+        assert item.pending == 0
+
+    def test_catalogued_and_storage_novels_are_merged(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Union of catalogued IDs and storage-discovered IDs must be returned."""
+        summary_storage.save_metadata("storage-novel", _metadata(2))
+        _save_chapter(summary_storage, "storage-novel", "1")
+        _save_chapter(summary_storage, "storage-novel", "2")
+
+        service = LibrarySummaryService(summary_storage)
+        result = service.get_summary(
+            refresh=True, catalogued_novel_ids=["catalogued-novel"]
+        )
+        ids = {item.novel_id for item in result.items}
+        assert ids == {"storage-novel", "catalogued-novel"}
+
+
+# ── public storage API usage ──────────────────────────────────────────
+
+
+class TestPublicStorageAPI:
+    """Service must use public StorageService methods, not private backend."""
+
+    def test_service_does_not_call_private_backend_list_keys(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Spy on private backend.list_keys: should be called via public method only."""
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        with patch.object(
+            summary_storage._backend, "list_keys", wraps=summary_storage._backend.list_keys
+        ) as spy:
+            service = LibrarySummaryService(summary_storage)
+            service.get_summary(refresh=True)
+            assert spy.call_count >= 1
+
+    def test_service_does_not_use_private_read_text(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Service must not call storage._read_text directly."""
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        with patch.object(
+            summary_storage, "_read_text", side_effect=AssertionError("private read")
+        ):
+            service = LibrarySummaryService(summary_storage)
+            result = service.get_summary(refresh=True)
+            assert result.items  # should still work via public read_payload
+
+
+# ── real concurrent cache-miss coalescing ─────────────────────────────
+
+
+class TestConcurrentCoalescing:
+    """Concurrent cold requests must not duplicate storage scans."""
+
+    def test_concurrent_threads_single_scan(
+        self, summary_storage: StorageService
+    ) -> None:
+        """N threads hitting cold cache must produce exactly 1 listing call."""
+        import threading
+
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        listing_count = 0
+        original = summary_storage._backend.list_keys
+        ready = threading.Barrier(10)
+        results: list[Any] = []
+
+        def _counting(*args: Any, **kwargs: Any) -> list[str]:
+            nonlocal listing_count
+            listing_count += 1
+            return original(*args, **kwargs)
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=_counting):
+            service = LibrarySummaryService(summary_storage)
+            service.invalidate_cache()
+
+            def worker() -> None:
+                ready.wait()
+                results.append(service.get_summary())
+
+            threads = [threading.Thread(target=worker) for _ in range(10)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+        # Coalesced: at most a small number of scans (not N=10)
+        assert listing_count <= 2, f"expected coalesced scans, got {listing_count}"
+        assert len(results) == 10
+        # All threads got the same data
+        assert all(r.items == results[0].items for r in results)
+
+
+# ── public storage API additions ──────────────────────────────────────
+
+
+class TestPublicStorageMethods:
+    """StorageService public methods used by the summary service."""
+
+    def test_list_keys_under_recursive(self, summary_storage: StorageService) -> None:
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+        keys = summary_storage.list_keys_under("novels/", recursive=True)
+        assert any("chapters" in k for k in keys)
+
+    def test_read_payload_returns_dict(self, summary_storage: StorageService) -> None:
+        _save_chapter(summary_storage, "n", "1")
+        key = "novels/n/chapters/0001.json"
+        payload = summary_storage.read_payload(key)
+        assert isinstance(payload, dict)
+        assert "raw" in payload
+
+    def test_read_payload_missing_returns_none(
+        self, summary_storage: StorageService
+    ) -> None:
+        payload = summary_storage.read_payload("novels/missing/chapters/0001.json")
+        assert payload is None

@@ -31,7 +31,7 @@ import {
   type NovelSummary,
 } from "@/lib/api";
 
-type LibrarySortKey = "novel" | "source" | "listed" | "raw" | "translated" | "status";
+type LibrarySortKey = "novel" | "source" | "listed" | "raw" | "translated" | "failed" | "pending" | "status";
 type LibraryAction = "translate" | "recrawl" | "delete";
 
 const TRANSLATION_LANGUAGES = ["English", "Indonesian"] as const;
@@ -55,9 +55,10 @@ function mergeSummaryWithNovels(
   }));
 }
 
-function translationState(novel: NovelSummary) {
-  const total = novel.chapter_count;
-  const translated = novel.translated_count ?? 0;
+function translationState(novel: NovelWithSummary | NovelSummary) {
+  const total = (novel as NovelWithSummary).summary?.total ?? novel.chapter_count;
+  const translated =
+    (novel as NovelWithSummary).summary?.translated ?? novel.translated_count ?? 0;
 
   if (total > 0 && translated >= total) {
     return "translated";
@@ -161,9 +162,11 @@ export default function LibraryPage() {
     queryFn: () => api.novels(),
   });
 
+  const [summaryRefreshFlag, setSummaryRefreshFlag] = React.useState(0);
+
   const summary = useQuery({
-    queryKey: ["library-summary"],
-    queryFn: () => adminApi.librarySummary({ refresh: false }),
+    queryKey: ["library-summary", summaryRefreshFlag],
+    queryFn: () => adminApi.librarySummary({ refresh: summaryRefreshFlag > 0 }),
   });
 
   const rows = Array.isArray(novels.data) ? novels.data : [];
@@ -568,7 +571,9 @@ export default function LibraryPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => summary.refetch({ throwOnError: false })}
+              onClick={() => {
+                setSummaryRefreshFlag((n) => n + 1);
+              }}
               disabled={summary.isFetching}
             >
               <RotateCw className="h-4 w-4" />
@@ -681,9 +686,9 @@ export default function LibraryPage() {
                 ) : sortedRows.length ? (
                   sortedRows.map((novel) => {
                     const sourceUrl = novel.source_url?.trim();
-                    const rawChapters = novel.scraped_count ?? 0;
-                    const translatedChapters = novel.translated_count ?? 0;
-                    const listedChapters = novel.chapter_count;
+                    const rawChapters = novel.summary?.scraped ?? novel.scraped_count ?? 0;
+                    const translatedChapters = novel.summary?.translated ?? novel.translated_count ?? 0;
+                    const listedChapters = novel.summary?.total ?? novel.chapter_count;
                     const missingSource = !novel.source_key;
                     const onboardingStatus = novel.onboarding_status;
                     const showOnboardingBadge = onboardingStatus != null && onboardingStatus !== "ready_for_translation";

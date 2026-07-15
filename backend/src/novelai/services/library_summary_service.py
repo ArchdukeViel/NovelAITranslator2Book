@@ -1,16 +1,16 @@
 """Live admin Library summary service.
 
 Counts are derived from canonical R2/S3 storage, not from SQL catalog
-projections.  Uses a single recursive listing pass per uncached refresh
-and an in-process 30-second TTL cache.
+projections.  Uses a single recursive listing pass per uncached refresh,
+an in-process 30-second TTL cache, and coalesced concurrent cache-miss
+handling.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -21,12 +21,11 @@ logger = logging.getLogger(__name__)
 
 _CACHE_TTL_SECONDS = 30
 
-# ── data types ─────────────────────────────────────────────────────────
+NOVELS_PREFIX = "novels/"
 
 
 @dataclass(frozen=True)
 class NovelSummaryCounts:
-    """Live storage-derived counts for one novel."""
     novel_id: str
     total: int = 0
     scraped: int = 0
@@ -37,7 +36,6 @@ class NovelSummaryCounts:
 
 @dataclass(frozen=True)
 class SummaryResponse:
-    """Complete summary response payload."""
     generated_at: str
     cache: dict[str, Any]
     totals: NovelSummaryCounts
@@ -46,26 +44,15 @@ class SummaryResponse:
 
 @dataclass
 class _CacheEntry:
-    """Internal cache entry with expiry."""
     data: SummaryResponse
     expires_at: float
 
 
-# ── storage helpers ────────────────────────────────────────────────────
-
-NOVELS_PREFIX = "novels/"
-
-
 def _is_chapter_key(key: str) -> bool:
-    """Return True when *key* looks like a novel chapter file."""
     return key.endswith(".json") and "/chapters/" in key
 
 
 def _logical_id(stem: str) -> str:
-    """Convert physical stem to logical chapter ID.
-
-    ``0001`` (zero-padded) → ``1``, ``abc`` → ``abc``.
-    """
     try:
         return str(int(stem))
     except (ValueError, TypeError):
@@ -73,10 +60,6 @@ def _logical_id(stem: str) -> str:
 
 
 def _parse_novel_id_from_key(key: str, novels_prefix: str) -> str | None:
-    """Extract the novel folder name (the first path segment after novels/).
-
-    Returns ``None`` for keys directly under ``novels/`` with no subfolder.
-    """
     rest = key[len(novels_prefix):]
     if "/" not in rest:
         return None
@@ -86,80 +69,16 @@ def _parse_novel_id_from_key(key: str, novels_prefix: str) -> str | None:
     return folder
 
 
-def _is_translated_bundle(key: str, storage: StorageService) -> bool:
-    """Return True when *key* contains a translated chapter payload.
+def _utc_now_iso() -> str:
+    from datetime import UTC, datetime
 
-    Reads the file to check for ``translated`` key.  This is called
-    only for keys that already passed ``_is_chapter_key``.
-    """
-    try:
-        payload = json.loads(storage._read_text(storage.base_dir / key))
-    except (json.JSONDecodeError, OSError):
-        return False
-    return isinstance(payload, dict) and isinstance(payload.get("translated"), dict)
-
-
-def _has_raw_payload(key: str, storage: StorageService) -> bool:
-    """Return True when *key* contains a source (raw) chapter payload."""
-    try:
-        payload = json.loads(storage._read_text(storage.base_dir / key))
-    except (json.JSONDecodeError, OSError):
-        return False
-    return isinstance(payload, dict) and isinstance(payload.get("raw"), dict)
-
-
-# ── inventory builder ──────────────────────────────────────────────────
-
-
-@dataclass
-class _NovelInventory:
-    """In-memory storage inventory for one novel."""
-    chapter_ids: set[str] = field(default_factory=set)
-    translated_ids: set[str] = field(default_factory=set)
-    raw_ids: set[str] = field(default_factory=set)
-
-
-def _build_inventory(storage: StorageService) -> dict[str, _NovelInventory]:
-    """Single-pass storage inventory for all novels.
-
-    Lists all keys under the ``novels/`` prefix recursively (one
-    paginated remote call), groups by novel folder, and classifies each
-    valid chapter key.
-    """
-    all_keys = storage._backend.list_keys(NOVELS_PREFIX, recursive=True)
-    inventory: dict[str, _NovelInventory] = {}
-
-    for key in all_keys:
-        if not _is_chapter_key(key):
-            continue
-        folder = _parse_novel_id_from_key(key, NOVELS_PREFIX)
-        if folder is None:
-            continue
-        stem = Path(key).stem
-        logical = _logical_id(stem)
-        entry = inventory.setdefault(folder, _NovelInventory())
-        entry.chapter_ids.add(logical)
-
-        if _is_translated_bundle(key, storage):
-            entry.translated_ids.add(logical)
-        if _has_raw_payload(key, storage):
-            entry.raw_ids.add(logical)
-
-    return inventory
-
-
-# ── failure metadata resolver ──────────────────────────────────────────
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _get_failed_ids(
     novel_id: str,
     activity_log: Any | None,
 ) -> set[str]:
-    """Return chapter IDs that are explicitly failed in the latest crawl.
-
-    Returns an empty set when no activity log is available or when the
-    latest crawl result has no failure records.
-    """
     if activity_log is None:
         return set()
     try:
@@ -194,36 +113,46 @@ def _get_failed_ids(
     return set()
 
 
-# ── summary builder ────────────────────────────────────────────────────
-
-
-def _utc_now_iso() -> str:
-    from datetime import UTC, datetime
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
-def _build_summary_from_inventory(
+def _build_summary_from_storage(
     storage: StorageService,
     activity_log: Any | None,
+    catalogued_novel_ids: list[str],
 ) -> SummaryResponse:
-    """Build a complete summary from the canonical storage inventory."""
-    inventory = _build_inventory(storage)
+    all_keys = storage.list_keys_under(NOVELS_PREFIX, recursive=True)
 
-    # Union of inventory-discovered novel ids (single pass already done above)
-    all_ids = sorted(inventory.keys())
+    inventory: dict[str, dict[str, set[str]]] = {}
+
+    for key in all_keys:
+        if not _is_chapter_key(key):
+            continue
+        folder = _parse_novel_id_from_key(key, NOVELS_PREFIX)
+        if folder is None:
+            continue
+        stem = Path(key).stem
+        logical = _logical_id(stem)
+        if folder not in inventory:
+            inventory[folder] = {"chapter_ids": set(), "translated_ids": set(), "raw_ids": set()}
+        inv = inventory[folder]
+        inv["chapter_ids"].add(logical)
+
+        payload = storage.read_payload(key)
+        if payload is not None:
+            if isinstance(payload.get("translated"), dict):
+                inv["translated_ids"].add(logical)
+            if isinstance(payload.get("raw"), dict):
+                inv["raw_ids"].add(logical)
+
+    all_novel_ids: set[str] = set(catalogued_novel_ids)
+    all_novel_ids.update(inventory.keys())
 
     items: list[NovelSummaryCounts] = []
     agg_total = agg_scraped = agg_translated = agg_failed = agg_pending = 0
 
-    for novel_id in all_ids:
-        inv = inventory.get(novel_id, _NovelInventory())
-        scraped = len(inv.raw_ids)
-        translated = len(inv.translated_ids)
+    for novel_id in sorted(all_novel_ids):
+        inv = inventory.get(novel_id, {"chapter_ids": set(), "translated_ids": set(), "raw_ids": set()})
+        scraped = len(inv["raw_ids"])
+        translated = len(inv["translated_ids"])
 
-        # total: chapter_count from metadata if available, else max observed
-        # We do NOT call an additional storage listing for this — load_metadata
-        # is one read per novel, but if metadata is unavailable we fall back to
-        # the in-memory inventory counts.
         try:
             meta = storage.load_metadata(novel_id)
         except Exception:
@@ -237,10 +166,9 @@ def _build_summary_from_inventory(
             total = max(scraped, translated, 0)
         total = max(total, scraped, translated)
 
-        # failed: explicit failures from latest crawl
         failed_ids = _get_failed_ids(novel_id, activity_log)
-        failed = sum(1 for cid in failed_ids if cid not in inv.raw_ids)
-        failed = min(failed, total - scraped)
+        failed = sum(1 for cid in failed_ids if cid not in inv["raw_ids"])
+        failed = min(failed, max(0, total - scraped))
         pending = max(0, total - scraped - failed)
 
         cnt = NovelSummaryCounts(
@@ -274,16 +202,7 @@ def _build_summary_from_inventory(
     )
 
 
-# ── service ────────────────────────────────────────────────────────────
-
-
 class LibrarySummaryService:
-    """Live admin Library summary with in-process 30-second TTL cache.
-
-    The summary is rebuilt from canonical storage (R2) on cache miss or
-    explicit refresh.  A single recursive listing pass covers all novels.
-    """
-
     def __init__(
         self,
         storage: StorageService,
@@ -293,59 +212,64 @@ class LibrarySummaryService:
         self._activity_log = activity_log
         self._cache: _CacheEntry | None = None
         self._lock = Lock()
+        self._refresh_lock = Lock()
+        self._building = False
 
-    def get_summary(self, *, refresh: bool = False) -> SummaryResponse:
-        """Return the library summary, using cache when possible.
-
-        When *refresh* is True the cache is bypassed and replaced.
-        """
+    def get_summary(
+        self,
+        *,
+        refresh: bool = False,
+        catalogued_novel_ids: list[str] | None = None,
+    ) -> SummaryResponse:
         now = time.monotonic()
 
-        # Fast path: cache hit (not expired, not refresh)
         if not refresh:
             with self._lock:
                 cached = self._cache
                 if cached is not None and cached.expires_at > now:
                     resp = cached.data
-                    # Return a copy with cache.hit=True so callers see hit info
-                    hit_resp = SummaryResponse(
+                    return SummaryResponse(
                         generated_at=resp.generated_at,
                         cache={"hit": True, "ttl_seconds": _CACHE_TTL_SECONDS},
                         totals=resp.totals,
                         items=resp.items,
                     )
-                    return hit_resp
 
-        # Slow path: rebuild
-        try:
-            data = _build_summary_from_inventory(self._storage, self._activity_log)
-        except Exception:
-            logger.exception("Failed to build library summary")
-            raise
+        with self._refresh_lock:
+            with self._lock:
+                cached = self._cache
+                if cached is not None and cached.expires_at > now and not refresh:
+                    resp = cached.data
+                    return SummaryResponse(
+                        generated_at=resp.generated_at,
+                        cache={"hit": True, "ttl_seconds": _CACHE_TTL_SECONDS},
+                        totals=resp.totals,
+                        items=resp.items,
+                    )
 
-        with self._lock:
-            self._cache = _CacheEntry(
-                data=data,
-                expires_at=now + _CACHE_TTL_SECONDS,
-            )
-        return data
+            try:
+                data = _build_summary_from_storage(
+                    self._storage,
+                    self._activity_log,
+                    catalogued_novel_ids or [],
+                )
+            except Exception:
+                logger.exception("Failed to build library summary")
+                raise
+
+            with self._lock:
+                self._cache = _CacheEntry(
+                    data=data,
+                    expires_at=now + _CACHE_TTL_SECONDS,
+                )
+            return data
 
     def invalidate_cache(self) -> None:
-        """Clear the in-process cache.
-
-        Call after any storage-changing operation that would make the
-        cached summary stale.
-        """
         with self._lock:
             self._cache = None
 
 
 def invalidate_library_summary_cache() -> None:
-    """Module-level cache invalidation for external callers.
-
-    Uses the runtime container singleton. Safe to call even if the
-    service is not yet initialized (no-op in that case).
-    """
     from novelai.runtime.container import container
 
     if hasattr(container, "library_summary"):

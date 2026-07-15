@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from novelai.db.engine import session_scope
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
+from novelai.services.library_summary_service import invalidate_library_summary_cache
 from novelai.services.taxonomy_persistence import persist_taxonomy_assignments
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
@@ -347,6 +348,7 @@ class CatalogService:
         chapter.raw_status = "fetched"
         self._session.add(chapter)
         self.recompute_catalog_projection(novel_id, novel=novel)
+        invalidate_library_summary_cache()
         return chapter
 
     def save_translated_chapter(
@@ -384,6 +386,7 @@ class CatalogService:
         chapter.translation_status = "translated"
         self._session.add(chapter)
         self.recompute_catalog_projection(novel_id, novel=novel)
+        invalidate_library_summary_cache()
         return chapter
 
     def recompute_catalog_projection(

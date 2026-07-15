@@ -371,6 +371,32 @@ class StorageService:
         for key in self._backend.list_keys(prefix, recursive=True):
             self._backend.delete(key)
 
+    def list_keys_under(self, prefix: str | Path, *, recursive: bool = True) -> list[str]:
+        """Public: list all keys under *prefix* (recursive by default).
+
+        Returns backend-relative keys (e.g. ``novels/my-novel/chapters/0001.json``).
+        """
+        key = str(prefix)
+        if key and not key.endswith("/"):
+            key = key + "/"
+        return self._backend.list_keys(key, recursive=recursive)
+
+    def read_payload(self, key: str) -> dict[str, Any] | None:
+        """Public: read and JSON-decode a single object.
+
+        Returns ``None`` when the object is missing, unreadable, or not a
+        JSON object.  Never raises.
+        """
+        try:
+            raw = self._backend.load(key)
+        except (FileNotFoundError, OSError):
+            return None
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+        return data if isinstance(data, dict) else None
+
     def runtime_path(self, *parts: str) -> Path:
         """Resolve path under runtime/ via storage base_dir.
 
