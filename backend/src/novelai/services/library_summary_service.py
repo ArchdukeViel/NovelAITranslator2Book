@@ -2,17 +2,18 @@
 
 Counts are derived from canonical R2/S3 storage, not from SQL catalog
 projections.  Uses a single recursive listing pass per uncached refresh,
-an in-process 30-second TTL cache, and coalesced concurrent cache-miss
-handling.
+an in-process 30-second TTL cache, and true single-flight concurrency
+for cold, expired, and forced refreshes.
 """
 
 from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
-from threading import Lock
+from pathlib import PurePosixPath
+from threading import Condition, Lock
 from typing import Any
 
 from novelai.storage.service import StorageService
@@ -35,28 +36,25 @@ class NovelSummaryCounts:
 
 
 @dataclass(frozen=True)
+class _CachedSummary:
+    """Immutable cached summary with catalog identity."""
+    generated_at: str
+    totals: NovelSummaryCounts
+    items: tuple[NovelSummaryCounts, ...]
+    catalog_identity: tuple[str, ...]
+
+
+@dataclass
 class SummaryResponse:
+    """Outward response with caller-specific cache metadata."""
     generated_at: str
     cache: dict[str, Any]
     totals: NovelSummaryCounts
     items: list[NovelSummaryCounts]
 
 
-@dataclass
-class _CacheEntry:
-    data: SummaryResponse
-    expires_at: float
-
-
 def _is_chapter_key(key: str) -> bool:
     return key.endswith(".json") and "/chapters/" in key
-
-
-def _logical_id(stem: str) -> str:
-    try:
-        return str(int(stem))
-    except (ValueError, TypeError):
-        return stem
 
 
 def _parse_novel_id_from_key(key: str, novels_prefix: str) -> str | None:
@@ -71,7 +69,6 @@ def _parse_novel_id_from_key(key: str, novels_prefix: str) -> str | None:
 
 def _utc_now_iso() -> str:
     from datetime import UTC, datetime
-
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
@@ -117,7 +114,8 @@ def _build_summary_from_storage(
     storage: StorageService,
     activity_log: Any | None,
     catalogued_novel_ids: list[str],
-) -> SummaryResponse:
+) -> tuple[_CachedSummary, SummaryResponse]:
+    """Build immutable cached summary and outward response."""
     all_keys = storage.list_keys_under(NOVELS_PREFIX, recursive=True)
 
     inventory: dict[str, dict[str, set[str]]] = {}
@@ -128,8 +126,8 @@ def _build_summary_from_storage(
         folder = _parse_novel_id_from_key(key, NOVELS_PREFIX)
         if folder is None:
             continue
-        stem = Path(key).stem
-        logical = _logical_id(stem)
+        stem = PurePosixPath(key).stem
+        logical = storage._logical_id_from_stem(stem)
         if folder not in inventory:
             inventory[folder] = {"chapter_ids": set(), "translated_ids": set(), "raw_ids": set()}
         inv = inventory[folder]
@@ -194,12 +192,23 @@ def _build_summary_from_storage(
         failed=agg_failed,
         pending=agg_pending,
     )
-    return SummaryResponse(
-        generated_at=_utc_now_iso(),
+    generated_at = _utc_now_iso()
+
+    catalog_identity = tuple(sorted(set(catalogued_novel_ids)))
+    cached = _CachedSummary(
+        generated_at=generated_at,
+        totals=totals,
+        items=tuple(items),
+        catalog_identity=catalog_identity,
+    )
+
+    response = SummaryResponse(
+        generated_at=generated_at,
         cache={"hit": False, "ttl_seconds": _CACHE_TTL_SECONDS},
         totals=totals,
-        items=items,
+        items=list(items),
     )
+    return cached, response
 
 
 class LibrarySummaryService:
@@ -207,13 +216,19 @@ class LibrarySummaryService:
         self,
         storage: StorageService,
         activity_log: Any | None = None,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self._storage = storage
         self._activity_log = activity_log
-        self._cache: _CacheEntry | None = None
+        self._clock = clock or time.monotonic
+        self._cache: _CachedSummary | None = None
+        self._expires_at: float = 0.0
         self._lock = Lock()
-        self._refresh_lock = Lock()
-        self._building = False
+        self._cond = Condition(self._lock)
+        self._build_gen = 0
+        self._in_flight_gen: int | None = None
+        self._in_flight_result: tuple[_CachedSummary, SummaryResponse] | None = None
+        self._in_flight_error: BaseException | None = None
 
     def get_summary(
         self,
@@ -221,52 +236,102 @@ class LibrarySummaryService:
         refresh: bool = False,
         catalogued_novel_ids: list[str] | None = None,
     ) -> SummaryResponse:
-        now = time.monotonic()
+        catalogued = tuple(sorted(set(catalogued_novel_ids or [])))
+        now = self._clock()
 
-        if not refresh:
-            with self._lock:
-                cached = self._cache
-                if cached is not None and cached.expires_at > now:
-                    resp = cached.data
+        with self._cond:
+            # Fast path: cache hit with matching identity
+            if not refresh and self._cache is not None and self._expires_at > now:
+                if self._cache.catalog_identity == catalogued:
+                    cached = self._cache
                     return SummaryResponse(
-                        generated_at=resp.generated_at,
+                        generated_at=cached.generated_at,
                         cache={"hit": True, "ttl_seconds": _CACHE_TTL_SECONDS},
-                        totals=resp.totals,
-                        items=resp.items,
+                        totals=cached.totals,
+                        items=list(cached.items),
                     )
 
-        with self._refresh_lock:
-            with self._lock:
-                cached = self._cache
-                if cached is not None and cached.expires_at > now and not refresh:
-                    resp = cached.data
-                    return SummaryResponse(
-                        generated_at=resp.generated_at,
-                        cache={"hit": True, "ttl_seconds": _CACHE_TTL_SECONDS},
-                        totals=resp.totals,
-                        items=resp.items,
+        # Need to build or refresh - use single-flight with generation tracking
+        while True:
+            with self._cond:
+                # Re-check under lock after any wait
+                if not refresh and self._cache is not None and self._expires_at > now:
+                    if self._cache.catalog_identity == catalogued:
+                        cached = self._cache
+                        return SummaryResponse(
+                            generated_at=cached.generated_at,
+                            cache={"hit": True, "ttl_seconds": _CACHE_TTL_SECONDS},
+                            totals=cached.totals,
+                            items=list(cached.items),
+                        )
+
+                # Check if a build is in flight - keep lock held!
+                if self._in_flight_gen is not None:
+                    # Build in progress - decide our generation
+                    if refresh:
+                        # Forced refresh: wait for current generation, then start new one
+                        my_gen = self._build_gen + 1
+                        # Don't set _in_flight_gen yet - we'll do it after waiting
+                        wait_for_gen = self._in_flight_gen
+                    else:
+                        # Normal miss: wait for current in-flight build
+                        my_gen = self._in_flight_gen
+                        wait_for_gen = self._in_flight_gen
+                else:
+                    # No build in flight - we become the builder ATOMICALLY
+                    self._build_gen += 1
+                    my_gen = self._build_gen
+                    self._in_flight_gen = my_gen
+                    self._in_flight_result = None
+                    self._in_flight_error = None
+                    wait_for_gen = None
+
+            # If we're the builder, do the build outside the lock
+            if wait_for_gen is None:
+                try:
+                    cached, response = _build_summary_from_storage(
+                        self._storage,
+                        self._activity_log,
+                        list(catalogued),
                     )
+                    with self._cond:
+                        self._in_flight_result = (cached, response)
+                        self._in_flight_error = None
+                except BaseException as exc:
+                    with self._cond:
+                        self._in_flight_error = exc
+                    raise
+                finally:
+                    with self._cond:
+                        self._in_flight_gen = None
+                        self._cond.notify_all()
+                cached, data = cached, response
+            else:
+                # Wait for the in-flight build to complete
+                with self._cond:
+                    while self._in_flight_gen is not None and self._in_flight_gen != wait_for_gen:
+                        self._cond.wait()
+                    # Check if our waited-for generation completed
+                    if (self._in_flight_gen == wait_for_gen
+                            and self._in_flight_result is not None):
+                        if self._in_flight_error is not None:
+                            raise self._in_flight_error
+                        cached, data = self._in_flight_result
+                    else:
+                        # Another generation started, or result not ready yet
+                        now = self._clock()  # Update now for re-check
+                        continue
 
-            try:
-                data = _build_summary_from_storage(
-                    self._storage,
-                    self._activity_log,
-                    catalogued_novel_ids or [],
-                )
-            except Exception:
-                logger.exception("Failed to build library summary")
-                raise
-
-            with self._lock:
-                self._cache = _CacheEntry(
-                    data=data,
-                    expires_at=now + _CACHE_TTL_SECONDS,
-                )
+            # Store in cache with expiry from completion time
+            with self._cond:
+                self._cache = cached
+                self._expires_at = self._clock() + _CACHE_TTL_SECONDS
             return data
 
     def invalidate_cache(self) -> None:
-        with self._lock:
+        with self._cond:
             self._cache = None
+            self._expires_at = 0.0
 
 
 def invalidate_library_summary_cache() -> None:

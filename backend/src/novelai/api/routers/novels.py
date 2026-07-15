@@ -36,7 +36,6 @@ router.include_router(admin.router)
 router.include_router(editor.router)
 router.include_router(operations.router)
 router.include_router(library.router)
-router.include_router(library.read_router)
 router.include_router(library_detail.router)
 router.include_router(library_actions.router)
 
