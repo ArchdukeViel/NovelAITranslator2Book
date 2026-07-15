@@ -6,6 +6,7 @@ CRUD, candidates, provider, and suggestion endpoints are in other split files.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -36,6 +37,9 @@ from novelai.services.glossary_apply_preview import (
 from novelai.services.glossary_apply_preview import (
     GlossaryApplyPreviewService,
 )
+from novelai.services.library_summary_service import invalidate_library_summary_cache
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
@@ -293,6 +297,11 @@ async def activate_chapter_version(
     """Activate a specific translation version for a chapter."""
     try:
         storage.activate_translated_chapter_version(novel_id, chapter_id, version_id)
+        # Invalidate library summary cache after successful activation
+        try:
+            invalidate_library_summary_cache()
+        except Exception:
+            logger.debug("Library summary cache invalidation failed (non-fatal)", exc_info=True)
         return ChapterVersionActivateResponse(
             novel_id=novel_id,
             chapter_storage_id=chapter_id,

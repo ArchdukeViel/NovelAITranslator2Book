@@ -14,6 +14,7 @@ from novelai.glossary import extract_candidate_glossary_terms
 from novelai.prompts import METADATA_TRANSLATION_PROMPT_VERSION
 from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.services.glossary_repository import GlossaryRepository
+from novelai.services.library_summary_service import invalidate_library_summary_cache
 from novelai.sources.quality import (
     chapter_content_hash,
     evaluate_chapter_quality,
@@ -517,6 +518,11 @@ async def _scrape_chapters_impl(
                 self.storage,
                 context="scrape_chapter",
             )
+            # Invalidate library summary cache after successful storage write
+            try:
+                invalidate_library_summary_cache()
+            except Exception:
+                logger.debug("Library summary cache invalidation failed (non-fatal)", exc_info=True)
             if progress_callback:
                 progress_callback(f"  Saved chapter {chapter_id}.")
             if any(img.get("download_error") for img in downloaded_images):

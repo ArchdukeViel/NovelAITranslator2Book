@@ -1315,24 +1315,22 @@ class TestListDetail:
         assert resp.status_code == 200
         data = resp.json()
 
-        assert data == [
-            {
-                "novel_id": "n0813kx",
-                "title": "n0813kx",
-                "source_title": None,
-                "author": None,
-                "source": None,
-                "source_url": None,
-                "publication_status": "unknown",
-                "chapter_count": 1,
-                "scraped_count": 1,
-                "translated_count": 0,
-                "is_published": False,
-                "latest_chapter_id": None,
-                "latest_chapter_number": None,
-                "latest_chapter_title": None,
-            }
-        ]
+        assert len(data) == 1
+        novel = data[0]
+        assert novel["novel_id"] == "n0813kx"
+        assert novel["title"] == "n0813kx"
+        assert novel["source_title"] is None
+        assert novel["author"] is None
+        assert novel["source_key"] is None
+        assert novel["source_url"] is None
+        assert novel["publication_status"] == "unknown"
+        assert novel["chapter_count"] == 1
+        assert novel["scraped_count"] == 1
+        assert novel["translated_count"] == 0
+        assert novel["is_published"] is False
+        assert novel["latest_chapter_id"] is None
+        assert novel["latest_chapter_number"] is None
+        assert novel["latest_chapter_title"] is None
 
     def test_get_novel(self, seeded_client: TestClient) -> None:
         resp = seeded_client.get("/novels/test-n1")
@@ -2255,7 +2253,7 @@ class TestAdminNovelPublish:
             translated_count=0,
             is_published=False,
         )
-        c = _make_app(storage, db_session=isolated_db_session)
+        c = _make_app(storage, session_user=OWNER_USER, db_session=isolated_db_session)
 
         before_catalog = c.get("/api/public/catalog").json()
         resp = c.post("/api/admin/novels/publish-n1/publish", headers=_csrf_headers(c))

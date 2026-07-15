@@ -42,23 +42,27 @@ type NovelWithSummary = NovelSummary & {
   summaryLoading?: boolean;
 };
 
-function mergeSummaryWithNovels(
-  novels: NovelSummary[],
-  summary: LibrarySummaryResponse | undefined
-): NovelWithSummary[] {
-  const summaryMap = new Map(summary?.items.map((s) => [s.novel_id, s]) ?? []);
-  return novels.map((novel) => ({
-    ...novel,
-    summary: summaryMap.get(novel.novel_id),
-    summaryError: summary === undefined,
-    summaryLoading: false,
-  }));
+type SummaryAvailability =
+  | { state: "loading" }
+  | { state: "ready"; value: LibrarySummaryItem }
+  | { state: "unavailable" };
+
+function getSummary(novel: NovelWithSummary): SummaryAvailability {
+  if (novel.summaryLoading) {
+    return { state: "loading" };
+  }
+  if (novel.summaryError || novel.summary === undefined) {
+    return { state: "unavailable" };
+  }
+  return { state: "ready", value: novel.summary };
 }
 
-function translationState(novel: NovelWithSummary | NovelSummary) {
-  const total = (novel as NovelWithSummary).summary?.total ?? novel.chapter_count;
-  const translated =
-    (novel as NovelWithSummary).summary?.translated ?? novel.translated_count ?? 0;
+function translationState(novel: NovelWithSummary) {
+  const summary = getSummary(novel);
+  if (summary.state !== "ready") {
+    return "unavailable";
+  }
+  const { total, translated } = summary.value;
 
   if (total > 0 && translated >= total) {
     return "translated";
@@ -71,7 +75,7 @@ function translationState(novel: NovelWithSummary | NovelSummary) {
   return "untranslated";
 }
 
-function translationBadge(novel: NovelSummary) {
+function translationBadge(novel: NovelWithSummary) {
   const state = translationState(novel);
 
   if (state === "translated") {
@@ -82,7 +86,30 @@ function translationBadge(novel: NovelSummary) {
     return <Badge tone="amber">Partial</Badge>;
   }
 
+  if (state === "unavailable") {
+    return <Badge tone="neutral">Unavailable</Badge>;
+  }
+
   return <Badge tone="neutral">Untranslated</Badge>;
+}
+
+function getCount(novel: NovelWithSummary, field: keyof LibrarySummaryItem): number | null {
+  const summary = getSummary(novel);
+  if (summary.state !== "ready") {
+    return null;
+  }
+  return summary.value[field] as number;
+}
+
+function formatCount(count: number | null): string {
+  return count === null ? "—" : String(count);
+}
+
+function formatPercent(numerator: number | null, denominator: number | null): string {
+  if (numerator === null || denominator === null || denominator === 0) {
+    return "—";
+  }
+  return `${Math.round((numerator / denominator) * 100)}%`;
 }
 
 function sortValue(novel: NovelWithSummary, key: LibrarySortKey) {
@@ -94,27 +121,32 @@ function sortValue(novel: NovelWithSummary, key: LibrarySortKey) {
     return `${novel.source_key || ""} ${novel.source_url || ""}`.toLowerCase();
   }
 
+  const summary = getSummary(novel);
+  if (summary.state !== "ready") {
+    return -1;
+  }
+
   if (key === "listed") {
-    return novel.summary?.total ?? novel.chapter_count;
+    return summary.value.total;
   }
 
   if (key === "raw") {
-    return novel.summary?.scraped ?? novel.scraped_count ?? 0;
+    return summary.value.scraped;
   }
 
   if (key === "translated") {
-    return novel.summary?.translated ?? novel.translated_count ?? 0;
+    return summary.value.translated;
   }
 
   if (key === "failed") {
-    return novel.summary?.failed ?? 0;
+    return summary.value.failed;
   }
 
   if (key === "pending") {
-    return novel.summary?.pending ?? 0;
+    return summary.value.pending;
   }
 
-  return translationState(novel);
+  return summary.state;
 }
 
 function metadataText(metadata: NovelMetadata | undefined, key: string) {
@@ -162,11 +194,16 @@ export default function LibraryPage() {
     queryFn: () => api.novels(),
   });
 
-  const [summaryRefreshFlag, setSummaryRefreshFlag] = React.useState(0);
-
   const summary = useQuery({
-    queryKey: ["library-summary", summaryRefreshFlag],
-    queryFn: () => adminApi.librarySummary({ refresh: summaryRefreshFlag > 0 }),
+    queryKey: ["library-summary"],
+    queryFn: () => adminApi.librarySummary({ refresh: false }),
+  });
+
+  const refreshSummary = useMutation({
+    mutationFn: () => adminApi.librarySummary({ refresh: true }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["library-summary"], data);
+    },
   });
 
   const rows = Array.isArray(novels.data) ? novels.data : [];
@@ -236,11 +273,16 @@ export default function LibraryPage() {
   }, [translationNovelId, translationChapters.data]);
 
   const mergedRows = React.useMemo(() => {
-    return mergeSummaryWithNovels(rows, summary.data).map((r) => ({
-      ...r,
-      summaryLoading: summary.isLoading,
-    }));
-  }, [rows, summary.data, summary.isLoading]);
+    return rows.map((novel) => {
+      const summaryAvailability = getSummary(novel);
+      return {
+        ...novel,
+        summaryLoading: summaryAvailability.state === "loading",
+        summaryError: summaryAvailability.state === "unavailable",
+        summary: summaryAvailability.state === "ready" ? summaryAvailability.value : undefined,
+      };
+    });
+  }, [rows]);
 
   const sortedRows = React.useMemo(() => {
     return [...mergedRows].sort((left, right) => {
@@ -571,13 +613,11 @@ export default function LibraryPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                setSummaryRefreshFlag((n) => n + 1);
-              }}
-              disabled={summary.isFetching}
+              onClick={() => refreshSummary.mutate()}
+              disabled={refreshSummary.isPending}
             >
               <RotateCw className="h-4 w-4" />
-              Refresh summary
+              {refreshSummary.isPending ? "Refreshing…" : "Refresh summary"}
             </Button>
           </div>
         </PanelHeader>
@@ -587,6 +627,26 @@ export default function LibraryPage() {
         <ErrorBanner error={resumeOnboarding.error} fallback="Failed to resume onboarding." />
         <ErrorBanner error={cancelOnboarding.error} fallback="Failed to cancel onboarding." />
         <ErrorBanner error={novels.error} fallback="Failed to load novels." />
+        {summary.error && !summary.isFetching && (
+          <ErrorBanner
+            error={summary.error}
+            fallback="Failed to load library summary. Live storage counts unavailable."
+          />
+        )}
+        {summary.error && summary.isFetching && summary.data && (
+          <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            Background refresh failed — showing previous values.{" "}
+            <Button variant="outline" size="sm" className="p-0 h-auto" onClick={() => refreshSummary.mutate()}>
+              Retry retry
+            </Button>
+          </div>
+        )}
+        {summary.error && (
+          <ErrorBanner
+            error={summary.error}
+            fallback="Failed to load live library summary from storage. Click Refresh summary to retry."
+          />
+        )}
 
         {publicationNotice ? (
           <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
@@ -686,9 +746,11 @@ export default function LibraryPage() {
                 ) : sortedRows.length ? (
                   sortedRows.map((novel) => {
                     const sourceUrl = novel.source_url?.trim();
-                    const rawChapters = novel.summary?.scraped ?? novel.scraped_count ?? 0;
-                    const translatedChapters = novel.summary?.translated ?? novel.translated_count ?? 0;
-                    const listedChapters = novel.summary?.total ?? novel.chapter_count;
+                    const listedChapters = getCount(novel, "total");
+                    const rawChapters = getCount(novel, "scraped");
+                    const translatedChapters = getCount(novel, "translated");
+                    const failedChapters = getCount(novel, "failed");
+                    const pendingChapters = getCount(novel, "pending");
                     const missingSource = !novel.source_key;
                     const onboardingStatus = novel.onboarding_status;
                     const showOnboardingBadge = onboardingStatus != null && onboardingStatus !== "ready_for_translation";
@@ -724,30 +786,28 @@ export default function LibraryPage() {
                           ) : null}
                         </td>
 
-                        <td className="px-4 py-3 font-medium">{listedChapters}</td>
+                        <td className="px-4 py-3 font-medium">{formatCount(listedChapters)}</td>
 
                         <td className="px-4 py-3">
-                          <div className="font-medium">{rawChapters}</div>
+                          <div className="font-medium">{formatCount(rawChapters)}</div>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            {listedChapters ? `${Math.round((rawChapters / listedChapters) * 100)}% raw` : "no chapter list"}
+                            {formatPercent(rawChapters, listedChapters)} raw
                           </div>
                         </td>
 
                         <td className="px-4 py-3">
-                          <div className="font-medium">{translatedChapters}</div>
+                          <div className="font-medium">{formatCount(translatedChapters)}</div>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            {listedChapters
-                              ? `${Math.round((translatedChapters / listedChapters) * 100)}% translated`
-                              : "no chapter list"}
+                            {formatPercent(translatedChapters, listedChapters)} translated
                           </div>
                         </td>
 
                         <td className="px-4 py-3 font-medium text-destructive">
-                          {novel.summary?.failed ?? 0}
+                          {formatCount(failedChapters)}
                         </td>
 
                         <td className="px-4 py-3 font-medium text-amber-600 dark:text-amber-400">
-                          {novel.summary?.pending ?? 0}
+                          {formatCount(pendingChapters)}
                         </td>
 
                         <td className="px-4 py-3">{translationBadge(novel)}</td>

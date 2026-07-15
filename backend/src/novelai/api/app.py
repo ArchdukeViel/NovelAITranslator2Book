@@ -146,4 +146,12 @@ def create_app() -> FastAPI:
     return app
 
 
-app = create_app()
+app = None
+
+
+def get_app() -> FastAPI:
+    """Get or create the FastAPI application (lazy initialization)."""
+    global app
+    if app is None:
+        app = create_app()
+    return app

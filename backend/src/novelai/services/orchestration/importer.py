@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
+from novelai.services.library_summary_service import invalidate_library_summary_cache
+
+logger = logging.getLogger(__name__)
 
 
 async def import_document(
@@ -100,6 +104,11 @@ async def import_document(
             self.storage,
             context="import_chapter",
         )
+        # Invalidate library summary cache after successful storage write
+        try:
+            invalidate_library_summary_cache()
+        except Exception:
+            logger.debug("Library summary cache invalidation failed (non-fatal)", exc_info=True)
         self.storage.save_chapter_media_state(
             novel_id,
             unit.unit_id,

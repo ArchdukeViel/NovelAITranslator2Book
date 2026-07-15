@@ -164,12 +164,16 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
     previous_env_novel_library = os.environ.get("NOVEL_LIBRARY_DIR")
     previous_env_data_dir = os.environ.get("DATA_DIR")
     previous_env_gemini_api_key = os.environ.get("PROVIDER_GEMINI_API_KEY")
+    previous_env = os.environ.get("ENV")
+    previous_settings_env = settings.ENV
 
     os.environ["NOVEL_LIBRARY_DIR"] = str(runtime_dir)
     os.environ["DATA_DIR"] = str(runtime_dir)
+    os.environ["ENV"] = "test"
     os.environ.pop("PROVIDER_GEMINI_API_KEY", None)
 
     settings.NOVEL_LIBRARY_DIR = runtime_dir
+    settings.ENV = "test"
     settings.PROVIDER_DEFAULT = "dummy"
     settings.PROVIDER_GEMINI_API_KEY = None
     _reset_global_container()
@@ -179,6 +183,7 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
     finally:
         _reset_global_container()
         settings.NOVEL_LIBRARY_DIR = previous_data_dir
+        settings.ENV = previous_settings_env
         settings.PROVIDER_DEFAULT = previous_provider_default
         settings.PROVIDER_GEMINI_API_KEY = previous_gemini_api_key
 
@@ -196,6 +201,11 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
             os.environ.pop("PROVIDER_GEMINI_API_KEY", None)
         else:
             os.environ["PROVIDER_GEMINI_API_KEY"] = previous_env_gemini_api_key
+
+        if previous_env is None:
+            os.environ.pop("ENV", None)
+        else:
+            os.environ["ENV"] = previous_env
 
         if runtime_dir.exists():
             _force_remove_tree(runtime_dir)
