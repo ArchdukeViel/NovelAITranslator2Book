@@ -14,7 +14,7 @@ from novelai.glossary import extract_candidate_glossary_terms
 from novelai.prompts import METADATA_TRANSLATION_PROMPT_VERSION
 from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.services.glossary_repository import GlossaryRepository
-from novelai.services.library_summary_service import invalidate_library_summary_cache
+from novelai.services.library_summary_service import best_effort_invalidate, invalidate_library_summary_cache
 from novelai.sources.quality import (
     chapter_content_hash,
     evaluate_chapter_quality,
@@ -211,6 +211,9 @@ async def scrape_metadata(
     if mode == "full":
         logger.debug(f"Full scrape mode - deleting existing data for {novel_id}")
         self.storage.delete_novel(novel_id)
+        # Destructive deletion: invalidate cache immediately so the Admin
+        # Library does not continue reporting the deleted inventory.
+        best_effort_invalidate()
 
     if progress_callback:
         progress_callback(f"Connecting to {source_key}\u2026")
@@ -240,6 +243,11 @@ async def scrape_metadata(
         self.storage,
         context="scrape_metadata",
     )
+    # Replacement metadata can change the discovered chapter total; invalidate.
+    try:
+        invalidate_library_summary_cache()
+    except Exception:
+        logger.debug("Library summary cache invalidation failed (non-fatal)", exc_info=True)
     meta["bootstrap_candidate_count"] = await bootstrap_glossary_if_needed(self, novel_id, meta)
     if meta.get("chapters"):
         self.storage.update_onboarding_status(novel_id, "chapters_pending")
@@ -361,6 +369,9 @@ async def _scrape_chapters_impl(
 
     if mode == "full":
         self.storage.delete_novel(novel_id)
+        # Destructive deletion: invalidate immediately. If later work
+        # fails, the cache still reflects the absent storage.
+        best_effort_invalidate()
         meta = await source.fetch_metadata(novel_id)
         meta = _apply_metadata_quality_gate(meta, source_key=source_key, novel_id=novel_id)
         if not meta.get("source_language"):
@@ -379,6 +390,8 @@ async def _scrape_chapters_impl(
             self.storage,
             context="scrape_chapters_metadata",
         )
+        # Replacement metadata may have changed discovered total.
+        best_effort_invalidate()
     else:
         meta = self.storage.load_metadata(novel_id)
         if not meta:
@@ -519,10 +532,7 @@ async def _scrape_chapters_impl(
                 context="scrape_chapter",
             )
             # Invalidate library summary cache after successful storage write
-            try:
-                invalidate_library_summary_cache()
-            except Exception:
-                logger.debug("Library summary cache invalidation failed (non-fatal)", exc_info=True)
+            best_effort_invalidate()
             if progress_callback:
                 progress_callback(f"  Saved chapter {chapter_id}.")
             if any(img.get("download_error") for img in downloaded_images):

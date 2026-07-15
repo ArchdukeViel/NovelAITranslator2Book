@@ -261,6 +261,14 @@ class StorageService:
         except (ValueError, TypeError):
             return stem
 
+    @staticmethod
+    def logical_id_from_stem(stem: str) -> str:
+        """Public alias for :meth:`_logical_id_from_stem`.
+
+        Cross-service callers must use this. Preserves ``"0001"`` → ``"1"``.
+        """
+        return StorageService._logical_id_from_stem(stem)
+
 
     def __init__(self, base_dir: Path | None = None, backend: Any | None = None) -> None:
         if backend is not None:
@@ -375,11 +383,18 @@ class StorageService:
         """Public: list all keys under *prefix* (recursive by default).
 
         Returns backend-relative keys (e.g. ``novels/my-novel/chapters/0001.json``).
+
+        Accepts POSIX strings or :class:`pathlib.Path`. Windows-style
+        backslashes in ``Path`` arguments are normalized to forward slashes
+        so that R2/S3 backend keys never inherit host filesystem semantics.
         """
-        key = str(prefix)
-        if key and not key.endswith("/"):
-            key = key + "/"
-        return self._backend.list_keys(key, recursive=recursive)
+        if isinstance(prefix, Path):
+            prefix_str = prefix.as_posix()
+        else:
+            prefix_str = str(prefix).replace("\\", "/")
+        if prefix_str and not prefix_str.endswith("/"):
+            prefix_str = prefix_str + "/"
+        return self._backend.list_keys(prefix_str, recursive=recursive)
 
     def read_payload(self, key: str) -> dict[str, Any] | None:
         """Public: read and JSON-decode a single object.

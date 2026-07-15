@@ -203,6 +203,7 @@ export default function LibraryPage() {
     mutationFn: () => adminApi.librarySummary({ refresh: true }),
     onSuccess: (data) => {
       queryClient.setQueryData(["library-summary"], data);
+      queryClient.invalidateQueries({ queryKey: ["novels"] });
     },
   });
 
@@ -272,17 +273,36 @@ export default function LibraryPage() {
     );
   }, [translationNovelId, translationChapters.data]);
 
+  // Pull summary items out into a map keyed by novel_id so each row can
+  // be tagged with its live storage counts. The memo depends on every
+  // query / state change that can mutate the summary, not just `rows`.
+  const summaryItems = summary.data?.items;
+  const summaryMap = React.useMemo(() => {
+    if (!summaryItems) return new Map<string, LibrarySummaryItem>();
+    return new Map(summaryItems.map((item) => [item.novel_id, item]));
+  }, [summaryItems]);
+
+  const summaryInitialError = summary.isError && !summary.data;
+  const summaryInitialLoading = summary.isPending || summary.isLoading;
+  const summaryBackgroundError =
+    summary.isError && Boolean(summary.data) && summary.isFetching;
+
   const mergedRows = React.useMemo(() => {
     return rows.map((novel) => {
-      const summaryAvailability = getSummary(novel);
+      const summaryEntry = summaryMap.get(novel.novel_id);
+      const summaryAvailable = summaryEntry !== undefined;
       return {
         ...novel,
-        summaryLoading: summaryAvailability.state === "loading",
-        summaryError: summaryAvailability.state === "unavailable",
-        summary: summaryAvailability.state === "ready" ? summaryAvailability.value : undefined,
+        summary: summaryAvailable ? summaryEntry : undefined,
+        // Loading only — no prior successful data: every count is "loading".
+        summaryLoading:
+          !summaryAvailable && summaryInitialLoading && !summaryInitialError,
+        // Unavailable — initial failure OR backend omitted the row.
+        summaryError:
+          !summaryAvailable && (summaryInitialError || summary.data !== undefined),
       };
     });
-  }, [rows]);
+  }, [rows, summaryMap, summaryInitialError, summaryInitialLoading]);
 
   const sortedRows = React.useMemo(() => {
     return [...mergedRows].sort((left, right) => {
@@ -627,26 +647,54 @@ export default function LibraryPage() {
         <ErrorBanner error={resumeOnboarding.error} fallback="Failed to resume onboarding." />
         <ErrorBanner error={cancelOnboarding.error} fallback="Failed to cancel onboarding." />
         <ErrorBanner error={novels.error} fallback="Failed to load novels." />
-        {summary.error && !summary.isFetching && (
-          <ErrorBanner
-            error={summary.error}
-            fallback="Failed to load library summary. Live storage counts unavailable."
-          />
-        )}
-        {summary.error && summary.isFetching && summary.data && (
-          <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-            Background refresh failed — showing previous values.{" "}
-            <Button variant="outline" size="sm" className="p-0 h-auto" onClick={() => refreshSummary.mutate()}>
-              Retry retry
+
+        {/* Summary error states — exactly one message per scenario. */}
+        {summaryInitialError ? (
+          <div className="border-t border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <div className="font-medium">Failed to load library summary.</div>
+            <p className="mt-1">
+              Live storage counts are unavailable. Row values will be shown as
+              <span className="mx-1 font-mono">—</span>
+              until the next successful load.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={() => summary.refetch()}
+            >
+              Retry
             </Button>
           </div>
-        )}
-        {summary.error && (
-          <ErrorBanner
-            error={summary.error}
-            fallback="Failed to load live library summary from storage. Click Refresh summary to retry."
-          />
-        )}
+        ) : null}
+
+        {summaryBackgroundError ? (
+          <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            Background refresh failed — showing previous values.{" "}
+            <Button
+              variant="outline"
+              size="sm"
+              className="p-0 h-auto"
+              onClick={() => summary.refetch()}
+            >
+              Retry
+            </Button>
+          </div>
+        ) : null}
+
+        {refreshSummary.error ? (
+          <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            Explicit refresh failed — showing cached values.{" "}
+            <Button
+              variant="outline"
+              size="sm"
+              className="p-0 h-auto"
+              onClick={() => refreshSummary.mutate()}
+            >
+              Retry
+            </Button>
+          </div>
+        ) : null}
 
         {publicationNotice ? (
           <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">

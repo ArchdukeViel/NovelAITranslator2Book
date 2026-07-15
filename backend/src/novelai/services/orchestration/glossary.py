@@ -18,7 +18,7 @@ from novelai.services.glossary_apply_preview import (
     GlossaryApplyPreviewService,
 )
 from novelai.services.glossary_rewrite import apply_glossary_replacements
-from novelai.services.library_summary_service import invalidate_library_summary_cache
+from novelai.services.library_summary_service import best_effort_invalidate
 from novelai.services.orchestration.common import (
     DEFAULT_GLOSSARY_EXTRACTION_PROMPT,
     GLOSSARY_EXTRACTION_JSON_SCHEMA,
@@ -738,10 +738,7 @@ def _run_apply_glossary(
                     batch_id=batch_id,
                 )
                 # Invalidate library summary cache after successful storage write
-                try:
-                    invalidate_library_summary_cache()
-                except Exception:
-                    logger.debug("Library summary cache invalidation failed (non-fatal)", exc_info=True)
+                best_effort_invalidate()
                 safely_refresh_catalog_projection_after_storage_write(
                     novel_id,
                     self.storage,

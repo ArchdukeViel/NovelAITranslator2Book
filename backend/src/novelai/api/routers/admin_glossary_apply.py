@@ -37,7 +37,7 @@ from novelai.services.glossary_apply_preview import (
 from novelai.services.glossary_apply_preview import (
     GlossaryApplyPreviewService,
 )
-from novelai.services.library_summary_service import invalidate_library_summary_cache
+from novelai.services.library_summary_service import best_effort_invalidate
 
 logger = logging.getLogger(__name__)
 
@@ -298,10 +298,7 @@ async def activate_chapter_version(
     try:
         storage.activate_translated_chapter_version(novel_id, chapter_id, version_id)
         # Invalidate library summary cache after successful activation
-        try:
-            invalidate_library_summary_cache()
-        except Exception:
-            logger.debug("Library summary cache invalidation failed (non-fatal)", exc_info=True)
+        best_effort_invalidate()
         return ChapterVersionActivateResponse(
             novel_id=novel_id,
             chapter_storage_id=chapter_id,

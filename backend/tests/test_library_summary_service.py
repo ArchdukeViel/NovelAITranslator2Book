@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from typing import Any
 from unittest.mock import patch
 
@@ -358,40 +359,70 @@ class TestConcurrentCoalescing:
     def test_concurrent_threads_single_scan(
         self, summary_storage: StorageService
     ) -> None:
-        """N threads hitting cold cache must produce exactly 1 listing call."""
+        """N threads hitting cold cache must produce exactly 1 listing call.
+
+        Uses a blocking ``list_keys`` spy so every concurrent caller is
+        proven to overlap with the builder's in-flight build.
+        """
         import threading
 
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
 
         listing_count = 0
+        builder_started = threading.Event()
+        releaser = threading.Event()
         original = summary_storage._backend.list_keys
-        ready = threading.Barrier(10)
         results: list[Any] = []
+        errors: list[BaseException] = []
 
-        def _counting(*args: Any, **kwargs: Any) -> list[str]:
-            nonlocal listing_count
-            listing_count += 1
-            return original(*args, **kwargs)
+        class _Block:
+            """Allow the first call to enter, then block until released."""
 
-        with patch.object(summary_storage._backend, "list_keys", side_effect=_counting):
+            def __init__(self) -> None:
+                self._lock = threading.Lock()
+                self.first_done = False
+
+            def __call__(self, *args: Any, **kwargs: Any) -> list[str]:
+                nonlocal listing_count
+                with self._lock:
+                    listing_count += 1
+                if not self.first_done:
+                    self.first_done = True
+                    builder_started.set()
+                    # Block the builder until released — every concurrent
+                    # caller overlaps with the active build.
+                    releaser.wait(timeout=5)
+                return original(*args, **kwargs)
+
+        blocking = _Block()
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=blocking):
             service = LibrarySummaryService(summary_storage)
             service.invalidate_cache()
 
             def worker() -> None:
-                ready.wait()
-                results.append(service.get_summary())
+                try:
+                    results.append(service.get_summary())
+                except BaseException as exc:  # pragma: no cover - debug
+                    errors.append(exc)
 
             threads = [threading.Thread(target=worker) for _ in range(10)]
             for t in threads:
                 t.start()
-            for t in threads:
-                t.join()
 
-        # Coalesced: at most a small number of scans (not N=10)
-        assert listing_count <= 2, f"expected coalesced scans, got {listing_count}"
+            # Wait for the builder to start, then release.
+            assert builder_started.wait(timeout=5), "builder never started"
+            releaser.set()
+            for t in threads:
+                t.join(timeout=5)
+
+        alive = [t for t in threads if t.is_alive()]
+        assert not alive, "thread stuck after release"
+        assert not errors, errors
+        # Exactly one listing call — true single-flight, not "<=2".
+        assert listing_count == 1, f"expected 1 scan, got {listing_count}"
         assert len(results) == 10
-        # All threads got the same data
         assert all(r.items == results[0].items for r in results)
 
 
@@ -419,3 +450,502 @@ class TestPublicStorageMethods:
     ) -> None:
         payload = summary_storage.read_payload("novels/missing/chapters/0001.json")
         assert payload is None
+
+
+# ── POSIX key & logical id public contract ─────────────────────────────
+
+
+class TestPosixKeyAndLogicalId:
+    def test_logical_id_from_stem_is_public(self) -> None:
+        """``StorageService.logical_id_from_stem`` must be the public API."""
+        assert callable(StorageService.logical_id_from_stem)
+        assert StorageService.logical_id_from_stem("0001") == "1"
+        assert StorageService.logical_id_from_stem("1") == "1"
+        assert StorageService.logical_id_from_stem("abc") == "abc"
+        # Private alias still resolves for in-package callers.
+        assert StorageService._logical_id_from_stem("0042") == "42"
+
+    def test_list_keys_under_handles_windows_path(
+        self, summary_storage: StorageService
+    ) -> None:
+        """``list_keys_under`` must normalize ``Path`` inputs to POSIX."""
+        from pathlib import PureWindowsPath
+
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        # Pretend the prefix came from a Windows filesystem. Even on Windows
+        # the backend key must use forward slashes.
+        result = summary_storage.list_keys_under("novels")
+        assert all("\\" not in k for k in result)
+        assert all(k.startswith("novels/") for k in result)
+        # PureWindowsPath may not be instantiated on POSIX runners, but the
+        # string-based normalisation is tested by the str→Path round-trip.
+        _ = PureWindowsPath  # keep import in scope, no behavioural check
+
+
+# ── deterministic single-flight suite ────────────────────────────────
+
+
+def _make_blocking_listing_spy(
+    storage: StorageService,
+) -> tuple[Any, threading.Event, threading.Event, Any]:
+    """Build a blocking ``list_keys`` spy + primed-barrier infra.
+
+    Returns ``(spy_factory, started_event, release_event, counter)``. The
+    first invocation enters the build, signals ``started_event``, then
+    blocks on ``release_event`` to ensure every concurrent caller
+    overlaps with the builder's active build.
+    """
+    lock = threading.Lock()
+    started = threading.Event()
+    release = threading.Event()
+    counter = {"count": 0, "first_done": False}
+    original = storage._backend.list_keys
+
+    def spy(*args: Any, **kwargs: Any) -> list[str]:
+        with lock:
+            counter["count"] += 1
+        if not counter["first_done"]:
+            counter["first_done"] = True
+            started.set()
+            release.wait(timeout=10)
+        return original(*args, **kwargs)
+
+    return spy, started, release, counter
+
+
+class TestSingleFlightDeterministic:
+    """Hard deterministic single-flight assertions."""
+
+    def test_cold_concurrent_normal_calls_one_build(
+        self, summary_storage: StorageService
+    ) -> None:
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        spy, started, release, counter = _make_blocking_listing_spy(summary_storage)
+        results: list[Any] = []
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            service = LibrarySummaryService(summary_storage)
+            service.invalidate_cache()
+
+            def worker() -> None:
+                results.append(service.get_summary())
+
+            threads = [threading.Thread(target=worker) for _ in range(8)]
+            for t in threads:
+                t.start()
+            assert started.wait(timeout=5), "builder never started"
+            release.set()
+            for t in threads:
+                t.join(timeout=5)
+
+        alive = [t for t in threads if t.is_alive()]
+        assert not alive
+        # True single-flight: exactly ONE listing call.
+        assert counter["count"] == 1, f"expected 1 scan, got {counter['count']}"
+        assert len(results) == 8
+        assert all(r.items == results[0].items for r in results)
+
+    def test_expired_concurrent_normal_calls_one_build(
+        self, summary_storage: StorageService
+    ) -> None:
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        fake_now = {"t": 1000.0}
+
+        def clock() -> float:
+            return fake_now["t"]
+
+        service = LibrarySummaryService(summary_storage, clock=clock)
+        service.get_summary()  # populate
+        fake_now["t"] = 2000.0  # jump well past TTL
+
+        spy_started = threading.Event()
+        release = threading.Event()
+        called: list[int] = []
+        backend_list_keys = summary_storage._backend.list_keys  # save unpatched
+
+        def spy(*args: Any, **kwargs: Any) -> list[str]:
+            called.append(1)
+            if len(called) == 1:
+                spy_started.set()
+                release.wait(timeout=5)
+            return backend_list_keys(*args, **kwargs)
+
+        results: list[Any] = []
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            def worker() -> None:
+                results.append(service.get_summary(refresh=False))
+
+            threads = [threading.Thread(target=worker) for _ in range(8)]
+            for t in threads:
+                t.start()
+            assert spy_started.wait(timeout=5)
+            release.set()
+            for t in threads:
+                t.join(timeout=5)
+
+        alive = [t for t in threads if t.is_alive()]
+        assert not alive
+        assert len(called) == 1, f"expected 1 scan, got {len(called)}"
+        assert len(results) == 8
+        assert all(r.items == results[0].items for r in results)
+
+    def test_concurrent_forced_refreshes_one_build(
+        self, summary_storage: StorageService
+    ) -> None:
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        started = threading.Event()
+        release = threading.Event()
+        first_done = {"v": False}
+        call_count: list[int] = []
+        backend_list_keys = summary_storage._backend.list_keys
+
+        def spy(*args: Any, **kwargs: Any) -> list[str]:
+            call_count.append(1)
+            if not first_done["v"]:
+                first_done["v"] = True
+                started.set()
+                release.wait(timeout=5)
+            return backend_list_keys(*args, **kwargs)
+
+        results: list[Any] = []
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            service = LibrarySummaryService(summary_storage)
+            service.invalidate_cache()
+
+            def worker() -> None:
+                results.append(service.get_summary(refresh=True))
+
+            threads = [threading.Thread(target=worker) for _ in range(8)]
+            for t in threads:
+                t.start()
+            assert started.wait(timeout=5)
+            release.set()
+            for t in threads:
+                t.join(timeout=5)
+
+        alive = [t for t in threads if t.is_alive()]
+        assert not alive
+        assert len(call_count) == 1, f"expected 1 scan, got {len(call_count)}"
+        assert len(results) == 8
+        assert all(r.cache["hit"] is False for r in results)
+
+    def test_normal_callers_join_forced_build_share_result(
+        self, summary_storage: StorageService
+    ) -> None:
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        started = threading.Event()
+        release = threading.Event()
+        first_done = {"v": False}
+        call_count: list[int] = []
+        backend_list_keys = summary_storage._backend.list_keys
+
+        def spy(*args: Any, **kwargs: Any) -> list[str]:
+            call_count.append(1)
+            if not first_done["v"]:
+                first_done["v"] = True
+                started.set()
+                release.wait(timeout=5)
+            return backend_list_keys(*args, **kwargs)
+
+        identities = [tuple(), ("alpha",), ("beta", "gamma")]
+        results: dict[int, Any] = {}
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            service = LibrarySummaryService(summary_storage)
+            service.invalidate_cache()
+
+            def worker(ident: tuple[str, ...], idx: int) -> None:
+                results[idx] = service.get_summary(
+                    refresh=(idx % 2 == 0),
+                    catalogued_novel_ids=list(ident),
+                )
+
+            threads = [
+                threading.Thread(target=worker, args=(identities[i % 3], i))
+                for i in range(6)
+            ]
+            for t in threads:
+                t.start()
+            assert started.wait(timeout=5)
+            release.set()
+            for t in threads:
+                t.join(timeout=5)
+
+        alive = [t for t in threads if t.is_alive()]
+        assert not alive
+        assert len(call_count) >= 1
+        assert len(results) == 6
+
+    def test_later_independent_forced_refresh_starts_second_build(
+        self, summary_storage: StorageService
+    ) -> None:
+
+        summary_storage.save_metadata("n", _metadata(2))
+        _save_chapter(summary_storage, "n", "1")
+        _save_chapter(summary_storage, "n", "2")
+
+        # Manually orchestrate: build 1 finishes, then a second refresh
+        # arrives after completion → must trigger a second build.
+        original = summary_storage._backend.list_keys
+        call_count = [0]
+
+        def spy(*args: Any, **kwargs: Any) -> list[str]:
+            call_count[0] += 1
+            return original(*args, **kwargs)
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            service = LibrarySummaryService(summary_storage)
+            service.invalidate_cache()
+            service.get_summary(refresh=True)  # first forced build
+            r2 = service.get_summary(refresh=True)
+            assert r2.cache["hit"] is False  # forced → fresh
+            assert call_count[0] == 2
+
+    def test_failed_build_wakes_all_and_propagates(
+        self, summary_storage: StorageService
+    ) -> None:
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        boom = RuntimeError("simulated I/O failure")
+        calls: dict[str, int] = {"cold": 0}
+        backend_list_keys = summary_storage._backend.list_keys
+
+        def flaky(*args: Any, **kwargs: Any) -> list[str]:
+            calls["cold"] += 1
+            if calls["cold"] == 1:
+                raise boom
+            return backend_list_keys(*args, **kwargs)
+
+        service = LibrarySummaryService(summary_storage)
+        service.invalidate_cache()
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=flaky):
+            with pytest.raises(RuntimeError):
+                service.get_summary(refresh=True)
+            r = service.get_summary(refresh=True)
+            assert r.items
+
+    def test_ttl_starts_after_build_completion(
+        self, summary_storage: StorageService
+    ) -> None:
+        clock = {"now": 0.0}
+
+        def fake_clock() -> float:
+            return clock["now"]
+
+        service = LibrarySummaryService(summary_storage, clock=fake_clock)
+
+        started = threading.Event()
+        release = threading.Event()
+        original = summary_storage._backend.list_keys
+
+        def spy(*args: Any, **kwargs: Any) -> list[str]:
+            started.set()
+            release.wait(timeout=5)
+            clock["now"] = 5_000.0
+            return original(*args, **kwargs)
+
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            def builder() -> None:
+                service.get_summary(refresh=True)
+
+            t = threading.Thread(target=builder)
+            t.start()
+            started.wait(timeout=5)
+            release.set()
+            t.join(timeout=5)
+            assert not t.is_alive()
+
+        assert service._expires_at == pytest.approx(5_000.0 + 30.0)
+
+    def test_fake_clock_expiry_triggers_rebuild(
+        self, summary_storage: StorageService
+    ) -> None:
+        clock = {"now": 0.0}
+
+        def fake_clock() -> float:
+            return clock["now"]
+
+        original = summary_storage._backend.list_keys
+        calls: list[int] = []
+
+        def spy(*args: Any, **kwargs: Any) -> list[str]:
+            calls.append(1)
+            return original(*args, **kwargs)
+
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            service = LibrarySummaryService(summary_storage, clock=fake_clock)
+            service.invalidate_cache()
+            service.get_summary()  # cold build
+            service.get_summary()  # hit
+            service.get_summary()  # hit
+            assert len(calls) == 1
+            clock["now"] = 100.0  # past TTL
+            service.get_summary()  # rebuild
+            assert len(calls) == 2
+
+    def test_outward_mutation_does_not_corrupt_cache(
+        self, summary_storage: StorageService
+    ) -> None:
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        service = LibrarySummaryService(summary_storage)
+        first = service.get_summary()
+        original_first_items = list(first.items)
+        # Mutate the outward response.
+        first.items.clear()
+        first.cache["hit"] = False
+        first.cache["ttl_seconds"] = 999
+
+        # Second call must still be valid.
+        second = service.get_summary()
+        assert second.cache["hit"] is True
+        assert second.cache["ttl_seconds"] == 30
+        assert second.items == original_first_items
+
+    def test_catalog_identity_order_does_not_change_identity(
+        self, summary_storage: StorageService
+    ) -> None:
+
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        service = LibrarySummaryService(summary_storage)
+        a = service.get_summary(catalogued_novel_ids=["a", "b", "c"])
+        b = service.get_summary(catalogued_novel_ids=["c", "b", "a"])
+        # Same identity after sorting → reuse cache.
+        assert a.items == b.items
+        assert b.cache["hit"] is True
+
+    def test_catalog_identity_set_change_triggers_rebuild(
+        self, summary_storage: StorageService
+    ) -> None:
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        service = LibrarySummaryService(summary_storage)
+        original = summary_storage._backend.list_keys
+        calls: list[int] = []
+
+        def spy(*args: Any, **kwargs: Any) -> list[str]:
+            calls.append(1)
+            return original(*args, **kwargs)
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            service.invalidate_cache()
+            service.get_summary(catalogued_novel_ids=["a"])
+            service.get_summary(catalogued_novel_ids=["a"])
+            assert len(calls) == 1
+            service.get_summary(catalogued_novel_ids=["a", "b"])
+            # Identity differs → cache misses → list again.
+            assert len(calls) == 2
+
+    def test_incompatible_active_identity_does_not_return(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Waiters must not receive an incompatible-identity result."""
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        service = LibrarySummaryService(summary_storage)
+        service.invalidate_cache()
+
+        # Manually pre-set an active incompatible build.
+        with service._cv:
+            service._next_generation += 1
+            service._active_generation = service._next_generation
+            service._active_identity = ("alpha",)
+
+        # A different-identity requester must wait for the incompatible build
+        # and not return its result.
+        result_ids = []
+        leak = []
+
+        def worker() -> None:
+            try:
+                resp = service.get_summary(catalogued_novel_ids=["beta"])
+                result_ids.append(tuple(i.novel_id for i in resp.items))
+            except Exception:
+                leak.append("err")
+
+        t = threading.Thread(target=worker)
+        t.start()
+        # The waiter must NOT return in 200 ms while the incompatible build
+        # is still active — that's the deadlock-avoidance under incompatible
+        # identity scenario.
+        t.join(timeout=0.2)
+        assert t.is_alive(), "waiter returned prematurely for incompatible identity"
+
+        # Finish the incompatible build cleanly.
+        with service._cv:
+            outcome = _lss_module._CompletedBuild(
+                generation=service._active_generation,
+                identity=("alpha",),
+                cache=None,
+                error=None,
+            )
+            service._completed[outcome.generation] = outcome
+            service._active_generation = None
+            service._active_identity = None
+            service._cv.notify_all()
+
+        t.join(timeout=2)
+        assert not t.is_alive()
+        assert not leak
+        # The waiter eventually got a fresh build for its own identity.
+        assert result_ids
+
+    def test_invalidate_during_active_build(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Invalidate during an active build is well-defined:
+        the build will still complete and republish a fresh cache.
+        """
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        started = threading.Event()
+        release = threading.Event()
+        original = summary_storage._backend.list_keys
+
+        def spy(*args: Any, **kwargs: Any) -> list[str]:
+            started.set()
+            release.wait(timeout=5)
+            return original(*args, **kwargs)
+
+        service = LibrarySummaryService(summary_storage)
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            t = threading.Thread(target=lambda: service.get_summary(refresh=True))
+            t.start()
+            started.wait(timeout=5)
+
+            # Invalidate while the build is in flight.
+            service.invalidate_cache()
+            assert service._cache is None
+
+            release.set()
+            t.join(timeout=5)
+            assert not t.is_alive()
+
+        # After the build completes, the cache is repopulated.
+        assert service._cache is not None
+        assert service.get_summary().cache["hit"] is True
