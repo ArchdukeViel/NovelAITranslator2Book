@@ -4,8 +4,8 @@ This guide covers the manual steps required to complete the CI/CD pipeline setup
 All workflow files are already implemented and committed to `.github/workflows/`.
 What remains is GitHub UI configuration and verification.
 
-**Last updated:** 2026-07-12 (documentation reconciliation)
-**Current status:** CI and build workflows verified. Three Docker images pushed to GHCR with SHA + latest tags on main push. Deploy workflow supports manual trigger. M3 adds frontend lint step and production configuration checks.
+**Last updated:** 2026-07-16 (managed-services and workflow reconciliation)
+**Current status:** Workflow syntax and the local lint, type, test, build, and Compose checks are verified. `build.yml` publishes three GHCR images only after the `CI` workflow succeeds on `main`. Live Actions, CodeQL, Dependabot, and secret-scanning state still require GitHub authentication and dashboard verification. The SSH deploy workflow is retained for the legacy single-host topology but is not accepted for production until its GHCR image tags are wired into Compose and a backend host is selected.
 
 ---
 
@@ -30,6 +30,8 @@ What remains is GitHub UI configuration and verification.
 | `DEPLOY_HOST` | Your server's IP or hostname (e.g., `123.123.123.123`) | If deploying |
 | `DEPLOY_USER` | SSH username (e.g., `deploy` or `root`) | If deploying |
 | `DEPLOY_SSH_KEY` | Private SSH key (PEM format) for server access | If deploying |
+
+The opt-in weekly managed-services workflow additionally requires repository variable `MANAGED_SERVICE_TESTS_ENABLED=true`, bucket variables `TEST_R2_SOURCE_BUCKET` and `TEST_R2_TARGET_BUCKET`, and the `MANAGED_DATABASE_TEST_URL`, `TEST_R2_ENDPOINT`, plus three-role `TEST_R2_*` credential secrets referenced by `.github/workflows/managed-services-verification.yml`.
 
 Generate an SSH key pair for deployment:
 ```bash
@@ -85,7 +87,8 @@ If you want to use deployment environments (staging/production) with protection 
 3. Verify the following jobs run on the PR:
    - **backend-lint** — runs `ruff check` and `pyright`
    - **backend-tests** — runs `pytest` (without e2e)
-   - **frontend-check** — runs `npm run typecheck`
+   - **frontend-check** — runs lint, type checking, and frontend tests
+   - **docker-build** — builds all three images after backend and frontend checks pass
 
 4. Expected: All jobs pass with green checkmarks
 
@@ -106,7 +109,7 @@ To test this:
 
 1. Merge your test PR to `main`
 2. Go to **Actions** tab
-3. Verify the **Build and Push** workflow is triggered on push to `main`
+3. Verify the **Build and Push** workflow is triggered by the successful `CI` workflow run on `main`; it must not publish when CI fails
 4. Verify Docker images are pushed to GHCR (GitHub Container Registry):
    - `ghcr.io/{owner}/{repo}/novelai-admin`
    - `ghcr.io/{owner}/{repo}/novelai-reader`
@@ -137,15 +140,17 @@ Check the Actions run duration. If it exceeds 5 minutes:
 - Verify Docker BuildKit GHA cache is working
 - Split the build into separate jobs if needed
 
-### Step 7.6: Run Manual Deploy Workflow
+### Step 7.6: Accept the Manual Deploy Workflow
 
-After secrets are configured (Task 6):
+Do not run production deployment merely because the SSH secrets exist. First select the long-running backend host and update `deploy/compose.yml` so its application services consume the exact GHCR tags selected by the workflow. The present Compose file builds application images locally, so the workflow's `version` input does not yet select the pushed artifacts.
+
+After that wiring is reviewed and the secrets are configured (Task 6):
 
 1. Go to **Actions → Deploy → Run workflow**
 2. Select the `version` tag (e.g., `latest` or a specific SHA)
 3. Select the environment (`staging` or `production`)
 4. Click **Run workflow**
-5. Verify the deploy script executes successfully on your server
+5. Verify the deploy script pulls the requested immutable SHA tag and executes successfully on your server
 
 Expected output on your server:
 ```bash
@@ -163,7 +168,8 @@ docker compose up -d --remove-orphans
 - [ ] Merge to main triggers Docker build and push
 - [ ] Docker images pushed to GHCR with SHA and `latest` tags
 - [ ] CI completes in under 5 minutes on cache-hit
-- [ ] (Optional) Deploy workflow runs successfully
+- [ ] Compose consumes the requested immutable GHCR SHA tags
+- [ ] (Optional) Deploy workflow runs successfully on the selected backend host
 
 ---
 

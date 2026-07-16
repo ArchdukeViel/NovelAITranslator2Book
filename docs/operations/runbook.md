@@ -75,7 +75,7 @@ This drops matching files under `storage/novel_library/cache/` to force new prov
 Scheduled and manual backup endpoints are planned under Milestone 2c (DEBT-010). Once implemented:
 
 - `POST /api/admin/backups`: Owner-only manual backup trigger.
-- Scheduled backups run based on `BACKUP_SCHEDULE_CRON`.
+- Scheduled backups honor `BACKUP_SCHEDULE_CRON` and `BACKUP_TIMEZONE`, and require a renewable database lease before execution.
 
 See [`docs/operations/data-recovery.md`](data-recovery.md) for restore procedures.
 

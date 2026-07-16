@@ -39,7 +39,7 @@ from novelai.runtime.container import container
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if settings.JOB_WORKER_ENABLED:
         await container.activity_runner.start()
-    if settings.BACKUP_ENABLED or settings.MAINTENANCE_ENABLED:
+    if settings.BACKUP_ENABLED or settings.MAINTENANCE_ENABLED or settings.DATABASE_BACKUP_ENABLED:
         container.scheduler_service.start()
     try:
         yield
@@ -48,6 +48,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await container.activity_runner.stop()
         if container.scheduler_service.is_running:
             await container.scheduler_service.stop()
+        from novelai.db.engine import dispose_engines
+
+        dispose_engines()
 
 
 def create_app() -> FastAPI:

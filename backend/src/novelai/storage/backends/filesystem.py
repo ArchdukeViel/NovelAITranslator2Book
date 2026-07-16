@@ -79,6 +79,11 @@ class FilesystemBackend(StorageBackend):
         except StopIteration:
             return False
 
+    def total_size_bytes(self) -> int:
+        if not self._root.exists():
+            return 0
+        return sum(child.stat().st_size for child in self._root.rglob("*") if child.is_file())
+
     def mkdirs(self, path: str | Path) -> None:
         self._resolve(path).mkdir(parents=True, exist_ok=True)
 

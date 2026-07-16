@@ -140,7 +140,13 @@ def _safe_return_path(value: str | None) -> str:
 
 
 def _frontend_redirect(path: str) -> str:
-    base = settings.PUBLIC_FRONTEND_URL.rstrip("/")
+    public_frontend_url = settings.PUBLIC_FRONTEND_URL
+    if not public_frontend_url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Public frontend URL is not configured.",
+        )
+    base = public_frontend_url.rstrip("/")
     safe_path = _safe_return_path(path)
     return f"{base}{safe_path}"
 

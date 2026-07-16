@@ -71,7 +71,7 @@ rg -n "^from novelai\.(db\.models|storage\.service|sources\.)" backend/src/novel
 ### Frontend
 
 * Root: `frontend/`
-* Framework: Next.js 15 App Router.
+* Framework: Next.js App Router. Read the current version from `frontend/package.json`.
 * Frontend is an independent Node package.
 
 ### Deployment
@@ -269,7 +269,7 @@ These are behavioral contracts that future agents must preserve. Violating them 
 * `BackupManager.apply_retention()` preserves the newest successful backup and `BACKUP_MIN_SUCCESSFUL_TO_KEEP` minimum. Uses `InterProcessFileLock` to prevent concurrent retention runs.
 * `MaintenanceService` runs allowlisted cleanup tasks with dry-run support and path safety. Rejects blank, root, project-root, and symlink-escape paths.
 * `SchedulerService` uses a lightweight asyncio loop (not APScheduler) to check `scheduled_cron_log` for pending backup/maintenance work.
-* `pg_cron` is enabled on the Supabase database with a daily cleanup job for `scheduler_runtime_states` (runs at 03:30 UTC). DB-native cleanup survives container restarts.
+* The migration-defined database cleanup schedule is the intended durable cleanup mechanism. Verify applied migrations and live scheduler state before reporting it as active.
 * Do not reintroduce APScheduler. The dependency was removed in M2c.
 
 ### Docker health check
@@ -297,7 +297,7 @@ These are behavioral contracts that future agents must preserve. Violating them 
 
 ## Exploration and Search Policy
 
-Use the `explore` subagent for broad repository discovery. Keep the primary agent’s context focused on decisions, implementation, debugging, and verification.
+When delegation is available and permitted, use an `explore` subagent for broad repository discovery. Otherwise follow the same sequence locally.
 
 ### Delegate to `explore` when
 
@@ -334,7 +334,7 @@ Do not delegate a small localized task when the target files are already known.
 
 For broad exploration:
 
-1. If `graphify-out/graph.json` exists, use Graphify for initial orientation.
+1. If Graphify and `graphify-out/graph.json` are available, use a scoped `query`, `path`, or `explain` for initial orientation.
 2. Use `git ls-files` as the default inventory of tracked project files.
 3. Use `rg --files` only when untracked files may matter.
 4. Use focused `rg -n` queries to locate exact symbols and relationships.
@@ -342,7 +342,7 @@ For broad exploration:
 6. Verify Graphify relationships against the actual source.
 7. Produce an evidence-based report.
 
-Graphify is an orientation tool, not authoritative proof.
+Graphify is an orientation tool, not authoritative proof. If it is unavailable or stale, continue with `git ls-files`, targeted `rg`, and direct source reads. After code changes, refresh the graph when supported, and never commit generated Graphify output.
 
 ### Default exploration exclusions
 
@@ -529,6 +529,10 @@ Do not add a dependency when the standard library or an existing dependency adeq
 * Production environment file: `deploy/.env.production`
 * Development overlay: `deploy/compose.dev.yml` (used via `deploy/docker-compose-dev.ps1`).
 * `DATABASE_URL` must use the `postgresql+psycopg://` scheme (psycopg v3), not `postgresql://` (which defaults to psycopg2 and is not installed).
+* A managed PostgreSQL host does not replace the repository's SQLAlchemy/Alembic persistence layer.
+* S3-compatible object storage is configured through `STORAGE_BACKEND=s3` and the canonical `S3_*` settings.
+* R2 directories are virtual prefixes. Use backend prefix/listing operations such as `has_keys()`; never use `Path.exists()`, `Path.is_dir()`, or host-filesystem assumptions for object-store data.
+* Object-store lifecycle rules are not backups. Never claim backup coverage without an independently restorable copy and a verified restore procedure.
 
 Required production settings include:
 
@@ -552,6 +556,7 @@ Do not edit deployment secrets or production data unless explicitly requested.
 * `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is required before storing provider API keys in the database.
 * `OWNER_BOOTSTRAP_SECRET` is the only owner-seeding mechanism.
 * Never expose the owner bootstrap secret through logs, errors, API responses, or UI.
+* Never read, print, paste, or return database connection strings, provider service-role keys, object-store credentials, or hosting-platform environment secrets.
 * The application uses a single owner-admin model.
 * Public Google OAuth and email/password registration create `role="user"` only.
 * Public authentication must never create or promote an owner.
@@ -647,12 +652,25 @@ python -m <tool>
 
 * Do not assume Python console scripts are available on `PATH`.
 * The Unix `grep` executable is not available.
-* Use OpenCode’s Grep tool or `rg`.
-* Use `edit` for existing files.
-* Use `write` only for new files, after confirming they do not already exist.
+* Use available repository search and edit tools; prefer `rg`, `git ls-files`, and patch-based edits.
+* Confirm that a file does not already exist before creating it.
 * Use `git ls-files` rather than filesystem-wide enumeration when tracked files are sufficient.
 * Quote paths containing spaces.
 * Do not run interactive or TTY-dependent commands unless the interaction is explicitly supported.
+
+---
+
+## Managed Services and Tooling
+
+* Repository architecture, migrations, application abstractions, and tracked configuration define intended behavior. Provider APIs and connectors report live state.
+* Discover available skills, plugins, MCP servers, and tool names at task time. Do not encode their installation state, versions, project references, account IDs, bucket names, or current live settings in this file.
+* Use installed Supabase or Cloudflare guidance when available, but verify current provider documentation before relying on mutable APIs, limits, defaults, or pricing.
+* Default live-provider work to read-only inspection. Require an explicit user request before schema, data, function, secret, object, bucket, DNS, CORS, lifecycle, lock, domain, or deployment mutations.
+* For Supabase-hosted PostgreSQL, keep Alembic migrations as the repository source of truth. Use live tooling to inspect or verify state; do not replace tracked migrations with dashboard-only changes.
+* For Cloudflare R2, application data access remains behind the S3-compatible storage abstraction. Control-plane access does not authorize direct object mutation, and connectivity claims require both bucket/config access and object-list authorization.
+* Do not infer Vercel or any other hosting provider from the frontend framework. Determine active hosting from tracked configuration and live verification when available.
+* A new hosting target requires explicit deployment scope and review of backend reachability, routing, cookies, CSRF/CORS, secrets, observability, rollback, and origin security.
+* Store durable procedures in canonical documentation. Keep mutable live-state observations in task reports with a verification time, not in `AGENTS.md`.
 
 ---
 
@@ -835,63 +853,13 @@ Keep the final report proportional to the task. Do not claim completion when req
 
 ## graphify
 
-This project has a knowledge graph at `graphify-out/` with god nodes, community structure, and cross-file relationships. The `graphify` CLI is always available (v0.9+).
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
 
 When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
 
-**Always run graphify proactively** for codebase questions — don't wait for the user to type `/graphify`. The graph is rebuilt automatically on every `git commit` via a post-commit hook.
-
 Rules:
-
-- For codebase questions, first run `graphify query "<question>"` when `graphify-out/graph.json` exists. Use `graphify path "<A>" "<B>" for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than `GRAPH_REPORT.md` or raw grep output.
-- Dirty `graphify-out/` files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
-- If `graphify-out/wiki/index.md` exists, use it for broad navigation instead of raw source browsing.
-- Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review or when query/path/explain do not surface enough context.
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
-- The graph is gitignored — it stays local and is not committed.
-
----
-
-## Docker
-
-Docker Desktop is available via the bash tool. Use it to inspect and manage the local stack:
-
-```powershell
-docker ps                                    # List running containers
-docker compose -f deploy/compose.yml up -d   # Start the full stack
-docker compose -f deploy/compose.yml logs <service>  # View service logs
-docker exec <container> python -c "..."     # Run commands inside a container
-```
-
-The backend container's health check uses `python -c "import urllib.request; ..."` (not `curl`) because the image does not include `curl` by default. `admin.Dockerfile` and `reader.Dockerfile` install `curl` for future use.
-
----
-
-## Supabase MCP
-
-The user has Supabase MCP tools available. Use them for database operations:
-
-- `supabase_apply_migration` — apply DDL migrations directly to the remote database.
-- `supabase_execute_sql` — run read-only queries.
-- `supabase_get_advisors` — check security and performance lints.
-- `supabase_list_tables` — inspect schema.
-- `supabase_generate_typescript_types` — generate `database.types.ts` for the frontend.
-
-**Workflow for schema changes:**
-
-1. Create the Alembic migration file under `backend/alembic/versions/` (source of truth).
-2. Apply via `supabase_apply_migration` for validation/deployment.
-3. Verify with `supabase_execute_sql`.
-4. Run `supabase_get_advisors` to check for security/performance issues.
-5. Fix advisor issues by applying additional migrations (RLS policies, indexes, etc.).
-
-When applying migrations via MCP, the Alembic migration file must still be created under `backend/alembic/versions/` for version control. The MCP apply is for validation/deployment, not for replacing the migration source of truth.
-
-**Common advisor issues and fixes:**
-
-- `rls_disabled_in_public` — enable RLS + create policies (owner-only, public-read, user-scoped).
-- `rls_enabled_no_policy` — add policies for tables with RLS but no access rules.
-- `function_search_path_mutable` — recreate functions with `SET search_path = public`.
-- `multiple_permissive_policies` — merge owner conditions into single permissive policies using `OR`.
-- `unindexed_foreign_keys` — add covering indexes for FK columns.
-- `unused_index` — wait for real query activity; these resolve once the app runs against populated tables.

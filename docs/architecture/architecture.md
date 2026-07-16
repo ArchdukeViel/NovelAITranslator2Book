@@ -3,7 +3,7 @@
 ## 0. Document Status
 
 **Status**: canonical project architecture
-**Last reviewed**: 2026-07-12 (post-Phase 0/1 documentation reconciliation)
+**Last reviewed**: 2026-07-16 (managed-platform and storage documentation reconciliation)
 
 This is the single active architecture reasoning file for NovelAI. If another document
 disagrees with this one, this document wins and the conflict should be reported
@@ -15,7 +15,7 @@ before implementation.
 single-owner / controlled-admin public reading platform
 FastAPI backend under /api
 Next.js public reader + owner/admin UI
-File-backed canonical novel metadata and content, Postgres catalog/user domain rows
+Storage-backed canonical novel metadata and content, Postgres catalog/user domain rows
 background crawl/translation activity worker
 own server session auth implemented for dangerous admin operations
 guest public catalog / novel detail / chapter reader implemented
@@ -27,7 +27,7 @@ public contribution credentials intentionally gated
 future admin API methods quarantined until backend routes exist
 chapter-level parallel translation via asyncio.Semaphore + bounded gather
 NVIDIA provider removed; Gemini-only fallback chain
-S3 storage fields restored to settings (not yet active)
+S3-compatible storage backend implemented; object-store deployments use the storage abstraction
 pipeline/scheduler hardened: job-runtime persistence, model-state tracking
 microservice-split readiness: dual entry points, DEPLOY_MODE
 ```
@@ -548,6 +548,13 @@ by hiding frontend routes.
 | View provider/API usage | No | No | Yes |
 | Manage users | No | Deferred | Deferred owner feature |
 | Change system settings | No | No | Deferred owner feature |
+
+## Managed-Service Operational Boundary
+
+- SQLAlchemy engines are process singletons keyed by effective configuration. Direct/session connections use bounded pools; transaction-pooler connections use `NullPool` without automatic prepared statements.
+- Scheduled backup, maintenance, and database-export work requires a renewable PostgreSQL lease. Host-local file locks remain an additional filesystem safeguard, not the distributed coordinator.
+- R2 application CRUD, snapshot-source reads, and backup-target writes use separate credentials. Snapshots stream through the application because the target credential must not read the production bucket.
+- Free-plan managed PostgreSQL recovery uses encrypted logical exports stored independently from Supabase. Object snapshots and database dumps use separate committed prefixes and retention policies.
 
 **Core rule**: owner does dangerous operations. Future users save personal
 state and request things after public auth exists. Guests read public content.

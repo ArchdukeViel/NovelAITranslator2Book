@@ -2,20 +2,27 @@
 
 Procedures for storage backups, database snapshotting, and system recovery.
 
+## Acceptance Status (2026-07-16)
+
+- Application-driven R2 snapshot creation, manifest-last commit, checksum verification, isolated restore, and least-privilege credential boundaries are verified live.
+- Encrypted logical PostgreSQL backup and one clean PostgreSQL 17 restore are verified live.
+- Pending operational evidence: two consecutive scheduler-created R2 snapshots, one scheduler-created database backup, one automated restore verification, and tested stale/failure alert delivery.
+- Provider lifecycle rules and retention locks are safeguards; independently restorable snapshots and database dumps remain the recovery sources of truth.
+
 ---
 
 ## Backup Generation
 
-Backup archives are written to local disk. Only file storage domains (novels, metadata, translations, assets) are packaged by `BackupManager`.
+Filesystem deployments write local archives. S3/R2 deployments snapshot canonical `novels/` objects into an independent S3-compatible bucket.
 
 ### Scheduled Backups
 
-Scheduled backups run via the asyncio-based scheduler loop when `BACKUP_ENABLED=true`. The schedule is controlled by:
+Scheduled backups run through cron/timezone evaluation and a PostgreSQL-backed renewable lease when `BACKUP_ENABLED=true`. The schedule is controlled by:
 
 - `BACKUP_SCHEDULE_CRON` (default `0 2 * * *` — daily at 02:00)
 - `BACKUP_TIMEZONE` (default `UTC`)
 
-Backups use a multi-process file lock (`InterProcessFileLock`) to prevent concurrent backup runs. The lock file lives at `<backups_dir>/.backup.lock`.
+Backups retain `InterProcessFileLock` for same-host filesystem safety. The database lease prevents duplicate work across hosts and expires automatically after a crashed process stops renewing it.
 
 ### Retention Policy
 
@@ -41,7 +48,7 @@ This queues a background backup activity. Response format:
 }
 ```
 
-**Notice:** If `STORAGE_BACKEND=s3` is active with R2, local backup generation is disabled. Use R2 lifecycle rules, cross-region replication, or external bucket snapshot procedures for R2 backups.
+**Notice:** With `STORAGE_BACKEND=s3`, a scheduled run succeeds only after the independent snapshot manifest is committed and every copied object has passed byte-length and SHA-256 verification. Lifecycle and bucket-lock rules remain safeguards rather than backup copies.
 
 ---
 
@@ -49,26 +56,30 @@ This queues a background backup activity. Response format:
 
 When using Cloudflare R2 (`STORAGE_BACKEND=s3` with R2 endpoint), recovery differs from filesystem:
 
-### R2 Backup Options
+### R2 Backup Requirements
 
-1. **R2 Lifecycle Rules**: Configure object versioning or transition rules in the Cloudflare dashboard.
-2. **Cross-Region Replication**: Replicate to a backup bucket in another region.
-3. **Manual Bucket Snapshot**: Use `aws s3 sync` or boto3 to copy objects to a backup prefix:
+1. **Independent destination**: Configure `BACKUP_S3_BUCKET` separately from `S3_BUCKET`, using target-scoped credentials.
+2. **Least privilege**: Application CRUD, snapshot-source read, and backup-target read/write use different credentials. Verify exact bucket scopes in the Cloudflare dashboard because the connector cannot inspect token policies.
+3. **Commit marker**: A snapshot is successful only when `<BACKUP_S3_PREFIX>/<snapshot-id>/manifest.json` exists and parses. Prefixes without a manifest are incomplete.
+3. **Artifact verification**: The scheduler conditionally copies each inventoried source ETag, downloads the target bytes, and records SHA-256 checksums in the manifest.
+4. **Retention safeguards**: Lifecycle rules may clean old snapshots, and bucket locks may protect the immutable backup prefix. Configure lifecycle deletion after the lock retention period.
+5. **Manual fallback**: If the application scheduler is unavailable, use `aws s3 sync` or boto3 with separate source and target credentials:
    ```bash
-   aws s3 sync s3://dokushodo/ s3://dokushodo-backup/$(date +%Y-%m-%d)/ \
+   aws s3 sync s3://<production-bucket>/ s3://<backup-bucket>/<snapshot-id>/ \
      --endpoint-url=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
    ```
 
 ### R2 Restore Procedure
 
-1. **Identify backup source**: Determine the backup prefix (e.g. `backups/2026-07-14/`)
-2. **Copy objects back to production prefix**:
+1. **Identify backup source**: Select a verified snapshot from the independent backup location.
+2. **Stage and inspect**: Restore into an isolated staging prefix first; compare the artifact index, counts, and representative checksums.
+3. **Copy objects back to production prefix** only after verification:
    ```bash
-   aws s3 sync s3://dokushodo/backups/2026-07-14/ s3://dokushodo/ \
+   aws s3 sync s3://<backup-bucket>/<snapshot-id>/ s3://<production-bucket>/ \
      --endpoint-url=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
    ```
-3. **Rebuild catalog projections**: `POST /api/admin/catalog/rebuild`
-4. **Verify**: Run smoke checks, spot-check novel metadata and chapter content
+4. **Rebuild catalog projections**: `POST /api/admin/catalog/rebuild`
+5. **Verify**: Run smoke checks, spot-check novel metadata and chapter content, and record the drill result.
 
 Never restore into the production prefix without first verifying the backup contents against the expected artifact index (see `docs/storage-contract.md`).
 
@@ -76,10 +87,16 @@ Never restore into the production prefix without first verifying the backup cont
 
 ## Database Snapshotting
 
-To dump database-owned tables (glossary, users, reviews, audit logs), execute standard PostgreSQL utilities:
+Free-plan Supabase recovery uses nightly logical exports independent of Supabase-managed backups. The admin runtime includes PostgreSQL 17 client utilities. Enable `DATABASE_BACKUP_ENABLED` to create encrypted, manifest-committed custom-format dumps under `database/` in the independent backup bucket.
+
+For the monthly drill, provision a disposable PostgreSQL 17 database with `restore` in its database name, set `DATABASE_RESTORE_TARGET_URL`, and enable `DATABASE_RESTORE_VERIFICATION_ENABLED`. Never point the target at the source project. Success requires the manifest checksum, Alembic head, public tables, and constraint validation checks to pass.
+
+The canonical Compose deployment includes `restore-db`, an isolated PostgreSQL 17 target named `novelai_restore_verify`. Set `DATABASE_RESTORE_PASSWORD` and use the matching internal `DATABASE_RESTORE_TARGET_URL`; production application traffic must never use this database.
+
+For an emergency manual export, use PostgreSQL 17 tools and encrypt the result before durable storage:
 
 ```bash
-pg_dump -U novelai -d novelai -t glossaries -t users -t audit_logs > db_snapshot.sql
+pg_dump --format=custom --no-owner --no-privileges --schema=public "$DATABASE_URL" > db_snapshot.custom
 ```
 
 ---
@@ -89,10 +106,7 @@ pg_dump -U novelai -d novelai -t glossaries -t users -t audit_logs > db_snapshot
 If a storage or database failure occurs, execute recovery in this sequence:
 
 1. **Restore storage files:** Re-deploy the novel library storage folder (`storage/novel_library/`) from the latest backup zip.
-2. **Restore Postgres tables:** Apply the database snapshot:
-   ```bash
-   psql -U novelai -d novelai -f db_snapshot.sql
-   ```
+2. **Restore Postgres:** Decrypt the selected committed database artifact, restore it into a clean PostgreSQL 17 database with `pg_restore --no-owner --no-privileges`, then verify Alembic head, row counts, constraints, and representative queries before cutover.
 3. **Rebuild derived catalog state:** Relational `Novel` and `Chapter` database rows are derived projections. Trigger a catalog sync to rebuild them:
    ```bash
    POST /api/admin/catalog/rebuild

@@ -48,6 +48,19 @@ The environment variable `DEPLOY_MODE` controls API service registration:
 The Docker Compose configuration does not provision a PostgreSQL service. An external database instance must be provided via the `DATABASE_URL` setting.
 If running DB-backed actions, configure `DATABASE_URL` in the `.env` template before launching containers.
 
+### Recommended Managed Production Topology
+
+The currently compatible managed topology is:
+
+- Supabase for PostgreSQL through the existing SQLAlchemy/Alembic layer.
+- Cloudflare R2 for canonical object storage and the independent backup bucket.
+- Vercel for the Next.js frontend only.
+- A long-running container platform for the admin API, reader API, scheduler, activity worker, PostgreSQL client utilities, and restore-verification process.
+- A managed Redis service for shared rate limiting, queueing, and multi-instance coordination.
+- An SMTP provider for password/email flows and operator alerts.
+
+The complete backend is not a drop-in Vercel Functions deployment. Its continuous scheduler loop, potentially long translation work, split admin/reader processes, and isolated PostgreSQL 17 restore verifier require long-running compute unless those contracts are redesigned around durable external workflows. If Vercel hosts the frontend, keep browser requests same-origin through the existing `/api` rewrite and point `BACKEND_API_URL` at the externally hosted backend. Configure the production Google callback as `https://<frontend-domain>/api/auth/google/callback` and register that exact URI in Google Cloud.
+
 ---
 
 ## Health and Readiness
@@ -64,9 +77,11 @@ Probe states: `healthy`, `degraded`, `unhealthy`. Each probe is bounded by `HEAL
 
 ## Worker and Maintenance
 
-The backend container runs an optional in-process activity worker when `JOB_WORKER_ENABLED=true`. Scheduled backup and maintenance tasks are managed by a lightweight asyncio loop when `BACKUP_ENABLED=true` or `MAINTENANCE_ENABLED=true`. The scheduler starts and stops with the application lifespan.
+The backend container runs an optional in-process activity worker when `JOB_WORKER_ENABLED=true`. Backup, maintenance, and encrypted database-export jobs use real cron/timezone evaluation plus expiring PostgreSQL leases, so multiple instances cannot execute the same occurrence concurrently.
 
-- **Backups** (`BACKUP_SCHEDULE_CRON`, default `0 2 * * *`): Creates local tar.gz backups of novel storage. Retention policy preserves the newest `BACKUP_MIN_SUCCESSFUL_TO_KEEP` (default 3) successful backups and deletes backups older than `BACKUP_MAX_AGE_DAYS` (default 30) beyond `BACKUP_RETENTION_COUNT` (default 5). Uses `InterProcessFileLock` to prevent concurrent backup runs.
+- **Object backups** (`BACKUP_ENABLED=true`): S3/R2 snapshots read through a dedicated source-read credential and write through an independent target credential. Objects are staged with bounded memory/disk usage, source ETags are checked, the manifest is written last, and restored bytes are SHA-256 verified.
+- **Database backups** (`DATABASE_BACKUP_ENABLED=true`): PostgreSQL 17 `pg_dump` output is encrypted as a stream with AES-256-GCM and uploaded under the isolated database prefix. No plaintext dump file is retained.
+- **Restore verification** (`DATABASE_RESTORE_VERIFICATION_ENABLED=true`): the monthly leased job restores the newest committed dump only into the explicitly configured disposable restore database and removes temporary dump files afterward.
 - **Maintenance** (`MAINTENANCE_SCHEDULE_CRON`, default `0 3 * * *`): Cleans expired fetch cache entries, old pipeline events, terminal activity records, expired scheduler runtime states, and applies backup retention. Supports `MAINTENANCE_DRY_RUN=true` for staging verification. Uses allowlisted cleanup roots with path safety checks.
 
 ---
@@ -83,6 +98,10 @@ When `ENV=production`, the backend and reader services run `assert_production_co
 - `WEB_RATE_LIMITER_BACKEND` is `redis` with `REDIS_URL` set (admin only)
 - `STORAGE_BACKEND` is `filesystem` or `s3`; `S3_BUCKET` set when `s3`
 - `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` set when `S3_ENDPOINT` is set (e.g. R2)
+- S3 production backups require `BACKUP_S3_ENABLED=true`, a different `BACKUP_S3_BUCKET`, a non-root prefix, endpoint, and target-scoped credentials
+- S3 snapshots require a third, read-only source credential distinct from both application CRUD and backup-target credentials
+- Production database connections require TLS and a reviewed per-process connection budget
+- Database backups require a dedicated encryption key; alerts require tested SMTP and an explicit operator recipient
 - `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `BACKUP_ENABLED` warnings
 
 The reader service (`SERVICE_ROLE=reader`) skips session, owner, public URL, and rate-limiter checks since it has no auth or session middleware.
@@ -119,32 +138,23 @@ Create an R2 API token in the Cloudflare dashboard:
 | Aspect | Filesystem | R2 |
 |---|---|---|
 | Setup | None | Create bucket + API token |
-| Scaling | Single server | Multi-region, CDN-backed |
+| Scaling | Single server | Managed object storage independent of the app host |
 | Cost | Disk only | Storage + operations |
-| Backup | Tar.gz to local disk | Bucket lifecycle rules, cross-region replication |
-| Backup note | `BACKUP_ENABLED=true` creates local tar.gz | Disable local backup; use R2 lifecycle rules or external snapshot |
-| Latency | Local disk | Network round-trip (mitigated by CDN caching) |
+| Backup | Tar.gz to local disk | Manifest-committed snapshot in an independent bucket |
+| Backup note | Local retention is application-managed | Backup-bucket lock and lifecycle remain provider-managed safeguards |
+| Latency | Local disk | Network round-trip; CDN delivery requires an explicit public-delivery design |
 
-### R2 Bucket Configuration
+### R2 Control-Plane Baseline
 
-The `dokushodo` bucket has the following settings configured via Cloudflare API:
+Treat tracked configuration as intended state and the Cloudflare API/dashboard as live state. Verify both before deployment and record mutable observations in an operator report with a timestamp rather than copying them into this document.
 
-**CORS Policy:**
-- Allows `GET`, `HEAD` from `https://localhost:3000` and `https://*.dokushodo.com`
-- Exposes `Content-Length`, `Content-Type`, `ETag` headers
-- Preflight cache: 1 hour
-
-**Lifecycle Rules:**
-| Rule | Prefix | Action | Age |
-|---|---|---|---|
-| Abort multipart uploads | (all) | Abort | 7 days |
-| Expire integration test objects | `_integration_test` | Delete | 1 day |
-| Expire healthcheck artifacts | `.healthcheck/` | Delete | 1 day |
-| Transition cache to InfrequentAccess | `cache/` | Transition | 30 days |
-| Delete cache objects | `cache/` | Delete | 90 days |
-
-**Object Lock Rules:**
-- `novels/` prefix: 30-day retention (prevents accidental deletion of canonical novel content within 30 days of upload)
+- Keep public bucket access disabled unless direct public object delivery is an explicit requirement. For production public delivery, prefer a controlled custom domain over the development `r2.dev` endpoint.
+- Configure CORS only when browsers access R2 directly. Use exact trusted origins from deployment configuration; backend-only S3 access does not require bucket CORS.
+- Use lifecycle rules for abandoned multipart uploads and disposable prefixes such as health checks, integration tests, or cache data. Lifecycle deletion or storage-class transitions do not provide historical recovery.
+- Do not apply bucket locks to mutable application prefixes until overwrite, deletion, repair, and migration workflows have been tested against the proposed retention policy.
+- If retention is required, prefer a narrowly scoped immutable backup or audit prefix and verify restore behavior before enabling a lock.
+- For automated snapshots, apply retention to the configured `BACKUP_S3_PREFIX`, not the mutable production prefix. Use a lock shorter than the lifecycle deletion age.
+- Keep integration tests confined to an isolated `_integration_test_*` prefix with explicit cleanup.
 
 **Storage Limit Monitoring:**
 - `S3_STORAGE_LIMIT_GB=9.5` (default, under R2 free tier 10 GB)
@@ -209,9 +219,9 @@ Safety rules:
 
 ### Storage Rollback (R2)
 
-R2 objects are immutable — overwritten versions are replaced. To restore from a backup prefix:
+R2 uses last-write-wins object keys unless a lock prevents overwrite or deletion. To restore from an independently verified backup location:
 
-1. Identify the backup prefix (e.g. `backups/2026-07-14/`)
+1. Identify the backup bucket or isolated backup prefix and verify its artifact index.
 2. Use R2 or boto3 to copy objects back to the production prefix
 3. Rebuild catalog projections: `POST /api/admin/catalog/rebuild`
 

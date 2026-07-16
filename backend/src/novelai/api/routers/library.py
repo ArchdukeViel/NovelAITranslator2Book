@@ -6,17 +6,14 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
-from sqlalchemy import select
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.dependencies import (
     _rate_limit,
-    get_db_session,
     get_library_service,
     get_library_summary_service,
 )
-from novelai.db.models.novel import Novel
 from novelai.services.library_service import LibraryService
 from novelai.services.library_summary_service import LibrarySummaryService
 
@@ -165,11 +162,13 @@ class _LibrarySummaryResponse(BaseModel):
 async def library_summary(
     refresh: bool = Query(default=False),
     service: LibrarySummaryService = Depends(get_library_summary_service),
-    db_session=Depends(get_db_session),
+    library_service: LibraryService = Depends(get_library_service),
     _owner=Depends(require_role("owner")),
 ) -> _LibrarySummaryResponse:
-    catalogued_ids = db_session.execute(select(Novel.slug)).scalars().all()
-    resp = service.get_summary(refresh=refresh, catalogued_novel_ids=list(catalogued_ids))
+    resp = service.get_summary(
+        refresh=refresh,
+        catalogued_novel_ids=library_service.list_catalogued_novel_ids(),
+    )
     return _LibrarySummaryResponse(
         generated_at=resp.generated_at,
         cache=_CacheInfoOut(hit=resp.cache["hit"], ttl_seconds=resp.cache["ttl_seconds"]),

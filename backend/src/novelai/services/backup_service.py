@@ -1,12 +1,12 @@
 """Backup scheduling and status service (M2c, DEBT-010).
 
 Wraps BackupManager with scheduling integration, lock-based concurrency
-prevention, and status reporting for health integration. Local backup
-target first; offsite is a future milestone.
+prevention, verified offsite snapshots, and status reporting.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -14,6 +14,7 @@ from typing import Any
 from novelai.config.settings import settings
 from novelai.services.backup_manager import BackupManager
 from novelai.storage.file_lock import InterProcessFileLock
+from novelai.storage.snapshots import SnapshotTarget
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +34,10 @@ class BackupService:
     def __init__(
         self,
         backup_manager: BackupManager,
+        snapshot_target: SnapshotTarget | None = None,
     ) -> None:
         self._backup_manager = backup_manager
+        self._snapshot_target = snapshot_target
         self._lock_path = backup_manager.backups_dir / ".backup.lock"
 
     async def run_scheduled_backup(self, novel_id: str | None = None) -> dict[str, Any]:
@@ -59,6 +62,22 @@ class BackupService:
 
         started_at = _utc_now_iso()
         try:
+            if settings.STORAGE_BACKEND.strip().lower() == "s3":
+                if self._snapshot_target is None:
+                    raise RuntimeError("Independent S3 snapshot target is not configured")
+                snapshot = await asyncio.to_thread(self._snapshot_target.create_snapshot)
+                return {
+                    "status": "succeeded",
+                    "backup_id": snapshot.snapshot_id,
+                    "timestamp": snapshot.created_at,
+                    "size_bytes": snapshot.size_bytes,
+                    "files_count": snapshot.files_count,
+                    "offsite": True,
+                    "verified": snapshot.verified,
+                    "started_at": started_at,
+                    "finished_at": _utc_now_iso(),
+                }
+
             # Resolve source directory from storage base.
             source_dir = self._backup_manager.base_dir / "novels"
             if novel_id and novel_id != "all":
@@ -113,7 +132,7 @@ class BackupService:
             "retention_count": settings.BACKUP_RETENTION_COUNT,
             "min_successful_to_keep": settings.BACKUP_MIN_SUCCESSFUL_TO_KEEP,
             "max_age_days": settings.BACKUP_MAX_AGE_DAYS,
-            "offsite_enabled": False,
+            "offsite_enabled": self._snapshot_target is not None,
         }
 
     def get_backup_health(self) -> dict[str, Any]:
@@ -128,6 +147,31 @@ class BackupService:
                 "status": "degraded",
                 "message": "Backups are not enabled",
             }
+
+        if settings.STORAGE_BACKEND.strip().lower() == "s3":
+            if self._snapshot_target is None:
+                return {
+                    "status": "unhealthy",
+                    "message": "Independent S3 snapshot target is not configured",
+                }
+            try:
+                latest = self._snapshot_target.latest_snapshot()
+                if latest is None:
+                    return {
+                        "status": "unhealthy",
+                        "message": "No committed offsite snapshot exists",
+                    }
+                return {
+                    "status": "healthy" if latest.verified else "degraded",
+                    "message": "Verified offsite snapshot exists",
+                    "last_backup_at": latest.created_at,
+                    "backup_id": latest.snapshot_id,
+                }
+            except Exception:
+                return {
+                    "status": "degraded",
+                    "message": "Unable to determine offsite backup status",
+                }
 
         try:
             backups = self._backup_manager.list_backups(None)

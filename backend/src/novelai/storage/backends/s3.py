@@ -10,6 +10,18 @@ from novelai.storage.backends.base import StorageBackend
 
 logger = logging.getLogger(__name__)
 
+_NOT_FOUND_CODES = {"404", "NoSuchKey", "NotFound"}
+
+
+def _is_not_found_error(exc: Exception) -> bool:
+    response = getattr(exc, "response", None)
+    if not isinstance(response, dict):
+        return False
+    error = response.get("Error")
+    if not isinstance(error, dict):
+        return False
+    return str(error.get("Code", "")) in _NOT_FOUND_CODES
+
 
 class S3Backend(StorageBackend):
     """Stores objects in an S3-compatible bucket.
@@ -63,8 +75,10 @@ class S3Backend(StorageBackend):
         logger.debug("S3 load: bucket=%s key=%s", self._bucket, key)
         try:
             resp = self._client.get_object(Bucket=self._bucket, Key=key)
-        except self._client.exceptions.NoSuchKey as exc:
-            raise FileNotFoundError(f"S3 key not found: {key}") from exc
+        except Exception as exc:
+            if _is_not_found_error(exc):
+                raise FileNotFoundError(f"S3 key not found: {key}") from exc
+            raise
         body = resp["Body"].read()
         resp["Body"].close()
         return body
@@ -72,20 +86,17 @@ class S3Backend(StorageBackend):
     def delete(self, path: str | Path) -> None:
         key = self._key(path)
         logger.debug("S3 delete: bucket=%s key=%s", self._bucket, key)
-        try:
-            self._client.delete_object(Bucket=self._bucket, Key=key)
-        except self._client.exceptions.NoSuchKey:
-            pass
-        except Exception:
-            pass
+        self._client.delete_object(Bucket=self._bucket, Key=key)
 
     def exists(self, path: str | Path) -> bool:
         key = self._key(path)
         try:
             self._client.head_object(Bucket=self._bucket, Key=key)
             return True
-        except Exception:
-            return False
+        except Exception as exc:
+            if _is_not_found_error(exc):
+                return False
+            raise
 
     def list_keys(self, prefix: str | Path, *, recursive: bool = False) -> list[str]:
         key = self._key(prefix)
@@ -127,6 +138,14 @@ class S3Backend(StorageBackend):
             Bucket=self._bucket, Prefix=prefix_str, MaxKeys=1
         )
         return bool(resp.get("Contents"))
+
+    def total_size_bytes(self) -> int:
+        total = 0
+        prefix = f"{self._key_prefix}/" if self._key_prefix else ""
+        paginator = self._client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix):
+            total += sum(int(obj.get("Size", 0)) for obj in page.get("Contents", []))
+        return total
 
     def mkdirs(self, path: str | Path) -> None:
         pass  # S3 has no directories; objects are created implicitly

@@ -317,6 +317,13 @@ class LibraryService:
             return [self._db_novel_summary(novel) for novel in query.all()]
         return self._list_storage_novels(limit=limit, offset=offset)
 
+    def list_catalogued_novel_ids(self) -> list[str]:
+        if self.db_session is None:
+            return []
+        return list(
+            self.db_session.execute(select(Novel.slug).order_by(Novel.slug)).scalars().all()
+        )
+
     def _list_storage_novels(
         self, *, limit: int | None = None, offset: int = 0
     ) -> list[dict[str, Any]]:

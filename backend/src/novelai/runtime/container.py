@@ -8,12 +8,14 @@ from novelai.activity.worker import ActivityWorkerService
 from novelai.config.settings import settings
 from novelai.providers.registry import get_provider
 from novelai.services.backup_service import BackupService
+from novelai.services.database_backup_service import DatabaseBackupService
 from novelai.services.email import AuthEmailService, NoopAuthEmailService, SMTPAuthEmailService
 from novelai.services.export_service import ExportService
 from novelai.services.health_service import HealthService
 from novelai.services.library_summary_service import LibrarySummaryService
 from novelai.services.maintenance_service import MaintenanceService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
+from novelai.services.operator_alert_service import OperatorAlertService
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.scheduler_runtime_state_service import SchedulerRuntimeStateService
 from novelai.services.scheduler_service import SchedulerService
@@ -49,6 +51,8 @@ class Container:
     _backup_service: BackupService | None = None
     _maintenance_service: MaintenanceService | None = None
     _scheduler_service: SchedulerService | None = None
+    _database_backup_service: DatabaseBackupService | None = None
+    _operator_alert_service: OperatorAlertService | None = None
     _health_service: HealthService | None = None
     _library_summary: LibrarySummaryService | None = None
 
@@ -201,8 +205,45 @@ class Container:
     def backup_service(self) -> BackupService:
         if self._backup_service is None:
             from novelai.services.backup_manager import BackupManager
-            backup_manager = BackupManager(base_dir=settings.DATA_DIR / "backups")
-            self._backup_service = BackupService(backup_manager=backup_manager)
+            from novelai.storage.backends.s3_snapshot import S3SnapshotTarget
+
+            backup_manager = BackupManager(base_dir=settings.DATA_DIR)
+            snapshot_target = None
+            if settings.BACKUP_S3_ENABLED:
+                if not settings.S3_BUCKET or not settings.BACKUP_S3_BUCKET:
+                    raise RuntimeError("Source and backup S3 buckets must be configured")
+                snapshot_target = S3SnapshotTarget(
+                    source_bucket=settings.S3_BUCKET,
+                    source_prefix=settings.S3_KEY_PREFIX,
+                    target_bucket=settings.BACKUP_S3_BUCKET,
+                    target_prefix=settings.BACKUP_S3_PREFIX,
+                    endpoint_url=settings.BACKUP_S3_ENDPOINT_URL,
+                    region=settings.BACKUP_S3_REGION,
+                    source_access_key_id=(
+                        settings.SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID.get_secret_value()
+                        if settings.SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID
+                        else None
+                    ),
+                    source_secret_access_key=(
+                        settings.SNAPSHOT_SOURCE_S3_SECRET_ACCESS_KEY.get_secret_value()
+                        if settings.SNAPSHOT_SOURCE_S3_SECRET_ACCESS_KEY
+                        else None
+                    ),
+                    target_access_key_id=(
+                        settings.BACKUP_S3_ACCESS_KEY_ID.get_secret_value()
+                        if settings.BACKUP_S3_ACCESS_KEY_ID
+                        else None
+                    ),
+                    target_secret_access_key=(
+                        settings.BACKUP_S3_SECRET_ACCESS_KEY.get_secret_value()
+                        if settings.BACKUP_S3_SECRET_ACCESS_KEY
+                        else None
+                    ),
+                )
+            self._backup_service = BackupService(
+                backup_manager=backup_manager,
+                snapshot_target=snapshot_target,
+            )
         return self._backup_service
 
     @property
@@ -216,12 +257,42 @@ class Container:
         return self._maintenance_service
 
     @property
+    def operator_alert_service(self) -> OperatorAlertService:
+        if self._operator_alert_service is None:
+            self._operator_alert_service = OperatorAlertService()
+        return self._operator_alert_service
+
+    @property
+    def database_backup_service(self) -> DatabaseBackupService | None:
+        if not settings.DATABASE_BACKUP_ENABLED:
+            return None
+        if self._database_backup_service is None:
+            if not settings.BACKUP_S3_BUCKET:
+                raise RuntimeError("Database backup bucket is not configured")
+            import boto3
+
+            client_kwargs: dict[str, object] = {"region_name": settings.BACKUP_S3_REGION}
+            if settings.BACKUP_S3_ENDPOINT_URL:
+                client_kwargs["endpoint_url"] = settings.BACKUP_S3_ENDPOINT_URL
+            if settings.BACKUP_S3_ACCESS_KEY_ID:
+                client_kwargs["aws_access_key_id"] = settings.BACKUP_S3_ACCESS_KEY_ID.get_secret_value()
+            if settings.BACKUP_S3_SECRET_ACCESS_KEY:
+                client_kwargs["aws_secret_access_key"] = settings.BACKUP_S3_SECRET_ACCESS_KEY.get_secret_value()
+            self._database_backup_service = DatabaseBackupService(
+                boto3.client("s3", **client_kwargs),
+                settings.BACKUP_S3_BUCKET,
+            )
+        return self._database_backup_service
+
+    @property
     def scheduler_service(self) -> SchedulerService:
         if self._scheduler_service is None:
             from novelai.db.engine import session_scope
             self._scheduler_service = SchedulerService(
                 backup_service=self.backup_service,
                 maintenance_service=self.maintenance_service,
+                database_backup_service=self.database_backup_service,
+                operator_alert_service=self.operator_alert_service,
                 db_session_scope_factory=session_scope,
             )
         return self._scheduler_service
@@ -232,6 +303,8 @@ class Container:
             self._health_service = HealthService(
                 storage=self.storage,
                 activity_runner=self.activity_runner,
+                backup_service=self.backup_service,
+                operator_alert_service=self.operator_alert_service,
             )
         return self._health_service
 

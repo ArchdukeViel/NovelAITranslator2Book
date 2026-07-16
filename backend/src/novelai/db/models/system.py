@@ -64,6 +64,18 @@ class SystemSetting(Base):
         return f"<SystemSetting key={self.key!r}>"
 
 
+class ScheduledJobLease(Base):
+    """Expiring cross-process ownership record for scheduled work."""
+
+    __tablename__ = "scheduled_job_leases"
+
+    job_name: Mapped[str] = mapped_column(String(128), primary_key=True)
+    holder_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    acquired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
 class ProviderCredential(Base):
     """Encrypted owner-managed provider API credential.
 

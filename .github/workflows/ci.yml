@@ -59,7 +59,6 @@ jobs:
 
     env:
       ENV: test
-      DATABASE_URL: postgresql+psycopg://novelai:novelai@localhost:5432/novelai
 
     steps:
       - uses: actions/checkout@v4
@@ -74,6 +73,8 @@ jobs:
 
       - name: Run Alembic migrations
         working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://novelai:novelai@localhost:5432/novelai
         run: alembic -c alembic.ini upgrade head
 
       - name: Run unit tests

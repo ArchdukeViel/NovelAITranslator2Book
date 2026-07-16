@@ -46,11 +46,13 @@ class HealthService:
         activity_runner: Any | None = None,
         db_session_factory: Any | None = None,
         backup_service: Any | None = None,
+        operator_alert_service: Any | None = None,
     ) -> None:
         self._storage = storage
         self._activity_runner = activity_runner
         self._db_session_factory = db_session_factory
         self._backup_service = backup_service
+        self._operator_alert_service = operator_alert_service
         self._cache: dict[str, Any] = {}
         self._cache_timestamp: float = 0.0
 
@@ -177,6 +179,9 @@ class HealthService:
                 finally:
                     session.close()
             latency = int((time.monotonic() - start) * 1000)
+            if self._operator_alert_service is not None:
+                self._operator_alert_service.clear("database_connectivity_failed")
+                self._operator_alert_service.clear("database_pool_timeout")
             return {
                 "status": STATE_HEALTHY,
                 "message": "Database responsive",
@@ -184,6 +189,13 @@ class HealthService:
             }
         except Exception as exc:
             latency = int((time.monotonic() - start) * 1000)
+            if self._operator_alert_service is not None:
+                code = "database_pool_timeout" if exc.__class__.__name__ == "TimeoutError" else "database_connectivity_failed"
+                await asyncio.to_thread(
+                    self._operator_alert_service.send,
+                    code=code,
+                    message="Database readiness probe failed",
+                )
             return {
                 "status": STATE_UNHEALTHY,
                 "message": "Database probe failed",
@@ -327,14 +339,7 @@ class HealthService:
             from novelai.storage.backends import get_storage_backend as _gsb
 
             backend = _gsb()
-            if not hasattr(backend, "_client") or not hasattr(backend, "_bucket"):
-                return {"status": STATE_HEALTHY, "message": "Not an S3 backend", "latency_ms": 0}
-
-            used_bytes = 0
-            paginator = backend._client.get_paginator("list_objects_v2")
-            for page in paginator.paginate(Bucket=backend._bucket):
-                for obj in page.get("Contents", []):
-                    used_bytes += obj.get("Size", 0)
+            used_bytes = backend.total_size_bytes()
 
             limit_bytes = int(settings.S3_STORAGE_LIMIT_GB * 1024 ** 3)
             used_percent = int(used_bytes / limit_bytes * 100) if limit_bytes > 0 else 0

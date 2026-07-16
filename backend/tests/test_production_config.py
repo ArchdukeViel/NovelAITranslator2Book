@@ -25,6 +25,8 @@ def _make_prod_settings(**overrides: Any) -> AppSettings:
         TRUSTED_PROXY_CIDRS=["10.0.0.0/8"],
         HSTS_MAX_AGE_SECONDS=0,
         STORAGE_BACKEND="filesystem",
+        DATABASE_URL="postgresql+psycopg://example.invalid/postgres",
+        DB_SSL_MODE="require",
     )
     defaults.update(overrides)
     return AppSettings(**defaults)
@@ -34,6 +36,10 @@ class TestProductionConfigValidator:
     def test_valid_config_passes(self):
         result = validate_production_config(_make_prod_settings())
         assert not result.has_fatal, f"Expected no fatals, got: {[str(i) for i in result.fatals]}"
+
+    def test_database_tls_is_required(self):
+        result = validate_production_config(_make_prod_settings(DB_SSL_MODE="prefer"))
+        assert any(i.category == "database" for i in result.fatals)
 
     def test_non_production_env_fatal(self):
         result = validate_production_config(_make_prod_settings(ENV="development"))
@@ -116,6 +122,73 @@ class TestProductionConfigValidator:
         )
         assert result.has_fatal
         assert any("STORAGE_BACKEND" in i.message.upper() or "Unknown" in i.message for i in result.fatals)
+
+    def test_s3_production_requires_independent_backup_target(self):
+        result = validate_production_config(
+            _make_prod_settings(
+                STORAGE_BACKEND="s3",
+                S3_BUCKET="production",
+                S3_ENDPOINT="https://example.invalid",
+                S3_ACCESS_KEY_ID="source-key",
+                S3_SECRET_ACCESS_KEY="source-secret",
+                BACKUP_S3_ENABLED=True,
+                BACKUP_S3_BUCKET="production",
+                BACKUP_S3_ENDPOINT_URL="https://example.invalid",
+                BACKUP_S3_ACCESS_KEY_ID="backup-key",
+                BACKUP_S3_SECRET_ACCESS_KEY="backup-secret",
+                SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID="snapshot-read-key",
+                SNAPSHOT_SOURCE_S3_SECRET_ACCESS_KEY="snapshot-read-secret",
+            )
+        )
+        assert any("must be different" in issue.message for issue in result.fatals)
+
+    def test_s3_production_requires_backup_credentials(self):
+        result = validate_production_config(
+            _make_prod_settings(
+                STORAGE_BACKEND="s3",
+                S3_BUCKET="production",
+                S3_ENDPOINT="https://example.invalid",
+                S3_ACCESS_KEY_ID="source-key",
+                S3_SECRET_ACCESS_KEY="source-secret",
+                BACKUP_S3_ENABLED=True,
+                BACKUP_S3_BUCKET="backup",
+                BACKUP_S3_ENDPOINT_URL="https://example.invalid",
+                BACKUP_S3_ACCESS_KEY_ID=None,
+                BACKUP_S3_SECRET_ACCESS_KEY=None,
+            )
+        )
+        assert any("BACKUP_S3_ACCESS_KEY_ID" in issue.message for issue in result.fatals)
+
+    def test_valid_s3_production_backup_configuration_passes(self):
+        result = validate_production_config(
+            _make_prod_settings(
+                STORAGE_BACKEND="s3",
+                S3_BUCKET="production",
+                S3_ENDPOINT="https://example.invalid",
+                S3_ACCESS_KEY_ID="source-key",
+                S3_SECRET_ACCESS_KEY="source-secret",
+                BACKUP_S3_ENABLED=True,
+                BACKUP_S3_BUCKET="backup",
+                BACKUP_S3_PREFIX="snapshots",
+                BACKUP_S3_ENDPOINT_URL="https://example.invalid",
+                BACKUP_S3_ACCESS_KEY_ID="backup-key",
+                BACKUP_S3_SECRET_ACCESS_KEY="backup-secret",
+                SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID="snapshot-read-key",
+                SNAPSHOT_SOURCE_S3_SECRET_ACCESS_KEY="snapshot-read-secret",
+            )
+        )
+        assert not result.has_fatal
+
+    def test_restore_verification_rejects_production_target(self):
+        result = validate_production_config(
+            _make_prod_settings(
+                DATABASE_BACKUP_ENABLED=True,
+                DATABASE_BACKUP_ENCRYPTION_KEY="x" * 64,
+                DATABASE_RESTORE_VERIFICATION_ENABLED=True,
+                DATABASE_RESTORE_TARGET_URL="postgresql+psycopg://user:password@db/production",
+            )
+        )
+        assert any(issue.category == "database_restore" for issue in result.fatals)
 
     def test_warnings_present_with_valid_config(self):
         """Even valid config should have some informational items."""

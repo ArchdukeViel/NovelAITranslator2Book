@@ -6,6 +6,9 @@ Reads from the same DB and filesystem as the admin service.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,7 +26,18 @@ if settings.ENV == "production":
 
 bootstrap()
 
-app = FastAPI(title="NovelAI Reader", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    try:
+        yield
+    finally:
+        from novelai.db.engine import dispose_engines
+
+        dispose_engines()
+
+
+app = FastAPI(title="NovelAI Reader", version="1.0.0", lifespan=lifespan)
 
 if settings.WEB_CORS_ORIGINS:
     app.add_middleware(

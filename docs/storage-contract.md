@@ -17,6 +17,11 @@ calls. SQL `chapter_count` and `translated_count` are cached catalog projections
 authoritative. Authoritative counts come from `StorageService.count_stored_chapters()`
 and `StorageService.count_translated_chapters()` against R2/S3.
 
+Capacity probes use `StorageBackend.total_size_bytes()`. Callers must not inspect
+backend clients, bucket identifiers, or filesystem roots. The S3 implementation
+lists only the configured application key prefix; the filesystem implementation
+totals regular files below its configured root.
+
 ## Live Admin Library Summary
 
 The admin summary endpoint `GET /api/admin/library/summary` (optionally `?refresh=true`)
@@ -276,8 +281,10 @@ Canonical high-volume artifacts can be stored on:
 | Backend | Setting | Notes |
 |---|---|---|
 | Local filesystem | `STORAGE_BACKEND=filesystem` (default) | `NOVEL_LIBRARY_DIR` is the base path. Backups via `BackupManager` (tar.gz). |
-| Cloudflare R2 | `STORAGE_BACKEND=s3` with `S3_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com` | S3-compatible via boto3. Requires `S3_ACCESS_KEY_ID` + `S3_SECRET_ACCESS_KEY`. R2 lifecycle rules replace local backups. |
+| Cloudflare R2 | `STORAGE_BACKEND=s3` with `S3_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com` | S3-compatible via boto3. Production backups require a different `BACKUP_S3_BUCKET`; committed manifests and SHA-256 verification define successful storage snapshots. |
 | AWS S3 | `STORAGE_BACKEND=s3` without `S3_ENDPOINT` | Uses IAM role credentials. Standard S3 API. |
+
+Backup snapshots use separate least-privilege clients: a dedicated read-only source client inventories and reads canonical objects, while a backup-target client uploads, verifies, lists, and removes backup artifacts. This intentionally replaces cross-bucket provider copy with bounded streaming through the backup service.
 
 All storage backends implement the same `StorageBackend` interface. R2 and S3 differences are handled by the `S3Backend` class — callers never touch boto3 directly.
 

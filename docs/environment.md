@@ -113,7 +113,49 @@ python -c "import secrets; print(secrets.token_hex(32))"
 | `S3_BUCKET` | `str` | `None` | If `STORAGE_BACKEND=s3` | enables feature | S3 bucket name. | `my-novelai-bucket` |
 | `S3_REGION` | `str` | `us-east-1` | If `STORAGE_BACKEND=s3` | can leave default | S3 region. | `eu-west-1` |
 | `S3_KEY_PREFIX` | `str` | `""` | No | can leave default | Optional key prefix (folder) for all S3 objects. | `novelai-prod/` |
-| `S3_ENDPOINT` | `str` | `None` | No | **enables feature** | Custom S3 endpoint URL (e.g. MinIO, DigitalOcean Spaces). | `https://ams3.digitaloceanspaces.com` |
+| `S3_ENDPOINT` | `str` | `None` | No | **enables feature** | Custom S3-compatible endpoint URL (for example MinIO or Cloudflare R2). | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
+
+### Backups
+
+| Variable | Type | Default | Required? | Change? | Description | Example |
+|----------|------|---------|----------|---------|-------------|---------|
+| `BACKUP_ENABLED` | `bool` | `false` | Production | **must change** in prod | Enables the lightweight daily backup scheduler. | `true` |
+| `BACKUP_SCHEDULE_CRON` | `str` | `0 2 * * *` | No | can leave default | Cron expression evaluated by the scheduler for object backups. | `0 2 * * *` |
+| `BACKUP_TIMEZONE` | `str` | `UTC` | No | can leave default | IANA timezone used when evaluating the backup schedule. | `UTC` |
+| `BACKUP_S3_ENABLED` | `bool` | `false` | With S3 production storage | **must change** in prod | Enables committed snapshots to an independent S3-compatible bucket. | `true` |
+| `BACKUP_S3_ENDPOINT_URL` | `str` | `None` | With offsite snapshots | **must change** | Endpoint for the independent backup target. | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
+| `BACKUP_S3_REGION` | `str` | `auto` | With offsite snapshots | can leave default for R2 | Backup-target region. | `auto` |
+| `BACKUP_S3_BUCKET` | `str` | `None` | With offsite snapshots | **must change** | Independent backup bucket; must differ from `S3_BUCKET`. | `my-backup-bucket` |
+| `BACKUP_S3_PREFIX` | `str` | `snapshots` | With offsite snapshots | can leave default | Non-root prefix containing committed snapshot directories. | `snapshots` |
+| `BACKUP_S3_ACCESS_KEY_ID` | `SecretStr` | `None` | With offsite snapshots | **must change** | Target-scoped backup access key. | `<secret>` |
+| `BACKUP_S3_SECRET_ACCESS_KEY` | `SecretStr` | `None` | With offsite snapshots | **must change** | Target-scoped backup secret key. | `<secret>` |
+| `SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID` | `SecretStr` | `None` | With offsite snapshots | **must change** | Dedicated read-only credential for the production bucket. | `<secret>` |
+| `SNAPSHOT_SOURCE_S3_SECRET_ACCESS_KEY` | `SecretStr` | `None` | With offsite snapshots | **must change** | Dedicated read-only source secret. | `<secret>` |
+| `SCHEDULED_JOB_LEASE_SECONDS` | `int` | `900` | No | tune for workload | Cross-instance lease duration; active jobs renew at one-third of this interval. | `900` |
+
+### Managed PostgreSQL
+
+The application reuses one engine per effective configuration. Direct and session modes use bounded SQLAlchemy pools; transaction mode uses `NullPool` and disables psycopg automatic prepared statements.
+
+| Variable | Default | Description |
+|---|---:|---|
+| `DB_CONNECTION_MODE` | `direct` | `direct`, `session`, or `transaction`. |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `5` / `5` | Permanent and burst connections per process; ignored in transaction mode. |
+| `DB_CONNECTION_BUDGET` | `20` | Maximum combined admin and reader pool capacity accepted by production validation. |
+| `DB_POOL_TIMEOUT_SECONDS` / `DB_POOL_RECYCLE_SECONDS` | `30` / `1800` | Checkout timeout and connection recycle interval. |
+| `DB_CONNECT_TIMEOUT_SECONDS` | `10` | Network connection timeout. |
+| `DB_SSL_MODE` | `prefer` | Production requires `require`, `verify-ca`, or `verify-full`. |
+| `DB_STATEMENT_TIMEOUT_MS` | `120000` | Per-connection statement timeout. |
+| `DB_LOCK_TIMEOUT_MS` | `10000` | Per-connection lock wait timeout. |
+| `DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` | `60000` | Terminates abandoned transactions. |
+
+### Logical Database Recovery
+
+`DATABASE_BACKUP_ENABLED=true` schedules a PostgreSQL 17 custom-format dump of the application-owned `public` schema. The dump stream is encrypted with chunked AES-256-GCM before it reaches disk and is committed under `DATABASE_BACKUP_S3_PREFIX` only after its manifest is written.
+
+Required production values are `DATABASE_BACKUP_ENCRYPTION_KEY`, a non-root database prefix distinct from `BACKUP_S3_PREFIX`, the existing independent backup-bucket credentials, and working PostgreSQL 17 client tools. Operator alerts additionally require `OPERATOR_ALERT_EMAIL` and tested SMTP configuration.
+
+Set `DATABASE_RESTORE_VERIFICATION_ENABLED=true` only with a dedicated clean database whose name contains `restore`. The leased monthly job downloads the newest committed manifest, decrypts to a short-lived local file, runs PostgreSQL 17 `pg_restore`, checks the Alembic head, public-table presence, and validated constraints, then deletes both temporary files.
 
 ### Web
 
@@ -135,7 +177,7 @@ python -c "import secrets; print(secrets.token_hex(32))"
 | `PROVIDER_DEFAULT` | `str` | `gemini` | No | can leave default | Default translation provider. Use `dummy` for testing. | `gemini` |
 | `PROVIDER_GEMINI_API_KEY` | `SecretStr` | `None` | If using Gemini | **must change** | Google AI Studio API key for Gemini. | `AIza...` |
 | `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` | `SecretStr` | `None` | If storing API keys in DB | **must change** | Key for encrypting stored provider credentials. Generate with `secrets.token_urlsafe(32)`. | `aBcD...` |
-| `PROVIDER_GEMINI_DEFAULT_MODEL` | `str` | `gemini-3.1-flash-lite` | No | can leave default | Default Gemini model for translation. | `gemini-2.0-flash` |
+| `PROVIDER_GEMINI_DEFAULT_MODEL` | `str` | `gemini-3.1-flash-lite` | No | can leave default | Default Gemini model for translation. | `gemini-3.1-flash-lite` |
 | `PROVIDER_GEMINI_MODEL_FALLBACKS` | `list[str]` | `["gemma-4-31b-it"]` | No | can leave default | Gemini fallback model list. | `["gemma-4-31b-it"]` |
 
 ### Scraping
@@ -199,6 +241,8 @@ python -c "import secrets; print(secrets.token_hex(32))"
 | `PUBLIC_FRONTEND_URL` | `str` | `http://127.0.0.1:3000` | Yes (production) | **must change** in prod | Frontend base URL for post-OAuth redirect and email links. | `https://novelai.example.com` |
 | `AUTH_EMAIL_DELIVERY_MODE` | `str` | `noop` | No | can leave default | Email delivery mode: `noop` (no email sent) or `smtp`. | `smtp` |
 
+Each running deployment uses exactly one `GOOGLE_OAUTH_REDIRECT_URI`. A Google OAuth web client may register multiple authorized redirect URIs (for example local direct-backend, local Compose, and production), but the value selected in each environment must match one registered URI exactly. Do not copy a local HTTP callback into a deployed production environment; production uses the final HTTPS application origin.
+
 ### Email / SMTP
 
 | Variable | Type | Default | Required? | Change? | Description | Example |
@@ -231,29 +275,27 @@ python -c "import secrets; print(secrets.token_hex(32))"
 | `SEMANTIC_CACHE_ENABLED` | `bool` | `false` | No | **enables feature** | Enable semantic cache (future feature, disabled by default). | `true` |
 | `SEMANTIC_CACHE_SIMILARITY_THRESHOLD` | `float` | `0.85` | No | can leave default | Cosine similarity threshold for cache candidates (0.0-1.0). | `0.9` |
 | `SEMANTIC_CACHE_CONTEXT_GUARD_ENABLED` | `bool` | `true` | No | can leave default | Enable context guard for semantic cache. | `false` |
-| `SEMANTIC_CACHE_EMBEDDING_PROVIDER` | `str` | `gemini` | No | can leave default | Embedding provider for semantic cache. | `openai` |
-| `SEMANTIC_CACHE_EMBEDDING_MODEL` | `str` | `text-embedding-004` | No | can leave default | Embedding model for semantic cache. | `text-embedding-3-small` |
+| `SEMANTIC_CACHE_EMBEDDING_PROVIDER` | `str` | `gemini` | No | can leave default | Embedding provider for semantic cache. | `gemini` |
+| `SEMANTIC_CACHE_EMBEDDING_MODEL` | `str` | `text-embedding-004` | No | can leave default | Embedding model for semantic cache. | `text-embedding-004` |
 
 ### LLM QA
 
 | Variable | Type | Default | Required? | Change? | Description | Example |
 |----------|------|---------|----------|---------|-------------|---------|
 | `LLM_QA_ENABLED` | `bool` | `false` | No | **enables feature** | Enable LLM QA (future feature, disabled by default). | `true` |
-| `LLM_QA_PROVIDER` | `str` | `gemini` | No | can leave default | Provider for LLM QA. | `openai` |
-| `LLM_QA_MODEL` | `str` | `gemini-3.1-flash-lite` | No | can leave default | Model for LLM QA. | `gpt-4o-mini` |
+| `LLM_QA_PROVIDER` | `str` | `gemini` | No | can leave default | Provider for LLM QA. | `gemini` |
+| `LLM_QA_MODEL` | `str` | `gemini-3.1-flash-lite` | No | can leave default | Model for LLM QA. | `gemini-3.1-flash-lite` |
 | `LLM_QA_COST_TRACKING_ENABLED` | `bool` | `true` | No | can leave default | Enable cost tracking for LLM QA. | `false` |
 
 ### Docker Compose
 
 | Variable | Type | Default | Required? | Change? | Description | Example |
 |----------|------|---------|----------|---------|-------------|---------|
-| `POSTGRES_USER` | `str` | `novelai` | Only with local postgres | can leave default | PostgreSQL user for local container. | `novelai` |
-| `POSTGRES_PASSWORD` | `str` | `novelai` | Only with local postgres | **must change** in prod | PostgreSQL password for local container. | `a-strong-password` |
-| `POSTGRES_DB` | `str` | `novelai` | Only with local postgres | can leave default | PostgreSQL database name for local container. | `novelai` |
-| `POSTGRES_HOST_PORT` | `int` | `5432` | Only with local postgres | can leave default | Host port for local PostgreSQL. | `5432` |
 | `PUBLIC_HTTP_PORT` | `int` | `80` | No | can leave default | Public HTTP port for Caddy. | `8080` |
 | `PUBLIC_HTTPS_PORT` | `int` | `443` | No | can leave default | Public HTTPS port for Caddy. | `443` |
 | `SITE_DOMAIN` | `str` | — | No | can leave default | Public domain for Caddy TLS. | `novelai.example.com` |
+
+The canonical Compose file does not provision the primary application database, so legacy `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, and `POSTGRES_HOST_PORT` placeholders are not used. Configure Supabase or another managed PostgreSQL service only through `DATABASE_URL` and the `DB_*` connection controls. The isolated `restore-db` service has fixed local role/database names and receives its separate password through `DATABASE_RESTORE_PASSWORD`.
 
 ---
 
@@ -414,12 +456,12 @@ DATABASE_URL=postgresql+psycopg://novelai:novelai@host.docker.internal:5432/nove
 3. Go to **Project Settings → Database**
 4. Under **Connection string**, copy the **URI** mode string
 
-Format:
+The dashboard may display a `postgresql://` URI. Normalize its scheme to the project's psycopg v3 form before use:
 ```
-postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres
+postgresql+psycopg://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres
 ```
 
-> Note: Use port `6543` for connection pooling (Supabase's PgBouncer), `5432` for direct connection.
+> Choose the direct or pooled endpoint shown by the current Supabase Connect panel. Connection modes and network support vary; do not infer pooling behavior from a port alone.
 
 ### Step 2: Configure `deploy/.env`
 
@@ -427,7 +469,7 @@ Add the Supabase URL:
 
 ```bash
 # Replace values in brackets
-DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres
+DATABASE_URL=postgresql+psycopg://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres
 ```
 
 ### Step 3: Run Migrations
@@ -439,9 +481,10 @@ docker compose run migrate
 
 Or directly (from repo root):
 
-```bash
-cd backend
-DATABASE_URL="postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres" alembic upgrade head
+```powershell
+Set-Location backend
+$env:DATABASE_URL = "postgresql+psycopg://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres"
+alembic -c alembic.ini upgrade head
 ```
 
 ### Step 4: Start Services
@@ -467,10 +510,10 @@ docker compose logs backend
 ### Supabase-Specific Notes
 
 - **SSL is required** — Supabase enforces it. The `postgresql+psycopg://` driver handles SSL automatically.
-- **Connection pooling** — Use port `6543` for connection pooling (recommended), `5432` for direct.
+- **Connection mode** — Select direct, session-pooler, or transaction-pooler mode from the current Supabase Connect panel based on network reachability and workload. Verify prepared-statement compatibility before using transaction pooling.
 - **IPv6** — Some Supabase projects may require IPv6 support on your Docker host.
-- **Connection limits** — Supabase free tier has 15 connections. The backend uses connection pooling via SQLAlchemy.
-- **Backups** — Supabase handles automated backups. Additional backup via the app's backup manager is optional.
+- **Connection limits** — Limits depend on the project's current compute and pooler configuration. Check the project dashboard instead of relying on a fixed number.
+- **Backups** — Availability, retention, and point-in-time recovery depend on the current project plan and configuration. Database backups are separate from object-store backups and must be verified independently.
 
 ---
 

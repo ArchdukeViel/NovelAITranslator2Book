@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -79,6 +80,12 @@ class TestFilesystemBackend:
         tmp_files = list(tmp_path.glob("*.tmp"))
         assert not tmp_files
 
+    def test_total_size_bytes(self, fs: FilesystemBackend) -> None:
+        fs.save("a.txt", b"abc")
+        fs.save("nested/b.txt", b"12345")
+
+        assert fs.total_size_bytes() == 8
+
 
 # ── S3Backend (moto mock) ───────────────────────────────────────────
 
@@ -129,6 +136,36 @@ class TestS3Backend:
         s3.save("x.txt", b"")
         assert s3.exists("x.txt")
 
+    def test_exists_propagates_provider_failure(
+        self, s3: StorageBackend, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from botocore.exceptions import ClientError
+
+        def denied(**_kwargs: object) -> None:
+            raise ClientError(
+                {"Error": {"Code": "AccessDenied", "Message": "denied"}},
+                "HeadObject",
+            )
+
+        monkeypatch.setattr(cast(Any, s3)._client, "head_object", denied)
+        with pytest.raises(ClientError):
+            s3.exists("x.txt")
+
+    def test_delete_propagates_provider_failure(
+        self, s3: StorageBackend, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from botocore.exceptions import ClientError
+
+        def denied(**_kwargs: object) -> None:
+            raise ClientError(
+                {"Error": {"Code": "AccessDenied", "Message": "denied"}},
+                "DeleteObject",
+            )
+
+        monkeypatch.setattr(cast(Any, s3)._client, "delete_object", denied)
+        with pytest.raises(ClientError):
+            s3.delete("x.txt")
+
     def test_list_keys(self, s3: StorageBackend) -> None:
         s3.save("a.txt", b"1")
         s3.save("b.txt", b"2")
@@ -151,6 +188,12 @@ class TestS3Backend:
         backend = S3Backend(bucket="b", key_prefix="myapp/data")
         assert backend._key("hello.txt") == "myapp/data/hello.txt"
         assert backend._key("sub/file.txt") == "myapp/data/sub/file.txt"
+
+    def test_total_size_bytes(self, s3: StorageBackend) -> None:
+        s3.save("a.txt", b"abc")
+        s3.save("nested/b.txt", b"12345")
+
+        assert s3.total_size_bytes() == 8
 
 
 # ── Factory / singleton ──────────────────────────────────────────────

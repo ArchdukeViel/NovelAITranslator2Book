@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
 import pytest
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import create_engine
@@ -143,8 +143,10 @@ def oauth_client(oauth_app):
 def auth_email_outbox(oauth_app):
     from novelai.config.settings import settings
 
+    public_frontend_url = settings.PUBLIC_FRONTEND_URL
+    assert public_frontend_url is not None
     service = InMemoryAuthEmailService(
-        public_base_url=settings.PUBLIC_FRONTEND_URL,
+        public_base_url=public_frontend_url,
         password_reset_path=settings.AUTH_PASSWORD_RESET_PATH,
         email_verification_path=settings.AUTH_EMAIL_VERIFICATION_PATH,
     )
@@ -1305,6 +1307,14 @@ class TestOwnerBoundaryContracts:
 
 
 class TestGoogleOAuth:
+    def test_frontend_redirect_fails_closed_without_public_url(self, monkeypatch):
+        monkeypatch.setattr(auth_module.settings, "PUBLIC_FRONTEND_URL", None)
+
+        with pytest.raises(HTTPException) as exc_info:
+            auth_module._frontend_redirect("/")
+
+        assert exc_info.value.status_code == 503
+
     def test_start_returns_503_when_google_oauth_is_not_configured(self, client, monkeypatch):
         from novelai.config.settings import settings
 

@@ -1,0 +1,39 @@
+name: Managed Services Verification
+
+on:
+  schedule:
+    - cron: "17 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hosted-postgres-and-r2:
+    if: ${{ vars.MANAGED_SERVICE_TESTS_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MANAGED_DATABASE_TEST_URL: ${{ secrets.MANAGED_DATABASE_TEST_URL }}
+      TEST_R2_ENDPOINT: ${{ secrets.TEST_R2_ENDPOINT }}
+      TEST_R2_SOURCE_BUCKET: ${{ vars.TEST_R2_SOURCE_BUCKET }}
+      TEST_R2_TARGET_BUCKET: ${{ vars.TEST_R2_TARGET_BUCKET }}
+      TEST_R2_APP_ACCESS_KEY: ${{ secrets.TEST_R2_APP_ACCESS_KEY }}
+      TEST_R2_APP_SECRET_KEY: ${{ secrets.TEST_R2_APP_SECRET_KEY }}
+      TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY: ${{ secrets.TEST_R2_SNAPSHOT_SOURCE_ACCESS_KEY }}
+      TEST_R2_SNAPSHOT_SOURCE_SECRET_KEY: ${{ secrets.TEST_R2_SNAPSHOT_SOURCE_SECRET_KEY }}
+      TEST_R2_BACKUP_ACCESS_KEY: ${{ secrets.TEST_R2_BACKUP_ACCESS_KEY }}
+      TEST_R2_BACKUP_SECRET_KEY: ${{ secrets.TEST_R2_BACKUP_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+      - run: pip install -e ".[dev,test,s3,auth]"
+      - name: Verify hosted PostgreSQL and isolated R2 prefixes
+        run: >
+          pytest -q -m integration
+          backend/tests/integration/test_managed_postgres.py
+          backend/tests/integration/test_r2_snapshot_integration.py

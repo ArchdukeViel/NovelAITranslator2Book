@@ -16,7 +16,10 @@ class StorageBackend(ABC):
     @abstractmethod
     def save(self, path: str | Path, data: bytes) -> None:
         """Write *data* to *path*, overwriting if it exists.
-        Must be atomic (no partial writes visible to readers).
+
+        Readers must not observe partial bytes. Backends may provide atomic
+        replacement or last-write-wins object semantics; multi-object
+        transactions are outside this contract.
         """
 
     @abstractmethod
@@ -48,6 +51,10 @@ class StorageBackend(ABC):
         Implementations should retrieve at most one matching descendant.
         Used for logical-directory presence checks on remote backends.
         """
+
+    @abstractmethod
+    def total_size_bytes(self) -> int:
+        """Return the total bytes stored by this backend."""
 
     @abstractmethod
     def mkdirs(self, path: str | Path) -> None:

@@ -1,5 +1,9 @@
+-- RETIRED HISTORICAL REFERENCE — DO NOT RUN.
+-- Alembic revision 3da9f497264c is the canonical, executable RLS policy source.
+-- This former Supabase SQL Editor script is intentionally commented out so it
+-- cannot drift into a second schema-management path.
+/*
 -- Row Level Security (RLS) Policies for NovelAI
--- Run this in Supabase SQL Editor after enabling RLS
 -- 
 -- Role model (backend-enforced):
 --   guest - unauthenticated; read public catalog/chapters only
@@ -337,3 +341,4 @@ WITH CHECK (public.is_owner());
 -- ALEMBIC_VERSION TABLE
 -- RLS enabled with no policies = no PostgREST access
 -- =============================================================================
+*/

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -208,6 +208,17 @@ class AppSettings(BaseSettings):
 
     # --- Database
     DATABASE_URL: str | None = None
+    DB_CONNECTION_MODE: Literal["direct", "session", "transaction"] = "direct"
+    DB_POOL_SIZE: int = Field(default=5, ge=1)
+    DB_MAX_OVERFLOW: int = Field(default=5, ge=0)
+    DB_CONNECTION_BUDGET: int = Field(default=20, ge=1)
+    DB_POOL_TIMEOUT_SECONDS: int = Field(default=30, ge=1)
+    DB_POOL_RECYCLE_SECONDS: int = Field(default=1800, ge=0)
+    DB_CONNECT_TIMEOUT_SECONDS: int = Field(default=10, ge=1)
+    DB_SSL_MODE: Literal["disable", "allow", "prefer", "require", "verify-ca", "verify-full"] = "prefer"
+    DB_STATEMENT_TIMEOUT_MS: int = Field(default=120_000, ge=1)
+    DB_LOCK_TIMEOUT_MS: int = Field(default=10_000, ge=1)
+    DB_IDLE_IN_TRANSACTION_TIMEOUT_MS: int = Field(default=60_000, ge=1)
 
     # --- Redis (Phase 3 workers)
     REDIS_URL: str | None = None
@@ -301,11 +312,11 @@ class AppSettings(BaseSettings):
     # --- Backups (M2c)
     BACKUP_ENABLED: bool = Field(
         default=False,
-        description="Enable scheduled local backups. Local backup target first; offsite is a future milestone.",
+        description="Enable scheduled backups. S3 storage requires an independent offsite target.",
     )
     BACKUP_SCHEDULE_CRON: str = Field(
         default="0 2 * * *",
-        description="Cron expression for scheduled backups (APScheduler format). Default: daily at 02:00.",
+        description="Intended backup schedule. The lightweight scheduler currently runs once per UTC day.",
     )
     BACKUP_TIMEZONE: str = Field(
         default="UTC",
@@ -323,6 +334,66 @@ class AppSettings(BaseSettings):
         default=30,
         description="Maximum age in days for successful backups. Older backups are eligible for deletion.",
     )
+    BACKUP_S3_ENABLED: bool = Field(
+        default=False,
+        description="Copy scheduled backups to an independent S3-compatible bucket.",
+    )
+    BACKUP_S3_ENDPOINT_URL: str | None = Field(
+        default=None,
+        description="S3-compatible endpoint for the independent backup target.",
+    )
+    BACKUP_S3_REGION: str = Field(
+        default="auto",
+        description="Region for the independent S3-compatible backup target.",
+    )
+    BACKUP_S3_BUCKET: str | None = Field(
+        default=None,
+        description="Independent bucket for scheduled offsite snapshots.",
+    )
+    BACKUP_S3_PREFIX: str = Field(
+        default="snapshots",
+        description="Key prefix for committed offsite snapshots.",
+    )
+    BACKUP_S3_ACCESS_KEY_ID: SecretStr | None = Field(
+        default=None,
+        description="Access key for the independent S3-compatible backup target.",
+    )
+    BACKUP_S3_SECRET_ACCESS_KEY: SecretStr | None = Field(
+        default=None,
+        description="Secret key for the independent S3-compatible backup target.",
+    )
+    SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID: SecretStr | None = Field(
+        default=None,
+        description="Read-only access key used only to inventory and read snapshot source objects.",
+    )
+    SNAPSHOT_SOURCE_S3_SECRET_ACCESS_KEY: SecretStr | None = Field(
+        default=None,
+        description="Read-only secret used only to inventory and read snapshot source objects.",
+    )
+    SCHEDULED_JOB_LEASE_SECONDS: int = Field(default=900, ge=60)
+
+    # --- Logical database recovery
+    DATABASE_BACKUP_ENABLED: bool = False
+    DATABASE_BACKUP_SCHEDULE_CRON: str = "0 1 * * *"
+    DATABASE_BACKUP_TIMEZONE: str = "UTC"
+    DATABASE_BACKUP_S3_PREFIX: str = "database"
+    DATABASE_BACKUP_RETENTION_DAYS: int = Field(default=30, ge=1)
+    DATABASE_BACKUP_MIN_SUCCESSFUL_TO_KEEP: int = Field(default=3, ge=1)
+    DATABASE_BACKUP_ENCRYPTION_KEY: SecretStr | None = None
+    PG_DUMP_PATH: str = "pg_dump"
+    DATABASE_RESTORE_VERIFICATION_ENABLED: bool = False
+    DATABASE_RESTORE_VERIFICATION_SCHEDULE_CRON: str = "0 3 1 * *"
+    DATABASE_RESTORE_VERIFICATION_TIMEZONE: str = "UTC"
+    DATABASE_RESTORE_TARGET_URL: SecretStr | None = None
+    DATABASE_RESTORE_SSL_MODE: Literal["disable", "require", "verify-ca", "verify-full"] = "require"
+    PG_RESTORE_PATH: str = "pg_restore"
+
+    # --- Operator alerts
+    OPERATOR_ALERT_ENABLED: bool = False
+    OPERATOR_ALERT_EMAIL: str | None = None
+    OPERATOR_ALERT_FAILURE_THRESHOLD: int = Field(default=3, ge=1)
+    OPERATOR_ALERT_COOLDOWN_SECONDS: int = Field(default=3600, ge=60)
+    OPERATOR_ALERT_STALE_BACKUP_HOURS: int = Field(default=36, ge=1)
 
     # --- Maintenance cleanup (M2c)
     MAINTENANCE_ENABLED: bool = Field(

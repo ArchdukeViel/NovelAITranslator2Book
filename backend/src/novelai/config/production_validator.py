@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from novelai.config.settings import AppSettings
 
@@ -112,6 +114,23 @@ def _is_wildcard_cors(origins: list[str]) -> bool:
     return any(o.strip() == "*" for o in origins)
 
 
+def _valid_schedule(expression: str, timezone_name: str) -> bool:
+    try:
+        from croniter import croniter
+
+        croniter(expression, datetime.now(ZoneInfo(timezone_name))).get_next(datetime)
+    except (ImportError, KeyError, TypeError, ValueError, ZoneInfoNotFoundError):
+        return False
+    return True
+
+
+def _secret_value(value: object | None) -> str | None:
+    if value is None:
+        return None
+    getter = getattr(value, "get_secret_value", None)
+    return str(getter() if getter else value)
+
+
 def validate_production_config(settings: AppSettings) -> ValidationResult:
     """Validate configuration for production deployment.
 
@@ -203,6 +222,21 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
             "REDIS_URL is required when WEB_RATE_LIMITER_BACKEND=redis.",
         )
 
+    # --- Managed PostgreSQL
+    if not settings.DATABASE_URL:
+        result.add(Severity.FATAL, "database", "DATABASE_URL is required in production.")
+    if settings.DB_SSL_MODE not in {"require", "verify-ca", "verify-full"}:
+        result.add(Severity.FATAL, "database", "DB_SSL_MODE must require TLS in production.")
+    if settings.DB_CONNECTION_MODE != "transaction":
+        per_process_limit = settings.DB_POOL_SIZE + settings.DB_MAX_OVERFLOW
+        combined_limit = per_process_limit * 2
+        if combined_limit > settings.DB_CONNECTION_BUDGET:
+            result.add(
+                Severity.FATAL,
+                "database",
+                "Combined admin and reader pools exceed DB_CONNECTION_BUDGET.",
+            )
+
     # --- Storage backend
     if settings.STORAGE_BACKEND == "s3":
         if not settings.S3_BUCKET:
@@ -258,6 +292,111 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
             "backup",
             "BACKUP_ENABLED is false; production should have backups enabled or a documented exception.",
         )
+    elif settings.STORAGE_BACKEND == "s3":
+        if not settings.BACKUP_S3_ENABLED:
+            result.add(
+                Severity.FATAL,
+                "backup",
+                "BACKUP_S3_ENABLED must be true when production storage uses S3.",
+            )
+        if not settings.BACKUP_S3_BUCKET:
+            result.add(
+                Severity.FATAL,
+                "backup",
+                "BACKUP_S3_BUCKET is required when S3 offsite backups are enabled.",
+            )
+        elif settings.BACKUP_S3_BUCKET == settings.S3_BUCKET:
+            result.add(
+                Severity.FATAL,
+                "backup",
+                "BACKUP_S3_BUCKET must be different from the production S3_BUCKET.",
+            )
+        if not settings.BACKUP_S3_PREFIX.strip().strip("/"):
+            result.add(
+                Severity.FATAL,
+                "backup",
+                "BACKUP_S3_PREFIX must be a non-root prefix.",
+            )
+        if not settings.BACKUP_S3_ENDPOINT_URL:
+            result.add(
+                Severity.FATAL,
+                "backup",
+                "BACKUP_S3_ENDPOINT_URL is required for S3-compatible offsite backups.",
+            )
+        if not settings.BACKUP_S3_ACCESS_KEY_ID or not settings.BACKUP_S3_SECRET_ACCESS_KEY:
+            result.add(
+                Severity.FATAL,
+                "backup",
+                "BACKUP_S3_ACCESS_KEY_ID and BACKUP_S3_SECRET_ACCESS_KEY are required for offsite backups.",
+            )
+        if not settings.SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID or not settings.SNAPSHOT_SOURCE_S3_SECRET_ACCESS_KEY:
+            result.add(
+                Severity.FATAL,
+                "backup",
+                "Dedicated read-only snapshot-source credentials are required for S3 backups.",
+            )
+        source_access_key = _secret_value(settings.SNAPSHOT_SOURCE_S3_ACCESS_KEY_ID)
+        target_access_key = _secret_value(settings.BACKUP_S3_ACCESS_KEY_ID)
+        application_access_key = _secret_value(settings.S3_ACCESS_KEY_ID)
+        if source_access_key and source_access_key in {target_access_key, application_access_key}:
+            result.add(
+                Severity.FATAL,
+                "backup",
+                "Snapshot-source credentials must differ from application and backup-target credentials.",
+            )
+        if not _valid_schedule(settings.BACKUP_SCHEDULE_CRON, settings.BACKUP_TIMEZONE):
+            result.add(Severity.FATAL, "backup", "BACKUP_SCHEDULE_CRON or BACKUP_TIMEZONE is invalid.")
+
+    if settings.DATABASE_BACKUP_ENABLED:
+        if not settings.BACKUP_S3_ENABLED:
+            result.add(Severity.FATAL, "database_backup", "Database backups require the independent S3 target.")
+        if not settings.DATABASE_BACKUP_S3_PREFIX.strip().strip("/"):
+            result.add(Severity.FATAL, "database_backup", "DATABASE_BACKUP_S3_PREFIX must not be root.")
+        if settings.DATABASE_BACKUP_S3_PREFIX.strip("/") == settings.BACKUP_S3_PREFIX.strip("/"):
+            result.add(Severity.FATAL, "database_backup", "Database and object snapshots require separate prefixes.")
+        encryption_key = _secret_value(settings.DATABASE_BACKUP_ENCRYPTION_KEY)
+        if not encryption_key or len(encryption_key) < 32:
+            result.add(Severity.FATAL, "database_backup", "A strong database-backup encryption key is required.")
+        if not _valid_schedule(settings.DATABASE_BACKUP_SCHEDULE_CRON, settings.DATABASE_BACKUP_TIMEZONE):
+            result.add(
+                Severity.FATAL,
+                "database_backup",
+                "DATABASE_BACKUP_SCHEDULE_CRON or DATABASE_BACKUP_TIMEZONE is invalid.",
+            )
+
+    if settings.DATABASE_RESTORE_VERIFICATION_ENABLED:
+        target_url = _secret_value(settings.DATABASE_RESTORE_TARGET_URL)
+        if not settings.DATABASE_BACKUP_ENABLED:
+            result.add(Severity.FATAL, "database_restore", "Restore verification requires database backups.")
+        if not target_url or "restore" not in target_url.lower():
+            result.add(
+                Severity.FATAL,
+                "database_restore",
+                "DATABASE_RESTORE_TARGET_URL must identify a dedicated restore-verification database.",
+            )
+        if target_url and target_url == settings.DATABASE_URL:
+            result.add(Severity.FATAL, "database_restore", "Restore verification must never target production.")
+        if (
+            target_url
+            and settings.DATABASE_RESTORE_SSL_MODE == "disable"
+            and urlparse(target_url).hostname != "restore-db"
+        ):
+            result.add(
+                Severity.FATAL,
+                "database_restore",
+                "Restore TLS may be disabled only for the internal Compose restore-db host.",
+            )
+        if not _valid_schedule(
+            settings.DATABASE_RESTORE_VERIFICATION_SCHEDULE_CRON,
+            settings.DATABASE_RESTORE_VERIFICATION_TIMEZONE,
+        ):
+            result.add(Severity.FATAL, "database_restore", "Restore verification cron or timezone is invalid.")
+
+    if settings.OPERATOR_ALERT_ENABLED:
+        if not settings.OPERATOR_ALERT_EMAIL:
+            result.add(Severity.FATAL, "alerts", "OPERATOR_ALERT_EMAIL is required when alerts are enabled.")
+        if settings.AUTH_EMAIL_DELIVERY_MODE != "smtp" or not settings.SMTP_HOST or not settings.SMTP_FROM_EMAIL:
+            result.add(Severity.FATAL, "alerts", "Operator alerts require working SMTP configuration.")
 
     # --- HSTS
     if settings.HSTS_MAX_AGE_SECONDS > 0 and not _is_https_url(settings.PUBLIC_FRONTEND_URL):

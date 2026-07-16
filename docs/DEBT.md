@@ -101,7 +101,7 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Affected areas:** `backend/src/novelai/services/backup_manager.py`, `backend/src/novelai/services/backup_service.py`, `backend/src/novelai/services/scheduler_service.py`
 - **Description:** BackupManager exists but has no container integration, scheduled trigger, or retention policy.
 - **Completion criteria:** Scheduled task writes file backups, cleans old archives, and reports counts.
-- **Resolution:** Added `apply_retention()` to `BackupManager` with multi-process file lock, preserving newest + minimum successful backups. Created `BackupService` with lock-based concurrency prevention and `BackupService.get_backup_health()` for health integration. Created `SchedulerService` (APScheduler) with cron-based scheduling for backups and maintenance. Wired into app lifespan. 5 backup retention tests pass.
+- **Resolution:** Added `apply_retention()` to `BackupManager` with multi-process file locking for filesystem backups. `BackupService` now creates manifest-last, conditionally copied, SHA-256-verified snapshots in a separately configured S3-compatible bucket when production storage uses S3. `SchedulerService` records actual success, failure, or lock-skip results instead of marking every attempt successful. The lightweight scheduler is asyncio-based and currently gates one run per UTC day; it does not use APScheduler or evaluate full cron syntax.
 
 ### DEBT-011 — No analytics dashboard
 - **Milestone:** Milestone M5 (Admin Operations)
@@ -380,21 +380,23 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Affected areas:** `backend/src/novelai/storage/backends/s3.py`, `backend/src/novelai/config/settings.py`, `backend/src/novelai/config/production_validator.py`, `backend/tests/integration/test_s3_integration.py`
 - **Description:** S3 backend fields restored to settings but not validated in production deployment.
 - **Completion criteria:** Real S3 integration tests, production config validation, backup/restore drill with S3.
-- **Resolution:** Added `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` settings for R2/S3-compatible targets. Updated `S3Backend` constructor to accept explicit credentials. Production validator requires credentials when `S3_ENDPOINT` is set. Created `backend/tests/integration/test_s3_integration.py` with 8 integration tests (save, load, overwrite, delete, list, subdir list). All 8 tests pass against real Cloudflare R2 bucket `dokushodo` using isolated `_integration_test_*` prefix with auto-cleanup. R2 backup/restore drill procedure documented in `docs/operations/data-recovery.md`.
+- **Resolution:** Added `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` settings for R2/S3-compatible targets. Updated `S3Backend` constructor to accept explicit credentials. Production validator requires credentials when `S3_ENDPOINT` is set. Live verification on 2026-07-16 proved application read/write/delete on the production bucket, snapshot-source read with write denied, backup-target read/write/delete on the independent backup bucket, denied cross-bucket access, and complete isolated-prefix cleanup. R2 backup/restore procedures are documented in `docs/operations/data-recovery.md`.
 
 ### DEBT-062 — pg_net extension in public schema
 - **Milestone:** Milestone M3 (Deployment)
 - **Category:** Database | Security
 - **Priority:** Low
-- **Status:** Pending
-- **Affected areas:** Supabase database `public` schema
-- **Description:** The `pg_net` extension is installed in the `public` schema instead of the `extensions` schema. Exposes internal HTTP functions via PostgREST. The extension is used by `pg_cron` for automated `cleanup_expired_scheduler_states()` calls.
-- **Completion criteria:**
-  1. `CREATE SCHEMA IF NOT EXISTS extensions`
-  2. `ALTER EXTENSION pg_net SET SCHEMA extensions`
-  3. Update `cron.job` command paths to use `extensions.` prefix
-  4. Verify cron job runs at next scheduled time (03:30 UTC) without error
-  5. Confirm no other code references `net.*` without schema qualification
+- **Status:** Resolved
+- **Affected areas:** `backend/alembic/versions/2026-07-16_3da9f497264c_remove_pg_net_and_reconcile_rls_policies.py`, Supabase database
+- **Description:** `pg_net` was installed in `public`, but live dependency and cron-job inspection confirmed that no application object or scheduled job used it. The scheduler-state cleanup uses `pg_cron` directly and does not require `pg_net`.
+- **Resolution:** Alembic revision `3da9f497264c` removes `pg_net`, moves RLS helper functions and the cleanup function into the non-exposed `private` schema, reconciles all public-table RLS policies, and removes Data API grants from `scheduled_cron_log`. Live verification confirmed the extension is absent, the cleanup schedule remains active at 03:30 UTC, all public tables retain RLS, and the Supabase security advisor reports no warnings.
+
+### DEBT-075 — Managed-service recovery and scheduling closure
+- **Milestone:** Managed Services Closure
+- **Category:** Database | Storage | Operations
+- **Priority:** High
+- **Status:** Implemented; scheduled and alert acceptance pending
+- **Resolution:** Added reusable bounded database engines, PostgreSQL connection timeouts, renewable scheduled-job leases, real cron/timezone evaluation, split R2 snapshot credentials, streamed encrypted PostgreSQL exports, retention, and redacted SMTP alerts. A manual encrypted backup and clean PostgreSQL 17 restore succeeded, and live R2 permission-boundary tests proved the three credential roles. Remaining acceptance requires two scheduler-created snapshots, one scheduler-created database backup, one automated restore verification, tested stale/failure alert delivery, and successful hosted verification workflow evidence.
 
 ### DEBT-073 — Glossary prompt injection test drift
 - **Milestone:** Milestone M1 (Glossary/Router Repair)

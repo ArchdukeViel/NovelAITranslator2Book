@@ -23,21 +23,89 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # 1. Enable RLS on scheduled_cron_log
-    op.execute("ALTER TABLE public.scheduled_cron_log ENABLE ROW LEVEL SECURITY;")
-    # No policies are created; only service_role (which bypasses RLS) can access.
+    op.execute(
+        """
+        CREATE SCHEMA IF NOT EXISTS private;
+        REVOKE ALL ON SCHEMA private FROM PUBLIC;
 
-    # 2. Revoke SECURITY DEFINER function EXECUTE from public/anonymous/authenticated
-    op.execute("REVOKE EXECUTE ON FUNCTION public.cleanup_expired_scheduler_states() FROM PUBLIC;")
-    op.execute("REVOKE EXECUTE ON FUNCTION public.cleanup_expired_scheduler_states() FROM anon;")
-    op.execute("REVOKE EXECUTE ON FUNCTION public.cleanup_expired_scheduler_states() FROM authenticated;")
-    # service_role already has implicit execute via superuser status.
-    # Drop the old cron job that called it via anon and recreate it.
-    op.execute("SELECT cron.schedule('cleanup-scheduler-states', '30 3 * * *', 'SELECT public.cleanup_expired_scheduler_states();');")
+        CREATE TABLE IF NOT EXISTS public.scheduled_cron_log (
+            id BIGSERIAL PRIMARY KEY,
+            job_name TEXT NOT NULL,
+            started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            status TEXT NOT NULL,
+            rows_affected INTEGER DEFAULT 0,
+            error_message TEXT
+        );
+        """
+    )
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION private.cleanup_expired_scheduler_states()
+        RETURNS void
+        LANGUAGE plpgsql
+        SECURITY DEFINER
+        SET search_path = ''
+        AS $$
+        DECLARE
+            deleted_count INTEGER;
+        BEGIN
+            DELETE FROM public.scheduler_runtime_states
+            WHERE state NOT IN ('running', 'cooldown', 'failed', 'disabled')
+              AND updated_at < NOW() - INTERVAL '14 days';
+            GET DIAGNOSTICS deleted_count = ROW_COUNT;
+            INSERT INTO public.scheduled_cron_log (job_name, status, rows_affected)
+            VALUES ('cleanup_expired_scheduler_states', 'succeeded', deleted_count);
+        EXCEPTION WHEN OTHERS THEN
+            INSERT INTO public.scheduled_cron_log (job_name, status, rows_affected, error_message)
+            VALUES ('cleanup_expired_scheduler_states', 'failed', 0, SQLERRM);
+        END;
+        $$;
+        """
+    )
+
+    op.execute("ALTER TABLE public.scheduled_cron_log ENABLE ROW LEVEL SECURITY;")
+    op.execute("REVOKE ALL ON FUNCTION private.cleanup_expired_scheduler_states() FROM PUBLIC;")
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+                GRANT USAGE ON SCHEMA private TO service_role;
+                GRANT EXECUTE ON FUNCTION private.cleanup_expired_scheduler_states() TO service_role;
+            END IF;
+        END;
+        $$;
+        """
+    )
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+                PERFORM cron.schedule(
+                    'cleanup-scheduler-states',
+                    '30 3 * * *',
+                    'SELECT private.cleanup_expired_scheduler_states();'
+                );
+            END IF;
+        END;
+        $$;
+        """
+    )
 
 
 def downgrade() -> None:
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+                PERFORM cron.unschedule('cleanup-scheduler-states');
+            END IF;
+        END;
+        $$;
+        """
+    )
     op.execute("ALTER TABLE public.scheduled_cron_log DISABLE ROW LEVEL SECURITY;")
-    op.execute("GRANT EXECUTE ON FUNCTION public.cleanup_expired_scheduler_states() TO PUBLIC;")
-    op.execute("GRANT EXECUTE ON FUNCTION public.cleanup_expired_scheduler_states() TO anon;")
-    op.execute("GRANT EXECUTE ON FUNCTION public.cleanup_expired_scheduler_states() TO authenticated;")
+    op.execute("DROP FUNCTION IF EXISTS private.cleanup_expired_scheduler_states()")
+    op.execute("DROP TABLE IF EXISTS public.scheduled_cron_log")

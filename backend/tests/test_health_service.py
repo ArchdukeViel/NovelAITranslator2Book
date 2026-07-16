@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from novelai.config.settings import settings
 from novelai.services.health_service import STATE_DEGRADED, STATE_HEALTHY, STATE_UNHEALTHY, HealthService
 
 
@@ -32,6 +33,11 @@ class FakeRunnerStopped:
 @pytest.fixture()
 def storage(tmp_path: Path) -> FakeStorage:
     return FakeStorage(tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def filesystem_storage_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "STORAGE_BACKEND", "filesystem")
 
 
 @pytest.fixture()
@@ -97,6 +103,23 @@ class TestReadiness:
         assert "path" not in checks_str.lower()
         assert "password" not in checks_str.lower()
         assert "secret" not in checks_str.lower()
+
+
+class TestStorageUsage:
+    @pytest.mark.asyncio
+    async def test_storage_usage_uses_backend_contract(self, storage: FakeStorage) -> None:
+        backend = MagicMock()
+        backend.total_size_bytes.return_value = 512
+        with (
+            patch("novelai.config.settings.settings.STORAGE_BACKEND", "s3"),
+            patch("novelai.config.settings.settings.S3_STORAGE_LIMIT_GB", 1),
+            patch("novelai.storage.backends.get_storage_backend", return_value=backend),
+        ):
+            result = await HealthService(storage=storage)._probe_storage_usage()
+
+        assert result["status"] == STATE_HEALTHY
+        assert result["used_bytes"] == 512
+        backend.total_size_bytes.assert_called_once_with()
 
 
 class TestAdminHealth:

@@ -10,13 +10,16 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import text
 
-from novelai.db.engine import check_connectivity, get_engine, get_sessionmaker, session_scope
+from novelai.db.engine import check_connectivity, dispose_engines, get_engine, get_sessionmaker, session_scope
 
 # SQLite in-memory URL — no Postgres needed for unit tests
 _SQLITE = "sqlite:///:memory:"
 
 
 class TestGetEngine:
+    def teardown_method(self) -> None:
+        dispose_engines()
+
     def test_returns_engine_for_sqlite(self) -> None:
         engine = get_engine(_SQLITE)
         assert engine is not None
@@ -39,6 +42,54 @@ class TestGetEngine:
         monkeypatch.setattr(settings, "DATABASE_URL", None)
         engine = get_engine(_SQLITE)
         assert engine is not None
+
+    def test_reuses_engine_for_same_configuration(self) -> None:
+        assert get_engine(_SQLITE) is get_engine(_SQLITE)
+
+    def test_postgres_queue_pool_configuration(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from sqlalchemy import create_engine as sa_create_engine
+
+        from novelai.config.settings import settings
+
+        captured: dict[str, object] = {}
+
+        def fake_create_engine(url: str, **kwargs: object):
+            captured.update(url=url, **kwargs)
+            return sa_create_engine(_SQLITE)
+
+        monkeypatch.setattr("novelai.db.engine.create_engine", fake_create_engine)
+        monkeypatch.setattr(settings, "DB_CONNECTION_MODE", "direct")
+        monkeypatch.setattr(settings, "DB_POOL_SIZE", 5)
+        monkeypatch.setattr(settings, "DB_MAX_OVERFLOW", 5)
+        monkeypatch.setattr(settings, "DB_POOL_TIMEOUT_SECONDS", 30)
+        monkeypatch.setattr(settings, "DB_SSL_MODE", "prefer")
+        monkeypatch.setattr(settings, "DB_STATEMENT_TIMEOUT_MS", 120000)
+        get_engine("postgresql+psycopg://example.invalid/postgres")
+        assert captured["pool_size"] == 5
+        assert captured["max_overflow"] == 5
+        assert captured["pool_timeout"] == 30
+        connect_args = captured["connect_args"]
+        assert isinstance(connect_args, dict)
+        assert connect_args["sslmode"] == "prefer"
+        assert "statement_timeout=120000" in str(connect_args["options"])
+
+    def test_transaction_mode_uses_null_pool(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from sqlalchemy import create_engine as sa_create_engine
+        from sqlalchemy.pool import NullPool
+
+        from novelai.config.settings import settings
+
+        captured: dict[str, object] = {}
+
+        def fake_create_engine(url: str, **kwargs: object):
+            captured.update(url=url, **kwargs)
+            return sa_create_engine(_SQLITE)
+
+        monkeypatch.setattr(settings, "DB_CONNECTION_MODE", "transaction")
+        monkeypatch.setattr("novelai.db.engine.create_engine", fake_create_engine)
+        get_engine("postgresql+psycopg://example.invalid/transaction")
+        assert captured["poolclass"] is NullPool
+        assert captured["connect_args"]["prepare_threshold"] is None  # type: ignore[index]
 
 
 class TestGetSessionmaker:
