@@ -41,6 +41,30 @@ Missing explicit crawl-failure metadata is **not** treated as a confirmed
 failure. Pending is used instead so a missing chapter does not get
 misreported as a failure.
 
+Route: `GET /api/admin/library/summary` (operationId
+`library_summary_api_admin_library_summary_get`). Accidental aliases
+under `/novels/admin/library/summary` and `/api/novels/admin/library/summary`
+were removed.
+
+### Cache behavior and concurrency
+
+- Single-flight via `threading.Condition` + generation counter. The first
+  cold/expired/forced request becomes the builder; all overlapping callers
+  wait on the same generation and reuse its result.
+- Forced refresh callers **join** the active build when one is running; they
+  do **not** spawn a new generation.
+- TTL expiry is calculated from build **completion** time, not from the
+  timestamp captured before waiting for the build lock.
+- Cache identity includes the normalized catalog identity
+  (`tuple(sorted(set(catalogued_novel_ids)))`); a cache entry built for one
+  identity set is never reused for a different set.
+- Cached items are stored as `tuple[NovelSummaryCounts, ...]` (frozen counts).
+  Every outward `SummaryResponse` receives a freshly constructed `dict` for
+  `cache` metadata and a fresh `list` for `items` so caller mutation cannot
+  corrupt the cached state.
+- Build failures wake all waiters, propagate the exception to every waiter,
+  and clear the active generation — a later request may retry.
+
 Canonical high-volume artifacts live on the filesystem under `storage/novel_library`
 (the configured `DATA_DIR`, resolved by `StorageService`). PostgreSQL stores
 relational state and projections derived from these files.

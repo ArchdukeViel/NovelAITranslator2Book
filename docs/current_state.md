@@ -34,7 +34,7 @@ For the technical debt register and launch blockers, see the register: [`docs/DE
 
 - **Backend Lint:** Ruff passes clean on backend files.
 - **Backend Typecheck:** Pyright type checking passes with 0 errors.
-- **Backend Unit Tests:** Core unit tests pass locally. Database-backed tests fail on remote Actions due to missing Postgres service (DEBT-003).
+- **Backend Unit Tests:** Core unit tests pass locally.
 - **Frontend Typecheck:** Next.js type check passes.
 - **Frontend Build:** Production build finishes clean.
 - **Docker builds:** Local admin, reader, and frontend Dockerfiles build successfully.
@@ -51,3 +51,15 @@ For the technical debt register and launch blockers, see the register: [`docs/DE
 - No measured performance or accessibility gate.
 - No launch readiness evidence or go/no-go decision.
 - No production config validator; no deploy smoke checks.
+
+## Implemented Features (Phase 2 Live Library Summary)
+
+- **Live Admin Library Summary** (`GET /api/admin/library/summary`): derives per-novel counts from a single recursive R2 listing pass. Counts: total, scraped, translated, failed, pending. 30s TTL, explicit `refresh=true` bypass. Catalog-identity-aware cache (DB slugs vs storage union).
+- **Single-flight concurrency** via condition variable + generation counter: exactly one storage listing per overlapping generation. Forced refresh joins active build.
+- **Immutable cached state** (`tuple[NovelSummaryCounts, ...]`); outward responses are fresh dicts/lists — caller mutation cannot corrupt cache.
+- **Catalog-identity-aware caching**: cache key includes sorted unique DB slugs; identity change forces rebuild.
+- **Frontend join**: `summary.data.items` merged into novel rows via `Map(novel_id → item)`. Rows recompute when `summary.data` or `summary.isLoading` changes.
+- **Three distinct error states**: initial failure (destructive banner + Retry), background failure (amber banner preserving values + Retry), explicit-refresh failure (`refreshSummary.error` banner + Retry). No duplicate banners; "Retry retry" typo removed.
+- **Route uniqueness**: exactly one `GET /api/admin/library/summary` registration in monolith; no aliases under `/novels` or `/api/novels`.
+- **Invalidation**: immediate after full-crawl deletion and metadata replacement; best-effort after chapter/translation/glossary/activation saves. Consolidated `best_effort_invalidate(context=)` helper.
+- **Tests**: 35 library-summary tests (14 new deterministic concurrency, POSIX path, public logical-id); 57 storage tests; 2 previously-fixed web API tests green; 608 frontend tests (6 new regression).
