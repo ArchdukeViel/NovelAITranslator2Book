@@ -427,7 +427,7 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Milestone:** Milestone M3 (M3a Production Hardening)
 - **Category:** Backend | Storage | Admin UI
 - **Priority:** High
-- **Status:** Resolved
+- **Status:** Resolved (code commit `004b631`; docs commit `1072c37`)
 - **Affected areas:**
   - Backend:
     - `backend/src/novelai/services/library_summary_service.py`
@@ -437,37 +437,45 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
     - `backend/src/novelai/services/orchestration/{crawler,translation,importer,glossary}.py`
     - `backend/src/novelai/services/library_service.py` (delete invalidation)
     - `backend/src/novelai/runtime/container.py` (library_summary dependency)
- - Frontend:
+  - Frontend:
     - `frontend/lib/api.ts` + `api-types.ts` (`adminApi.librarySummary` + types)
-    - `frontend/app/(admin)/admin/library/page.tsx` (Failed/Pending columns, stable `["library-summary"]` key, explicit refresh mutation, single error banner per state)
-    - `frontend/app/(admin)/admin/library/__tests__/page.test.tsx` (6 regression tests)
+    - `frontend/app/(admin)/admin/library/page.tsx` (Failed/Pending columns, stable `["library-summary"]` key, explicit refresh mutation, single error banner per state, settled background-refetch failure detection)
+    - `frontend/app/(admin)/admin/library/__tests__/page.test.tsx` (7 regression tests, including real background-refetch failure test)
 - **Description:** Admin Library counts must derive from a single R2/S3 listing pass, not from stale SQL `Novel.chapter_count` and `Novel.translated_count`. SQL projection rows remain a cache, but the admin Library table no longer trusts them as authoritative. The endpoint must use immutable cached state, true single-flight concurrency, catalog-identity-aware cache, and fail-fast forced refresh semantics. Frontend must join `summary.data.items` to novel rows and distinguish initial failure, background failure, and explicit-refresh failure with no duplicate error banners.
 - **Resolution:**
   - Backend service:
-    - `LibrarySummaryService` rewritten with a true single-flight state machine: frozen `_CachedSummary` (immutable `tuple[NovelSummaryCounts, ...]` items); frozen `_CompletedBuild` carrying exactly one of `cache | None` and `error`. The active build is owned by `_active_generation: int | None` and `_active_identity: tuple[str, ...]`.
-    - `Condition.wait_for(predicate)` for non-busy-spinning waiters; check-and-set for `_active_generation` is atomic under the lock. Forced-refresh callers *join* the currently active build rather than allocate a generation.
+    - `LibrarySummaryService` rewritten with a true single-flight state machine: frozen `_CachedSummary` (immutable `tuple[NovelSummaryCounts, ...]` items). The active build is owned by `_active_generation: _BuildGeneration | None` and `_active_identity: tuple[str, ...]`. Per-generation `_BuildGeneration` dataclass carries `generation`, `identity`, `start_epoch`, `done`, `cache`, `error`, `invalidated`; each caller joining an active build keeps a direct reference to that object, so a later completion cannot delete an earlier waiter's outcome.
+    - `Condition.wait_for(generation.done)` for non-busy-spinning waiters; check-and-set for `_active_generation` is atomic under the lock. Forced-refresh callers *join* the currently active same-identity build rather than allocate a generation.
+    - **Generation-outcome lifetime:** each waiter retains the same `_BuildGeneration` instance via direct reference; the active slot is cleared only after the outcome is published. Generation N waiters are not destroyed when generation N+1 starts/completes. Build exceptions remain attached to the generation so every waiter receives the same exception.
+    - **Invalidation epoch:** monotonic `self._invalidation_epoch` increments on `invalidate_cache()`. Each generation captures `start_epoch` at builder start. When the build completes: if `start_epoch == current_epoch` the result publishes to cache; otherwise the generation is marked `invalidated=True`, the result is **not** published, all attached callers are notified and re-enter the acquisition loop iteratively (not recursively) so exactly one starts a post-invalidation build. Repeated invalidation never silently publishes stale data.
     - Publication under one lock acquisition: cache + outcome + expiry + clear-active-state + `notify_all` together, so waiters cannot observe `no build in flight / no cache` between notify and outcome.
     - TTL is computed from `clock()` at successful build completion (never from start), with injectable `clock=fake_clock` for deterministic tests.
-    - Storage abstraction public surface: `StorageService.list_keys_under(prefix)` normalizes `Path` inputs via `as_posix()` and strip backslashes for `str` inputs; `StorageService.read_payload(key)` is the canonical JSON decode-or-None entry; `StorageService.logical_id_from_stem()` is exposed publicly so the summary service no longer touches private storage helpers.
+    - Storage abstraction public surface: `StorageService.list_keys_under(prefix)` normalizes `Path` inputs via `as_posix()` and strip backslashes for `str` inputs; `StorageService.read_payload(key)` is the canonical JSON decode-or-None entry; `StorageService.logical_id_from_stem()` is exposed publicly so the summary service no longer touches private storage helpers. Windows-style strings (`\\`) are normalized to POSIX prefixes; existing trailing slash is not doubled; empty string remains valid; no host absolute path is introduced.
     - `PurePosixPath(key).stem` for chapter-filename parsing — never host `Path`.
     - Outward `SummaryResponse` constructed via `_response_from_cache(cached, hit=...)`: fresh `cache={}` dict and fresh `items=[]` list per caller. Cached records remain frozen and never observe caller mutation.
   - Cache logic:
     - Catalog identity is `tuple(sorted(set(catalogued_novel_ids or [])))`. A cache entry is valid only when its identity matches and expired time has not passed. Concurrent calls with different identities do **not** share an incompatible result; waiters that arrive during an incompatible build wait it out and re-evaluate.
+  - Crawl failure semantics:
+    - `_get_failed_ids` treats the newest activity with status `completed` or `failed` as authoritative — its `failures` list (even empty) overrides all older activities. Cancelled, pending, queued, and running activities are skipped. `metadata.crawl_result` is read first, falling back to `metadata.result` only for compatibility.
+    - If the failure payload is malformed/missing, the function returns an empty set instead of falling back to older failures (no resurrection of older failure data).
+    - Result is normalized: dict (`chapter_id`/`id`), scalar strings, and ints are deduplicated into a `set[str]`. Stored chapter IDs are excluded from the failed count.
   - Invalidation coverage (best-effort helper `best_effort_invalidate(context=...)` on every storage-changing path, never masking caller failures):
-    - `LibrarySummaryService.invalidate_cache`, `best_effort_invalidate()` after crawler `save_chapter` (cold/recrawl/delta), after crawler `save_metadata` (preliminary metadata + replacement metadata on full-crawl `delete_novel`), after translation `save_translated_chapter` (delta + full), after importer `save_chapter`, after glossary apply `save_translated_chapter`, after `activate_translated_chapter_version`, after `LibraryService.delete_novel`.
+    - `LibrarySummaryService.invalidate_cache`, `best_effort_invalidate()` after crawler `save_chapter` (cold/recrawl/delta, `context="scrape_chapter"`), after crawler `save_metadata` (preliminary + replacement metadata on full-crawl `delete_novel`, `context="scrape_metadata"`), after translation `save_translated_chapter` (delta, `context="translate_delta"`), after importer `save_chapter`, after glossary apply `save_translated_chapter`, after `activate_translated_chapter_version`, after `LibraryService.delete_novel`.
     - Full-crawl mode: invalidate immediately after `delete_novel` (and again after replacement `save_metadata`) so the cache does not describe deleted storage if later metadata fetching or chapter scraping fails.
   - Frontend:
     - `LibraryPage` joins `summary.data.items` to novel rows via `new Map(summary.data.items.map(item => [item.novel_id, item]))`. `mergedRows` memo depends on `rows`, `summaryMap`, `summaryInitialError`, `summaryInitialLoading` so summary arrival updates visible rows.
     - Stable `["library-summary"]` query key. Explicit refresh uses a `useMutation` calling `adminApi.librarySummary({refresh: true})`; on success it writes to the canonical key via `queryClient.setQueryData(["library-summary"], data)`.
     - Three distinct, mutually exclusive error states replace the three duplicate `summary.error` banners:
       - *Initial query failure* → destructive banner + Retry (refetches the query, no SQL fallback rendered).
-      - *Background query failure with stale data* → amber banner + Retry preserving previous values.
+      - *Settled background refetch failure* → detected via `summary.isRefetchError` (or equivalently `status === "error" && data !== undefined && fetchStatus === "idle"`). Renders amber banner + Retry preserving previous values. Initial-load error and explicit-refresh error remain mutually exclusive.
       - *Explicit refresh failure* → amber banner reading `refreshSummary.error` + Retry triggering the mutation. Previous good values remain visible.
     - "Retry retry" typo removed.
   - Single route: `GET /api/admin/library/summary` (operationId `library_summary_api_admin_library_summary_get`). Historical accidental aliases under `/novels/admin/library/summary` and `/api/novels/admin/library/summary` were removed by deleting `library.read_router` from `novels.router` in `backend/src/novelai/api/routers/novels.py`.
 - **Tests:**
-  - 35 backend library-summary + asynchronous-contract tests, including hardened cold-concurrent exactly-one-build, fake-clock expiry, forced-refresh single-flight joining active build, incompatible-active-identity wait, failure propagation with retry, TTL-from-build-completion, outward mutation isolation, POSIX path & public logical-id surface.
-  - 6 new Admin Library frontend regression tests in `frontend/app/(admin)/admin/library/__tests__/page.test.tsx`: SQL fallback never rendered, explicit refresh uses `refresh=true` and replaces canonical cache, no duplicate summary-error banners, `chapter_count`/`scraped_count`/`translated_count` never displayed if summary values exist, zero renders as `0`, `refreshSummary.error` is rendered on explicit refresh failure.
+  - 50 backend library-summary tests, including hardened cold-concurrent exactly-one-build, fake-clock expiry, forced-refresh single-flight joining active build, **successive-generation waiter-retention race**, **invalidation-epoch stale-build rejection** (proving only one stable rebuild after invalidation), **concurrent failed-generation propagation** with 8+ threads, **strengthened normal-callers-join-forced-build**, **incompatible-identity waits-and-rebuilds**, real `Path` prefix normalization, Windows-style string prefix normalization (spying on the backend argument), crawl-failure semantics (newest-clean overrides older failure, cancelled/running activities ignored, malformed payload does not resurrect, duplicates dedup, dict and scalar formats normalize, stored chapters excluded from failed, pending remains `max(total - scraped - failed, 0)`).
+  - 7 Admin Library frontend tests in `frontend/app/(admin)/admin/library/__tests__/page.test.tsx`, including a real background-refetch failure test (initial success followed by a settled failed refetch: previous values remain, exactly one amber background warning, no initial-load warning, no explicit-refresh warning; Retry triggers the normal query refetch; a later successful refetch removes the warning).
   - 57 storage tests pass.
   - 2 previously failing web-API tests stay green: `test_list_novels_includes_legacy_syosetu_folder_without_metadata`, `test_publish_refreshes_projection_and_exposes_safe_summary`.
-- **Verification:** Local live R2 against `n2056dn` reports `{total:10, scraped:9, translated:0, failed:0, pending:1}`. Pending=1 because chapter-10's explicit failure activity was cleared — the cache policy treats missing failure metadata as pending rather than failed.
+  - Full Vitest suite passes (609 frontend tests across 52 files).
+- **Verification:** Implementation and local verification complete (Ruff, Pyright, TypeScript typecheck, lint, and architecture guard all clean; all focused and full test suites green locally).
+  Authenticated production read-only verification against the intended configured environment remains operator-pending.

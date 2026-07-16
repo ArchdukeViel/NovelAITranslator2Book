@@ -48,22 +48,78 @@ were removed.
 
 ### Cache behavior and concurrency
 
-- Single-flight via `threading.Condition` + generation counter. The first
-  cold/expired/forced request becomes the builder; all overlapping callers
-  wait on the same generation and reuse its result.
-- Forced refresh callers **join** the active build when one is running; they
-  do **not** spawn a new generation.
-- TTL expiry is calculated from build **completion** time, not from the
-  timestamp captured before waiting for the build lock.
-- Cache identity includes the normalized catalog identity
+- **Single-flight** via `threading.Condition` + a per-generation
+  `_BuildGeneration` dataclass. The first cold / expired / forced same-identity
+  request becomes the builder; all overlapping callers wait on the same
+  generation (`Condition.wait_for(generation.done)`) and reuse its result.
+- **Generation-outcome lifetime**: a later generation cannot destroy an earlier
+  waiter's outcome. Each caller joining an active build keeps a direct
+  reference to the same `_BuildGeneration` instance; its `cache` / `error`
+  fields live on the generation, not on a globally pruned dict, so a later
+  build's completion cannot orphan earlier waiters. Build exceptions remain
+  attached to the generation so every attached waiter receives the same error.
+- **Forced-refresh callers** *join* the active same-identity build when one is
+  running; they do **not** spawn a new generation. Incompatible identity
+  callers wait the current build out, then re-evaluate.
+- **Invalidation epoch**: `LibrarySummaryService._invalidation_epoch` is a
+  monotonic counter that increments on every `invalidate_cache()`. Each
+  generation captures its `start_epoch` at builder start. When the build
+  completes: if `start_epoch == _invalidation_epoch` the result publishes to
+  cache; otherwise the generation is marked `invalidated=True`, the result is
+  **not** published, all attached callers are notified and re-enter the
+  acquisition loop iteratively (not recursively) so exactly one starts a
+  post-invalidation build. A build that started before an invalidation cannot
+  republish stale cache after the invalidation boundary.
+- **TTL expiry** is calculated from build *completion* time (via the injected
+  `clock`), not from the timestamp captured before waiting for the build
+  lock.
+- **Cache identity** includes the normalized catalog identity
   (`tuple(sorted(set(catalogued_novel_ids)))`); a cache entry built for one
   identity set is never reused for a different set.
-- Cached items are stored as `tuple[NovelSummaryCounts, ...]` (frozen counts).
-  Every outward `SummaryResponse` receives a freshly constructed `dict` for
-  `cache` metadata and a fresh `list` for `items` so caller mutation cannot
-  corrupt the cached state.
-- Build failures wake all waiters, propagate the exception to every waiter,
-  and clear the active generation — a later request may retry.
+- **Cached items** are stored as `tuple[NovelSummaryCounts, ...]` (frozen
+  counts). Every outward `SummaryResponse` receives a freshly constructed
+  `dict` for `cache` metadata and a fresh `list` for `items` so caller
+  mutation cannot corrupt the cached state.
+- **Build failures** wake all attached waiters, propagate the exception to
+  every waiter that joined the same generation, and clear the active slot —
+  a later request may retry.
+
+### Crawl failure history semantics
+
+- The **newest** activity with `status` in (`completed`, `failed`) is
+  authoritative. Its `failures` list — including an empty list — overrides
+  all older activities.
+- **Cancelled**, **pending**, **queued**, and **running** activities are
+  skipped; they do not override the newest completed/failed result.
+- `metadata.crawl_result` is read first, falling back to `metadata.result`
+  only for backward compatibility.
+- If the newest result's `failures` is malformed/missing, the function
+  returns an empty set rather than resurrecting an older failure payload.
+- Failure entries are normalized: dict (`chapter_id`/`id`), scalar strings,
+  and ints; duplicates are deduplicated into a `set[str]`. Stored chapter
+  IDs are excluded from the failed count.
+- `pending = max(total - scraped - failed, 0)`.
+
+### Frontend observable behavior
+
+- The Admin Library table joins `summary.data.items` to novel rows by
+  `novel_id` — the counts shown (Listed, Raw, Translated, Failed, Pending)
+  come from the summary, never from a SQL projection row.
+- **Three distinct, mutually exclusive error states**:
+  - *Initial query failure* → destructive banner + Retry (refetches the
+    normal query).
+  - *Settled background refetch failure* → amber banner + Retry preserving
+    previous values; detected via `summary.isRefetchError` (TanStack v5) or
+    `summary.status === "error" && summary.data !== undefined &&
+    summary.fetchStatus === "idle"`.
+  - *Explicit refresh failure* → amber banner reading
+    `refreshSummary.error` + Retry triggering the refresh mutation.
+  - No initial-load error appears while previous values are visible; no
+    explicit-refresh error appears during a background refetch failure.
+- Stable `["library-summary"]` query key. Explicit refresh uses
+  `adminApi.librarySummary({ refresh: true })`, and on success writes back
+  via `queryClient.setQueryData(["library-summary"], data)` so the canonical
+  cache stays consistent.
 
 Canonical high-volume artifacts live on the filesystem under `storage/novel_library`
 (the configured `DATA_DIR`, resolved by `StorageService`). PostgreSQL stores
