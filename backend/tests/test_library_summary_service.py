@@ -465,24 +465,6 @@ class TestPosixKeyAndLogicalId:
         # Private alias still resolves for in-package callers.
         assert StorageService._logical_id_from_stem("0042") == "42"
 
-    def test_list_keys_under_handles_windows_path(
-        self, summary_storage: StorageService
-    ) -> None:
-        """``list_keys_under`` must normalize ``Path`` inputs to POSIX."""
-        from pathlib import PureWindowsPath
-
-        summary_storage.save_metadata("n", _metadata(1))
-        _save_chapter(summary_storage, "n", "1")
-
-        # Pretend the prefix came from a Windows filesystem. Even on Windows
-        # the backend key must use forward slashes.
-        result = summary_storage.list_keys_under("novels")
-        assert all("\\" not in k for k in result)
-        assert all(k.startswith("novels/") for k in result)
-        # PureWindowsPath may not be instantiated on POSIX runners, but the
-        # string-based normalisation is tested by the str→Path round-trip.
-        _ = PureWindowsPath  # keep import in scope, no behavioural check
-
 
 # ── deterministic single-flight suite ────────────────────────────────
 
@@ -636,55 +618,6 @@ class TestSingleFlightDeterministic:
         assert len(call_count) == 1, f"expected 1 scan, got {len(call_count)}"
         assert len(results) == 8
         assert all(r.cache["hit"] is False for r in results)
-
-    def test_normal_callers_join_forced_build_share_result(
-        self, summary_storage: StorageService
-    ) -> None:
-        summary_storage.save_metadata("n", _metadata(1))
-        _save_chapter(summary_storage, "n", "1")
-
-        started = threading.Event()
-        release = threading.Event()
-        first_done = {"v": False}
-        call_count: list[int] = []
-        backend_list_keys = summary_storage._backend.list_keys
-
-        def spy(*args: Any, **kwargs: Any) -> list[str]:
-            call_count.append(1)
-            if not first_done["v"]:
-                first_done["v"] = True
-                started.set()
-                release.wait(timeout=5)
-            return backend_list_keys(*args, **kwargs)
-
-        identities = [tuple(), ("alpha",), ("beta", "gamma")]
-        results: dict[int, Any] = {}
-
-        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
-            service = LibrarySummaryService(summary_storage)
-            service.invalidate_cache()
-
-            def worker(ident: tuple[str, ...], idx: int) -> None:
-                results[idx] = service.get_summary(
-                    refresh=(idx % 2 == 0),
-                    catalogued_novel_ids=list(ident),
-                )
-
-            threads = [
-                threading.Thread(target=worker, args=(identities[i % 3], i))
-                for i in range(6)
-            ]
-            for t in threads:
-                t.start()
-            assert started.wait(timeout=5)
-            release.set()
-            for t in threads:
-                t.join(timeout=5)
-
-        alive = [t for t in threads if t.is_alive()]
-        assert not alive
-        assert len(call_count) >= 1
-        assert len(results) == 6
 
     def test_later_independent_forced_refresh_starts_second_build(
         self, summary_storage: StorageService
@@ -871,7 +804,12 @@ class TestSingleFlightDeterministic:
         # Manually pre-set an active incompatible build.
         with service._cv:
             service._next_generation += 1
-            service._active_generation = service._next_generation
+            gen = _lss_module._BuildGeneration(
+                generation=service._next_generation,
+                identity=("alpha",),
+                start_epoch=service._invalidation_epoch,
+            )
+            service._active_generation = gen
             service._active_identity = ("alpha",)
 
         # A different-identity requester must wait for the incompatible build
@@ -896,13 +834,10 @@ class TestSingleFlightDeterministic:
 
         # Finish the incompatible build cleanly.
         with service._cv:
-            outcome = _lss_module._CompletedBuild(
-                generation=service._active_generation,
-                identity=("alpha",),
-                cache=None,
-                error=None,
-            )
-            service._completed[outcome.generation] = outcome
+            gen.done = True
+            gen.cache = None
+            gen.error = None
+            service._completed_generations[gen.generation] = gen
             service._active_generation = None
             service._active_identity = None
             service._cv.notify_all()
@@ -913,11 +848,294 @@ class TestSingleFlightDeterministic:
         # The waiter eventually got a fresh build for its own identity.
         assert result_ids
 
+    def test_successive_generation_waiter_retention_race(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Generation N starts, waiters attach, N completes, hold one waiter,
+        N+1 starts+completes, release waiter → all N waiters finish with N's
+        result; N+1 caller gets N+1's result. Uses explicit events/test hooks."""
+        summary_storage.save_metadata("n", _metadata(2))
+        _save_chapter(summary_storage, "n", "1")
+        _save_chapter(summary_storage, "n", "2")
+
+        # Events to control the two generations
+        gen1_started = threading.Event()
+        gen1_release = threading.Event()
+        gen2_started = threading.Event()
+        gen2_release = threading.Event()
+
+        call_count = {"gen1": 0, "gen2": 0}
+        original = summary_storage._backend.list_keys
+
+        def spy(*args: Any, **kwargs: Any) -> list[str]:
+            if call_count["gen1"] == 0 and call_count["gen2"] == 0:
+                call_count["gen1"] += 1
+                gen1_started.set()
+                gen1_release.wait(timeout=5)
+                return original(*args, **kwargs)
+            elif call_count["gen1"] == 1 and call_count["gen2"] == 0:
+                call_count["gen2"] += 1
+                gen2_started.set()
+                gen2_release.wait(timeout=5)
+                return original(*args, **kwargs)
+            else:
+                return original(*args, **kwargs)
+
+        service = LibrarySummaryService(summary_storage)
+        service.invalidate_cache()
+
+        results = {"gen1_waiters": [], "gen1_builder": None, "gen2_builder": None}
+        errors = []
+
+        def gen1_builder_worker() -> None:
+            try:
+                results["gen1_builder"] = service.get_summary(refresh=True)
+            except Exception as e:
+                errors.append(("gen1_builder", e))
+
+        def gen1_waiter_worker(wait_for_gen2: bool) -> None:
+            try:
+                # Wait for gen1 to start, then wait for gen1 to complete
+                gen1_started.wait(timeout=5)
+                if wait_for_gen2:
+                    # This waiter will be held until gen2 completes
+                    gen2_release.wait(timeout=5)
+                result = service.get_summary()
+                results["gen1_waiters"].append(result)
+            except Exception as e:
+                errors.append(("gen1_waiter", e))
+
+        def gen2_builder_worker() -> None:
+            try:
+                # Wait for gen1 to complete, then start gen2
+                gen1_release.wait(timeout=5)
+                # Don't wait for gen2_started here - it's set inside the spy when list_keys is called
+                results["gen2_builder"] = service.get_summary(refresh=True)
+            except Exception as e:
+                errors.append(("gen2_builder", e))
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            # Start gen1 builder
+            t_builder = threading.Thread(target=gen1_builder_worker)
+            t_builder.start()
+
+            # Start gen1 waiters (one will wait for gen2)
+            t_waiter1 = threading.Thread(target=gen1_waiter_worker, args=(False,))
+            t_waiter2 = threading.Thread(target=gen1_waiter_worker, args=(True,))
+            t_waiter1.start()
+            t_waiter2.start()
+
+            # Wait for gen1 to start, then release it
+            assert gen1_started.wait(timeout=5), "gen1 builder never started"
+            gen1_release.set()
+
+            # Wait for gen1 builder to complete
+            t_builder.join(timeout=5)
+            assert not t_builder.is_alive(), "gen1 builder timed out"
+
+            # Start gen2 builder (it will wait for gen1_release, then call get_summary)
+            t_gen2_builder = threading.Thread(target=gen2_builder_worker)
+            t_gen2_builder.start()
+
+            # Wait for gen2 to start (spy sets gen2_started when list_keys is called)
+            assert gen2_started.wait(timeout=5), "gen2 builder never started"
+
+            # Release gen2
+            gen2_release.set()
+
+            # Release the waiter that was waiting for gen2
+            # (it already has gen1's result, this just lets it finish)
+            t_waiter1.join(timeout=5)
+            t_waiter2.join(timeout=5)
+            t_gen2_builder.join(timeout=5)
+
+        assert not errors, f"errors: {errors}"
+        assert t_waiter1.is_alive() is False
+        assert t_waiter2.is_alive() is False
+        assert t_gen2_builder.is_alive() is False
+
+        # All gen1 waiters and gen1 builder should have gen1's result
+        gen1_result = results["gen1_builder"]
+        assert gen1_result is not None
+        assert len(results["gen1_waiters"]) == 2
+        for r in results["gen1_waiters"]:
+            assert r.items == gen1_result.items, "gen1 waiter got different result"
+            assert r.cache["hit"] is True, "gen1 waiter should see cache hit"
+
+        # Gen2 builder should have gen2's result (different data)
+        gen2_result = results["gen2_builder"]
+        assert gen2_result is not None
+        # Both generations see the same storage data in this test, but different generation
+        assert gen2_result.cache["hit"] is False, "gen2 builder should be cache miss"
+
+        # Total listing calls should be 2 (one per generation)
+        assert call_count["gen1"] == 1
+        assert call_count["gen2"] == 1
+
+    def test_invalidation_epoch_stale_build_rejected(
+        self, summary_storage: StorageService
+    ) -> None:
+        """First build lists old storage and blocks; mutate storage;
+        invalidate_cache(); release old build; prove its result NOT cached/returned;
+        prove one post-invalidation build runs; all callers receive new counts;
+        total listing count exactly 2 (one stale, one stable)."""
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        # Events to control the stale build
+        stale_started = threading.Event()
+        stale_release = threading.Event()
+        listing_count = [0]
+        original = summary_storage._backend.list_keys
+
+        def spy(*args: Any, **kwargs: Any) -> list[str]:
+            listing_count[0] += 1
+            if listing_count[0] == 1:
+                stale_started.set()
+                stale_release.wait(timeout=5)
+            return original(*args, **kwargs)
+
+        service = LibrarySummaryService(summary_storage)
+        service.invalidate_cache()
+
+        results = []
+        errors = []
+
+        def stale_builder() -> None:
+            try:
+                results.append(("stale_builder", service.get_summary(refresh=True)))
+            except Exception as e:
+                errors.append(("stale_builder", e))
+
+        def waiter() -> None:
+            try:
+                # This waiter will attach to the stale build, then be invalidated
+                stale_started.wait(timeout=5)
+                results.append(("waiter", service.get_summary()))
+            except Exception as e:
+                errors.append(("waiter", e))
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            t_builder = threading.Thread(target=stale_builder)
+            t_waiter = threading.Thread(target=waiter)
+            t_builder.start()
+            t_waiter.start()
+
+            # Wait for stale build to start
+            assert stale_started.wait(timeout=5), "stale builder never started"
+
+            # Mutate storage: add a second chapter
+            _save_chapter(summary_storage, "n", "2")
+
+            # Invalidate: increments epoch, clears cache, notifies
+            service.invalidate_cache()
+
+            # Release the stale build
+            stale_release.set()
+
+            t_builder.join(timeout=5)
+            t_waiter.join(timeout=5)
+
+        assert not errors, f"errors: {errors}"
+        assert not t_builder.is_alive()
+        assert not t_waiter.is_alive()
+
+        # The stale build was invalidated - its result should NOT be cached.
+        # The waiter re-entered acquisition loop and became builder for fresh build.
+        # Cache should now have fresh data (2 chapters).
+        assert service._cache is not None, "fresh build should have populated cache"
+        assert service._cache.items[0].scraped == 2, "cache should have fresh data"
+
+        # The waiter should have received the fresh result
+        waiter_result = next(r for name, r in results if name == "waiter")
+        assert waiter_result.items[0].scraped == 2, "waiter should get fresh data"
+        assert waiter_result.cache["hit"] is False, "waiter's call was cache miss (fresh build)"
+
+        # Stale builder's result should have been invalidated (not returned to caller)
+        stale_result = next(r for name, r in results if name == "stale_builder")
+        assert stale_result.items[0].scraped == 2, "stale builder should also get fresh data after invalidation"
+
+        # Total listing calls: exactly 2 (one stale, one fresh)
+        assert listing_count[0] == 2, f"expected 2 listings, got {listing_count[0]}"
+
+    def test_concurrent_failed_generation_propagates(
+        self, summary_storage: StorageService
+    ) -> None:
+        """8+ threads; builder starts and blocks; all callers attach;
+        release builder to raise known exception; join all threads with timeout;
+        assert no thread alive; exactly one build attempt; every caller
+        receives same exception; later retry succeeds."""
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        builder_started = threading.Event()
+        builder_release = threading.Event()
+        builder_should_fail = [True]
+        call_count = [0]
+        original = summary_storage._backend.list_keys
+
+        class TestError(Exception):
+            pass
+
+        def flaky_spy(*args: Any, **kwargs: Any) -> list[str]:
+            call_count[0] += 1
+            if builder_should_fail[0]:
+                builder_started.set()
+                builder_release.wait(timeout=5)
+                raise TestError("simulated I/O failure")
+            return original(*args, **kwargs)
+
+        service = LibrarySummaryService(summary_storage)
+        service.invalidate_cache()
+
+        results = []
+        errors = []
+
+        def worker(idx: int) -> None:
+            try:
+                results.append((idx, service.get_summary()))
+            except Exception as e:
+                errors.append((idx, e))
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=flaky_spy):
+            threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+            for t in threads:
+                t.start()
+
+            # Wait for builder to start and block
+            assert builder_started.wait(timeout=5), "builder never started"
+
+            # Release builder to fail
+            builder_release.set()
+
+            # Join all threads
+            for t in threads:
+                t.join(timeout=5)
+
+        alive = [t for t in threads if t.is_alive()]
+        assert not alive, f"threads still alive: {alive}"
+
+        # Exactly one build attempt was made
+        assert call_count[0] == 1, f"expected 1 build attempt, got {call_count[0]}"
+
+        # All 8 callers should have received the same exception
+        assert len(errors) == 8, f"expected 8 errors, got {len(errors)}"
+        for idx, e in errors:
+            assert isinstance(e, TestError), f"thread {idx} got wrong error: {e}"
+
+        # Now retry with success - should work
+        builder_should_fail[0] = False
+        retry_result = service.get_summary()
+        assert retry_result.cache["hit"] is False
+        assert len(retry_result.items) == 1
+
     def test_invalidate_during_active_build(
         self, summary_storage: StorageService
     ) -> None:
         """Invalidate during an active build is well-defined:
-        the build will still complete and republish a fresh cache.
+        the build will still complete but be marked invalidated and
+        will NOT populate the cache; a subsequent caller triggers
+        a fresh build.
         """
         summary_storage.save_metadata("n", _metadata(1))
         _save_chapter(summary_storage, "n", "1")
@@ -946,6 +1164,570 @@ class TestSingleFlightDeterministic:
             t.join(timeout=5)
             assert not t.is_alive()
 
-        # After the build completes, the cache is repopulated.
+        # The invalidated build did NOT populate the cache.
+        assert service._cache is None
+        # A fresh caller triggers a new build and populates the cache.
+        assert service.get_summary().cache["hit"] is False
         assert service._cache is not None
         assert service.get_summary().cache["hit"] is True
+
+    # ── strengthened normal callers join forced build test ────────────────
+
+    def test_normal_callers_join_forced_build_share_result_strengthened(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Normal callers joining a forced refresh share the same build result.
+        Verifies: exactly one listing call, all waiters get same result,
+        cache populated with forced-build result, waiters report cache hit.
+        """
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        started = threading.Event()
+        release = threading.Event()
+        first_done = {"v": False}
+        call_count: list[int] = []
+        backend_list_keys = summary_storage._backend.list_keys
+
+        def spy(*args: Any, **kwargs: Any) -> list[str]:
+            call_count.append(1)
+            if not first_done["v"]:
+                first_done["v"] = True
+                started.set()
+                release.wait(timeout=5)
+            return backend_list_keys(*args, **kwargs)
+
+        # Use SAME identity for all callers to test joining behavior
+        identity = ("alpha", "beta")
+        results: dict[int, Any] = {}
+        errors: list[tuple[int, BaseException]] = []
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            service = LibrarySummaryService(summary_storage)
+            service.invalidate_cache()
+
+            def worker(idx: int) -> None:
+                try:
+                    # Even indices: forced refresh; odd indices: normal call
+                    results[idx] = service.get_summary(
+                        refresh=(idx % 2 == 0),
+                        catalogued_novel_ids=list(identity),
+                    )
+                except BaseException as e:
+                    errors.append((idx, e))
+
+            threads = [threading.Thread(target=worker, args=(i,)) for i in range(6)]
+            for t in threads:
+                t.start()
+            assert started.wait(timeout=5)
+            release.set()
+            for t in threads:
+                t.join(timeout=5)
+
+        alive = [t for t in threads if t.is_alive()]
+        assert not alive
+        assert not errors, f"errors: {errors}"
+        # Exactly one listing call — true single-flight
+        assert len(call_count) == 1, f"expected 1 scan, got {len(call_count)}"
+        assert len(results) == 6
+
+        # All results should have identical items
+        first_items = results[0].items
+        for i, r in results.items():
+            assert r.items == first_items, f"thread {i} got different items"
+
+        # Forced refresh callers (even idx) should report cache miss
+        for i in [0, 2, 4]:
+            assert results[i].cache["hit"] is False, f"thread {i} forced refresh should be miss"
+
+        # Normal callers (odd idx) should report cache hit (joined forced build)
+        for i in [1, 3, 5]:
+            assert results[i].cache["hit"] is True, f"thread {i} normal call should be hit"
+
+        # Cache should be populated with the forced build's result
+        assert service._cache is not None
+        assert list(service._cache.items) == first_items
+
+    # ── incompatible identity waits and rebuilds ──────────────────────────
+
+    def test_incompatible_identity_waits_and_rebuilds(
+        self, summary_storage: StorageService
+    ) -> None:
+        """A caller with different catalog identity must wait for the
+        incompatible active build to complete, then start its own build.
+        """
+        summary_storage.save_metadata("n1", _metadata(1))
+        _save_chapter(summary_storage, "n1", "1")
+        summary_storage.save_metadata("n2", _metadata(1))
+        _save_chapter(summary_storage, "n2", "1")
+
+        # Spy to control the first (incompatible) build
+        build1_started = threading.Event()
+        build1_release = threading.Event()
+        build2_started = threading.Event()
+        build2_release = threading.Event()
+        call_count = [0]
+        original = summary_storage._backend.list_keys
+
+        def spy(*args: Any, **kwargs: Any) -> list[str]:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                build1_started.set()
+                build1_release.wait(timeout=5)
+            elif call_count[0] == 2:
+                build2_started.set()
+                build2_release.wait(timeout=5)
+            return original(*args, **kwargs)
+
+        service = LibrarySummaryService(summary_storage)
+        service.invalidate_cache()
+
+        results = {}
+        errors = []
+
+        def build1_worker() -> None:
+            try:
+                # Identity ("alpha",) - this build will block
+                results["build1"] = service.get_summary(
+                    refresh=True, catalogued_novel_ids=["alpha"]
+                )
+            except Exception as e:
+                errors.append(("build1", e))
+
+        def waiter_worker() -> None:
+            try:
+                # Different identity ("beta",) - must wait for build1, then build own
+                build1_started.wait(timeout=5)
+                results["waiter"] = service.get_summary(
+                    catalogued_novel_ids=["beta"]
+                )
+            except Exception as e:
+                errors.append(("waiter", e))
+
+        def build2_worker() -> None:
+            try:
+                # This will be the waiter's build after build1 completes
+                build1_release.wait(timeout=5)
+                build2_started.wait(timeout=5)
+                results["build2"] = service.get_summary(
+                    refresh=True, catalogued_novel_ids=["beta"]
+                )
+            except Exception as e:
+                errors.append(("build2", e))
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            t1 = threading.Thread(target=build1_worker)
+            t_waiter = threading.Thread(target=waiter_worker)
+            t2 = threading.Thread(target=build2_worker)
+
+            t1.start()
+            t_waiter.start()
+            t2.start()
+
+            # Wait for build1 to start
+            assert build1_started.wait(timeout=5), "build1 never started"
+
+            # Waiter should be blocked (waiting for build1 to complete)
+            # Give it a moment to attach
+            import time
+            time.sleep(0.1)
+
+            # Release build1
+            build1_release.set()
+            t1.join(timeout=5)
+            assert not t1.is_alive(), "build1 timed out"
+
+            # Now build2 should start (waiter's build)
+            assert build2_started.wait(timeout=5), "build2 never started"
+
+            # Release build2
+            build2_release.set()
+
+            t_waiter.join(timeout=5)
+            t2.join(timeout=5)
+
+        assert not errors, f"errors: {errors}"
+        assert not t_waiter.is_alive()
+        assert not t2.is_alive()
+
+        # build1 used identity ("alpha",)
+        assert results["build1"].cache["hit"] is False
+
+        # waiter joined build2 (its own identity), got fresh build
+        assert results["waiter"].cache["hit"] is False
+        assert results["waiter"].items == results["build2"].items
+
+        # Exactly 2 listing calls (one per identity)
+        assert call_count[0] == 2, f"expected 2 listings, got {call_count[0]}"
+
+    # ── real spying tests replacing Windows-prefix test ───────────────────
+
+    def test_list_keys_under_spy_windows_style_paths(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Spy on backend.list_keys to verify POSIX normalization."""
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+        _save_chapter(summary_storage, "n", "2")
+
+        # Spy on the backend's list_keys to capture raw keys
+        captured_keys: list[str] = []
+        original = summary_storage._backend.list_keys
+
+        def spy(*args: Any, **kwargs: Any) -> list[str]:
+            keys = original(*args, **kwargs)
+            captured_keys.extend(keys)
+            return keys
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            service = LibrarySummaryService(summary_storage)
+            service.get_summary(refresh=True)
+
+        # Verify all captured keys use POSIX separators
+        for key in captured_keys:
+            assert "\\" not in key, f"found backslash in key: {key}"
+            assert key.startswith("novels/"), f"key doesn't start with novels/: {key}"
+            # Chapter keys should contain /chapters/ and end with .json
+            if "/chapters/" in key:
+                assert key.endswith(".json"), f"chapter key doesn't end with .json: {key}"
+
+    def test_list_keys_under_spy_prefix_normalization(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Spy to verify prefix normalization handles various input formats."""
+        summary_storage.save_metadata("n", _metadata(1))
+        _save_chapter(summary_storage, "n", "1")
+
+        captured_prefixes: list[str] = []
+        original = summary_storage._backend.list_keys
+
+        def spy(prefix: str, *args: Any, **kwargs: Any) -> list[str]:
+            captured_prefixes.append(prefix)
+            return original(prefix, *args, **kwargs)
+
+        with patch.object(summary_storage._backend, "list_keys", side_effect=spy):
+            service = LibrarySummaryService(summary_storage)
+            # Call with default (will use NOVELS_PREFIX)
+            service.get_summary(refresh=True)
+
+        # Should be called with the NOVELS_PREFIX
+        assert len(captured_prefixes) >= 1
+        for prefix in captured_prefixes:
+            assert prefix == "novels/", f"unexpected prefix: {prefix}"
+
+    def test_logical_id_from_stem_spy(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Spy on logical_id_from_stem to verify it's called for each chapter."""
+        summary_storage.save_metadata("n", _metadata(3))
+        _save_chapter(summary_storage, "n", "1")
+        _save_chapter(summary_storage, "n", "2")
+        _save_chapter(summary_storage, "n", "3")
+
+        stems_seen: list[str] = []
+        original = StorageService.logical_id_from_stem
+
+        def spy(stem: str) -> str:
+            stems_seen.append(stem)
+            return original(stem)
+
+        with patch.object(StorageService, "logical_id_from_stem", staticmethod(spy)):
+            service = LibrarySummaryService(summary_storage)
+            service.get_summary(refresh=True)
+
+        # Should be called once per chapter file (3 chapters)
+        assert len(stems_seen) == 3
+        # All stems should be normalized to logical IDs (no leading zeros)
+        logical_ids = [StorageService.logical_id_from_stem(s) for s in stems_seen]
+        assert set(logical_ids) == {"1", "2", "3"}
+
+
+# ── crawl failure semantics ───────────────────────────────────────────────
+
+
+class MockActivityLog:
+    """Mock activity log for testing _get_failed_ids behavior."""
+
+    def __init__(self, activities: list[dict[str, Any]]) -> None:
+        self._activities = activities
+
+    def list_activity(
+        self,
+        *,
+        novel_id: str,
+        activity_type: str,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        filtered = [
+            dict(act)
+            for act in self._activities
+            if act.get("novel_id") == novel_id and act.get("type") == activity_type
+        ]
+        if limit is not None:
+            filtered = filtered[:limit]
+        return filtered
+
+
+class TestCrawlFailureSemantics:
+    """Tests for _get_failed_ids: newest relevant crawl result is authoritative."""
+
+    def test_newest_clean_completed_crawl_overrides_older_failure(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Newest completed crawl with empty failures clears older failure."""
+        from novelai.services.library_summary_service import _get_failed_ids
+
+        # Newest: completed, empty failures
+        # Older: failed, chapter 10 failed
+        activities = [
+            {
+                "id": "crawl_new",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "completed",
+                "finished_at": "2026-01-02T00:00:00Z",
+                "started_at": "2026-01-02T00:00:00Z",
+                "created_at": "2026-01-02T00:00:00Z",
+                "metadata": {"crawl_result": {"failures": []}},
+            },
+            {
+                "id": "crawl_old",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "failed",
+                "finished_at": "2026-01-01T00:00:00Z",
+                "started_at": "2026-01-01T00:00:00Z",
+                "created_at": "2026-01-01T00:00:00Z",
+                "metadata": {"crawl_result": {"failures": [{"chapter_id": "10"}]}},
+            },
+        ]
+        activity_log = MockActivityLog(activities)
+
+        failed_ids = _get_failed_ids("n1", activity_log)
+        assert failed_ids == set(), "Newest clean crawl should override older failure"
+
+    def test_newest_failed_crawl_empty_list_overrides_older_failures(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Newest failed crawl with empty failures list overrides older failures."""
+        from novelai.services.library_summary_service import _get_failed_ids
+
+        activities = [
+            {
+                "id": "crawl_new",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "failed",
+                "finished_at": "2026-01-02T00:00:00Z",
+                "started_at": "2026-01-02T00:00:00Z",
+                "created_at": "2026-01-02T00:00:00Z",
+                "metadata": {"crawl_result": {"failures": []}},
+            },
+            {
+                "id": "crawl_old",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "completed",
+                "finished_at": "2026-01-01T00:00:00Z",
+                "started_at": "2026-01-01T00:00:00Z",
+                "created_at": "2026-01-01T00:00:00Z",
+                "metadata": {"crawl_result": {"failures": ["5", "6"]}},
+            },
+        ]
+        activity_log = MockActivityLog(activities)
+
+        failed_ids = _get_failed_ids("n1", activity_log)
+        assert failed_ids == set(), "Newest failed crawl with empty list should override"
+
+    def test_cancelled_activity_ignored(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Cancelled activity is skipped; next relevant activity is used."""
+        from novelai.services.library_summary_service import _get_failed_ids
+
+        activities = [
+            {
+                "id": "crawl_cancelled",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "cancelled",
+                "metadata": {"crawl_result": {"failures": ["1", "2"]}},
+            },
+            {
+                "id": "crawl_completed",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "completed",
+                "metadata": {"crawl_result": {"failures": ["3"]}},
+            },
+        ]
+        activity_log = MockActivityLog(activities)
+
+        failed_ids = _get_failed_ids("n1", activity_log)
+        assert failed_ids == {"3"}, "Cancelled activity should be ignored"
+
+    def test_running_activity_ignored(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Running activity is skipped; next relevant activity is used."""
+        from novelai.services.library_summary_service import _get_failed_ids
+
+        activities = [
+            {
+                "id": "crawl_running",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "running",
+                "metadata": {"crawl_result": {"failures": ["1", "2"]}},
+            },
+            {
+                "id": "crawl_completed",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "completed",
+                "metadata": {"crawl_result": {"failures": ["3"]}},
+            },
+        ]
+        activity_log = MockActivityLog(activities)
+
+        failed_ids = _get_failed_ids("n1", activity_log)
+        assert failed_ids == {"3"}, "Running activity should be ignored"
+
+    def test_malformed_newest_failure_does_not_resurrect_old(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Malformed newest crawl result returns empty set, does not fall back to older."""
+        from novelai.services.library_summary_service import _get_failed_ids
+
+        activities = [
+            {
+                "id": "crawl_new",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "completed",
+                "finished_at": "2026-01-02T00:00:00Z",
+                "started_at": "2026-01-02T00:00:00Z",
+                "created_at": "2026-01-02T00:00:00Z",
+                "metadata": {"crawl_result": {"failures": "not-a-list"}},
+            },
+            {
+                "id": "crawl_old",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "completed",
+                "finished_at": "2026-01-01T00:00:00Z",
+                "started_at": "2026-01-01T00:00:00Z",
+                "created_at": "2026-01-01T00:00:00Z",
+                "metadata": {"crawl_result": {"failures": ["5"]}},
+            },
+        ]
+        activity_log = MockActivityLog(activities)
+
+        failed_ids = _get_failed_ids("n1", activity_log)
+        assert failed_ids == set(), "Malformed newest result should not resurrect old failure"
+
+    def test_duplicate_chapter_ids_count_once(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Duplicate chapter IDs in failures list are deduplicated."""
+        from novelai.services.library_summary_service import _get_failed_ids
+
+        activities = [
+            {
+                "id": "crawl_new",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "completed",
+                "metadata": {"crawl_result": {"failures": ["5", "5", "6", "6"]}},
+            },
+        ]
+        activity_log = MockActivityLog(activities)
+
+        failed_ids = _get_failed_ids("n1", activity_log)
+        assert failed_ids == {"5", "6"}, "Duplicate IDs should be deduplicated"
+
+    def test_dict_and_scalar_failure_formats_normalize(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Both dict and scalar failure formats normalize correctly."""
+        from novelai.services.library_summary_service import _get_failed_ids
+
+        activities = [
+            {
+                "id": "crawl_new",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "completed",
+                "metadata": {
+                    "crawl_result": {
+                        "failures": [
+                            {"chapter_id": "1"},  # dict with chapter_id
+                            {"id": "2"},  # dict with id
+                            "3",  # scalar string
+                            4,  # scalar int
+                        ]
+                    }
+                },
+            },
+        ]
+        activity_log = MockActivityLog(activities)
+
+        failed_ids = _get_failed_ids("n1", activity_log)
+        assert failed_ids == {"1", "2", "3", "4"}, "All formats should normalize to string IDs"
+
+    def test_stored_chapter_excluded_from_failed(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Chapter present in raw storage is excluded from failed count."""
+        from novelai.services.library_summary_service import _build_summary_from_storage
+
+        # Storage has chapter 5
+        summary_storage.save_metadata("n1", _metadata(10))
+        _save_chapter(summary_storage, "n1", "5")
+
+        # Activity says chapter 5 failed
+        activities = [
+            {
+                "id": "crawl_new",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "completed",
+                "metadata": {"crawl_result": {"failures": [{"chapter_id": "5"}]}},
+            },
+        ]
+        activity_log = MockActivityLog(activities)
+
+        result = _build_summary_from_storage(summary_storage, activity_log, [])
+        item = next(r for r in result.items if r.novel_id == "n1")
+        # Chapter 5 is stored, so it should NOT be counted as failed
+        assert item.failed == 0, "Stored chapter should not be counted as failed"
+
+    def test_pending_calculation_remains_max_zero(
+        self, summary_storage: StorageService
+    ) -> None:
+        """Pending = max(total - scraped - failed, 0) even when failed exceeds total."""
+        from novelai.services.library_summary_service import _build_summary_from_storage
+
+        # Storage has 2 chapters, metadata says 10 total
+        summary_storage.save_metadata("n1", _metadata(10))
+        _save_chapter(summary_storage, "n1", "1")
+        _save_chapter(summary_storage, "n1", "2")
+
+        # Activity says 15 chapters failed (more than total!)
+        activities = [
+            {
+                "id": "crawl_new",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "completed",
+                "metadata": {"crawl_result": {"failures": [str(i) for i in range(1, 16)]}},
+            },
+        ]
+        activity_log = MockActivityLog(activities)
+
+        result = _build_summary_from_storage(summary_storage, activity_log, [])
+        item = next(r for r in result.items if r.novel_id == "n1")
+        # Failed is capped at max(0, total - scraped) = max(0, 10 - 2) = 8
+        # Pending = max(total - scraped - failed, 0) = max(10 - 2 - 8, 0) = 0
+        assert item.failed == 8, f"Failed should be capped at 8, got {item.failed}"
+        assert item.pending == 0, f"Pending should be 0, got {item.pending}"

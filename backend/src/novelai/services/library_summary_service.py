@@ -70,6 +70,33 @@ class _CompletedBuild:
 
 
 @dataclass
+class _BuildGeneration:
+    """A single build generation with its own lifetime.
+
+    Each caller joining an active build retains a direct reference to this
+    object. The object's lifetime is not tied to a global dict that may be
+    pruned. Waiters use ``condition.wait_for(lambda: generation.done)``.
+
+    Fields:
+        generation: Monotonic generation number.
+        identity: Catalog identity this generation was built for.
+        start_epoch: Invalidation epoch captured at build start.
+        done: Becomes True when build completes (success or failure).
+        cache: Populated on success; None on failure.
+        error: Populated on failure; None on success.
+        invalidated: True if invalidation epoch advanced before build completed.
+    """
+
+    generation: int
+    identity: tuple[str, ...]
+    start_epoch: int
+    done: bool = False
+    cache: _CachedSummary | None = None
+    error: BaseException | None = None
+    invalidated: bool = False
+
+
+@dataclass
 class SummaryResponse:
     """Outward response with caller-specific cache metadata."""
 
@@ -99,31 +126,75 @@ def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+def _newest_first_sort_key(activity: dict[str, Any]) -> tuple[str, str]:
+    """Canonical newest-first sort key for activity records.
+
+    Uses ``finished_at`` > ``started_at`` > ``created_at`` then stable ID.
+    Descending applies this in reverse.
+
+    Sort tuple: ``(latest_timestamp, activity_id)`` — with ``reverse=True``
+    yields newest timestamp first, breaking ties by descending id.
+    """
+    timestamp = str(
+        activity.get("finished_at")
+        or activity.get("started_at")
+        or activity.get("created_at")
+        or ""
+    )
+    return (timestamp, str(activity.get("id") or ""))
+
+
 def _get_failed_ids(
     novel_id: str,
     activity_log: Any | None,
 ) -> set[str]:
+    """Return failed chapter IDs from the newest relevant crawl activity.
+
+    The newest activity with status 'completed' or 'failed' is authoritative.
+    Its 'failures' list (even if empty) overrides all older activities.
+    Cancelled, pending, queued, and running activities are skipped.
+
+    ``activity_log.list_activity`` does not guarantee newest-first ordering;
+    we sort deterministically by ``finished_at`` / ``started_at`` /
+    ``created_at`` then by stable ID before selecting the first relevant
+    result.
+    """
     if activity_log is None:
         return set()
     try:
         activities = activity_log.list_activity(
             novel_id=novel_id,
             activity_type="crawl",
-            limit=5,
+            limit=20,  # increased to allow finding recent completed/failed
         )
     except Exception:
         logger.debug("Failed to list crawl activities for %s", novel_id, exc_info=True)
         return set()
 
+    # Sort by newest-first by timestamp, breaking ties by stable ID.
+    activities = sorted(
+        activities,
+        key=_newest_first_sort_key,
+        reverse=True,
+    )
+
     for act in activities:
         status = act.get("status")
         if status not in ("completed", "failed"):
+            # Skip cancelled, pending, queued, running
             continue
         metadata = act.get("metadata") or {}
         crawl_result = metadata.get("crawl_result") or metadata.get("result") or {}
-        failures = crawl_result.get("failures") or []
+        failures = crawl_result.get("failures")
         if not isinstance(failures, list):
-            continue
+            # Malformed or missing failures list — treat as empty,
+            # do NOT fall back to older activities.
+            logger.debug(
+                "Crawl activity %s for %s has malformed/missing failures; treating as empty",
+                act.get("id"),
+                novel_id,
+            )
+            return set()
         ids: set[str] = set()
         for f in failures:
             if isinstance(f, dict):
@@ -132,8 +203,8 @@ def _get_failed_ids(
                 cid = f
             if cid is not None:
                 ids.add(str(cid))
-        if ids:
-            return ids
+        # Return immediately — this activity (even with empty failures) is authoritative.
+        return ids
     return set()
 
 
@@ -274,15 +345,21 @@ class LibrarySummaryService:
         self._expires_at: float = 0.0
 
         # Active in-flight generation, if any.
-        self._active_generation: int | None = None
+        self._active_generation: _BuildGeneration | None = None
         self._active_identity: tuple[str, ...] | None = None
 
-        # Completed outcomes keyed by generation (kept briefly for
-        # waiters that arrive just after notify()).
-        self._completed: dict[int, _CompletedBuild] = {}
+        # Completed generations keyed by generation number (retained for
+        # the lifetime of the service so waiters never lose their outcome).
+        self._completed_generations: dict[int, _BuildGeneration] = {}
 
         # Monotonic counter for new generations.
         self._next_generation: int = 1
+
+        # Monotonic invalidation epoch. Incremented on invalidate_cache().
+        # Each generation captures its start_epoch; if epoch advances before
+        # the build completes, the generation is marked invalidated and its
+        # result is NOT published to cache.
+        self._invalidation_epoch: int = 0
 
         self._cv = Condition()
 
@@ -313,8 +390,11 @@ class LibrarySummaryService:
 
     def invalidate_cache(self) -> None:
         with self._cv:
+            self._invalidation_epoch += 1
             self._cache = None
             self._expires_at = 0.0
+            # If there's an active build, it will see the epoch change
+            # when it completes and mark itself invalidated.
             self._cv.notify_all()
 
     # -- internals -------------------------------------------------------
@@ -333,10 +413,10 @@ class LibrarySummaryService:
         self,
         refresh: bool,
         identity: tuple[str, ...],
-    ) -> tuple[int, bool]:
+    ) -> tuple[_BuildGeneration, bool]:
         """Allocate a generation for this caller.
 
-        Returns ``(generation, is_builder)``.
+        Returns ``(generation_object, is_builder)``.
 
         * All callers seeing an *active* build for the same identity join it.
         * All callers seeing an *active* build for a different identity wait
@@ -347,7 +427,7 @@ class LibrarySummaryService:
             # Case 1: compatible active build — join it.
             if (
                 self._active_generation is not None
-                and self._active_identity == identity
+                and self._active_generation.identity == identity
             ):
                 generation = self._active_generation
                 return generation, False
@@ -355,7 +435,11 @@ class LibrarySummaryService:
             # Case 2: no active build — become the builder.
             if self._active_generation is None:
                 self._next_generation += 1
-                generation = self._next_generation
+                generation = _BuildGeneration(
+                    generation=self._next_generation,
+                    identity=identity,
+                    start_epoch=self._invalidation_epoch,
+                )
                 self._active_generation = generation
                 self._active_identity = identity
                 return generation, True
@@ -369,30 +453,42 @@ class LibrarySummaryService:
 
     def _wait_for_outcome(
         self,
-        generation: int,
+        generation: _BuildGeneration,
         *,
         refresh: bool,
         identity: tuple[str, ...],
     ) -> SummaryResponse:
-        """Wait for generation to finish, then return its outcome."""
-        with self._cv:
-            self._cv.wait_for(lambda: generation in self._completed)
+        """Wait for generation to finish, then return its outcome.
 
-            outcome = self._completed[generation]
+        If the generation was invalidated (epoch advanced during build),
+        the waiter re-enters the acquisition loop iteratively — exactly
+        one will become the builder for the next generation.
+        """
+        while True:
+            with self._cv:
+                self._cv.wait_for(lambda: generation.done)
 
-        if outcome.error is not None:
-            raise outcome.error
+                if generation.invalidated:
+                    # Epoch advanced during build. Release lock and
+                    # re-enter acquisition loop to get/start a fresh
+                    # generation. Exactly one waiter becomes the next builder.
+                    pass
+                elif generation.error is not None:
+                    raise generation.error
+                else:
+                    assert generation.cache is not None
+                    return _response_from_cache(generation.cache, hit=not refresh)
 
-        # Transition: as a forced-refresh caller we already have a completed
-        # generation that satisfies us, so no further work is needed.
-        # For a normal caller, the published cache may already match our
-        # identity — return it directly.
-        assert outcome.cache is not None
-        return _response_from_cache(outcome.cache, hit=not refresh)
+            # Re-evaluate from outside the lock. This loop is iterative,
+            # not recursive.
+            generation, is_builder = self._enter_critical_section(refresh, identity)
+            if is_builder:
+                return self._run_builder(generation, identity)
+            # else loop continues, waiting for the next generation
 
     def _run_builder(
         self,
-        generation: int,
+        generation: _BuildGeneration,
         identity: tuple[str, ...],
     ) -> SummaryResponse:
         """Execute the actual build and publish the outcome atomically."""
@@ -414,18 +510,24 @@ class LibrarySummaryService:
             pass
 
         with self._cv:
-            outcome = _CompletedBuild(
-                generation=generation,
-                identity=identity,
-                cache=cache,
-                error=error,
-            )
+            # Check if invalidation epoch advanced during the build.
+            if generation.start_epoch != self._invalidation_epoch:
+                generation.invalidated = True
+                generation.done = True
+                # Do NOT publish to cache. Wake waiters so they re-enter
+                # the acquisition loop and exactly one starts a fresh build.
+                self._cv.notify_all()
+            else:
+                generation.cache = cache
+                generation.error = error
+                generation.done = True
+                self._cv.notify_all()
 
-            self._completed[generation] = outcome
+                if cache is not None:
+                    self._cache = cache
+                    self._expires_at = completed_at_completion + CACHE_TTL_SECONDS
 
-            if cache is not None:
-                self._cache = cache
-                self._expires_at = completed_at_completion + CACHE_TTL_SECONDS
+                self._completed_generations[generation.generation] = generation
 
             # Only clear the active slot once the outcome is published.
             # This guarantees no waiter observes "no build in flight / no cache"
@@ -433,16 +535,6 @@ class LibrarySummaryService:
             if self._active_generation == generation:
                 self._active_generation = None
                 self._active_identity = None
-
-            self._cv.notify_all()
-
-            # Drop completed generations we're sure no waiter can still
-            # care about — keep the last one as a courtesy for any
-            # late-arriving forced caller comparing identities.
-            retained: dict[int, _CompletedBuild] = {}
-            if generation in self._completed:
-                retained[generation] = self._completed[generation]
-            self._completed = retained
 
         # Re-raise outside the lock to preserve traceback semantics.
         if error is not None:

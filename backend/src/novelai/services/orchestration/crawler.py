@@ -14,7 +14,7 @@ from novelai.glossary import extract_candidate_glossary_terms
 from novelai.prompts import METADATA_TRANSLATION_PROMPT_VERSION
 from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.services.glossary_repository import GlossaryRepository
-from novelai.services.library_summary_service import best_effort_invalidate, invalidate_library_summary_cache
+from novelai.services.library_summary_service import best_effort_invalidate
 from novelai.sources.quality import (
     chapter_content_hash,
     evaluate_chapter_quality,
@@ -244,10 +244,7 @@ async def scrape_metadata(
         context="scrape_metadata",
     )
     # Replacement metadata can change the discovered chapter total; invalidate.
-    try:
-        invalidate_library_summary_cache()
-    except Exception:
-        logger.debug("Library summary cache invalidation failed (non-fatal)", exc_info=True)
+    best_effort_invalidate(context="scrape_metadata")
     meta["bootstrap_candidate_count"] = await bootstrap_glossary_if_needed(self, novel_id, meta)
     if meta.get("chapters"):
         self.storage.update_onboarding_status(novel_id, "chapters_pending")

@@ -25,7 +25,7 @@ from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
 from novelai.glossary import glossary_status_counts, normalize_glossary_entries
 from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
-from novelai.services.library_summary_service import best_effort_invalidate, invalidate_library_summary_cache
+from novelai.services.library_summary_service import best_effort_invalidate
 from novelai.services.orchestration.common import PreflightIssue, _make_state_data
 from novelai.services.pipeline.checkpoint import Checkpoint
 from novelai.sources.base import SourceAdapter
@@ -893,10 +893,7 @@ async def translate_chapters(
                             context="translate_delta",
                         )
                         # Invalidate library summary cache after successful storage write
-                        try:
-                            invalidate_library_summary_cache()
-                        except Exception:
-                            logger.debug("Library summary cache invalidation failed (non-fatal)", exc_info=True)
+                        best_effort_invalidate(context="translate_delta")
                         self.storage.save_chapter_state(
                             novel_id,
                             chapter_id,

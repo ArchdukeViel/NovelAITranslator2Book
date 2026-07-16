@@ -284,8 +284,14 @@ export default function LibraryPage() {
 
   const summaryInitialError = summary.isError && !summary.data;
   const summaryInitialLoading = summary.isPending || summary.isLoading;
+  // Settled background-refetch failure: query has at least one prior
+  // successful fetch, status is "error", and the fetcher is idle
+  // (TanStack v5: `isRefetchError` only fires for background refetches
+  // with cached data; `fetchStatus === "idle"` guards the post-settle
+  // window reliably).
   const summaryBackgroundError =
-    summary.isError && Boolean(summary.data) && summary.isFetching;
+    Boolean(summary.isRefetchError) ||
+    (summary.status === "error" && summary.data !== undefined && summary.fetchStatus === "idle");
 
   const mergedRows = React.useMemo(() => {
     return rows.map((novel) => {

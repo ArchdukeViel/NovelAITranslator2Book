@@ -272,4 +272,79 @@ describe("Admin Library: live summary integration", () => {
     // The previously-good translated=2 should still be visible (not wiped).
     expect(screen.getByText("2")).toBeInTheDocument();
   });
+
+  it("background refetch failure preserves prior values and shows one background warning", async () => {
+    mockNovels.mockResolvedValue([makeNovel()]);
+
+    // First call (cold) succeeds. Every subsequent call fails.
+    let refetchAttempts = 0;
+    mockLibrarySummary.mockImplementation(async (opts: { refresh?: boolean }) => {
+      // Cold and explicit refresh are what we want to differ on.
+      if (opts?.refresh) {
+        throw new Error("explicit refresh exploded");
+      }
+      refetchAttempts += 1;
+      if (refetchAttempts === 1) {
+        // Initial successful fetch.
+        return makeSummaryResponse([
+          makeSummaryItem({ translated: 4, scraped: 8, total: 10 }),
+        ]);
+      }
+      // Subsequent background refetches fail.
+      throw new Error("background refetch exploded");
+    });
+
+    const { queryClient } = renderWithQuery(<LibraryPage />);
+
+    // Wait for initial success: translated=4 should be visible.
+    await waitFor(() => {
+      expect(screen.getByText("4")).toBeInTheDocument();
+    });
+
+    // Trigger normal background refetch via invalidateQueries.
+    await queryClient.invalidateQueries({ queryKey: ["library-summary"] });
+
+    // Wait for the failed background refetch to settle.
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText(/Background refresh failed/i),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+
+    // Prior value (translated=4) remains visible.
+    expect(screen.getByText("4")).toBeInTheDocument();
+
+    // Exactly ONE background warning.
+    expect(screen.getAllByText(/Background refresh failed/i)).toHaveLength(1);
+
+    // No initial-load error.
+    expect(
+      screen.queryByText(/Failed to load library summary/i),
+    ).not.toBeInTheDocument();
+
+    // No explicit-refresh error.
+    expect(screen.queryByText(/Explicit refresh failed/i)).not.toBeInTheDocument();
+
+    // Recovery via the Retry button — fix the mock to succeed again.
+    refetchAttempts = 0; // reset so the next call succeeds
+    mockLibrarySummary.mockImplementation(async () =>
+      makeSummaryResponse([
+        makeSummaryItem({ translated: 9, scraped: 10, total: 10 }),
+      ]),
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /Retry/i }));
+
+    // Background warning disappears.
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/Background refresh failed/i),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("9")).toBeInTheDocument();
+  });
 });
