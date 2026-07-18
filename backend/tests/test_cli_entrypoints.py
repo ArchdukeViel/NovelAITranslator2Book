@@ -126,32 +126,3 @@ def test_pyproject_console_scripts_use_web_only_modules() -> None:
     assert scripts["novelaibook"] == "novelai.runtime.cli:main"
     assert scripts["novelai"] == "novelai.__main__:main"
     assert "novelaibook-gui" not in scripts
-
-
-def test_legacy_cli_import_is_resolved_by_compat_layer() -> None:
-    import importlib
-
-    legacy_cli = importlib.import_module("novelai.interfaces.cli")
-
-    assert legacy_cli is cli
-
-
-def test_legacy_web_import_is_resolved_by_compat_layer() -> None:
-    import importlib
-
-    legacy_app = importlib.import_module("novelai.interfaces.web.app")
-    canonical_app = importlib.import_module("novelai.api.app")
-
-    assert legacy_app is canonical_app
-
-
-def test_legacy_pipeline_and_service_imports_are_resolved_by_compat_layer() -> None:
-    import importlib
-
-    legacy_pipeline = importlib.import_module("novelai.pipeline.pipeline")
-    canonical_pipeline = importlib.import_module("novelai.translation.pipeline.pipeline")
-    legacy_storage = importlib.import_module("novelai.services.storage_service")
-    canonical_storage = importlib.import_module("novelai.storage.service")
-
-    assert legacy_pipeline is canonical_pipeline
-    assert legacy_storage is canonical_storage

@@ -130,8 +130,9 @@ Deferred items are tracked but excluded from the active count.
   `publication_status`, and module-level public-catalog test wrappers are
   removed. Runtime storage configuration now accepts and exposes only
   `NOVEL_LIBRARY_DIR`; the `DATA_DIR` environment/property alias is removed.
-  The unused `novels.status` database mirror remains until an explicit
-  column-removal migration is approved and verified.
+  The package-level meta-path compatibility loader and its legacy module import
+  aliases are removed. The unused `novels.status` database mirror remains until
+  an explicit column-removal migration is approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
