@@ -7,7 +7,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from novelai.infrastructure.http.cache import FetchCacheEntry
-from novelai.storage.common import _utc_now_iso, validate_storage_schema_version
+from novelai.storage.common import (
+    UnsupportedStorageSchemaVersionError,
+    _utc_now_iso,
+    validate_storage_schema_version,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,15 +102,27 @@ def _read_json_file(self: Any, path: Any, default: Any) -> Any:
 
 
 def _validate_runtime_schema_versions(payload: Any, *, artifact_type: str) -> None:
-    """Validate top-level runtime records while accepting unversioned legacy records."""
+    """Validate top-level runtime records against the current schema."""
     if isinstance(payload, dict) and "schema_version" in payload:
         records = [payload]
     elif isinstance(payload, dict):
-        records = [item for item in payload.values() if isinstance(item, dict)]
+        if not payload:
+            return
+        if any(not isinstance(item, dict) for item in payload.values()):
+            raise UnsupportedStorageSchemaVersionError(
+                f"runtime artifact {artifact_type} does not match the current storage schema."
+            )
+        records = list(payload.values())
     elif isinstance(payload, list):
-        records = [item for item in payload if isinstance(item, dict)]
+        if any(not isinstance(item, dict) for item in payload):
+            raise UnsupportedStorageSchemaVersionError(
+                f"runtime artifact {artifact_type} does not match the current storage schema."
+            )
+        records = list(payload)
     else:
-        records = []
+        raise UnsupportedStorageSchemaVersionError(
+            f"runtime artifact {artifact_type} does not match the current storage schema."
+        )
     for record in records:
         validate_storage_schema_version(
             record,
@@ -167,7 +183,12 @@ def _runtime_record_key(novel_id: str, payload: dict[str, Any], chunk_id: str, *
 
 
 def _matches_runtime_scope(item: dict[str, Any], payload: dict[str, Any]) -> bool:
-    expected_run = _scope_part(payload.get("translation_run_id") or payload.get("run_id") or payload.get("job_id") or payload.get("activity_id"))
+    expected_run = _scope_part(
+        payload.get("translation_run_id")
+        or payload.get("run_id")
+        or payload.get("job_id")
+        or payload.get("activity_id")
+    )
     if expected_run is not None and _run_scope_from_payload(item) != expected_run:
         return False
 
@@ -337,7 +358,9 @@ def save_chunk_attempt_record(self: Any, attempt: dict[str, Any] | Any) -> dict[
     path = self._translation_runtime_dir() / "chunk_attempts.json"
     records = _read_mapping(self, path)
     run_scope, chapter_scope = _runtime_scope(payload)
-    attempt_id = str(payload.get("attempt_id") or _runtime_record_key(novel_id, payload, chunk_id, attempt_number)).strip()
+    attempt_id = str(
+        payload.get("attempt_id") or _runtime_record_key(novel_id, payload, chunk_id, attempt_number)
+    ).strip()
     existing = records.get(attempt_id)
     created_at = existing.get("created_at") if isinstance(existing, dict) else None
     record = {
@@ -414,7 +437,9 @@ def save_translation_bundle(self: Any, bundle: dict[str, Any] | Any) -> dict[str
         "chapter_ids": _list_strings(payload.get("chapter_ids")),
         "paragraph_ids": _list_strings(payload.get("paragraph_ids")),
         "status": str(payload.get("status") or "pending"),
-        "created_at": str(payload.get("created_at") or (existing.get("created_at") if isinstance(existing, dict) else None) or now),
+        "created_at": str(
+            payload.get("created_at") or (existing.get("created_at") if isinstance(existing, dict) else None) or now
+        ),
         "updated_at": now,
     }
     records[key] = record
@@ -492,9 +517,7 @@ def read_translation_output(
     path = self._translation_runtime_dir() / "outputs.json"
     records = _read_mapping(self, path)
     items = [
-        dict(record)
-        for record in records.values()
-        if isinstance(record, dict) and record.get("novel_id") == novel_id
+        dict(record) for record in records.values() if isinstance(record, dict) and record.get("novel_id") == novel_id
     ]
     scope_payload = {
         "translation_run_id": translation_run_id,
@@ -594,12 +617,9 @@ def cleanup_expired_runtime_data(self: Any, *, max_age_days: int | None = None) 
     req_records = _read_json_file(self, req_path, [])
     if isinstance(req_records, list) and req_records:
         kept_reqs = [
-            item for item in req_records
-            if isinstance(item, dict)
-            and (
-                (ts := _parse_timestamp(item.get("timestamp"))) is None
-                or ts >= cutoff
-            )
+            item
+            for item in req_records
+            if isinstance(item, dict) and ((ts := _parse_timestamp(item.get("timestamp"))) is None or ts >= cutoff)
         ]
         if len(kept_reqs) != len(req_records):
             total += len(req_records) - len(kept_reqs)
@@ -697,7 +717,9 @@ def save_fetch_cache_entry(self: Any, entry: dict[str, Any] | Any) -> dict[str, 
         body_hash = _hash_text(body_text) if isinstance(body_text, str) else None
 
     headers = payload.get("headers")
-    headers_payload = {str(key).lower(): str(value) for key, value in headers.items()} if isinstance(headers, dict) else {}
+    headers_payload = (
+        {str(key).lower(): str(value) for key, value in headers.items()} if isinstance(headers, dict) else {}
+    )
     path = self._fetch_cache_dir() / "index.json"
     records = _read_mapping(self, path)
     record = {

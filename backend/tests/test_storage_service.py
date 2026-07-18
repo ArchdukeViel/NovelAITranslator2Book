@@ -8,6 +8,7 @@ import pytest
 
 from novelai.core.chapter_state import ChapterState
 from novelai.shared.pipeline import SchedulerModelState, SchedulerModelStatus
+from novelai.storage.common import UnsupportedStorageSchemaVersionError
 from novelai.storage.service import StorageService
 from tests.conftest import TESTS_TMP_ROOT
 
@@ -217,13 +218,16 @@ def test_activate_translated_chapter_version_rolls_back_active_output(storage):
     storage.save_translated_chapter("novel1", "ch1", "machine translation", provider="openai", model="gpt-5.4")
     storage.save_edited_translation("novel1", "ch1", "edited translation", editor="admin")
 
-    assert storage.activate_translated_chapter_version(
-        "novel1",
-        "ch1",
-        "v1",
-        editor="admin",
-        note="restore machine output",
-    ) is True
+    assert (
+        storage.activate_translated_chapter_version(
+            "novel1",
+            "ch1",
+            "v1",
+            editor="admin",
+            note="restore machine output",
+        )
+        is True
+    )
 
     loaded = storage.load_translated_chapter("novel1", "ch1")
     versions = storage.list_translated_chapter_versions("novel1", "ch1")
@@ -278,7 +282,7 @@ def test_chapter_storage_media_fields_default_for_existing_chapters(storage):
     assert loaded["reembed_status"] == "skipped"
 
 
-def test_load_legacy_chapter_bundle_adds_media_defaults(storage):
+def test_unversioned_chapter_bundle_is_rejected(storage):
     chapter_dir = storage.base_dir / "novels" / "novel1" / "chapters"
     chapter_dir.mkdir(parents=True, exist_ok=True)
     chapter_path = chapter_dir / "legacy.json"
@@ -294,20 +298,10 @@ def test_load_legacy_chapter_bundle_adds_media_defaults(storage):
         encoding="utf-8",
     )
 
-    raw = storage.load_chapter("novel1", "legacy")
-    translated = storage.load_translated_chapter("novel1", "legacy")
-
-    assert raw is not None
-    assert raw["ocr_required"] is False
-    assert raw["ocr_text"] is None
-    assert raw["ocr_status"] == "skipped"
-    assert raw["reembed_status"] == "skipped"
-
-    assert translated is not None
-    assert translated["ocr_required"] is False
-    assert translated["ocr_text"] is None
-    assert translated["ocr_status"] == "skipped"
-    assert translated["reembed_status"] == "skipped"
+    with pytest.raises(UnsupportedStorageSchemaVersionError):
+        storage.load_chapter("novel1", "legacy")
+    with pytest.raises(UnsupportedStorageSchemaVersionError):
+        storage.load_translated_chapter("novel1", "legacy")
 
 
 def test_save_translated_chapter_preserves_media_fields(storage):
@@ -317,6 +311,7 @@ def test_save_translated_chapter_preserves_media_fields(storage):
     chapter_path.write_text(
         json.dumps(
             {
+                "schema_version": storage.SCHEMA_VERSION,
                 "id": "ch-media-roundtrip",
                 "raw": {"text": "raw", "scraped_at": "2024-01-01T00:00:00Z"},
                 "ocr_required": True,
@@ -408,9 +403,7 @@ def test_chapter_state_can_represent_partial_translation(storage):
 
 def test_chapter_state_with_error(storage):
     """Test chapter state transitions with errors."""
-    storage.update_chapter_state(
-        "novel1", "ch1", ChapterState.TRANSLATED, error="API timeout"
-    )
+    storage.update_chapter_state("novel1", "ch1", ChapterState.TRANSLATED, error="API timeout")
 
     state = storage.load_chapter_state("novel1", "ch1")
     assert state["error_count"] == 1
@@ -657,11 +650,18 @@ def test_metadata_storage_slug_is_stable_on_title_change(storage):
     assert not (storage.base_dir / "novels" / "second-title").exists()
 
 
-def test_legacy_indexed_source_folder_remains_readable_and_not_moved(storage):
-    legacy_dir = storage.novels_dir / "n0813kx"
-    legacy_dir.mkdir(parents=True)
-    (legacy_dir / "metadata.json").write_text(
-        json.dumps({"novel_id": "n0813kx", "title": "Legacy Title"}, ensure_ascii=False),
+def test_indexed_canonical_source_folder_remains_stable(storage):
+    canonical_dir = storage.novels_dir / "n0813kx"
+    canonical_dir.mkdir(parents=True)
+    (canonical_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "schema_version": storage.SCHEMA_VERSION,
+                "novel_id": "n0813kx",
+                "title": "Current Title",
+            },
+            ensure_ascii=False,
+        ),
         encoding="utf-8",
     )
     storage._persist_index({"n0813kx": {"folder_name": "n0813kx", "updated_at": "2026-06-03T00:00:00Z"}})
@@ -673,7 +673,7 @@ def test_legacy_indexed_source_folder_remains_readable_and_not_moved(storage):
     assert loaded["translated_title"] == "New Translated Title"
     assert loaded["folder_name"] == "n0813kx"
     assert loaded["storage_slug"] == "n0813kx"
-    assert (legacy_dir / "metadata.json").exists()
+    assert (canonical_dir / "metadata.json").exists()
     assert not (storage.base_dir / "novels" / "new-translated-title").exists()
     assert storage._get_folder_name("n0813kx") == "n0813kx"
 
@@ -876,7 +876,14 @@ def test_list_novels_discovers_unindexed_metadata_folder(storage):
     novel_dir = storage.novels_dir / "n0813kx"
     novel_dir.mkdir(parents=True)
     (novel_dir / "metadata.json").write_text(
-        json.dumps({"novel_id": "n0813kx", "title": "Recovered Novel"}, ensure_ascii=False),
+        json.dumps(
+            {
+                "schema_version": storage.SCHEMA_VERSION,
+                "novel_id": "n0813kx",
+                "title": "Recovered Novel",
+            },
+            ensure_ascii=False,
+        ),
         encoding="utf-8",
     )
 
@@ -886,8 +893,7 @@ def test_list_novels_discovers_unindexed_metadata_folder(storage):
     assert storage.load_metadata("n0813kx")["title"] == "Recovered Novel"
 
 
-def test_list_novels_discovers_legacy_syosetu_folder_without_metadata(storage):
-    """Legacy Syosetu folders like 0813kx should appear as canonical n0813kx."""
+def test_list_novels_ignores_noncanonical_syosetu_folder(storage):
     novel_dir = storage.novels_dir / "0813kx"
     chapter_dir = novel_dir / "chapters"
     chapter_dir.mkdir(parents=True)
@@ -898,15 +904,11 @@ def test_list_novels_discovers_legacy_syosetu_folder_without_metadata(storage):
 
     novels = storage.list_novels()
 
-    assert "n0813kx" in novels
-    assert "0813kx" not in novels
-    assert storage._get_folder_name("n0813kx") == "0813kx"
-    assert storage.count_stored_chapters("n0813kx") == 1
-    assert storage.load_metadata("n0813kx") is None
+    assert novels == []
+    assert storage._get_folder_name("n0813kx") == "n0813kx"
 
 
-def test_legacy_syosetu_folder_wins_when_index_points_to_missing_canonical_folder(storage):
-    """A stale n0813kx index should not hide an existing 0813kx folder."""
+def test_noncanonical_syosetu_folder_does_not_override_index(storage):
     storage._persist_index({"n0813kx": {"folder_name": "n0813kx", "updated_at": "2026-06-03T00:00:00Z"}})
     novel_dir = storage.novels_dir / "0813kx"
     chapter_dir = novel_dir / "chapters"
@@ -921,9 +923,9 @@ def test_legacy_syosetu_folder_wins_when_index_points_to_missing_canonical_folde
     )
 
     assert storage.list_novels() == ["n0813kx"]
-    assert storage._get_folder_name("n0813kx") == "0813kx"
-    assert storage.load_metadata("n0813kx")["title"] == "Legacy Folder Novel"
-    assert storage.count_stored_chapters("n0813kx") == 1
+    assert storage._get_folder_name("n0813kx") == "n0813kx"
+    assert storage.load_metadata("n0813kx") is None
+    assert storage.count_stored_chapters("n0813kx") == 0
 
 
 # ── _is_dir_present and has_keys ──────────────────────────────────────
@@ -989,7 +991,13 @@ def test_padded_chapter_listing_returns_logical_ids(storage):
         path = chapter_dir / f"{int(chapter_id):04d}.json"  # 0001.json etc.
         storage._write_text(
             path,
-            json.dumps({"id": chapter_id, "raw": {"text": f"chapter {chapter_id}"}}),
+            json.dumps(
+                {
+                    "schema_version": storage.SCHEMA_VERSION,
+                    "id": chapter_id,
+                    "raw": {"text": f"chapter {chapter_id}"},
+                }
+            ),
         )
 
     ids = storage.list_stored_chapters("padded-listing")
@@ -1006,7 +1014,13 @@ def test_stored_chapter_count_matches_list_length(storage):
         path = chapter_dir / f"{cid:04d}.json"
         storage._write_text(
             path,
-            json.dumps({"id": str(cid), "raw": {"text": f"body {cid}"}}),
+            json.dumps(
+                {
+                    "schema_version": storage.SCHEMA_VERSION,
+                    "id": str(cid),
+                    "raw": {"text": f"body {cid}"},
+                }
+            ),
         )
 
     assert storage.count_stored_chapters("count-test") == 3
@@ -1022,12 +1036,18 @@ def test_unrelated_json_excluded_from_chapter_list(storage):
     # Valid chapter
     storage._write_text(
         chapter_dir / "0001.json",
-        json.dumps({"id": "1", "raw": {"text": "good"}}),
+        json.dumps(
+            {
+                "schema_version": storage.SCHEMA_VERSION,
+                "id": "1",
+                "raw": {"text": "good"},
+            }
+        ),
     )
     # Unrelated JSON (no raw or translated dict)
     storage._write_text(
         chapter_dir / "index.json",
-        json.dumps({"type": "index"}),
+        json.dumps({"schema_version": storage.SCHEMA_VERSION, "type": "index"}),
     )
     # Random non-JSON file
     storage._write_text(

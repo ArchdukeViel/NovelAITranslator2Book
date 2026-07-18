@@ -257,9 +257,11 @@ artifacts, users, saved data, requests, settings, and audit data.
 `credential_id`, `requesting_user_id`, `credential_owner_user_id`,
 `prompt_version`, `glossary_hash`.
 
-**Compatibility aliases**: `id`, `source`, `provider`, `model`, and `slug`
-are tolerated compatibility debt. Do not introduce new aliases without a
-contract migration.
+**Forward-only contracts**: compatibility aliases are not accepted or emitted.
+Use the canonical names above in storage, API, backend, frontend, and tests.
+Breaking contract changes update all callers in the same change; do not add
+fallback readers, mirrored fields, route aliases, import shims, or deprecated
+library adapters.
 
 **Error envelope**:
 

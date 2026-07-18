@@ -114,29 +114,33 @@ Deferred items are tracked but excluded from the active count.
 - **Description:** Activity counts and resource usage are not gathered.
 - **Completion criteria:** Ingest engine lists active reads, crawls, and token counts.
 
-### DEBT-021 — Legacy aliases need planned migration
+### DEBT-021 — Remove compatibility aliases and shims
 - **Milestone:** Milestone M1 (Glossary/Router Repair)
 - **Category:** Backend | Data Migration
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Ongoing
 - **Affected areas:** Global codebase
-- **Description:** Code uses old fields (`slug`, `provider`, `model`, `id`, `source`) instead of canonical names.
-- **Completion criteria:** Global renaming check updates callers to matching canonical names.
+- **Description:** Forward-only architecture now forbids old fields (`slug`,
+  `provider`, `model`, `id`, `source`), mirrored payload fields, route aliases,
+  import shims, and deprecated library adapters.
+- **Completion criteria:** All production callers and tests use canonical names;
+  compatibility routes, imports, fields, and dependencies are removed.
 
-### DEBT-022 — Storage backward compatibility discipline
+### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
 - **Category:** Storage | Data Migration
 - **Priority:** Medium
 - **Status:** Resolved
 - **Affected areas:** `backend/src/novelai/storage/`
-- **Description:** Lack of strict schema version enforcement for saved JSON models.
-- **Completion criteria:** Storage read/write tests verify compatibility with older formats.
-- **Resolution:** Canonical metadata, chapter bundles, glossaries, and versioned
-  runtime records now accept supported older or unversioned historical shapes,
-  reject invalid and future schema versions through a storage-layer error, and
-  prevent attempted writes from replacing incompatible artifacts. Contract tests
-  cover legacy reads, current-version writes, invalid/future rejection, and
-  preservation after failed writes.
+- **Description:** Storage artifacts previously accepted unversioned and older
+  formats plus alternate raw/translated directory layouts.
+- **Completion criteria:** Only the exact current schema and canonical layout are
+  readable; incompatible artifacts fail closed without implicit rewrites.
+- **Resolution:** Metadata, chapter bundles, glossaries, and runtime records now
+  require their exact current schema version. Legacy raw/translated directory
+  fallbacks, bare glossary lists, unprefixed Syosetu folder lookup, and
+  older/unversioned record acceptance were removed. Tests prove current writes,
+  exact-version reads, rejection, and preservation after failed writes.
 
 ### DEBT-023 — Admin provider credential UI missing
 - **Milestone:** Milestone M5 (Admin Operations)

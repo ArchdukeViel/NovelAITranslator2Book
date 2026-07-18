@@ -186,9 +186,8 @@ by filename. Read via `list_metadata_history` / `load_metadata_snapshot`.
 ## Raw Chapter Bundles
 
 Path: `<novel_dir>/chapters/<chapter_id>.json`. Written by `save_chapter`, read
-by `load_chapter`. The chapter bundle is a unified file containing `raw` (and,
-optionally, `translated`) content. Legacy `raw/<id>.json` / `translated/<id>.json`
-are still loaded as a fallback.
+by `load_chapter`. The chapter bundle is the only supported chapter artifact
+and contains `raw` (and, optionally, `translated`) content.
 
 Required `raw` fields:
 
@@ -264,18 +263,19 @@ Path: `edit_history` list inside the chapter bundle. Written by
 - For stale SQL projection rows, prefer `catalog_service.refresh_catalog_projection`
   (best-effort rebuild from canonical files) over manual DB edits.
 
-## Compatibility Rules
+## Forward-only Schema Rules
 
-- Loaders tolerate additive fields.
-- Missing optional fields receive existing default behavior.
+- Every versioned metadata, chapter, glossary, and runtime artifact must carry
+  the exact `schema_version` supported by the running application.
+- Unversioned, older, invalid, or newer artifacts fail closed and are never
+  rewritten implicitly.
+- Loaders may tolerate additive fields within the current schema, but they do
+  not infer removed fields, inspect legacy directories, or accept alternate
+  historical shapes.
 - Required fields must be present in newly written artifacts.
-- Legacy artifacts load if they match supported historical shapes
-  (`raw/` / `translated/` fallback, legacy metadata fields).
-- Unversioned historical metadata, chapter, glossary, and runtime records remain
-  readable. Explicit `schema_version` values must be positive integers at or below
-  the reader's current version. Invalid or newer versions fail closed before a
-  write can replace the existing artifact; operators must upgrade the application
-  or run an approved storage migration rather than editing canonical JSON by hand.
+- A schema change updates its writers, readers, tests, documentation, and
+  explicit operator migration procedure together. There is no dual-read or
+  dual-write compatibility window.
 - SQL projection state can be rebuilt from canonical file storage where existing
   code supports it.
 

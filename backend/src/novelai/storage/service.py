@@ -18,8 +18,6 @@ from novelai.storage.chapters import (
     _chapter_dir,
     _chapter_path,
     _load_chapter_bundle,
-    _load_legacy_raw_chapter,
-    _load_legacy_translated_chapter,
     _persist_chapter_bundle,
     count_stored_chapters,
     existing_chapter_hash,
@@ -66,7 +64,6 @@ from novelai.storage.novels import (
     _folder_path,
     _get_folder_name,
     _index_path,
-    _legacy_folder_candidates,
     _load_index,
     _load_latest_valid_metadata_backup,
     _metadata_backup_dir,
@@ -161,8 +158,8 @@ def _fsync_directory(directory: Path) -> None:
 class StorageService:
     """Filesystem-backed storage service.
 
-    The public API is kept on this compatibility class while domain
-    implementations live in smaller storage modules.
+    The public API is exposed through this facade while domain implementations
+    live in smaller storage modules.
     """
 
     INDEX_FILENAME = "index.json"
@@ -178,11 +175,9 @@ class StorageService:
         name = re.sub(r"[^A-Za-z0-9_\-\.]+", "", name)
         return name or "novel"
 
-
     @staticmethod
     def _hash_text(text: str) -> str:
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
 
     @staticmethod
     def _text_paragraphs(text: str) -> list[str]:
@@ -190,7 +185,6 @@ class StorageService:
         if not normalized:
             return []
         return [paragraph for paragraph in re.split(r"\n{2,}", normalized) if paragraph]
-
 
     @staticmethod
     def _normalize_source_blocks(blocks: Any) -> list[dict[str, Any]]:
@@ -241,7 +235,6 @@ class StorageService:
             normalized.pop()
         return normalized
 
-
     @staticmethod
     def _clean_string(value: Any, default: str | None = None) -> str | None:
         if isinstance(value, str):
@@ -269,15 +262,16 @@ class StorageService:
         """
         return StorageService._logical_id_from_stem(stem)
 
-
     def __init__(self, base_dir: Path | None = None, backend: Any | None = None) -> None:
         if backend is not None:
             self._backend = backend
         elif base_dir is not None:
             from novelai.storage.backends.filesystem import FilesystemBackend
+
             self._backend = FilesystemBackend(base_dir.resolve())
         else:
             from novelai.storage.backends import get_storage_backend
+
             self._backend = get_storage_backend()
 
         self.base_dir = (base_dir or settings.DATA_DIR).resolve()
@@ -285,7 +279,6 @@ class StorageService:
 
         self.novels_dir = self.base_dir / "novels"
         self._backend.mkdirs(self.novels_dir)
-
 
     # ── backend-abstracted I/O helpers ──────────────────────────────
 
@@ -442,7 +435,6 @@ class StorageService:
         normalized.sort(key=lambda item: int(item.get("index", 0)))
         return normalized
 
-
     @staticmethod
     def _normalize_named_dict_items(value: Any) -> list[dict[str, Any]]:
         if not isinstance(value, list):
@@ -453,15 +445,15 @@ class StorageService:
                 normalized.append(dict(item))
         return normalized
 
-
     @staticmethod
-    def _normalize_version_kind(value: Any, default: ChapterVersionKind = ChapterVersionKind.MACHINE_TRANSLATION) -> str:
+    def _normalize_version_kind(
+        value: Any, default: ChapterVersionKind = ChapterVersionKind.MACHINE_TRANSLATION
+    ) -> str:
         if isinstance(value, ChapterVersionKind):
             return value.value
         if isinstance(value, str) and value in {kind.value for kind in ChapterVersionKind}:
             return value
         return default.value
-
 
     @staticmethod
     def _next_translation_version_id(versions: list[dict[str, Any]]) -> str:
@@ -471,7 +463,6 @@ class StorageService:
             index += 1
         return f"v{index}"
 
-
     @staticmethod
     def _next_edit_history_id(entries: list[dict[str, Any]]) -> str:
         used = {str(entry.get("id")) for entry in entries if entry.get("id") is not None}
@@ -480,14 +471,12 @@ class StorageService:
             index += 1
         return f"e{index}"
 
-
     @staticmethod
     def _normalize_optional_int(value: Any) -> int | None:
         try:
             return int(value) if value is not None else None
         except (TypeError, ValueError):
             return None
-
 
     @staticmethod
     def _serialize_checkpoint_state(state_data: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -552,14 +541,12 @@ class StorageService:
             "retry_count": int(state_data.get("retry_count", 0) or 0),
         }
 
-
     # Novel metadata and folder index
     _index_path = _index_path
     _load_index = _load_index
     _persist_index = _persist_index
     _validate_folder_name = _validate_folder_name
     _normalize_library_novel_id = _normalize_library_novel_id
-    _legacy_folder_candidates = _legacy_folder_candidates
     _compute_folder_name = _compute_folder_name
     _folder_in_use_by_other_novel = _folder_in_use_by_other_novel
     _get_folder_name = _get_folder_name
@@ -583,8 +570,6 @@ class StorageService:
     _folder_has_novel_data = _folder_has_novel_data
     _chapter_dir = _chapter_dir
     _chapter_path = _chapter_path
-    _load_legacy_raw_chapter = _load_legacy_raw_chapter
-    _load_legacy_translated_chapter = _load_legacy_translated_chapter
     _load_chapter_bundle = _load_chapter_bundle
     _persist_chapter_bundle = _persist_chapter_bundle
     existing_chapter_hash = existing_chapter_hash

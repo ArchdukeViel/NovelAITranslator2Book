@@ -15,8 +15,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from novelai.services.backup_manager import BackupManager
 from novelai.storage.chapters import _load_chapter_bundle
+from novelai.storage.common import UnsupportedStorageSchemaVersionError
 from novelai.storage.glossary import load_glossary
 from novelai.storage.jobs import load_chapter_state
 from novelai.storage.runtime_contracts import _read_json_file
@@ -25,8 +28,11 @@ from novelai.storage.runtime_contracts import _read_json_file
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class _FakeStorage:
     """Minimal StorageService-like object for testing storage functions."""
+
+    SCHEMA_VERSION = 2
 
     def __init__(self, tmp_path: Path) -> None:
         self.base_dir = tmp_path
@@ -49,12 +55,6 @@ class _FakeStorage:
     def _normalize_media_fields(self, data: dict[str, Any]) -> dict[str, Any]:
         return data
 
-    def _load_legacy_raw_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
-        return None
-
-    def _load_legacy_translated_chapter(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
-        return None
-
     def _path_exists(self, path: Path) -> bool:
         return path.exists()
 
@@ -70,6 +70,7 @@ def _make_storage(tmp_path):
 # ---------------------------------------------------------------------------
 # _load_chapter_bundle
 # ---------------------------------------------------------------------------
+
 
 class TestLoadChapterBundle:
     """_load_chapter_bundle: truncated JSON → None, empty file → None, array → None."""
@@ -110,7 +111,7 @@ class TestLoadChapterBundle:
         chapter_id = "ch4"
         path = storage._chapter_path(novel_id, chapter_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        data = {"id": "ch4", "title": "Good"}
+        data = {"schema_version": storage.SCHEMA_VERSION, "id": "ch4", "title": "Good"}
         path.write_text(json.dumps(data), encoding="utf-8")
         result = _load_chapter_bundle(storage, novel_id, chapter_id)
         assert result is not None
@@ -125,6 +126,7 @@ class TestLoadChapterBundle:
 # ---------------------------------------------------------------------------
 # load_chapter_state
 # ---------------------------------------------------------------------------
+
 
 class TestLoadChapterState:
     """load_chapter_state: truncated JSON → None, empty file → None."""
@@ -178,6 +180,7 @@ class TestLoadChapterState:
 # load_glossary
 # ---------------------------------------------------------------------------
 
+
 class TestLoadGlossary:
     """load_glossary: malformed JSON → [], empty file → []."""
 
@@ -206,31 +209,30 @@ class TestLoadGlossary:
         storage = _FakeStorage(tmp_path)
         novel_id = "test-novel"
         path = storage._novel_dir(novel_id) / "glossary.json"
-        data = {"entries": [{"source": "foo", "target": "bar"}]}
+        data = {"schema_version": storage.SCHEMA_VERSION, "entries": [{"source": "foo", "target": "bar"}]}
         path.write_text(json.dumps(data), encoding="utf-8")
         result = load_glossary(storage, novel_id)
         assert result == [{"source": "foo", "target": "bar"}]
 
-    def test_valid_glossary_list_format(self, tmp_path: Path) -> None:
+    def test_unversioned_glossary_list_is_rejected(self, tmp_path: Path) -> None:
         storage = _FakeStorage(tmp_path)
         novel_id = "test-novel"
         path = storage._novel_dir(novel_id) / "glossary.json"
         data = [{"source": "foo", "target": "bar"}]
         path.write_text(json.dumps(data), encoding="utf-8")
-        result = load_glossary(storage, novel_id)
-        assert result == [{"source": "foo", "target": "bar"}]
+        with pytest.raises(UnsupportedStorageSchemaVersionError):
+            load_glossary(storage, novel_id)
 
 
 # ---------------------------------------------------------------------------
 # _read_json_file
 # ---------------------------------------------------------------------------
 
+
 class TestReadJsonFile:
     """_read_json_file: malformed → {} + WARNING, empty → {} + DEBUG."""
 
-    def test_malformed_json_returns_default_and_logs_warning(
-        self, tmp_path: Path, caplog: Any
-    ) -> None:
+    def test_malformed_json_returns_default_and_logs_warning(self, tmp_path: Path, caplog: Any) -> None:
         path = tmp_path / "test.json"
         path.write_text("{broken", encoding="utf-8")
         with caplog.at_level(logging.WARNING):
@@ -238,9 +240,7 @@ class TestReadJsonFile:
         assert result == {}
         assert any("Corrupt JSON file" in msg for msg in caplog.messages)
 
-    def test_empty_file_returns_default_and_logs_debug(
-        self, tmp_path: Path, caplog: Any
-    ) -> None:
+    def test_empty_file_returns_default_and_logs_debug(self, tmp_path: Path, caplog: Any) -> None:
         path = tmp_path / "test.json"
         path.write_text("", encoding="utf-8")
         with caplog.at_level(logging.DEBUG):
@@ -248,9 +248,7 @@ class TestReadJsonFile:
         assert result == {}
         assert any("Empty/whitespace file" in msg for msg in caplog.messages)
 
-    def test_whitespace_file_returns_default_and_logs_debug(
-        self, tmp_path: Path, caplog: Any
-    ) -> None:
+    def test_whitespace_file_returns_default_and_logs_debug(self, tmp_path: Path, caplog: Any) -> None:
         path = tmp_path / "test.json"
         path.write_text("   \n\n  ", encoding="utf-8")
         with caplog.at_level(logging.DEBUG):
@@ -262,11 +260,11 @@ class TestReadJsonFile:
         result = _read_json_file(_make_storage(tmp_path), tmp_path / "nonexistent.json", {})
         assert result == {}
 
-    def test_valid_json_returns_parsed(self, tmp_path: Path) -> None:
+    def test_unversioned_json_is_rejected(self, tmp_path: Path) -> None:
         path = tmp_path / "test.json"
         path.write_text('{"key": "value"}', encoding="utf-8")
-        result = _read_json_file(_make_storage(tmp_path), path, {})
-        assert result == {"key": "value"}
+        with pytest.raises(UnsupportedStorageSchemaVersionError):
+            _read_json_file(_make_storage(tmp_path), path, {})
 
     def test_oserror_silent(self, tmp_path: Path) -> None:
         """OSError branch is silent — no log."""
@@ -277,6 +275,7 @@ class TestReadJsonFile:
 # ---------------------------------------------------------------------------
 # BackupManager._load_manifest (corrupted manifest → {})
 # ---------------------------------------------------------------------------
+
 
 class TestBackupManagerLoadManifest:
     """BackupManager._load_manifest: corrupted manifest → {}."""

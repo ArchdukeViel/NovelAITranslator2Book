@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from novelai.storage.common import validate_storage_schema_version
+from novelai.storage.common import UnsupportedStorageSchemaVersionError, validate_storage_schema_version
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +38,7 @@ def load_glossary(self: Any, novel_id: str) -> list[dict[str, Any]]:
                 artifact_type="glossary",
             )
             return data["entries"]
-        if isinstance(data, list):
-            return data
+        raise UnsupportedStorageSchemaVersionError("glossary does not match the current storage schema.")
     except (json.JSONDecodeError, OSError):
         logger.warning("Failed to parse glossary for novel %s.", novel_id)
         pass

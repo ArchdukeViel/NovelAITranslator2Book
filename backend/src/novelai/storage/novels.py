@@ -16,7 +16,7 @@ from novelai.storage.common import _utc_now_iso, validate_storage_schema_version
 logger = logging.getLogger(__name__)
 
 _SYOSETU_NCODE_PATTERN = re.compile(r"^n\d{4}[a-z]{2}$", re.IGNORECASE)
-_LEGACY_SYOSETU_NCODE_FOLDER_PATTERN = re.compile(r"^\d{4}[a-z]{2}$", re.IGNORECASE)
+_NONCANONICAL_SYOSETU_NCODE_PATTERN = re.compile(r"^\d{4}[a-z]{2}$", re.IGNORECASE)
 METADATA_BACKUP_DIRNAME = "metadata_backups"
 METADATA_BACKUP_RETENTION = 5
 STORAGE_SLUG_MAX_LENGTH = 100
@@ -28,6 +28,7 @@ _WINDOWS_RESERVED_NAMES = {
     *(f"com{index}" for index in range(1, 10)),
     *(f"lpt{index}" for index in range(1, 10)),
 }
+
 
 def _index_path(self: Any) -> Path:
     return self.novels_dir / self.INDEX_FILENAME
@@ -64,7 +65,11 @@ def _backup_metadata_file(self: Any, metadata_path: Path, *, keep: int = METADAT
 
     backup_dir = _metadata_backup_dir(metadata_path.parent)
     self._mkdirs(backup_dir)
-    updated_at = str(existing_payload.get("updated_at") or _utc_now_iso()) if isinstance(existing_payload, dict) else _utc_now_iso()
+    updated_at = (
+        str(existing_payload.get("updated_at") or _utc_now_iso())
+        if isinstance(existing_payload, dict)
+        else _utc_now_iso()
+    )
     safe_stamp = re.sub(r"[^0-9A-Za-z_\-.]+", "_", updated_at).strip("._") or "metadata"
     backup_path = backup_dir / f"{safe_stamp}.json"
     suffix = 1
@@ -103,9 +108,13 @@ def _metadata_history_entry(self: Any, path: Path, *, snapshot_id: str, is_curre
         "size_bytes": len(json.dumps(payload)),
         "is_current": is_current,
         "publication_status": publication_status,
-        "title": payload.get("translated_title") if isinstance(payload.get("translated_title"), str) else payload.get("title"),
+        "title": payload.get("translated_title")
+        if isinstance(payload.get("translated_title"), str)
+        else payload.get("title"),
         "source_title": payload.get("title") if isinstance(payload.get("title"), str) else None,
-        "author": payload.get("translated_author") if isinstance(payload.get("translated_author"), str) else payload.get("author"),
+        "author": payload.get("translated_author")
+        if isinstance(payload.get("translated_author"), str)
+        else payload.get("author"),
     }
 
 
@@ -280,9 +289,7 @@ def _compute_folder_name(self: Any, novel_id: str, metadata: dict[str, Any]) -> 
     if not self._folder_in_use_by_other_novel(storage_slug, novel_id, index):
         return storage_slug
 
-    source_hash = hashlib.sha256(
-        f"{novel_id}:{metadata.get('source_url') or ''}".encode()
-    ).hexdigest()[:8]
+    source_hash = hashlib.sha256(f"{novel_id}:{metadata.get('source_url') or ''}".encode()).hexdigest()[:8]
     storage_slug = f"{storage_slug}--{source_hash}"[:STORAGE_SLUG_MAX_LENGTH].strip("-._ ")
     return storage_slug
 
@@ -295,17 +302,9 @@ def _normalize_library_novel_id(self: Any, value: Any) -> str | None:
     normalized = novel_id.strip("/")
     if _SYOSETU_NCODE_PATTERN.fullmatch(normalized):
         return normalized.lower()
-    if _LEGACY_SYOSETU_NCODE_FOLDER_PATTERN.fullmatch(normalized):
-        return f"n{normalized.lower()}"
+    if _NONCANONICAL_SYOSETU_NCODE_PATTERN.fullmatch(normalized):
+        raise ValueError("Syosetu novel_id must include the canonical 'n' prefix.")
     return validate_storage_identifier(normalized, "novel_id")
-
-
-def _legacy_folder_candidates(self: Any, novel_id: str) -> list[str]:
-    canonical_id = self._normalize_library_novel_id(novel_id) or novel_id
-    candidates = [self._sanitize_folder_name(canonical_id)]
-    if _SYOSETU_NCODE_PATTERN.fullmatch(canonical_id):
-        candidates.append(canonical_id[1:])
-    return candidates
 
 
 def _get_folder_name(self: Any, novel_id: str) -> str:
@@ -322,9 +321,6 @@ def _get_folder_name(self: Any, novel_id: str) -> str:
     if folder_name and self._is_dir_present(self._folder_path(folder_name)):
         return folder_name
 
-    for candidate in self._legacy_folder_candidates(normalized_id):
-        if self._is_dir_present(self._folder_path(candidate)):
-            return candidate
     if folder_name:
         return folder_name
     return normalized_id
@@ -388,8 +384,12 @@ def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
     merged["document_type"] = self._clean_string(merged.get("document_type"), "web_novel")
     merged["input_adapter_key"] = self._clean_string(merged.get("input_adapter_key"))
     merged["context_group_id"] = self._clean_string(merged.get("context_group_id"), novel_id)
-    merged["translation_profiles"] = normalize_workflow_profiles(merged.get("translation_profiles", existing.get("translation_profiles")))["steps"]
-    merged["translation_defaults"] = normalize_workflow_defaults(merged.get("translation_defaults", existing.get("translation_defaults")))
+    merged["translation_profiles"] = normalize_workflow_profiles(
+        merged.get("translation_profiles", existing.get("translation_profiles"))
+    )["steps"]
+    merged["translation_defaults"] = normalize_workflow_defaults(
+        merged.get("translation_defaults", existing.get("translation_defaults"))
+    )
     publication_status = normalize_publication_status(merged.get("publication_status") or merged.get("status"))
     merged["publication_status"] = publication_status
     merged["status"] = publication_status
@@ -503,16 +503,19 @@ def _recover_metadata_from_backup(self: Any, novel_id: str, path: Path) -> dict[
     logger.warning("Recovered metadata for novel %s from backup %s", novel_id, backup_path)
     return self._normalize_loaded_metadata(payload, novel_id)
 
-VALID_ONBOARDING_STATUSES = frozenset({
-    "not_started",
-    "metadata_discovered",
-    "glossary_pending",
-    "chapters_pending",
-    "scraping_chapters",
-    "ready_for_translation",
-    "failed",
-    "cancelled",
-})
+
+VALID_ONBOARDING_STATUSES = frozenset(
+    {
+        "not_started",
+        "metadata_discovered",
+        "glossary_pending",
+        "chapters_pending",
+        "scraping_chapters",
+        "ready_for_translation",
+        "failed",
+        "cancelled",
+    }
+)
 
 
 def update_onboarding_status(
@@ -551,6 +554,7 @@ def update_onboarding_status(
 
     try:
         from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
+
         safely_refresh_catalog_projection_after_storage_write(novel_id, self, context="onboarding_status_update")
     except Exception:
         logger.warning("Catalog projection refresh failed after onboarding status update for %s.", novel_id)
@@ -589,7 +593,7 @@ def resolve_onboarding_status(self: Any, novel_id: str) -> str:
 def _folder_has_novel_data(self: Any, novel_dir: Path) -> bool:
     if self._path_exists(novel_dir / "metadata.json"):
         return True
-    for dirname in ("chapters", "raw", "translated"):
+    for dirname in ("chapters",):
         data_dir = novel_dir / dirname
         if self._is_dir_present(data_dir) and any(self._path_exists(path) for path in self._list_dir(data_dir)):
             return True
@@ -609,7 +613,11 @@ def list_novels(self: Any) -> list[str]:
 
     def add_novel(novel_id: str, folder_name: str | None = None) -> None:
         nonlocal index_changed
-        normalized_id = self._normalize_library_novel_id(novel_id)
+        try:
+            normalized_id = self._normalize_library_novel_id(novel_id)
+        except ValueError:
+            logger.warning("Ignoring noncanonical novel folder %s.", folder_name or novel_id)
+            return
         if normalized_id is None or normalized_id in seen:
             return
         seen.add(normalized_id)

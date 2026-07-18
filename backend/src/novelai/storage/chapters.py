@@ -12,6 +12,7 @@ from novelai.storage.common import _utc_now_iso, validate_storage_schema_version
 
 logger = logging.getLogger(__name__)
 
+
 def _chapter_dir(self: Any, novel_id: str) -> Path:
     chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
     self._mkdirs(chapter_dir)
@@ -33,46 +34,8 @@ def _chapter_path(self: Any, novel_id: str, chapter_id: str) -> Path:
     return self._chapter_dir(novel_id) / _chapter_filename(chapter_id)
 
 
-def _load_legacy_raw_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
-    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
-    json_path = self._novel_dir(novel_id) / "raw" / f"{safe_chapter_id}.json"
-    txt_path = self._novel_dir(novel_id) / "raw" / f"{safe_chapter_id}.txt"
-
-    if self._path_exists(json_path):
-        try:
-            return json.loads(self._read_text(json_path))
-        except (json.JSONDecodeError, OSError):
-            logger.warning("Failed to parse legacy raw chapter %s/%s.", novel_id, chapter_id)
-            return None
-
-    if self._path_exists(txt_path):
-        return {"id": chapter_id, "text": self._read_text(txt_path)}
-    return None
-
-
-def _load_legacy_translated_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
-    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
-    json_path = self._novel_dir(novel_id) / "translated" / f"{safe_chapter_id}.json"
-    txt_path = self._novel_dir(novel_id) / "translated" / f"{safe_chapter_id}.txt"
-
-    if self._path_exists(json_path):
-        try:
-            return json.loads(self._read_text(json_path))
-        except (json.JSONDecodeError, OSError):
-            logger.warning("Failed to parse legacy translated chapter %s/%s.", novel_id, chapter_id)
-            return None
-
-    if self._path_exists(txt_path):
-        return {"id": chapter_id, "text": self._read_text(txt_path)}
-    return None
-
-
 def _load_chapter_bundle(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
-    """Load a chapter bundle (raw + translated + metadata) from disk.
-
-    Falls back to legacy ``raw/`` and ``translated/`` directories if the
-    unified bundle file does not exist.
-    """
+    """Load a current-schema chapter bundle from the canonical chapter directory."""
     chapter_path = self._chapter_path(novel_id, chapter_id)
     if self._path_exists(chapter_path):
         try:
@@ -88,29 +51,7 @@ def _load_chapter_bundle(self: Any, novel_id: str, chapter_id: str) -> dict[str,
             logger.warning("Failed to parse chapter bundle %s/%s.", novel_id, chapter_id)
             return None
 
-    raw = self._load_legacy_raw_chapter(novel_id, chapter_id)
-    translated = self._load_legacy_translated_chapter(novel_id, chapter_id)
-    if raw is None and translated is None:
-        return None
-
-    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
-    bundle: dict[str, Any] = {"id": safe_chapter_id}
-    if raw is not None:
-        bundle["title"] = raw.get("title")
-        bundle["source_key"] = raw.get("source_key")
-        bundle["source_url"] = raw.get("source_url")
-        bundle["raw"] = {
-            "scraped_at": raw.get("scraped_at"),
-            "text": raw.get("text"),
-        }
-    if translated is not None:
-        bundle["translated"] = {
-            "provider": translated.get("provider"),
-            "model": translated.get("model"),
-            "translated_at": translated.get("translated_at"),
-            "text": translated.get("text"),
-        }
-    return self._normalize_media_fields(bundle)
+    return None
 
 
 def _persist_chapter_bundle(self: Any, novel_id: str, chapter_id: str, payload: dict[str, Any]) -> Path:
@@ -238,8 +179,7 @@ def load_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | 
 def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
     """Return sorted chapter IDs that have raw or translated data on disk.
 
-    Checks both the unified ``chapters/`` directory and legacy
-    ``raw/`` / ``translated/`` directories.
+    Reads only the current unified ``chapters/`` directory.
     """
     ids: set[str] = set()
     chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
@@ -259,16 +199,6 @@ def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
             )
             if isinstance(payload.get("raw"), dict) or isinstance(payload.get("translated"), dict):
                 ids.add(self._logical_id_from_stem(chapter_path.stem))
-
-    for legacy_dirname in ("raw", "translated"):
-        legacy_dir = self._novel_dir(novel_id) / legacy_dirname
-        if not self._is_dir_present(legacy_dir):
-            continue
-        for path in self._list_dir(legacy_dir):
-            if not path.is_file():
-                continue
-            if path.suffix.lower() in {".json", ".txt"}:
-                ids.add(self._logical_id_from_stem(path.stem))
 
     return sorted(ids)
 
@@ -317,7 +247,9 @@ def get_chapter_progress(self: Any, novel_id: str) -> dict[str, int]:
 
     return progress
 
+
 # Query Methods
+
 
 def query_chapters(self: Any, novel_id: str) -> ChapterQueryBuilder:
     """Create a query builder for chapters."""
@@ -333,13 +265,7 @@ def query_chapters(self: Any, novel_id: str) -> ChapterQueryBuilder:
 
 def get_chapters_with_errors(self: Any, novel_id: str, limit: int = 100) -> list[str]:
     """Get chapters that have errors, for retry."""
-    results = (
-        self.query_chapters(novel_id)
-        .has_errors()
-        .sort_by("errors", reverse=True)
-        .limit(limit)
-        .execute()
-    )
+    results = self.query_chapters(novel_id).has_errors().sort_by("errors", reverse=True).limit(limit).execute()
     logger.info(f"Found {len(results)} chapters with errors in {novel_id}")
     return [r.chapter_id for r in results]
 
@@ -376,10 +302,8 @@ def get_scraping_progress(self: Any, novel_id: str) -> dict[str, Any]:
     if total_files > 0:
         progress["success_rate"] = ((total_files - error_count) / total_files) * 100
 
-    logger.debug(
-        f"Progress for {novel_id}: {progress['by_state']} "
-        f"(success rate: {progress['success_rate']:.1f}%)"
-    )
+    logger.debug(f"Progress for {novel_id}: {progress['by_state']} (success rate: {progress['success_rate']:.1f}%)")
     return progress
+
 
 # Rollback & Recovery Methods

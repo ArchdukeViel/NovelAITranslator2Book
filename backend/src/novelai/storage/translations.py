@@ -57,18 +57,21 @@ def _attach_freshness_fields(
     result.update(compute_glossary_freshness(version, snapshot))
     return result
 
+
 def _translated_payload_to_version(self: Any, translated: dict[str, Any], fallback_id: str) -> dict[str, Any]:
     raw_text = translated.get("text")
     text = raw_text if isinstance(raw_text, str) else ""
-    created_at = self._clean_string(translated.get("created_at")) or self._clean_string(translated.get("translated_at")) or _utc_now_iso()
+    created_at = (
+        self._clean_string(translated.get("created_at"))
+        or self._clean_string(translated.get("translated_at"))
+        or _utc_now_iso()
+    )
     raw_version_id = translated.get("version_id")
     raw_id = translated.get("id")
 
     version: dict[str, Any] = {
         "id": (
-            raw_version_id
-            if isinstance(raw_version_id, str)
-            else raw_id if isinstance(raw_id, str) else fallback_id
+            raw_version_id if isinstance(raw_version_id, str) else raw_id if isinstance(raw_id, str) else fallback_id
         ),
         "kind": self._normalize_version_kind(translated.get("version_kind") or translated.get("kind")),
         "provider": translated.get("provider"),
@@ -280,8 +283,7 @@ def save_translated_chapter(
         self._set_active_translation_version(payload, translated_payload)
     else:
         logger.warning(
-            "Chapter %s/%s saved with low confidence (%.2f), not activated. "
-            "Use activate endpoint to promote.",
+            "Chapter %s/%s saved with low confidence (%.2f), not activated. Use activate endpoint to promote.",
             novel_id,
             chapter_id,
             confidence_score or 0.0,
@@ -322,8 +324,12 @@ def load_translated_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[s
         "source_hash": translated.get("source_hash"),
         "confidence_score": translated.get("confidence_score"),
         "polish_needed": translated.get("polish_needed"),
-        "confidence_details": translated.get("confidence_details") if isinstance(translated.get("confidence_details"), dict) else {},
-        "glossary_revision": translated.get("glossary_revision") if isinstance(translated.get("glossary_revision"), int) else 0,
+        "confidence_details": translated.get("confidence_details")
+        if isinstance(translated.get("confidence_details"), dict)
+        else {},
+        "glossary_revision": translated.get("glossary_revision")
+        if isinstance(translated.get("glossary_revision"), int)
+        else 0,
         "glossary_injected_term_count": (
             translated.get("glossary_injected_term_count")
             if isinstance(translated.get("glossary_injected_term_count"), int)
@@ -496,11 +502,6 @@ def list_translated_chapters(self: Any, novel_id: str) -> list[str]:
             if isinstance(payload, dict) and isinstance(payload.get("translated"), dict):
                 ids.add(self._logical_id_from_stem(chapter_path.stem))
 
-    legacy_translated_dir = self._novel_dir(novel_id) / "translated"
-    if self._is_dir_present(legacy_translated_dir):
-        for path in self._list_dir(legacy_translated_dir):
-            if path.suffix.lower() in {".json", ".txt"}:
-                ids.add(self._logical_id_from_stem(path.stem))
     return sorted(ids)
 
 
