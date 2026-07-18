@@ -16,7 +16,7 @@ from collections import deque
 from collections.abc import Callable
 from contextlib import AbstractContextManager, suppress
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -200,7 +200,7 @@ def _record_projection_refresh_failure(
                 "novel_id": novel_id,
                 "error": str(error),
                 "context": context,
-                "recorded_at": datetime.utcnow().isoformat(),
+            "recorded_at": datetime.now(UTC).isoformat(),
             }
         )
 

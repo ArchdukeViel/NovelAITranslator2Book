@@ -127,8 +127,9 @@ Deferred items are tracked but excluded from the active count.
   compatibility routes, imports, fields, and dependencies are removed.
 - **Progress (2026-07-18):** Storage artifacts and crawl-result metadata are
   forward-only. Public catalog payloads and filters now use only
-  `publication_status`; the unused `novels.status` database mirror remains until
-  an explicit column-removal migration is approved and verified.
+  `publication_status`, and module-level public-catalog test wrappers are
+  removed. The unused `novels.status` database mirror remains until an explicit
+  column-removal migration is approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

@@ -7,7 +7,7 @@ chapter listing, reader, and progress.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -139,7 +139,7 @@ async def refresh_catalog_projections(
     )
     if not dry_run:
         global _last_bulk_reconciliation_at
-        _last_bulk_reconciliation_at = datetime.utcnow().isoformat()
+    _last_bulk_reconciliation_at = datetime.now(UTC).isoformat()
     return CatalogProjectionBulkRefreshResponse(
         dry_run=result.dry_run,
         scanned=result.scanned,

@@ -382,17 +382,3 @@ class PublicCatalogService:
                     return None
                 return source_id, candidate_meta, public_slug
         return None
-
-
-# Module-level functions for backward compatibility with tests that import these
-# as module-level functions. These delegate to the instance methods.
-def _latest_translated_chapter(novel_id: str, meta: dict[str, Any], storage: Any) -> dict[str, Any] | None:
-    """Module-level wrapper for PublicCatalogService._latest_translated_chapter."""
-    service = PublicCatalogService(storage=storage)
-    return service._latest_translated_chapter(novel_id, meta)
-
-
-def _resolve_public_novel(slug: str, storage: Any) -> tuple[str, dict[str, Any], str] | None:
-    """Module-level wrapper for PublicCatalogService._resolve_public_novel."""
-    service = PublicCatalogService(storage=storage)
-    return service._resolve_public_novel(slug)

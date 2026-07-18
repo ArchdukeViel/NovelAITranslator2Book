@@ -21,10 +21,7 @@ from novelai.services.catalog_service import (
     _record_projection_refresh_failure,
     get_projection_refresh_failures,
 )
-from novelai.services.public_catalog_service import (
-    _latest_translated_chapter,
-    _resolve_public_novel,
-)
+from novelai.services.public_catalog_service import PublicCatalogService
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -66,7 +63,7 @@ def test_latest_chapter_determined_from_id_set_only(tmp_path):
         {"id": "2", "title": "Ch2", "translated_at": "2025-01-03T00:00:00"},
     ])
 
-    result = _latest_translated_chapter("test-novel", meta, storage)
+    result = PublicCatalogService(storage=storage)._latest_translated_chapter("test-novel", meta)
 
     assert result is not None
     assert result["id"] == "2"
@@ -83,7 +80,7 @@ def test_latest_chapter_empty_when_no_translated_ids(tmp_path):
         {"id": "1", "title": "Ch1"},
     ])
 
-    result = _latest_translated_chapter("test-novel", meta, storage)
+    result = PublicCatalogService(storage=storage)._latest_translated_chapter("test-novel", meta)
     assert result is None
 
 
@@ -124,7 +121,7 @@ def test_slug_resolver_falls_back_to_storage_scan_on_db_miss(tmp_path):
     storage = StorageService(tmp_path / "library")
     # No metadata saved -> direct hit misses
     # No DB passed -> no DB query
-    result = _resolve_public_novel("nonexistent", storage)
+    result = PublicCatalogService(storage=storage)._resolve_public_novel("nonexistent")
     assert result is None
 
 
