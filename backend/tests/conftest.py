@@ -43,7 +43,6 @@ def pytest_configure() -> None:
     """
     COLLECTION_RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
     os.environ["NOVEL_LIBRARY_DIR"] = str(COLLECTION_RUNTIME_ROOT)
-    os.environ["DATA_DIR"] = str(COLLECTION_RUNTIME_ROOT)
     os.environ["ENV"] = "test"
     os.environ["STORAGE_BACKEND"] = "filesystem"
     os.environ["WEB_RATE_LIMITER_BACKEND"] = "memory"
@@ -188,7 +187,7 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
     runtime_dir = TESTS_RUNTIME_ROOT / f"session_{uuid4().hex}"
     runtime_dir.mkdir(parents=True, exist_ok=False)
 
-    previous_data_dir = settings.NOVEL_LIBRARY_DIR
+    previous_novel_library_dir = settings.NOVEL_LIBRARY_DIR
     previous_provider_default = settings.PROVIDER_DEFAULT
     previous_storage_backend = settings.STORAGE_BACKEND
     previous_rate_limiter_backend = settings.WEB_RATE_LIMITER_BACKEND
@@ -197,7 +196,6 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
     previous_gemini_api_key = settings.PROVIDER_GEMINI_API_KEY
     previous_database_url = settings.DATABASE_URL
     previous_env_novel_library = os.environ.get("NOVEL_LIBRARY_DIR")
-    previous_env_data_dir = os.environ.get("DATA_DIR")
     previous_env_storage_backend = os.environ.get("STORAGE_BACKEND")
     previous_env_rate_limiter_backend = os.environ.get("WEB_RATE_LIMITER_BACKEND")
     previous_env_allowed_hosts = os.environ.get("ALLOWED_HOSTS")
@@ -208,7 +206,6 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
     previous_settings_env = settings.ENV
 
     os.environ["NOVEL_LIBRARY_DIR"] = str(runtime_dir)
-    os.environ["DATA_DIR"] = str(runtime_dir)
     os.environ["ENV"] = "test"
     os.environ["STORAGE_BACKEND"] = "filesystem"
     os.environ["WEB_RATE_LIMITER_BACKEND"] = "memory"
@@ -232,7 +229,7 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
         yield
     finally:
         _reset_global_container()
-        settings.NOVEL_LIBRARY_DIR = previous_data_dir
+        settings.NOVEL_LIBRARY_DIR = previous_novel_library_dir
         settings.ENV = previous_settings_env
         settings.STORAGE_BACKEND = previous_storage_backend
         settings.WEB_RATE_LIMITER_BACKEND = previous_rate_limiter_backend
@@ -246,11 +243,6 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
             os.environ.pop("NOVEL_LIBRARY_DIR", None)
         else:
             os.environ["NOVEL_LIBRARY_DIR"] = previous_env_novel_library
-
-        if previous_env_data_dir is None:
-            os.environ.pop("DATA_DIR", None)
-        else:
-            os.environ["DATA_DIR"] = previous_env_data_dir
 
         if previous_env_storage_backend is None:
             os.environ.pop("STORAGE_BACKEND", None)

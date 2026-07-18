@@ -207,7 +207,7 @@ class Container:
             from novelai.services.backup_manager import BackupManager
             from novelai.storage.backends.s3_snapshot import S3SnapshotTarget
 
-            backup_manager = BackupManager(base_dir=settings.DATA_DIR)
+            backup_manager = BackupManager(base_dir=settings.NOVEL_LIBRARY_DIR)
             snapshot_target = None
             if settings.BACKUP_S3_ENABLED:
                 if not settings.S3_BUCKET or not settings.BACKUP_S3_BUCKET:

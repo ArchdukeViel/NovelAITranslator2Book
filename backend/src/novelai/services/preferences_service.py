@@ -41,7 +41,7 @@ class PreferencesService:
     PROVIDER_MANAGEMENT_KEY = "provider_management"
 
     def __init__(self, storage_dir: Path | None = None) -> None:
-        self.storage_dir = (storage_dir or settings.DATA_DIR).resolve()
+        self.storage_dir = (storage_dir or settings.NOVEL_LIBRARY_DIR).resolve()
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.prefs_path = self.storage_dir / self.PREFS_FILENAME
         self._data = self._load()

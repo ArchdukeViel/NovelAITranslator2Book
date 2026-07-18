@@ -128,7 +128,9 @@ Deferred items are tracked but excluded from the active count.
 - **Progress (2026-07-18):** Storage artifacts and crawl-result metadata are
   forward-only. Public catalog payloads and filters now use only
   `publication_status`, and module-level public-catalog test wrappers are
-  removed. The unused `novels.status` database mirror remains until an explicit
+  removed. Runtime storage configuration now accepts and exposes only
+  `NOVEL_LIBRARY_DIR`; the `DATA_DIR` environment/property alias is removed.
+  The unused `novels.status` database mirror remains until an explicit
   column-removal migration is approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
@@ -621,3 +623,19 @@ Deferred items are tracked but excluded from the active count.
   to direct storage hits, DB hits, and alias scans. Regression tests prove 404
   responses for unpublished novel detail, title-slug detail, chapter listing,
   and chapter reader requests.
+
+### DEBT-083 — Deprecated FastAPI test-client HTTP transport
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Backend | Testing | Dependencies
+- **Priority:** Low
+- **Status:** Pending
+- **Affected areas:** Backend test client, FastAPI/Starlette/httpx dependency set,
+  generated lockfiles
+- **Description:** Backend tests pass, but importing `fastapi.testclient` emits a
+  `StarletteDeprecationWarning` that the current httpx-backed TestClient path is
+  deprecated in favor of `httpx2`. This warning will become a maintenance risk
+  as the framework stack advances.
+- **Completion criteria:** Select a mutually compatible FastAPI, Starlette, and
+  HTTP client dependency set; migrate the shared backend test-client setup;
+  regenerate lockfiles; and run the backend suite with no test-client
+  deprecation warning.

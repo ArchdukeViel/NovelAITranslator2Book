@@ -274,7 +274,7 @@ class StorageService:
 
             self._backend = get_storage_backend()
 
-        self.base_dir = (base_dir or settings.DATA_DIR).resolve()
+        self.base_dir = (base_dir or settings.NOVEL_LIBRARY_DIR).resolve()
         self._backend.mkdirs(self.base_dir)
 
         self.novels_dir = self.base_dir / "novels"

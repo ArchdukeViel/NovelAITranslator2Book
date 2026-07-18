@@ -924,17 +924,17 @@ class AdminService:
         raise KeyError(f"Unknown runtime state file: {key}")
 
     def _legacy_runtime_state_path(self, key: str) -> Path:
-        """Fallback when storage is not injected — resolves via settings.DATA_DIR."""
+        """Resolve fallback paths from the configured novel library directory."""
         if key == "runtime_chunks":
-            return settings.DATA_DIR / "runtime" / "translation" / "chunks.json"
+            return settings.NOVEL_LIBRARY_DIR / "runtime" / "translation" / "chunks.json"
         if key == "runtime_chunk_attempts":
-            return settings.DATA_DIR / "runtime" / "translation" / "chunk_attempts.json"
+            return settings.NOVEL_LIBRARY_DIR / "runtime" / "translation" / "chunk_attempts.json"
         if key == "runtime_bundles":
-            return settings.DATA_DIR / "runtime" / "translation" / "bundles.json"
+            return settings.NOVEL_LIBRARY_DIR / "runtime" / "translation" / "bundles.json"
         if key == "runtime_outputs":
-            return settings.DATA_DIR / "runtime" / "translation" / "outputs.json"
+            return settings.NOVEL_LIBRARY_DIR / "runtime" / "translation" / "outputs.json"
         if key == "backup_manifest":
-            return settings.DATA_DIR / "backups" / "manifest.json"
+            return settings.NOVEL_LIBRARY_DIR / "backups" / "manifest.json"
         raise KeyError(f"Unknown runtime state file: {key}")
 
     def scheduler_health(self) -> dict[str, Any]:

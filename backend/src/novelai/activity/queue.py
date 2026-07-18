@@ -70,7 +70,7 @@ class ActivityQueueService:
     SOURCE_HEALTH_CACHE_TTL = 60.0
 
     def __init__(self, base_dir: Path | None = None) -> None:
-        self.base_dir = (base_dir or settings.DATA_DIR).resolve()
+        self.base_dir = (base_dir or settings.NOVEL_LIBRARY_DIR).resolve()
         self.activity_log_dir = self.base_dir / self.ACTIVITY_LOG_DIRNAME
         self.legacy_jobs_dir = self.base_dir / self.LEGACY_JOBS_DIRNAME
         self.activity_log_dir.mkdir(parents=True, exist_ok=True)

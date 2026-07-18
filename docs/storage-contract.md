@@ -127,7 +127,7 @@ were removed.
   cache stays consistent.
 
 Canonical high-volume artifacts live on the filesystem under `storage/novel_library`
-(the configured `DATA_DIR`, resolved by `StorageService`). PostgreSQL stores
+(the configured `NOVEL_LIBRARY_DIR`, resolved by `StorageService`). PostgreSQL stores
 relational state and projections derived from these files.
 
 ## Canonical vs Derived State

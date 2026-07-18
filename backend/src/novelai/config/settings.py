@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from pydantic import AliasChoices, Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -93,14 +93,12 @@ class AppSettings(BaseSettings):
     # Main runtime library: metadata, chapters, exports, preferences, logs.
     NOVEL_LIBRARY_DIR: Path = Field(
         default_factory=_default_novel_library_dir,
-        validation_alias=AliasChoices("NOVEL_LIBRARY_DIR", "DATA_DIR"),
     )
 
-    # Legacy alias for backward compatibility
-    @property
-    def DATA_DIR(self) -> Path:
-        """Backward compatibility: DATA_DIR now points to NOVEL_LIBRARY_DIR."""
-        return _resolve_project_path(self.NOVEL_LIBRARY_DIR)
+    @field_validator("NOVEL_LIBRARY_DIR", mode="after")
+    @classmethod
+    def _resolve_novel_library_dir(cls, value: Path) -> Path:
+        return _resolve_project_path(value)
 
     # --- Web
     WEB_HOST: str = "127.0.0.1"

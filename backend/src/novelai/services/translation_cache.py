@@ -131,7 +131,7 @@ class TranslationCache:
     """
 
     def __init__(self, base_dir: Path | None = None) -> None:
-        self.base_dir = (base_dir or settings.DATA_DIR).resolve()
+        self.base_dir = (base_dir or settings.NOVEL_LIBRARY_DIR).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.cache_file = self.base_dir / "translation_cache.json"
         self._data: dict[str, str] = self._load_cache()

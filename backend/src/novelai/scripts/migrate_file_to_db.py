@@ -354,7 +354,7 @@ def main() -> int:
 
     setup_logging(verbose=args.verbose)
 
-    # Initialize storage (uses settings.DATA_DIR by default)
+    # Initialize storage (uses settings.NOVEL_LIBRARY_DIR by default)
     storage = StorageService()
 
     # Get database session
