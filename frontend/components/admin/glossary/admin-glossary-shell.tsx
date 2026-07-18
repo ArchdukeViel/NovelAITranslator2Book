@@ -303,7 +303,7 @@ function providerSuggestionPayload(values: ProviderSuggestionValues): GlossaryPr
     chapter_scope: values.chapterScope,
     chapter_start: values.chapterScope === "range" ? chapterStart : undefined,
     chapter_end: values.chapterScope === "range" ? chapterEnd : undefined,
-    provider: optionalText(values.provider) ?? undefined,
+    provider_key: optionalText(values.provider) ?? undefined,
     provider_model: optionalText(values.providerModel) ?? undefined,
   };
 }

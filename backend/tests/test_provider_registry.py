@@ -43,20 +43,13 @@ class TestProviderRegistry:
         provider = get_provider("gemini")
         assert isinstance(provider, _FakeProvider)
 
-    def test_get_provider_ignores_unknown_key(self) -> None:
-        # Unknown keys are accepted for backward compatibility and fall back to Gemini.
-        provider = get_provider("nonexistent")
-        assert isinstance(provider, GeminiProvider)
+    def test_get_provider_rejects_unknown_key(self) -> None:
+        with pytest.raises(KeyError, match="nonexistent"):
+            get_provider("nonexistent")
 
-    def test_register_provider_ignores_non_gemini_with_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level("WARNING", logger="novelai.providers.registry"):
+    def test_register_provider_rejects_unsupported_key(self) -> None:
+        with pytest.raises(ValueError, match="Unsupported provider key: openai"):
             register_provider("openai", lambda: _FakeProvider())
-        assert any("only Gemini is available" in record.message for record in caplog.records)
-        assert all("openai" not in record.message for record in caplog.records)
-
-    def test_get_provider_default_is_gemini(self) -> None:
-        provider = get_provider(None)
-        assert isinstance(provider, GeminiProvider)
 
     def test_available_providers(self) -> None:
         providers = set(available_providers())

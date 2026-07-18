@@ -466,7 +466,7 @@ describe("AdminGlossaryShell", () => {
         chapter_scope: "latest",
         chapter_start: undefined,
         chapter_end: undefined,
-        provider: "gemini",
+        provider_key: "gemini",
         provider_model: "gemini-test",
       });
     });
@@ -509,7 +509,7 @@ describe("AdminGlossaryShell", () => {
         chapter_scope: "range",
         chapter_start: 10,
         chapter_end: 12,
-        provider: undefined,
+        provider_key: undefined,
         provider_model: undefined,
       });
     });
@@ -575,7 +575,7 @@ describe("AdminGlossaryShell", () => {
         chapter_scope: "latest",
         chapter_start: undefined,
         chapter_end: undefined,
-        provider: undefined,
+        provider_key: undefined,
         provider_model: undefined,
       });
     });

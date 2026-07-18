@@ -785,7 +785,7 @@ export type GlossaryProviderCandidateRequest = {
   chapter_scope?: "latest" | "all" | "range";
   chapter_start?: number | null;
   chapter_end?: number | null;
-  provider?: string;
+  provider_key?: string;
   provider_model?: string;
 };
 

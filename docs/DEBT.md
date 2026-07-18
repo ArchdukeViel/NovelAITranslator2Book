@@ -131,8 +131,10 @@ Deferred items are tracked but excluded from the active count.
   removed. Runtime storage configuration now accepts and exposes only
   `NOVEL_LIBRARY_DIR`; the `DATA_DIR` environment/property alias is removed.
   The package-level meta-path compatibility loader and its legacy module import
-  aliases are removed. The unused `novels.status` database mirror remains until
-  an explicit column-removal migration is approved and verified.
+  aliases are removed. Provider-registry lookups and registrations now reject
+  unsupported keys instead of silently falling back to Gemini or ignoring the
+  request. The unused `novels.status` database mirror remains until an explicit
+  column-removal migration is approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
@@ -640,3 +642,19 @@ Deferred items are tracked but excluded from the active count.
   HTTP client dependency set; migrate the shared backend test-client setup;
   regenerate lockfiles; and run the backend suite with no test-client
   deprecation warning.
+
+### DEBT-084 — Missing Gemini credentials can silently select the dummy provider
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Backend | Providers | Data Integrity
+- **Priority:** High
+- **Status:** Pending
+- **Affected areas:** Translation stage, novel orchestration, preferences,
+  development/test provider configuration
+- **Description:** Several translation paths automatically select the echoing
+  dummy provider when a Gemini API key is unavailable. Outside an explicit test
+  mode this can produce output that appears translated even though no real
+  translation occurred.
+- **Completion criteria:** Restrict dummy-provider selection to explicit test
+  configuration; fail closed with a safe actionable error when production or
+  hosted development lacks usable Gemini credentials; and add regression tests
+  proving no implicit dummy translation can be persisted.

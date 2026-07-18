@@ -520,7 +520,7 @@ def test_owner_can_preview_provider_suggestions_without_writing(
 
     resp = owner_client.post(
         f"/api/admin/novels/{novel.slug}/glossary/candidates/provider/preview",
-        json={"max_candidates": 1, "max_chapters": 1, "max_chars": 2000, "provider": "fake-provider"},
+        json={"max_candidates": 1, "max_chapters": 1, "max_chars": 2000, "provider_key": "fake-provider"},
     )
 
     assert resp.status_code == 200
@@ -709,7 +709,7 @@ def test_provider_suggestion_route_handles_missing_provider_config(owner_client,
 
     resp = owner_client.post(
         f"/api/admin/novels/{novel.id}/glossary/candidates/provider/preview",
-        json={"provider": "missing"},
+        json={"provider_key": "missing"},
     )
 
     assert resp.status_code == 503

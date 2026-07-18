@@ -155,7 +155,7 @@ async def preview_glossary_provider_suggestions(
 
     novel = _require_novel(session, novel_id)
     try:
-        provider = get_provider(body.provider)
+        provider = get_provider(body.provider_key)
         adapter = _TranslationProviderGlossarySuggestionAdapter(provider, provider_model=body.provider_model)
         result = await GlossaryProviderSuggestionService(session, storage, adapter).suggest_from_saved_chapters_async(
             novel.id,
@@ -193,7 +193,7 @@ async def apply_glossary_provider_suggestions(
 
     novel = _require_novel(session, novel_id)
     try:
-        provider = get_provider(body.provider)
+        provider = get_provider(body.provider_key)
         adapter = _TranslationProviderGlossarySuggestionAdapter(provider, provider_model=body.provider_model)
         result = await GlossaryProviderSuggestionService(session, storage, adapter).suggest_from_saved_chapters_async(
             novel.id,

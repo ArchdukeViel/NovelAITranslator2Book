@@ -132,7 +132,7 @@ describe("admin glossary API client", () => {
       chapter_scope: "range",
       chapter_start: 10,
       chapter_end: 12,
-      provider: "gemini",
+      provider_key: "gemini",
       provider_model: "model-one",
     });
 
@@ -152,7 +152,7 @@ describe("admin glossary API client", () => {
       chapter_scope: "range",
       chapter_start: 10,
       chapter_end: 12,
-      provider: "gemini",
+      provider_key: "gemini",
       provider_model: "model-one",
     });
     expect(body).not.toHaveProperty("prompt_injection");
@@ -172,7 +172,7 @@ describe("admin glossary API client", () => {
       max_candidates: 3,
       max_chapters: 2,
       max_chars: 3000,
-      provider: "other",
+      provider_key: "other",
       provider_model: "model two",
     });
 
@@ -189,7 +189,7 @@ describe("admin glossary API client", () => {
       max_candidates: 3,
       max_chapters: 2,
       max_chars: 3000,
-      provider: "other",
+      provider_key: "other",
       provider_model: "model two",
     });
     expect(String(fetchMock.mock.calls[1][0])).not.toContain("/import/");

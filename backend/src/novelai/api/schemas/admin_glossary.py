@@ -298,7 +298,7 @@ class GlossaryProviderSuggestionRequest(BaseModel):
     chapter_scope: Literal["latest", "all", "range"] = "latest"
     chapter_start: int | None = Field(default=None, ge=1)
     chapter_end: int | None = Field(default=None, ge=1)
-    provider: NonEmptyStr | None = None
+    provider_key: NonEmptyStr = "gemini"
     provider_model: NonEmptyStr | None = None
 
 
