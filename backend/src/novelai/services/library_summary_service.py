@@ -184,7 +184,7 @@ def _get_failed_ids(
             # Skip cancelled, pending, queued, running
             continue
         metadata = act.get("metadata") or {}
-        crawl_result = metadata.get("crawl_result") or metadata.get("result") or {}
+        crawl_result = metadata.get("crawl_result") or {}
         failures = crawl_result.get("failures")
         if not isinstance(failures, list):
             # Malformed or missing failures list — treat as empty,

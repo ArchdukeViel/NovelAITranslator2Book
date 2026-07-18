@@ -96,7 +96,7 @@ were removed.
   all older activities.
 - **Cancelled**, **pending**, **queued**, and **running** activities are
   skipped; they do not override the newest completed/failed result.
-- `metadata.crawl_result` is read first, falling back to `metadata.result`
+- `metadata.crawl_result` is the only supported crawl-result field
   only for backward compatibility.
 - If the newest result's `failures` is malformed/missing, the function
   returns an empty set rather than resurrecting an older failure payload.

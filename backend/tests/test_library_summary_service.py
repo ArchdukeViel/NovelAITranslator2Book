@@ -1471,6 +1471,21 @@ class MockActivityLog:
 class TestCrawlFailureSemantics:
     """Tests for _get_failed_ids: newest relevant crawl result is authoritative."""
 
+    def test_noncanonical_result_field_is_ignored(self, summary_storage: StorageService) -> None:
+        from novelai.services.library_summary_service import _get_failed_ids
+
+        activities = [
+            {
+                "id": "crawl_current",
+                "novel_id": "n1",
+                "type": "crawl",
+                "status": "completed",
+                "metadata": {"result": {"failures": ["5"]}},
+            }
+        ]
+
+        assert _get_failed_ids("n1", MockActivityLog(activities)) == set()
+
     def test_newest_clean_completed_crawl_overrides_older_failure(
         self, summary_storage: StorageService
     ) -> None:
