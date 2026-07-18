@@ -20,6 +20,7 @@ from novelai.api.routers.dependencies import get_db_session, get_storage
 from novelai.api.routers.public import router as public_router
 from novelai.db.base import Base
 from novelai.db.models.genre import Genre
+from novelai.db.models.glossary import NovelGlossaryAlias, NovelGlossaryEntry
 from novelai.db.models.novel import Novel
 from novelai.storage.service import StorageService
 
@@ -140,6 +141,30 @@ def _seed_db_catalog_novel(
     db_session.add(novel)
     db_session.commit()
     return novel
+
+
+def _seed_public_glossary_entry(db_session, novel: Novel) -> NovelGlossaryEntry:
+    entry = NovelGlossaryEntry(
+        novel_id=novel.id,
+        canonical_term="Demon Lord",
+        approved_translation="Demon King",
+        term_type="title",
+        status="approved",
+        public_visible=True,
+        public_description="The translated title used for this character.",
+    )
+    db_session.add(entry)
+    db_session.flush()
+    db_session.add(
+        NovelGlossaryAlias(
+            glossary_entry_id=entry.id,
+            novel_id=novel.id,
+            alias_text="Dark King",
+            alias_type="allowed",
+        )
+    )
+    db_session.commit()
+    return entry
 
 
 # ---------------------------------------------------------------------------
@@ -923,6 +948,46 @@ class TestGetChapter:
         assert data["chapter_number"] == 1
         assert data["previous_chapter_unavailable"] is False
         assert data["next_chapter_unavailable"] is False
+
+    def test_returns_only_public_glossary_annotations(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+    ) -> None:
+        _seed_novel(storage, "novel-001", chapters=[{"id": "ch001", "title": "Ch 1", "num": 1}])
+        _seed_translated_chapter(storage, "novel-001", "ch001", "The Demon King appeared.")
+        novel = _seed_db_catalog_novel(db_session, "novel-001")
+        entry = _seed_public_glossary_entry(db_session, novel)
+        db_session.add(
+            NovelGlossaryEntry(
+                novel_id=novel.id,
+                canonical_term="Hidden Name",
+                approved_translation="appeared",
+                term_type="term",
+                status="approved",
+                public_visible=False,
+            )
+        )
+        db_session.commit()
+
+        response = client.get("/api/public/novels/novel-001/chapters/ch001")
+
+        assert response.status_code == 200
+        annotations = response.json()["glossary_annotations"]
+        assert annotations == [
+            {
+                "term_id": entry.id,
+                "canonical_term": "Demon Lord",
+                "display_term": "Demon King",
+                "term_type": "title",
+                "short_definition": "The translated title used for this character.",
+                "aliases": ["Dark King"],
+                "matches": [
+                    {"surface": "Demon King", "block_index": 0, "start": 4, "end": 14}
+                ],
+            }
+        ]
 
     def test_reader_strips_translation_protocol_markers(
         self, client: TestClient, storage: StorageService

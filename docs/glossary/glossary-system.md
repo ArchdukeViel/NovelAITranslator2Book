@@ -114,7 +114,7 @@ Two parallel paths feed into the translation prompt:
 | Circular import: `admin_glossary.py` ↔ `admin_glossary_provider.py` | **Resolved** — shared schemas/helpers extracted to `api/schemas/admin_glossary.py` | DEBT-006 |
 | Router layer violations: guard returns no matches for `api/routers/` (excluding `dependencies.py`). GlossaryWorkflowService still imports from `storage.service` — routers themselves are thin | Deferred | DEBT-014, DEBT-054 |
 | GlossaryWorkflowService not extracted | Deferred | DEBT-014 |
-| Public glossary annotations feature-flagged off (`PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED=false`) | Implemented, not enabled | DEBT-037 |
+| Public glossary annotations | **Resolved** — enabled by default, restricted to explicitly public-visible approved terms, and rendered inline with accessible tooltips | DEBT-037 |
 
 ---
 
@@ -131,6 +131,6 @@ Two parallel paths feed into the translation prompt:
 | Apply preview/commit/rollback | ✅ Implemented | `GlossaryApplyPreviewService`, `GlossaryApplyService` |
 | Novel-level status transitions | ✅ Implemented | `GlossaryStatusService` |
 | Admin UI (5 split routers) | ✅ Implemented | `admin_glossary*.py`, `admin-glossary-shell.tsx` |
-| Public reader annotations | ⚠️ Feature-flagged | `PublicGlossaryAnnotationsService`, `PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED` |
+| Public reader annotations | ✅ Implemented | `PublicCatalogService.public_glossary_annotations`, `GlossaryAnnotationHighlighter`, `PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED` |
 | Glossary diagnostics in pipeline | ✅ Implemented | `normalize_glossary_diagnostics`, `aggregate_glossary_diagnostics` |
 | Glossary revision → cache invalidation | ✅ Implemented | `TranslationCacheService` uses `glossary_hash` |

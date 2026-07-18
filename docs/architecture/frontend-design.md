@@ -57,7 +57,7 @@ This document governs the public frontend implementation inside the Novel AI mai
 | Contribution (`/account/contribute`) | 🚫 Gated | UI exists but backend not implemented (DEBT-009) |
 | Legal pages (About, Privacy, Terms, DMCA, Contact, Cookie Policy) | ⚠️ Partial | Static pages exist; takedown intake workflow not implemented (DEBT-060) |
 | SEO/discovery (sitemap, robots, JSON-LD, OG tags) | ❌ Not implemented | DEBT-038 |
-| Glossary annotations in reader | ⚠️ Feature-flagged | `PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED=false`; highlighter imported but not rendered (DEBT-037) |
+| Glossary annotations in reader | ✅ Implemented | Public-visible approved terms render inline with bounded, keyboard-accessible tooltips; `PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED` can disable the feature operationally. |
 | Frontend error/empty/loading states | ⚠️ Partial | Route-local states only; no shared components (DEBT-056) |
 | Public reader accessibility | ⚠️ Partial | Nested `<main>` landmarks, no skip link, no reduced-motion rules (DEBT-058) |
 | Public reader performance budget | ❌ Not implemented | No documented budgets, no cache-control headers (DEBT-059) |

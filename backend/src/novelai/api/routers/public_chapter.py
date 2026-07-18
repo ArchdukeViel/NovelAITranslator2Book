@@ -31,10 +31,6 @@ from novelai.api.routers.public import (
 )
 from novelai.config.settings import settings
 from novelai.services.public_catalog_service import PublicCatalogService
-from novelai.services.public_glossary_annotations import (
-    find_annotations,
-    select_public_terms,
-)
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 logger = logging.getLogger(__name__)
@@ -526,44 +522,16 @@ async def get_chapter(
 
     if settings.PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED:
         try:
-            from novelai.db.engine import session_scope
-            from novelai.services.glossary_repository import GlossaryRepository
-
-            with session_scope() as session:
-                repository = GlossaryRepository(session)
-                platform_novel_id = None
-                for key in ("platform_novel_id", "db_novel_id", "glossary_novel_id"):
-                    value = meta.get(key)
-                    if isinstance(value, int) and value > 0:
-                        platform_novel_id = value
-                        break
-                if platform_novel_id is None:
-                    from novelai.db.models.novel import Novel as NovelModel
-                    novel_row = session.query(NovelModel).filter_by(slug=novel_id).one_or_none()
-                    if novel_row is not None:
-                        platform_novel_id = novel_row.id
-
-                if platform_novel_id is not None:
-                    entries = repository.list_glossary_entries_for_novel(platform_novel_id)
-                    entry_dicts = [
-                        {
-                            "id": e.id,
-                            "canonical_term": e.canonical_term,
-                            "approved_translation": e.approved_translation,
-                            "term_type": e.term_type,
-                            "status": e.status,
-                            "aliases": [{"alias": a.alias, "alias_type": a.alias_type}
-                                        for a in getattr(e, "aliases", [])] if hasattr(e, "aliases") else [],
-                        }
-                        for e in entries
-                    ]
-                    public_terms = select_public_terms(entry_dicts)
-                    reader_blocks = response.get("reader_blocks", [])
-                    annotations = find_annotations(public_terms, response.get("text", ""), reader_blocks)
-                    if annotations:
-                        response["glossary_annotations"] = annotations
+            annotations = service.public_glossary_annotations(
+                novel_id=novel_id,
+                metadata=meta,
+                translated_text=response["text"],
+                reader_blocks=response["reader_blocks"],
+            )
+            if annotations:
+                response["glossary_annotations"] = annotations
         except Exception as exc:
-            logger.debug("Glossary annotations failed: %s", exc)
+            logger.debug("Glossary annotations failed (%s).", type(exc).__name__)
 
     return response
 

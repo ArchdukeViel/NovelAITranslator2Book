@@ -288,7 +288,7 @@ class AppSettings(BaseSettings):
     # Enable glossary term annotations in public chapter reader.
     # When enabled, approved glossary terms are matched against translated text
     # and returned as annotations for highlighting/tooltips.
-    PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED: bool = False
+    PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED: bool = True
 
     # --- Health probes (M2a)
     HEALTH_PROBE_TIMEOUT_MS: int = Field(

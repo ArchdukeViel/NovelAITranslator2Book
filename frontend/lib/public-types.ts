@@ -66,7 +66,7 @@ export type PublicReaderBlock =
     };
 
 export interface PublicGlossaryAnnotation {
-  term_id: string;
+  term_id: string | number;
   canonical_term: string;
   display_term: string;
   reading?: string | null;
@@ -75,7 +75,7 @@ export interface PublicGlossaryAnnotation {
   aliases?: string[];
   matches: {
     surface: string;
-    block_index: number;
+    block_index?: number;
     start: number;
     end: number;
   }[];

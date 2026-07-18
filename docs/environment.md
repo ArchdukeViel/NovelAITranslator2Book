@@ -311,6 +311,12 @@ Each running deployment uses exactly one `GOOGLE_OAUTH_REDIRECT_URI`. A Google O
 | `LLM_QA_MODEL` | `str` | `gemini-3.1-flash-lite` | No | can leave default | Model for LLM QA. | `gemini-3.1-flash-lite` |
 | `LLM_QA_COST_TRACKING_ENABLED` | `bool` | `true` | No | can leave default | Enable cost tracking for LLM QA. | `false` |
 
+### Public Reader
+
+| Variable | Type | Default | Required? | Change? | Description | Example |
+|----------|------|---------|----------|---------|-------------|---------|
+| `PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED` | `bool` | `true` | No | can leave default | Render bounded, explicitly public-visible glossary annotations in translated chapters. Set `false` for operational rollback. | `false` |
+
 ### Docker Compose
 
 | Variable | Type | Default | Required? | Change? | Description | Example |

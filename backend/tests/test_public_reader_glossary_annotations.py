@@ -15,7 +15,7 @@ class TestTermSelection:
     def test_selects_approved_character(self) -> None:
         terms = select_public_terms([
             {"id": 1, "canonical_term": "魔王", "approved_translation": "Demon King",
-             "term_type": "character", "status": "approved"},
+             "term_type": "character", "status": "approved", "public_visible": True},
         ])
         assert len(terms) == 1
         assert terms[0]["display_term"] == "Demon King"
@@ -24,21 +24,21 @@ class TestTermSelection:
     def test_skips_pending_term(self) -> None:
         terms = select_public_terms([
             {"id": 1, "canonical_term": "魔王", "approved_translation": "Demon King",
-             "term_type": "character", "status": "pending"},
+             "term_type": "character", "status": "pending", "public_visible": True},
         ])
         assert len(terms) == 0
 
     def test_skips_unknown_term_type(self) -> None:
         terms = select_public_terms([
             {"id": 1, "canonical_term": "internal", "approved_translation": "x",
-             "term_type": "admin_note", "status": "approved"},
+             "term_type": "admin_note", "status": "approved", "public_visible": True},
         ])
         assert len(terms) == 0
 
     def test_includes_aliases(self) -> None:
         terms = select_public_terms([
             {"id": 1, "canonical_term": "魔王", "approved_translation": "Demon King",
-             "term_type": "character", "status": "approved",
+             "term_type": "character", "status": "approved", "public_visible": True,
              "aliases": [{"alias_text": "Dark Lord"}]},
         ])
         assert len(terms[0].get("aliases", [])) == 1
@@ -46,14 +46,14 @@ class TestTermSelection:
     def test_skips_no_canonical_or_translation(self) -> None:
         terms = select_public_terms([
             {"id": 1, "canonical_term": "", "approved_translation": "",
-             "term_type": "character", "status": "approved"},
+             "term_type": "character", "status": "approved", "public_visible": True},
         ])
         assert len(terms) == 0
 
     def test_admin_only_fields_excluded(self) -> None:
         terms = select_public_terms([
             {"id": 1, "canonical_term": "魔王", "approved_translation": "Demon King",
-             "term_type": "character", "status": "approved",
+             "term_type": "character", "status": "approved", "public_visible": True,
              "internal_notes": "secret", "confidence_score": 0.9},
         ])
         assert "internal_notes" not in terms[0]
@@ -62,9 +62,16 @@ class TestTermSelection:
     def test_reading_field(self) -> None:
         terms = select_public_terms([
             {"id": 1, "canonical_term": "魔王", "approved_translation": "Demon King",
-             "term_type": "character", "status": "approved", "reading": "maou"},
+             "term_type": "character", "status": "approved", "public_visible": True, "reading": "maou"},
         ])
         assert terms[0]["reading"] == "maou"
+
+    def test_skips_term_not_explicitly_public(self) -> None:
+        terms = select_public_terms([
+            {"id": 1, "canonical_term": "魔王", "approved_translation": "Demon King",
+             "term_type": "character", "status": "approved", "public_visible": False},
+        ])
+        assert terms == []
 
 
 class TestAnnotationMatching:
@@ -75,6 +82,7 @@ class TestAnnotationMatching:
         )
         assert len(annotations) == 1
         assert len(annotations[0]["matches"]) == 2
+        assert annotations[0]["canonical_term"] == "魔王"
 
     def test_matches_case_insensitive(self) -> None:
         annotations = find_annotations(

@@ -10,6 +10,8 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from novelai.db.models.novel import Novel
+from novelai.services.glossary_repository import GlossaryRepository
+from novelai.services.public_glossary_annotations import find_annotations, select_public_terms
 from novelai.sources.status import normalize_publication_status
 from novelai.storage.service import StorageService
 
@@ -46,6 +48,59 @@ class PublicCatalogService:
     ) -> None:
         self.storage = storage
         self.db_session = db_session
+
+    def public_glossary_annotations(
+        self,
+        *,
+        novel_id: str,
+        metadata: dict[str, Any],
+        translated_text: str,
+        reader_blocks: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Return bounded public-safe glossary annotations for one chapter."""
+        if self.db_session is None:
+            return []
+
+        platform_novel_id: int | None = None
+        for key in ("platform_novel_id", "db_novel_id", "glossary_novel_id"):
+            value = metadata.get(key)
+            if isinstance(value, int) and value > 0:
+                platform_novel_id = value
+                break
+        if platform_novel_id is None:
+            novel_row = self.db_session.query(Novel).filter_by(slug=novel_id).one_or_none()
+            if novel_row is not None:
+                platform_novel_id = novel_row.id
+        if platform_novel_id is None:
+            return []
+
+        repository = GlossaryRepository(self.db_session)
+        entries = repository.list_glossary_entries_for_novel(
+            platform_novel_id,
+            public_visible=True,
+        )
+        entry_dicts = [
+            {
+                "id": entry.id,
+                "canonical_term": entry.canonical_term,
+                "approved_translation": entry.approved_translation,
+                "term_type": entry.term_type,
+                "status": entry.status,
+                "public_visible": entry.public_visible,
+                "short_definition": entry.public_description,
+                "aliases": [
+                    {"alias_text": alias.alias_text, "alias_type": alias.alias_type}
+                    for alias in entry.aliases
+                    if alias.alias_type in {"allowed", "approved", "preferred"}
+                ],
+            }
+            for entry in entries
+        ]
+        return find_annotations(
+            select_public_terms(entry_dicts),
+            translated_text,
+            reader_blocks,
+        )
 
     # -- read helpers (static) --------------------------------------------------
 

@@ -46,6 +46,8 @@ def select_public_terms(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for entry in entries:
         term_type = str(entry.get("term_type", "term")).lower()
         status = str(entry.get("status", "")).lower()
+        if entry.get("public_visible") is not True:
+            continue
         if term_type not in _PUBLIC_SAFE_TYPES:
             continue
         if status not in _PUBLIC_SAFE_STATUSES:
@@ -123,10 +125,9 @@ def find_annotations(
             continue
         annotation = {
             "term_id": term["term_id"],
+            "canonical_term": str(term.get("canonical_term") or display),
             "display_term": display,
         }
-        if term.get("canonical_term") and term["canonical_term"] != display:
-            annotation["source_term"] = term["canonical_term"]
         if term.get("reading"):
             annotation["reading"] = term["reading"]
         if term.get("term_type"):

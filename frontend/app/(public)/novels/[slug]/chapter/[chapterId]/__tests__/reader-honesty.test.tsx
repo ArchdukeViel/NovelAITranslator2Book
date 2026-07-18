@@ -16,7 +16,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { render, cleanup } from "@testing-library/react";
+import { render, cleanup, fireEvent } from "@testing-library/react";
 
 import ChapterPage from "../page";
 
@@ -255,6 +255,38 @@ describe("Reader — data honesty", () => {
   it("renders real chapter text from API data", () => {
     renderPage();
     expect(document.body.textContent).toContain("The story text goes here.");
+  });
+
+  it("renders public glossary annotations inline with an accessible tooltip", () => {
+    mocks.useChapterMock.mockReturnValue({
+      data: makeChapterData({
+        text: "The Demon King appeared.",
+        reader_blocks: [{ type: "line", text: "The Demon King appeared." }],
+        glossary_annotations: [
+          {
+            term_id: 1,
+            canonical_term: "Demon Lord",
+            display_term: "Demon King",
+            short_definition: "A translated title used for this character.",
+            matches: [{ surface: "Demon King", block_index: 0, start: 4, end: 14 }],
+          },
+        ],
+      }),
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+
+    const { container } = renderPage();
+    const trigger = container.querySelector(".glossary-annotation-trigger");
+    expect(trigger).toBeInTheDocument();
+    expect(container.querySelector(".glossary-annotation-highlight")?.textContent).toBe("Demon King");
+
+    fireEvent.focus(trigger!);
+    expect(container.querySelector('[role="tooltip"]')).toHaveTextContent("Original: Demon Lord");
+    expect(container.querySelector('[role="tooltip"]')).toHaveTextContent(
+      "A translated title used for this character.",
+    );
   });
 
   it("does not render internal translation protocol markers", () => {

@@ -268,10 +268,16 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M4 (Reader/Catalog UX)
 - **Category:** Frontend | Backend
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** Public chapter routes, highlighter component
 - **Description:** Annotation lookup implemented in backend; highlighter component exists but not wired in main reader.
 - **Completion criteria:** Highlight badges render inline when public reader page loads.
+- **Resolution:** The public chapter route now obtains annotations through the
+  injected catalog service, selects only approved entries explicitly marked
+  `public_visible`, and returns a bounded contract using canonical field names.
+  The chapter page remaps block-relative matches onto displayed paragraphs and
+  renders keyboard-focusable inline highlights with safe tooltips. Backend
+  service/API tests and the frontend reader integration test cover the path.
 
 ### DEBT-038 — SEO metadata baseline
 - **Milestone:** Milestone M4 (Reader/Catalog UX)

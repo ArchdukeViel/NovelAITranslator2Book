@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { PublicGlossaryAnnotation } from "@/lib/public-types";
 
 interface GlossaryAnnotationHighlighterProps {
@@ -77,17 +77,12 @@ export function GlossaryAnnotationHighlighter({
     <span className="whitespace-pre-wrap break-words">
       {segments.map((segment, index) =>
         segment.isAnnotation && segment.annotation ? (
-          <span
+          <AnnotatedSegment
             key={index}
-            className="relative inline"
-            onClick={() => onAnnotationClick?.(segment.annotation!)}
-          >
-            <span className="glossary-annotation-highlight relative">
-              {segment.text}
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary/30" />
-            </span>
-            <AnnotationTooltip annotation={segment.annotation!} />
-          </span>
+            text={segment.text}
+            annotation={segment.annotation}
+            onAnnotationClick={onAnnotationClick}
+          />
         ) : (
           <span key={index}>{segment.text}</span>
         )
@@ -96,48 +91,64 @@ export function GlossaryAnnotationHighlighter({
   );
 }
 
-function AnnotationTooltip({ annotation }: { annotation: PublicGlossaryAnnotation }) {
+function AnnotatedSegment({
+  text,
+  annotation,
+  onAnnotationClick,
+}: {
+  text: string;
+  annotation: PublicGlossaryAnnotation;
+  onAnnotationClick?: (annotation: PublicGlossaryAnnotation) => void;
+}) {
   const [isVisible, setIsVisible] = useState(false);
+  const tooltipId = useId();
 
   return (
     <span
-      className="relative inline-block"
+      className="glossary-annotation-trigger relative inline-block"
       onMouseEnter={() => setIsVisible(true)}
       onMouseLeave={() => setIsVisible(false)}
       onFocus={() => setIsVisible(true)}
       onBlur={() => setIsVisible(false)}
+      onClick={() => onAnnotationClick?.(annotation)}
       tabIndex={0}
+      aria-describedby={tooltipId}
     >
+      <span className="glossary-annotation-highlight relative">
+        {text}
+        <span aria-hidden="true" className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary/30" />
+      </span>
       {isVisible && (
-        <div
+        <span
+          id={tooltipId}
           className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 rounded-md bg-popover p-3 text-sm shadow-lg border border-border animate-in fade-in-0 zoom-in-95"
           role="tooltip"
         >
-          <div className="font-medium text-foreground">{annotation.display_term}</div>
+          <span className="block font-medium text-foreground">{annotation.display_term}</span>
           {annotation.canonical_term !== annotation.display_term && (
-            <div className="text-xs text-muted-foreground mt-0.5">
+            <span className="mt-0.5 block text-xs text-muted-foreground">
               Original: {annotation.canonical_term}
-            </div>
+            </span>
           )}
           {annotation.reading && (
-            <div className="text-xs text-muted-foreground mt-0.5">
+            <span className="mt-0.5 block text-xs text-muted-foreground">
               Reading: {annotation.reading}
-            </div>
+            </span>
           )}
           {annotation.term_type && (
-            <div className="text-xs text-muted-foreground mt-0.5 capitalize">
+            <span className="mt-0.5 block text-xs capitalize text-muted-foreground">
               Type: {annotation.term_type}
-            </div>
+            </span>
           )}
           {annotation.short_definition && (
-            <div className="mt-2 text-sm text-foreground">{annotation.short_definition}</div>
+            <span className="mt-2 block text-sm text-foreground">{annotation.short_definition}</span>
           )}
           {annotation.aliases && annotation.aliases.length > 0 && (
-            <div className="mt-2 text-xs text-muted-foreground">
+            <span className="mt-2 block text-xs text-muted-foreground">
               Also known as: {annotation.aliases.join(", ")}
-            </div>
+            </span>
           )}
-        </div>
+        </span>
       )}
     </span>
   );

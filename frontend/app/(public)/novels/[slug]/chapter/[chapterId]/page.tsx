@@ -16,7 +16,7 @@ import {
 import { ApiError } from "@/lib/api";
 import { widthClass } from "@/lib/public-format";
 import { publicChapterHref, publicNovelHref } from "@/lib/public-routes";
-import type { PublicReaderBlock } from "@/lib/public-types";
+import type { PublicGlossaryAnnotation, PublicReaderBlock } from "@/lib/public-types";
 import { useReaderPrefsStore } from "@/lib/reader-prefs";
 
 import "../../../../reader.css";
@@ -44,6 +44,7 @@ type ReaderDisplayBlock =
   | {
       type: "line";
       text: string;
+      sourceBlockIndex: number | null;
     }
   | {
       type: "break";
@@ -52,6 +53,7 @@ type ReaderDisplayBlock =
 type ReaderDisplayParagraph = {
   kind: "dialogue" | "narration";
   text: string;
+  sourceBlockIndices: number[];
 };
 
 function readerParagraphText(lines: string[]): string {
@@ -87,16 +89,16 @@ function isDialogueLine(text: string): boolean {
 
 function readerDisplayBlocks(data: { text: string; reader_blocks?: PublicReaderBlock[] }): ReaderDisplayBlock[] {
   if (Array.isArray(data.reader_blocks)) {
-    const blocks = data.reader_blocks.flatMap((block): ReaderDisplayBlock[] => {
+    const blocks = data.reader_blocks.flatMap((block, sourceBlockIndex): ReaderDisplayBlock[] => {
       if (typeof block === "string") {
         const text = readerDisplayText(block).trim();
-        return text ? [{ type: "line", text }] : [];
+        return text ? [{ type: "line", text, sourceBlockIndex }] : [];
       }
       if (block?.type === "break") {
         return [{ type: "break" }];
       }
       const text = readerDisplayText(String(block?.text ?? "")).trim();
-      return text ? [{ type: "line", text }] : [];
+      return text ? [{ type: "line", text, sourceBlockIndex }] : [];
     });
     if (blocks.length > 0) {
       return blocks;
@@ -108,22 +110,27 @@ function readerDisplayBlocks(data: { text: string; reader_blocks?: PublicReaderB
     .map((block) => block.trim())
     .filter((block) => block.length > 0)
     .flatMap((block, index): ReaderDisplayBlock[] =>
-      index === 0 ? [{ type: "line", text: block }] : [{ type: "break" }, { type: "line", text: block }]
+      index === 0
+        ? [{ type: "line", text: block, sourceBlockIndex: null }]
+        : [{ type: "break" }, { type: "line", text: block, sourceBlockIndex: null }]
     );
 }
 
 function readerDisplayParagraphs(data: { text: string; reader_blocks?: PublicReaderBlock[] }): ReaderDisplayParagraph[] {
   const paragraphs: ReaderDisplayParagraph[] = [];
   let lines: string[] = [];
+  let sourceBlockIndices: number[] = [];
 
   const flush = () => {
     const text = readerParagraphText(lines);
     if (!text) {
       lines = [];
+      sourceBlockIndices = [];
       return;
     }
-    paragraphs.push({ kind: "narration", text });
+    paragraphs.push({ kind: "narration", text, sourceBlockIndices });
     lines = [];
+    sourceBlockIndices = [];
   };
 
   for (const block of readerDisplayBlocks(data)) {
@@ -137,14 +144,53 @@ function readerDisplayParagraphs(data: { text: string; reader_blocks?: PublicRea
     }
     if (isDialogueLine(text)) {
       flush();
-      paragraphs.push({ kind: "dialogue", text });
+      paragraphs.push({
+        kind: "dialogue",
+        text,
+        sourceBlockIndices: block.sourceBlockIndex === null ? [] : [block.sourceBlockIndex],
+      });
       continue;
     }
     lines.push(text);
+    if (block.sourceBlockIndex !== null) {
+      sourceBlockIndices.push(block.sourceBlockIndex);
+    }
   }
   flush();
 
   return paragraphs;
+}
+
+function annotationsForParagraph(
+  paragraph: ReaderDisplayParagraph,
+  annotations: PublicGlossaryAnnotation[],
+): PublicGlossaryAnnotation[] {
+  return annotations.flatMap((annotation) => {
+    const relevantMatches = annotation.matches.filter(
+      (match) => match.block_index === undefined
+        || paragraph.sourceBlockIndices.length === 0
+        || paragraph.sourceBlockIndices.includes(match.block_index),
+    );
+    if (relevantMatches.length === 0) {
+      return [];
+    }
+
+    const paragraphLower = paragraph.text.toLocaleLowerCase();
+    const remappedMatches: PublicGlossaryAnnotation["matches"] = [];
+    for (const surface of [...new Set(relevantMatches.map((match) => match.surface).filter(Boolean))]) {
+      const surfaceLower = surface.toLocaleLowerCase();
+      let start = paragraphLower.indexOf(surfaceLower);
+      while (start >= 0 && remappedMatches.length < relevantMatches.length) {
+        remappedMatches.push({
+          surface: paragraph.text.slice(start, start + surface.length),
+          start,
+          end: start + surface.length,
+        });
+        start = paragraphLower.indexOf(surfaceLower, start + surface.length);
+      }
+    }
+    return remappedMatches.length > 0 ? [{ ...annotation, matches: remappedMatches }] : [];
+  });
 }
 
 function ChapterNav({
@@ -307,7 +353,7 @@ export default function ChapterPage() {
   const novelTitle = data.novel_title || slug;
   const chapterTitle = data.title || (data.chapter_number != null ? `Chapter ${data.chapter_number}` : "Untitled chapter");
   const displayParagraphs = readerDisplayParagraphs(data);
-  const glossaryAnnotations = (data as any).glossary_annotations || [];
+  const glossaryAnnotations = data.glossary_annotations ?? [];
 
   return (
     <div data-reader-theme={theme} className="reader-container">
@@ -354,7 +400,10 @@ export default function ChapterPage() {
                 className={`reader-source-paragraph reader-source-paragraph--${paragraph.kind}`}
                 data-reader-source-group="true"
               >
-                {paragraph.text}
+                <GlossaryAnnotationHighlighter
+                  text={paragraph.text}
+                  annotations={annotationsForParagraph(paragraph, glossaryAnnotations)}
+                />
               </p>
             ))}
           </div>
