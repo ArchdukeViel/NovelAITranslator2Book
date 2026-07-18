@@ -241,7 +241,7 @@ export default function NovelDetailPage() {
               genres={data.genres}
               language={data.language}
               sourceTitle={sourceTitle}
-              status={data.status}
+              status={data.publication_status}
               title={title}
             />
           </div>
@@ -272,7 +272,7 @@ export default function NovelDetailPage() {
               chapterCount={data.chapter_count}
               translatedCount={data.translated_count}
               source={data.language}
-              status={data.status}
+              status={data.publication_status}
             />
 
             {data.added_at && (

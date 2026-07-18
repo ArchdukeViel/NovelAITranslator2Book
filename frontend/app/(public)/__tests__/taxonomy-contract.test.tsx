@@ -76,7 +76,7 @@ function makeNovel(overrides: Partial<PublicNovelSummary> = {}) {
     author: "Test Author",
     language: "ja",
     synopsis: null as string | null,
-    status: "Ongoing",
+    publication_status: "Ongoing",
     chapter_count: 10,
     translated_count: 5,
     added_at: null,

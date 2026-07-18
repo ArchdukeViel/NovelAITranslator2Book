@@ -74,12 +74,15 @@ def _fresh_storage() -> StorageService:
 
 
 def _seed_novel(storage: StorageService, novel_id: str = "test-n1") -> None:
-    storage.save_metadata(novel_id, {
-        "novel_id": novel_id,
-        "title": "Test Novel",
-        "author": "Author",
-        "chapters": [{"id": "1", "title": "Ch1"}, {"id": "2", "title": "Ch2"}],
-    })
+    storage.save_metadata(
+        novel_id,
+        {
+            "novel_id": novel_id,
+            "title": "Test Novel",
+            "author": "Author",
+            "chapters": [{"id": "1", "title": "Ch1"}, {"id": "2", "title": "Ch2"}],
+        },
+    )
     storage.save_chapter(novel_id, "1", "Raw text ch1", source_key="dummy", source_url="http://example.com/1")
     storage.save_translated_chapter(novel_id, "1", "Translated ch1", provider="dummy", model="dummy")
 
@@ -136,7 +139,6 @@ def _seed_storage_catalog_metadata(
             "translated_author": "Translated Author",
             "synopsis": "Source synopsis.",
             "translated_synopsis": translated_synopsis,
-            "status": "ongoing",
             "publication_status": "ongoing",
             "chapters": [
                 {
@@ -187,6 +189,7 @@ def _make_app(
     if db_session is None:
         app.dependency_overrides[get_db_session] = lambda: None
     else:
+
         def _db_override():
             yield db_session
             db_session.commit()
@@ -237,17 +240,17 @@ def test_router_path_method_snapshot() -> None:
         (("GET",), "/activity/source-health"),
         (("GET",), "/activity/source-health/{source_key}"),
         (("GET",), "/activity/{activity_id}"),
-            (("GET",), "/admin"),
-            (("GET",), "/admin/providers"),
-            (("GET",), "/admin/providers/credentials"),
-            (("GET",), "/admin/providers/fallback-policy"),
-            (("GET",), "/admin/providers/models"),
-            (("GET",), "/admin/providers/{provider_key}"),
-            (("GET",), "/admin/provider-api-key/{provider_key}"),
-(("GET",), "/admin/runtime-state"),
-            (("GET",), "/admin/worker"),
-            (("GET",), "/admin/translation/scheduler-health"),
-            (("GET",), "/admin/health/errors"),
+        (("GET",), "/admin"),
+        (("GET",), "/admin/providers"),
+        (("GET",), "/admin/providers/credentials"),
+        (("GET",), "/admin/providers/fallback-policy"),
+        (("GET",), "/admin/providers/models"),
+        (("GET",), "/admin/providers/{provider_key}"),
+        (("GET",), "/admin/provider-api-key/{provider_key}"),
+        (("GET",), "/admin/runtime-state"),
+        (("GET",), "/admin/worker"),
+        (("GET",), "/admin/translation/scheduler-health"),
+        (("GET",), "/admin/health/errors"),
         (("GET",), "/admin/novels/{novel_id}/exports/latest/{export_format}"),
         (("GET",), "/admin/novels/{novel_id}/exports"),
         (("GET",), "/input-adapters"),
@@ -277,13 +280,13 @@ def test_router_path_method_snapshot() -> None:
         (("PATCH",), "/activity/{activity_id}"),
         (("PATCH",), "/jobs/{activity_id}"),
         (("PATCH",), "/requests/{request_id}"),
-            (("POST",), "/admin/worker/run-once"),
-            (("POST",), "/admin/worker/start"),
-            (("POST",), "/admin/worker/stop"),
-            (("POST",), "/admin/providers"),
-            (("POST",), "/admin/providers/credentials"),
-            (("POST",), "/admin/providers/credentials/{credential_id}/test"),
-            (("POST",), "/admin/providers/{provider_key}/validate"),
+        (("POST",), "/admin/worker/run-once"),
+        (("POST",), "/admin/worker/start"),
+        (("POST",), "/admin/worker/stop"),
+        (("POST",), "/admin/providers"),
+        (("POST",), "/admin/providers/credentials"),
+        (("POST",), "/admin/providers/credentials/{credential_id}/test"),
+        (("POST",), "/admin/providers/{provider_key}/validate"),
         (("POST",), "/admin/provider-api-key"),
         (("POST",), "/admin/provider-api-key/validate"),
         (("POST",), "/admin/runtime-state/{state_key}/refresh"),
@@ -317,11 +320,11 @@ def test_router_path_method_snapshot() -> None:
         (("POST",), "/{novel_id}/onboarding/resume"),
         (("POST",), "/{novel_id}/retranslate-stale"),
         (("POST",), "/{novel_id}/chapters/{chapter_id}/translated/lint"),
-            (("PUT",), "/{novel_id}/chapters/{chapter_id}/translated"),
-            (("PUT",), "/admin/providers/fallback-policy"),
-            (("PATCH",), "/admin/providers/credentials/{credential_id}"),
-            (("DELETE",), "/admin/providers/credentials/{credential_id}"),
-            (("DELETE",), "/admin/providers/{provider_key}"),
+        (("PUT",), "/{novel_id}/chapters/{chapter_id}/translated"),
+        (("PUT",), "/admin/providers/fallback-policy"),
+        (("PATCH",), "/admin/providers/credentials/{credential_id}"),
+        (("DELETE",), "/admin/providers/credentials/{credential_id}"),
+        (("DELETE",), "/admin/providers/{provider_key}"),
         (("DELETE",), "/admin/provider-api-key/{provider_key}"),
         (("DELETE",), "/admin/runtime-state/{state_key}"),
     }
@@ -908,6 +911,7 @@ def _no_api_key(monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture()
 def _with_api_key(monkeypatch: pytest.MonkeyPatch):
     from pydantic import SecretStr
+
     monkeypatch.setattr(settings, "WEB_API_KEY", SecretStr("test-secret"))
 
 
@@ -1053,11 +1057,14 @@ class TestAdminCsrf:
         }
 
         assert c.post("/api/admin/provider-api-key", json=body).status_code == 403
-        assert c.post(
-            "/api/admin/provider-api-key",
-            json=body,
-            headers={"X-CSRF-Token": "bad"},
-        ).status_code == 403
+        assert (
+            c.post(
+                "/api/admin/provider-api-key",
+                json=body,
+                headers={"X-CSRF-Token": "bad"},
+            ).status_code
+            == 403
+        )
         accepted = c.post("/api/admin/provider-api-key", json=body, headers=_csrf_headers(c))
 
         assert accepted.status_code == 200
@@ -1070,24 +1077,36 @@ class TestAdminCsrf:
         jobs = ActivityQueueService(_TMP / "jobs")
         c = _make_app(storage, activity_log=jobs)
 
-        assert c.post(
-            "/api/admin/novels/test-n1/scrape",
-            json={"source_key": "dummy", "url": "https://example.com/n1"},
-        ).status_code == 403
-        assert c.put(
-            "/api/admin/novels/test-n1/chapters/1/translated",
-            json={"text": "Edited"},
-        ).status_code == 403
-        assert c.post(
-            "/api/admin/activity/crawl",
-            json={"novel_id": "test-n1", "source_key": "dummy", "kind": "chapters"},
-        ).status_code == 403
+        assert (
+            c.post(
+                "/api/admin/novels/test-n1/scrape",
+                json={"source_key": "dummy", "url": "https://example.com/n1"},
+            ).status_code
+            == 403
+        )
+        assert (
+            c.put(
+                "/api/admin/novels/test-n1/chapters/1/translated",
+                json={"text": "Edited"},
+            ).status_code
+            == 403
+        )
+        assert (
+            c.post(
+                "/api/admin/activity/crawl",
+                json={"novel_id": "test-n1", "source_key": "dummy", "kind": "chapters"},
+            ).status_code
+            == 403
+        )
         assert c.post("/api/admin/novels/test-n1/publish").status_code == 403
         assert c.post("/api/admin/novels/test-n1/refresh-catalog-projection").status_code == 403
-        assert c.put(
-            "/api/admin/novels/test-n1/taxonomy",
-            json={"genre_slugs": [], "tags": []},
-        ).status_code == 403
+        assert (
+            c.put(
+                "/api/admin/novels/test-n1/taxonomy",
+                json={"genre_slugs": [], "tags": []},
+            ).status_code
+            == 403
+        )
 
     def test_admin_read_only_get_does_not_require_csrf(self, seeded_client: TestClient) -> None:
         resp = seeded_client.get("/api/admin/novels")
@@ -1162,7 +1181,9 @@ class TestListDetail:
         assert resp.status_code == 200
         assert resp.json()[0]["novel_id"] == "test-n1"
 
-    def test_api_prefixed_novels_route_without_trailing_slash_does_not_redirect(self, seeded_client: TestClient) -> None:
+    def test_api_prefixed_novels_route_without_trailing_slash_does_not_redirect(
+        self, seeded_client: TestClient
+    ) -> None:
         resp = seeded_client.get("/api/novels", follow_redirects=False)
         assert resp.status_code == 200
         assert resp.json()[0]["novel_id"] == "test-n1"
@@ -1304,7 +1325,7 @@ class TestListDetail:
         assert resp.status_code == 200
         assert [novel["novel_id"] for novel in resp.json()] == ["same-id"]
 
-    def test_list_novels_includes_legacy_syosetu_folder_without_metadata(
+    def test_list_novels_ignores_noncanonical_syosetu_folder_without_metadata(
         self,
         _no_api_key: None,
         isolated_db_session: Session,
@@ -1324,22 +1345,7 @@ class TestListDetail:
         assert resp.status_code == 200
         data = resp.json()
 
-        assert len(data) == 1
-        novel = data[0]
-        assert novel["novel_id"] == "n0813kx"
-        assert novel["title"] == "n0813kx"
-        assert novel["source_title"] is None
-        assert novel["author"] is None
-        assert novel["source_key"] is None
-        assert novel["source_url"] is None
-        assert novel["publication_status"] == "unknown"
-        assert novel["chapter_count"] == 1
-        assert novel["scraped_count"] == 1
-        assert novel["translated_count"] == 0
-        assert novel["is_published"] is False
-        assert novel["latest_chapter_id"] is None
-        assert novel["latest_chapter_number"] is None
-        assert novel["latest_chapter_title"] is None
+        assert data == []
 
     def test_get_novel(self, seeded_client: TestClient) -> None:
         resp = seeded_client.get("/novels/test-n1")
@@ -1851,7 +1857,7 @@ class TestListDetail:
 
         assert resp.status_code in {404, 405}
 
-    def test_source_metadata_inspection_legacy_metadata_missing_fallback(self, _no_api_key: None) -> None:
+    def test_source_metadata_inspection_rejects_noncanonical_folder(self, _no_api_key: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         chapter_dir = storage.novels_dir / "0813kx" / "chapters"
@@ -1865,20 +1871,8 @@ class TestListDetail:
         resp = c.get("/api/admin/novels/n0813kx/source-metadata")
         payload = resp.json()
 
-        assert resp.status_code == 200
-        assert payload["novel_id"] == "n0813kx"
-        assert payload["title"] == "n0813kx"
-        assert payload["publication_status"] == "unknown"
-        assert payload["chapter_count"] == 0
-        assert payload["source_metadata_keys"] == []
-        assert payload["extraction"]["publication_status"] == "unknown"
-        assert set(payload["warnings"]) == {
-            "metadata_missing",
-            "missing_source_url",
-            "unknown_publication_status",
-            "missing_synopsis",
-            "no_chapters",
-        }
+        assert resp.status_code == 404
+        assert payload["detail"] == "Novel not found"
 
     def test_source_metadata_inspection_unknown_status_warns(self, _no_api_key: None) -> None:
         bootstrap()
@@ -1928,7 +1922,7 @@ class TestListDetail:
             "repair-n1",
             {
                 "title": "Repair Novel",
-                "status": "completed",
+                "publication_status": "completed",
                 "chapters": [
                     {"id": "1", "num": 1, "title": "Chapter One"},
                     {"id": "2", "num": 2, "title": "Chapter Two"},
@@ -1984,7 +1978,7 @@ class TestListDetail:
             "storage-only-repair",
             {
                 "title": "Storage Only Repair",
-                "status": "ongoing",
+                "publication_status": "ongoing",
                 "chapters": [{"id": "1", "num": 1, "title": "Chapter One"}],
             },
         )
@@ -2029,7 +2023,7 @@ class TestListDetail:
             "bulk-stale",
             {
                 "title": "Bulk Stale",
-                "status": "completed",
+                "publication_status": "completed",
                 "chapters": [{"id": "1", "num": 1}],
             },
         )
@@ -2070,7 +2064,7 @@ class TestListDetail:
             "bulk-stale",
             {
                 "title": "Bulk Stale",
-                "status": "completed",
+                "publication_status": "completed",
                 "chapters": [{"id": "1", "num": 1}, {"id": "2", "num": 2}],
             },
         )
@@ -2078,7 +2072,7 @@ class TestListDetail:
             "bulk-created",
             {
                 "title": "Bulk Created",
-                "status": "ongoing",
+                "publication_status": "ongoing",
                 "chapters": [{"id": "1", "num": 1}],
             },
         )
@@ -2119,14 +2113,20 @@ class TestListDetail:
         user = _make_app(storage, session_user=REGULAR_USER, db_session=isolated_db_session)
 
         assert owner.post("/api/admin/novels/refresh-catalog-projections").status_code == 403
-        assert guest.post(
-            "/api/admin/novels/refresh-catalog-projections",
-            headers=_csrf_headers(guest),
-        ).status_code == 401
-        assert user.post(
-            "/api/admin/novels/refresh-catalog-projections",
-            headers=_csrf_headers(user),
-        ).status_code == 403
+        assert (
+            guest.post(
+                "/api/admin/novels/refresh-catalog-projections",
+                headers=_csrf_headers(guest),
+            ).status_code
+            == 401
+        )
+        assert (
+            user.post(
+                "/api/admin/novels/refresh-catalog-projections",
+                headers=_csrf_headers(user),
+            ).status_code
+            == 403
+        )
 
     def test_bulk_refresh_catalog_projections_static_route_not_swallowed(
         self,
@@ -2213,14 +2213,20 @@ class TestAdminNovelPublish:
         user = _make_app(storage, session_user=REGULAR_USER, db_session=isolated_db_session)
 
         assert owner.post("/api/admin/novels/publish-auth/publish").status_code == 403
-        assert guest.post(
-            "/api/admin/novels/publish-auth/publish",
-            headers=_csrf_headers(guest),
-        ).status_code == 401
-        assert user.post(
-            "/api/admin/novels/publish-auth/publish",
-            headers=_csrf_headers(user),
-        ).status_code == 403
+        assert (
+            guest.post(
+                "/api/admin/novels/publish-auth/publish",
+                headers=_csrf_headers(guest),
+            ).status_code
+            == 401
+        )
+        assert (
+            user.post(
+                "/api/admin/novels/publish-auth/publish",
+                headers=_csrf_headers(user),
+            ).status_code
+            == 403
+        )
 
     def test_publish_fails_without_translated_chapter(
         self,
@@ -2718,7 +2724,9 @@ class TestAdmin:
         owner_preferences = PreferencesService(_TMP / "prefs-owner")
         user_preferences = PreferencesService(_TMP / "prefs-user")
         owner = _make_app(storage, preferences=owner_preferences, db_session=isolated_db_session)
-        user = _make_app(storage, preferences=user_preferences, session_user=REGULAR_USER, db_session=isolated_db_session)
+        user = _make_app(
+            storage, preferences=user_preferences, session_user=REGULAR_USER, db_session=isolated_db_session
+        )
 
         assert user.get("/api/admin/providers").status_code == 403
         assert user.get("/api/admin/providers/credentials").status_code == 403
@@ -2820,7 +2828,12 @@ class TestAdmin:
         headers = _csrf_headers(c)
         resp = c.post(
             "/api/admin/providers/credentials",
-            json={"provider_key": "gemini", "api_key": "AIza-policy-key", "provider_model": "gemma-4-31b-it", "is_active": True},
+            json={
+                "provider_key": "gemini",
+                "api_key": "AIza-policy-key",
+                "provider_model": "gemma-4-31b-it",
+                "is_active": True,
+            },
             headers=headers,
         )
         assert resp.status_code == 200
@@ -3383,11 +3396,14 @@ class TestNovelRequests:
         headers = _csrf_headers(c)
         assert c.post("/novels/requests", json={"title": "Requested Novel"}, headers=headers).status_code == 410
         assert c.post("/novels/requests/1/vote", json={"voter": "reader-2"}, headers=headers).status_code == 410
-        assert c.post(
-            "/novels/requests/1/source-candidates",
-            json={"source_key": "kakuyomu", "source_url": "https://kakuyomu.jp/works/123"},
-            headers=headers,
-        ).status_code == 410
+        assert (
+            c.post(
+                "/novels/requests/1/source-candidates",
+                json={"source_key": "kakuyomu", "source_url": "https://kakuyomu.jp/works/123"},
+                headers=headers,
+            ).status_code
+            == 410
+        )
 
 
 # ---------------------------------------------------------------------------

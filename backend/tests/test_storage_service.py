@@ -571,7 +571,7 @@ def test_metadata_operations(storage):
     assert loaded["title"] == "Test Novel"
     assert loaded["novel_id"] == "novel1"
     assert loaded["publication_status"] == "unknown"
-    assert loaded["status"] == "unknown"
+    assert "status" not in loaded
 
 
 def test_new_metadata_save_uses_translated_title_slug_layout(storage):
@@ -716,7 +716,7 @@ def test_metadata_normalizes_publication_status(storage):
 
     assert loaded is not None
     assert loaded["publication_status"] == "completed"
-    assert loaded["status"] == "completed"
+    assert "status" not in loaded
 
 
 def test_metadata_rescrape_updates_publication_status(storage):
@@ -727,7 +727,7 @@ def test_metadata_rescrape_updates_publication_status(storage):
 
     assert loaded is not None
     assert loaded["publication_status"] == "completed"
-    assert loaded["status"] == "completed"
+    assert "status" not in loaded
 
 
 def test_metadata_save_creates_bounded_backups_without_touching_chapters(storage):

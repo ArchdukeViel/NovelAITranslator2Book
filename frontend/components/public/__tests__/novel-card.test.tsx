@@ -38,7 +38,7 @@ function makeNovel(
     author: "Test Author",
     language: "ja",
     synopsis: null as string | null,
-    status: "Ongoing",
+    publication_status: "Ongoing",
     chapter_count: 10,
     translated_count: 5,
     added_at: null,
@@ -59,7 +59,7 @@ describe("NovelCard genre/tag rendering", () => {
     const novel = makeNovel({
       source_title: "テスト小説",
       genres: ["fantasy"],
-      status: "Ongoing",
+      publication_status: "Ongoing",
     });
     renderWithClient(<NovelCard novel={novel} />);
 

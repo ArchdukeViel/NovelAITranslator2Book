@@ -262,7 +262,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
   const router = useRouter();
 
   const q = searchParams.get("q") ?? undefined;
-  const status = searchParams.get("status") ?? undefined;
+  const publicationStatus = searchParams.get("publication_status") ?? undefined;
   const sort_by = (searchParams.get("sort_by") ?? undefined) as CatalogSortField | undefined;
   const order = (searchParams.get("order") ?? undefined) as CatalogOrder | undefined;
   const min_chapters_raw = searchParams.get("min_chapters");
@@ -295,7 +295,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
 
   const params: CatalogParams = {
     q,
-    status,
+    publication_status: publicationStatus,
     sort_by: sort_by ?? "added_at",
     order: order ?? "desc",
     min_chapters,
@@ -310,7 +310,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
   const { data, isPending, isError, error } = useCatalog(params);
 
   const hasActiveFilters = Boolean(
-    q || status ||
+    q || publicationStatus ||
     min_chapters !== undefined || max_chapters !== undefined ||
     hasGenreFilters || hasTagFilters
   );
@@ -318,7 +318,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
   function pushParams(next: CatalogParams) {
     const sp = new URLSearchParams();
     if (next.q) sp.set("q", next.q);
-    if (next.status) sp.set("status", next.status);
+    if (next.publication_status) sp.set("publication_status", next.publication_status);
     if (next.sort_by && next.sort_by !== "added_at") sp.set("sort_by", next.sort_by);
     if (next.order && next.order !== "desc") sp.set("order", next.order);
     if (next.min_chapters !== undefined) sp.set("min_chapters", String(next.min_chapters));
@@ -342,7 +342,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
   function handleStatusChange(nextStatus: string) {
     pushParams({
       ...params,
-      status: nextStatus || undefined,
+      publication_status: nextStatus || undefined,
       page: 1,
     });
   }
@@ -509,11 +509,11 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
                 type="button"
                 onClick={() => handleStatusChange(value)}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                  (status ?? "") === value
+                  (publicationStatus ?? "") === value
                     ? "bg-primary text-primary-foreground"
                     : "bg-secondary text-secondary-foreground hover:bg-muted"
                 }`}
-                aria-pressed={(status ?? "") === value}
+                aria-pressed={(publicationStatus ?? "") === value}
               >
                 {label}
               </button>
@@ -778,7 +778,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
                 &ldquo;{q}&rdquo;
               </span>
             )}
-            {status && <StatusBadge status={status} />}
+            {publicationStatus && <StatusBadge status={publicationStatus} />}
             {(min_chapters !== undefined || max_chapters !== undefined) && (
               <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs">
                 <BookOpen className="h-3.5 w-3.5" />

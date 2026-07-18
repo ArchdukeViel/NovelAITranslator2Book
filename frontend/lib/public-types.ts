@@ -13,7 +13,7 @@ export interface PublicNovelSummary {
   author: string | null; // null -> render "Unknown author" (Req 2.4)
   language: string | null;
   synopsis: string | null;
-  status: string | null;
+  publication_status: string;
   chapter_count: number;
   translated_count: number;
   added_at?: string | null;
@@ -37,7 +37,7 @@ export type CatalogOrder = "asc" | "desc";
 
 export interface CatalogParams {
   q?: string;
-  status?: string;
+  publication_status?: string;
   sort_by?: CatalogSortField;
   order?: CatalogOrder;
   min_chapters?: number;

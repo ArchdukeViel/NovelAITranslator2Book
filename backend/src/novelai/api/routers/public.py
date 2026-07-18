@@ -52,6 +52,7 @@ DEFAULT_UNAVAILABLE_POLICY = "hard_404"
 # Response models
 # ---------------------------------------------------------------------------
 
+
 class PublicNovelSummary(BaseModel):
     novel_id: str
     slug: str
@@ -60,7 +61,6 @@ class PublicNovelSummary(BaseModel):
     author: str | None = None
     language: str | None = None
     synopsis: str | None = None
-    status: str | None = None
     publication_status: str = "unknown"
     chapter_count: int = 0
     translated_count: int = 0

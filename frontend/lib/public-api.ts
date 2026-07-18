@@ -224,7 +224,7 @@ export const publicApi = {
   catalog(params: CatalogParams): Promise<PublicCatalogResponse> {
     const search = new URLSearchParams();
     if (params.q) search.set("q", params.q);
-    if (params.status) search.set("status", params.status);
+    if (params.publication_status) search.set("publication_status", params.publication_status);
     if (params.sort_by) search.set("sort_by", params.sort_by);
     if (params.order) search.set("order", params.order);
     if (params.min_chapters !== undefined)

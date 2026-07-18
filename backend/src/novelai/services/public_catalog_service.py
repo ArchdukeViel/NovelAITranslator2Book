@@ -43,9 +43,7 @@ def _metadata_chapters(meta: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 class PublicCatalogService:
-    def __init__(
-        self, *, storage: StorageService, db_session: Session | None = None
-    ) -> None:
+    def __init__(self, *, storage: StorageService, db_session: Session | None = None) -> None:
         self.storage = storage
         self.db_session = db_session
 
@@ -121,7 +119,7 @@ class PublicCatalogService:
 
     @staticmethod
     def publication_status_from_metadata(meta: dict[str, Any]) -> str:
-        return normalize_publication_status(meta.get("publication_status") or meta.get("status"))
+        return normalize_publication_status(meta.get("publication_status"))
 
     @staticmethod
     def slugify_public_title(value: str) -> str:
@@ -148,25 +146,27 @@ class PublicCatalogService:
 
     @staticmethod
     def taxonomy_from_db_novel(
-        novel: Novel, *, include_adult: bool = True,
+        novel: Novel,
+        *,
+        include_adult: bool = True,
     ) -> tuple[list[str], list[str]]:
         genre_slugs = [
             genre.slug
             for genre in sorted(novel.genres, key=lambda item: (item.display_order, item.slug))
             if genre.is_active and (include_adult or not genre.is_adult)
         ]
-        tag_names = sorted({
-            tag.name for tag in novel.tags
-            if include_adult or not tag.is_adult
-        })
+        tag_names = sorted({tag.name for tag in novel.tags if include_adult or not tag.is_adult})
         return genre_slugs, tag_names
 
     @staticmethod
     def db_summary_needs_storage_hydration(
-        novel: Novel, storage_summary: dict[str, Any],
+        novel: Novel,
+        storage_summary: dict[str, Any],
     ) -> bool:
         title_is_placeholder = PublicCatalogService.db_title_is_placeholder(novel)
-        count_is_underfed = title_is_placeholder and (novel.chapter_count or 0) <= 0 and storage_summary.get("chapter_count", 0) > 0
+        count_is_underfed = (
+            title_is_placeholder and (novel.chapter_count or 0) <= 0 and storage_summary.get("chapter_count", 0) > 0
+        )
         translated_is_underfed = (novel.translated_count or 0) <= 0 and storage_summary.get("translated_count", 0) > 0
         latest_is_underfed = not novel.latest_chapter_id and storage_summary.get("latest_chapter_id") is not None
         return title_is_placeholder or count_is_underfed or translated_is_underfed or latest_is_underfed
@@ -184,17 +184,24 @@ class PublicCatalogService:
     # -- instance helpers (need storage / db) ----------------------------------
 
     def _novel_summary(
-        self, novel_id: str, meta: dict[str, Any], *,
-        genres: list[str] | None = None, tags: list[str] | None = None,
+        self,
+        novel_id: str,
+        meta: dict[str, Any],
+        *,
+        genres: list[str] | None = None,
+        tags: list[str] | None = None,
     ) -> dict[str, Any]:
         translated_count = self.storage.count_translated_chapters(novel_id)
         chapter_count = len(meta.get("chapters", [])) or max(
-            self.storage.count_stored_chapters(novel_id), translated_count,
+            self.storage.count_stored_chapters(novel_id),
+            translated_count,
         )
         translated_title = _optional_str(meta.get("translated_title"))
         original_title = _optional_str(meta.get("title"))
         display_title = translated_title or original_title or novel_id
-        source_title = original_title if (translated_title and original_title and translated_title != original_title) else None
+        source_title = (
+            original_title if (translated_title and original_title and translated_title != original_title) else None
+        )
         latest_chapter = self._latest_translated_chapter(novel_id, meta)
         pub_status = self.publication_status_from_metadata(meta)
         return {
@@ -205,7 +212,6 @@ class PublicCatalogService:
             "author": _optional_str(meta.get("translated_author")) or _optional_str(meta.get("author")),
             "language": _optional_str(meta.get("language")),
             "synopsis": self.public_synopsis_from_metadata(meta),
-            "status": pub_status,
             "publication_status": pub_status,
             "chapter_count": chapter_count,
             "translated_count": translated_count,
@@ -219,19 +225,26 @@ class PublicCatalogService:
         }
 
     def _db_novel_summary(
-        self, novel: Novel, *, include_adult: bool,
+        self,
+        novel: Novel,
+        *,
+        include_adult: bool,
     ) -> dict[str, Any]:
         genres, tags = self.taxonomy_from_db_novel(novel, include_adult=include_adult)
         source_title = novel.original_title if (novel.original_title and novel.original_title != novel.title) else None
-        pub_status = normalize_publication_status(novel.publication_status or novel.status)
+        pub_status = normalize_publication_status(novel.publication_status)
         storage_summary: dict[str, Any] | None = None
         resolved = self._resolve_storage_metadata_for_db_novel(
-            novel.slug, allow_title_slug_scan=self.db_title_is_placeholder(novel),
+            novel.slug,
+            allow_title_slug_scan=self.db_title_is_placeholder(novel),
         )
         if resolved is not None:
             storage_novel_id, metadata, _ = resolved
             storage_summary = self._novel_summary(
-                storage_novel_id, metadata, genres=genres, tags=tags,
+                storage_novel_id,
+                metadata,
+                genres=genres,
+                tags=tags,
             )
         if storage_summary is not None and self.db_summary_needs_storage_hydration(novel, storage_summary):
             storage_summary["added_at"] = _datetime_to_public_string(novel.created_at)
@@ -245,7 +258,6 @@ class PublicCatalogService:
             "author": novel.author,
             "language": novel.language,
             "synopsis": novel.synopsis,
-            "status": pub_status,
             "publication_status": pub_status,
             "chapter_count": novel.chapter_count,
             "translated_count": novel.translated_count,
@@ -259,7 +271,10 @@ class PublicCatalogService:
         }
 
     def _resolve_storage_metadata_for_db_novel(
-        self, novel_slug: str, *, allow_title_slug_scan: bool = False,
+        self,
+        novel_slug: str,
+        *,
+        allow_title_slug_scan: bool = False,
     ) -> tuple[str, dict[str, Any], str] | None:
         meta = self.storage.load_metadata(novel_slug)
         if meta is not None:
@@ -281,7 +296,10 @@ class PublicCatalogService:
         return novel is None or novel.is_published is True
 
     def _load_taxonomy_for_novel(
-        self, slug: str, *, include_adult: bool = True,
+        self,
+        slug: str,
+        *,
+        include_adult: bool = True,
     ) -> tuple[list[str], list[str], bool]:
         if self.db_session is None:
             return [], [], False
@@ -297,17 +315,19 @@ class PublicCatalogService:
                 has_adult_genre = True
                 continue
             genre_slugs.append(g.slug)
-        genre_slugs.sort(key=lambda s: next(
-            (g.display_order for g in novel.genres if g.slug == s), 999,
-        ))
-        tag_names = sorted({
-            t.name for t in novel.tags
-            if include_adult or not t.is_adult
-        })
+        genre_slugs.sort(
+            key=lambda s: next(
+                (g.display_order for g in novel.genres if g.slug == s),
+                999,
+            )
+        )
+        tag_names = sorted({t.name for t in novel.tags if include_adult or not t.is_adult})
         return genre_slugs, tag_names, has_adult_genre
 
     def _latest_translated_chapter(
-        self, novel_id: str, meta: dict[str, Any],
+        self,
+        novel_id: str,
+        meta: dict[str, Any],
     ) -> dict[str, Any] | None:
         translated_ids = set(self.storage.list_translated_chapters(novel_id))
         if not translated_ids:
@@ -330,7 +350,8 @@ class PublicCatalogService:
         return latest
 
     def _resolve_public_novel(
-        self, slug: str,
+        self,
+        slug: str,
     ) -> tuple[str, dict[str, Any], str] | None:
         meta = self.storage.load_metadata(slug)
         if meta is not None:
@@ -347,7 +368,9 @@ class PublicCatalogService:
             public_slug = self.public_slug_from_metadata(novel_id, candidate_meta)
             source_id = _optional_str(candidate_meta.get("novel_id")) or novel_id
             aliases = {
-                novel_id, source_id, public_slug,
+                novel_id,
+                source_id,
+                public_slug,
                 _optional_str(candidate_meta.get("source_novel_id")) or "",
             }
             if slug in aliases:
@@ -357,9 +380,7 @@ class PublicCatalogService:
 
 # Module-level functions for backward compatibility with tests that import these
 # as module-level functions. These delegate to the instance methods.
-def _latest_translated_chapter(
-    novel_id: str, meta: dict[str, Any], storage: Any
-) -> dict[str, Any] | None:
+def _latest_translated_chapter(novel_id: str, meta: dict[str, Any], storage: Any) -> dict[str, Any] | None:
     """Module-level wrapper for PublicCatalogService._latest_translated_chapter."""
     service = PublicCatalogService(storage=storage)
     return service._latest_translated_chapter(novel_id, meta)

@@ -101,7 +101,7 @@ def _metadata_history_entry(self: Any, path: Path, *, snapshot_id: str, is_curre
         artifact_type="novel metadata",
     )
 
-    publication_status = normalize_publication_status(payload.get("publication_status") or payload.get("status"))
+    publication_status = normalize_publication_status(payload.get("publication_status"))
     return {
         "snapshot_id": snapshot_id,
         "created_at": payload.get("updated_at") if isinstance(payload.get("updated_at"), str) else None,
@@ -390,9 +390,9 @@ def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
     merged["translation_defaults"] = normalize_workflow_defaults(
         merged.get("translation_defaults", existing.get("translation_defaults"))
     )
-    publication_status = normalize_publication_status(merged.get("publication_status") or merged.get("status"))
+    publication_status = normalize_publication_status(merged.get("publication_status"))
     merged["publication_status"] = publication_status
-    merged["status"] = publication_status
+    merged.pop("status", None)
     if merged.get("metadata_translation_status") != "failed":
         merged.pop("metadata_translation_error", None)
 
@@ -460,9 +460,9 @@ def _normalize_loaded_metadata(self: Any, payload: dict[str, Any], novel_id: str
     payload["document_type"] = self._clean_string(payload.get("document_type"), "web_novel")
     payload["input_adapter_key"] = self._clean_string(payload.get("input_adapter_key"))
     payload["context_group_id"] = self._clean_string(payload.get("context_group_id"), novel_id)
-    publication_status = normalize_publication_status(payload.get("publication_status") or payload.get("status"))
+    publication_status = normalize_publication_status(payload.get("publication_status"))
     payload["publication_status"] = publication_status
-    payload["status"] = publication_status
+    payload.pop("status", None)
     return payload
 
 

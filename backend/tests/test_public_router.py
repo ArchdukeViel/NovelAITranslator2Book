@@ -34,6 +34,7 @@ _SQLITE = "sqlite:///:memory:"
 @pytest.fixture()
 def db_engine():
     from sqlalchemy.pool import StaticPool
+
     eng = create_engine(
         _SQLITE,
         connect_args={"check_same_thread": False},
@@ -80,14 +81,16 @@ def _seed_novel(storage: StorageService, novel_id: str, **kwargs) -> None:
         "translated_title": kwargs.get("translated_title"),
         "author": kwargs.get("author", "Test Author"),
         "language": kwargs.get("language", "ja"),
-        "status": kwargs.get("status", "ongoing"),
-        "publication_status": kwargs.get("publication_status", kwargs.get("status", "ongoing")),
+        "publication_status": kwargs.get("publication_status", "ongoing"),
         "scraped_at": kwargs.get("scraped_at"),
         "updated_at": kwargs.get("updated_at"),
-        "chapters": kwargs.get("chapters", [
-            {"id": "ch001", "title": "Chapter 1", "num": 1},
-            {"id": "ch002", "title": "Chapter 2", "num": 2},
-        ]),
+        "chapters": kwargs.get(
+            "chapters",
+            [
+                {"id": "ch001", "title": "Chapter 1", "num": 1},
+                {"id": "ch002", "title": "Chapter 2", "num": 2},
+            ],
+        ),
     }
     storage.save_metadata(novel_id, meta)
 
@@ -106,8 +109,7 @@ def _seed_db_catalog_novel(
     source_title: str | None = None,
     author: str | None = None,
     language: str = "ja",
-    status: str = "ongoing",
-    publication_status: str | None = None,
+    publication_status: str = "ongoing",
     synopsis: str | None = None,
     is_published: bool = True,
     created_at: datetime | None = None,
@@ -125,8 +127,7 @@ def _seed_db_catalog_novel(
         original_title=source_title,
         author=author,
         language=language,
-        status=status,
-        publication_status=publication_status or status,
+        publication_status=publication_status,
         synopsis=synopsis,
         is_published=is_published,
         created_at=created_at or datetime(2024, 1, 1, tzinfo=UTC),
@@ -171,6 +172,7 @@ def _seed_public_glossary_entry(db_session, novel: Novel) -> NovelGlossaryEntry:
 # Catalog endpoint
 # ---------------------------------------------------------------------------
 
+
 class TestCatalog:
     def test_empty_catalog(self, client: TestClient) -> None:
         resp = client.get("/api/public/catalog")
@@ -207,37 +209,34 @@ class TestCatalog:
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
 
-    def test_catalog_filter_by_status(self, client: TestClient, storage: StorageService) -> None:
-        _seed_novel(storage, "novel-001", status="ongoing")
-        _seed_novel(storage, "novel-002", status="completed")
-        resp = client.get("/api/public/catalog?status=completed")
+    def test_catalog_filter_by_publication_status(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(storage, "novel-001", publication_status="ongoing")
+        _seed_novel(storage, "novel-002", publication_status="completed")
+        resp = client.get("/api/public/catalog?publication_status=completed")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 1
-        assert data["novels"][0]["status"] == "completed"
         assert data["novels"][0]["publication_status"] == "completed"
 
-    def test_catalog_includes_publication_status_alias_for_storage_summary(
+    def test_catalog_normalizes_publication_status_for_storage_summary(
         self, client: TestClient, storage: StorageService
     ) -> None:
-        _seed_novel(storage, "novel-001", status="連載中")
+        _seed_novel(storage, "novel-001", publication_status="連載中")
 
         resp = client.get("/api/public/catalog")
 
         assert resp.status_code == 200
         novel = resp.json()["novels"][0]
         assert novel["publication_status"] == "ongoing"
-        assert novel["status"] == novel["publication_status"]
+        assert "status" not in novel
 
-    def test_catalog_unknowns_invalid_storage_status(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
-        _seed_novel(storage, "novel-001", status="unexpected source value")
+    def test_catalog_unknowns_invalid_storage_status(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(storage, "novel-001", publication_status="unexpected source value")
 
         novel = client.get("/api/public/catalog").json()["novels"][0]
 
         assert novel["publication_status"] == "unknown"
-        assert novel["status"] == "unknown"
+        assert "status" not in novel
 
     def test_catalog_filter_by_language(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001", language="ja")
@@ -289,11 +288,14 @@ class TestCatalog:
         assert data["novels"][0]["title"] == "My Father is a Hero, My Mother is a Spirit, and I am a Reincarnator."
         assert data["novels"][0]["source_title"] == "父は英雄、母は精霊、娘の私は転生者。"
 
-    def test_catalog_summary_includes_source_title_and_synopsis(self, client: TestClient, storage: StorageService) -> None:
+    def test_catalog_summary_includes_source_title_and_synopsis(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
         """PublicNovelSummary now exposes source_title and synopsis."""
         # Seed a novel with translated_title → source_title = original title
         _seed_novel(
-            storage, "novel-001",
+            storage,
+            "novel-001",
             title="Original Title",
             translated_title="Translated Title",
         )
@@ -331,11 +333,33 @@ class TestCatalog:
     def test_catalog_summary_includes_latest_translated_chapter(
         self, client: TestClient, storage: StorageService
     ) -> None:
-        _seed_novel(storage, "novel-001", chapters=[
-            {"id": "ch001", "title": "Source Chapter 1", "translated_title": "Translated Chapter 1", "num": 1, "translated_at": "2026-01-01T00:00:00Z"},
-            {"id": "ch002", "title": "Source Chapter 2", "translated_title": "Translated Chapter 2", "num": 2, "translated_at": "2026-01-02T00:00:00Z"},
-            {"id": "ch003", "title": "Source Chapter 3", "translated_title": "Translated Chapter 3", "num": 3, "translated_at": "2026-01-03T00:00:00Z"},
-        ])
+        _seed_novel(
+            storage,
+            "novel-001",
+            chapters=[
+                {
+                    "id": "ch001",
+                    "title": "Source Chapter 1",
+                    "translated_title": "Translated Chapter 1",
+                    "num": 1,
+                    "translated_at": "2026-01-01T00:00:00Z",
+                },
+                {
+                    "id": "ch002",
+                    "title": "Source Chapter 2",
+                    "translated_title": "Translated Chapter 2",
+                    "num": 2,
+                    "translated_at": "2026-01-02T00:00:00Z",
+                },
+                {
+                    "id": "ch003",
+                    "title": "Source Chapter 3",
+                    "translated_title": "Translated Chapter 3",
+                    "num": 3,
+                    "translated_at": "2026-01-03T00:00:00Z",
+                },
+            ],
+        )
         _seed_translated_chapter(storage, "novel-001", "ch001", "Translated one.")
         _seed_translated_chapter(storage, "novel-001", "ch002", "Translated two.")
 
@@ -353,9 +377,13 @@ class TestCatalog:
     def test_catalog_summary_latest_chapter_fields_null_without_translation(
         self, client: TestClient, storage: StorageService
     ) -> None:
-        _seed_novel(storage, "novel-001", chapters=[
-            {"id": "ch001", "title": "Source Chapter 1", "num": 1},
-        ])
+        _seed_novel(
+            storage,
+            "novel-001",
+            chapters=[
+                {"id": "ch001", "title": "Source Chapter 1", "num": 1},
+            ],
+        )
 
         data = client.get("/api/public/catalog").json()
         novel = data["novels"][0]
@@ -435,7 +463,6 @@ class TestCatalog:
         assert first["author"] == "Author"
         assert first["language"] == "ja"
         assert first["synopsis"] == "Stored synopsis."
-        assert first["status"] == "ongoing"
         assert first["publication_status"] == "ongoing"
         assert first["chapter_count"] == 9
         assert first["translated_count"] == 3
@@ -539,37 +566,36 @@ class TestCatalog:
         assert novel["genres"] == ["romance", "fantasy"]
         assert novel["tags"] == ["魔法"]
 
-    def test_catalog_status_filter_uses_db_publication_status(
+    def test_catalog_publication_status_filter_uses_db_projection(
         self,
         client: TestClient,
         storage: StorageService,
         db_session,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        _seed_db_catalog_novel(db_session, "ongoing-novel", status="ongoing")
-        _seed_db_catalog_novel(db_session, "completed-novel", status="completed")
+        _seed_db_catalog_novel(db_session, "ongoing-novel", publication_status="ongoing")
+        _seed_db_catalog_novel(db_session, "completed-novel", publication_status="completed")
         monkeypatch.setattr(
             storage,
             "list_novels",
             lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
         )
 
-        data = client.get("/api/public/catalog?status=completed").json()
+        data = client.get("/api/public/catalog?publication_status=completed").json()
 
         assert data["total"] == 1
         assert data["novels"][0]["novel_id"] == "completed-novel"
-        assert data["novels"][0]["status"] == "completed"
         assert data["novels"][0]["publication_status"] == "completed"
 
-    def test_catalog_publication_status_filter_alias_uses_db_publication_status(
+    def test_catalog_publication_status_filter_uses_db_publication_status(
         self,
         client: TestClient,
         storage: StorageService,
         db_session,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        _seed_db_catalog_novel(db_session, "ongoing-novel", status="ongoing")
-        _seed_db_catalog_novel(db_session, "completed-novel", status="completed")
+        _seed_db_catalog_novel(db_session, "ongoing-novel", publication_status="ongoing")
+        _seed_db_catalog_novel(db_session, "completed-novel", publication_status="completed")
         monkeypatch.setattr(
             storage,
             "list_novels",
@@ -583,17 +609,17 @@ class TestCatalog:
         assert data["total"] == 1
         assert data["novels"][0]["novel_id"] == "completed-novel"
         assert data["novels"][0]["publication_status"] == "completed"
-        assert data["novels"][0]["status"] == "completed"
+        assert "status" not in data["novels"][0]
 
-    def test_catalog_status_filter_alias_conflict_returns_400(
-        self, client: TestClient
-    ) -> None:
-        resp = client.get("/api/public/catalog?status=ongoing&publication_status=completed")
+    def test_catalog_noncanonical_status_filter_is_ignored(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(storage, "novel-001", publication_status="ongoing")
+        _seed_novel(storage, "novel-002", publication_status="completed")
+        resp = client.get("/api/public/catalog?status=completed")
 
-        assert resp.status_code == 400
-        assert "must match" in resp.json()["detail"]
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 2
 
-    def test_catalog_db_summary_status_matches_publication_status_when_legacy_status_differs(
+    def test_catalog_db_summary_emits_only_publication_status(
         self,
         client: TestClient,
         storage: StorageService,
@@ -603,7 +629,6 @@ class TestCatalog:
         _seed_db_catalog_novel(
             db_session,
             "novel-001",
-            status="internal-workflow-state",
             publication_status="completed",
         )
         monkeypatch.setattr(
@@ -615,7 +640,7 @@ class TestCatalog:
         novel = client.get("/api/public/catalog").json()["novels"][0]
 
         assert novel["publication_status"] == "completed"
-        assert novel["status"] == "completed"
+        assert "status" not in novel
 
     def test_catalog_language_filter_uses_db_path(
         self,
@@ -812,20 +837,19 @@ class TestCatalog:
 # Novel detail endpoint
 # ---------------------------------------------------------------------------
 
+
 class TestGetNovel:
     def test_returns_novel_detail(self, client: TestClient, storage: StorageService) -> None:
-        _seed_novel(storage, "novel-001", title="My Novel", author="Author A", status="完結")
+        _seed_novel(storage, "novel-001", title="My Novel", author="Author A", publication_status="完結")
         resp = client.get("/api/public/novels/novel-001")
         assert resp.status_code == 200
         data = resp.json()
         assert data["novel_id"] == "novel-001"
         assert data["title"] == "My Novel"
         assert data["publication_status"] == "completed"
-        assert data["status"] == "completed"
+        assert "status" not in data
 
-    def test_catalog_and_detail_prefer_translated_metadata(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_catalog_and_detail_prefer_translated_metadata(self, client: TestClient, storage: StorageService) -> None:
         storage.save_metadata(
             "translated-meta",
             {
@@ -899,25 +923,32 @@ class TestGetNovel:
 # Chapter list endpoint
 # ---------------------------------------------------------------------------
 
+
 class TestListChapters:
     def test_lists_chapters(self, client: TestClient, storage: StorageService) -> None:
-        _seed_novel(storage, "novel-001", chapters=[
-            {"id": "ch001", "title": "Ch 1", "num": 1},
-            {"id": "ch002", "title": "Ch 2", "num": 2},
-        ])
+        _seed_novel(
+            storage,
+            "novel-001",
+            chapters=[
+                {"id": "ch001", "title": "Ch 1", "num": 1},
+                {"id": "ch002", "title": "Ch 2", "num": 2},
+            ],
+        )
         resp = client.get("/api/public/novels/novel-001/chapters")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 2
         assert data[0]["chapter_id"] == "ch001"
 
-    def test_marks_translated_chapters(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
-        _seed_novel(storage, "novel-001", chapters=[
-            {"id": "ch001", "title": "Ch 1", "num": 1},
-            {"id": "ch002", "title": "Ch 2", "num": 2},
-        ])
+    def test_marks_translated_chapters(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(
+            storage,
+            "novel-001",
+            chapters=[
+                {"id": "ch001", "title": "Ch 1", "num": 1},
+                {"id": "ch002", "title": "Ch 2", "num": 2},
+            ],
+        )
         _seed_translated_chapter(storage, "novel-001", "ch001", "Translated text.")
         resp = client.get("/api/public/novels/novel-001/chapters")
         assert resp.status_code == 200
@@ -933,10 +964,9 @@ class TestListChapters:
 # Chapter reader endpoint
 # ---------------------------------------------------------------------------
 
+
 class TestGetChapter:
-    def test_returns_translated_chapter(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_returns_translated_chapter(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001", chapters=[{"id": "ch001", "title": "Ch 1", "num": 1}])
         _seed_translated_chapter(storage, "novel-001", "ch001", "Hello translated world.")
         resp = client.get("/api/public/novels/novel-001/chapters/ch001")
@@ -983,15 +1013,11 @@ class TestGetChapter:
                 "term_type": "title",
                 "short_definition": "The translated title used for this character.",
                 "aliases": ["Dark King"],
-                "matches": [
-                    {"surface": "Demon King", "block_index": 0, "start": 4, "end": 14}
-                ],
+                "matches": [{"surface": "Demon King", "block_index": 0, "start": 4, "end": 14}],
             }
         ]
 
-    def test_reader_strips_translation_protocol_markers(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_reader_strips_translation_protocol_markers(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001", chapters=[{"id": "ch001", "title": "Ch 1", "num": 1}])
         _seed_translated_chapter(
             storage,
@@ -1021,7 +1047,7 @@ class TestGetChapter:
             "ch001",
             (
                 "[CHAPTER ch001]\n"
-                "[P p0001] \"A line of dialogue.\"\n"
+                '[P p0001] "A line of dialogue."\n'
                 "[P p0002] A short narration line.\n"
                 "[P p0003]\n"
                 "Another source paragraph unit."
@@ -1041,9 +1067,7 @@ class TestGetChapter:
         assert "[P p0001]" not in payload["text"]
         assert all("[P " not in str(block) for block in payload["reader_blocks"])
 
-    def test_reader_blocks_preserve_explicit_group_breaks(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_reader_blocks_preserve_explicit_group_breaks(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001", chapters=[{"id": "ch001", "title": "Ch 1", "num": 1}])
         _seed_translated_chapter(
             storage,
@@ -1061,9 +1085,7 @@ class TestGetChapter:
             {"type": "line", "text": "Second group line."},
         ]
 
-    def test_reader_blocks_use_source_blocks_when_available(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_reader_blocks_use_source_blocks_when_available(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001", chapters=[{"id": "ch001", "title": "Ch 1", "num": 1}])
         storage.save_chapter(
             "novel-001",
@@ -1131,13 +1153,15 @@ class TestGetChapter:
             {"type": "line", "text": "Second display block."},
         ]
 
-    def test_returns_chapter_number_matches_stored(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
-        _seed_novel(storage, "novel-001", chapters=[
-            {"id": "ch001", "title": "Ch 1", "num": 5},
-            {"id": "ch002", "title": "Ch 2", "num": 7},
-        ])
+    def test_returns_chapter_number_matches_stored(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(
+            storage,
+            "novel-001",
+            chapters=[
+                {"id": "ch001", "title": "Ch 1", "num": 5},
+                {"id": "ch002", "title": "Ch 2", "num": 7},
+            ],
+        )
         for ch in ["ch001", "ch002"]:
             _seed_translated_chapter(storage, "novel-001", ch, f"Text {ch}")
         resp = client.get("/api/public/novels/novel-001/chapters/ch001")
@@ -1172,14 +1196,16 @@ class TestGetChapter:
         assert canonical.json()["title"] == "Prologue"
         assert legacy.json()["slug"] == canonical_slug
 
-    def test_returns_prev_next_links(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
-        _seed_novel(storage, "novel-001", chapters=[
-            {"id": "ch001", "title": "Ch 1", "num": 1},
-            {"id": "ch002", "title": "Ch 2", "num": 2},
-            {"id": "ch003", "title": "Ch 3", "num": 3},
-        ])
+    def test_returns_prev_next_links(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(
+            storage,
+            "novel-001",
+            chapters=[
+                {"id": "ch001", "title": "Ch 1", "num": 1},
+                {"id": "ch002", "title": "Ch 2", "num": 2},
+                {"id": "ch003", "title": "Ch 3", "num": 3},
+            ],
+        )
         for ch in ["ch001", "ch002", "ch003"]:
             _seed_translated_chapter(storage, "novel-001", ch, f"Text {ch}")
         resp = client.get("/api/public/novels/novel-001/chapters/ch002")
@@ -1193,11 +1219,15 @@ class TestGetChapter:
     def test_untranslated_adjacent_chapters_are_not_active_reader_links(
         self, client: TestClient, storage: StorageService
     ) -> None:
-        _seed_novel(storage, "novel-001", chapters=[
-            {"id": "ch001", "title": "Ch 1", "num": 1},
-            {"id": "ch002", "title": "Ch 2", "num": 2},
-            {"id": "ch003", "title": "Ch 3", "num": 3},
-        ])
+        _seed_novel(
+            storage,
+            "novel-001",
+            chapters=[
+                {"id": "ch001", "title": "Ch 1", "num": 1},
+                {"id": "ch002", "title": "Ch 2", "num": 2},
+                {"id": "ch003", "title": "Ch 3", "num": 3},
+            ],
+        )
         _seed_translated_chapter(storage, "novel-001", "ch002", "Text ch002")
 
         resp = client.get("/api/public/novels/novel-001/chapters/ch002")
@@ -1209,34 +1239,30 @@ class TestGetChapter:
         assert data["previous_chapter_unavailable"] is True
         assert data["next_chapter_unavailable"] is True
 
-    def test_first_chapter_has_no_prev(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
-        _seed_novel(storage, "novel-001", chapters=[
-            {"id": "ch001", "title": "Ch 1", "num": 1},
-            {"id": "ch002", "title": "Ch 2", "num": 2},
-        ])
+    def test_first_chapter_has_no_prev(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(
+            storage,
+            "novel-001",
+            chapters=[
+                {"id": "ch001", "title": "Ch 1", "num": 1},
+                {"id": "ch002", "title": "Ch 2", "num": 2},
+            ],
+        )
         _seed_translated_chapter(storage, "novel-001", "ch001", "Text")
         resp = client.get("/api/public/novels/novel-001/chapters/ch001")
         assert resp.status_code == 200
         assert resp.json()["previous_chapter_id"] is None
 
-    def test_404_for_untranslated_chapter(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_404_for_untranslated_chapter(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001", chapters=[{"id": "ch001", "title": "Ch 1", "num": 1}])
         # No translated chapter saved
         assert client.get("/api/public/novels/novel-001/chapters/ch001").status_code == 404
 
-    def test_404_for_unknown_chapter(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_404_for_unknown_chapter(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001")
         assert client.get("/api/public/novels/novel-001/chapters/ch999").status_code == 404
 
-    def test_no_auth_required(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_no_auth_required(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001", chapters=[{"id": "ch001", "title": "Ch 1", "num": 1}])
         _seed_translated_chapter(storage, "novel-001", "ch001", "Text")
         assert client.get("/api/public/novels/novel-001/chapters/ch001").status_code == 200
@@ -1246,10 +1272,9 @@ class TestGetChapter:
 # Catalog sorting
 # ---------------------------------------------------------------------------
 
+
 class TestCatalogSort:
-    def test_default_sort_is_added_at_desc(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_default_sort_is_added_at_desc(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-old", title="Old Novel", scraped_at="2024-01-01T00:00:00")
         _seed_novel(storage, "novel-new", title="New Novel", scraped_at="2024-06-15T00:00:00")
         _seed_novel(storage, "novel-mid", title="Mid Novel", scraped_at="2024-03-10T00:00:00")
@@ -1258,9 +1283,7 @@ class TestCatalogSort:
         ids = [n["novel_id"] for n in resp.json()["novels"]]
         assert ids == ["novel-new", "novel-mid", "novel-old"]
 
-    def test_sort_by_title_asc(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_sort_by_title_asc(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-c", title="Charlie")
         _seed_novel(storage, "novel-a", title="Alpha")
         _seed_novel(storage, "novel-b", title="Bravo")
@@ -1269,9 +1292,7 @@ class TestCatalogSort:
         titles = [n["title"] for n in resp.json()["novels"]]
         assert titles == ["Alpha", "Bravo", "Charlie"]
 
-    def test_sort_by_title_desc(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_sort_by_title_desc(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-c", title="Charlie")
         _seed_novel(storage, "novel-a", title="Alpha")
         _seed_novel(storage, "novel-b", title="Bravo")
@@ -1280,47 +1301,45 @@ class TestCatalogSort:
         titles = [n["title"] for n in resp.json()["novels"]]
         assert titles == ["Charlie", "Bravo", "Alpha"]
 
-    def test_sort_by_chapter_count_asc(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
-        _seed_novel(storage, "novel-many", chapters=[
-            {"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i}
-            for i in range(1, 11)
-        ])
-        _seed_novel(storage, "novel-few", chapters=[
-            {"id": "ch001", "title": "Ch 1", "num": 1},
-        ])
-        _seed_novel(storage, "novel-mid", chapters=[
-            {"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i}
-            for i in range(1, 6)
-        ])
+    def test_sort_by_chapter_count_asc(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(
+            storage, "novel-many", chapters=[{"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i} for i in range(1, 11)]
+        )
+        _seed_novel(
+            storage,
+            "novel-few",
+            chapters=[
+                {"id": "ch001", "title": "Ch 1", "num": 1},
+            ],
+        )
+        _seed_novel(
+            storage, "novel-mid", chapters=[{"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i} for i in range(1, 6)]
+        )
         resp = client.get("/api/public/catalog?sort_by=chapter_count&order=asc")
         assert resp.status_code == 200
         counts = [n["chapter_count"] for n in resp.json()["novels"]]
         assert counts == sorted(counts)
 
-    def test_sort_by_chapter_count_desc(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
-        _seed_novel(storage, "novel-many", chapters=[
-            {"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i}
-            for i in range(1, 11)
-        ])
-        _seed_novel(storage, "novel-few", chapters=[
-            {"id": "ch001", "title": "Ch 1", "num": 1},
-        ])
-        _seed_novel(storage, "novel-mid", chapters=[
-            {"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i}
-            for i in range(1, 6)
-        ])
+    def test_sort_by_chapter_count_desc(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(
+            storage, "novel-many", chapters=[{"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i} for i in range(1, 11)]
+        )
+        _seed_novel(
+            storage,
+            "novel-few",
+            chapters=[
+                {"id": "ch001", "title": "Ch 1", "num": 1},
+            ],
+        )
+        _seed_novel(
+            storage, "novel-mid", chapters=[{"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i} for i in range(1, 6)]
+        )
         resp = client.get("/api/public/catalog?sort_by=chapter_count&order=desc")
         assert resp.status_code == 200
         counts = [n["chapter_count"] for n in resp.json()["novels"]]
         assert counts == sorted(counts, reverse=True)
 
-    def test_invalid_sort_by_falls_back_to_default(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_invalid_sort_by_falls_back_to_default(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-old", scraped_at="2024-01-01T00:00:00")
         _seed_novel(storage, "novel-new", scraped_at="2024-06-15T00:00:00")
         resp = client.get("/api/public/catalog?sort_by=invalid_field")
@@ -1329,9 +1348,7 @@ class TestCatalogSort:
         # Should fall back to added_at desc
         assert ids == ["novel-new", "novel-old"]
 
-    def test_invalid_order_falls_back_to_desc(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_invalid_order_falls_back_to_desc(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-old", scraped_at="2024-01-01T00:00:00")
         _seed_novel(storage, "novel-new", scraped_at="2024-06-15T00:00:00")
         resp = client.get("/api/public/catalog?sort_by=added_at&order=sideways")
@@ -1339,22 +1356,19 @@ class TestCatalogSort:
         ids = [n["novel_id"] for n in resp.json()["novels"]]
         assert ids == ["novel-new", "novel-old"]
 
-    def test_added_at_prefers_scraped_at(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_added_at_prefers_scraped_at(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001", scraped_at="2024-03-01T00:00:00", updated_at="2024-06-01T00:00:00")
         resp = client.get("/api/public/catalog")
         assert resp.status_code == 200
         novel = resp.json()["novels"][0]
         assert novel["added_at"] == "2024-03-01T00:00:00"
 
-    def test_added_at_falls_back_to_updated_at(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_added_at_falls_back_to_updated_at(self, client: TestClient, storage: StorageService) -> None:
         # Write metadata directly to have updated_at but no scraped_at
         novel_dir = storage.novels_dir / "novel-001"
         novel_dir.mkdir(parents=True, exist_ok=True)
         meta = {
+            "schema_version": storage.SCHEMA_VERSION,
             "novel_id": "novel-001",
             "title": "Test Novel",
             "updated_at": "2024-06-01T00:00:00",
@@ -1370,9 +1384,7 @@ class TestCatalogSort:
         novel = resp.json()["novels"][0]
         assert novel["added_at"] == "2024-06-01T00:00:00"
 
-    def test_added_at_null_when_no_dates(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_added_at_null_when_no_dates(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001")
         resp = client.get("/api/public/catalog")
         assert resp.status_code == 200
@@ -1380,18 +1392,20 @@ class TestCatalogSort:
         # save_metadata always sets scraped_at/updated_at, so this validates the field exists
         assert "added_at" in novel
 
-    def test_novels_without_added_at_sort_last_in_desc(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_novels_without_added_at_sort_last_in_desc(self, client: TestClient, storage: StorageService) -> None:
         """Novels with no scraped_at/updated_at should appear after dated novels in desc."""
         # We need to manipulate metadata directly to remove scraped_at
-        storage.save_metadata("novel-dated", {
-            "title": "Dated Novel",
-            "scraped_at": "2024-06-01T00:00:00",
-            "chapters": [{"id": "ch001", "title": "Ch 1", "num": 1}],
-        })
+        storage.save_metadata(
+            "novel-dated",
+            {
+                "title": "Dated Novel",
+                "scraped_at": "2024-06-01T00:00:00",
+                "chapters": [{"id": "ch001", "title": "Ch 1", "num": 1}],
+            },
+        )
         # Create a novel with no date fields by manually editing
         meta = {
+            "schema_version": storage.SCHEMA_VERSION,
             "novel_id": "novel-nodate",
             "title": "No Date Novel",
             "chapters": [{"id": "ch001", "title": "Ch 1", "num": 1}],
@@ -1417,98 +1431,109 @@ class TestCatalogSort:
 # Catalog chapter count filters
 # ---------------------------------------------------------------------------
 
+
 class TestCatalogChapterFilter:
-    def test_min_chapters_filter(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
-        _seed_novel(storage, "novel-few", chapters=[
-            {"id": "ch001", "title": "Ch 1", "num": 1},
-        ])
-        _seed_novel(storage, "novel-many", chapters=[
-            {"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i}
-            for i in range(1, 11)
-        ])
+    def test_min_chapters_filter(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(
+            storage,
+            "novel-few",
+            chapters=[
+                {"id": "ch001", "title": "Ch 1", "num": 1},
+            ],
+        )
+        _seed_novel(
+            storage, "novel-many", chapters=[{"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i} for i in range(1, 11)]
+        )
         resp = client.get("/api/public/catalog?min_chapters=5")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 1
         assert data["novels"][0]["novel_id"] == "novel-many"
 
-    def test_max_chapters_filter(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
-        _seed_novel(storage, "novel-few", chapters=[
-            {"id": "ch001", "title": "Ch 1", "num": 1},
-        ])
-        _seed_novel(storage, "novel-many", chapters=[
-            {"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i}
-            for i in range(1, 11)
-        ])
+    def test_max_chapters_filter(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(
+            storage,
+            "novel-few",
+            chapters=[
+                {"id": "ch001", "title": "Ch 1", "num": 1},
+            ],
+        )
+        _seed_novel(
+            storage, "novel-many", chapters=[{"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i} for i in range(1, 11)]
+        )
         resp = client.get("/api/public/catalog?max_chapters=5")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 1
         assert data["novels"][0]["novel_id"] == "novel-few"
 
-    def test_min_and_max_chapters_combined(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
-        _seed_novel(storage, "novel-1", chapters=[
-            {"id": "ch001", "title": "Ch 1", "num": 1},
-        ])
-        _seed_novel(storage, "novel-5", chapters=[
-            {"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i}
-            for i in range(1, 6)
-        ])
-        _seed_novel(storage, "novel-20", chapters=[
-            {"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i}
-            for i in range(1, 21)
-        ])
+    def test_min_and_max_chapters_combined(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(
+            storage,
+            "novel-1",
+            chapters=[
+                {"id": "ch001", "title": "Ch 1", "num": 1},
+            ],
+        )
+        _seed_novel(
+            storage, "novel-5", chapters=[{"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i} for i in range(1, 6)]
+        )
+        _seed_novel(
+            storage, "novel-20", chapters=[{"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i} for i in range(1, 21)]
+        )
         resp = client.get("/api/public/catalog?min_chapters=3&max_chapters=10")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 1
         assert data["novels"][0]["novel_id"] == "novel-5"
 
-    def test_chapter_filter_with_zero_min(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
-        _seed_novel(storage, "novel-001", chapters=[
-            {"id": "ch001", "title": "Ch 1", "num": 1},
-            {"id": "ch002", "title": "Ch 2", "num": 2},
-        ])
+    def test_chapter_filter_with_zero_min(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(
+            storage,
+            "novel-001",
+            chapters=[
+                {"id": "ch001", "title": "Ch 1", "num": 1},
+                {"id": "ch002", "title": "Ch 2", "num": 2},
+            ],
+        )
         resp = client.get("/api/public/catalog?min_chapters=0")
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
 
-    def test_chapter_filter_with_pagination(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_chapter_filter_with_pagination(self, client: TestClient, storage: StorageService) -> None:
         for i in range(5):
-            _seed_novel(storage, f"novel-{i:03d}", chapters=[
-                {"id": f"ch{j:03d}", "title": f"Ch {j}", "num": j}
-                for j in range(1, i + 2)
-            ])
+            _seed_novel(
+                storage,
+                f"novel-{i:03d}",
+                chapters=[{"id": f"ch{j:03d}", "title": f"Ch {j}", "num": j} for j in range(1, i + 2)],
+            )
         # All novels have >= 1 chapter, min_chapters=1 should return all 5
         resp = client.get("/api/public/catalog?min_chapters=1&page_size=3")
         data = resp.json()
         assert data["total"] == 5
         assert len(data["novels"]) == 3
 
-    def test_sort_and_filter_combined(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
-        _seed_novel(storage, "novel-small", title="Small", chapters=[
-            {"id": "ch001", "title": "Ch 1", "num": 1},
-        ])
-        _seed_novel(storage, "novel-big-a", title="Big Alpha", chapters=[
-            {"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i}
-            for i in range(1, 11)
-        ])
-        _seed_novel(storage, "novel-big-z", title="Big Zeta", chapters=[
-            {"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i}
-            for i in range(1, 11)
-        ])
+    def test_sort_and_filter_combined(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(
+            storage,
+            "novel-small",
+            title="Small",
+            chapters=[
+                {"id": "ch001", "title": "Ch 1", "num": 1},
+            ],
+        )
+        _seed_novel(
+            storage,
+            "novel-big-a",
+            title="Big Alpha",
+            chapters=[{"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i} for i in range(1, 11)],
+        )
+        _seed_novel(
+            storage,
+            "novel-big-z",
+            title="Big Zeta",
+            chapters=[{"id": f"ch{i:03d}", "title": f"Ch {i}", "num": i} for i in range(1, 11)],
+        )
         # Filter min_chapters=5, sort by title asc
         resp = client.get("/api/public/catalog?min_chapters=5&sort_by=title&order=asc")
         data = resp.json()
@@ -1521,15 +1546,18 @@ class TestCatalogChapterFilter:
 # Catalog taxonomy (genres/tags in response)
 # ---------------------------------------------------------------------------
 
+
 class TestCatalogTaxonomy:
     def _seed_genre(self, db_session, slug: str, name_ja: str, display_order: int = 0, **kwargs) -> None:
         from novelai.db.models.genre import Genre
+
         genre = Genre(slug=slug, name_ja=name_ja, name_en=slug, display_order=display_order, is_active=True, **kwargs)
         db_session.add(genre)
         db_session.commit()
 
     def _assign_genre(self, db_session, novel_slug: str, genre_slug: str) -> None:
         from sqlalchemy import text
+
         novel = db_session.query(Novel).filter_by(slug=novel_slug).one_or_none()
         if novel is None:
             novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing", is_published=True)
@@ -1538,16 +1566,17 @@ class TestCatalogTaxonomy:
         else:
             novel.is_published = True
         genre = db_session.query(Genre).filter_by(slug=genre_slug).one()
-        db_session.execute(text(
-            "INSERT OR IGNORE INTO novel_genres (novel_id, genre_id, assigned_by) "
-            "VALUES (:nid, :gid, 'scraper')"
-        ), {"nid": novel.id, "gid": genre.id})
+        db_session.execute(
+            text("INSERT OR IGNORE INTO novel_genres (novel_id, genre_id, assigned_by) VALUES (:nid, :gid, 'scraper')"),
+            {"nid": novel.id, "gid": genre.id},
+        )
         db_session.commit()
 
     def _assign_tag(self, db_session, novel_slug: str, tag_name: str) -> None:
         from sqlalchemy import text
 
         from novelai.db.models.tag import Tag
+
         tag = db_session.query(Tag).filter_by(name=tag_name).one_or_none()
         if tag is None:
             tag = Tag(name=tag_name)
@@ -1560,10 +1589,13 @@ class TestCatalogTaxonomy:
             db_session.flush()
         else:
             novel.is_published = True
-        db_session.execute(text(
-            "INSERT OR IGNORE INTO novel_tags (novel_id, tag_id, origin, assigned_by) "
-            "VALUES (:nid, :tid, 'test', 'scraper')"
-        ), {"nid": novel.id, "tid": tag.id})
+        db_session.execute(
+            text(
+                "INSERT OR IGNORE INTO novel_tags (novel_id, tag_id, origin, assigned_by) "
+                "VALUES (:nid, :tid, 'test', 'scraper')"
+            ),
+            {"nid": novel.id, "tid": tag.id},
+        )
         db_session.commit()
 
     def test_catalog_returns_empty_genres_and_tags_when_no_assignments(
@@ -1589,9 +1621,7 @@ class TestCatalogTaxonomy:
         assert novel["genres"] == ["fantasy"]
         assert novel["tags"] == []
 
-    def test_catalog_returns_assigned_tag_names(
-        self, client: TestClient, storage: StorageService, db_session
-    ) -> None:
+    def test_catalog_returns_assigned_tag_names(self, client: TestClient, storage: StorageService, db_session) -> None:
         _seed_novel(storage, "n003")
         self._assign_tag(db_session, "n003", "魔法")
         self._assign_tag(db_session, "n003", "勇者")
@@ -1608,6 +1638,7 @@ class TestCatalogTaxonomy:
     ) -> None:
         _seed_novel(storage, "n004")
         from novelai.db.models.genre import Genre
+
         self._seed_genre(db_session, "horror", "ホラー")
         self._assign_genre(db_session, "n004", "horror")
         # Deactivate the genre
@@ -1620,9 +1651,7 @@ class TestCatalogTaxonomy:
         novel = resp.json()["novels"][0]
         assert novel["genres"] == []
 
-    def test_genre_order_by_display_order(
-        self, client: TestClient, storage: StorageService, db_session
-    ) -> None:
+    def test_genre_order_by_display_order(self, client: TestClient, storage: StorageService, db_session) -> None:
         _seed_novel(storage, "n005")
         self._seed_genre(db_session, "sf", "SF", display_order=5)
         self._seed_genre(db_session, "isekai-tensei", "異世界転生", display_order=1)
@@ -1727,6 +1756,7 @@ def _seed_genre_for_tests(
     is_adult: bool = False,
 ) -> None:
     from novelai.db.models.genre import Genre
+
     genre = Genre(
         slug=slug,
         name_ja=name_ja,
@@ -1741,6 +1771,7 @@ def _seed_genre_for_tests(
 
 def _assign_genre_for_tests(db_session, novel_slug: str, genre_slug: str) -> None:
     from sqlalchemy import text
+
     novel = db_session.query(Novel).filter_by(slug=novel_slug).one_or_none()
     if novel is None:
         novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing", is_published=True)
@@ -1749,11 +1780,12 @@ def _assign_genre_for_tests(db_session, novel_slug: str, genre_slug: str) -> Non
     else:
         novel.is_published = True
     from novelai.db.models.genre import Genre
+
     genre = db_session.query(Genre).filter_by(slug=genre_slug).one()
-    db_session.execute(text(
-        "INSERT OR IGNORE INTO novel_genres (novel_id, genre_id, assigned_by) "
-        "VALUES (:nid, :gid, 'scraper')"
-    ), {"nid": novel.id, "gid": genre.id})
+    db_session.execute(
+        text("INSERT OR IGNORE INTO novel_genres (novel_id, genre_id, assigned_by) VALUES (:nid, :gid, 'scraper')"),
+        {"nid": novel.id, "gid": genre.id},
+    )
     db_session.commit()
 
 
@@ -1761,6 +1793,7 @@ def _assign_tag_for_tests(db_session, novel_slug: str, tag_name: str) -> None:
     from sqlalchemy import text
 
     from novelai.db.models.tag import Tag
+
     tag = db_session.query(Tag).filter_by(name=tag_name).one_or_none()
     if tag is None:
         tag = Tag(name=tag_name)
@@ -1773,10 +1806,13 @@ def _assign_tag_for_tests(db_session, novel_slug: str, tag_name: str) -> None:
         db_session.flush()
     else:
         novel.is_published = True
-    db_session.execute(text(
-        "INSERT OR IGNORE INTO novel_tags (novel_id, tag_id, origin, assigned_by) "
-        "VALUES (:nid, :tid, 'test', 'scraper')"
-    ), {"nid": novel.id, "tid": tag.id})
+    db_session.execute(
+        text(
+            "INSERT OR IGNORE INTO novel_tags (novel_id, tag_id, origin, assigned_by) "
+            "VALUES (:nid, :tid, 'test', 'scraper')"
+        ),
+        {"nid": novel.id, "tid": tag.id},
+    )
     db_session.commit()
 
 
@@ -1789,7 +1825,10 @@ class TestCatalogGenreTagFilter:
     """Filtering by genre_include, genre_exclude, tag_include, tag_exclude."""
 
     def test_genre_include_matches(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_novel(storage, "n001")
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
@@ -1799,7 +1838,10 @@ class TestCatalogGenreTagFilter:
         assert resp.json()["total"] == 1
 
     def test_genre_exclude_removes(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001")
         _seed_db_catalog_novel(db_session, "n002")
@@ -1812,7 +1854,10 @@ class TestCatalogGenreTagFilter:
         assert data["novels"][0]["novel_id"] == "n002"
 
     def test_tag_include_matches(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001")
         _assign_tag_for_tests(db_session, "n001", "魔法")
@@ -1821,7 +1866,10 @@ class TestCatalogGenreTagFilter:
         assert resp.json()["total"] == 1
 
     def test_tag_exclude_removes(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001")
         _seed_db_catalog_novel(db_session, "n002")
@@ -1833,7 +1881,10 @@ class TestCatalogGenreTagFilter:
         assert data["novels"][0]["novel_id"] == "n002"
 
     def test_genre_include_all_required(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001")
         _seed_db_catalog_novel(db_session, "n002")
@@ -1850,7 +1901,10 @@ class TestCatalogGenreTagFilter:
         assert data["novels"][0]["novel_id"] == "n001"
 
     def test_unknown_genre_include_returns_zero(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001")
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
@@ -1860,7 +1914,10 @@ class TestCatalogGenreTagFilter:
         assert resp.json()["total"] == 0
 
     def test_unknown_genre_exclude_no_effect(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001")
         _seed_db_catalog_novel(db_session, "n002")
@@ -1871,7 +1928,10 @@ class TestCatalogGenreTagFilter:
         assert resp.json()["total"] == 2
 
     def test_unknown_tag_include_returns_zero(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001")
         _assign_tag_for_tests(db_session, "n001", "魔法")
@@ -1880,7 +1940,10 @@ class TestCatalogGenreTagFilter:
         assert resp.json()["total"] == 0
 
     def test_unknown_tag_exclude_no_effect(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001")
         _seed_db_catalog_novel(db_session, "n002")
@@ -1890,7 +1953,10 @@ class TestCatalogGenreTagFilter:
         assert resp.json()["total"] == 2
 
     def test_tag_include_all_required(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001")
         _seed_db_catalog_novel(db_session, "n002")
@@ -1903,22 +1969,28 @@ class TestCatalogGenreTagFilter:
         assert data["total"] == 1
         assert data["novels"][0]["novel_id"] == "n001"
 
-    def test_filter_combines_with_status(
-        self, client: TestClient, storage: StorageService, db_session,
+    def test_filter_combines_with_publication_status(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
-        _seed_db_catalog_novel(db_session, "n001", status="ongoing")
-        _seed_db_catalog_novel(db_session, "n002", status="completed")
+        _seed_db_catalog_novel(db_session, "n001", publication_status="ongoing")
+        _seed_db_catalog_novel(db_session, "n002", publication_status="completed")
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
         _assign_genre_for_tests(db_session, "n001", "fantasy")
         _assign_genre_for_tests(db_session, "n002", "fantasy")
-        resp = client.get("/api/public/catalog?genre_include=fantasy&status=completed")
+        resp = client.get("/api/public/catalog?genre_include=fantasy&publication_status=completed")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 1
         assert data["novels"][0]["novel_id"] == "n002"
 
     def test_filter_combines_with_search(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001", title="Dragon King")
         _seed_db_catalog_novel(db_session, "n002", title="Slime World")
@@ -1932,7 +2004,10 @@ class TestCatalogGenreTagFilter:
         assert data["novels"][0]["novel_id"] == "n001"
 
     def test_filter_combines_with_chapter_filter(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001", chapter_count=1)
         _seed_db_catalog_novel(db_session, "n002", chapter_count=10)
@@ -1946,7 +2021,10 @@ class TestCatalogGenreTagFilter:
         assert data["novels"][0]["novel_id"] == "n002"
 
     def test_filter_applies_before_pagination(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_genre_for_tests(db_session, "fantasy", "ファンタジー")
         for i in range(5):
@@ -1962,7 +2040,10 @@ class TestCatalogGenreTagFilter:
         assert len(data["novels"]) == 2  # Only page
 
     def test_sort_works_with_genre_filter(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001", title="Zebra")
         _seed_db_catalog_novel(db_session, "n002", title="Alpha")
@@ -1976,7 +2057,10 @@ class TestCatalogGenreTagFilter:
         assert [n["title"] for n in data["novels"]] == ["Alpha", "Zebra"]
 
     def test_genre_exclude_with_multiple_values(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001")
         _seed_db_catalog_novel(db_session, "n002")
@@ -1993,7 +2077,10 @@ class TestCatalogGenreTagFilter:
         assert data["novels"][0]["novel_id"] == "n003"
 
     def test_tag_exclude_with_multiple_values(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001")
         _seed_db_catalog_novel(db_session, "n002")
@@ -2007,7 +2094,10 @@ class TestCatalogGenreTagFilter:
         assert data["novels"][0]["novel_id"] == "n003"
 
     def test_inactive_genre_include_returns_zero(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001")
         _seed_genre_for_tests(db_session, "dormant", "Dormant", is_active=False)
@@ -2019,7 +2109,10 @@ class TestCatalogGenreTagFilter:
         assert resp.json()["total"] == 0
 
     def test_inactive_genre_exclude_has_no_effect(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001")
         _seed_genre_for_tests(db_session, "dormant", "Dormant", is_active=False)
@@ -2031,7 +2124,10 @@ class TestCatalogGenreTagFilter:
         assert resp.json()["total"] == 1
 
     def test_adult_genre_include_requires_include_adult(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "adult-novel")
         _seed_genre_for_tests(db_session, "adult-romance", "Adult Romance", is_adult=True)
@@ -2045,7 +2141,10 @@ class TestCatalogGenreTagFilter:
         assert visible["novels"][0]["novel_id"] == "adult-novel"
 
     def test_no_params_returns_all(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_db_catalog_novel(db_session, "n001")
         _seed_db_catalog_novel(db_session, "n002")
@@ -2062,6 +2161,7 @@ class TestCatalogGenreTagFilter:
 def _seed_tag_for_tests(db_session, name: str, name_ja: str | None = None, is_adult: bool = False) -> None:
     """Create a tag row directly in the DB (no novel association)."""
     from novelai.db.models.tag import Tag
+
     tag = Tag(name=name, name_ja=name_ja, is_adult=is_adult)
     db_session.add(tag)
     db_session.commit()
@@ -2071,7 +2171,10 @@ class TestTagSearch:
     """Tag search endpoint — GET /api/public/tags/search."""
 
     def test_search_returns_matching_tags(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_tag_for_tests(db_session, "dragon", "ドラゴン")
         _seed_tag_for_tests(db_session, "elf", "エルフ")
@@ -2084,7 +2187,10 @@ class TestTagSearch:
         assert "is_adult" not in data[0]
 
     def test_search_matches_name_ja(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_tag_for_tests(db_session, "dragon", "ドラゴン")
         resp = client.get("/api/public/tags/search?q=ドラ")
@@ -2094,7 +2200,10 @@ class TestTagSearch:
         assert data[0]["name"] == "dragon"
 
     def test_search_returns_empty_for_no_match(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_tag_for_tests(db_session, "dragon", "ドラゴン")
         resp = client.get("/api/public/tags/search?q=zzzzz")
@@ -2102,7 +2211,10 @@ class TestTagSearch:
         assert resp.json() == []
 
     def test_too_short_query_returns_empty(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_tag_for_tests(db_session, "dragon", "ドラゴン")
         resp = client.get("/api/public/tags/search?q=d")
@@ -2110,7 +2222,10 @@ class TestTagSearch:
         assert resp.json() == []
 
     def test_too_short_query_after_strip(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_tag_for_tests(db_session, "dragon", "ドラゴン")
         resp = client.get("/api/public/tags/search?q=%20%20")
@@ -2118,7 +2233,10 @@ class TestTagSearch:
         assert resp.json() == []
 
     def test_adult_tags_excluded_when_include_adult_false(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_tag_for_tests(db_session, "dragon", "ドラゴン")
         _seed_tag_for_tests(db_session, "adult_tag", "アダルト", is_adult=True)
@@ -2130,7 +2248,10 @@ class TestTagSearch:
         assert "adult_tag" not in names  # excluded
 
     def test_adult_tags_included_when_include_adult_true(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_tag_for_tests(db_session, "adult_tag", is_adult=True)
         _seed_tag_for_tests(db_session, "adventure", "冒険")
@@ -2141,7 +2262,10 @@ class TestTagSearch:
         assert "is_adult" not in data[0]
 
     def test_result_limit_works(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         for name in ["apple", "apricot", "application", "appetizer", "appliance"]:
             _seed_tag_for_tests(db_session, name)
@@ -2150,14 +2274,17 @@ class TestTagSearch:
         assert len(resp.json()) == 3
 
     def test_prefix_matches_first(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         # "dr" appears in all these, but only some start with "dr"
-        _seed_tag_for_tests(db_session, "sundress")   # contains "dr", not a prefix
-        _seed_tag_for_tests(db_session, "dragon")      # prefix match
-        _seed_tag_for_tests(db_session, "drift")       # prefix match
-        _seed_tag_for_tests(db_session, "dramatic")    # prefix match
-        _seed_tag_for_tests(db_session, "padre")       # contains "dr", not a prefix
+        _seed_tag_for_tests(db_session, "sundress")  # contains "dr", not a prefix
+        _seed_tag_for_tests(db_session, "dragon")  # prefix match
+        _seed_tag_for_tests(db_session, "drift")  # prefix match
+        _seed_tag_for_tests(db_session, "dramatic")  # prefix match
+        _seed_tag_for_tests(db_session, "padre")  # contains "dr", not a prefix
         resp = client.get("/api/public/tags/search?q=dr")
         assert resp.status_code == 200
         data = resp.json()
@@ -2176,7 +2303,10 @@ class TestTagSearch:
         assert names[3:] == sorted(names[3:])
 
     def test_stable_alphabetical_ordering(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         _seed_tag_for_tests(db_session, "sword")
         _seed_tag_for_tests(db_session, "shield")
@@ -2188,16 +2318,23 @@ class TestTagSearch:
         assert names == sorted(names)
 
     def test_no_tags_created_during_search(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         from novelai.db.models.tag import Tag
+
         count_before = db_session.query(Tag).count()
         client.get("/api/public/tags/search?q=nonexistent")
         count_after = db_session.query(Tag).count()
         assert count_before == count_after
 
     def test_search_requires_authentication(
-        self, client: TestClient, storage: StorageService, db_session,
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
     ) -> None:
         """Tag search is a public endpoint — no auth required."""
         resp = client.get("/api/public/tags/search?q=dr")

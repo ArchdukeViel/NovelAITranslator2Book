@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, true
 from sqlalchemy.orm import Session
 
@@ -61,7 +61,7 @@ def _catalog_from_db_page(
     *,
     service: PublicCatalogService,
     q: str | None,
-    status: str | None,
+    publication_status: str | None,
     language: str | None,
     effective_sort_by: str,
     min_chapters: int | None,
@@ -90,12 +90,9 @@ def _catalog_from_db_page(
     search_text = _optional_str(q)
     if search_text:
         pattern = f"%{search_text}%"
-        query = query.filter(
-            Novel.title.ilike(pattern)
-            | Novel.author.ilike(pattern)
-        )
-    if status:
-        query = query.filter(Novel.publication_status == status)
+        query = query.filter(Novel.title.ilike(pattern) | Novel.author.ilike(pattern))
+    if publication_status:
+        query = query.filter(Novel.publication_status == publication_status)
     if language:
         query = query.filter(Novel.language == language)
     if min_chapters is not None:
@@ -103,9 +100,7 @@ def _catalog_from_db_page(
     if max_chapters is not None:
         query = query.filter(Novel.chapter_count <= max_chapters)
     active_public_genre = (
-        Genre.is_active.is_(True)
-        if include_adult
-        else and_(Genre.is_active.is_(True), Genre.is_adult.is_(False))
+        Genre.is_active.is_(True) if include_adult else and_(Genre.is_active.is_(True), Genre.is_adult.is_(False))
     )
     public_tag = true() if include_adult else Tag.is_adult.is_(False)
     for genre_slug in sorted(genre_include_set):
@@ -158,8 +153,7 @@ def _catalog_from_db_page(
     novels = query.order_by(*order_columns).offset(offset).limit(page_size).all()
     return PublicCatalogResponse(
         novels=[
-            PublicNovelSummary(**service._db_novel_summary(novel, include_adult=include_adult))
-            for novel in novels
+            PublicNovelSummary(**service._db_novel_summary(novel, include_adult=include_adult)) for novel in novels
         ],
         total=total,
         page=page,
@@ -171,7 +165,7 @@ def _catalog_from_storage(
     *,
     service: PublicCatalogService,
     q: str | None,
-    status: str | None,
+    publication_status: str | None,
     language: str | None,
     effective_sort_by: str,
     reverse: bool,
@@ -192,7 +186,7 @@ def _catalog_from_storage(
         meta = service.storage.load_metadata(novel_id) or {}
         if q and not service.novel_matches_search(meta, q):
             continue
-        if status and service.publication_status_from_metadata(meta) != status:
+        if publication_status and service.publication_status_from_metadata(meta) != publication_status:
             continue
         if language and _optional_str(meta.get("language")) != language:
             continue
@@ -246,7 +240,6 @@ def _catalog_from_storage(
 @router.get("/catalog", response_model=PublicCatalogResponse)
 async def catalog(
     q: str | None = Query(default=None, description="Search title or author"),
-    status: str | None = Query(default=None, description="Filter by status"),
     publication_status: str | None = Query(default=None, description="Filter by publication status"),
     language: str | None = Query(default=None, description="Filter by language (deprecated for public Browse)"),
     sort_by: str | None = Query(default=None, description="Sort field: added_at, title, chapter_count"),
@@ -265,18 +258,7 @@ async def catalog(
     """Paginated public novel catalog with optional search, filter, and sort."""
     from novelai.sources.status import normalize_publication_status
 
-    effective_status = normalize_publication_status(status) if status else None
-    effective_publication_status = (
-        normalize_publication_status(publication_status)
-        if publication_status
-        else None
-    )
-    if effective_status and effective_publication_status and effective_status != effective_publication_status:
-        raise HTTPException(
-            status_code=400,
-            detail="status and publication_status filters must match when both are provided.",
-        )
-    publication_status_filter = effective_publication_status or effective_status
+    publication_status_filter = normalize_publication_status(publication_status) if publication_status else None
 
     effective_sort_by = sort_by if sort_by and sort_by in VALID_SORT_FIELDS else DEFAULT_SORT_BY
     effective_order = order if order and order in VALID_ORDER_VALUES else DEFAULT_ORDER
@@ -289,7 +271,7 @@ async def catalog(
 
     if service.is_db_catalog_base_request(
         q=q,
-        status=publication_status_filter,
+        publication_status=publication_status_filter,
         language=language,
         sort_by=sort_by,
         min_chapters=min_chapters,
@@ -302,7 +284,7 @@ async def catalog(
         db_response = _catalog_from_db_page(
             service=service,
             q=q,
-            status=publication_status_filter,
+            publication_status=publication_status_filter,
             language=language,
             effective_sort_by=effective_sort_by,
             min_chapters=min_chapters,
@@ -323,7 +305,7 @@ async def catalog(
     return _catalog_from_storage(
         service=service,
         q=q,
-        status=publication_status_filter,
+        publication_status=publication_status_filter,
         language=language,
         effective_sort_by=effective_sort_by,
         reverse=reverse,
@@ -346,6 +328,7 @@ async def list_genres(
 ) -> list[PublicGenreResponse]:
     """Return active genres ordered by display_order then name."""
     from novelai.db.models.genre import Genre
+
     query = db.query(Genre).filter(Genre.is_active.is_(True))
     if not include_adult:
         query = query.filter(Genre.is_adult.is_(False))

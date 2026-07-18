@@ -53,7 +53,7 @@ def _catalog_publication_response(
     from novelai.sources.status import normalize_publication_status as _norm_status
 
     source_title = novel.original_title if novel.original_title and novel.original_title != novel.title else None
-    publication_status = _norm_status(novel.publication_status or novel.status)
+    publication_status = _norm_status(novel.publication_status)
     return CatalogPublicationResponse(
         novel_id=novel.slug,
         title=_optional_string(novel.title) or novel.slug,
@@ -241,9 +241,7 @@ async def catalog_health(
 
     total_novels = db.query(func.count(Novel.id)).scalar() or 0
     stale_threshold = datetime.utcnow() - timedelta(hours=24)
-    stale_count = db.query(func.count(Novel.id)).filter(
-        Novel.updated_at < stale_threshold
-    ).scalar() or 0
+    stale_count = db.query(func.count(Novel.id)).filter(Novel.updated_at < stale_threshold).scalar() or 0
 
     storage_ids = set(storage.list_novels())
     db_slugs = {row[0] for row in db.query(Novel.slug).all()}
@@ -256,9 +254,7 @@ async def catalog_health(
             f"to create projections for {missing_projection_count} novel(s)"
         )
     if stale_count > 0:
-        recommendations.append(
-            f"{stale_count} stale projection(s) — run bulk reconciliation"
-        )
+        recommendations.append(f"{stale_count} stale projection(s) — run bulk reconciliation")
     if not recommendations:
         recommendations.append("All catalog projections healthy")
 
@@ -294,14 +290,10 @@ async def novel_projection_health(
     if in_sync:
         recommended_action = "None — in sync"
     elif storage_count > db_count:
-        recommended_action = (
-            f"Refresh projection: storage has {storage_count} translated, "
-            f"DB shows {db_count}"
-        )
+        recommended_action = f"Refresh projection: storage has {storage_count} translated, DB shows {db_count}"
     else:
         recommended_action = (
-            f"Investigate: DB has {db_count} translated but storage has "
-            f"{storage_count} — possible orphaned DB records"
+            f"Investigate: DB has {db_count} translated but storage has {storage_count} — possible orphaned DB records"
         )
 
     return NovelProjectionHealthResponse(

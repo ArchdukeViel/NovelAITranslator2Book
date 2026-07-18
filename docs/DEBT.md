@@ -125,6 +125,10 @@ Deferred items are tracked but excluded from the active count.
   import shims, and deprecated library adapters.
 - **Completion criteria:** All production callers and tests use canonical names;
   compatibility routes, imports, fields, and dependencies are removed.
+- **Progress (2026-07-18):** Storage artifacts and crawl-result metadata are
+  forward-only. Public catalog payloads and filters now use only
+  `publication_status`; the unused `novels.status` database mirror remains until
+  an explicit column-removal migration is approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
@@ -372,7 +376,9 @@ Deferred items are tracked but excluded from the active count.
 - **Priority:** Medium
 - **Status:** Pending
 - **Affected areas:** `frontend/components/public/public-shell.tsx`, `frontend/app/(public)/`
-- **Description:** Nested `<main>` landmarks, no skip link, no reduced-motion rules, no focus management, glossary annotations not rendered.
+- **Description:** Nested `<main>` landmarks, no skip link, no reduced-motion
+  rules, incomplete focus management, and a tag suggestion `role="option"`
+  without `aria-selected` remain in the public reader.
 - **Completion criteria:** Single main landmark, skip link, reduced-motion CSS, focus management, accessible reader controls.
 
 ### DEBT-059 — Public reader performance budget
@@ -381,7 +387,9 @@ Deferred items are tracked but excluded from the active count.
 - **Priority:** Medium
 - **Status:** Pending
 - **Affected areas:** `frontend/app/(public)/`, `backend/src/novelai/api/routers/public_*.py`
-- **Description:** No documented latency/payload budgets, no cache-control headers, no bundle analysis, no request-count tests.
+- **Description:** No documented latency/payload budgets, no cache-control
+  headers, no bundle analysis, and no request-count tests. Public cover/brand
+  images still use raw `<img>` elements and produce Next.js LCP warnings.
 - **Completion criteria:** Documented budgets, cache-control headers, bundle analysis, request-count tests, annotation cap.
 
 ### DEBT-060 — Terms/DMCA takedown workflow missing
@@ -546,7 +554,7 @@ Deferred items are tracked but excluded from the active count.
   - Cache logic:
     - Catalog identity is `tuple(sorted(set(catalogued_novel_ids or [])))`. A cache entry is valid only when its identity matches and expired time has not passed. Concurrent calls with different identities do **not** share an incompatible result; waiters that arrive during an incompatible build wait it out and re-evaluate.
   - Crawl failure semantics:
-    - `_get_failed_ids` treats the newest activity with status `completed` or `failed` as authoritative — its `failures` list (even empty) overrides all older activities. Cancelled, pending, queued, and running activities are skipped. `metadata.crawl_result` is read first, falling back to `metadata.result` only for compatibility.
+    - `_get_failed_ids` treats the newest activity with status `completed` or `failed` as authoritative — its `failures` list (even empty) overrides all older activities. Cancelled, pending, queued, and running activities are skipped. `metadata.crawl_result` is the only supported result field.
     - If the failure payload is malformed/missing, the function returns an empty set instead of falling back to older failures (no resurrection of older failure data).
     - Result is normalized: dict (`chapter_id`/`id`), scalar strings, and ints are deduplicated into a `set[str]`. Stored chapter IDs are excluded from the failed count.
   - Invalidation coverage (best-effort helper `best_effort_invalidate(context=...)` on every storage-changing path, never masking caller failures):
@@ -565,7 +573,35 @@ Deferred items are tracked but excluded from the active count.
   - 50 backend library-summary tests, including hardened cold-concurrent exactly-one-build, fake-clock expiry, forced-refresh single-flight joining active build, **successive-generation waiter-retention race**, **invalidation-epoch stale-build rejection** (proving only one stable rebuild after invalidation), **concurrent failed-generation propagation** with 8+ threads, **strengthened normal-callers-join-forced-build**, **incompatible-identity waits-and-rebuilds**, real `Path` prefix normalization, Windows-style string prefix normalization (spying on the backend argument), crawl-failure semantics (newest-clean overrides older failure, cancelled/running activities ignored, malformed payload does not resurrect, duplicates dedup, dict and scalar formats normalize, stored chapters excluded from failed, pending remains `max(total - scraped - failed, 0)`).
   - 7 Admin Library frontend tests in `frontend/app/(admin)/admin/library/__tests__/page.test.tsx`, including a real background-refetch failure test (initial success followed by a settled failed refetch: previous values remain, exactly one amber background warning, no initial-load warning, no explicit-refresh warning; Retry triggers the normal query refetch; a later successful refetch removes the warning).
   - 57 storage tests pass.
-  - 2 previously failing web-API tests stay green: `test_list_novels_includes_legacy_syosetu_folder_without_metadata`, `test_publish_refreshes_projection_and_exposes_safe_summary`.
+  - Noncanonical Syosetu folders without current metadata are ignored; canonical publish projection tests remain green.
   - Full Vitest suite passes (609 frontend tests across 52 files).
 - **Verification:** Implementation and local verification complete (Ruff, Pyright, TypeScript typecheck, lint, and architecture guard all clean; all focused and full test suites green locally).
   Authenticated production read-only verification against the intended configured environment remains operator-pending.
+
+### DEBT-080 — Standard development extra does not install the test suite
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Tooling | Testing | Reproducibility
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** `pyproject.toml`, lockfiles, developer setup documentation
+- **Description:** Project instructions identify `pip install -e ".[dev]"` as
+  the standard editable development install, but tests import packages such as
+  Hypothesis that are available only in the separate `test` extra. A fresh
+  `.[dev]` environment therefore fails during test collection.
+- **Completion criteria:** Choose one canonical local-development install,
+  align extras and documentation, regenerate lockfiles, and prove a clean
+  environment can collect and run the documented focused and full suites.
+
+### DEBT-081 — Frontend hook dependency warnings remain in production builds
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Frontend | Quality
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** Admin activity, library, requests, auth guard, and shared
+  table-sort components
+- **Description:** The production build succeeds but reports multiple
+  `react-hooks/exhaustive-deps` warnings for unstable row expressions, missing
+  dependencies, unstable callbacks, and unnecessary dependencies.
+- **Completion criteria:** Resolve each hook dependency warning with stable
+  values/callbacks and focused behavior tests; production build emits no hook
+  dependency warnings.

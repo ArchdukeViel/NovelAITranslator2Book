@@ -297,7 +297,7 @@ export default function HomePage() {
                   chapterCount={featuredNovel.chapter_count}
                   translatedCount={featuredNovel.translated_count}
                   source={featuredNovel.language}
-                  status={featuredNovel.status}
+                  status={featuredNovel.publication_status}
                 />
 
                 <p className="mt-5 max-w-2xl line-clamp-3 text-sm leading-6 text-foreground/80 drop-shadow md:text-base md:leading-7">
@@ -397,7 +397,7 @@ export default function HomePage() {
                         title={novel.title}
                         sourceTitle={novel.source_title}
                         language={novel.language}
-                        status={novel.status}
+                        status={novel.publication_status}
                         genres={novel.genres}
                         className="rounded-none border-0 shadow-none"
                       />

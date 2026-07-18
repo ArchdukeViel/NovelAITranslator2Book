@@ -57,7 +57,7 @@ export function NovelCard({ novel }: NovelCardProps) {
               genres={genres}
               language={novel.language}
               sourceTitle={sourceTitle}
-              status={novel.status}
+              status={novel.publication_status}
               title={title}
             />
           )}
@@ -81,7 +81,7 @@ export function NovelCard({ novel }: NovelCardProps) {
             chapterCount={novel.chapter_count}
             translatedCount={novel.translated_count}
             source={novel.source_key ?? novel.language}
-            status={novel.status}
+            status={novel.publication_status}
             updatedAt={novel.updated_at}
           />
 

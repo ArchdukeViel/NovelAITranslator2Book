@@ -35,11 +35,25 @@ def _metadata_chapter_count(meta: dict[str, Any]) -> int:
 
 
 _INSPECTION_EXCLUDED_KEY_PARTS = (
-    "api_key", "authorization", "credential", "cookie", "password", "secret", "session", "token",
+    "api_key",
+    "authorization",
+    "credential",
+    "cookie",
+    "password",
+    "secret",
+    "session",
+    "token",
 )
 _INSPECTION_EXCLUDED_KEYS = {
-    "html", "page_html", "raw_html", "raw_payload", "raw_source", "raw_source_html",
-    "response_body", "source_body", "source_html",
+    "html",
+    "page_html",
+    "raw_html",
+    "raw_payload",
+    "raw_source",
+    "raw_source_html",
+    "response_body",
+    "source_body",
+    "source_html",
 }
 _DETAIL_MAX_STRING_LENGTH = 1000
 _DETAIL_MAX_LIST_ITEMS = 25
@@ -55,8 +69,7 @@ def _is_sensitive_metadata_key(key: str) -> bool:
 def _is_raw_payload_key(key: str) -> bool:
     lowered = key.lower()
     return lowered in _INSPECTION_EXCLUDED_KEYS or (
-        ("html" in lowered or "payload" in lowered or "source_body" in lowered)
-        and "title" not in lowered
+        ("html" in lowered or "payload" in lowered or "source_body" in lowered) and "title" not in lowered
     )
 
 
@@ -74,7 +87,12 @@ def _safe_metadata_keys(meta: dict[str, Any]) -> list[str]:
 
 
 def _sanitize_metadata_value(
-    key: str, value: Any, *, warnings: list[str], path: str, depth: int = 0,
+    key: str,
+    value: Any,
+    *,
+    warnings: list[str],
+    path: str,
+    depth: int = 0,
 ) -> Any:
     if _is_sensitive_metadata_key(key):
         warnings.append(f"redacted:{path}")
@@ -99,9 +117,7 @@ def _sanitize_metadata_value(
         if len(value) > _DETAIL_MAX_LIST_ITEMS:
             warnings.append(f"truncated:{path}")
         return [
-            _sanitize_metadata_value(
-                str(index), item, warnings=warnings, path=f"{path}.{index}", depth=depth + 1
-            )
+            _sanitize_metadata_value(str(index), item, warnings=warnings, path=f"{path}.{index}", depth=depth + 1)
             for index, item in enumerate(items)
         ]
     if isinstance(value, dict):
@@ -115,8 +131,11 @@ def _sanitize_metadata_value(
         for child_key, child_value in items[:_DETAIL_MAX_DICT_ITEMS]:
             child_key_text = str(child_key)
             sanitized_value = _sanitize_metadata_value(
-                child_key_text, child_value, warnings=warnings,
-                path=f"{path}.{child_key_text}", depth=depth + 1,
+                child_key_text,
+                child_value,
+                warnings=warnings,
+                path=f"{path}.{child_key_text}",
+                depth=depth + 1,
             )
             if sanitized_value is not None:
                 sanitized[child_key_text] = sanitized_value
@@ -131,21 +150,15 @@ def _sanitize_metadata_snapshot(
     sanitized: dict[str, Any] = {}
     for key, value in meta.items():
         key_text = str(key)
-        sanitized_value = _sanitize_metadata_value(
-            key_text, value, warnings=warnings, path=key_text
-        )
+        sanitized_value = _sanitize_metadata_value(key_text, value, warnings=warnings, path=key_text)
         if sanitized_value is not None:
             sanitized[key_text] = sanitized_value
     return sanitized, sorted(sanitized.keys()), sorted(set(warnings))
 
 
-def _source_metadata_warnings(
-    meta: dict[str, Any], *, metadata_missing: bool
-) -> list[str]:
+def _source_metadata_warnings(meta: dict[str, Any], *, metadata_missing: bool) -> list[str]:
     warnings: list[str] = []
-    publication_status = normalize_publication_status(
-        meta.get("publication_status") or meta.get("status")
-    )
+    publication_status = normalize_publication_status(meta.get("publication_status"))
     if metadata_missing:
         warnings.append("metadata_missing")
     if not _optional_string(meta.get("source_url")):
@@ -160,11 +173,12 @@ def _source_metadata_warnings(
 
 
 def _source_metadata_inspection_payload(
-    novel_id: str, meta: dict[str, Any], *, metadata_missing: bool,
+    novel_id: str,
+    meta: dict[str, Any],
+    *,
+    metadata_missing: bool,
 ) -> dict[str, Any]:
-    publication_status = normalize_publication_status(
-        meta.get("publication_status") or meta.get("status")
-    )
+    publication_status = normalize_publication_status(meta.get("publication_status"))
     source_title = _optional_string(meta.get("title"))
     synopsis = _optional_string(meta.get("description")) or _optional_string(meta.get("synopsis"))
     author = _optional_string(meta.get("translated_author")) or _optional_string(meta.get("author"))
@@ -210,18 +224,14 @@ def _validate_novel_id(novel_id: str) -> str:
 class LibraryService:
     """Business logic for novel library CRUD and metadata inspection."""
 
-    def __init__(
-        self, *, storage: StorageService, db_session: Session | None = None
-    ) -> None:
+    def __init__(self, *, storage: StorageService, db_session: Session | None = None) -> None:
         self.storage = storage
         self.db_session = db_session
 
     # -- novel listing / summary -------------------------------------------------
 
     def _db_novel_summary(self, novel: Novel) -> dict[str, Any]:
-        publication_status = normalize_publication_status(
-            novel.publication_status or novel.status
-        )
+        publication_status = normalize_publication_status(novel.publication_status)
         meta = self.storage.load_metadata(novel.slug) or {}
         return {
             "novel_id": novel.slug,
@@ -262,15 +272,11 @@ class LibraryService:
         )
         return int(session.scalar(stmt) or 0)
 
-    def _storage_novel_summary(
-        self, novel_id: str, meta: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _storage_novel_summary(self, novel_id: str, meta: dict[str, Any]) -> dict[str, Any]:
         scraped_count = self.storage.count_stored_chapters(novel_id)
         translated_count = self.storage.count_translated_chapters(novel_id)
         chapter_count = _metadata_chapter_count(meta) or max(scraped_count, translated_count)
-        publication_status = normalize_publication_status(
-            meta.get("publication_status") or meta.get("status")
-        )
+        publication_status = normalize_publication_status(meta.get("publication_status"))
         if not meta:
             logger.info(
                 "Listing novel %s from files because metadata is missing or unreadable.",
@@ -278,12 +284,9 @@ class LibraryService:
             )
         return {
             "novel_id": novel_id,
-            "title": _optional_string(meta.get("translated_title"))
-            or _optional_string(meta.get("title"))
-            or novel_id,
+            "title": _optional_string(meta.get("translated_title")) or _optional_string(meta.get("title")) or novel_id,
             "source_title": _optional_string(meta.get("title")),
-            "author": _optional_string(meta.get("translated_author"))
-            or _optional_string(meta.get("author")),
+            "author": _optional_string(meta.get("translated_author")) or _optional_string(meta.get("author")),
             "source_key": _optional_string(meta.get("source")),
             "source_url": _optional_string(meta.get("source_url")),
             "publication_status": publication_status,
@@ -299,15 +302,10 @@ class LibraryService:
 
     # -- public API ---------------------------------------------------------------
 
-    def list_novels(
-        self, *, limit: int | None = None, offset: int = 0
-    ) -> list[dict[str, Any]]:
+    def list_novels(self, *, limit: int | None = None, offset: int = 0) -> list[dict[str, Any]]:
         if self.db_session is None:
             return self._list_storage_novels(limit=limit, offset=offset)
-        query = (
-            self.db_session.query(Novel)
-            .order_by(Novel.updated_at.desc(), Novel.id.desc())
-        )
+        query = self.db_session.query(Novel).order_by(Novel.updated_at.desc(), Novel.id.desc())
         count = query.count()
         if count > 0:
             if offset:
@@ -320,13 +318,9 @@ class LibraryService:
     def list_catalogued_novel_ids(self) -> list[str]:
         if self.db_session is None:
             return []
-        return list(
-            self.db_session.execute(select(Novel.slug).order_by(Novel.slug)).scalars().all()
-        )
+        return list(self.db_session.execute(select(Novel.slug).order_by(Novel.slug)).scalars().all())
 
-    def _list_storage_novels(
-        self, *, limit: int | None = None, offset: int = 0
-    ) -> list[dict[str, Any]]:
+    def _list_storage_novels(self, *, limit: int | None = None, offset: int = 0) -> list[dict[str, Any]]:
         summaries: list[dict[str, Any]] = []
         for novel_id in self.storage.list_novels():
             meta = self.storage.load_metadata(novel_id) or {}
@@ -341,20 +335,14 @@ class LibraryService:
             return None
         payload = dict(meta)
         if self.db_session is not None:
-            novel = (
-                self.db_session.query(Novel)
-                .filter_by(slug=novel_id)
-                .one_or_none()
-            )
+            novel = self.db_session.query(Novel).filter_by(slug=novel_id).one_or_none()
             if novel is not None:
                 payload["glossary_status"] = novel.glossary_status
                 payload["glossary_revision"] = novel.glossary_revision
                 payload["glossary_pending_count"] = self._pending_glossary_count(novel)
                 chapter_records = {
                     c.chapter_number: c
-                    for c in self.db_session.query(ChapterModel)
-                    .filter(ChapterModel.novel_id == novel.id)
-                    .all()
+                    for c in self.db_session.query(ChapterModel).filter(ChapterModel.novel_id == novel.id).all()
                 }
                 enriched_chapters = []
                 for ch in payload.get("chapters", []):
@@ -372,19 +360,19 @@ class LibraryService:
         return payload
 
     def create_novel(
-        self, novel_id: str, title: str, source_url: str | None = None,
-        source_key: str | None = None, language: str = "ja",
+        self,
+        novel_id: str,
+        title: str,
+        source_url: str | None = None,
+        source_key: str | None = None,
+        language: str = "ja",
     ) -> dict[str, Any]:
         cleaned_novel_id = _validate_novel_id(novel_id)
         existing_meta = self.storage.load_metadata(cleaned_novel_id)
         if existing_meta is not None:
             raise ValueError("Novel already exists")
         if self.db_session is not None:
-            existing_db = (
-                self.db_session.query(Novel)
-                .filter_by(slug=cleaned_novel_id)
-                .one_or_none()
-            )
+            existing_db = self.db_session.query(Novel).filter_by(slug=cleaned_novel_id).one_or_none()
             if existing_db is not None:
                 raise ValueError("Novel already exists")
         minimal_meta: dict[str, Any] = {
@@ -397,9 +385,9 @@ class LibraryService:
         }
         self.storage.save_metadata(cleaned_novel_id, minimal_meta)
         if self.db_session is not None:
-            novel = CatalogService(
-                storage=self.storage, session=self.db_session
-            ).get_or_create_novel(cleaned_novel_id, minimal_meta)
+            novel = CatalogService(storage=self.storage, session=self.db_session).get_or_create_novel(
+                cleaned_novel_id, minimal_meta
+            )
             self.db_session.flush()
             return {
                 "novel_id": cleaned_novel_id,

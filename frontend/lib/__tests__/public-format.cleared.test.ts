@@ -12,7 +12,7 @@ describe("Property 21: Clearing filters restores the unfiltered baseline", () =>
       fc.property(
         fc.record({
           q: fc.option(fc.string({ minLength: 0, maxLength: 100 }), { nil: undefined }),
-          status: fc.option(fc.string({ minLength: 0, maxLength: 50 }), { nil: undefined }),
+          publication_status: fc.option(fc.string({ minLength: 0, maxLength: 50 }), { nil: undefined }),
           sort_by: fc.option(fc.constantFrom("added_at", "title", "chapter_count"), { nil: undefined }),
           order: fc.option(fc.constantFrom("asc", "desc"), { nil: undefined }),
           min_chapters: fc.option(fc.integer({ min: 0, max: 500 }), { nil: undefined }),
@@ -29,7 +29,7 @@ describe("Property 21: Clearing filters restores the unfiltered baseline", () =>
 
           // Must not have any filter fields (undefined or absent)
           expect(cleared.q).toBeUndefined();
-          expect(cleared.status).toBeUndefined();
+          expect(cleared.publication_status).toBeUndefined();
           expect(cleared.sort_by).toBeUndefined();
           expect(cleared.order).toBeUndefined();
           expect(cleared.min_chapters).toBeUndefined();
@@ -45,7 +45,7 @@ describe("Property 21: Clearing filters restores the unfiltered baseline", () =>
       fc.property(
         fc.record({
           q: fc.option(fc.stringOf(fc.char(), { minLength: 1, maxLength: 80 }), { nil: undefined }),
-          status: fc.option(fc.constantFrom("ongoing", "completed", "hiatus"), { nil: undefined }),
+          publication_status: fc.option(fc.constantFrom("ongoing", "completed", "hiatus"), { nil: undefined }),
           sort_by: fc.option(fc.constantFrom("added_at", "title", "chapter_count"), { nil: undefined }),
           order: fc.option(fc.constantFrom("asc", "desc"), { nil: undefined }),
           page: fc.option(fc.integer({ min: 1, max: 500 }), { nil: undefined }),
@@ -57,7 +57,7 @@ describe("Property 21: Clearing filters restores the unfiltered baseline", () =>
 
           // Only page and page_size should be present
           expect(keys).not.toContain("q");
-          expect(keys).not.toContain("status");
+          expect(keys).not.toContain("publication_status");
           expect(keys).not.toContain("sort_by");
           expect(keys).not.toContain("order");
           expect(keys).not.toContain("min_chapters");

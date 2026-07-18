@@ -67,7 +67,7 @@ class TestGetOrCreateNovel:
             "title": "New Novel",
             "author": "Author A",
             "language": "ja",
-            "status": "ongoing",
+            "publication_status": "ongoing",
             "chapters": [
                 {"id": "ch001", "num": 1, "title": "Chapter 1"},
                 {"id": "ch002", "num": 2, "title": "Chapter 2"},
@@ -79,7 +79,6 @@ class TestGetOrCreateNovel:
         assert result.title == "New Novel"
         assert result.author == "Author A"
         assert result.publication_status == "ongoing"
-        assert result.status == "ongoing"
         assert result.chapter_count == 2
         assert result.translated_count == 0
 
@@ -97,7 +96,7 @@ class TestGetOrCreateNovel:
             "source_key": "syosetu",
             "source_url": "https://ncode.syosetu.com/n1234",
             "language": "ja",
-            "status": "completed",
+            "publication_status": "completed",
         }
         catalog.get_or_create_novel("sourced-novel", metadata)
         db_session.commit()
@@ -105,9 +104,7 @@ class TestGetOrCreateNovel:
         assert result.source_site == "syosetu"
         assert result.source_url == "https://ncode.syosetu.com/n1234"
 
-    def test_projects_translated_public_metadata_while_preserving_source_title(
-        self, catalog, db_session
-    ) -> None:
+    def test_projects_translated_public_metadata_while_preserving_source_title(self, catalog, db_session) -> None:
         metadata = {
             "title": "日本語の題名",
             "translated_title": "English Title",
@@ -174,7 +171,9 @@ class TestGetOrCreateNovel:
         st.sampled_from(["glossary_pending", "glossary_ready", "glossary_skipped"]),
         st.integers(min_value=0, max_value=10_000),
     )
-    def test_catalog_projection_carries_glossary_fields(self, storage, db_session, glossary_status: str, glossary_revision: int) -> None:
+    def test_catalog_projection_carries_glossary_fields(
+        self, storage, db_session, glossary_status: str, glossary_revision: int
+    ) -> None:
         slug = f"projected-glossary-{uuid4().hex}"
         novel = Novel(
             slug=slug,
@@ -206,11 +205,8 @@ class TestGetOrCreateNovel:
 
         result = db_session.query(Novel).filter_by(slug="finished-novel").one()
         assert result.publication_status == "completed"
-        assert result.status == "completed"
         assert result.source_updated_at is not None
-        assert result.source_updated_at.replace(tzinfo=UTC) == datetime(
-            2026, 6, 19, 1, 2, 3, tzinfo=UTC
-        )
+        assert result.source_updated_at.replace(tzinfo=UTC) == datetime(2026, 6, 19, 1, 2, 3, tzinfo=UTC)
 
     def test_updates_existing_publication_status_when_metadata_provides_it(
         self, catalog, db_session, seeded_novel
@@ -224,7 +220,6 @@ class TestGetOrCreateNovel:
         result = db_session.query(Novel).filter_by(slug="novel-001").one()
         assert result.id == seeded_novel.id
         assert result.publication_status == "unknown"
-        assert result.status == "unknown"
 
     def test_populates_latest_chapter_fields_from_latest_readable_translation(
         self, catalog, db_session, storage
@@ -239,7 +234,13 @@ class TestGetOrCreateNovel:
                 "chapters": [
                     {"id": "ch001", "num": 1, "title": "Raw 1", "translated_title": "Translated Title 1"},
                     {"id": "ch002", "num": 2, "title": "Raw 2"},
-                    {"id": "ch003", "num": 3, "title": "Raw 3", "translated_title": "Translated Title 3", "translated_at": "2026-06-19T01:02:03+00:00"},
+                    {
+                        "id": "ch003",
+                        "num": 3,
+                        "title": "Raw 3",
+                        "translated_title": "Translated Title 3",
+                        "translated_at": "2026-06-19T01:02:03+00:00",
+                    },
                 ],
             },
         )
@@ -253,9 +254,7 @@ class TestGetOrCreateNovel:
         assert result.latest_chapter_title == "Translated Title 3"
         assert result.latest_chapter_updated_at is not None
 
-    def test_latest_chapter_fields_remain_null_without_readable_translation(
-        self, catalog, db_session
-    ) -> None:
+    def test_latest_chapter_fields_remain_null_without_readable_translation(self, catalog, db_session) -> None:
         catalog.get_or_create_novel(
             "untranslated-novel",
             {
@@ -308,20 +307,14 @@ class TestGetOrCreateNovel:
 
 class TestSaveRawChapter:
     def test_saves_to_file_storage(self, catalog, db_session, seeded_novel, storage) -> None:
-        catalog.save_raw_chapter(
-            "novel-001", "ch001", "Chapter content here",
-            title="Chapter 1", chapter_number=1
-        )
+        catalog.save_raw_chapter("novel-001", "ch001", "Chapter content here", title="Chapter 1", chapter_number=1)
         db_session.commit()
         # File should exist in StorageService
         raw = storage.load_chapter("novel-001", "ch001")
         assert raw is not None
 
     def test_persists_storage_key_in_db(self, catalog, db_session, seeded_novel) -> None:
-        catalog.save_raw_chapter(
-            "novel-001", "ch001", "Chapter content",
-            title="Chapter 1", chapter_number=1
-        )
+        catalog.save_raw_chapter("novel-001", "ch001", "Chapter content", title="Chapter 1", chapter_number=1)
         db_session.commit()
         chapter = db_session.query(Chapter).filter_by(novel_id=seeded_novel.id).one()
         assert chapter.raw_storage_key is not None
@@ -344,9 +337,7 @@ class TestSaveRawChapter:
 
 
 class TestSaveTranslatedChapter:
-    def test_saves_translated_to_file_storage(
-        self, catalog, db_session, seeded_novel, storage
-    ) -> None:
+    def test_saves_translated_to_file_storage(self, catalog, db_session, seeded_novel, storage) -> None:
         # Save raw first so the chapter exists in file storage
         catalog.save_raw_chapter("novel-001", "ch001", "Raw content", chapter_number=1)
         db_session.commit()
@@ -404,13 +395,12 @@ def test_reconcile_catalog_projection_updates_stale_counts(storage, db_session, 
     seeded_novel.chapter_count = 0
     seeded_novel.translated_count = 0
     seeded_novel.publication_status = "unknown"
-    seeded_novel.status = "unknown"
     db_session.commit()
     storage.save_metadata(
         "novel-001",
         {
             "title": "Projection Repair",
-            "status": "completed",
+            "publication_status": "completed",
             "scraped_at": "2026-06-19T01:02:03+00:00",
             "chapters": [
                 {"id": "ch001", "num": 1, "title": "Chapter 1"},
@@ -523,7 +513,7 @@ def test_reconcile_catalog_projection_creates_db_row_from_storage_metadata(stora
         "storage-only",
         {
             "title": "Storage Only",
-            "status": "ongoing",
+            "publication_status": "ongoing",
             "chapters": [{"id": "ch001", "num": 1, "title": "Chapter 1"}],
         },
     )
@@ -550,13 +540,12 @@ def test_reconcile_catalog_projection_missing_novel_returns_none(storage, db_ses
 def test_reconcile_all_catalog_projections_dry_run_reports_without_commit(storage, db_session, seeded_novel) -> None:
     seeded_novel.chapter_count = 0
     seeded_novel.publication_status = "unknown"
-    seeded_novel.status = "unknown"
     db_session.commit()
     storage.save_metadata(
         "novel-001",
         {
             "title": "Dry Run Repair",
-            "status": "completed",
+            "publication_status": "completed",
             "chapters": [{"id": "ch001", "num": 1}],
         },
     )
@@ -579,13 +568,12 @@ def test_reconcile_all_catalog_projections_dry_run_reports_without_commit(storag
 def test_reconcile_all_catalog_projections_apply_updates_stale_fields(storage, db_session, seeded_novel) -> None:
     seeded_novel.chapter_count = 0
     seeded_novel.publication_status = "unknown"
-    seeded_novel.status = "unknown"
     db_session.commit()
     storage.save_metadata(
         "novel-001",
         {
             "title": "Apply Repair",
-            "status": "completed",
+            "publication_status": "completed",
             "chapters": [{"id": "ch001", "num": 1}, {"id": "ch002", "num": 2}],
         },
     )
@@ -605,7 +593,7 @@ def test_reconcile_all_catalog_projections_apply_creates_storage_metadata_row(st
         "storage-created",
         {
             "title": "Storage Created",
-            "status": "ongoing",
+            "publication_status": "ongoing",
             "chapters": [{"id": "ch001", "num": 1}],
         },
     )
@@ -620,7 +608,9 @@ def test_reconcile_all_catalog_projections_apply_creates_storage_metadata_row(st
     assert created.chapter_count == 1
 
 
-def test_reconcile_all_catalog_projections_deduplicates_db_and_storage_candidates(storage, db_session, seeded_novel) -> None:
+def test_reconcile_all_catalog_projections_deduplicates_db_and_storage_candidates(
+    storage, db_session, seeded_novel
+) -> None:
     storage.save_metadata(
         "novel-001",
         {
@@ -678,9 +668,7 @@ def test_reconcile_all_catalog_projections_limit_offset(storage, db_session) -> 
     assert result.changed[0].novel_id == "b-novel"
 
 
-def test_catalog_projection_migration_upgrade_backfill_and_downgrade(
-    tmp_path, monkeypatch
-) -> None:
+def test_catalog_projection_migration_upgrade_backfill_and_downgrade(tmp_path, monkeypatch) -> None:
     repo_root = Path(__file__).resolve().parents[2]
     alembic_cfg = Config(str(repo_root / "alembic.ini"))
     db_path = tmp_path / "catalog_projection.sqlite"
@@ -703,7 +691,7 @@ def test_catalog_projection_migration_upgrade_backfill_and_downgrade(
         )
     engine.dispose()
 
-    command.upgrade(alembic_cfg, "head")
+    command.upgrade(alembic_cfg, "f6a1b2c3d4e5")
     engine = create_engine(f"sqlite:///{db_path.as_posix()}")
     columns = {column["name"] for column in inspect(engine).get_columns("novels")}
     novel_indexes = {index["name"] for index in inspect(engine).get_indexes("novels")}
@@ -734,15 +722,19 @@ def test_catalog_projection_migration_upgrade_backfill_and_downgrade(
     }.issubset(chapter_indexes)
 
     with engine.begin() as conn:
-        rows = conn.execute(
-            text(
-                """
+        rows = (
+            conn.execute(
+                text(
+                    """
                 SELECT slug, publication_status, chapter_count, translated_count
                 FROM novels
                 ORDER BY slug
                 """
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
     assert rows == [
         {
             "slug": "completed-novel",
@@ -777,7 +769,7 @@ def test_catalog_projection_migration_upgrade_backfill_and_downgrade(
     assert "latest_chapter_updated_at" not in downgraded_columns
     engine.dispose()
 
-    command.upgrade(alembic_cfg, "head")
+    command.upgrade(alembic_cfg, "f6a1b2c3d4e5")
 
 
 def test_glossary_status_fields_migration_smoke(tmp_path, monkeypatch) -> None:
@@ -788,7 +780,7 @@ def test_glossary_status_fields_migration_smoke(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("DATABASE_URL", database_url)
     alembic_cfg.set_main_option("sqlalchemy.url", database_url)
 
-    command.upgrade(alembic_cfg, "head")
+    command.upgrade(alembic_cfg, "e1a2b3c4d5f6")
     engine = create_engine(f"sqlite:///{db_path.as_posix()}")
     columns = inspect(engine).get_columns("novels")
     column_types = {column["name"]: type(column["type"]).__name__ for column in columns}
@@ -804,9 +796,11 @@ def test_glossary_status_fields_migration_smoke(tmp_path, monkeypatch) -> None:
                 """
             )
         )
-        row = conn.execute(
-            text("SELECT glossary_status, glossary_revision FROM novels WHERE slug = 'smoke-novel'")
-        ).mappings().one()
+        row = (
+            conn.execute(text("SELECT glossary_status, glossary_revision FROM novels WHERE slug = 'smoke-novel'"))
+            .mappings()
+            .one()
+        )
 
     assert row["glossary_status"] == "glossary_pending"
     assert row["glossary_revision"] == 0

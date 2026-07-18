@@ -112,11 +112,7 @@ def _optional_string(value: object) -> str | None:
 
 
 def _metadata_public_title(novel_id: str, metadata: dict) -> str:
-    return (
-        _optional_string(metadata.get("translated_title"))
-        or _optional_string(metadata.get("title"))
-        or novel_id
-    )
+    return _optional_string(metadata.get("translated_title")) or _optional_string(metadata.get("title")) or novel_id
 
 
 def _metadata_original_title(metadata: dict) -> str | None:
@@ -199,12 +195,14 @@ def _record_projection_refresh_failure(
 ) -> None:
     """Record a projection refresh failure (non-raising)."""
     with suppress(Exception):
-        _PROJECTION_REFRESH_FAILURES.append({
-            "novel_id": novel_id,
-            "error": str(error),
-            "context": context,
-            "recorded_at": datetime.utcnow().isoformat(),
-        })
+        _PROJECTION_REFRESH_FAILURES.append(
+            {
+                "novel_id": novel_id,
+                "error": str(error),
+                "context": context,
+                "recorded_at": datetime.utcnow().isoformat(),
+            }
+        )
 
 
 def _clear_projection_refresh_failure(novel_id: str) -> None:
@@ -258,14 +256,10 @@ class CatalogService:
             The Novel ORM instance (added to session, not yet committed).
         """
         novel = self._session.query(Novel).filter_by(slug=novel_id).one_or_none()
-        has_publication_status = "publication_status" in metadata or "status" in metadata
-        publication_status = normalize_publication_status(
-            metadata.get("publication_status") or metadata.get("status")
-        )
+        has_publication_status = "publication_status" in metadata
+        publication_status = normalize_publication_status(metadata.get("publication_status"))
         source_updated_at = _metadata_datetime(
-            metadata.get("source_updated_at")
-            or metadata.get("scraped_at")
-            or metadata.get("updated_at")
+            metadata.get("source_updated_at") or metadata.get("scraped_at") or metadata.get("updated_at")
         )
         if novel is None:
             novel = Novel(
@@ -276,7 +270,6 @@ class CatalogService:
                 source_site=metadata.get("source_key"),
                 source_url=metadata.get("source_url"),
                 language=metadata.get("language", "ja"),
-                status=publication_status,
                 publication_status=publication_status,
                 source_updated_at=source_updated_at,
                 synopsis=_metadata_public_synopsis(metadata),
@@ -285,7 +278,6 @@ class CatalogService:
             self._session.flush()  # Ensure novel.id is available
         else:
             if has_publication_status:
-                novel.status = publication_status
                 novel.publication_status = publication_status
             if source_updated_at is not None:
                 novel.source_updated_at = source_updated_at
@@ -329,9 +321,7 @@ class CatalogService:
         Returns:
             The Chapter ORM instance (added to session, not yet committed).
         """
-        self._storage.save_chapter(
-            novel_id, chapter_id, content, title=title, source_key=source_key
-        )
+        self._storage.save_chapter(novel_id, chapter_id, content, title=title, source_key=source_key)
         storage_key = f"{novel_id}/{chapter_id}/raw"
         checksum = _sha256(content)
 
@@ -417,7 +407,9 @@ class CatalogService:
         if metadata:
             novel.title = _metadata_public_title(novel_id, metadata)
             novel.original_title = _metadata_original_title(metadata)
-            novel.author = _optional_string(metadata.get("translated_author")) or _optional_string(metadata.get("author"))
+            novel.author = _optional_string(metadata.get("translated_author")) or _optional_string(
+                metadata.get("author")
+            )
             novel.synopsis = _metadata_public_synopsis(metadata)
         novel.chapter_count = chapter_count
         novel.translated_count = translated_count
@@ -447,22 +439,14 @@ class CatalogService:
         if metadata is not None and novel is None:
             novel = self.get_or_create_novel(novel_id, metadata)
         elif metadata is not None and novel is not None:
-            publication_status = normalize_publication_status(
-                metadata.get("publication_status") or metadata.get("status")
-            )
-            novel.status = publication_status
+            publication_status = normalize_publication_status(metadata.get("publication_status"))
             novel.publication_status = publication_status
             novel.source_updated_at = _metadata_datetime(
-                metadata.get("source_updated_at")
-                or metadata.get("scraped_at")
-                or metadata.get("updated_at")
+                metadata.get("source_updated_at") or metadata.get("scraped_at") or metadata.get("updated_at")
             )
             self.recompute_catalog_projection(novel_id, novel=novel, metadata=metadata)
         elif novel is not None:
-            publication_status = normalize_publication_status(
-                novel.publication_status or novel.status
-            )
-            novel.status = publication_status
+            publication_status = normalize_publication_status(novel.publication_status)
             novel.publication_status = publication_status
             self.recompute_catalog_projection(novel_id, novel=novel, metadata={})
 
@@ -473,9 +457,7 @@ class CatalogService:
         self._session.flush()
         after = _projection_snapshot(novel)
         changed_fields = [
-            field
-            for field in CATALOG_PROJECTION_FIELDS
-            if before is None or before.get(field) != after.get(field)
+            field for field in CATALOG_PROJECTION_FIELDS if before is None or before.get(field) != after.get(field)
         ]
         return CatalogProjectionReconciliation(
             novel_id=novel_id,
@@ -641,8 +623,7 @@ class CatalogService:
             latest = {
                 "id": chapter_id,
                 "number": chapter.get("num") or (index + 1),
-                "title": _optional_string(chapter.get("translated_title"))
-                or _optional_string(chapter.get("title")),
+                "title": _optional_string(chapter.get("translated_title")) or _optional_string(chapter.get("title")),
                 "updated_at": chapter_updated_at,
             }
 
