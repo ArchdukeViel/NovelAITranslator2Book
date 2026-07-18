@@ -11,7 +11,7 @@ from typing import Any
 from novelai.config.workflow_profiles import normalize_workflow_defaults, normalize_workflow_profiles
 from novelai.core.security import validate_storage_identifier
 from novelai.sources.status import normalize_publication_status
-from novelai.storage.common import _utc_now_iso
+from novelai.storage.common import _utc_now_iso, validate_storage_schema_version
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +90,11 @@ def _metadata_history_entry(self: Any, path: Path, *, snapshot_id: str, is_curre
         return None
     if not isinstance(payload, dict):
         return None
+    validate_storage_schema_version(
+        payload,
+        current_version=self.SCHEMA_VERSION,
+        artifact_type="novel metadata",
+    )
 
     publication_status = normalize_publication_status(payload.get("publication_status") or payload.get("status"))
     return {
@@ -434,6 +439,11 @@ def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
     if not isinstance(payload, dict):
         logger.warning("Metadata for novel %s at %s is not a JSON object.", novel_id, path)
         return self._recover_metadata_from_backup(novel_id, path)
+    validate_storage_schema_version(
+        payload,
+        current_version=self.SCHEMA_VERSION,
+        artifact_type="novel metadata",
+    )
     try:
         return self._normalize_loaded_metadata(payload, novel_id)
     except OSError as exc:
@@ -476,6 +486,11 @@ def _load_latest_valid_metadata_backup(self: Any, novel_id: str) -> tuple[dict[s
             logger.warning("Skipping invalid metadata backup %s: %s", backup_path, exc)
             continue
         if isinstance(payload, dict):
+            validate_storage_schema_version(
+                payload,
+                current_version=self.SCHEMA_VERSION,
+                artifact_type="novel metadata backup",
+            )
             return payload, backup_path
     return None
 

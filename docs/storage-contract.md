@@ -271,6 +271,11 @@ Path: `edit_history` list inside the chapter bundle. Written by
 - Required fields must be present in newly written artifacts.
 - Legacy artifacts load if they match supported historical shapes
   (`raw/` / `translated/` fallback, legacy metadata fields).
+- Unversioned historical metadata, chapter, glossary, and runtime records remain
+  readable. Explicit `schema_version` values must be positive integers at or below
+  the reader's current version. Invalid or newer versions fail closed before a
+  write can replace the existing artifact; operators must upgrade the application
+  or run an approved storage migration rather than editing canonical JSON by hand.
 - SQL projection state can be rebuilt from canonical file storage where existing
   code supports it.
 

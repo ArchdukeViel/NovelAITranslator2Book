@@ -11,6 +11,7 @@ import pytest
 
 from novelai.infrastructure.http.cache import FetchCacheEntry
 from novelai.storage import StorageFetchCache
+from novelai.storage.common import UnsupportedStorageSchemaVersionError, validate_storage_schema_version
 from novelai.storage.service import StorageService
 from tests.conftest import TESTS_TMP_ROOT
 
@@ -210,6 +211,26 @@ def test_translation_chunk_records_without_paragraph_hashes_load_safely(storage:
 
     assert chunks[0]["paragraph_hashes"] == []
     assert storage.read_translation_chunks("novel1")[0]["paragraph_hashes"] == []
+
+
+def test_runtime_records_reject_future_schema_without_overwrite(storage: StorageService) -> None:
+    path = storage._translation_runtime_dir() / "chunks.json"
+    future_payload = {
+        "novel1:future": {
+            "schema_version": 2,
+            "novel_id": "novel1",
+            "chunk_id": "future",
+            "status": "pending",
+        }
+    }
+    path.write_text(json.dumps(future_payload), encoding="utf-8")
+
+    with pytest.raises(UnsupportedStorageSchemaVersionError):
+        storage.read_translation_chunks("novel1")
+    with pytest.raises(UnsupportedStorageSchemaVersionError):
+        storage.save_translation_chunks("novel1", [{"chunk_id": "new", "source_text": "text"}])
+
+    assert json.loads(path.read_text(encoding="utf-8")) == future_payload
 
 
 def test_translation_runtime_records_are_scoped_by_run_and_chapter(storage: StorageService) -> None:
@@ -491,6 +512,43 @@ def test_legacy_metadata_fixture_loads(storage: StorageService) -> None:
     assert loaded["title"] == "Legacy Source Novel"
 
 
+def test_metadata_supported_older_schema_loads(storage: StorageService) -> None:
+    payload = _load_fixture("legacy_metadata.json")
+    payload["schema_version"] = 1
+    _write_metadata(storage, "legacy-novel-1", payload)
+
+    loaded = storage.load_metadata("legacy-novel-1")
+
+    assert loaded is not None
+    assert loaded["schema_version"] == 1
+
+
+def test_metadata_rejects_future_schema_without_overwrite(storage: StorageService) -> None:
+    future_payload = {
+        **_load_fixture("legacy_metadata.json"),
+        "schema_version": storage.SCHEMA_VERSION + 1,
+    }
+    _write_metadata(storage, "legacy-novel-1", future_payload)
+    path = storage._novel_dir("legacy-novel-1") / "metadata.json"
+
+    with pytest.raises(UnsupportedStorageSchemaVersionError):
+        storage.load_metadata("legacy-novel-1")
+    with pytest.raises(UnsupportedStorageSchemaVersionError):
+        storage.save_metadata("legacy-novel-1", {"title": "must not overwrite"})
+
+    assert json.loads(path.read_text(encoding="utf-8")) == future_payload
+
+
+@pytest.mark.parametrize("invalid_version", [0, -1, "2", True])
+def test_explicit_invalid_storage_schema_versions_are_rejected(invalid_version: object) -> None:
+    with pytest.raises(UnsupportedStorageSchemaVersionError):
+        validate_storage_schema_version(
+            {"schema_version": invalid_version},
+            current_version=2,
+            artifact_type="test artifact",
+        )
+
+
 # ── Metadata backup contract ────────────────────────────────────────────────
 
 
@@ -572,6 +630,57 @@ def test_legacy_raw_chapter_fixture_loads(storage: StorageService) -> None:
     assert loaded is not None
     assert_raw_chapter_contract(loaded)
     assert loaded["text"] == "Synthetic legacy raw text."
+
+
+def test_chapter_rejects_future_schema_without_overwrite(storage: StorageService) -> None:
+    future_payload = {
+        **_load_fixture("legacy_chapter_bundle.json"),
+        "schema_version": storage.SCHEMA_VERSION + 1,
+    }
+    _write_chapter_payload(storage, "legacy-novel-1", "legacy-ch-1", future_payload)
+    path = storage._chapter_path("legacy-novel-1", "legacy-ch-1")
+
+    with pytest.raises(UnsupportedStorageSchemaVersionError):
+        storage.load_chapter("legacy-novel-1", "legacy-ch-1")
+    with pytest.raises(UnsupportedStorageSchemaVersionError):
+        storage.save_chapter("legacy-novel-1", "legacy-ch-1", "must not overwrite")
+
+    assert json.loads(path.read_text(encoding="utf-8")) == future_payload
+
+
+def test_glossary_legacy_shapes_load_and_future_schema_is_preserved(storage: StorageService) -> None:
+    path = storage._novel_dir("legacy-novel-1") / "glossary.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    legacy_entries = [{"source": "猫", "target": "cat"}]
+    path.write_text(json.dumps(legacy_entries), encoding="utf-8")
+    assert storage.load_glossary("legacy-novel-1") == legacy_entries
+
+    future_payload = {
+        "schema_version": storage.SCHEMA_VERSION + 1,
+        "entries": legacy_entries,
+    }
+    path.write_text(json.dumps(future_payload), encoding="utf-8")
+    with pytest.raises(UnsupportedStorageSchemaVersionError):
+        storage.load_glossary("legacy-novel-1")
+    with pytest.raises(UnsupportedStorageSchemaVersionError):
+        storage.save_glossary("legacy-novel-1", [])
+
+    assert json.loads(path.read_text(encoding="utf-8")) == future_payload
+
+
+def test_current_storage_writers_emit_supported_schema_versions(storage: StorageService) -> None:
+    metadata_path = storage.save_metadata("versioned-novel", {"title": "Versioned"})
+    chapter_path = storage.save_chapter("versioned-novel", "1", "Raw text")
+    glossary_path = storage.save_glossary("versioned-novel", [{"source": "猫", "target": "cat"}])
+    runtime_record = storage.save_translation_chunks(
+        "versioned-novel",
+        [{"chunk_id": "c0001", "source_text": "Raw text"}],
+    )[0]
+
+    assert json.loads(metadata_path.read_text(encoding="utf-8"))["schema_version"] == storage.SCHEMA_VERSION
+    assert json.loads(chapter_path.read_text(encoding="utf-8"))["schema_version"] == storage.SCHEMA_VERSION
+    assert json.loads(glossary_path.read_text(encoding="utf-8"))["schema_version"] == storage.SCHEMA_VERSION
+    assert runtime_record["schema_version"] == 1
 
 
 # ── Image asset and manifest contract ───────────────────────────────────────
@@ -686,4 +795,3 @@ def test_legacy_edit_history_fixture_loads(storage: StorageService) -> None:
     assert len(history) == 1
     assert_edit_history_contract(history[0])
     assert history[0]["action"] == "manual_edit"
-

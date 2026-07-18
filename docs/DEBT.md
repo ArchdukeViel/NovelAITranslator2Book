@@ -127,10 +127,16 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone 2c (Backup & Storage)
 - **Category:** Storage | Data Migration
 - **Priority:** Medium
-- **Status:** Ongoing
+- **Status:** Resolved
 - **Affected areas:** `backend/src/novelai/storage/`
 - **Description:** Lack of strict schema version enforcement for saved JSON models.
 - **Completion criteria:** Storage read/write tests verify compatibility with older formats.
+- **Resolution:** Canonical metadata, chapter bundles, glossaries, and versioned
+  runtime records now accept supported older or unversioned historical shapes,
+  reject invalid and future schema versions through a storage-layer error, and
+  prevent attempted writes from replacing incompatible artifacts. Contract tests
+  cover legacy reads, current-version writes, invalid/future rejection, and
+  preservation after failed writes.
 
 ### DEBT-023 — Admin provider credential UI missing
 - **Milestone:** Milestone M5 (Admin Operations)

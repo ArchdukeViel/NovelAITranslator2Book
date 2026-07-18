@@ -5,6 +5,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from novelai.storage.common import validate_storage_schema_version
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,6 +15,8 @@ def save_glossary(self: Any, novel_id: str, entries: list[dict[str, Any]]) -> Pa
     novel_dir = self._novel_dir(novel_id)
     self._mkdirs(novel_dir)
     path = novel_dir / "glossary.json"
+    if self._path_exists(path):
+        self.load_glossary(novel_id)
     self._write_text(
         path,
         json.dumps({"schema_version": self.SCHEMA_VERSION, "entries": entries}, ensure_ascii=False, indent=2),
@@ -28,6 +32,11 @@ def load_glossary(self: Any, novel_id: str) -> list[dict[str, Any]]:
     try:
         data = json.loads(self._read_text(path))
         if isinstance(data, dict) and isinstance(data.get("entries"), list):
+            validate_storage_schema_version(
+                data,
+                current_version=self.SCHEMA_VERSION,
+                artifact_type="glossary",
+            )
             return data["entries"]
         if isinstance(data, list):
             return data

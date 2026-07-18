@@ -8,7 +8,7 @@ from typing import Any
 from novelai.core.chapter_state import ChapterState
 from novelai.core.security import validate_storage_identifier
 from novelai.services.query_builder import ChapterQueryBuilder
-from novelai.storage.common import _utc_now_iso
+from novelai.storage.common import _utc_now_iso, validate_storage_schema_version
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +78,11 @@ def _load_chapter_bundle(self: Any, novel_id: str, chapter_id: str) -> dict[str,
         try:
             data = json.loads(self._read_text(chapter_path))
             if isinstance(data, dict):
+                validate_storage_schema_version(
+                    data,
+                    current_version=self.SCHEMA_VERSION,
+                    artifact_type="chapter bundle",
+                )
                 return self._normalize_media_fields(data)
         except (json.JSONDecodeError, OSError):
             logger.warning("Failed to parse chapter bundle %s/%s.", novel_id, chapter_id)
@@ -247,6 +252,11 @@ def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
                 continue
             if not isinstance(payload, dict):
                 continue
+            validate_storage_schema_version(
+                payload,
+                current_version=self.SCHEMA_VERSION,
+                artifact_type="chapter bundle",
+            )
             if isinstance(payload.get("raw"), dict) or isinstance(payload.get("translated"), dict):
                 ids.add(self._logical_id_from_stem(chapter_path.stem))
 

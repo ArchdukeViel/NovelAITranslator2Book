@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from novelai.infrastructure.http.cache import FetchCacheEntry
-from novelai.storage.common import _utc_now_iso
+from novelai.storage.common import _utc_now_iso, validate_storage_schema_version
 
 logger = logging.getLogger(__name__)
 
@@ -87,12 +87,32 @@ def _read_json_file(self: Any, path: Any, default: Any) -> Any:
         if not text.strip():
             logger.debug("Empty/whitespace file: %s — returning default.", path.name)
             return default
-        return json.loads(text)
+        payload = json.loads(text)
+        _validate_runtime_schema_versions(payload, artifact_type=path.name)
+        return payload
     except json.JSONDecodeError:
         logger.warning("Corrupt JSON file: %s — returning default.", path.name)
         return default
     except OSError:
         return default
+
+
+def _validate_runtime_schema_versions(payload: Any, *, artifact_type: str) -> None:
+    """Validate top-level runtime records while accepting unversioned legacy records."""
+    if isinstance(payload, dict) and "schema_version" in payload:
+        records = [payload]
+    elif isinstance(payload, dict):
+        records = [item for item in payload.values() if isinstance(item, dict)]
+    elif isinstance(payload, list):
+        records = [item for item in payload if isinstance(item, dict)]
+    else:
+        records = []
+    for record in records:
+        validate_storage_schema_version(
+            record,
+            current_version=SCHEMA_VERSION,
+            artifact_type=f"runtime artifact {artifact_type}",
+        )
 
 
 def _as_dict(value: dict[str, Any] | Any) -> dict[str, Any]:
