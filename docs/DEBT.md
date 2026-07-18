@@ -407,19 +407,23 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M0 (CI Confidence)
 - **Category:** Database | CI/CD
 - **Priority:** Blocker
-- **Status:** Pending
+- **Status:** Ongoing
 - **Affected areas:** `backend/alembic/versions/`, `.github/workflows/ci.yml`
 - **Description:** The latest clean PostgreSQL CI migration fails because a
   migration expects Supabase's `auth` schema, while the vanilla PostgreSQL 16
   service does not provide it.
 - **Completion criteria:** A clean PostgreSQL service and the hosted Supabase
   project both migrate to head through an explicit, tested compatibility path.
+- **Implementation note (2026-07-18):** CI now installs a minimal, fail-closed
+  `auth.uid()` compatibility shim before Alembic runs on vanilla PostgreSQL.
+  The shim and workflow wiring have focused tests. Hosted CI confirmation on a
+  fresh run remains required before resolving this debt.
 
 ### DEBT-077 — CI exclusions and workflow success signals are misleading
 - **Milestone:** Milestone M0 (CI Confidence)
 - **Category:** Testing | CI/CD
 - **Priority:** Blocker
-- **Status:** Pending
+- **Status:** Ongoing
 - **Affected areas:** `.github/workflows/ci.yml`, `.github/workflows/build.yml`
 - **Description:** Known test exclusions and the aggregate build job can report
   success without proving the complete behavior or image publication implied by
@@ -427,12 +431,16 @@ Deferred items are tracked but excluded from the active count.
 - **Completion criteria:** Every exclusion is justified or removed, migration
   and auth regressions run in CI, and aggregate jobs distinguish a skipped
   publication from a verified image push.
+- **Implementation note (2026-07-18):** Previously excluded files now run in
+  explicit bounded matrix shards, Docker builds depend on both backend suites,
+  and the aggregate publication result fails unless image publication succeeds.
+  A hosted Actions run remains required before resolving this debt.
 
 ### DEBT-078 — GitHub repository controls need hardening
 - **Milestone:** Milestone M0 (CI Confidence)
 - **Category:** Security | Supply Chain | CI/CD
 - **Priority:** Blocker
-- **Status:** Pending
+- **Status:** Ongoing
 - **Affected areas:** `.github/workflows/`, GitHub repository settings
 - **Description:** The default branch has no ruleset, Actions allows all actions,
   and immutable SHA pinning is not required. Live repository changes remain an
@@ -440,6 +448,10 @@ Deferred items are tracked but excluded from the active count.
 - **Completion criteria:** Required checks and review rules protect the default
   branch, Actions permissions are least-privilege, third-party actions are
   pinned or restricted, and security scanners remain green.
+- **Implementation note (2026-07-18):** Tracked workflows now pin actions to
+  immutable commit SHAs and scope write permissions to the publication job.
+  The default-branch ruleset, allowed-actions policy, and live scanner status
+  still require owner verification in GitHub settings.
 
 ### DEBT-079 — Free preview and production deployment acceptance missing
 - **Milestone:** Milestone M3.5 (Hosted Topology)

@@ -51,7 +51,8 @@ class TestProviderRegistry:
     def test_register_provider_ignores_non_gemini_with_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         with caplog.at_level("WARNING", logger="novelai.providers.registry"):
             register_provider("openai", lambda: _FakeProvider())
-        assert any("openai" in record.message for record in caplog.records)
+        assert any("only Gemini is available" in record.message for record in caplog.records)
+        assert all("openai" not in record.message for record in caplog.records)
 
     def test_get_provider_default_is_gemini(self) -> None:
         provider = get_provider(None)

@@ -75,7 +75,6 @@ def test_cleanup_test_artifacts_removes_known_directories():
             ".pytest_cache",
             "tests/.pytest_cache",
             "tests/.tmp/fixtures",
-            "tests/.tmp",
             "tests_tmp",
             "pytest-cache-files-abcd1234",
         }

@@ -79,7 +79,15 @@ class AuthService:
 
     # -- registration -----------------------------------------------------------
 
-    def register(self, email: str, password: str, display_name: str | None = None) -> dict[str, Any]:
+    def register(
+        self,
+        email: str,
+        password: str,
+        display_name: str | None = None,
+        *,
+        ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> dict[str, Any]:
         email = self.validate_email(email)
         self.validate_password(password)
 
@@ -110,6 +118,8 @@ class AuthService:
                 token_hash=self.hash_email_verification_token(raw_token),
                 created_at=now,
                 expires_at=now + timedelta(hours=_EMAIL_VERIFICATION_EXPIRES_HOURS),
+                request_ip=ip,
+                user_agent=user_agent,
             )
         )
         self.db_session.flush()
@@ -291,13 +301,41 @@ class AuthService:
         if self.mailer is None:
             logger.info("Password reset email delivery skipped (no mailer configured) for user_id=%s.", user_id)
             return
-        self.mailer.send_password_reset_email(email=email, token=token)
+        try:
+            result = self.mailer.send_password_reset_email(email=email, token=token)
+        except Exception as exc:
+            logger.warning(
+                "Password reset email delivery failed for user_id=%s error=%s.",
+                user_id,
+                exc.__class__.__name__,
+            )
+            return
+        if not result.delivered:
+            logger.info(
+                "Password reset email not delivered for user_id=%s provider=%s.",
+                user_id,
+                result.provider,
+            )
 
     def _deliver_email_verification_email(self, email: str, token: str, user_id: int) -> None:
         if self.mailer is None:
             logger.info("Email verification delivery skipped (no mailer configured) for user_id=%s.", user_id)
             return
-        self.mailer.send_email_verification_email(email=email, token=token)
+        try:
+            result = self.mailer.send_email_verification_email(email=email, token=token)
+        except Exception as exc:
+            logger.warning(
+                "Email verification delivery failed for user_id=%s error=%s.",
+                user_id,
+                exc.__class__.__name__,
+            )
+            return
+        if not result.delivered:
+            logger.info(
+                "Email verification not delivered for user_id=%s provider=%s.",
+                user_id,
+                result.provider,
+            )
 
     # -- Google OAuth -----------------------------------------------------------
 

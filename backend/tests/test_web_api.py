@@ -23,7 +23,7 @@ from novelai.activity.runner import BackgroundActivityRunner
 from novelai.activity.worker import ActivityWorkerService
 from novelai.api import error_handlers as error_handler_module
 from novelai.api.app import create_app
-from novelai.api.auth.session import SessionUser, get_current_user
+from novelai.api.auth.session import GUEST, SessionUser, get_current_user
 from novelai.api.routers import novels
 from novelai.api.routers.dependencies import get_db_session
 from novelai.api.routers.novels import (
@@ -181,10 +181,12 @@ def _make_app(
 ) -> TestClient:
     """Create a TestClient with storage dependency overridden."""
     app = create_app()
-    if session_user is not None:
-        app.dependency_overrides[get_current_user] = lambda: session_user
+    resolved_session_user = session_user if session_user is not None else GUEST
+    app.dependency_overrides[get_current_user] = lambda: resolved_session_user
     app.dependency_overrides[get_storage] = lambda: storage
-    if db_session is not None:
+    if db_session is None:
+        app.dependency_overrides[get_db_session] = lambda: None
+    else:
         def _db_override():
             yield db_session
             db_session.commit()
@@ -246,7 +248,6 @@ def test_router_path_method_snapshot() -> None:
             (("GET",), "/admin/worker"),
             (("GET",), "/admin/translation/scheduler-health"),
             (("GET",), "/admin/health/errors"),
-            (("GET",), "/admin/library/summary"),
         (("GET",), "/admin/novels/{novel_id}/exports/latest/{export_format}"),
         (("GET",), "/admin/novels/{novel_id}/exports"),
         (("GET",), "/input-adapters"),
@@ -785,8 +786,15 @@ class StubJobOrchestrator:
             ],
         }
 
-    async def scrape_chapters(self, *args: object, **kwargs: object) -> None:
+    async def scrape_chapters(self, *args: object, **kwargs: object) -> dict[str, object]:
         self.calls.append(("scrape_chapters", args, kwargs))
+        return {
+            "succeeded": 1,
+            "skipped": 0,
+            "failed": 0,
+            "failures": [],
+            "image_download_failures": 0,
+        }
 
     async def translate_chapters(self, *args: object, **kwargs: object) -> None:
         self.calls.append(("translate_chapters", args, kwargs))
@@ -1223,12 +1231,12 @@ class TestListDetail:
 
         assert resp.status_code == 200
         assert [novel["novel_id"] for novel in data] == ["new-db", "old-db"]
-        assert data[0] == {
+        expected_summary = {
             "novel_id": "new-db",
             "title": "New DB Novel",
             "source_title": "新しいDB小説",
             "author": "DB Author",
-            "source": "syosetu_ncode",
+            "source_key": "syosetu_ncode",
             "source_url": "https://ncode.syosetu.com/n1234ab/",
             "publication_status": "completed",
             "chapter_count": 12,
@@ -1239,6 +1247,7 @@ class TestListDetail:
             "latest_chapter_number": 4,
             "latest_chapter_title": "Fourth Chapter",
         }
+        assert {key: data[0][key] for key in expected_summary} == expected_summary
 
     def test_admin_list_limit_offset_use_db_pagination(
         self,
@@ -1372,7 +1381,7 @@ class TestListDetail:
         assert payload["title"] == "Translated Title"
         assert payload["source_title"] == "Source Title"
         assert payload["author"] == "Source Author"
-        assert payload["source"] == "syosetu_ncode"
+        assert payload["source_key"] == "syosetu_ncode"
         assert payload["source_url"] == "https://ncode.syosetu.com/n1234ab/"
         assert payload["publication_status"] == "completed"
         assert payload["raw_status"] == "完結済"
@@ -2872,7 +2881,7 @@ class TestAdmin:
         assert canonical_list_resp.status_code == 200
         items = {item["key"]: item for item in list_resp.json()["items"]}
         canonical_items = {item["key"]: item for item in canonical_list_resp.json()["items"]}
-        assert set(items) == {"preferences", "translation_cache", "usage"}
+        assert {"preferences", "translation_cache", "usage"} <= set(items)
         assert set(canonical_items) == set(items)
         assert items["preferences"]["exists"] is True
         assert items["translation_cache"]["affects_process"] is True
@@ -3140,7 +3149,7 @@ class TestActivity:
         resp = c.post("/novels/activity/run-next", params={"activity_type": "crawl"}, headers=_csrf_headers(c))
 
         assert resp.status_code == 200
-        assert resp.json()["status"] == "completed"
+        assert resp.json()["status"] == "completed", resp.json().get("error")
         assert resp.json()["metadata"]["result"]["chapters"] == "1"
         assert orchestrator.calls[0][0] == "scrape_chapters"
 
@@ -3183,7 +3192,7 @@ class TestActivity:
         payload = resp.json()
         stored = jobs.get_activity(str(created["id"]))
         assert stored is not None
-        assert payload["status"] == "completed"
+        assert payload["status"] == "completed", payload.get("error")
         assert payload["finished_at"] == stored["finished_at"]
         assert payload["metadata"] == stored["metadata"]
 

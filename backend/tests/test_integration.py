@@ -157,6 +157,7 @@ async def _run_trace_failure(
             force=True,
             source_language="Japanese",
             target_language="English",
+            skip_glossary_gate=True,
         )
     return fixture.storage.list_pipeline_events(
         job_id=job_id,

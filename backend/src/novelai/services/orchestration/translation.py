@@ -1009,9 +1009,10 @@ async def translate_chapters(
                 return {"chapter_id": chapter_id, "status": "succeeded"}
             except Exception as exc:
                 logger.error("Failed to translate chapter %s/%s: %s", novel_id, chapter_id, exc)
-                provider_code = getattr(getattr(exc, "provider_error_code", None), "value", None)
-                qa_status = getattr(exc, "qa_status", None)
-                paused_reason = getattr(exc, "paused_reason", None)
+                failure = getattr(exc, "original", exc)
+                provider_code = getattr(getattr(failure, "provider_error_code", None), "value", None)
+                qa_status = getattr(failure, "qa_status", None)
+                paused_reason = getattr(failure, "paused_reason", None)
                 if isinstance(paused_reason, str) and paused_reason.strip():
                     failed_state = ChapterState.TRANSLATED_PARTIAL
                 elif qa_status == ChapterState.QA_FAILED.value:
@@ -1024,9 +1025,9 @@ async def translate_chapters(
                     novel_id, chapter_id,
                     _make_state_data(failed_state, error=str(exc), previous=prev_state),
                 )
-                details = getattr(exc, "details", None)
+                details = getattr(failure, "details", None)
                 failed_chunk_id = details.get("chunk_id") if isinstance(details, dict) else None
-                error_code = provider_code or getattr(exc, "error_code", None) or exc.__class__.__name__
+                error_code = provider_code or getattr(failure, "error_code", None) or failure.__class__.__name__
                 failed_context = _pipeline_context_from_exception(exc)
                 failed_events = _pipeline_events_from_exception(exc)
                 if failed_events:
@@ -1044,8 +1045,8 @@ async def translate_chapters(
                             "chunk_id": failed_chunk_id,
                             "novel_id": novel_id,
                             "chapter_ids": [chapter_id],
-                            "provider_key": getattr(exc, "provider_key", effective_provider_key),
-                            "provider_model": getattr(exc, "provider_model", effective_provider_model),
+                            "provider_key": getattr(failure, "provider_key", effective_provider_key),
+                            "provider_model": getattr(failure, "provider_model", effective_provider_model),
                             "attempt_number": details.get("attempt_number", 1) if isinstance(details, dict) else 1,
                             "status": failed_state.value,
                             "error_code": str(error_code),
@@ -1059,8 +1060,8 @@ async def translate_chapters(
                             "novel_id": novel_id,
                             "chapter_id": chapter_id,
                             "source_key": source_key,
-                            "provider_key": getattr(exc, "provider_key", effective_provider_key),
-                            "provider_model": getattr(exc, "provider_model", effective_provider_model),
+                            "provider_key": getattr(failure, "provider_key", effective_provider_key),
+                            "provider_model": getattr(failure, "provider_model", effective_provider_model),
                             "chunk_id": failed_chunk_id,
                             "stage_name": _failed_stage_name_from_exception(exc),
                             "status_before": "running",

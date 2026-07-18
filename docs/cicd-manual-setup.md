@@ -5,7 +5,7 @@ All workflow files are already implemented and committed to `.github/workflows/`
 What remains is GitHub UI configuration and verification.
 
 **Last updated:** 2026-07-18 (live CI and repository-control reconciliation)
-**Current status:** Local lint, type, focused tests, build, and Compose checks have prior passing evidence. The latest `main` CI run fails while applying migrations to clean PostgreSQL because the Supabase `auth` schema is absent (DEBT-076). The aggregate Build job can appear green when publication is skipped (DEBT-077). CodeQL, dependency graph, Dependabot, and secret-scanning checks were green with zero open alerts when inspected. The default branch had no protection/ruleset, Actions allowed all actions, and immutable SHA pinning was not required (DEBT-078). Repository-setting changes remain manual owner actions.
+**Current status:** Local workflow hardening is implemented: vanilla PostgreSQL receives a minimal CI-only Supabase auth compatibility shim, previously excluded backend tests run in bounded matrix shards, publication cannot report success when image push is skipped or fails, and tracked actions are pinned to immutable SHAs. Local focused tests, Ruff, Pyright, and workflow parsing pass. A fresh hosted Actions run is still required. The last live inspection found CodeQL, dependency graph, Dependabot, and secret-scanning checks green with zero open alerts, but the default branch had no protection/ruleset and repository-setting changes remain manual owner actions.
 
 ---
 
@@ -35,8 +35,9 @@ the repository settings are active:
 5. Keep Dependabot, dependency graph, secret scanning, push protection, and
    CodeQL enabled. Record screenshots or API evidence after configuration.
 
-Do not enable required checks until the clean-PostgreSQL migration regression is
-fixed, otherwise the ruleset will intentionally block every merge.
+Run the hardened workflow on a pull request first, record the exact successful
+check names, and then enable those checks in the ruleset. Do not guess check
+names or make an unverified failing check required.
 
 ---
 

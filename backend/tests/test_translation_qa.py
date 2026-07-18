@@ -9,7 +9,7 @@ from novelai.core.chapter_state import ChapterState
 from novelai.providers.base import TranslationProvider
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.translation.pipeline.context import PipelineState, TranslationChunk
-from novelai.translation.pipeline.pipeline import TranslationPipeline
+from novelai.translation.pipeline.pipeline import PipelineStageError, TranslationPipeline
 from novelai.translation.pipeline.stages.fetch import FetchStage
 from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.post_process import PostProcessStage
@@ -457,6 +457,7 @@ async def test_orchestration_does_not_save_final_translation_when_qa_fails():
                     cache=fixture.cache,
                     settings_service=fixture.settings_service,
                     usage_service=fixture.usage_service,
+                    storage=fixture.storage,
                 ),
                 TranslationQAStage(),
                 PostProcessStage(),
@@ -471,7 +472,7 @@ async def test_orchestration_does_not_save_final_translation_when_qa_fails():
             usage_service=fixture.usage_service,
         )
 
-        with pytest.raises(TranslationQAError):
+        with pytest.raises(PipelineStageError) as exc_info:
             await orchestrator.translate_chapters(
                 source_key="mock_source",
                 novel_id=novel_id,
@@ -482,7 +483,10 @@ async def test_orchestration_does_not_save_final_translation_when_qa_fails():
                 source_language="Japanese",
                 target_language="English",
                 job_id="job_qa_no_save",
+                skip_glossary_gate=True,
             )
+
+        assert isinstance(exc_info.value.original, TranslationQAError)
 
         assert fixture.storage.load_translated_chapter(novel_id, "1") is None
         state = fixture.storage.load_chapter_state(novel_id, "1")

@@ -123,3 +123,6 @@ SESSION_EXPORT_*.json
 # Node dependencies
 node_modules/
 frontend/node_modules/
+
+# GitGuardian local scan cache
+.cache_ggshield

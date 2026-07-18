@@ -31,6 +31,32 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TESTS_ROOT = Path(__file__).resolve().parent
 TESTS_TMP_ROOT = TESTS_ROOT / ".tmp" / "fixtures"
 TESTS_RUNTIME_ROOT = TESTS_ROOT / ".tmp" / "runtime"
+COLLECTION_RUNTIME_ROOT = TESTS_RUNTIME_ROOT / "collection"
+
+
+def pytest_configure() -> None:
+    """Isolate module-level application bootstrap before test collection.
+
+    Some API test modules import the production ASGI app, whose module-level
+    construction initializes filesystem-backed services. Autouse fixtures run
+    after collection, so establish the same fail-closed test environment here.
+    """
+    COLLECTION_RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
+    os.environ["NOVEL_LIBRARY_DIR"] = str(COLLECTION_RUNTIME_ROOT)
+    os.environ["DATA_DIR"] = str(COLLECTION_RUNTIME_ROOT)
+    os.environ["ENV"] = "test"
+    os.environ["STORAGE_BACKEND"] = "filesystem"
+    os.environ["WEB_RATE_LIMITER_BACKEND"] = "memory"
+    os.environ.pop("PROVIDER_GEMINI_API_KEY", None)
+    os.environ.pop("DATABASE_URL", None)
+    os.environ.pop("REDIS_URL", None)
+    settings.NOVEL_LIBRARY_DIR = COLLECTION_RUNTIME_ROOT
+    settings.ENV = "test"
+    settings.STORAGE_BACKEND = "filesystem"
+    settings.WEB_RATE_LIMITER_BACKEND = "memory"
+    settings.PROVIDER_DEFAULT = "dummy"
+    settings.PROVIDER_GEMINI_API_KEY = None
+    settings.DATABASE_URL = None
 
 
 def _force_remove_tree(path: Path) -> None:
@@ -160,22 +186,34 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
 
     previous_data_dir = settings.NOVEL_LIBRARY_DIR
     previous_provider_default = settings.PROVIDER_DEFAULT
+    previous_storage_backend = settings.STORAGE_BACKEND
+    previous_rate_limiter_backend = settings.WEB_RATE_LIMITER_BACKEND
     previous_gemini_api_key = settings.PROVIDER_GEMINI_API_KEY
+    previous_database_url = settings.DATABASE_URL
     previous_env_novel_library = os.environ.get("NOVEL_LIBRARY_DIR")
     previous_env_data_dir = os.environ.get("DATA_DIR")
+    previous_env_storage_backend = os.environ.get("STORAGE_BACKEND")
+    previous_env_rate_limiter_backend = os.environ.get("WEB_RATE_LIMITER_BACKEND")
     previous_env_gemini_api_key = os.environ.get("PROVIDER_GEMINI_API_KEY")
+    previous_env_database_url = os.environ.get("DATABASE_URL")
     previous_env = os.environ.get("ENV")
     previous_settings_env = settings.ENV
 
     os.environ["NOVEL_LIBRARY_DIR"] = str(runtime_dir)
     os.environ["DATA_DIR"] = str(runtime_dir)
     os.environ["ENV"] = "test"
+    os.environ["STORAGE_BACKEND"] = "filesystem"
+    os.environ["WEB_RATE_LIMITER_BACKEND"] = "memory"
     os.environ.pop("PROVIDER_GEMINI_API_KEY", None)
+    os.environ.pop("DATABASE_URL", None)
 
     settings.NOVEL_LIBRARY_DIR = runtime_dir
     settings.ENV = "test"
+    settings.STORAGE_BACKEND = "filesystem"
+    settings.WEB_RATE_LIMITER_BACKEND = "memory"
     settings.PROVIDER_DEFAULT = "dummy"
     settings.PROVIDER_GEMINI_API_KEY = None
+    settings.DATABASE_URL = None
     _reset_global_container()
 
     try:
@@ -184,8 +222,11 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
         _reset_global_container()
         settings.NOVEL_LIBRARY_DIR = previous_data_dir
         settings.ENV = previous_settings_env
+        settings.STORAGE_BACKEND = previous_storage_backend
+        settings.WEB_RATE_LIMITER_BACKEND = previous_rate_limiter_backend
         settings.PROVIDER_DEFAULT = previous_provider_default
         settings.PROVIDER_GEMINI_API_KEY = previous_gemini_api_key
+        settings.DATABASE_URL = previous_database_url
 
         if previous_env_novel_library is None:
             os.environ.pop("NOVEL_LIBRARY_DIR", None)
@@ -197,10 +238,25 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
         else:
             os.environ["DATA_DIR"] = previous_env_data_dir
 
+        if previous_env_storage_backend is None:
+            os.environ.pop("STORAGE_BACKEND", None)
+        else:
+            os.environ["STORAGE_BACKEND"] = previous_env_storage_backend
+
+        if previous_env_rate_limiter_backend is None:
+            os.environ.pop("WEB_RATE_LIMITER_BACKEND", None)
+        else:
+            os.environ["WEB_RATE_LIMITER_BACKEND"] = previous_env_rate_limiter_backend
+
         if previous_env_gemini_api_key is None:
             os.environ.pop("PROVIDER_GEMINI_API_KEY", None)
         else:
             os.environ["PROVIDER_GEMINI_API_KEY"] = previous_env_gemini_api_key
+
+        if previous_env_database_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = previous_env_database_url
 
         if previous_env is None:
             os.environ.pop("ENV", None)
@@ -547,4 +603,3 @@ def cleanup_pytest_cache():
                 print(f"✓ Cleaned up: {cache_dir}")
             except Exception as e:
                 print(f"⚠ Could not clean {cache_dir}: {e}")
-

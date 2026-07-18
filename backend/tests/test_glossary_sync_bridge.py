@@ -264,7 +264,9 @@ class TestReviewTriggersSync:
 
         import_asyncio = __import__("asyncio")
 
-        result = import_asyncio.run(review_glossary_terms(fake_self, slug))
+        with patch("novelai.db.engine.session_scope") as mock_session_scope:
+            mock_session_scope.return_value.__enter__.return_value = MagicMock()
+            result = import_asyncio.run(review_glossary_terms(fake_self, slug))
 
         # Verify sync was called
         mock_sync_service.sync_from_file.assert_called_once_with(
@@ -301,7 +303,9 @@ class TestReviewSucceedsEvenIfSyncRaises:
         from novelai.services.orchestration.glossary import review_glossary_terms
 
         import_asyncio = __import__("asyncio")
-        result = import_asyncio.run(review_glossary_terms(fake_self, slug))
+        with patch("novelai.db.engine.session_scope") as mock_session_scope:
+            mock_session_scope.return_value.__enter__.return_value = MagicMock()
+            result = import_asyncio.run(review_glossary_terms(fake_self, slug))
 
         # review should still complete with success
         assert result["status"] == "completed"

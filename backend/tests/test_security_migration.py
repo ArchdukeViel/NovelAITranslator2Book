@@ -5,6 +5,7 @@ from pathlib import Path
 from types import ModuleType
 
 MIGRATIONS_DIR = Path(__file__).parents[1] / "alembic" / "versions"
+SQL_DIR = Path(__file__).parents[1] / "sql"
 
 
 def _load_migration(filename: str, module_name: str) -> ModuleType:
@@ -56,6 +57,21 @@ def test_security_migration_handles_missing_supabase_roles() -> None:
 
     assert "SELECT rolname FROM pg_roles WHERE rolname = ANY(:role_names)" in source
     assert "if available_roles is None:" in source
+
+
+def test_ci_auth_compatibility_shim_is_minimal_and_fail_closed() -> None:
+    source = (SQL_DIR / "ci_vanilla_postgres_auth_compat.sql").read_text(encoding="utf-8")
+    normalized = " ".join(source.upper().split())
+
+    assert "CI-ONLY COMPATIBILITY SHIM" in source
+    assert "CREATE SCHEMA IF NOT EXISTS AUTH" in normalized
+    assert "CREATE OR REPLACE FUNCTION AUTH.UID()" in normalized
+    assert "SELECT NULL::UUID" in normalized
+    assert "REVOKE ALL ON SCHEMA AUTH FROM PUBLIC" in normalized
+    assert "REVOKE ALL ON FUNCTION AUTH.UID() FROM PUBLIC" in normalized
+    assert "CREATE ROLE" not in normalized
+    assert "CREATE TABLE" not in normalized
+    assert "GRANT " not in normalized
 
 
 def test_security_migration_removes_pg_net_and_cron_table_grants() -> None:

@@ -121,7 +121,7 @@ async def test_translate_chapters_uses_imported_raw_text_without_source_adapter(
     )
     await orchestrator.import_document("text", "novel-1", "C:/story.txt")
 
-    await orchestrator.translate_chapters("imported", "novel-1", "1")
+    await orchestrator.translate_chapters("imported", "novel-1", "1", skip_glossary_gate=True)
 
     assert translation.calls
     assert translation.calls[0]["raw_text"] == "勇者 Aria entered the city. 勇者 Aria returned victorious."

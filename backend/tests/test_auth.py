@@ -25,10 +25,11 @@ from novelai.api.auth.security import reset_public_rate_limits
 from novelai.api.auth.session import GUEST, SessionUser, get_current_user
 from novelai.api.routers import auth as auth_module
 from novelai.api.routers.auth import router as auth_router
-from novelai.api.routers.dependencies import get_db_session
+from novelai.api.routers.dependencies import get_auth_service, get_db_session
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.db.base import Base
 from novelai.db.models.users import EmailVerificationToken, PasswordResetToken, User
+from novelai.services.auth_service import AuthService
 from novelai.services.email import EmailDeliveryResult, InMemoryAuthEmailService
 
 # ---------------------------------------------------------------------------
@@ -124,12 +125,17 @@ def oauth_app(db_session, monkeypatch):
     _app.add_middleware(SessionMiddleware, secret_key="test-secret-key", https_only=False)
     _app.include_router(auth_router)
     _app.include_router(user_data_router)
+    _app.state.auth_mailer = None
 
     def _db_override():
         yield db_session
         db_session.commit()
 
     _app.dependency_overrides[get_db_session] = _db_override
+    _app.dependency_overrides[get_auth_service] = lambda: AuthService(
+        db_session=db_session,
+        mailer=_app.state.auth_mailer,
+    )
     _app.dependency_overrides[get_google_oauth_client] = lambda: FakeGoogleOAuthClient()
     return _app
 
@@ -150,7 +156,7 @@ def auth_email_outbox(oauth_app):
         password_reset_path=settings.AUTH_PASSWORD_RESET_PATH,
         email_verification_path=settings.AUTH_EMAIL_VERIFICATION_PATH,
     )
-    oauth_app.dependency_overrides[auth_module.get_auth_email_service] = lambda: service
+    oauth_app.state.auth_mailer = service
     return service
 
 
@@ -551,7 +557,7 @@ class TestPublicPasswordReset:
         assert verify_password("new-password-long", user.password_hash)
 
     def test_reset_request_generic_for_existing_and_missing_email(self, oauth_client, db_session, monkeypatch):
-        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        monkeypatch.setattr(AuthService, "new_password_reset_token", staticmethod(lambda: "known-reset-token"))
         user = User(
             email="reader@example.com",
             role="user",
@@ -581,7 +587,7 @@ class TestPublicPasswordReset:
     def test_noop_reset_delivery_does_not_log_raw_token(
         self, oauth_client, db_session, monkeypatch, caplog
     ):
-        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        monkeypatch.setattr(AuthService, "new_password_reset_token", staticmethod(lambda: "known-reset-token"))
         user = User(
             email="reader@example.com",
             role="user",
@@ -603,7 +609,7 @@ class TestPublicPasswordReset:
         assert "reader@example.com" not in caplog.text
 
     def test_reset_request_stores_hashed_token_not_raw(self, oauth_client, db_session, monkeypatch):
-        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        monkeypatch.setattr(AuthService, "new_password_reset_token", staticmethod(lambda: "known-reset-token"))
         user = User(
             email="reader@example.com",
             role="user",
@@ -632,7 +638,7 @@ class TestPublicPasswordReset:
 
     def test_second_reset_request_invalidates_old_unused_tokens(self, oauth_client, db_session, monkeypatch):
         tokens = iter(["first-reset-token", "second-reset-token"])
-        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: next(tokens))
+        monkeypatch.setattr(AuthService, "new_password_reset_token", staticmethod(lambda: next(tokens)))
         user = User(
             email="reader@example.com",
             role="user",
@@ -654,7 +660,7 @@ class TestPublicPasswordReset:
         assert stored[1].used_at is None
 
     def test_reset_confirm_valid_token_updates_password_and_login(self, oauth_client, db_session, monkeypatch):
-        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        monkeypatch.setattr(AuthService, "new_password_reset_token", staticmethod(lambda: "known-reset-token"))
         user = User(
             email="reader@example.com",
             role="user",
@@ -693,7 +699,7 @@ class TestPublicPasswordReset:
         assert new_login.json()["user_id"] == user.id
 
     def test_reset_confirm_token_reuse_fails(self, oauth_client, db_session, monkeypatch):
-        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        monkeypatch.setattr(AuthService, "new_password_reset_token", staticmethod(lambda: "known-reset-token"))
         user = User(
             email="reader@example.com",
             role="user",
@@ -770,7 +776,7 @@ class TestPublicPasswordReset:
     def test_reset_request_google_only_user_does_not_create_token_or_leak(
         self, oauth_client, db_session, monkeypatch, auth_email_outbox
     ):
-        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        monkeypatch.setattr(AuthService, "new_password_reset_token", staticmethod(lambda: "known-reset-token"))
         db_session.add(
             User(
                 email="reader@example.com",
@@ -795,7 +801,7 @@ class TestPublicPasswordReset:
     def test_reset_request_owner_account_does_not_create_token_or_leak(
         self, oauth_client, db_session, monkeypatch, auth_email_outbox
     ):
-        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
+        monkeypatch.setattr(AuthService, "new_password_reset_token", staticmethod(lambda: "known-reset-token"))
         db_session.add(
             User(
                 email="owner@example.com",
@@ -827,8 +833,8 @@ class TestPublicPasswordReset:
             def send_email_verification_email(self, *, email: str, token: str) -> EmailDeliveryResult:
                 raise RuntimeError("mail failed")
 
-        monkeypatch.setattr(auth_module, "_new_password_reset_token", lambda: "known-reset-token")
-        oauth_app.dependency_overrides[auth_module.get_auth_email_service] = lambda: FailingAuthEmailService()
+        monkeypatch.setattr(AuthService, "new_password_reset_token", staticmethod(lambda: "known-reset-token"))
+        oauth_app.state.auth_mailer = FailingAuthEmailService()
         user = User(
             email="reader@example.com",
             role="user",
@@ -904,7 +910,7 @@ class TestPublicEmailVerification:
     def test_register_creates_unverified_user_and_hashed_verification_token(
         self, oauth_client, db_session, monkeypatch
     ):
-        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
+        monkeypatch.setattr(AuthService, "new_email_verification_token", staticmethod(lambda: "known-verify-token"))
 
         resp = oauth_client.post(
             "/api/auth/register",
@@ -960,7 +966,7 @@ class TestPublicEmailVerification:
     def test_verification_request_generic_for_existing_and_missing_email(
         self, oauth_client, db_session, monkeypatch
     ):
-        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
+        monkeypatch.setattr(AuthService, "new_email_verification_token", staticmethod(lambda: "known-verify-token"))
         user = User(
             email="reader@example.com",
             role="user",
@@ -990,7 +996,7 @@ class TestPublicEmailVerification:
     def test_noop_verification_delivery_does_not_log_raw_token(
         self, oauth_client, db_session, monkeypatch, caplog
     ):
-        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
+        monkeypatch.setattr(AuthService, "new_email_verification_token", staticmethod(lambda: "known-verify-token"))
         user = User(
             email="reader@example.com",
             role="user",
@@ -1014,7 +1020,7 @@ class TestPublicEmailVerification:
     def test_verification_request_creates_token_only_for_eligible_password_user(
         self, oauth_client, db_session, monkeypatch, auth_email_outbox
     ):
-        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
+        monkeypatch.setattr(AuthService, "new_email_verification_token", staticmethod(lambda: "known-verify-token"))
         db_session.add_all(
             [
                 User(
@@ -1055,7 +1061,7 @@ class TestPublicEmailVerification:
         self, oauth_client, db_session, monkeypatch
     ):
         tokens = iter(["first-verify-token", "second-verify-token"])
-        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: next(tokens))
+        monkeypatch.setattr(AuthService, "new_email_verification_token", staticmethod(lambda: next(tokens)))
         user = User(
             email="reader@example.com",
             role="user",
@@ -1079,7 +1085,7 @@ class TestPublicEmailVerification:
     def test_verification_confirm_valid_token_sets_email_verified_at(
         self, oauth_client, db_session, monkeypatch
     ):
-        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
+        monkeypatch.setattr(AuthService, "new_email_verification_token", staticmethod(lambda: "known-verify-token"))
         user = User(
             email="reader@example.com",
             role="user",
@@ -1143,7 +1149,7 @@ class TestPublicEmailVerification:
         assert user.email_verified_at is None
 
     def test_verification_confirm_token_reuse_fails(self, oauth_client, db_session, monkeypatch):
-        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
+        monkeypatch.setattr(AuthService, "new_email_verification_token", staticmethod(lambda: "known-verify-token"))
         user = User(
             email="reader@example.com",
             role="user",
@@ -1209,8 +1215,8 @@ class TestPublicEmailVerification:
             def send_email_verification_email(self, *, email: str, token: str) -> EmailDeliveryResult:
                 raise RuntimeError("mail failed")
 
-        monkeypatch.setattr(auth_module, "_new_email_verification_token", lambda: "known-verify-token")
-        oauth_app.dependency_overrides[auth_module.get_auth_email_service] = lambda: FailingAuthEmailService()
+        monkeypatch.setattr(AuthService, "new_email_verification_token", staticmethod(lambda: "known-verify-token"))
+        oauth_app.state.auth_mailer = FailingAuthEmailService()
         user = User(
             email="reader@example.com",
             role="user",

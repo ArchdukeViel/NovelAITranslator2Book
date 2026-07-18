@@ -194,8 +194,16 @@ async def register(
 ) -> UserResponse:
     """Create a public email/password user account and session."""
     require_public_rate_limit(request, "auth_register")
+    ip = request.client.host if request.client else None
+    user_agent = (request.headers.get("user-agent") or "")[:255] if request.headers.get("user-agent") else None
     try:
-        result = svc.register(payload.email, payload.password, payload.display_name)
+        result = svc.register(
+            payload.email,
+            payload.password,
+            payload.display_name,
+            ip=ip,
+            user_agent=user_agent,
+        )
     except ValueError as exc:
         msg = str(exc)
         if "Invalid email" in msg or "Password" in msg:

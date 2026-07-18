@@ -1368,7 +1368,7 @@ async def test_scrape_metadata_translates_title_author_and_chapter_titles(orches
 
     assert metadata["translated_title"] == "[TRANSLATED] Original Novel"
     assert metadata["translated_author"] == "[TRANSLATED] Original Author"
-    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v2"
+    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v3"
     assert metadata["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
     assert metadata["chapters"][1]["translated_title"] == "[TRANSLATED] Chapter Two"
     stored = storage.load_metadata("novel-1")
@@ -1382,7 +1382,7 @@ async def test_scrape_metadata_translates_title_author_and_chapter_titles(orches
     assert stored["translated_title"] == "[TRANSLATED] Original Novel"
     assert stored["translated_author"] == "[TRANSLATED] Original Author"
     assert stored["metadata_translation_status"] == "completed"
-    assert stored["metadata_translation_prompt_version"] == "metadata-literal-v2"
+    assert stored["metadata_translation_prompt_version"] == "metadata-literal-v3"
     assert stored["chapters"][0]["translated_title"] == "[TRANSLATED] Chapter One"
     assert stored["chapters"][1]["translated_title"] == "[TRANSLATED] Chapter Two"
     assert stored["authors"]["translated"] == "[TRANSLATED] Original Author"
@@ -1592,7 +1592,7 @@ async def test_metadata_batch_skips_reusable_and_cached_fields(orchestration_env
         "source": "syosetu_ncode",
         "title": "Original Novel",
         "translated_title": "Translated Novel",
-        "metadata_translation_prompt_version": "metadata-literal-v2",
+        "metadata_translation_prompt_version": "metadata-literal-v3",
         "chapters": [
             {"id": "1", "num": 1, "title": "Cached Chapter"},
             {"id": "2", "num": 2, "title": "Needs Batch"},
@@ -1790,7 +1790,7 @@ async def test_scrape_metadata_logs_missing_gemini_key_only_once(orchestration_e
 
     warning.assert_called_once_with("%s API key missing; falling back to dummy provider.", "Gemini")
     assert metadata["metadata_translation_status"] == "unavailable"
-    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v2"
+    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v3"
     assert "metadata_translation_error" not in metadata
     assert "translated_title" not in metadata
 
@@ -1818,7 +1818,7 @@ async def test_scrape_metadata_failed_translation_preserves_source_fields_withou
     assert metadata["synopsis"] == "Original Synopsis"
     assert metadata["chapters"][0]["title"] == "Chapter One"
     assert metadata["metadata_translation_status"] == "failed"
-    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v2"
+    assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v3"
     assert len(metadata["metadata_translation_error"]) <= 500
     assert "translated_title" not in metadata
     assert "translated_author" not in metadata
@@ -2896,9 +2896,10 @@ async def test_translate_chapters_allows_ready_status_and_skip_override(orchestr
     for novel_id in ("glossary-ready", "glossary-override"):
         storage.save_metadata(
             novel_id,
-            {
-                "title": novel_id,
-                "source_language": "Japanese",
+                {
+                    "title": novel_id,
+                    "source_language": "Japanese",
+                    "onboarding_status": "ready_for_translation",
                 "chapters": [
                     {"id": "1", "num": 1, "title": "Chapter One", "url": f"https://example.com/{novel_id}/1"},
                 ],
