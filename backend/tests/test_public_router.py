@@ -762,6 +762,26 @@ class TestCatalog:
         assert data["total"] == 0
         assert data["novels"] == []
 
+    def test_direct_public_routes_do_not_expose_unpublished_db_row(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+    ) -> None:
+        _seed_novel(
+            storage,
+            "draft-storage",
+            title="Draft Storage",
+            translated_title="Private Draft Title",
+        )
+        _seed_translated_chapter(storage, "draft-storage", "ch001")
+        _seed_db_catalog_novel(db_session, "draft-storage", is_published=False)
+
+        assert client.get("/api/public/novels/draft-storage").status_code == 404
+        assert client.get("/api/public/novels/private-draft-title").status_code == 404
+        assert client.get("/api/public/novels/draft-storage/chapters").status_code == 404
+        assert client.get("/api/public/novels/draft-storage/chapters/ch001").status_code == 404
+
     def test_db_catalog_hydrates_underfed_row_from_title_slug_storage(
         self,
         client: TestClient,

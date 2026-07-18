@@ -605,3 +605,18 @@ Deferred items are tracked but excluded from the active count.
 - **Completion criteria:** Resolve each hook dependency warning with stable
   values/callbacks and focused behavior tests; production build emits no hook
   dependency warnings.
+
+### DEBT-082 — Direct public routes bypassed publication visibility
+- **Milestone:** Milestone M4 (Reader/Catalog UX)
+- **Category:** Security | Backend | Public Reader
+- **Priority:** Critical
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/services/public_catalog_service.py`,
+  public novel and chapter routes
+- **Description:** Catalog listing excluded `Novel.is_published=false`, but the
+  shared direct resolver could still return storage metadata for the same novel
+  through its source ID or public title slug.
+- **Resolution:** The shared resolver now applies the database publication gate
+  to direct storage hits, DB hits, and alias scans. Regression tests prove 404
+  responses for unpublished novel detail, title-slug detail, chapter listing,
+  and chapter reader requests.

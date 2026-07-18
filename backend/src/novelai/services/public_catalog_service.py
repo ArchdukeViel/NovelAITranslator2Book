@@ -356,10 +356,14 @@ class PublicCatalogService:
         meta = self.storage.load_metadata(slug)
         if meta is not None:
             source_id = _optional_str(meta.get("novel_id")) or slug
+            if not self._db_row_allows_storage_catalog_entry(source_id):
+                return None
             return source_id, meta, self.public_slug_from_metadata(source_id, meta)
         if self.db_session is not None:
             novel = self.db_session.query(Novel).filter_by(slug=slug).one_or_none()
             if novel is not None:
+                if novel.is_published is not True:
+                    return None
                 meta = self.storage.load_metadata(novel.slug) or {}
                 source_id = _optional_str(meta.get("novel_id")) or novel.slug
                 return source_id, meta, self.public_slug_from_metadata(source_id, meta)
@@ -374,6 +378,8 @@ class PublicCatalogService:
                 _optional_str(candidate_meta.get("source_novel_id")) or "",
             }
             if slug in aliases:
+                if not self._db_row_allows_storage_catalog_entry(novel_id):
+                    return None
                 return source_id, candidate_meta, public_slug
         return None
 
