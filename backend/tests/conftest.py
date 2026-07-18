@@ -47,6 +47,8 @@ def pytest_configure() -> None:
     os.environ["ENV"] = "test"
     os.environ["STORAGE_BACKEND"] = "filesystem"
     os.environ["WEB_RATE_LIMITER_BACKEND"] = "memory"
+    os.environ.pop("ALLOWED_HOSTS", None)
+    os.environ.pop("CSRF_TRUSTED_ORIGINS", None)
     os.environ.pop("PROVIDER_GEMINI_API_KEY", None)
     os.environ.pop("DATABASE_URL", None)
     os.environ.pop("REDIS_URL", None)
@@ -54,6 +56,8 @@ def pytest_configure() -> None:
     settings.ENV = "test"
     settings.STORAGE_BACKEND = "filesystem"
     settings.WEB_RATE_LIMITER_BACKEND = "memory"
+    settings.ALLOWED_HOSTS = []
+    settings.CSRF_TRUSTED_ORIGINS = []
     settings.PROVIDER_DEFAULT = "dummy"
     settings.PROVIDER_GEMINI_API_KEY = None
     settings.DATABASE_URL = None
@@ -188,12 +192,16 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
     previous_provider_default = settings.PROVIDER_DEFAULT
     previous_storage_backend = settings.STORAGE_BACKEND
     previous_rate_limiter_backend = settings.WEB_RATE_LIMITER_BACKEND
+    previous_allowed_hosts = settings.ALLOWED_HOSTS
+    previous_csrf_trusted_origins = settings.CSRF_TRUSTED_ORIGINS
     previous_gemini_api_key = settings.PROVIDER_GEMINI_API_KEY
     previous_database_url = settings.DATABASE_URL
     previous_env_novel_library = os.environ.get("NOVEL_LIBRARY_DIR")
     previous_env_data_dir = os.environ.get("DATA_DIR")
     previous_env_storage_backend = os.environ.get("STORAGE_BACKEND")
     previous_env_rate_limiter_backend = os.environ.get("WEB_RATE_LIMITER_BACKEND")
+    previous_env_allowed_hosts = os.environ.get("ALLOWED_HOSTS")
+    previous_env_csrf_trusted_origins = os.environ.get("CSRF_TRUSTED_ORIGINS")
     previous_env_gemini_api_key = os.environ.get("PROVIDER_GEMINI_API_KEY")
     previous_env_database_url = os.environ.get("DATABASE_URL")
     previous_env = os.environ.get("ENV")
@@ -204,6 +212,8 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
     os.environ["ENV"] = "test"
     os.environ["STORAGE_BACKEND"] = "filesystem"
     os.environ["WEB_RATE_LIMITER_BACKEND"] = "memory"
+    os.environ.pop("ALLOWED_HOSTS", None)
+    os.environ.pop("CSRF_TRUSTED_ORIGINS", None)
     os.environ.pop("PROVIDER_GEMINI_API_KEY", None)
     os.environ.pop("DATABASE_URL", None)
 
@@ -211,6 +221,8 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
     settings.ENV = "test"
     settings.STORAGE_BACKEND = "filesystem"
     settings.WEB_RATE_LIMITER_BACKEND = "memory"
+    settings.ALLOWED_HOSTS = []
+    settings.CSRF_TRUSTED_ORIGINS = []
     settings.PROVIDER_DEFAULT = "dummy"
     settings.PROVIDER_GEMINI_API_KEY = None
     settings.DATABASE_URL = None
@@ -224,6 +236,8 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
         settings.ENV = previous_settings_env
         settings.STORAGE_BACKEND = previous_storage_backend
         settings.WEB_RATE_LIMITER_BACKEND = previous_rate_limiter_backend
+        settings.ALLOWED_HOSTS = previous_allowed_hosts
+        settings.CSRF_TRUSTED_ORIGINS = previous_csrf_trusted_origins
         settings.PROVIDER_DEFAULT = previous_provider_default
         settings.PROVIDER_GEMINI_API_KEY = previous_gemini_api_key
         settings.DATABASE_URL = previous_database_url
@@ -247,6 +261,16 @@ def isolate_tests_from_runtime_library() -> Iterator[None]:
             os.environ.pop("WEB_RATE_LIMITER_BACKEND", None)
         else:
             os.environ["WEB_RATE_LIMITER_BACKEND"] = previous_env_rate_limiter_backend
+
+        if previous_env_allowed_hosts is None:
+            os.environ.pop("ALLOWED_HOSTS", None)
+        else:
+            os.environ["ALLOWED_HOSTS"] = previous_env_allowed_hosts
+
+        if previous_env_csrf_trusted_origins is None:
+            os.environ.pop("CSRF_TRUSTED_ORIGINS", None)
+        else:
+            os.environ["CSRF_TRUSTED_ORIGINS"] = previous_env_csrf_trusted_origins
 
         if previous_env_gemini_api_key is None:
             os.environ.pop("PROVIDER_GEMINI_API_KEY", None)

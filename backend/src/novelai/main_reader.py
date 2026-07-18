@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from novelai.api.error_handlers import add_error_handlers
 from novelai.api.middleware.security import SecurityHeadersMiddleware
@@ -49,6 +50,8 @@ if settings.WEB_CORS_ORIGINS:
     )
 
 app.add_middleware(SecurityHeadersMiddleware)
+if settings.ALLOWED_HOSTS:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 
 add_error_handlers(app)
 

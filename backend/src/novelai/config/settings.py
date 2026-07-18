@@ -232,6 +232,9 @@ class AppSettings(BaseSettings):
     OWNER_BOOTSTRAP_SECRET: str | None = None
     # Session cookie max age in seconds (default: 8 hours).
     SESSION_MAX_AGE: int = 28_800
+    # Override cookie transport security for HTTPS preview deployments. When
+    # unset, production remains secure and local development remains usable.
+    SESSION_COOKIE_SECURE: bool | None = None
     # Google OAuth for public user login. Missing values disable OAuth endpoints
     # without breaking app startup.
     GOOGLE_OAUTH_CLIENT_ID: str | None = None

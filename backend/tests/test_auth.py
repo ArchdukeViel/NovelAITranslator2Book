@@ -1262,6 +1262,27 @@ class TestAuthRouterLogout:
         assert owner_client.post("/api/auth/logout").status_code == 403
         assert owner_client.post("/api/auth/logout", headers={"X-CSRF-Token": "bad"}).status_code == 403
 
+    def test_logout_accepts_configured_trusted_origin(self, owner_client, monkeypatch):
+        from novelai.config.settings import settings
+
+        monkeypatch.setattr(settings, "CSRF_TRUSTED_ORIGINS", ["https://preview.example"])
+        headers = _csrf_headers(owner_client)
+        headers["Origin"] = "https://preview.example"
+
+        assert owner_client.post("/api/auth/logout", headers=headers).status_code == 200
+
+    def test_logout_rejects_untrusted_origin(self, owner_client, monkeypatch):
+        from novelai.config.settings import settings
+
+        monkeypatch.setattr(settings, "CSRF_TRUSTED_ORIGINS", ["https://preview.example"])
+        headers = _csrf_headers(owner_client)
+        headers["Origin"] = "https://evil.example"
+
+        response = owner_client.post("/api/auth/logout", headers=headers)
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Untrusted request origin."
+
 
 class TestAuthRouterMe:
     def test_me_returns_guest_when_unauthenticated(self, client):

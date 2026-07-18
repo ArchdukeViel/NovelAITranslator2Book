@@ -7,6 +7,7 @@ from collections import defaultdict
 from fastapi import Depends, HTTPException, Request, status
 
 from novelai.api.auth.session import SessionUser, get_current_user
+from novelai.config.settings import settings
 
 CSRF_HEADER_NAME = "X-CSRF-Token"
 _CSRF_SESSION_KEY = "csrf_token"
@@ -45,6 +46,14 @@ def clear_csrf_token(request: Request) -> None:
 
 
 def require_csrf_token(request: Request) -> None:
+    origin = request.headers.get("origin")
+    if settings.CSRF_TRUSTED_ORIGINS and origin:
+        trusted_origins = {item.rstrip("/") for item in settings.CSRF_TRUSTED_ORIGINS}
+        if origin.rstrip("/") not in trusted_origins:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Untrusted request origin.",
+            )
     expected = request.session.get(_CSRF_SESSION_KEY)
     supplied = request.headers.get(CSRF_HEADER_NAME)
     if (

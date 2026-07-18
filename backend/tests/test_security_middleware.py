@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
+from novelai.api.app import create_app
 from novelai.api.middleware.security import (
     SecurityHeadersMiddleware,
     get_client_ip,
@@ -182,3 +183,25 @@ class TestIsAllowedHost:
     def test_none_host_blocked(self, monkeypatch):
         monkeypatch.setattr(settings, "ALLOWED_HOSTS", ["example.com"])
         assert is_allowed_host(None) is False
+
+
+class TestHostedAppSecurity:
+    def test_create_app_enforces_configured_allowed_hosts(self, monkeypatch):
+        monkeypatch.setattr(settings, "ALLOWED_HOSTS", ["preview.example"])
+        app = create_app()
+
+        with TestClient(app, base_url="https://preview.example") as client:
+            assert client.get("/health/live").status_code == 200
+            assert client.get("/health/live", headers={"Host": "evil.example"}).status_code == 400
+
+    def test_preview_can_force_secure_session_cookie(self, monkeypatch):
+        monkeypatch.setattr(settings, "ENV", "preview")
+        monkeypatch.setattr(settings, "SESSION_COOKIE_SECURE", True)
+        monkeypatch.setattr(settings, "ALLOWED_HOSTS", ["preview.example"])
+        app = create_app()
+
+        with TestClient(app, base_url="https://preview.example") as client:
+            response = client.get("/api/auth/csrf")
+
+        assert response.status_code == 200
+        assert "secure" in response.headers["set-cookie"].lower()

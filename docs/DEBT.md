@@ -457,13 +457,18 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M3.5 (Hosted Topology)
 - **Category:** Deployment | Operations
 - **Priority:** Blocker
-- **Status:** Pending
+- **Status:** Ongoing
 - **Affected areas:** `docs/operations/deployment.md`, hosting configuration
 - **Description:** The free hosted preview and production topology are defined,
   but domains, OAuth, cookies, CORS/CSRF, backend reachability, monitoring,
   rollback, and cost/reliability upgrade gates have not been proven live.
 - **Completion criteria:** The disposable preview passes its reduced contract,
   and the always-on production topology passes the full launch checklist.
+- **Implementation note (2026-07-18):** Added a tracked Render Free monolith
+  Blueprint, Vercel frontend configuration, secure-cookie override, enforced
+  host allowlisting, browser-origin CSRF checks, and regression tests. Live
+  domains, OAuth, scoped R2 access, health/readiness, and rollback evidence are
+  still required before resolution.
 
 ### DEBT-073 — Glossary prompt injection test drift
 - **Milestone:** Milestone M1 (Glossary/Router Repair)

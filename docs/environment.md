@@ -258,6 +258,7 @@ Set `DATABASE_RESTORE_VERIFICATION_ENABLED=true` only with a dedicated clean dat
 | `SESSION_SECRET_KEY` | `str` | `changeme-generate-a-real-secret-in-production` | Yes (production) | **must change** in prod | Key for signing HTTP-only session cookies. Generate with `secrets.token_hex(32)`. | `a1b2c3...` |
 | `OWNER_BOOTSTRAP_SECRET` | `str` | `None` | Yes (until OAuth configured) | **must change** | Bootstrap secret for initial owner login. Never commit real value. | `a-strong-random-value` |
 | `SESSION_MAX_AGE` | `int` | `28800` (8 hours) | No | can leave default | Session cookie max age in seconds. | `86400` |
+| `SESSION_COOKIE_SECURE` | `bool` | unset | Hosted HTTPS | `true` for hosted preview/production | Explicitly require HTTPS-only session cookies. When unset, production enables this automatically and local development remains HTTP-compatible. | `true` |
 | `GOOGLE_OAUTH_CLIENT_ID` | `str` | `None` | If using Google OAuth | **enables feature** | Google OAuth client ID. All three `GOOGLE_OAUTH_*` must be set. | `123456.apps.googleusercontent.com` |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | `SecretStr` | `None` | If using Google OAuth | **enables feature** | Google OAuth client secret. | `GOCSPX-...` |
 | `GOOGLE_OAUTH_REDIRECT_URI` | `str` | `None` | If using Google OAuth | **enables feature** | Must match Google Cloud Console redirect URI exactly. | `http://localhost:8000/api/auth/google/callback` |

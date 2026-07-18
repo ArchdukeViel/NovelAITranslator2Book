@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from novelai.api.error_handlers import add_error_handlers
 from novelai.api.middleware.security import SecurityHeadersMiddleware
@@ -67,7 +68,11 @@ app.add_middleware(
     session_cookie="novelai_session",
     max_age=settings.SESSION_MAX_AGE,
     same_site="lax",
-    https_only=settings.ENV == "production",
+    https_only=(
+        settings.SESSION_COOKIE_SECURE
+        if settings.SESSION_COOKIE_SECURE is not None
+        else settings.ENV == "production"
+    ),
 )
 
 if settings.WEB_CORS_ORIGINS:
@@ -80,6 +85,8 @@ if settings.WEB_CORS_ORIGINS:
     )
 
 app.add_middleware(SecurityHeadersMiddleware)
+if settings.ALLOWED_HOSTS:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 
 add_error_handlers(app)
 

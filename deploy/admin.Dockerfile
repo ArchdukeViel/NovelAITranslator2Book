@@ -65,4 +65,4 @@ USER novelai
 
 EXPOSE 8000
 
-ENTRYPOINT ["novelai", "web", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["novelai", "web", "--host", "0.0.0.0", "--port", "8000"]

@@ -67,6 +67,56 @@ The approved free hosted preview is deliberately smaller than production:
 This preview is disposable and not launch acceptance. Do not reuse production
 R2 credentials, production prefixes, or operator secrets in it.
 
+#### Reproducible preview setup
+
+The repository root `render.yaml` defines the single Render Free backend. It
+runs Alembic before starting the API, listens on port `10000`, and deliberately
+disables the worker, scheduler-backed operations, maintenance, restore
+verification, SMTP, and alerts. Apply the Blueprint only after the commit that
+contains `render.yaml` is available to Render.
+
+Enter the following Render values in the dashboard. Keep all values in the
+provider dashboard or local environment; never paste them into issues, commits,
+or chat:
+
+- `DATABASE_URL`: the Supabase PostgreSQL transaction-pooler URL using the
+  required `postgresql+psycopg://` scheme.
+- `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, and
+  `S3_SECRET_ACCESS_KEY`: a development-only R2 bucket credential. It must not
+  be an application-production or backup credential.
+- `OWNER_BOOTSTRAP_SECRET`: a newly generated preview-only secret.
+- `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`: the Google web
+  OAuth client credentials.
+- Domain-dependent values after both services have domains:
+  - `PUBLIC_FRONTEND_URL` and `GOOGLE_OAUTH_REDIRECT_URI` use the Vercel HTTPS
+    URL; the redirect URI ends in `/api/auth/google/callback`.
+  - `WEB_CORS_ORIGINS` and `CSRF_TRUSTED_ORIGINS` use the Vercel HTTPS origin.
+  - `ALLOWED_HOSTS` is a comma-separated hostname list containing the Render
+    backend hostname and the Vercel frontend hostname. Do not include schemes
+    or paths.
+
+Create the Vercel project from this repository with `frontend` as its Root
+Directory. Set `BACKEND_API_URL` in Preview and Production environments to the
+Render service HTTPS origin, without a trailing slash. `frontend/vercel.json`
+selects Next.js; `frontend/next.config.mjs` performs the same-origin `/api`
+rewrite.
+
+Register the exact Vercel callback URI in Google Cloud. Then verify, in order:
+
+1. Render `/health/live` returns 200 and `/health/ready` reports the real
+   database and R2 state without exposing internal values.
+2. The Vercel frontend can obtain a CSRF token and complete Google sign-in.
+3. An untrusted `Host` header and an untrusted browser `Origin` are rejected.
+4. The session cookie is `Secure`, `HttpOnly`, and `SameSite=Lax`.
+5. One disposable read/write/delete flow succeeds under the preview R2 prefix,
+   and the credential cannot access production or backup scope.
+6. Rollback is proven by redeploying the preceding known-good Render and Vercel
+   commits. No preview filesystem content is treated as durable data.
+
+Render Free services can sleep when idle and have an ephemeral filesystem, so
+cold starts and data loss outside PostgreSQL/R2 are expected. Upgrade the
+backend before reliability-sensitive, scheduled, or commercial use.
+
 ### Recommended Managed Production Topology
 
 The currently compatible managed topology is:

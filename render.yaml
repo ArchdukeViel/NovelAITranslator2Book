@@ -1,0 +1,127 @@
+services:
+  - type: web
+    name: dokushodo-preview-api
+    runtime: docker
+    plan: free
+    region: singapore
+    autoDeploy: true
+    dockerContext: .
+    dockerfilePath: ./deploy/admin.Dockerfile
+    dockerCommand: >-
+      /bin/sh -c 'cd /app/backend && alembic -c alembic.ini upgrade head && exec novelai web --host 0.0.0.0 --port 10000'
+    healthCheckPath: /health/live
+    maxShutdownDelaySeconds: 30
+    buildFilter:
+      paths:
+        - backend/**
+        - deploy/admin.Dockerfile
+        - pyproject.toml
+        - requirements.lock
+        - uv.lock
+        - render.yaml
+    envVars:
+      - key: ENV
+        value: preview
+      - key: SERVICE_ROLE
+        value: admin
+      - key: DEPLOY_MODE
+        value: monolith
+      - key: PORT
+        value: "10000"
+      - key: WEB_HOST
+        value: 0.0.0.0
+      - key: WEB_PORT
+        value: "10000"
+      - key: PUBLIC_HTTP_PORT
+        value: "10000"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: NOVEL_LIBRARY_DIR
+        value: /tmp/novelai-preview
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_CONNECTION_MODE
+        value: transaction
+      - key: DB_POOL_SIZE
+        value: "2"
+      - key: DB_MAX_OVERFLOW
+        value: "1"
+      - key: DB_CONNECTION_BUDGET
+        value: "4"
+      - key: DB_CONNECT_TIMEOUT_SECONDS
+        value: "10"
+      - key: DB_SSL_MODE
+        value: require
+      - key: STORAGE_BACKEND
+        value: s3
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_REGION
+        value: auto
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_KEY_PREFIX
+        value: preview
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_STORAGE_LIMIT_GB
+        value: "9.5"
+      - key: SESSION_SECRET_KEY
+        generateValue: true
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: SESSION_MAX_AGE
+        value: "28800"
+      - key: OWNER_BOOTSTRAP_SECRET
+        sync: false
+      - key: PROVIDER_CREDENTIAL_ENCRYPTION_KEY
+        generateValue: true
+      - key: PROVIDER_DEFAULT
+        value: gemini
+      - key: PROVIDER_GEMINI_DEFAULT_MODEL
+        value: gemini-3.1-flash-lite
+      - key: PROVIDER_GEMINI_MODEL_FALLBACKS
+        value: '["gemma-4-31b-it"]'
+      - key: TRANSLATION_TARGET_LANGUAGE
+        value: English
+      - key: PUBLIC_FRONTEND_URL
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        sync: false
+      - key: WEB_CORS_ORIGINS
+        sync: false
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: WEB_RATE_LIMITER_BACKEND
+        value: memory
+      - key: SECURITY_HEADERS_ENABLED
+        value: "true"
+      - key: HSTS_MAX_AGE_SECONDS
+        value: "0"
+      - key: JOB_WORKER_ENABLED
+        value: "false"
+      - key: BACKUP_ENABLED
+        value: "false"
+      - key: BACKUP_S3_ENABLED
+        value: "false"
+      - key: DATABASE_BACKUP_ENABLED
+        value: "false"
+      - key: DATABASE_RESTORE_VERIFICATION_ENABLED
+        value: "false"
+      - key: MAINTENANCE_ENABLED
+        value: "false"
+      - key: AUTH_EMAIL_DELIVERY_MODE
+        value: noop
+      - key: OPERATOR_ALERT_ENABLED
+        value: "false"
+
+previews:
+  generation: none

@@ -76,7 +76,7 @@ keeps its acceptance gate open.
   - Add deploy smoke checks, rollback procedure, and migration gate. (DEBT-055)
 
 ## Milestone M3.5 — Free Hosted Preview and Production Topology
-- **Status:** Planned
+- **Status:** In progress
 - **Description:** Establish a disposable free hosted preview without claiming
   production reliability, then prove the paid always-on production topology.
 - **Scope:**
@@ -91,6 +91,9 @@ keeps its acceptance gate open.
     verified against the chosen domains.
   - Production upgrades are selected before commercial or reliability-sensitive
     use, and DEBT-079 is closed with deployment evidence.
+- **Implementation note (2026-07-18):** The repository now defines a Render
+  Free monolith Blueprint and a Vercel frontend configuration. Hosted domain,
+  OAuth, security-boundary, R2-scope, health, and rollback evidence remain.
 
 ## Milestone M4 — Reader and Catalog UX
 - **Status:** Planned
