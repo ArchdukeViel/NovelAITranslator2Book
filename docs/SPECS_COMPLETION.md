@@ -6,10 +6,12 @@ For live debt items, see the register: [`docs/DEBT.md`](DEBT.md).
 
 ---
 
-## Active Specs (21)
+## Roadmap-Linked Specs (21)
 
-These designs represent planned features or ongoing roadmap items.
-Checklist files (`tasks.md`) inside active spec directories contain non-binding planning records.
+These directories remain linked from the roadmap or debt history. Some describe
+resolved work and therefore are not "active" implementation requirements.
+Checklist files (`tasks.md`) are non-binding planning records; current status
+comes from `docs/roadmap.md` and `docs/DEBT.md`.
 
 - `admin-audit-log-viewer` -> DEBT-054 (Milestone M5)
 - `admin-user-management` -> DEBT-008 (Milestone M5)

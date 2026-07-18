@@ -6,6 +6,10 @@ The commands are written for PowerShell on Windows because this workspace is cur
 
 Current mode is single-owner / controlled-admin. The backend has scheduler-enabled admin-owned provider/model routing and baseline owner/admin security hardening. Supabase-hosted PostgreSQL persistence and public user auth are implemented. Public contribution credentials, batch mode, billing, organizations, and multi-admin teams are not implemented.
 
+Use local full development for the complete zero-cost operational workflow.
+The hosted free preview is disposable and disables continuous jobs, scheduled
+recovery verification, maintenance, and SMTP; it is not a production substitute.
+
 ## 1. What You Are Running
 
 Local development uses separate processes:
@@ -105,10 +109,11 @@ DATABASE_URL=postgresql+psycopg://novelai:novelai@localhost:5432/novelai
 REDIS_URL=redis://localhost:6379/0
 ```
 
-Start PostgreSQL and Redis via Docker (required for the `db` extra):
+Start Redis via Docker. PostgreSQL must be running separately or provided by a
+managed service; the canonical Compose file does not define a PostgreSQL service:
 
 ```powershell
-docker compose -f deploy/compose.yml up -d postgres redis
+docker compose -f deploy/compose.yml up -d redis
 ```
 
 Run database migrations:
@@ -463,7 +468,7 @@ See [../reference/data-output-structure.md](../reference/data-output-structure.m
 - [../reference/python-commands.md](../reference/python-commands.md)
 - [../environment.md](../environment.md)
 - [../cicd-manual-setup.md](../cicd-manual-setup.md)
-- [../../SPECS_COMPLETION.md](../../SPECS_COMPLETION.md)
+- [../SPECS_COMPLETION.md](../SPECS_COMPLETION.md)
 
 ---
 

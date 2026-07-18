@@ -4,15 +4,15 @@ Novel AI is a web-first Japanese novel platform for crawling source sites, queue
 
 The project is now oriented toward a production-style web deployment, similar in shape to a WTR-Lab style site: a Next.js frontend for public/admin pages, a FastAPI backend under `/api`, file-backed canonical novel metadata and content, Postgres catalog/user domain rows, and an in-process activity worker (with optional standalone worker or Redis/RQ support).
 
-Current mode is single-owner / controlled-admin transitioning to a public platform. The project has 66 active specs under `.agents/kiro/specs/` covering:
+Current mode is single-owner / controlled-admin transitioning to a public platform. Roadmap-linked specifications and resolved implementation history cover:
 - Scheduler-enabled admin-owned provider/model routing
-- PostgreSQL 16 with SQLAlchemy 2.x + Alembic migrations (metadata, users, jobs)
-- Redis 7 + RQ background workers
+- PostgreSQL with SQLAlchemy 2.x + Alembic migrations (the current managed target is Supabase PostgreSQL 17)
+- An in-process worker, with Redis-backed distributed operation for split or multi-instance deployment
 - Guest/user/owner authentication (backend-enforced)
 - Public reader routes and user library/progress/ratings/requests
 - Baseline owner/admin security hardening
 - Glossary diagnostics, export manifests, public annotations, env consolidation
-- Legacy compatibility aliases (`source`, `provider`, `model`) fully removed from API contracts
+- Canonical API naming with documented legacy compatibility where migration is still pending
 
 Not implemented: public contribution credentials (later gated phase), batch mode, billing, organizations, multi-admin teams.
 
@@ -21,7 +21,7 @@ Not implemented: public contribution credentials (later gated phase), batch mode
 - Crawl supported Japanese web novel sources such as Syosetu, Novel18, Kakuyomu, and generic HTML pages.
 - Import text, EPUB, PDF, image folders, and CBZ documents through backend adapters.
 - Queue crawl and translation jobs from the web admin UI.
-- Translate chapters with Gemini, OpenAI, or the dummy provider for local testing.
+- Translate chapters through Gemini (`gemini-3.1-flash-lite` with `gemma-4-31b-it` fallback) or the dummy provider for local testing.
 - Route translation chunks through the backend scheduler with provider/model cooldown and quota state.
 - Review machine translations, save manual edits, switch active versions, and roll back chapter versions.
 - Track source health, activity/job status, scheduler model state, translation usage, glossary state, OCR review state, and export readiness.
@@ -47,15 +47,16 @@ Python project metadata stays at the repository root so `pip install -e .`, `pyt
 - Python 3.13 or newer
 - Node.js LTS with npm
 - Git
-- Docker Desktop (required for PostgreSQL + Redis via compose)
-- Gemini or OpenAI API key for real translation
+- PostgreSQL 17 locally or through a managed service such as Supabase
+- Docker Desktop (optional; used for Redis and the production-like Compose stack)
+- Gemini API key for real translation
 
 ## Local Install
 
 ```powershell
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -e ".[documents,openai,gemini,dev,db,worker]"
+.\.venv\Scripts\python.exe -m pip install -e ".[documents,gemini,dev,db,worker]"
 
 cd frontend
 npm install
@@ -86,7 +87,6 @@ Common `.env` values:
 NOVEL_LIBRARY_DIR=storage/novel_library
 PROVIDER_DEFAULT=gemini
 PROVIDER_GEMINI_API_KEY=your_key_here
-PROVIDER_OPENAI_API_KEY=your_key_here
 TRANSLATION_TARGET_LANGUAGE=English
 WEB_RATE_LIMITER_BACKEND=memory
 DATABASE_URL=postgresql+psycopg://novelai:novelai@localhost:5432/novelai
@@ -125,8 +125,23 @@ http://127.0.0.1:3000/admin
 Backend health:
 
 ```text
-http://127.0.0.1:8000/api/health
+http://127.0.0.1:8000/health/live
+http://127.0.0.1:8000/health/ready
 ```
+
+## Deployment Profiles
+
+- **Local full development:** the zero-cost profile that can run workers,
+  schedulers, backup/restore verification, maintenance, and SMTP acceptance.
+- **Hosted free preview:** Vercel Hobby plus a sleeping Render Free monolith,
+  Supabase Free, and development-only R2. It is disposable and does not run
+  continuous jobs or SMTP.
+- **Production:** Vercel frontend plus an always-on container backend, Supabase,
+  R2, managed Redis, tested SMTP, and monitoring.
+
+See [`docs/operations/deployment.md`](docs/operations/deployment.md) for the
+operational contracts and [`docs/environment.md`](docs/environment.md) for the
+configuration boundary.
 
 ## Main Web Workflow
 

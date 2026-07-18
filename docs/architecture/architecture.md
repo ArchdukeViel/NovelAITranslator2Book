@@ -3,7 +3,7 @@
 ## 0. Document Status
 
 **Status**: canonical project architecture
-**Last reviewed**: 2026-07-16 (managed-platform and storage documentation reconciliation)
+**Last reviewed**: 2026-07-18 (free-tier development and launch-gate reconciliation)
 
 This is the single active architecture reasoning file for NovelAI. If another document
 disagrees with this one, this document wins and the conflict should be reported
@@ -50,6 +50,29 @@ machine-translated novel platform in product shape, not branding.
 
 The owner does dangerous operations. Users request or save personal state only
 after public auth is implemented. Guests read published content.
+
+### 2.1 Deployment Profiles and Cost Boundary
+
+The repository has three distinct deployment profiles. They must not be
+described as interchangeable:
+
+| Profile | Intended topology | Operational contract |
+|---|---|---|
+| Local full development | Local frontend/backend plus Docker Redis and an external/local PostgreSQL database | The only zero-cost profile expected to run the continuous worker, scheduler, backup jobs, restore verifier, and SMTP acceptance tests reliably. |
+| Hosted free preview | Vercel Hobby frontend, one Render Free monolith, Supabase Free PostgreSQL, and development-only R2 scope | Disposable preview only. Worker, scheduled backup, restore verification, maintenance, and SMTP delivery stay disabled because a sleeping/ephemeral free web service cannot satisfy those contracts. |
+| Production | Vercel frontend, paid always-on container backend, Supabase PostgreSQL, R2 application and backup buckets, managed Redis, SMTP, and external monitoring | Must pass the launch checklist, recovery evidence, OAuth/CORS/CSRF/host validation, rollback, monitoring, and budget gates before public use. |
+
+Free-tier use is a development cost policy, not a reliability claim. Vercel
+Hobby is limited to personal/non-commercial use, Supabase Free can pause, and
+Render Free can sleep or restart. Production must upgrade any service whose
+free-plan terms, capacity, availability, or data-protection behavior do not
+meet the launch contract.
+
+The frontend may be hosted on Vercel, but the current backend is not a Vercel
+Functions workload. Its continuous scheduler, long translation jobs, split
+admin/reader processes, PostgreSQL client tools, and restore verifier require
+long-running compute unless a separately approved architecture redesigns
+those contracts around durable external workflows.
 
 ## 3. Backend Architecture
 
@@ -302,6 +325,12 @@ frontend/lib/               API clients, shared types, client utilities
 | Critical | Provider API keys, admin/session tokens, encryption keys, `.env` and deployment secrets, backups containing runtime state. |
 | High | Raw scraped chapters, parsed chapters, translation chunks, provider request/response records, unpublished translations, job events/logs. |
 | Medium | Published translated chapters, public metadata, public assets. |
+
+Gemini free-tier requests may be used only for public or otherwise
+non-sensitive source/translation text. Critical data, account data, private
+operator data, credentials, backups, logs, and unpublished sensitive content
+must never be sent to a free-tier model. The approved model chain is
+`gemini-3.1-flash-lite` followed by `gemma-4-31b-it`; both use the Gemini API.
 
 **Baseline protections implemented**:
 

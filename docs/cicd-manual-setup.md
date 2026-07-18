@@ -4,8 +4,8 @@ This guide covers the manual steps required to complete the CI/CD pipeline setup
 All workflow files are already implemented and committed to `.github/workflows/`.
 What remains is GitHub UI configuration and verification.
 
-**Last updated:** 2026-07-16 (managed-services and workflow reconciliation)
-**Current status:** Workflow syntax and the local lint, type, test, build, and Compose checks are verified. `build.yml` publishes three GHCR images only after the `CI` workflow succeeds on `main`. Live Actions, CodeQL, Dependabot, and secret-scanning state still require GitHub authentication and dashboard verification. The SSH deploy workflow is retained for the legacy single-host topology but is not accepted for production until its GHCR image tags are wired into Compose and a backend host is selected.
+**Last updated:** 2026-07-18 (live CI and repository-control reconciliation)
+**Current status:** Local lint, type, focused tests, build, and Compose checks have prior passing evidence. The latest `main` CI run fails while applying migrations to clean PostgreSQL because the Supabase `auth` schema is absent (DEBT-076). The aggregate Build job can appear green when publication is skipped (DEBT-077). CodeQL, dependency graph, Dependabot, and secret-scanning checks were green with zero open alerts when inspected. The default branch had no protection/ruleset, Actions allowed all actions, and immutable SHA pinning was not required (DEBT-078). Repository-setting changes remain manual owner actions.
 
 ---
 
@@ -14,6 +14,29 @@ What remains is GitHub UI configuration and verification.
 - GitHub repository with your code pushed to `main` branch
 - Admin or owner access to the repository
 - A Linux/SSH-accessible server for deployment (optional, only if deploying)
+
+---
+
+## Task 5: Harden GitHub Repository Controls
+
+Complete these in the GitHub UI; do not treat local workflow edits as proof that
+the repository settings are active:
+
+1. Create a `main` branch ruleset requiring pull requests, at least one review,
+   conversation resolution, and the CI/CodeQL checks selected after their names
+   are verified on a real pull request.
+2. Block force pushes and branch deletion. Require linear history if it matches
+   the team's merge policy.
+3. Under **Settings → Actions → General**, restrict allowed actions to GitHub-owned
+   actions plus an explicit allowlist. Require full commit SHA pinning for
+   third-party actions after the workflow references are converted.
+4. Keep default `GITHUB_TOKEN` permissions read-only; grant `packages: write` or
+   other mutation permissions only in the job that requires them.
+5. Keep Dependabot, dependency graph, secret scanning, push protection, and
+   CodeQL enabled. Record screenshots or API evidence after configuration.
+
+Do not enable required checks until the clean-PostgreSQL migration regression is
+fixed, otherwise the ruleset will intentionally block every merge.
 
 ---
 

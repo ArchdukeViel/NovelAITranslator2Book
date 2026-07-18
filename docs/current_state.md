@@ -8,8 +8,13 @@ For the technical debt register and launch blockers, see the register: [`docs/DE
 
 ## Launch Status
 
-- **Launch readiness:** Not ready. Seven new Kiro specs (admin audit viewer, deployment hardening, frontend error states, launch checklist, public reader accessibility, public reader performance, terms/DMCA takedown) are planned but not implemented.
-- **V1 launch blockers:** 4 (DEBT-001 health probes, DEBT-002 CI build verification, DEBT-003 CI Postgres, DEBT-006 admin glossary circular import).
+- **Launch readiness:** Not ready. Core managed-service implementation is
+  mature, but current CI has a clean-PostgreSQL migration regression and the
+  scheduled recovery, alert, hosted deployment, reader/admin polish, and final
+  launch evidence remain open.
+- **Current launch blockers:** DEBT-075 through DEBT-079: managed-service
+  acceptance, clean-PostgreSQL migration compatibility, truthful CI coverage,
+  GitHub control hardening, and hosted topology acceptance.
 
 ---
 
@@ -17,40 +22,54 @@ For the technical debt register and launch blockers, see the register: [`docs/DE
 
 - **Backend:** FastAPI monolith (default) with split deployment options under `DEPLOY_MODE=split`.
 - **Frontend:** Next.js 15 App Router.
-- **Storage:** Storage backend files are canonical for novel metadata, chapters, translations, assets, and exports. PostgreSQL database holds derived projections (catalog, novels, chapters) and canonical domain rows (users, auth, glossary, requests, audits).
+- **Database:** SQLAlchemy and Alembic remain authoritative; the current hosted
+  database is Supabase PostgreSQL 17. A managed database does not replace the
+  repository migration layer.
+- **Storage:** Cloudflare R2 is the current S3-compatible object store. Application
+  data and independent recovery snapshots use private, separately scoped buckets.
 - **Worker:** Background activity worker defaults to in-process (`JOB_WORKER_ENABLED=true`). Async queue support via Redis/RQ exists.
+- **Translation:** Gemini only. The approved chain is
+  `gemini-3.1-flash-lite` then `gemma-4-31b-it`, using the Gemini API. Public
+  contribution credentials remain gated and are not a current launch feature.
 - **Settings:** Configured via `pydantic-settings` in `backend/src/novelai/config/settings.py`. Canonical environment variable is `ENV` (not `APP_ENV`).
 
 ---
 
 ## Technical Debt and Blockers Summary
 
-- **V1 Launch Blockers:** Health probes (DEBT-001), CI build checks (DEBT-002), CI Postgres setup (DEBT-003), and admin glossary circular imports (DEBT-006).
-- **Technical Debt Register:** Consolidated active registry is in [`docs/DEBT.md`](DEBT.md). 33 active entries.
+- **V1 Launch Blockers:** DEBT-075 through DEBT-079.
+- **Technical Debt Register:** The consolidated registry and resolution history
+  are in [`docs/DEBT.md`](DEBT.md). It currently records 27 active entries.
 
 ---
 
 ## Validation Status
 
-- **Backend Lint:** Ruff passes clean on backend files.
-- **Backend Typecheck:** Pyright type checking passes with 0 errors.
-- **Backend Unit Tests:** Core unit tests pass locally.
-- **Frontend Typecheck:** Next.js type check passes.
-- **Frontend Build:** Production build finishes clean.
-- **Docker builds:** Local admin, reader, and frontend Dockerfiles build successfully.
-- **CI:** Database-dependent tests blocked (DEBT-003). Image build verification pending (DEBT-002).
+- **Local checks:** Ruff, Pyright, focused backend tests, frontend typecheck/build,
+  Docker builds, and the router guard have previously passed for the implemented
+  M0-M3 work. They must be rerun after the next implementation phases.
+- **Latest CI:** The current main-branch run fails while migrating a clean
+  PostgreSQL service because the Supabase `auth` schema is absent (DEBT-076).
+- **Build workflow:** Its aggregate success signal does not by itself prove that
+  image publication ran; DEBT-077 tracks the correction.
+- **Hosted services:** Supabase security advisors last reported zero WARN
+  findings, and manual R2/storage and PostgreSQL 17 restore checks succeeded.
+  Scheduled and hosted acceptance evidence remains incomplete (DEBT-075).
 
 ---
 
 ## Known Gaps (Not Launch-Ready)
 
-- Health endpoints are static; no real DB/storage/worker probes.
-- No scheduled backups; no retention cleanup.
-- No audit log writer or owner-only audit viewer.
+- Two consecutive scheduler-created R2 snapshots are not yet recorded.
+- A scheduler-created database backup and an automated PostgreSQL 17 restore
+  verification are not yet recorded.
+- SMTP operator delivery, stale-backup alerts, cooldown, and redaction need live proof.
+- Hosted PostgreSQL and isolated-prefix real-R2 integration suites need reruns.
+- The free preview domains and the always-on production topology need acceptance.
+- No owner-only audit viewer.
 - No takedown workflow; no HTTP 451 enforcement.
 - No measured performance or accessibility gate.
 - No launch readiness evidence or go/no-go decision.
-- No production config validator; no deploy smoke checks.
 
 ## Implemented Features (Phase 2 Live Library Summary)
 

@@ -48,6 +48,25 @@ The environment variable `DEPLOY_MODE` controls API service registration:
 The Docker Compose configuration does not provision a PostgreSQL service. An external database instance must be provided via the `DATABASE_URL` setting.
 If running DB-backed actions, configure `DATABASE_URL` in the `.env` template before launching containers.
 
+### Free Hosted Preview
+
+The approved free hosted preview is deliberately smaller than production:
+
+- Vercel Hobby hosts the personal/non-commercial Next.js frontend.
+- One Render Free service runs the backend in `DEPLOY_MODE=monolith`.
+- Supabase Free provides PostgreSQL/Auth, and R2 uses development-only scopes.
+- `BACKEND_API_URL` points the Vercel rewrite to the Render backend so browser
+  API requests remain same-origin at the frontend domain.
+- The exact Google callback is
+  `https://<preview-frontend-domain>/api/auth/google/callback` and must be
+  registered in Google Cloud and configured in the backend.
+- Continuous worker/scheduler jobs, scheduled backup and restore verification,
+  maintenance, and SMTP delivery remain disabled. Render Free sleep and
+  ephemeral files make this profile unsuitable for those contracts.
+
+This preview is disposable and not launch acceptance. Do not reuse production
+R2 credentials, production prefixes, or operator secrets in it.
+
 ### Recommended Managed Production Topology
 
 The currently compatible managed topology is:

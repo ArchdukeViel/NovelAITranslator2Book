@@ -1,14 +1,16 @@
 # Technical Debt Register
 
-Single source of truth for outstanding technical debt.
-All resolved items, duplicate entries, and documentation-maintenance tasks have been removed.
+Single source of truth for technical debt and its resolution history. Resolved
+entries remain as evidence; active counts include Pending, Ongoing, and
+implemented items whose operational acceptance remains pending. Explicitly
+Deferred items are tracked but excluded from the active count.
 
 ---
 
 ## Executive Summary
 
-- **Total active debt entries:** 33
-- **V1 launch blockers:** 4
+- **Total active debt entries:** 27
+- **V1 launch blockers:** 5 (DEBT-075 through DEBT-079)
 - **Critical security/data integrity:** 0
 
 ---
@@ -135,9 +137,12 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 - **Category:** Frontend | Feature
 - **Priority:** Medium
 - **Status:** Pending
-- **Affected areas:** `frontend/app/(admin)/admin/settings/`
-- **Description:** API credentials configurable only through environment. No UI for encrypted database storage.
-- **Completion criteria:** Admin page allows list and creation of encrypted DB credential rows.
+- **Affected areas:** `frontend/app/(admin)/admin/settings/`, `backend/src/novelai/api/routers/admin_provider_credentials.py`
+- **Description:** Owner-only encrypted credential CRUD/test routes exist, but
+  the admin settings UI does not expose them. Environment credentials remain a
+  separate operator configuration path.
+- **Completion criteria:** Admin page can list, create, update, test, and revoke
+  encrypted credential rows without rendering complete secret values.
 
 ### DEBT-024 — SOURCE-PIPELINE-FIX-4: Novel status extraction issues
 - **Milestone:** Milestone M5 (Admin Operations)
@@ -394,9 +399,59 @@ All resolved items, duplicate entries, and documentation-maintenance tasks have 
 ### DEBT-075 — Managed-service recovery and scheduling closure
 - **Milestone:** Managed Services Closure
 - **Category:** Database | Storage | Operations
-- **Priority:** High
+- **Priority:** Blocker
 - **Status:** Implemented; scheduled and alert acceptance pending
 - **Resolution:** Added reusable bounded database engines, PostgreSQL connection timeouts, renewable scheduled-job leases, real cron/timezone evaluation, split R2 snapshot credentials, streamed encrypted PostgreSQL exports, retention, and redacted SMTP alerts. A manual encrypted backup and clean PostgreSQL 17 restore succeeded, and live R2 permission-boundary tests proved the three credential roles. Remaining acceptance requires two scheduler-created snapshots, one scheduler-created database backup, one automated restore verification, tested stale/failure alert delivery, and successful hosted verification workflow evidence.
+
+### DEBT-076 — Clean PostgreSQL migration lacks Supabase auth compatibility
+- **Milestone:** Milestone M0 (CI Confidence)
+- **Category:** Database | CI/CD
+- **Priority:** Blocker
+- **Status:** Pending
+- **Affected areas:** `backend/alembic/versions/`, `.github/workflows/ci.yml`
+- **Description:** The latest clean PostgreSQL CI migration fails because a
+  migration expects Supabase's `auth` schema, while the vanilla PostgreSQL 16
+  service does not provide it.
+- **Completion criteria:** A clean PostgreSQL service and the hosted Supabase
+  project both migrate to head through an explicit, tested compatibility path.
+
+### DEBT-077 — CI exclusions and workflow success signals are misleading
+- **Milestone:** Milestone M0 (CI Confidence)
+- **Category:** Testing | CI/CD
+- **Priority:** Blocker
+- **Status:** Pending
+- **Affected areas:** `.github/workflows/ci.yml`, `.github/workflows/build.yml`
+- **Description:** Known test exclusions and the aggregate build job can report
+  success without proving the complete behavior or image publication implied by
+  the workflow name.
+- **Completion criteria:** Every exclusion is justified or removed, migration
+  and auth regressions run in CI, and aggregate jobs distinguish a skipped
+  publication from a verified image push.
+
+### DEBT-078 — GitHub repository controls need hardening
+- **Milestone:** Milestone M0 (CI Confidence)
+- **Category:** Security | Supply Chain | CI/CD
+- **Priority:** Blocker
+- **Status:** Pending
+- **Affected areas:** `.github/workflows/`, GitHub repository settings
+- **Description:** The default branch has no ruleset, Actions allows all actions,
+  and immutable SHA pinning is not required. Live repository changes remain an
+  owner-operated step documented in `docs/cicd-manual-setup.md`.
+- **Completion criteria:** Required checks and review rules protect the default
+  branch, Actions permissions are least-privilege, third-party actions are
+  pinned or restricted, and security scanners remain green.
+
+### DEBT-079 — Free preview and production deployment acceptance missing
+- **Milestone:** Milestone M3.5 (Hosted Topology)
+- **Category:** Deployment | Operations
+- **Priority:** Blocker
+- **Status:** Pending
+- **Affected areas:** `docs/operations/deployment.md`, hosting configuration
+- **Description:** The free hosted preview and production topology are defined,
+  but domains, OAuth, cookies, CORS/CSRF, backend reachability, monitoring,
+  rollback, and cost/reliability upgrade gates have not been proven live.
+- **Completion criteria:** The disposable preview passes its reduced contract,
+  and the always-on production topology passes the full launch checklist.
 
 ### DEBT-073 — Glossary prompt injection test drift
 - **Milestone:** Milestone M1 (Glossary/Router Repair)

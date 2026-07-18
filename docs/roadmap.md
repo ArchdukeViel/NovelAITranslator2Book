@@ -3,10 +3,14 @@
 This is the single source of truth for release gates, phase order, and feature milestones.
 Status and details are updated directly as release verification progresses.
 
+Milestone status distinguishes code completion from operational acceptance. A
+milestone may be implemented while live evidence or a current CI regression
+keeps its acceptance gate open.
+
 ---
 
 ## Milestone M0 — CI Confidence
-- **Status:** Done
+- **Status:** Regression open (previously accepted)
 - **Description:** Stabilize deployment builds and integration testing in the CI environment.
 - **Evidence:**
   - CI run (PR #1): <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29230504497> — all gates pass (backend-lint, backend-tests, frontend-check, docker-build)
@@ -17,9 +21,11 @@ Status and details are updated directly as release verification progresses.
   - Add PostgreSQL service and required `DATABASE_URL` to GitHub Actions workflow.
   - Run database-dependent tests in CI instead of skipping.
   - Verify that dual-service Docker image build (`admin` and `reader` images) finishes green on push.
-- **Blockers:**
-  - DEBT-002: Actions build fails on remote GHCR push credentials.
-  - DEBT-003: Postgres service missing in CI Actions.
+- **Current regression:**
+  - DEBT-076: a clean PostgreSQL CI migration fails because the Supabase
+    `auth` schema is not present on the vanilla PostgreSQL service.
+  - DEBT-077: CI exclusions and workflow success signals must be reconciled
+    with the behavior they claim to verify.
 - **Acceptance gates:**
   - `ci.yml` passes on main branch with database tests active.
   - `build.yml` outputs Docker image tags to registry.
@@ -39,7 +45,7 @@ Status and details are updated directly as release verification progresses.
   - Router layer validation script returns green.
 
 ## Milestone M2 — Operational Safety (Phase 2)
-- **Status:** Done
+- **Status:** Implemented; managed-service acceptance partial
 - **Description:** Health checks, PDF resolution, backups, and storage retention safety.
 - **Sub-Milestones:**
   - **M2a (Health Probes):** Replace static `/health` routes with database, storage, and worker probes. Expose diagnostic details without leaking secrets. (DEBT-001) — Resolved
@@ -54,9 +60,11 @@ Status and details are updated directly as release verification progresses.
   - `python -m pytest` for all focused test files — 111 passed
   - Router boundary guard — no matches (clean)
   - `git diff --check` — no integrity issues
+  - DEBT-075 records the remaining scheduler-created snapshot, scheduled
+    database backup, automated restore, alert-delivery, and hosted-test evidence.
 
 ## Milestone M3 — Deployment Readiness
-- **Status:** Done
+- **Status:** Implemented; hosted deployment acceptance pending
 - **Description:** Production config validator, Redis rate limiting with cross-instance verification, security headers/proxy/CORS hardening, Caddy/Compose route verification, frontend ESLint + CI lint step, S3 integration test harness, deploy smoke checks, updated deployment/operations documentation.
 - **Scope:**
   - Set up Redis rate limiting and verify multi-instance behavior. (DEBT-039)
@@ -66,6 +74,23 @@ Status and details are updated directly as release verification progresses.
   - Implement production configuration validator and startup checks. (DEBT-055)
   - Harden TLS, proxy, CORS, CSRF, cookies, and security headers. (DEBT-055)
   - Add deploy smoke checks, rollback procedure, and migration gate. (DEBT-055)
+
+## Milestone M3.5 — Free Hosted Preview and Production Topology
+- **Status:** Planned
+- **Description:** Establish a disposable free hosted preview without claiming
+  production reliability, then prove the paid always-on production topology.
+- **Scope:**
+  - Vercel Hobby hosts the personal/non-commercial preview frontend.
+  - One Render Free monolith hosts the preview backend with continuous worker,
+    scheduler, backup/restore jobs, maintenance, and SMTP disabled.
+  - Supabase Free and development-only R2 scopes support preview data.
+  - Production uses an always-on container backend, managed Redis, tested SMTP,
+    monitoring, and the existing Supabase/R2 data services.
+- **Acceptance gates:**
+  - Preview OAuth, cookies, CORS, CSRF, host validation, health, and rollback are
+    verified against the chosen domains.
+  - Production upgrades are selected before commercial or reliability-sensitive
+    use, and DEBT-079 is closed with deployment evidence.
 
 ## Milestone M4 — Reader and Catalog UX
 - **Status:** Planned

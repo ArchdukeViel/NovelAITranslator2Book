@@ -117,3 +117,18 @@ Remaining limitations:
 3. Configure tested SMTP and an operator recipient, then prove scheduled-job-failure and stale-backup alert delivery, cooldown, and redaction.
 4. Enable the managed-services GitHub workflow with isolated hosted PostgreSQL and R2 credentials, then retain successful run evidence.
 5. Select the production frontend/backend topology and domain, replace the local OAuth callback in the production environment, and clear the remaining CORS, CSRF, and allowed-host warnings.
+
+## Repository and CI Reconciliation — 2026-07-18
+
+The storage and database evidence above remains valid, but it does not close the
+repository launch gate. The latest clean-PostgreSQL GitHub Actions migration
+fails because the vanilla CI service does not contain Supabase's `auth` schema.
+DEBT-076 and DEBT-077 now track that regression and the misleading aggregate
+build signal.
+
+The selected free hosted preview is Vercel Hobby plus one Render Free monolith,
+Supabase Free, and development-only R2. It is disposable: continuous worker and
+scheduler jobs, scheduled recovery verification, maintenance, and SMTP are
+disabled. Production still requires an always-on container backend, managed
+Redis, tested SMTP, monitoring, and full hosted acceptance. DEBT-079 records the
+remaining topology proof.

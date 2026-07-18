@@ -3,7 +3,7 @@
 > **Comprehensive reference for all environment variables.**
 > Source of truth: `backend/src/novelai/config/settings.py`
 > Example files: `.env.example`, `deploy/.env.example`
-> Last updated: 2026-07-12 — documentation reconciliation
+> Last updated: 2026-07-18 — free-tier and production-profile reconciliation
 
 ---
 
@@ -39,6 +39,29 @@
 ## Overview
 
 Novel AI uses [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) to load configuration from environment variables. All settings have sensible defaults — you only need to set the values that differ from the default.
+
+### Deployment Profiles and Free-Tier Budget
+
+These are planning limits, verified against provider documentation on
+2026-07-18. Provider terms and prices can change; recheck them before launch.
+
+| Service | Development/preview allocation | Function and production gate |
+|---|---|---|
+| [Supabase Free](https://supabase.com/pricing) | $0; 500 MB database, two free projects, inactivity pausing | PostgreSQL and Auth. Free has no automatic database backups; upgrade to Pro (currently $25/month) when availability and managed backups are required. |
+| [Cloudflare R2 Standard](https://developers.cloudflare.com/r2/pricing/) | Monthly free usage includes 10 GB-month, 1 million Class A operations, and 10 million Class B operations; internet egress is free | Private canonical objects and independent recovery snapshots. Preserve separate least-privilege credentials and buckets. |
+| [Vercel Hobby](https://vercel.com/docs/plans/hobby) | $0 for personal, non-commercial use | Next.js preview frontend only. Use a commercial plan when the project becomes commercial or needs its production guarantees. |
+| [Render Free](https://render.com/docs/free) | $0; web service sleeps after inactivity and uses an ephemeral filesystem | Disposable preview monolith only. SMTP and continuous scheduler/worker/recovery contracts stay disabled; production requires always-on compute. |
+| [Upstash Redis Free](https://upstash.com/pricing/redis) | 256 MB and 500,000 commands per month | Preview/shared rate limiting and queue coordination. Upgrade before sustained multi-instance production traffic. |
+| [Resend Free](https://resend.com/pricing) | 3,000 emails per month and 100 per day | Development authentication and operator email. Production requires verified delivery, domain setup, alerts, and sufficient quota. |
+| [Better Stack Free](https://betterstack.com/pricing) | 10 monitors/heartbeats and one status page | Preview uptime and job heartbeat monitoring. Upgrade when retention, responders, or coverage exceed the free plan. |
+| [Gemini API](https://ai.google.dev/gemini-api/docs/pricing) | `gemini-3.1-flash-lite` has a free tier; paid standard pricing is currently $0.25/million input tokens and $1.50/million output tokens | Primary translation model. Free-tier requests may contain only public/non-sensitive text. |
+| Gemma through the Gemini API | `gemma-4-31b-it` is the fallback and currently free-tier only | Low-sensitivity translation fallback. It uses the same Gemini credential and the same data boundary. |
+
+Local full development is the only zero-cost profile expected to exercise the
+continuous worker, scheduler, backup/restore verifier, maintenance jobs, and
+SMTP acceptance reliably. The hosted free preview intentionally disables those
+contracts. Production uses an always-on backend plus managed Redis, tested
+SMTP, monitoring, and the existing Supabase/R2 services.
 
 ### How Environment Variables Are Loaded
 
