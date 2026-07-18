@@ -400,8 +400,8 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Managed Services Closure
 - **Category:** Database | Storage | Operations
 - **Priority:** Blocker
-- **Status:** Implemented; scheduled and alert acceptance pending
-- **Resolution:** Added reusable bounded database engines, PostgreSQL connection timeouts, renewable scheduled-job leases, real cron/timezone evaluation, split R2 snapshot credentials, streamed encrypted PostgreSQL exports, retention, and redacted SMTP alerts. A manual encrypted backup and clean PostgreSQL 17 restore succeeded, and live R2 permission-boundary tests proved the three credential roles. Remaining acceptance requires two scheduler-created snapshots, one scheduler-created database backup, one automated restore verification, tested stale/failure alert delivery, and successful hosted verification workflow evidence.
+- **Status:** Implemented; alert and hosted acceptance pending
+- **Resolution:** Added reusable bounded database engines, PostgreSQL connection timeouts, renewable scheduled-job leases, real cron/timezone evaluation, split R2 snapshot credentials, streamed encrypted PostgreSQL exports, retention, and redacted SMTP alerts. Live R2 permission-boundary tests proved the three credential roles. On 2026-07-18 two consecutive scheduler-created R2 snapshots passed full checksum verification, and a scheduler-created encrypted PostgreSQL backup was automatically restored into a clean PostgreSQL 17 target at Alembic head `8b7f3d1a2c4e` with 30 public tables and zero invalid constraints. The opt-in hosted PostgreSQL/R2 suite passes, and alert cooldown plus secret redaction have direct tests. Remaining acceptance requires real stale/failure SMTP delivery and successful hosted verification workflow evidence.
 
 ### DEBT-076 — Clean PostgreSQL migration lacks Supabase auth compatibility
 - **Milestone:** Milestone M0 (CI Confidence)

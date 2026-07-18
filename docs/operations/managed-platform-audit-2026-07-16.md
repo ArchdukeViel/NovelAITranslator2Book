@@ -35,7 +35,7 @@ Remaining limitations:
 
 - Most repository tests use SQLite; full service behavior is not continuously exercised against hosted PostgreSQL.
 - Pooling, connection modes, TLS, and per-connection timeouts are now explicit in the repository; live deployment verification remains required.
-- Encrypted logical database backup automation is implemented, and one clean PostgreSQL 17 restore drill has succeeded. Scheduler-created backup and automated restore-verification evidence remain acceptance gates.
+- Encrypted logical database backup automation is implemented. A scheduler-created backup and automated clean PostgreSQL 17 restore verification succeeded on 2026-07-18; alert delivery and hosted workflow evidence remain acceptance gates.
 
 ## Cloudflare R2 Findings
 
@@ -91,8 +91,8 @@ Remaining limitations:
 
 - Real R2 tests are opt-in rather than continuously exercised in CI.
 - Storage usage health now uses the storage-backend contract rather than boto3 internals. It still requires a complete application-prefix listing, so a metrics-based capacity source may be preferable at larger scale.
-- Cron/timezone evaluation and renewable database leases are implemented; two consecutive automatic live snapshots remain an acceptance gate.
-- Encrypted PostgreSQL backup and clean PostgreSQL 17 restore are implemented and have succeeded manually; scheduler-created database-backup and automated restore-verification evidence remain acceptance gates.
+- Cron/timezone evaluation and renewable database leases are implemented. Two consecutive accelerated scheduler runs on 2026-07-18 created committed live snapshots; each restored and checksum-verified all 16 objects and 381,808 bytes.
+- Encrypted PostgreSQL backup and clean PostgreSQL 17 restore are implemented. On 2026-07-18 the scheduler created a committed encrypted backup and automatically restored it into a newly created PostgreSQL 17 target at Alembic head `8b7f3d1a2c4e`, with 30 public tables and zero invalid constraints.
 
 ## Verification Evidence
 
@@ -105,18 +105,43 @@ Remaining limitations:
 - A live application-driven snapshot completed successfully with 16 source objects, 381,808 source bytes, a manifest-last commit marker, and successful post-commit SHA-256 verification.
 - Independent Cloudflare verification confirmed the committed snapshot, expected retention and lifecycle coverage, and no incomplete automatic snapshot artifacts.
 - Live S3 permission-boundary verification confirmed all three R2 credential roles, including intended writes, denied writes, denied cross-bucket access, and cleanup of the isolated verification prefix.
-- A clean PostgreSQL 17 restore from an encrypted logical backup completed successfully; scheduled creation and automated restore verification have not yet produced acceptance evidence.
+- Two scheduler-created R2 snapshots completed successfully on 2026-07-18 and were independently re-read through the application S3 client; all recorded object sizes and SHA-256 checksums matched.
+- A scheduler-created encrypted logical backup completed on 2026-07-18, followed by successful automated restoration into a newly created PostgreSQL 17 target. Supabase records both scheduler jobs as succeeded, and Cloudflare independently confirms the new committed database manifest and encrypted artifact size.
 - Google OAuth configuration is installed consistently in the three local environment files and passes structural validation. The end-to-end hosted callback remains unverified until a production domain is selected.
 - Focused repository tests after remediation: 66 passed with boto3/moto enabled.
 - Documentation whitespace validation: `git diff --check` passed.
 
 ## Follow-Up Priorities
 
-1. Record two consecutive scheduler-created R2 snapshots and verify their manifests and checksums.
-2. Record one scheduler-created encrypted database backup and one automated PostgreSQL 17 restore verification.
-3. Configure tested SMTP and an operator recipient, then prove scheduled-job-failure and stale-backup alert delivery, cooldown, and redaction.
-4. Enable the managed-services GitHub workflow with isolated hosted PostgreSQL and R2 credentials, then retain successful run evidence.
-5. Select the production frontend/backend topology and domain, replace the local OAuth callback in the production environment, and clear the remaining CORS, CSRF, and allowed-host warnings.
+1. Configure tested SMTP and an operator recipient, then prove scheduled-job-failure and stale-backup alert delivery, cooldown, and redaction.
+2. Enable the managed-services GitHub workflow with isolated hosted PostgreSQL and R2 credentials, then retain successful run evidence.
+3. Select the production frontend/backend topology and domain, replace the local OAuth callback in the production environment, and clear the remaining CORS, CSRF, and allowed-host warnings.
+
+## Recovery Acceptance Update — 2026-07-18
+
+- Supabase remains `ACTIVE_HEALTHY` on PostgreSQL 17.6. The live Alembic head is
+  `8b7f3d1a2c4e`, all 30 public tables have RLS, and the security advisor has
+  zero WARN findings. The daily private cleanup job succeeded on both July 17
+  and July 18 in addition to the earlier runs.
+- Two accelerated one-minute scheduler occurrences created distinct committed
+  R2 snapshots. Supabase contains two `succeeded` scheduler log rows; Cloudflare
+  independently shows both new manifests under the lifecycle- and lock-covered
+  `snapshots/` prefix. Application restore verification re-read all content and
+  matched every recorded SHA-256 checksum.
+- A separate scheduler occurrence created a manifest-last encrypted PostgreSQL
+  backup. The automated verifier restored it into a newly created PostgreSQL 17
+  Docker volume, verified the current Alembic head, 30 public tables, and zero
+  invalid constraints, and the isolated container and volumes were removed
+  afterward.
+- No credential, connection string, object key, or decrypted artifact was
+  printed or recorded. SMTP alert delivery and hosted workflow acceptance remain
+  open.
+- The opt-in hosted PostgreSQL suite verified timeout settings, current Alembic
+  head, denied Data API lease-table privileges, reconnect behavior, and lease
+  contention. The real-R2 suite verified the application/source/target
+  credential split through an isolated snapshot and removed all test artifacts.
+  Three hosted integration tests passed. The GitHub-hosted managed-services
+  workflow itself remains pending.
 
 ## Repository and CI Reconciliation — 2026-07-18
 

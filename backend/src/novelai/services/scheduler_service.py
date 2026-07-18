@@ -140,8 +140,12 @@ class SchedulerService:
 
     async def _run_with_lease(self, job_name: str, runner: Callable[[], Awaitable[str]]) -> None:
         if self._lease_service is None:
-            status = await runner()
-            await self._log_run(job_name, status)
+            try:
+                status = await runner()
+            except Exception as exc:
+                logger.error("Scheduled job failed job=%s type=%s", job_name, exc.__class__.__name__)
+                status = "failed"
+            await self._record_run_result(job_name, status)
             return
         acquired = await asyncio.to_thread(
             self._lease_service.acquire,
@@ -159,16 +163,20 @@ class SchedulerService:
             except Exception as exc:
                 logger.error("Scheduled job failed job=%s type=%s", job_name, exc.__class__.__name__)
                 status = "failed"
-            await self._log_run(job_name, status)
-            if status not in {"succeeded", "skipped_locked"}:
-                await self._alert(f"scheduled_{job_name}_failed", f"Scheduled {job_name} failed")
-            elif self._operator_alert_service is not None and hasattr(self._operator_alert_service, "clear"):
-                self._operator_alert_service.clear(f"scheduled_{job_name}_failed")
+            await self._record_run_result(job_name, status)
         finally:
             heartbeat.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat
             await asyncio.to_thread(self._lease_service.release, job_name, self._holder_id)
+
+    async def _record_run_result(self, job_name: str, status: str) -> None:
+        await self._log_run(job_name, status)
+        alert_code = f"scheduled_{job_name}_failed"
+        if status not in {"succeeded", "skipped_locked"}:
+            await self._alert(alert_code, f"Scheduled {job_name} failed")
+        elif self._operator_alert_service is not None and hasattr(self._operator_alert_service, "clear"):
+            self._operator_alert_service.clear(alert_code)
 
     async def _heartbeat(self, job_name: str) -> None:
         lease_service = self._lease_service

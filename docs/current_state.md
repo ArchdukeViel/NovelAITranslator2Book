@@ -9,9 +9,8 @@ For the technical debt register and launch blockers, see the register: [`docs/DE
 ## Launch Status
 
 - **Launch readiness:** Not ready. Core managed-service implementation is
-  mature, but current CI has a clean-PostgreSQL migration regression and the
-  scheduled recovery, alert, hosted deployment, reader/admin polish, and final
-  launch evidence remain open.
+  mature, but hosted CI confirmation, alert delivery, hosted deployment,
+  reader/admin polish, and final launch evidence remain open.
 - **Current launch blockers:** DEBT-075 through DEBT-079: managed-service
   acceptance, clean-PostgreSQL migration compatibility, truthful CI coverage,
   GitHub control hardening, and hosted topology acceptance.
@@ -48,23 +47,26 @@ For the technical debt register and launch blockers, see the register: [`docs/DE
 - **Local checks:** Ruff, Pyright, focused backend tests, frontend typecheck/build,
   Docker builds, and the router guard have previously passed for the implemented
   M0-M3 work. They must be rerun after the next implementation phases.
-- **Latest CI:** The current main-branch run fails while migrating a clean
-  PostgreSQL service because the Supabase `auth` schema is absent (DEBT-076).
-- **Build workflow:** Its aggregate success signal does not by itself prove that
-  image publication ran; DEBT-077 tracks the correction.
+- **Latest CI:** The clean-PostgreSQL `auth.uid()` compatibility path is fixed
+  and locally verified; a new hosted Actions run is still required (DEBT-076).
+- **Build workflow:** The aggregate result now distinguishes a successful image
+  publication from a skipped publication; hosted confirmation remains
+  (DEBT-077).
 - **Hosted services:** Supabase security advisors last reported zero WARN
-  findings, and manual R2/storage and PostgreSQL 17 restore checks succeeded.
-  Scheduled and hosted acceptance evidence remains incomplete (DEBT-075).
+  findings. On 2026-07-18 two scheduler-created R2 snapshots passed full
+  checksum verification, and a scheduler-created encrypted database backup was
+  automatically restored into a clean PostgreSQL 17 target with the current
+  Alembic head, 30 public tables, and zero invalid constraints. The opt-in
+  hosted PostgreSQL and isolated-prefix real-R2 suites also pass (3 tests) with
+  all temporary objects removed.
 
 ---
 
 ## Known Gaps (Not Launch-Ready)
 
-- Two consecutive scheduler-created R2 snapshots are not yet recorded.
-- A scheduler-created database backup and an automated PostgreSQL 17 restore
-  verification are not yet recorded.
-- SMTP operator delivery, stale-backup alerts, cooldown, and redaction need live proof.
-- Hosted PostgreSQL and isolated-prefix real-R2 integration suites need reruns.
+- Alert cooldown and secret redaction have direct regression coverage; real
+  stale/failure SMTP delivery to the operator inbox remains unproven.
+- The hosted managed-services GitHub workflow still needs a successful run.
 - The free preview domains and the always-on production topology need acceptance.
 - No owner-only audit viewer.
 - No takedown workflow; no HTTP 451 enforcement.

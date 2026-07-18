@@ -59,3 +59,16 @@ async def test_scheduler_alerts_when_snapshot_is_stale(monkeypatch) -> None:
     service = SchedulerService(backup_service=StubBackupService("succeeded"), operator_alert_service=alerts)
     await service._check_backup_staleness()
     assert alerts.codes == ["r2_backup_stale"]
+
+
+@pytest.mark.asyncio
+async def test_scheduler_alerts_when_scheduled_backup_fails() -> None:
+    alerts = StubAlerts()
+    service = SchedulerService(
+        backup_service=StubBackupService("failed"),
+        operator_alert_service=alerts,
+    )
+
+    await service._run_with_lease("backup", service._run_backup)
+
+    assert alerts.codes == ["scheduled_backup_failed"]

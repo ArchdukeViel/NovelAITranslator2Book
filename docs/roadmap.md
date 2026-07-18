@@ -60,8 +60,8 @@ keeps its acceptance gate open.
   - `python -m pytest` for all focused test files — 111 passed
   - Router boundary guard — no matches (clean)
   - `git diff --check` — no integrity issues
-  - DEBT-075 records the remaining scheduler-created snapshot, scheduled
-    database backup, automated restore, alert-delivery, and hosted-test evidence.
+  - DEBT-075 records completed scheduler-created R2 and database recovery
+    evidence; alert-delivery and hosted-test evidence remain.
 
 ## Milestone M3 — Deployment Readiness
 - **Status:** Implemented; hosted deployment acceptance pending

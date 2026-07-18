@@ -10,6 +10,7 @@ from email.message import EmailMessage
 from email.utils import formataddr
 
 from novelai.config.settings import settings
+from novelai.core.security import redact_secret_text
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,8 @@ class OperatorAlertService:
         self._failures: dict[str, int] = {}
 
     def send(self, *, code: str, message: str) -> bool:
-        logger.error("operator_alert code=%s message=%s", code, message[:200])
+        safe_message = redact_secret_text(message)
+        logger.error("operator_alert code=%s message=%s", code, safe_message[:200])
         failures = self._failures.get(code, 0) + 1
         self._failures[code] = failures
         if failures < settings.OPERATOR_ALERT_FAILURE_THRESHOLD:
@@ -37,7 +39,7 @@ class OperatorAlertService:
         email["Subject"] = f"[Dokushodo] {code}"
         email["From"] = formataddr((settings.SMTP_FROM_NAME, settings.SMTP_FROM_EMAIL))
         email["To"] = settings.OPERATOR_ALERT_EMAIL
-        email.set_content(message[:2000])
+        email.set_content(safe_message[:2000])
         factory = smtplib.SMTP_SSL if settings.SMTP_USE_SSL else smtplib.SMTP
         try:
             smtp = factory(settings.SMTP_HOST, settings.SMTP_PORT, timeout=settings.SMTP_TIMEOUT_SECONDS)

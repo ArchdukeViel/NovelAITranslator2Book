@@ -2,11 +2,21 @@
 
 Procedures for storage backups, database snapshotting, and system recovery.
 
-## Acceptance Status (2026-07-16)
+## Acceptance Status (2026-07-18)
 
 - Application-driven R2 snapshot creation, manifest-last commit, checksum verification, isolated restore, and least-privilege credential boundaries are verified live.
 - Encrypted logical PostgreSQL backup and one clean PostgreSQL 17 restore are verified live.
-- Pending operational evidence: two consecutive scheduler-created R2 snapshots, one scheduler-created database backup, one automated restore verification, and tested stale/failure alert delivery.
+- Two consecutive scheduler-created R2 snapshots are verified live. Each
+  committed 16 objects and 381,808 source bytes, and a post-run restore read
+  matched every recorded SHA-256 checksum.
+- A scheduler-created encrypted logical database backup is committed in the
+  independent R2 bucket and was automatically restored into a newly created
+  PostgreSQL 17 target. Verification matched Alembic head `8b7f3d1a2c4e`, found
+  30 public tables, and found zero invalid constraints.
+- Alert cooldown and secret redaction now have direct regression coverage, and
+  the opt-in hosted PostgreSQL/R2 suite passes with isolated artifacts cleaned.
+  Pending operational evidence is limited to real stale/failure SMTP delivery
+  and a successful hosted managed-services GitHub workflow.
 - Provider lifecycle rules and retention locks are safeguards; independently restorable snapshots and database dumps remain the recovery sources of truth.
 
 ---
