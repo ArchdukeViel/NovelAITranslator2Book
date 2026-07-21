@@ -34,7 +34,8 @@ def test_render_blueprint_is_a_single_free_monolith_with_migrations() -> None:
     assert "    healthCheckPath: /health/live\n" in text
     assert "alembic -c alembic.ini upgrade head && exec novelai web" in text
     assert "--port 10000" in text
-    assert "previews:\n  generation: none\n" in text
+    assert "previews:" not in text
+    assert "maxShutdownDelaySeconds" not in text
 
 
 def test_render_blueprint_disables_background_operational_contracts() -> None:

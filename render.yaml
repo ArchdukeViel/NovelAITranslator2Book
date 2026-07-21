@@ -10,7 +10,6 @@ services:
     dockerCommand: >-
       /bin/sh -c 'cd /app/backend && alembic -c alembic.ini upgrade head && exec novelai web --host 0.0.0.0 --port 10000'
     healthCheckPath: /health/live
-    maxShutdownDelaySeconds: 30
     buildFilter:
       paths:
         - backend/**
@@ -122,6 +121,3 @@ services:
         value: noop
       - key: OPERATOR_ALERT_ENABLED
         value: "false"
-
-previews:
-  generation: none

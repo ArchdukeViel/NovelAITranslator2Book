@@ -75,6 +75,13 @@ disables the worker, scheduler-backed operations, maintenance, restore
 verification, SMTP, and alerts. Apply the Blueprint only after the commit that
 contains `render.yaml` is available to Render.
 
+Live CLI validation on 2026-07-22 confirmed the tracked Blueprint fields are
+schema-compatible after removing unsupported Free-tier shutdown configuration.
+The Dokushodo Render workspace currently returns `need_payment_info`, so the
+owner must complete Render's account/payment verification before Blueprint
+validation and deployment can finish. This gate does not change the service's
+`plan: free` selection; keep a workspace spending limit configured before use.
+
 Enter the following Render values in the dashboard. Keep all values in the
 provider dashboard or local environment; never paste them into issues, commits,
 or chat:

@@ -9,8 +9,8 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 33
-- **V1 launch blockers:** 5 (DEBT-075 through DEBT-079)
+- **Total active debt entries:** 34
+- **V1 launch blockers:** 6 (DEBT-075 through DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
 ---
@@ -819,3 +819,19 @@ Deferred items are tracked but excluded from the active count.
 - **Completion criteria:** Use `next/image` with an appropriate remote/loading
   policy or document and test a deliberate optimized alternative; production
   lint/build emit no `no-img-element` warnings.
+
+### DEBT-094 — Render Free Blueprint failed live schema validation
+- **Milestone:** Milestone M3.5 (Hosted Topology)
+- **Category:** Deployment | Configuration
+- **Priority:** Blocker
+- **Status:** Ongoing; account verification pending
+- **Affected areas:** `render.yaml`
+- **Description:** Live Render CLI validation rejected the Blueprint because
+  `previews.generation: none` is not a current accepted value and Free services
+  do not support `maxShutdownDelaySeconds`.
+- **Progress (2026-07-22):** Removed both optional fields. Omitting
+  `previews.generation` disables Blueprint preview environments, and the Free
+  service uses Render's supported shutdown behavior. The Render CLI no longer
+  reports either schema error, but validation now stops at the workspace-level
+  `need_payment_info` gate. Complete Render's account/payment verification,
+  then rerun live validation and deployment before resolving this debt.
