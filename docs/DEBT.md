@@ -166,7 +166,9 @@ Deferred items are tracked but excluded from the active count.
   `novels.status` database mirror is removed by a forward migration; ORM,
   backfill tooling, and tests now use only `publication_status`. Activity-worker
   source resolution and taxonomy origin persistence also use only
-  `source_key`.
+  `source_key`. Translation activity creation, persistence, execution, API
+  responses, and frontend normalization now use only `provider_key` and
+  `provider_model`.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

@@ -273,8 +273,8 @@ class ActivityWorkerService:
                         source_key=str(source_key),
                         kind=kind,
                         chapters=str(activity.get("chapters") or "all"),
-                        provider=activity.get("provider_key") or activity.get("provider"),
-                        model=activity.get("provider_model") or activity.get("model"),
+                        provider_key=activity.get("provider_key"),
+                        provider_model=activity.get("provider_model"),
                         metadata={
                             **metadata,
                             "scheduled_glossary_revision": current_revision,
@@ -299,8 +299,8 @@ class ActivityWorkerService:
         if not isinstance(chapters, str) or not chapters.strip():
             chapters = "all"
 
-        provider_value = activity.get("provider_key") or activity.get("provider")
-        model_value = activity.get("provider_model") or activity.get("model")
+        provider_value = activity.get("provider_key")
+        model_value = activity.get("provider_model")
         provider = provider_value if isinstance(provider_value, str) else None
         model = model_value if isinstance(model_value, str) else None
         source_language = (

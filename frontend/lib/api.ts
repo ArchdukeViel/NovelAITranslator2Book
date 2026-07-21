@@ -260,8 +260,8 @@ export function activityProgress(activity: ActivityRecord): JobProgress {
   const metadataModelStates = Array.isArray(metadata.model_states) ? (metadata.model_states as ModelState[]) : [];
   return {
     status: activity.status,
-    provider_key: activity.provider_key ?? activity.provider ?? payloadText(progress.provider_key) ?? payloadText(metadata.provider_key) ?? payloadText(progress.provider),
-    provider_model: activity.provider_model ?? activity.model ?? payloadText(progress.provider_model) ?? payloadText(metadata.provider_model) ?? payloadText(progress.model),
+    provider_key: activity.provider_key ?? payloadText(progress.provider_key) ?? payloadText(metadata.provider_key),
+    provider_model: activity.provider_model ?? payloadText(progress.provider_model) ?? payloadText(metadata.provider_model),
     current_stage: activity.current_stage ?? payloadText(progress.current_stage) ?? payloadText(metadata.current_stage),
     current_label: activity.current_label ?? payloadText(progress.current_label) ?? payloadText(metadata.current_label),
     completed: activity.completed ?? progressNumber(progress.completed) ?? progressNumber(metadata.completed),

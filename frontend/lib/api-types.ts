@@ -200,8 +200,6 @@ export type ActivityRecord = {
   source_key?: string | null;
   source_url?: string | null;
   chapters?: string | null;
-  provider?: string | null;
-  model?: string | null;
   provider_key?: string | null;
   provider_model?: string | null;
   status: string;
@@ -362,8 +360,6 @@ export type CreateTranslationActivityPayload = {
   chapters: string;
   provider_key?: string;
   provider_model?: string;
-  provider?: string;
-  model?: string;
   skip_glossary_gate?: boolean;
   metadata?: Record<string, unknown>;
 };

@@ -46,8 +46,6 @@ class ActivityRecordResponse(BaseModel):
     source_key: str | None = None
     source_url: str | None = None
     chapters: str | None = None
-    provider: str | None = None
-    model: str | None = None
     provider_key: str | None = None
     provider_model: str | None = None
     status: str

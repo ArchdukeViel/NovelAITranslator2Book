@@ -171,8 +171,8 @@ async def create_translation_activity(
             source_key=body.source_key,
             kind=body.kind,
             chapters=body.chapters,
-            provider=body.provider_key,
-            model=body.provider_model,
+            provider_key=body.provider_key,
+            provider_model=body.provider_model,
             metadata=metadata,
         ))
     except ValueError as exc:

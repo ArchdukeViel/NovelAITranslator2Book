@@ -39,8 +39,8 @@ async def test_activity_worker_records_structured_provider_failure() -> None:
         novel_id="novel1",
         source_key="kakuyomu",
         chapters="chapter_001",
-        provider="gemini",
-        model="gemini-2.5-flash",
+        provider_key="gemini",
+        provider_model="gemini-2.5-flash",
         metadata={"chapter_id": "chapter_001"},
     )
     worker = ActivityWorkerService(queue, _ProviderFailingOrchestrator())  # type: ignore[arg-type]

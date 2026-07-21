@@ -2976,8 +2976,8 @@ class TestActivity:
         assert create_resp.status_code == 200
         created_payload = create_resp.json()
         job_id = created_payload["id"]
-        assert created_payload["provider"] == "gemini"
-        assert created_payload["model"] == "gemini-2.5-flash-lite"
+        assert "provider" not in created_payload
+        assert "model" not in created_payload
         assert created_payload["provider_key"] == "gemini"
         assert created_payload["provider_model"] == "gemini-2.5-flash-lite"
 
@@ -3002,8 +3002,8 @@ class TestActivity:
         created = jobs.create_translation_activity(
             novel_id="test-n1",
             chapters="all",
-            provider="gemini",
-            model="gemini-2.5-flash-lite",
+            provider_key="gemini",
+            provider_model="gemini-2.5-flash-lite",
             metadata={
                 "progress": {
                     "current_stage": "TranslateStage",
@@ -3033,8 +3033,8 @@ class TestActivity:
         assert payload["id"] == created["id"]
         assert payload["activity_id"] == created["id"]
         assert payload["job_id"] == created["id"]
-        assert payload["provider"] == "gemini"
-        assert payload["model"] == "gemini-2.5-flash-lite"
+        assert "provider" not in payload
+        assert "model" not in payload
         assert payload["provider_key"] == "gemini"
         assert payload["provider_model"] == "gemini-2.5-flash-lite"
         assert payload["current_stage"] == "TranslateStage"
@@ -3049,15 +3049,15 @@ class TestActivity:
         assert list_resp.json()["activity"][0]["current_stage"] == "TranslateStage"
         assert list_resp.json()["jobs"][0]["job_id"] == created["id"]
 
-    def test_jobs_aliases_preserve_activity_identifiers_and_provider_mirrors(self, _no_api_key: None) -> None:
+    def test_jobs_routes_preserve_activity_identifiers_and_canonical_provider_fields(self, _no_api_key: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
         created = jobs.create_translation_activity(
             novel_id="test-n1",
             chapters="1-2",
-            provider="gemini",
-            model="gemini-2.5-flash-lite",
+            provider_key="gemini",
+            provider_model="gemini-2.5-flash-lite",
         )
         c = _make_app(storage, jobs)
 
@@ -3074,8 +3074,8 @@ class TestActivity:
         assert detail_payload["id"] == created["id"]
         assert detail_payload["activity_id"] == created["id"]
         assert detail_payload["job_id"] == created["id"]
-        assert detail_payload["provider"] == "gemini"
-        assert detail_payload["model"] == "gemini-2.5-flash-lite"
+        assert "provider" not in detail_payload
+        assert "model" not in detail_payload
         assert detail_payload["provider_key"] == "gemini"
         assert detail_payload["provider_model"] == "gemini-2.5-flash-lite"
 

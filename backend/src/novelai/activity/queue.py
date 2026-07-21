@@ -286,8 +286,8 @@ class ActivityQueueService:
         source_key: str | None = None,
         kind: TranslationJobKind | str = TranslationJobKind.TRANSLATE,
         chapters: str = "all",
-        provider: str | None = None,
-        model: str | None = None,
+        provider_key: str | None = None,
+        provider_model: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         activity_kind = kind.value if isinstance(kind, TranslationJobKind) else str(kind)
@@ -301,10 +301,8 @@ class ActivityQueueService:
             "novel_id": novel_id,
             "source_key": source_key,
             "chapters": chapters,
-            "provider": provider,
-            "model": model,
-            "provider_key": provider,
-            "provider_model": model,
+            "provider_key": provider_key,
+            "provider_model": provider_model,
             "status": JobStatus.PENDING.value,
             "created_at": _utc_now_iso(),
             "started_at": None,
