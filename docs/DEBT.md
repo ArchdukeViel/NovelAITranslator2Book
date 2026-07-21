@@ -172,7 +172,10 @@ Deferred items are tracked but excluded from the active count.
   and `model` fields, and the obsolete `SegmentStage` compatibility subclass is
   removed; runtime and tests use `SmartSegmentStage` directly. The disposable
   translation cache now reads only exact canonical keys and no longer falls
-  back to the obsolete provider/model/text hash format.
+  back to the obsolete provider/model/text hash format. The `jobs` router shim,
+  hidden `/jobs/*` aliases, request-model aliases, query-parameter aliases, and
+  startup migration from the obsolete `jobs/` runtime directory are removed;
+  only the canonical activity router and `activity_log/` layout remain.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

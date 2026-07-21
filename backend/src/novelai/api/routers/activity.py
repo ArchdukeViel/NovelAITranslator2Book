@@ -45,17 +45,10 @@ class ActivityStatusUpdateRequest(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
-CrawlJobRequest = CrawlActivityRequest
-TranslationJobRequest = TranslationActivityRequest
-JobStatusUpdateRequest = ActivityStatusUpdateRequest
-
-
 @router.get("/activity")
-@router.get("/jobs", include_in_schema=False)
 async def list_activity(
     status: str | None = None,
     activity_type: str | None = None,
-    job_type: str | None = None,
     novel_id: str | None = None,
     limit: int | None = None,
     activity_log: ActivityQueueService = Depends(get_activity_log),
@@ -64,7 +57,7 @@ async def list_activity(
     try:
         items = activity_log.list_activity(
             status=status,
-            activity_type=activity_type or job_type,
+            activity_type=activity_type,
             novel_id=novel_id,
             limit=limit,
         )
@@ -74,7 +67,6 @@ async def list_activity(
 
 
 @router.get("/activity/source-health")
-@router.get("/jobs/source-health", include_in_schema=False)
 async def list_source_health(
     activity_log: ActivityQueueService = Depends(get_activity_log),
     _owner=Depends(require_role("owner")),
@@ -83,7 +75,6 @@ async def list_source_health(
 
 
 @router.get("/activity/source-health/{source_key}")
-@router.get("/jobs/source-health/{source_key}", include_in_schema=False)
 async def get_source_health(
     source_key: str,
     activity_log: ActivityQueueService = Depends(get_activity_log),
@@ -96,7 +87,6 @@ async def get_source_health(
 
 
 @router.get("/activity/{activity_id}")
-@router.get("/jobs/{activity_id}", include_in_schema=False)
 async def get_activity(
     activity_id: str,
     activity_log: ActivityQueueService = Depends(get_activity_log),
@@ -109,7 +99,6 @@ async def get_activity(
 
 
 @router.delete("/activity/{activity_id}", status_code=204)
-@router.delete("/jobs/{activity_id}", status_code=204, include_in_schema=False)
 async def delete_activity(
     activity_id: str,
     activity_log: ActivityQueueService = Depends(get_activity_log),
@@ -120,7 +109,6 @@ async def delete_activity(
 
 
 @router.post("/activity/crawl")
-@router.post("/jobs/crawl", include_in_schema=False)
 async def create_crawl_activity(
     body: CrawlActivityRequest,
     activity_log: ActivityQueueService = Depends(get_activity_log),
@@ -140,7 +128,6 @@ async def create_crawl_activity(
 
 
 @router.post("/activity/translation")
-@router.post("/jobs/translation", include_in_schema=False)
 async def create_translation_activity(
     body: TranslationActivityRequest,
     activity_log: ActivityQueueService = Depends(get_activity_log),
@@ -180,15 +167,13 @@ async def create_translation_activity(
 
 
 @router.post("/activity/run-next")
-@router.post("/jobs/run-next", include_in_schema=False)
 async def run_next_activity(
     activity_type: str | None = None,
-    job_type: str | None = None,
     worker: ActivityWorkerService = Depends(get_activity_worker),
     _owner=Depends(require_role("owner")),
 ) -> ActivityRecordResponse:
     try:
-        activity = await worker.run_next(activity_type=activity_type or job_type)
+        activity = await worker.run_next(activity_type=activity_type)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if activity is None:
@@ -197,7 +182,6 @@ async def run_next_activity(
 
 
 @router.post("/activity/{activity_id}/run")
-@router.post("/jobs/{activity_id}/run", include_in_schema=False)
 async def run_activity(
     activity_id: str,
     worker: ActivityWorkerService = Depends(get_activity_worker),
@@ -214,7 +198,6 @@ async def run_activity(
 
 
 @router.post("/activity/{activity_id}/retry")
-@router.post("/jobs/{activity_id}/retry", include_in_schema=False)
 async def retry_activity(
     activity_id: str,
     worker: ActivityWorkerService = Depends(get_activity_worker),
@@ -230,7 +213,6 @@ async def retry_activity(
 
 
 @router.patch("/activity/{activity_id}")
-@router.patch("/jobs/{activity_id}", include_in_schema=False)
 async def update_activity_status(
     activity_id: str,
     body: ActivityStatusUpdateRequest,

@@ -41,8 +41,3 @@ class TestActivityRouterStructure:
         req = activity.ActivityStatusUpdateRequest(status="completed")
         assert req.error is None
         assert req.metadata is None
-
-    def test_compat_aliases_match(self) -> None:
-        assert activity.CrawlJobRequest is activity.CrawlActivityRequest
-        assert activity.TranslationJobRequest is activity.TranslationActivityRequest
-        assert activity.JobStatusUpdateRequest is activity.ActivityStatusUpdateRequest

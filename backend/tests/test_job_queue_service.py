@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import shutil
 from collections.abc import Generator
 from uuid import uuid4
@@ -40,41 +39,19 @@ def test_create_and_load_crawl_activity(activity_log: ActivityQueueService) -> N
     assert loaded["source_key"] == "syosetu_ncode"
 
 
-def test_uses_activity_log_folder_and_migrates_legacy_jobs() -> None:
+def test_uses_canonical_activity_log_folder_only() -> None:
     TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
     data_dir = TESTS_TMP_ROOT / f"activity_log_{uuid4().hex}"
     legacy_dir = data_dir / "jobs"
     legacy_dir.mkdir(parents=True, exist_ok=False)
-    legacy_job = {
-        "id": "crawl_legacy",
-        "type": "crawl",
-        "kind": "metadata",
-        "novel_id": "n0813kx",
-        "source_key": "novel18_syosetu",
-        "chapters": None,
-        "status": "completed",
-        "created_at": "2026-06-03T00:00:00Z",
-        "started_at": None,
-        "finished_at": "2026-06-03T00:01:00Z",
-        "retry_count": 0,
-        "error": None,
-        "metadata": {},
-    }
-    (legacy_dir / "queue.json").write_text(json.dumps([legacy_job]), encoding="utf-8")
-    (legacy_dir / "source_health.json").write_text(
-        json.dumps({"novel18_syosetu": {"source_key": "novel18_syosetu", "success_count": 1}}),
-        encoding="utf-8",
-    )
+    (legacy_dir / "queue.json").write_text("[]", encoding="utf-8")
 
     try:
         service = ActivityQueueService(data_dir)
 
-        assert service.jobs_dir.name == "activity_log"
-        assert (data_dir / "activity_log" / "queue.json").exists()
-        assert (data_dir / "activity_log" / "source_health.json").exists()
-        assert not (legacy_dir / "queue.json").exists()
-        assert service.get_activity("crawl_legacy") == legacy_job
-        assert service.get_source_health("novel18_syosetu") is not None
+        assert service.activity_log_dir.name == "activity_log"
+        assert service.list_activity() == []
+        assert (legacy_dir / "queue.json").exists()
     finally:
         shutil.rmtree(data_dir, ignore_errors=True)
 

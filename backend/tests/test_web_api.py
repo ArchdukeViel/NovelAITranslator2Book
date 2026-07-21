@@ -232,7 +232,6 @@ def test_router_path_method_snapshot() -> None:
     expected_routes = {
         (("DELETE",), "/{novel_id}"),
         (("DELETE",), "/activity/{activity_id}"),
-        (("DELETE",), "/jobs/{activity_id}"),
         (("GET",), "/"),
         (("GET",), "/catalog-health"),
         (("GET",), "/activity"),
@@ -253,10 +252,6 @@ def test_router_path_method_snapshot() -> None:
         (("GET",), "/admin/novels/{novel_id}/exports/latest/{export_format}"),
         (("GET",), "/admin/novels/{novel_id}/exports"),
         (("GET",), "/input-adapters"),
-        (("GET",), "/jobs"),
-        (("GET",), "/jobs/source-health"),
-        (("GET",), "/jobs/source-health/{source_key}"),
-        (("GET",), "/jobs/{activity_id}"),
         (("GET",), "/requests"),
         (("GET",), "/requests/{request_id}"),
         (("GET",), "/sources"),
@@ -277,7 +272,6 @@ def test_router_path_method_snapshot() -> None:
         (("GET",), "/{novel_id}/source-metadata/history/diff"),
         (("GET",), "/{novel_id}/source-metadata/history/{snapshot_id}"),
         (("PATCH",), "/activity/{activity_id}"),
-        (("PATCH",), "/jobs/{activity_id}"),
         (("PATCH",), "/requests/{request_id}"),
         (("POST",), "/admin/worker/run-once"),
         (("POST",), "/admin/worker/start"),
@@ -296,11 +290,6 @@ def test_router_path_method_snapshot() -> None:
         (("POST",), "/activity/translation"),
         (("POST",), "/activity/{activity_id}/retry"),
         (("POST",), "/activity/{activity_id}/run"),
-        (("POST",), "/jobs/crawl"),
-        (("POST",), "/jobs/run-next"),
-        (("POST",), "/jobs/translation"),
-        (("POST",), "/jobs/{activity_id}/retry"),
-        (("POST",), "/jobs/{activity_id}/run"),
         (("POST",), "/refresh-catalog-projections"),
         (("POST",), "/"),
         (("POST",), "/requests"),
@@ -2953,9 +2942,8 @@ class TestActivity:
         assert len(listed) == 1
         assert listed[0]["id"] == created["id"]
 
-        alias_resp = c.get("/novels/jobs", params={"job_type": "crawl", "status": "pending"})
-        assert alias_resp.status_code == 200
-        assert alias_resp.json()["jobs"][0]["id"] == created["id"]
+        removed_route_resp = c.get("/novels/jobs", params={"job_type": "crawl", "status": "pending"})
+        assert removed_route_resp.status_code == 404
 
     def test_create_update_and_get_translation_activity(self, _no_api_key: None) -> None:
         bootstrap()
@@ -3049,7 +3037,7 @@ class TestActivity:
         assert list_resp.json()["activity"][0]["current_stage"] == "TranslateStage"
         assert list_resp.json()["jobs"][0]["job_id"] == created["id"]
 
-    def test_jobs_routes_preserve_activity_identifiers_and_canonical_provider_fields(self, _no_api_key: None) -> None:
+    def test_activity_routes_preserve_canonical_provider_fields(self, _no_api_key: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3061,8 +3049,8 @@ class TestActivity:
         )
         c = _make_app(storage, jobs)
 
-        list_resp = c.get("/novels/jobs", params={"job_type": "translation", "status": "pending"})
-        detail_resp = c.get(f"/novels/jobs/{created['id']}")
+        list_resp = c.get("/novels/activity", params={"activity_type": "translation", "status": "pending"})
+        detail_resp = c.get(f"/novels/activity/{created['id']}")
 
         assert list_resp.status_code == 200
         list_payload = list_resp.json()

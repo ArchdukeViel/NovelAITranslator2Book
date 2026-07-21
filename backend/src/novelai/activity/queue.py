@@ -64,7 +64,6 @@ class ActivityQueueService:
         JobStatus.PAUSED_UNTIL_QUOTA_RESET.value,
     }
     ACTIVITY_LOG_DIRNAME = "activity_log"
-    LEGACY_JOBS_DIRNAME = "jobs"
     DEFAULT_PRUNE_KEEP_COMPLETED = 200
     DEFAULT_PRUNE_KEEP_FAILED = 100
     SOURCE_HEALTH_CACHE_TTL = 60.0
@@ -72,66 +71,12 @@ class ActivityQueueService:
     def __init__(self, base_dir: Path | None = None) -> None:
         self.base_dir = (base_dir or settings.NOVEL_LIBRARY_DIR).resolve()
         self.activity_log_dir = self.base_dir / self.ACTIVITY_LOG_DIRNAME
-        self.legacy_jobs_dir = self.base_dir / self.LEGACY_JOBS_DIRNAME
         self.activity_log_dir.mkdir(parents=True, exist_ok=True)
         self.activity_dir = self.activity_log_dir
-        self.jobs_dir = self.activity_log_dir
         self.activity_file = self.activity_log_dir / "queue.json"
-        self.jobs_file = self.activity_file
         self.source_health_file = self.activity_log_dir / "source_health.json"
         self._lock = threading.Lock()
         self._source_health_cache: dict[str, tuple[float, Any]] = {}
-        self._migrate_legacy_jobs_dir()
-
-    def _migrate_legacy_jobs_dir(self) -> None:
-        if not self.legacy_jobs_dir.exists() or self.legacy_jobs_dir == self.activity_log_dir:
-            return
-
-        self._migrate_json_file(
-            self.legacy_jobs_dir / "queue.json",
-            self.activity_file,
-            merge_kind="activity",
-        )
-        self._migrate_json_file(
-            self.legacy_jobs_dir / "source_health.json",
-            self.source_health_file,
-            merge_kind="source_health",
-        )
-        try:
-            self.legacy_jobs_dir.rmdir()
-        except OSError:
-            logger.debug("Leaving non-empty legacy jobs folder at %s.", self.legacy_jobs_dir)
-
-    def _migrate_json_file(self, legacy_path: Path, target_path: Path, *, merge_kind: str) -> None:
-        if not legacy_path.exists():
-            return
-        if not target_path.exists():
-            legacy_path.replace(target_path)
-            return
-
-        try:
-            legacy_data = json.loads(legacy_path.read_text(encoding="utf-8"))
-            target_data = json.loads(target_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Could not migrate legacy activity log file %s: %s", legacy_path, exc)
-            return
-
-        if merge_kind == "activity" and isinstance(legacy_data, list) and isinstance(target_data, list):
-            by_id: dict[str, dict[str, Any]] = {}
-            for item in [*target_data, *legacy_data]:
-                if isinstance(item, dict) and isinstance(item.get("id"), str):
-                    by_id[item["id"]] = dict(item)
-            atomic_write(target_path, json.dumps(list(by_id.values()), ensure_ascii=False, indent=2))
-            legacy_path.unlink(missing_ok=True)
-            return
-
-        if merge_kind == "source_health" and isinstance(legacy_data, dict) and isinstance(target_data, dict):
-            merged = {
-                **{str(key): value for key, value in target_data.items() if isinstance(value, dict)},
-                **{str(key): value for key, value in legacy_data.items() if isinstance(value, dict)},
-            }
-            atomic_write(target_path, json.dumps(merged, ensure_ascii=False, indent=2))
-            legacy_path.unlink(missing_ok=True)
 
     def _load_activity(self) -> list[dict[str, Any]]:
         if not self.activity_file.exists():
