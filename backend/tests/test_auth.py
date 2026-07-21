@@ -544,7 +544,7 @@ class TestPublicPasswordReset:
         assert message.token == parse_qs(urlparse(message.url).query).get("token", [None])[0]
         assert message.url.startswith("http://frontend.test/password/reset?token=")
         token = db_session.query(PasswordResetToken).one()
-        assert token.token_hash == auth_module._hash_password_reset_token(message.token)
+        assert token.token_hash == AuthService.hash_password_reset_token(message.token)
         assert token.token_hash != message.token
 
         confirm = oauth_client.post(
@@ -629,7 +629,7 @@ class TestPublicPasswordReset:
         assert resp.status_code == 200
         token = db_session.query(PasswordResetToken).one()
         assert token.user_id == user.id
-        assert token.token_hash == auth_module._hash_password_reset_token("known-reset-token")
+        assert token.token_hash == AuthService.hash_password_reset_token("known-reset-token")
         assert token.token_hash != "known-reset-token"
         assert token.used_at is None
         assert token.expires_at is not None
@@ -737,7 +737,7 @@ class TestPublicPasswordReset:
         db_session.add(
             PasswordResetToken(
                 user_id=user.id,
-                token_hash=auth_module._hash_password_reset_token("expired-reset-token"),
+                token_hash=AuthService.hash_password_reset_token("expired-reset-token"),
                 created_at=datetime.now(UTC) - timedelta(hours=2),
                 expires_at=datetime.now(UTC) - timedelta(minutes=1),
             )
@@ -896,7 +896,7 @@ class TestPublicEmailVerification:
         assert message.token == parse_qs(urlparse(message.url).query).get("token", [None])[0]
         assert message.url.startswith("http://frontend.test/email/verify?token=")
         token = db_session.query(EmailVerificationToken).one()
-        assert token.token_hash == auth_module._hash_email_verification_token(message.token)
+        assert token.token_hash == AuthService.hash_email_verification_token(message.token)
         assert token.token_hash != message.token
 
         confirm = oauth_client.post(
@@ -924,7 +924,7 @@ class TestPublicEmailVerification:
         assert user.email_verified_at is None
         token = db_session.query(EmailVerificationToken).one()
         assert token.user_id == user.id
-        assert token.token_hash == auth_module._hash_email_verification_token("known-verify-token")
+        assert token.token_hash == AuthService.hash_email_verification_token("known-verify-token")
         assert token.token_hash != "known-verify-token"
         assert token.used_at is None
         assert token.request_ip is not None
@@ -1131,7 +1131,7 @@ class TestPublicEmailVerification:
         db_session.add(
             EmailVerificationToken(
                 user_id=user.id,
-                token_hash=auth_module._hash_email_verification_token("expired-verify-token"),
+                token_hash=AuthService.hash_email_verification_token("expired-verify-token"),
                 created_at=datetime.now(UTC) - timedelta(days=2),
                 expires_at=datetime.now(UTC) - timedelta(minutes=1),
             )

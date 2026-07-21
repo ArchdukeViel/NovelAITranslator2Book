@@ -137,8 +137,10 @@ Deferred items are tracked but excluded from the active count.
   legacy message-only constructor. `PreferencesService` provider key/model
   setter aliases are removed and all callers use the canonical preferred-
   provider methods. The translation pipeline now uses only `PipelineState`; the
-  `PipelineContext` alias is removed. The unused `novels.status` database mirror
-  remains until an explicit column-removal migration is approved and verified.
+  `PipelineContext` alias is removed. Auth router test-only token helpers and
+  the dead auth-email accessor shim are removed; callers use `AuthService`
+  directly. The unused `novels.status` database mirror remains until an
+  explicit column-removal migration is approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import secrets
-from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -26,24 +25,11 @@ from novelai.api.auth.security import (
 from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import get_auth_service
 from novelai.config.settings import settings
-from novelai.runtime.container import container
 from novelai.services.auth_service import AuthService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-
-# Compatibility re-exports for tests that patch these via monkeypatch.setattr.
-# The canonical implementations live on AuthService.
-_hash_password_reset_token = AuthService.hash_password_reset_token
-_hash_email_verification_token = AuthService.hash_email_verification_token
-_new_password_reset_token = AuthService.new_password_reset_token
-_new_email_verification_token = AuthService.new_email_verification_token
-
-
-def get_auth_email_service() -> Any:
-    """Compatibility shim — returns the container's auth email service."""
-    return container.auth_email
 
 _OAUTH_STATE_KEY = "oauth_google_state"
 _OAUTH_RETURN_TO_KEY = "oauth_google_return_to"
