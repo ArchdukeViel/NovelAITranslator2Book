@@ -2,7 +2,7 @@
 
 Procedures for storage backups, database snapshotting, and system recovery.
 
-## Acceptance Status (2026-07-18)
+## Acceptance Status (updated 2026-07-22)
 
 - Application-driven R2 snapshot creation, manifest-last commit, checksum verification, isolated restore, and least-privilege credential boundaries are verified live.
 - Encrypted logical PostgreSQL backup and one clean PostgreSQL 17 restore are verified live.
@@ -13,6 +13,10 @@ Procedures for storage backups, database snapshotting, and system recovery.
   independent R2 bucket and was automatically restored into a newly created
   PostgreSQL 17 target. Verification matched Alembic head `8b7f3d1a2c4e`, found
   30 public tables, and found zero invalid constraints.
+- The hosted Supabase project subsequently migrated to repository head
+  `9c2e4a6b8d0f` on 2026-07-22. That current schema verification is separate
+  from—and does not retroactively change—the historical restore evidence at
+  `8b7f3d1a2c4e` above.
 - Alert cooldown and secret redaction now have direct regression coverage, and
   the opt-in hosted PostgreSQL/R2 suite passes with isolated artifacts cleaned.
   Pending operational evidence is limited to real stale/failure SMTP delivery

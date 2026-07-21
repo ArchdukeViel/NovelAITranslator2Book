@@ -157,3 +157,23 @@ scheduler jobs, scheduled recovery verification, maintenance, and SMTP are
 disabled. Production still requires an always-on container backend, managed
 Redis, tested SMTP, monitoring, and full hosted acceptance. DEBT-079 records the
 remaining topology proof.
+
+## Supabase Schema Reconciliation — 2026-07-22
+
+- The committed `9c2e4a6b8d0f` migration was applied to the hosted Supabase
+  project after confirming that all four `novels` rows had matching legacy and
+  canonical publication states and that no database object depended on the
+  legacy column.
+- Post-migration verification found live Alembic head `9c2e4a6b8d0f`, all four
+  novel rows preserved, `novels.status` absent, and
+  `novels.publication_status` present.
+- Every public application table remains protected by RLS. The Supabase
+  security advisor reports zero WARN findings and one expected INFO finding for
+  the deliberately policy-free `scheduled_cron_log` table.
+- PostgreSQL reports one unvalidated constraint in Supabase-managed
+  `realtime.messages`; no unvalidated constraint belongs to the public
+  application schema. This provider-managed constraint is recorded as evidence,
+  not application debt.
+- The successful hosted schema migration closes the Supabase half of DEBT-076.
+  A fresh clean-PostgreSQL GitHub Actions run is still required to prove the CI
+  compatibility shim and close that debt.

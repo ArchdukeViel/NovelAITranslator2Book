@@ -465,7 +465,7 @@ Deferred items are tracked but excluded from the active count.
 - **Category:** Database | Storage | Operations
 - **Priority:** Blocker
 - **Status:** Implemented; alert and hosted acceptance pending
-- **Resolution:** Added reusable bounded database engines, PostgreSQL connection timeouts, renewable scheduled-job leases, real cron/timezone evaluation, split R2 snapshot credentials, streamed encrypted PostgreSQL exports, retention, and redacted SMTP alerts. Live R2 permission-boundary tests proved the three credential roles. On 2026-07-18 two consecutive scheduler-created R2 snapshots passed full checksum verification, and a scheduler-created encrypted PostgreSQL backup was automatically restored into a clean PostgreSQL 17 target at Alembic head `8b7f3d1a2c4e` with 30 public tables and zero invalid constraints. The opt-in hosted PostgreSQL/R2 suite passes, and alert cooldown plus secret redaction have direct tests. Repository head is now `9c2e4a6b8d0f`; remaining acceptance requires applying and verifying that head on hosted Supabase, real stale/failure SMTP delivery, and successful hosted verification workflow evidence.
+- **Resolution:** Added reusable bounded database engines, PostgreSQL connection timeouts, renewable scheduled-job leases, real cron/timezone evaluation, split R2 snapshot credentials, streamed encrypted PostgreSQL exports, retention, and redacted SMTP alerts. Live R2 permission-boundary tests proved the three credential roles. On 2026-07-18 two consecutive scheduler-created R2 snapshots passed full checksum verification, and a scheduler-created encrypted PostgreSQL backup was automatically restored into a clean PostgreSQL 17 target at Alembic head `8b7f3d1a2c4e` with 30 public tables and zero invalid constraints. The opt-in hosted PostgreSQL/R2 suite passes, and alert cooldown plus secret redaction have direct tests. On 2026-07-22 the hosted Supabase project migrated to repository head `9c2e4a6b8d0f`; verification preserved all four novel rows, confirmed the legacy `novels.status` column absent and `publication_status` present, found every public table protected by RLS, and found zero security-advisor WARN findings. Remaining acceptance requires real stale/failure SMTP delivery and successful hosted verification workflow evidence.
 
 ### DEBT-076 — Clean PostgreSQL migration lacks Supabase auth compatibility
 - **Milestone:** Milestone M0 (CI Confidence)
@@ -481,9 +481,10 @@ Deferred items are tracked but excluded from the active count.
 - **Implementation note (2026-07-18):** CI now installs a minimal, fail-closed
   `auth.uid()` compatibility shim before Alembic runs on vanilla PostgreSQL.
   The shim and workflow wiring have focused tests. Hosted CI confirmation on a
-  fresh run remains required before resolving this debt. Repository migration
-  head advanced to `9c2e4a6b8d0f` on 2026-07-22 and still requires both clean
-  PostgreSQL and hosted Supabase execution evidence.
+  fresh run remains required before resolving this debt. The hosted Supabase
+  project migrated to repository head `9c2e4a6b8d0f` and passed post-migration
+  schema and security checks on 2026-07-22. Only clean vanilla-PostgreSQL CI
+  execution at that head and a successful hosted workflow remain.
 
 ### DEBT-077 — CI exclusions and workflow success signals are misleading
 - **Milestone:** Milestone M0 (CI Confidence)
