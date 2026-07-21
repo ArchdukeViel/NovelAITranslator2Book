@@ -128,11 +128,11 @@ class ActivityWorkerService:
 
         novel_id = str(activity.get("novel_id") or "")
         metadata = self.orchestrator.storage.load_metadata(novel_id) or {}
-        metadata_source = metadata.get("source")
+        metadata_source = metadata.get("source_key")
         if isinstance(metadata_source, str) and metadata_source.strip():
             return metadata_source.strip()
 
-        raise ValueError("Translation activity requires source_key or stored metadata.source.")
+        raise ValueError("Translation activity requires source_key or stored metadata.source_key.")
 
     @staticmethod
     def _resolve_current_glossary_revision(novel_id: str) -> int | None:
@@ -267,7 +267,7 @@ class ActivityWorkerService:
                     )
                     # Cancel this activity and reschedule a new one with current revision
                     meta = self.orchestrator.storage.load_metadata(novel_id) or {}
-                    source_key = meta.get("source") or activity.get("source_key") or ""
+                    source_key = meta.get("source_key") or activity.get("source_key") or ""
                     new_activity = self.activity_log.create_translation_activity(
                         novel_id=novel_id,
                         source_key=str(source_key),

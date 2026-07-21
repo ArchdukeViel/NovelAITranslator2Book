@@ -41,7 +41,7 @@ def test_managed_postgres_operational_contracts(managed_engine: Any) -> None:
                 "(SELECT version_num FROM public.alembic_version) AS alembic_head"
             )
         ).mappings().one()
-        assert row["alembic_head"] == "8b7f3d1a2c4e"
+        assert row["alembic_head"] == "9c2e4a6b8d0f"
         assert row["statement_timeout"]
         assert row["lock_timeout"]
         assert row["idle_timeout"]

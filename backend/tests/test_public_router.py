@@ -1584,7 +1584,7 @@ class TestCatalogTaxonomy:
 
         novel = db_session.query(Novel).filter_by(slug=novel_slug).one_or_none()
         if novel is None:
-            novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing", is_published=True)
+            novel = Novel(slug=novel_slug, title="Temp", language="ja", publication_status="ongoing", is_published=True)
             db_session.add(novel)
             db_session.flush()
         else:
@@ -1608,7 +1608,7 @@ class TestCatalogTaxonomy:
             db_session.flush()
         novel = db_session.query(Novel).filter_by(slug=novel_slug).one_or_none()
         if novel is None:
-            novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing", is_published=True)
+            novel = Novel(slug=novel_slug, title="Temp", language="ja", publication_status="ongoing", is_published=True)
             db_session.add(novel)
             db_session.flush()
         else:
@@ -1798,7 +1798,7 @@ def _assign_genre_for_tests(db_session, novel_slug: str, genre_slug: str) -> Non
 
     novel = db_session.query(Novel).filter_by(slug=novel_slug).one_or_none()
     if novel is None:
-        novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing", is_published=True)
+        novel = Novel(slug=novel_slug, title="Temp", language="ja", publication_status="ongoing", is_published=True)
         db_session.add(novel)
         db_session.flush()
     else:
@@ -1825,7 +1825,7 @@ def _assign_tag_for_tests(db_session, novel_slug: str, tag_name: str) -> None:
         db_session.flush()
     novel = db_session.query(Novel).filter_by(slug=novel_slug).one_or_none()
     if novel is None:
-        novel = Novel(slug=novel_slug, title="Temp", language="ja", status="ongoing", is_published=True)
+        novel = Novel(slug=novel_slug, title="Temp", language="ja", publication_status="ongoing", is_published=True)
         db_session.add(novel)
         db_session.flush()
     else:

@@ -57,7 +57,7 @@ class StubSource(SourceAdapter):
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, object]:
         self.requested_max_chapters.append(max_chapter)
         return {
-            "source": "syosetu_ncode",
+            "source_key": "syosetu_ncode",
             "source_url": f"https://ncode.syosetu.com/{url}/",
             "title": "Original Novel",
             "author": "Original Author",
@@ -452,7 +452,7 @@ class PartialTitleSource(StubSource):
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, object]:
         self.requested_max_chapters.append(max_chapter)
         return {
-            "source": "novel18_syosetu",
+            "source_key": "novel18_syosetu",
             "source_url": f"https://novel18.syosetu.com/{url}/",
             "title": "TS刑事　如月真琴の憂鬱",
             "author": "Ayas_hi",
@@ -649,7 +649,7 @@ async def test_scrape_metadata_bootstrap_exception_isolation(orchestration_env, 
         },
     )
     with SessionLocal() as session:
-        novel = Novel(slug=slug, title="Bootstrap Exception", language="ja", status="ongoing", glossary_status="glossary_skipped")
+        novel = Novel(slug=slug, title="Bootstrap Exception", language="ja", publication_status="ongoing", glossary_status="glossary_skipped")
         session.add(novel)
         session.commit()
 
@@ -692,7 +692,7 @@ async def test_bootstrap_invocation_gate(orchestration_env, glossary_status: str
             slug=slug,
             title="Bootstrap Gate",
             language="ja",
-            status="ongoing",
+            publication_status="ongoing",
             glossary_status=glossary_status,
         )
         session.add(novel)
@@ -742,7 +742,7 @@ async def test_bootstrap_produces_pending_status(orchestration_env, candidate_co
         },
     )
     with SessionLocal() as session:
-        novel = Novel(slug=slug, title="Bootstrap Pending", language="ja", status="ongoing", glossary_status="glossary_skipped")
+        novel = Novel(slug=slug, title="Bootstrap Pending", language="ja", publication_status="ongoing", glossary_status="glossary_skipped")
         session.add(novel)
         session.commit()
 
@@ -785,7 +785,7 @@ async def test_translate_guard_glossary_gate_properties(orchestration_env, gloss
         },
     )
     with SessionLocal() as session:
-        novel = Novel(slug=slug, title="Guard Novel", language="ja", status="ongoing", glossary_status=glossary_status)
+        novel = Novel(slug=slug, title="Guard Novel", language="ja", publication_status="ongoing", glossary_status=glossary_status)
         session.add(novel)
         session.flush()
         if glossary_status == "glossary_pending":
@@ -859,7 +859,7 @@ async def test_translation_write_path_refreshes_catalog_projection(orchestration
         "translated-novel",
         {
             "title": "Translated Novel",
-            "source": "stub",
+            "source_key": "stub",
             "source_language": "Japanese",
             "chapters": [
                 {"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"},
@@ -904,7 +904,7 @@ async def test_translate_chapters_passes_provider_lock_to_translation_service(or
         "locked-novel",
         {
             "title": "Locked Novel",
-            "source": "stub",
+            "source_key": "stub",
             "source_language": "Japanese",
             "chapters": [
                 {"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"},
@@ -950,14 +950,14 @@ async def test_translate_chapters_passes_platform_db_novel_id_to_translation_ser
         "glossary-owned",
         {
             "title": "Glossary Owned",
-            "source": "stub",
+            "source_key": "stub",
             "source_language": "Japanese",
             "chapters": [{"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"}],
         },
     )
     storage.save_chapter("glossary-owned", "1", "Pocott arrives.", title="Chapter 1")
     with SessionLocal() as session:
-        novel = Novel(slug="glossary-owned", title="Glossary Owned", language="ja", status="ongoing", glossary_status="glossary_skipped")
+        novel = Novel(slug="glossary-owned", title="Glossary Owned", language="ja", publication_status="ongoing", glossary_status="glossary_skipped")
         session.add(novel)
         session.commit()
         platform_novel_id = novel.id
@@ -988,7 +988,7 @@ async def test_translate_chapters_does_not_treat_source_id_as_platform_novel_id(
         "16817330655991571532",
         {
             "title": "Source ID Only",
-            "source": "kakuyomu",
+            "source_key": "kakuyomu",
             "source_language": "Japanese",
             "source_novel_id": "16817330655991571532",
             "chapters": [{"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"}],
@@ -1023,7 +1023,7 @@ async def test_translate_chapters_injects_approved_db_glossary_through_real_pipe
         "glossary-pipeline",
         {
             "title": "Glossary Pipeline",
-            "source": "stub",
+            "source_key": "stub",
             "source_language": "Japanese",
             "chapters": [{"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"}],
         },
@@ -1039,7 +1039,7 @@ async def test_translate_chapters_injects_approved_db_glossary_through_real_pipe
             slug="glossary-pipeline",
             title="Glossary Pipeline",
             language="ja",
-            status="ongoing",
+            publication_status="ongoing",
             glossary_status="glossary_skipped",
             # start at 6 — creating an approved entry below increments it to 7
             glossary_revision=6,
@@ -1129,14 +1129,14 @@ async def test_retranslate_chapter_preserves_platform_db_novel_id(orchestration_
         "retry-glossary",
         {
             "title": "Retry Glossary",
-            "source": "stub",
+            "source_key": "stub",
             "source_language": "Japanese",
             "chapters": [{"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"}],
         },
     )
     storage.save_chapter("retry-glossary", "1", "Pocott arrives.", title="Chapter 1")
     with SessionLocal() as session:
-        novel = Novel(slug="retry-glossary", title="Retry Glossary", language="ja", status="ongoing", glossary_status="glossary_skipped")
+        novel = Novel(slug="retry-glossary", title="Retry Glossary", language="ja", publication_status="ongoing", glossary_status="glossary_skipped")
         session.add(novel)
         session.commit()
         platform_novel_id = novel.id
@@ -1164,7 +1164,7 @@ async def test_runtime_orchestration_sim_scopes_full_failure_and_small_retry(orc
         "runtime-scope-novel",
         {
             "title": "Runtime Scope Novel",
-            "source": "stub",
+            "source_key": "stub",
             "source_language": "Japanese",
             "chapters": [
                 {"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.com/1"},
@@ -1525,7 +1525,7 @@ async def test_scrape_metadata_retries_incomplete_chapter_title_translation(orch
 async def test_metadata_chapter_titles_batch_by_default_size(orchestration_env) -> None:
     provider = BatchMetadataProvider()
     metadata = {
-        "source": "syosetu_ncode",
+        "source_key": "syosetu_ncode",
         "chapters": [
             {"id": str(index), "num": index, "title": f"Chapter {index}"}
             for index in range(1, 31)
@@ -1556,7 +1556,7 @@ async def test_metadata_chapter_titles_batch_by_default_size(orchestration_env) 
 async def test_metadata_chapter_title_batch_deduplicates_exact_repeated_titles(orchestration_env) -> None:
     provider = BatchMetadataProvider()
     metadata = {
-        "source": "syosetu_ncode",
+        "source_key": "syosetu_ncode",
         "chapters": [
             {"id": "1", "num": 1, "title": "Interlude"},
             {"id": "2", "num": 2, "title": "Interlude"},
@@ -1590,7 +1590,7 @@ async def test_metadata_batch_skips_reusable_and_cached_fields(orchestration_env
     cache = orchestration_env["cache"]
     cache.set("metadata:chapter_title:English:Cached Chapter", "mock", "mock-1.0", "Cached Translation")
     metadata = {
-        "source": "syosetu_ncode",
+        "source_key": "syosetu_ncode",
         "title": "Original Novel",
         "translated_title": "Translated Novel",
         "metadata_translation_prompt_version": "metadata-literal-v3",
@@ -1623,7 +1623,7 @@ async def test_metadata_batch_skips_reusable_and_cached_fields(orchestration_env
 async def test_metadata_invalid_batch_json_falls_back_to_individual_translation(orchestration_env) -> None:
     provider = BatchMetadataProvider(invalid_batch_json=True)
     metadata = {
-        "source": "syosetu_ncode",
+        "source_key": "syosetu_ncode",
         "title": "Original Novel",
         "chapters": [{"id": "1", "num": 1, "title": "Chapter One"}],
     }
@@ -1648,7 +1648,7 @@ async def test_metadata_invalid_batch_json_falls_back_to_individual_translation(
 async def test_metadata_batch_fenced_json_is_extracted(orchestration_env) -> None:
     provider = BatchMetadataProvider(fenced_batch_json=True)
     metadata = {
-        "source": "syosetu_ncode",
+        "source_key": "syosetu_ncode",
         "title": "Original Novel",
         "chapters": [{"id": "1", "num": 1, "title": "Chapter One"}],
     }
@@ -1673,7 +1673,7 @@ async def test_metadata_batch_fenced_json_is_extracted(orchestration_env) -> Non
 async def test_metadata_batch_commentary_with_single_json_object_is_extracted(orchestration_env) -> None:
     provider = BatchMetadataProvider(commentary_batch_json=True)
     metadata = {
-        "source": "syosetu_ncode",
+        "source_key": "syosetu_ncode",
         "chapters": [{"id": "1", "num": 1, "title": "Chapter One"}],
     }
     orchestrator = NovelOrchestrationService(
@@ -1696,7 +1696,7 @@ async def test_metadata_batch_commentary_with_single_json_object_is_extracted(or
 async def test_metadata_duplicate_batch_item_id_falls_back_safely(orchestration_env) -> None:
     provider = BatchMetadataProvider(duplicate_first_id=True)
     metadata = {
-        "source": "syosetu_ncode",
+        "source_key": "syosetu_ncode",
         "chapters": [
             {"id": "1", "num": 1, "title": "Chapter One"},
             {"id": "2", "num": 2, "title": "Chapter Two"},
@@ -1723,7 +1723,7 @@ async def test_metadata_duplicate_batch_item_id_falls_back_safely(orchestration_
 async def test_metadata_missing_batch_item_id_falls_back_safely(orchestration_env) -> None:
     provider = BatchMetadataProvider(omit_ids={"chapter:2"})
     metadata = {
-        "source": "syosetu_ncode",
+        "source_key": "syosetu_ncode",
         "chapters": [
             {"id": "1", "num": 1, "title": "Chapter One"},
             {"id": "2", "num": 2, "title": "Chapter Two"},
@@ -1833,7 +1833,7 @@ def test_estimate_translation_requests_counts_metadata_and_body_chunks(orchestra
     storage.save_metadata(
         "novel-1",
         {
-            "source": "syosetu_ncode",
+            "source_key": "syosetu_ncode",
             "title": "Original Novel",
             "author": "Original Author",
             "synopsis": "Original Synopsis",
@@ -1902,7 +1902,7 @@ def test_estimate_translation_requests_uses_adaptive_body_chunk_count(orchestrat
     storage.save_metadata(
         "novel-1",
         {
-            "source": "syosetu_ncode",
+            "source_key": "syosetu_ncode",
             "chapters": [
                 {"id": "1", "num": 1, "title": "Chapter One"},
             ],
@@ -1941,7 +1941,7 @@ def _save_delta_fixture(
     storage.save_metadata(
         novel_id,
         {
-            "source": "syosetu_ncode",
+            "source_key": "syosetu_ncode",
             "chapters": [{"id": "1", "num": 1, "title": "Chapter One"}],
         },
     )
@@ -2067,7 +2067,7 @@ def test_estimate_translation_requests_delta_missing_old_lineage_unavailable(orc
     storage.save_metadata(
         "novel-delta",
         {
-            "source": "syosetu_ncode",
+            "source_key": "syosetu_ncode",
             "chapters": [{"id": "1", "num": 1, "title": "Chapter One"}],
         },
     )
@@ -2096,7 +2096,7 @@ def test_estimate_translation_requests_delta_older_records_without_hashes_unavai
     storage.save_metadata(
         "novel-delta",
         {
-            "source": "syosetu_ncode",
+            "source_key": "syosetu_ncode",
             "chapters": [{"id": "1", "num": 1, "title": "Chapter One"}],
         },
     )
@@ -2147,7 +2147,7 @@ def _save_delta_execution_fixture(
     storage.save_metadata(
         "novel-delta",
         {
-            "source": "stub",
+            "source_key": "stub",
             "source_language": "Japanese",
             "chapters": [{"id": "1", "num": 1, "title": "Chapter One", "url": "https://example.com/novel-delta/1"}],
         },
@@ -2339,7 +2339,7 @@ async def test_delta_missing_lineage_falls_back_to_full_translation(orchestratio
     storage.save_metadata(
         "novel-delta",
         {
-            "source": "stub",
+            "source_key": "stub",
             "source_language": "Japanese",
             "chapters": [{"id": "1", "num": 1, "title": "Chapter One", "url": "https://example.com/novel-delta/1"}],
         },
@@ -2429,7 +2429,7 @@ def test_estimate_translation_requests_counts_batched_unique_chapter_titles(orch
     storage.save_metadata(
         "novel-1",
         {
-            "source": "syosetu_ncode",
+            "source_key": "syosetu_ncode",
             "chapters": [
                 {"id": str(index), "num": index, "title": "Repeated" if index <= 10 else f"Chapter {index}"}
                 for index in range(1, 31)
@@ -2464,7 +2464,7 @@ def test_estimate_translation_requests_reports_missing_raw_chapter_text(orchestr
     storage.save_metadata(
         "novel-1",
         {
-            "source": "kakuyomu",
+            "source_key": "kakuyomu",
             "title": "Original Novel",
             "chapters": [
                 {"id": "1", "num": 1, "title": "Chapter One"},
@@ -2499,7 +2499,7 @@ def test_estimate_translation_requests_can_exclude_or_include_translated_chapter
     storage.save_metadata(
         "novel-1",
         {
-            "source": "syosetu_ncode",
+            "source_key": "syosetu_ncode",
             "title": "Original Novel",
             "metadata_translation_prompt_version": "metadata-literal-v2",
             "translated_title": "Translated Novel",
@@ -2862,7 +2862,7 @@ async def test_translate_chapters_preflight_blocks_pending_db_glossary_status(or
         },
     )
     with SessionLocal() as session:
-        novel = Novel(slug="glossary-gate", title="Glossary Gate", language="ja", status="ongoing")
+        novel = Novel(slug="glossary-gate", title="Glossary Gate", language="ja", publication_status="ongoing")
         session.add(novel)
         session.flush()
         GlossaryRepository(session).create_glossary_entry(
@@ -2910,7 +2910,7 @@ async def test_translate_chapters_allows_ready_status_and_skip_override(orchestr
                 slug="glossary-ready",
                 title="Glossary Ready",
                 language="ja",
-                status="ongoing",
+                publication_status="ongoing",
                 glossary_status="glossary_ready",
             )
         )
@@ -2919,7 +2919,7 @@ async def test_translate_chapters_allows_ready_status_and_skip_override(orchestr
                 slug="glossary-override",
                 title="Glossary Override",
                 language="ja",
-                status="ongoing",
+                publication_status="ongoing",
                 glossary_status="glossary_pending",
             )
         )

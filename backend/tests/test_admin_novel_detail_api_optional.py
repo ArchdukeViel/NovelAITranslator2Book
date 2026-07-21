@@ -55,7 +55,7 @@ def test_admin_novel_detail_api_returns_glossary_fields(glossary_status: str, gl
             slug="detail-novel",
             title="Detail Novel",
             language="ja",
-            status="ongoing",
+            publication_status="ongoing",
             glossary_status=glossary_status,
             glossary_revision=glossary_revision,
         )

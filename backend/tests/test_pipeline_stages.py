@@ -132,7 +132,7 @@ def _glossary_test_service():
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
-    novel = Novel(slug="glossary-pipeline", title="Glossary Pipeline", language="ja", status="ongoing")
+    novel = Novel(slug="glossary-pipeline", title="Glossary Pipeline", language="ja", publication_status="ongoing")
     session.add(novel)
     session.flush()
     repo = GlossaryRepository(session)

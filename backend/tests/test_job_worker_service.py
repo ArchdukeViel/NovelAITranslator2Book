@@ -83,9 +83,9 @@ async def test_run_crawl_metadata_activity(worker_env) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_translation_activity_uses_stored_metadata_source(worker_env) -> None:
+async def test_run_translation_activity_uses_stored_metadata_source_key(worker_env) -> None:
     storage, activity_log, orchestrator, worker = worker_env
-    storage.save_metadata("novel-1", {"source": "kakuyomu", "chapters": [{"id": "1"}]})
+    storage.save_metadata("novel-1", {"source_key": "kakuyomu", "chapters": [{"id": "1"}]})
     activity = activity_log.create_translation_activity(
         novel_id="novel-1",
         chapters="1",
@@ -108,7 +108,7 @@ async def test_run_translation_activity_uses_stored_metadata_source(worker_env) 
 @pytest.mark.asyncio
 async def test_run_translation_activity_prefers_canonical_provider_fields(worker_env) -> None:
     storage, activity_log, orchestrator, worker = worker_env
-    storage.save_metadata("novel-1", {"source": "kakuyomu", "chapters": [{"id": "1"}]})
+    storage.save_metadata("novel-1", {"source_key": "kakuyomu", "chapters": [{"id": "1"}]})
     activity = activity_log.create_translation_activity(
         novel_id="novel-1",
         chapters="1",
@@ -134,7 +134,7 @@ async def test_run_translation_activity_prefers_canonical_provider_fields(worker
 @pytest.mark.asyncio
 async def test_run_translation_activity_passes_provider_lock_metadata(worker_env) -> None:
     storage, activity_log, orchestrator, worker = worker_env
-    storage.save_metadata("novel-1", {"source": "kakuyomu", "chapters": [{"id": "1"}]})
+    storage.save_metadata("novel-1", {"source_key": "kakuyomu", "chapters": [{"id": "1"}]})
     activity = activity_log.create_translation_activity(
         novel_id="novel-1",
         chapters="1",
@@ -154,7 +154,7 @@ async def test_run_translation_activity_passes_provider_lock_metadata(worker_env
 @pytest.mark.asyncio
 async def test_run_translation_activity_falls_back_to_legacy_provider_fields(worker_env) -> None:
     storage, activity_log, orchestrator, worker = worker_env
-    storage.save_metadata("novel-1", {"source": "kakuyomu", "chapters": [{"id": "1"}]})
+    storage.save_metadata("novel-1", {"source_key": "kakuyomu", "chapters": [{"id": "1"}]})
     activity = activity_log.create_translation_activity(
         novel_id="novel-1",
         chapters="1",

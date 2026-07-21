@@ -102,7 +102,7 @@ def set_user(app: FastAPI, user_id: int | None = None, role: str = "guest") -> N
 
 
 def _seed_novel(db_session, slug: str, title: str = "Test Novel") -> Novel:
-    novel = Novel(slug=slug, title=title, language="ja", status="ongoing")
+    novel = Novel(slug=slug, title=title, language="ja", publication_status="ongoing")
     db_session.add(novel)
     db_session.flush()
     return novel

@@ -31,8 +31,15 @@ _WINDOWS_RESERVED_NAMES = {
 
 
 def _validate_canonical_metadata_fields(payload: dict[str, Any]) -> None:
-    if "source" in payload:
-        raise ValueError("Legacy metadata field 'source' is not supported; use 'source_key'.")
+    canonical_replacements = {
+        "source": "source_key",
+        "status": "publication_status",
+    }
+    for legacy_field, canonical_field in canonical_replacements.items():
+        if legacy_field in payload:
+            raise ValueError(
+                f"Legacy metadata field '{legacy_field}' is not supported; use '{canonical_field}'."
+            )
 
 
 def _index_path(self: Any) -> Path:
@@ -398,7 +405,6 @@ def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
     )
     publication_status = normalize_publication_status(merged.get("publication_status"))
     merged["publication_status"] = publication_status
-    merged.pop("status", None)
     if merged.get("metadata_translation_status") != "failed":
         merged.pop("metadata_translation_error", None)
 
@@ -469,7 +475,6 @@ def _normalize_loaded_metadata(self: Any, payload: dict[str, Any], novel_id: str
     payload["context_group_id"] = self._clean_string(payload.get("context_group_id"), novel_id)
     publication_status = normalize_publication_status(payload.get("publication_status"))
     payload["publication_status"] = publication_status
-    payload.pop("status", None)
     return payload
 
 

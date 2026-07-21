@@ -170,7 +170,7 @@ class FakeGlossaryProvider:
 
 
 def _seed_novel(db_session, slug: str = "glossary-api") -> Novel:
-    novel = Novel(slug=slug, title=f"Novel {slug}", language="ja", status="ongoing")
+    novel = Novel(slug=slug, title=f"Novel {slug}", language="ja", publication_status="ongoing")
     db_session.add(novel)
     db_session.flush()
     return novel

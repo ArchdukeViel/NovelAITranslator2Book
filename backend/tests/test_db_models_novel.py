@@ -31,7 +31,7 @@ def session():
 
 class TestNovelModel:
     def test_create_novel(self, session) -> None:
-        novel = Novel(slug="test-novel", title="Test Novel", language="ja", status="ongoing")
+        novel = Novel(slug="test-novel", title="Test Novel", language="ja", publication_status="ongoing")
         session.add(novel)
         session.commit()
         result = session.query(Novel).filter_by(slug="test-novel").one()
@@ -39,14 +39,14 @@ class TestNovelModel:
         assert result.id is not None
 
     def test_slug_unique_constraint(self, session) -> None:
-        session.add(Novel(slug="dup-slug", title="Novel A", language="ja", status="ongoing"))
+        session.add(Novel(slug="dup-slug", title="Novel A", language="ja", publication_status="ongoing"))
         session.commit()
-        session.add(Novel(slug="dup-slug", title="Novel B", language="ja", status="ongoing"))
+        session.add(Novel(slug="dup-slug", title="Novel B", language="ja", publication_status="ongoing"))
         with pytest.raises(IntegrityError):
             session.commit()
 
     def test_optional_fields_nullable(self, session) -> None:
-        novel = Novel(slug="minimal", title="Minimal Novel", language="ja", status="unknown")
+        novel = Novel(slug="minimal", title="Minimal Novel", language="ja", publication_status="unknown")
         session.add(novel)
         session.commit()
         result = session.query(Novel).filter_by(slug="minimal").one()
@@ -56,14 +56,14 @@ class TestNovelModel:
         assert result.cover_storage_key is None
 
     def test_is_published_defaults_false(self, session) -> None:
-        novel = Novel(slug="unpublished", title="Unpublished", language="ja", status="ongoing")
+        novel = Novel(slug="unpublished", title="Unpublished", language="ja", publication_status="ongoing")
         session.add(novel)
         session.commit()
         result = session.query(Novel).filter_by(slug="unpublished").one()
         assert result.is_published is False
 
     def test_glossary_status_defaults_pending_and_revision_zero(self, session) -> None:
-        novel = Novel(slug="glossary-defaults", title="Glossary Defaults", language="ja", status="ongoing")
+        novel = Novel(slug="glossary-defaults", title="Glossary Defaults", language="ja", publication_status="ongoing")
         session.add(novel)
         session.commit()
         result = session.query(Novel).filter_by(slug="glossary-defaults").one()
@@ -71,7 +71,7 @@ class TestNovelModel:
         assert result.glossary_revision == 0
 
     def test_glossary_status_validation(self, session) -> None:
-        novel = Novel(slug="glossary-valid", title="Glossary Valid", language="ja", status="ongoing")
+        novel = Novel(slug="glossary-valid", title="Glossary Valid", language="ja", publication_status="ongoing")
         for status in GLOSSARY_STATUS_VALUES:
             novel.glossary_status = status
             assert novel.glossary_status == status
@@ -81,19 +81,19 @@ class TestNovelModel:
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture], database=None)
     @given(st.text().filter(lambda value: value not in GLOSSARY_STATUS_VALUES))
     def test_glossary_status_validation_rejects_invalid_values(self, session, invalid_status: str) -> None:
-        novel = Novel(slug="glossary-invalid", title="Glossary Invalid", language="ja", status="ongoing")
+        novel = Novel(slug="glossary-invalid", title="Glossary Invalid", language="ja", publication_status="ongoing")
         with pytest.raises(ValueError):
             novel.glossary_status = invalid_status
 
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture], database=None)
     @given(st.sampled_from(sorted(GLOSSARY_STATUS_VALUES)))
     def test_glossary_status_validation_accepts_valid_values(self, session, status: str) -> None:
-        novel = Novel(slug="glossary-accepted", title="Glossary Accepted", language="ja", status="ongoing")
+        novel = Novel(slug="glossary-accepted", title="Glossary Accepted", language="ja", publication_status="ongoing")
         novel.glossary_status = status
         assert novel.glossary_status == status
 
     def test_timestamps_set_on_create(self, session) -> None:
-        novel = Novel(slug="timestamped", title="Timestamped", language="ja", status="ongoing")
+        novel = Novel(slug="timestamped", title="Timestamped", language="ja", publication_status="ongoing")
         session.add(novel)
         session.commit()
         result = session.query(Novel).filter_by(slug="timestamped").one()
@@ -101,7 +101,7 @@ class TestNovelModel:
         assert result.updated_at is not None
 
     def test_repr(self, session) -> None:
-        novel = Novel(slug="repr-test", title="Repr Test", language="ja", status="ongoing")
+        novel = Novel(slug="repr-test", title="Repr Test", language="ja", publication_status="ongoing")
         session.add(novel)
         session.commit()
         assert "repr-test" in repr(novel)

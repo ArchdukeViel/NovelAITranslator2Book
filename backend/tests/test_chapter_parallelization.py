@@ -131,7 +131,7 @@ def _save_novel(storage, slug: str, *, num_chapters: int) -> None:
         slug,
         {
             "title": "Parallel Test Novel",
-            "source": "stub",
+            "source_key": "stub",
             "source_language": "Japanese",
             "chapters": [
                 {

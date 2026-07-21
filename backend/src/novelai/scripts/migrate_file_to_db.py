@@ -39,6 +39,7 @@ from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 
 from novelai.config.settings import settings  # noqa: E402
 from novelai.db.models import Chapter, Novel  # noqa: E402
+from novelai.sources.status import normalize_publication_status  # noqa: E402
 from novelai.storage.service import StorageService  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,8 @@ def extract_novel_metadata(meta: dict[str, Any]) -> dict[str, Any]:
 
     Returns a dict suitable for passing to Novel(**kwargs).
     """
+    novel_id = str(meta["novel_id"])
+
     # Title: prefer translated, fall back to original
     titles = meta.get("titles", {})
     title = (
@@ -83,7 +86,7 @@ def extract_novel_metadata(meta: dict[str, Any]) -> dict[str, Any]:
         or meta.get("translated_title")
         or titles.get("original")
         or meta.get("title")
-        or meta.get("novel_id", "Unknown")
+        or novel_id
     )
 
     # Author: prefer translated, fall back to original
@@ -95,18 +98,18 @@ def extract_novel_metadata(meta: dict[str, Any]) -> dict[str, Any]:
         or meta.get("author")
     )
 
-    source_site_raw = meta.get("source_site") or meta.get("origin_type")
+    source_site_raw = meta.get("source_key")
     source_site = source_site_raw[:128] if source_site_raw else None
 
     return {
-        "slug": meta.get("novel_id", meta.get("id")),
-        "title": title[:512] if title else meta.get("novel_id", "Unknown"),
+        "slug": novel_id,
+        "title": title[:512] if title else novel_id,
         "original_title": (meta.get("title") or "")[:512] or None,
         "author": author[:255] if author else None,
         "source_site": source_site,
         "source_url": meta.get("source_url") or meta.get("origin_uri_or_path"),
         "language": meta.get("language", "ja"),
-        "status": meta.get("status", "unknown"),
+        "publication_status": normalize_publication_status(meta.get("publication_status")),
         "synopsis": meta.get("synopsis"),
         "is_published": meta.get("is_published", False),
     }

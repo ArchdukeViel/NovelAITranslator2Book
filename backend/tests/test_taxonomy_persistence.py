@@ -52,7 +52,7 @@ def _seed_genres(session) -> None:
 
 
 def _make_novel(session, slug: str) -> Novel:
-    novel = Novel(slug=slug, title=f"Novel {slug}", language="ja", status="ongoing")
+    novel = Novel(slug=slug, title=f"Novel {slug}", language="ja", publication_status="ongoing")
     session.add(novel)
     session.flush()
     return novel
@@ -221,7 +221,7 @@ class TestTagAssignment:
         assert row is not None
         assert row[0] == "syosetu_ncode"
 
-    def test_default_origin_when_no_source_key(self, session) -> None:
+    def test_metadata_source_key_sets_origin_when_argument_omitted(self, session) -> None:
         _seed_genres(session)
         novel = _make_novel(session, "t05")
 
@@ -229,7 +229,7 @@ class TestTagAssignment:
             "genre_slug": None,
             "source_keywords": [],
             "source_tags": ["魔法"],
-            "source": "syosetu_ncode",
+            "source_key": "syosetu_ncode",
         }
         persist_taxonomy_assignments(session, novel.id, metadata)
         session.commit()

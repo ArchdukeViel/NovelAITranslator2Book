@@ -55,7 +55,7 @@ def catalog(storage, db_session):
 @pytest.fixture()
 def seeded_novel(db_session):
     """A Novel row already in the DB."""
-    novel = Novel(slug="novel-001", title="Test Novel", language="ja", status="ongoing")
+    novel = Novel(slug="novel-001", title="Test Novel", language="ja", publication_status="ongoing")
     db_session.add(novel)
     db_session.commit()
     return novel
@@ -140,7 +140,6 @@ class TestGetOrCreateNovel:
             slug="projected-novel",
             title="Projected Novel",
             language="ja",
-            status="completed",
             publication_status="completed",
             source_updated_at=scraped_at,
             chapter_count=12,
@@ -179,7 +178,7 @@ class TestGetOrCreateNovel:
             slug=slug,
             title="Projected Glossary Novel",
             language="ja",
-            status="ongoing",
+            publication_status="ongoing",
             glossary_status=glossary_status,
             glossary_revision=glossary_revision,
         )
@@ -652,7 +651,6 @@ def test_reconcile_all_catalog_projections_limit_offset(storage, db_session) -> 
                 slug=slug,
                 title=slug,
                 language="ja",
-                status="strange" if slug == "b-novel" else "unknown",
                 publication_status="strange" if slug == "b-novel" else "unknown",
             )
         )

@@ -240,7 +240,7 @@ class TestTagModel:
 class TestJunctionTables:
     def test_novel_genre_assignment(self, session) -> None:
         _seed_genres(session)
-        novel = Novel(slug="test-novel", title="Test", language="ja", status="ongoing")
+        novel = Novel(slug="test-novel", title="Test", language="ja", publication_status="ongoing")
         session.add(novel)
         session.commit()
 
@@ -257,7 +257,7 @@ class TestJunctionTables:
 
     def test_novel_genre_duplicate_prevented(self, session) -> None:
         _seed_genres(session)
-        novel = Novel(slug="dup-test", title="Dup", language="ja", status="ongoing")
+        novel = Novel(slug="dup-test", title="Dup", language="ja", publication_status="ongoing")
         session.add(novel)
         session.commit()
 
@@ -275,7 +275,7 @@ class TestJunctionTables:
             session.commit()
 
     def test_novel_tag_assignment(self, session) -> None:
-        novel = Novel(slug="tag-test", title="Tag Test", language="ja", status="ongoing")
+        novel = Novel(slug="tag-test", title="Tag Test", language="ja", publication_status="ongoing")
         session.add(novel)
         tag = Tag(name="magic")
         session.add(tag)
@@ -291,7 +291,7 @@ class TestJunctionTables:
         assert novel.tags[0].name == "magic"
 
     def test_novel_tag_duplicate_prevented(self, session) -> None:
-        novel = Novel(slug="tag-dup", title="Tag Dup", language="ja", status="ongoing")
+        novel = Novel(slug="tag-dup", title="Tag Dup", language="ja", publication_status="ongoing")
         session.add(novel)
         tag = Tag(name="dragons")
         session.add(tag)
@@ -310,7 +310,7 @@ class TestJunctionTables:
 
     def test_cascade_delete_novel_removes_genre_assignment(self, session) -> None:
         _seed_genres(session)
-        novel = Novel(slug="cascade-test", title="Cascade", language="ja", status="ongoing")
+        novel = Novel(slug="cascade-test", title="Cascade", language="ja", publication_status="ongoing")
         session.add(novel)
         session.commit()
 

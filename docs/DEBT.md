@@ -162,9 +162,11 @@ Deferred items are tracked but excluded from the active count.
   stale retranslation now read only `source_key`; crawler metadata supplies
   canonical `source_key` and `source_novel_id`, and legacy `source` metadata
   fails the quality gate. Metadata storage also rejects the legacy top-level
-  `source` field at both write and read boundaries. The unused `novels.status`
-  database mirror remains until an explicit column-removal migration is
-  approved and verified.
+  `source` and `status` fields at both write and read boundaries. The redundant
+  `novels.status` database mirror is removed by a forward migration; ORM,
+  backfill tooling, and tests now use only `publication_status`. Activity-worker
+  source resolution and taxonomy origin persistence also use only
+  `source_key`.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
@@ -461,7 +463,7 @@ Deferred items are tracked but excluded from the active count.
 - **Category:** Database | Storage | Operations
 - **Priority:** Blocker
 - **Status:** Implemented; alert and hosted acceptance pending
-- **Resolution:** Added reusable bounded database engines, PostgreSQL connection timeouts, renewable scheduled-job leases, real cron/timezone evaluation, split R2 snapshot credentials, streamed encrypted PostgreSQL exports, retention, and redacted SMTP alerts. Live R2 permission-boundary tests proved the three credential roles. On 2026-07-18 two consecutive scheduler-created R2 snapshots passed full checksum verification, and a scheduler-created encrypted PostgreSQL backup was automatically restored into a clean PostgreSQL 17 target at Alembic head `8b7f3d1a2c4e` with 30 public tables and zero invalid constraints. The opt-in hosted PostgreSQL/R2 suite passes, and alert cooldown plus secret redaction have direct tests. Remaining acceptance requires real stale/failure SMTP delivery and successful hosted verification workflow evidence.
+- **Resolution:** Added reusable bounded database engines, PostgreSQL connection timeouts, renewable scheduled-job leases, real cron/timezone evaluation, split R2 snapshot credentials, streamed encrypted PostgreSQL exports, retention, and redacted SMTP alerts. Live R2 permission-boundary tests proved the three credential roles. On 2026-07-18 two consecutive scheduler-created R2 snapshots passed full checksum verification, and a scheduler-created encrypted PostgreSQL backup was automatically restored into a clean PostgreSQL 17 target at Alembic head `8b7f3d1a2c4e` with 30 public tables and zero invalid constraints. The opt-in hosted PostgreSQL/R2 suite passes, and alert cooldown plus secret redaction have direct tests. Repository head is now `9c2e4a6b8d0f`; remaining acceptance requires applying and verifying that head on hosted Supabase, real stale/failure SMTP delivery, and successful hosted verification workflow evidence.
 
 ### DEBT-076 — Clean PostgreSQL migration lacks Supabase auth compatibility
 - **Milestone:** Milestone M0 (CI Confidence)
@@ -477,7 +479,9 @@ Deferred items are tracked but excluded from the active count.
 - **Implementation note (2026-07-18):** CI now installs a minimal, fail-closed
   `auth.uid()` compatibility shim before Alembic runs on vanilla PostgreSQL.
   The shim and workflow wiring have focused tests. Hosted CI confirmation on a
-  fresh run remains required before resolving this debt.
+  fresh run remains required before resolving this debt. Repository migration
+  head advanced to `9c2e4a6b8d0f` on 2026-07-22 and still requires both clean
+  PostgreSQL and hosted Supabase execution evidence.
 
 ### DEBT-077 — CI exclusions and workflow success signals are misleading
 - **Milestone:** Milestone M0 (CI Confidence)
@@ -729,3 +733,17 @@ Deferred items are tracked but excluded from the active count.
 - **Resolution:** Added focused behavior tests proving legacy-only metadata is
   rejected without scheduling translation and canonical `source_key` metadata
   completes the no-stale path without a provider call.
+
+### DEBT-088 — File-to-database backfill emitted legacy novel fields
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Backend | Data Migration | Testing
+- **Priority:** Medium
+- **Status:** Resolved
+- **Affected areas:** File-to-database backfill, novel ORM, Alembic schema
+- **Description:** The backfill still accepted `id` and `status` metadata and
+  emitted the redundant `Novel.status` database field, with no focused test for
+  the canonical projection.
+- **Resolution:** The backfill now requires `novel_id`, normalizes only
+  `publication_status`, and maps source identity from `source_key`. A forward
+  migration removes `novels.status`, all ORM fixtures use
+  `publication_status`, and focused tests enforce the backfill boundary.

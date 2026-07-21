@@ -44,7 +44,7 @@ def storage(tmp_path) -> StorageService:
 
 def _make_novel(session, slug: str | None = None) -> Novel:
     slug = slug or f"sync-test-{uuid4().hex}"
-    novel = Novel(slug=slug, title=f"Novel {slug}", language="ja", status="ongoing")
+    novel = Novel(slug=slug, title=f"Novel {slug}", language="ja", publication_status="ongoing")
     session.add(novel)
     session.flush()
     return novel

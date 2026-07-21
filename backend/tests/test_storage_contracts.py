@@ -523,6 +523,24 @@ def test_metadata_read_rejects_legacy_source_field(storage: StorageService) -> N
         storage.load_metadata("legacy-source-read")
 
 
+@pytest.mark.parametrize("operation", ["write", "read"])
+def test_metadata_rejects_legacy_status_field(storage: StorageService, operation: str) -> None:
+    payload = {
+        "schema_version": storage.SCHEMA_VERSION,
+        "novel_id": "legacy-status",
+        "title": "T",
+        "status": "ongoing",
+    }
+    if operation == "read":
+        _write_metadata(storage, "legacy-status", payload)
+
+    with pytest.raises(ValueError, match="publication_status"):
+        if operation == "write":
+            storage.save_metadata("legacy-status", payload)
+        else:
+            storage.load_metadata("legacy-status")
+
+
 def test_unversioned_metadata_is_rejected(storage: StorageService) -> None:
     _write_metadata(storage, "current-novel-1", _load_fixture("legacy_metadata.json"))
     with pytest.raises(UnsupportedStorageSchemaVersionError):

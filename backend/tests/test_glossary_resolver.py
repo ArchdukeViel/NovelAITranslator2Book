@@ -39,7 +39,7 @@ def resolver(repo) -> GlossaryResolver:
 
 
 def _make_novel(session, slug: str = "test-novel") -> Novel:
-    novel = Novel(slug=slug, title=f"Novel {slug}", language="ja", status="ongoing")
+    novel = Novel(slug=slug, title=f"Novel {slug}", language="ja", publication_status="ongoing")
     session.add(novel)
     session.flush()
     return novel

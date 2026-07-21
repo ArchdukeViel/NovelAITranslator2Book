@@ -55,7 +55,6 @@ class Novel(Base):
     source_site: Mapped[str | None] = mapped_column(String(128), nullable=True)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     language: Mapped[str] = mapped_column(String(32), nullable=False, default="ja")
-    status: Mapped[str] = mapped_column(String(64), nullable=False, default="unknown")
     publication_status: Mapped[str] = mapped_column(String(64), nullable=False, default="unknown")
     source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     chapter_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

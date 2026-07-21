@@ -67,7 +67,7 @@ def novel(db_session, owner_user):
         slug="test-novel",
         title="Test Novel",
         language="ja",
-        status="ongoing",
+        publication_status="ongoing",
         glossary_status="glossary_ready",
         glossary_revision=5,
     )
@@ -370,7 +370,7 @@ class TestApproveTranslationChange:
         assert events[0].event_type == "approve"
 
     def test_approve_rejects_wrong_novel(self, client, approved_entry, db_session) -> None:
-        other_novel = Novel(slug="other-novel", title="Other", language="ja", status="ongoing")
+        other_novel = Novel(slug="other-novel", title="Other", language="ja", publication_status="ongoing")
         db_session.add(other_novel)
         db_session.commit()
         resp = client.post(

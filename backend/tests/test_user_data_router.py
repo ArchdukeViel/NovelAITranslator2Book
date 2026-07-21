@@ -42,8 +42,8 @@ def db_session():
 
 @pytest.fixture()
 def seeded_catalog(db_session):
-    novel = Novel(slug="test-novel", title="Test Novel", language="ja", status="ongoing")
-    other = Novel(slug="other-novel", title="Other Novel", language="ja", status="ongoing")
+    novel = Novel(slug="test-novel", title="Test Novel", language="ja", publication_status="ongoing")
+    other = Novel(slug="other-novel", title="Other Novel", language="ja", publication_status="ongoing")
     db_session.add_all([novel, other])
     db_session.flush()
     chapter = Chapter(novel_id=novel.id, chapter_number=1, title="Chapter One")

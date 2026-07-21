@@ -30,7 +30,7 @@ def session():
 
 def _novel(session, prefix: str = "gs") -> Novel:
     slug = f"{prefix}-{uuid4().hex}"
-    novel = Novel(slug=slug, title="Glossary Status", language="ja", status="ongoing")
+    novel = Novel(slug=slug, title="Glossary Status", language="ja", publication_status="ongoing")
     session.add(novel)
     session.flush()
     return novel

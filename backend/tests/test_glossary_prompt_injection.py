@@ -44,7 +44,7 @@ def service(repo) -> GlossaryPromptInjectionService:
 
 
 def _make_novel(session, slug: str) -> Novel:
-    novel = Novel(slug=slug, title=f"Novel {slug}", language="ja", status="ongoing")
+    novel = Novel(slug=slug, title=f"Novel {slug}", language="ja", publication_status="ongoing")
     session.add(novel)
     session.flush()
     return novel

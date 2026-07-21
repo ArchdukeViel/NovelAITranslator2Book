@@ -127,12 +127,15 @@ def persist_taxonomy_assignments(
     )
 
     # Determine origin for tags
-    if source_key:
-        origin = source_key
-    elif metadata.get("source") in ("syosetu_ncode", "novel18_syosetu"):
+    metadata_source_key = metadata.get("source_key")
+    if isinstance(source_key, str) and source_key.strip():
+        origin = source_key.strip()
+    elif metadata_source_key in ("syosetu_ncode", "novel18_syosetu"):
         origin = "syosetu"
-    elif metadata.get("source") == "kakuyomu":
+    elif metadata_source_key == "kakuyomu":
         origin = "kakuyomu"
+    elif isinstance(metadata_source_key, str) and metadata_source_key.strip():
+        origin = metadata_source_key.strip()
     else:
         origin = "unknown"
 

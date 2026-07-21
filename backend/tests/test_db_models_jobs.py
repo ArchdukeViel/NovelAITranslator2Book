@@ -27,7 +27,7 @@ def session():
 
 @pytest.fixture()
 def novel(session):
-    n = Novel(slug="test-novel", title="Test Novel", language="ja", status="ongoing")
+    n = Novel(slug="test-novel", title="Test Novel", language="ja", publication_status="ongoing")
     session.add(n)
     session.commit()
     return n

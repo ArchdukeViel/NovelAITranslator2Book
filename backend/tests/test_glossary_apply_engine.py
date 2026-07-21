@@ -233,7 +233,7 @@ def patched_session(engine, monkeypatch, orchestrator):
 
 @pytest.fixture()
 def novel(session) -> Novel:
-    n = Novel(slug="demo", title="Demo", language="ja", status="ongoing", glossary_revision=3)
+    n = Novel(slug="demo", title="Demo", language="ja", publication_status="ongoing", glossary_revision=3)
     session.add(n)
     session.commit()
     return n

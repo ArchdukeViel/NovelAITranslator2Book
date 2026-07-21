@@ -350,7 +350,7 @@ class TestGlossaryInvalidation:
 
         try:
             # Create novel
-            novel = Novel(slug="test-novel", title="Test Novel", language="ja", status="ongoing")
+            novel = Novel(slug="test-novel", title="Test Novel", language="ja", publication_status="ongoing")
             session.add(novel)
             session.flush()
 

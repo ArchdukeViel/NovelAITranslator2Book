@@ -188,7 +188,7 @@ def _source_metadata_inspection_payload(
         "title": display_title,
         "source_title": source_title,
         "author": author,
-        "source_key": _optional_string(meta.get("source")),
+        "source_key": _optional_string(meta.get("source_key")),
         "source_url": _optional_string(meta.get("source_url")),
         "publication_status": publication_status,
         "raw_status": _optional_string(meta.get("source_publication_status"))
@@ -287,7 +287,7 @@ class LibraryService:
             "title": _optional_string(meta.get("translated_title")) or _optional_string(meta.get("title")) or novel_id,
             "source_title": _optional_string(meta.get("title")),
             "author": _optional_string(meta.get("translated_author")) or _optional_string(meta.get("author")),
-            "source_key": _optional_string(meta.get("source")),
+            "source_key": _optional_string(meta.get("source_key")),
             "source_url": _optional_string(meta.get("source_url")),
             "publication_status": publication_status,
             "chapter_count": chapter_count,
