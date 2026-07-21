@@ -14,14 +14,14 @@ from tests.conftest import create_test_fixture
 
 
 class EmptyChapterSource(SourceAdapter):
-    @property
-    def key(self) -> str:
-        return "empty_source"
+    source_key = "empty_source"
+
+    def can_handle(self, identifier_or_url: str) -> bool:
+        return False
 
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         return {
-            "source": self.key,
-            "source_key": self.key,
+            "source_key": self.source_key,
             "source_url": url,
             "title": "Empty Source Novel",
             "chapters": [{"id": "1", "num": 1, "title": "Chapter 1", "url": "https://example.test/1"}],
@@ -158,13 +158,13 @@ async def test_crawler_quality_gate_prevents_empty_chapter_save():
             usage_service=fixture.usage_service,
         )
         await orchestrator.scrape_metadata(
-            source_key=source.key,
+            source_key=source.source_key,
             novel_id="empty_source_novel",
             source_identifier="https://example.test/novel",
         )
 
         result = await orchestrator.scrape_chapters(
-            source_key=source.key,
+            source_key=source.source_key,
             novel_id="empty_source_novel",
             chapters="1",
         )

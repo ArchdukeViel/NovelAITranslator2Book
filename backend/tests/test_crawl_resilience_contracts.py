@@ -30,18 +30,19 @@ from tests.conftest import TESTS_TMP_ROOT
 class TwoChapterSource(SourceAdapter):
     """Minimal 2-chapter source with configurable chapter payloads."""
 
+    source_key = "test_source"
+
     def __init__(self) -> None:
         self.chapter_payloads: dict[str, dict[str, Any]] = {}
         self.fetch_errors: dict[str, Exception] = {}
         self.fetch_count = 0
 
-    @property
-    def key(self) -> str:
-        return "test_source"
+    def can_handle(self, identifier_or_url: str) -> bool:
+        return False
 
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         return {
-            "source": self.key,
+            "source_key": self.source_key,
             "source_url": url,
             "title": "Test Novel",
             "author": "Test Author",
@@ -67,16 +68,17 @@ class TwoChapterSource(SourceAdapter):
 class ChangingChapterSource(SourceAdapter):
     """Source where chapter content changes between scrapes."""
 
+    source_key = "changing_source"
+
     def __init__(self) -> None:
         self.version = 1
 
-    @property
-    def key(self) -> str:
-        return "changing_source"
+    def can_handle(self, identifier_or_url: str) -> bool:
+        return False
 
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         return {
-            "source": self.key,
+            "source_key": self.source_key,
             "source_url": url,
             "title": "Changing Novel",
             "author": "Changing Author",

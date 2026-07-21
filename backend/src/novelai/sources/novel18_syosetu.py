@@ -8,6 +8,7 @@ from novelai.sources.taxonomy import NOVEL18_GENRE_MAP
 
 
 class Novel18SyosetuSource(SyosetuNcodeSource):
+    source_key = "novel18_syosetu"
     """Source adapter for Syosetu Novel18 / Nocturne novels."""
 
     ADULT_SITE_HOSTS = {
@@ -26,11 +27,7 @@ class Novel18SyosetuSource(SyosetuNcodeSource):
         """Use the Novel18 genre map which includes adult genre slugs."""
         return NOVEL18_GENRE_MAP
 
-    @property
-    def key(self) -> str:
-        return "novel18_syosetu"
-
-    def matches_url(self, identifier_or_url: str) -> bool:
+    def can_handle(self, identifier_or_url: str) -> bool:
         candidate = identifier_or_url.strip()
         if not candidate.startswith(("http://", "https://")):
             return False

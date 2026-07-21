@@ -152,9 +152,12 @@ Deferred items are tracked but excluded from the active count.
   progress, or resume modules; callers import from the owning modules. Static
   `/health` and `/api/health` aliases, the unused frontend health wrapper, and
   the unused application getter alias are removed; callers use the canonical
-  health routes or module-level application. The unused `novels.status`
-  database mirror remains until an explicit column-removal migration is
-  approved and verified.
+  health routes or module-level application. Source plugins now use the
+  canonical `AdapterRegistry`, `source_key`, `can_handle`, `get_adapter`,
+  `get_by_key`, and `list_adapters` contracts; the older module registry
+  functions, `key`, `matches_url`, and mirrored `source` metadata are removed.
+  The unused `novels.status` database mirror remains until an explicit
+  column-removal migration is approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

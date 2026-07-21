@@ -32,7 +32,7 @@ from novelai.services.orchestration.preliminary import (
     preliminary_metadata_is_usable,
     preliminary_source_attempts,
 )
-from novelai.sources.registry import detect_source
+from novelai.sources.registry import get_registry
 from novelai.storage.service import StorageService
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,8 @@ class OperationsService:
         mode: str,
         max_chapter: int | None,
     ) -> dict[str, Any]:
-        resolved_source_key = detect_source(url) or source_key or "generic"
+        detected_adapter = get_registry().get_adapter(url)
+        resolved_source_key = detected_adapter.source_key if detected_adapter is not None else source_key or "generic"
         timeout = settings.WEB_REQUEST_TIMEOUT_SECONDS
         try:
             meta = await asyncio.wait_for(

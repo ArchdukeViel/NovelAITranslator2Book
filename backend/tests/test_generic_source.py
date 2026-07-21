@@ -16,7 +16,7 @@ def _soup(html: str) -> BeautifulSoup:
 class TestGenericSourceHelpers:
     def test_key_is_generic(self) -> None:
         src = GenericSource()
-        assert src.key == "generic"
+        assert src.source_key == "generic"
 
     def test_normalize_novel_id_from_url(self) -> None:
         src = GenericSource()

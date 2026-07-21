@@ -20,7 +20,7 @@ def _fixture(source: str, name: str) -> str:
 def test_syosetu_fixture_url_matching_and_normalization() -> None:
     source = SyosetuNcodeSource()
 
-    assert source.matches_url("https://ncode.syosetu.com/n1234ab/")
+    assert source.can_handle("https://ncode.syosetu.com/n1234ab/")
     assert source.normalize_novel_id("https://ncode.syosetu.com/n1234ab/2/") == "n1234ab"
 
 
@@ -181,7 +181,7 @@ def test_novel18_fixture_age_gate_detection() -> None:
 def test_kakuyomu_fixture_url_matching_and_work_metadata() -> None:
     source = KakuyomuSource()
 
-    assert source.matches_url("https://kakuyomu.jp/works/16818093000000000000/")
+    assert source.can_handle("https://kakuyomu.jp/works/16818093000000000000/")
     assert (
         source.normalize_novel_id(
             "https://kakuyomu.jp/works/16818093000000000000/episodes/16818093000000000001"

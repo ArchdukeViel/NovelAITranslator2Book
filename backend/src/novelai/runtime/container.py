@@ -21,6 +21,7 @@ from novelai.services.scheduler_runtime_state_service import SchedulerRuntimeSta
 from novelai.services.scheduler_service import SchedulerService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
+from novelai.sources.base import SourceAdapter
 from novelai.storage.service import StorageService
 from novelai.translation.service import TranslationService
 
@@ -185,11 +186,18 @@ class Container:
     @property
     def orchestrator(self) -> NovelOrchestrationService:
         if self._orchestrator is None:
-            from novelai.sources.registry import get_source
+            from novelai.sources.registry import get_registry
+
+            def source_factory(source_key: str) -> SourceAdapter:
+                source = get_registry().get_by_key(source_key)
+                if source is None:
+                    raise KeyError(source_key)
+                return source
+
             self._orchestrator = NovelOrchestrationService(
                 storage=self.storage,
                 translation=self.translation,
-                source_factory=get_source,
+                source_factory=source_factory,
             )
         return self._orchestrator
 

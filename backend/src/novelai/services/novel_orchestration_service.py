@@ -66,9 +66,15 @@ class NovelOrchestrationService:
         usage_service: UsageService | None = None,
     ) -> None:
         if source_factory is None:
-            # Default: import and use registry
-            from novelai.sources.registry import get_source
-            source_factory = get_source
+            from novelai.sources.registry import get_registry
+
+            def registry_source_factory(key: str) -> SourceAdapter:
+                source = get_registry().get_by_key(key)
+                if source is None:
+                    raise KeyError(key)
+                return source
+
+            source_factory = registry_source_factory
 
         # Wrap to produce a clear OperationError on unknown source key.
         _raw_source_factory = source_factory

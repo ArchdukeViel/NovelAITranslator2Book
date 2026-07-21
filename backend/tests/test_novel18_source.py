@@ -10,9 +10,9 @@ from novelai.sources.novel18_syosetu import Novel18SyosetuSource
 def test_novel18_matches_and_normalizes_root_and_chapter_urls() -> None:
     source = Novel18SyosetuSource()
 
-    assert source.matches_url("https://novel18.syosetu.com/n0813kx/")
-    assert source.matches_url("https://novel18.syosetu.com/n0813kx/1/")
-    assert source.matches_url("https://noc.syosetu.com/n0813kx/")
+    assert source.can_handle("https://novel18.syosetu.com/n0813kx/")
+    assert source.can_handle("https://novel18.syosetu.com/n0813kx/1/")
+    assert source.can_handle("https://noc.syosetu.com/n0813kx/")
     assert source.normalize_novel_id("https://novel18.syosetu.com/n0813kx/1/") == "n0813kx"
     assert source._normalize_url("https://noc.syosetu.com/n0813kx/1/") == "https://noc.syosetu.com/n0813kx/"
 
@@ -125,7 +125,7 @@ async def test_novel18_fetch_metadata_uses_novel18_domain() -> None:
     metadata = await source.fetch_metadata("https://novel18.syosetu.com/n0813kx/1/")
 
     assert seen_urls == ["https://novel18.syosetu.com/n0813kx/", infotop_url]
-    assert metadata["source"] == "novel18_syosetu"
+    assert metadata["source_key"] == "novel18_syosetu"
     assert metadata["title"] == "夜の物語"
     assert metadata["chapters"][0]["url"] == "https://novel18.syosetu.com/n0813kx/1/"
     assert metadata["publication_status"] == "completed"

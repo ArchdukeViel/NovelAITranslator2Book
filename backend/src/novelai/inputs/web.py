@@ -4,7 +4,7 @@ from pathlib import Path
 
 from novelai.inputs.base import DocumentAdapter
 from novelai.inputs.models import ImportedAsset, ImportedDocument, ImportedUnit
-from novelai.sources.registry import detect_source, get_source
+from novelai.sources.registry import get_registry
 
 
 class WebDocumentAdapter(DocumentAdapter):
@@ -23,8 +23,11 @@ class WebDocumentAdapter(DocumentAdapter):
         max_units: int | None = None,
     ) -> ImportedDocument:
         url = str(source).strip()
-        source_key = detect_source(url) or "generic"
-        adapter = get_source(source_key)
+        registry = get_registry()
+        adapter = registry.get_adapter(url) or registry.get_by_key("generic")
+        if adapter is None:
+            raise RuntimeError("Generic source adapter is not registered.")
+        source_key = adapter.source_key
         metadata = await adapter.fetch_metadata(url, max_chapter=max_units)
         chapter_items = metadata.get("chapters", [])
         if not isinstance(chapter_items, list):
@@ -78,7 +81,7 @@ class WebDocumentAdapter(DocumentAdapter):
             author=metadata.get("author") if isinstance(metadata.get("author"), str) else None,
             source_language=metadata.get("source_language") if isinstance(metadata.get("source_language"), str) else None,
             metadata={
-                "source": metadata.get("source") or source_key,
+                "source_key": metadata.get("source_key") or source_key,
                 "source_url": metadata.get("source_url") or url,
             },
             units=tuple(units),

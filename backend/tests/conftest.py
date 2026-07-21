@@ -332,14 +332,12 @@ class MockSourceAdapter(SourceAdapter):
     """Mock source adapter for testing."""
 
     def __init__(self, source_key: str = "mock_source") -> None:
-        self._source_key = source_key
+        self.source_key = source_key
         self.call_count = 0
         self.chapters_data: dict[str, str] = {}
 
-    @property
-    def key(self) -> str:
-        """Return source key."""
-        return self._source_key
+    def can_handle(self, identifier_or_url: str) -> bool:
+        return False
 
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         """Mock metadata fetching."""

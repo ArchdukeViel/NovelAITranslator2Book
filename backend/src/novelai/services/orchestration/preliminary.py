@@ -9,10 +9,15 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from novelai.sources.registry import detect_source
+from novelai.sources.registry import get_registry
 
 NCODE_ID_PATTERN = r"^n\d{4}[a-z]{2}$"
 SYOSETU_SOURCE_PAIR = ("novel18_syosetu", "syosetu_ncode")
+
+
+def _detected_source_key(identifier: str) -> str | None:
+    adapter = get_registry().get_adapter(identifier)
+    return adapter.source_key if adapter is not None else None
 
 
 def looks_like_ncode_id(identifier: str) -> bool:
@@ -20,7 +25,7 @@ def looks_like_ncode_id(identifier: str) -> bool:
 
 
 def resolved_preliminary_source(identifier: str, requested_source_key: str | None) -> str:
-    detected_source = detect_source(identifier)
+    detected_source = _detected_source_key(identifier)
     if detected_source:
         return detected_source
     if requested_source_key:
@@ -33,7 +38,7 @@ def resolved_preliminary_source(identifier: str, requested_source_key: str | Non
 
 
 def preliminary_source_attempts(identifier: str, requested_source_key: str | None) -> list[str]:
-    detected_source = detect_source(identifier)
+    detected_source = _detected_source_key(identifier)
     requested = requested_source_key.strip() if isinstance(requested_source_key, str) else None
     if requested == "":
         requested = None

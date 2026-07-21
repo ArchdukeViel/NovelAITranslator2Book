@@ -44,14 +44,15 @@ from tests.conftest import TESTS_TMP_ROOT, MockTranslationProvider
 
 
 class StubSource(SourceAdapter):
+    source_key = "stub"
+
     def __init__(self) -> None:
         self.requested_max_chapters: list[int | None] = []
         self.chapter_payloads: dict[str, dict[str, object]] = {}
         self.assets: dict[str, dict[str, object]] = {}
 
-    @property
-    def key(self) -> str:
-        return "stub"
+    def can_handle(self, identifier_or_url: str) -> bool:
+        return False
 
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, object]:
         self.requested_max_chapters.append(max_chapter)

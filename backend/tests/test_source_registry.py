@@ -1,71 +1,79 @@
-"""Tests for the source adapter registry."""
+"""Tests for the canonical source adapter registry."""
 
 from __future__ import annotations
 
+from typing import Any
+
 from novelai.sources.base import SourceAdapter
-from novelai.sources.registry import (
-    _SOURCE_REGISTRY,
-    available_sources,
-    detect_source,
-    get_source,
-    register_source,
-)
+from novelai.sources.registry import AdapterRegistry
 
 
 class _FakeSource(SourceAdapter):
-    """Minimal source adapter for registry tests."""
+    source_key = "fake"
 
-    def __init__(self, *, match: bool = False) -> None:
-        self._match = match
+    def can_handle(self, identifier_or_url: str) -> bool:
+        return False
 
-    @property
-    def key(self) -> str:
-        return "fake"
-
-    def matches_url(self, identifier_or_url: str) -> bool:
-        return self._match
-
-    async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict:
+    async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         return {}
 
     async def fetch_chapter(self, url: str) -> str:
         return ""
 
 
-class TestSourceRegistry:
-    """Isolated tests — each test saves/restores global state."""
+class _MatchingFakeSource(_FakeSource):
+    source_key = "matching_fake"
 
-    def setup_method(self) -> None:
-        self._saved = dict(_SOURCE_REGISTRY)
+    def can_handle(self, identifier_or_url: str) -> bool:
+        return True
 
-    def teardown_method(self) -> None:
-        _SOURCE_REGISTRY.clear()
-        _SOURCE_REGISTRY.update(self._saved)
 
-    def test_register_and_get_source(self) -> None:
-        register_source("test_src", lambda: _FakeSource())
-        adapter = get_source("test_src")
-        assert isinstance(adapter, _FakeSource)
+class _BlankKeySource(_FakeSource):
+    source_key = "  "
 
-    def test_get_source_raises_for_unknown_key(self) -> None:
-        import pytest
-        with pytest.raises(KeyError, match="No source registered"):
-            get_source("nonexistent")
 
-    def test_available_sources_lists_registered_keys(self) -> None:
-        register_source("alpha", lambda: _FakeSource())
-        register_source("beta", lambda: _FakeSource())
-        keys = available_sources()
-        assert "alpha" in keys
-        assert "beta" in keys
+def test_register_and_get_by_key() -> None:
+    registry = AdapterRegistry()
+    registry.register(_FakeSource)
 
-    def test_detect_source_returns_matching_key(self) -> None:
-        register_source("matcher", lambda: _FakeSource(match=True))
-        assert detect_source("http://example.com") == "matcher"
+    assert isinstance(registry.get_by_key("fake"), _FakeSource)
+    assert registry.get_by_key("missing") is None
 
-    def test_detect_source_returns_none_when_no_match(self) -> None:
-        register_source("nomatch", lambda: _FakeSource(match=False))
-        result = detect_source("http://example.com")
-        # Could be None or a prior match; just ensure nomatch didn't match
-        if result is not None:
-            assert result != "nomatch"
+
+def test_list_adapters_is_sorted() -> None:
+    registry = AdapterRegistry()
+    class BetaSource(_FakeSource):
+        source_key = "beta"
+
+    class AlphaSource(_FakeSource):
+        source_key = "alpha"
+
+    registry.register(BetaSource)
+    registry.register(AlphaSource)
+
+    assert registry.list_adapters() == ["alpha", "beta"]
+
+
+def test_get_adapter_returns_matching_instance() -> None:
+    registry = AdapterRegistry()
+    registry.register(_MatchingFakeSource)
+
+    assert isinstance(registry.get_adapter("https://example.com"), _FakeSource)
+
+
+def test_get_adapter_returns_none_without_match() -> None:
+    registry = AdapterRegistry()
+    registry.register(_FakeSource)
+
+    assert registry.get_adapter("https://example.com") is None
+
+
+def test_register_rejects_blank_source_key() -> None:
+    registry = AdapterRegistry()
+
+    try:
+        registry.register(_BlankKeySource)
+    except ValueError as exc:
+        assert str(exc) == "source_key must not be blank"
+    else:
+        raise AssertionError("blank source_key was accepted")

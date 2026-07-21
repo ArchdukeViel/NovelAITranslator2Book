@@ -215,7 +215,7 @@ class TestSyosetuKeywordExtraction:
 # Syosetu existing tests still pass with new fields
 # ---------------------------------------------------------------------------
 
-class TestSyosetuBackwardCompat:
+class TestSyosetuMetadataContract:
     def test_existing_metadata_fields_preserved(self) -> None:
         source = SyosetuNcodeSource()
         html = """
@@ -228,7 +228,7 @@ class TestSyosetuBackwardCompat:
         metadata = source._parse_metadata_html(html, "https://ncode.syosetu.com/n8733gf/")
         assert metadata["title"] == "Long Story"
         assert metadata["author"] == "Author Name"
-        assert metadata["source"] == "syosetu_ncode"
+        assert metadata["source_key"] == "syosetu_ncode"
         assert len(metadata["chapters"]) == 1
         # New fields present
         assert "source_genre_name" in metadata
@@ -386,7 +386,7 @@ class TestKakuyomuTagExtraction:
         metadata = source._parse_metadata_html(html, "https://kakuyomu.jp/works/123/")
         assert metadata["title"] == "霧の旅"
         assert metadata["author"] == "作家B"
-        assert metadata["source"] == "kakuyomu"
+        assert metadata["source_key"] == "kakuyomu"
         assert len(metadata["chapters"]) == 1
         # New fields present
         assert "source_genre_name" in metadata
@@ -415,7 +415,7 @@ class TestGenericTaxonomyFields:
         # but we can verify the return shape by checking the dict construction
         # is consistent. Instead, test the taxonomy fields are present in
         # the expected shape.
-        assert source.key == "generic"
+        assert source.source_key == "generic"
         # Verify the mapping module returns empty for generic
         assert map_genre("Fantasy", SYOSETU_GENRE_MAP) is None  # English not mapped
 

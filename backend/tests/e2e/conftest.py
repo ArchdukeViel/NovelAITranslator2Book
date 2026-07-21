@@ -215,7 +215,7 @@ def e2e_test_client(
         get_storage,
     )
     from novelai.providers.registry import register_provider
-    from novelai.sources.registry import register_source
+    from novelai.sources.registry import get_registry
     from novelai.storage.service import StorageService
     from tests.fixtures.e2e.dummy_source import DummySource
 
@@ -231,7 +231,7 @@ def e2e_test_client(
     # MUST register test adapters AFTER create_app() — bootstrap() inside
     # create_app() calls register_provider("dummy", DummyProvider) which
     # would overwrite our mock if we registered first.
-    register_source("dummy-e2e", lambda: DummySource())
+    get_registry().register(DummySource)
     register_provider("dummy", lambda: mock_provider)
 
     app.dependency_overrides[get_storage] = lambda: storage

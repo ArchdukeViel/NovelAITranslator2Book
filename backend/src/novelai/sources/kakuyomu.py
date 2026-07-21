@@ -30,6 +30,7 @@ from novelai.utils.text_normalization import normalize_text
 
 
 class KakuyomuSource(SourceAdapter):
+    source_key = "kakuyomu"
     """Source adapter for Kakuyomu works and episodes."""
 
     WORK_ID_PATTERN = re.compile(r"^\d{12,}$")
@@ -95,11 +96,7 @@ class KakuyomuSource(SourceAdapter):
     def __init__(self, fetch_service: FetchService | None = None) -> None:
         self._fetch_service = fetch_service or get_default_fetch_service()
 
-    @property
-    def key(self) -> str:
-        return "kakuyomu"
-
-    def matches_url(self, identifier_or_url: str) -> bool:
+    def can_handle(self, identifier_or_url: str) -> bool:
         candidate = identifier_or_url.strip()
         if not candidate.startswith(("http://", "https://")):
             return False
@@ -171,7 +168,7 @@ class KakuyomuSource(SourceAdapter):
         try:
             result = await self._fetch_service.get_text(
                 url,
-                source_key=self.key,
+                source_key=self.source_key,
                 headers=self._request_headers(),
                 on_retry=on_retry,
             )
@@ -183,7 +180,7 @@ class KakuyomuSource(SourceAdapter):
 
     async def fetch_asset(self, url: str, *, referer: str | None = None) -> dict[str, Any]:
         try:
-            result = await self._fetch_service.get_bytes(url, source_key=self.key, referer=referer)
+            result = await self._fetch_service.get_bytes(url, source_key=self.source_key, referer=referer)
         except SourceError as exc:
             raise SourceError(f"Failed to fetch Kakuyomu asset from {url}: {exc}") from exc
 
@@ -685,7 +682,7 @@ class KakuyomuSource(SourceAdapter):
             status_payload["source_publication_status_page"] = url
 
         return {
-            "source": self.key,
+            "source_key": self.source_key,
             "source_url": url,
             "title": title,
             "author": author,

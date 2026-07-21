@@ -6,12 +6,12 @@ Thin wrapper so routers don't import ``sources.*`` or ``inputs.*`` directly.
 from __future__ import annotations
 
 from novelai.inputs.registry import available_input_adapters
-from novelai.sources.registry import available_sources
+from novelai.sources.registry import get_registry
 
 
 def list_available_sources() -> list[str]:
     """Return the list of registered source adapter keys."""
-    return available_sources()
+    return get_registry().list_adapters()
 
 
 def list_available_input_adapters() -> list[str]:

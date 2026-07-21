@@ -22,18 +22,11 @@ def validate_url(url: str) -> str:
 class SourceAdapter(ABC):
     """Base interface for a novel source / scraper adapter."""
 
-    @property
+    source_key: str = ""
+
     @abstractmethod
-    def key(self) -> str:
-        """Unique key used to identify this source."""
-
-    def matches_url(self, identifier_or_url: str) -> bool:
-        """Return True if this adapter can handle the pasted novel URL."""
-        return False
-
     def can_handle(self, identifier_or_url: str) -> bool:
-        """Public alias for :meth:`matches_url`."""
-        return self.matches_url(identifier_or_url)
+        """Return whether this adapter handles the URL or identifier."""
 
     def normalize_novel_id(self, identifier_or_url: str) -> str:
         """Convert a URL or loose identifier into the stable library key."""
@@ -61,7 +54,7 @@ class SourceAdapter(ABC):
         """Download an asset referenced by chapter content."""
         from novelai.infrastructure.http.fetch_service import get_default_fetch_service
 
-        result = await get_default_fetch_service().get_bytes(url, source_key=self.key, referer=referer)
+        result = await get_default_fetch_service().get_bytes(url, source_key=self.source_key, referer=referer)
         return {
             "url": result.final_url,
             "content": result.body,

@@ -82,12 +82,13 @@ _GENERIC_ASSET_PATH_RE = re.compile(r"\.(?:jpg|jpeg|png|gif|webp|svg|css|js|ico|
 class GenericSource(SourceAdapter):
     """Heuristic scraper for any novel URL not matched by a dedicated adapter."""
 
+    source_key = "generic"
+
     def __init__(self, fetch_service: FetchService | None = None) -> None:
         self._fetch_service = fetch_service or get_default_fetch_service()
 
-    @property
-    def key(self) -> str:
-        return "generic"
+    def can_handle(self, identifier_or_url: str) -> bool:
+        return False
 
     # The generic adapter is a fallback — it never claims to "match" a URL
     # by itself.  The caller should pass source_key="generic" explicitly.
@@ -103,7 +104,7 @@ class GenericSource(SourceAdapter):
 
     async def _fetch_page(self, url: str, *, on_retry: Callable[[int, Exception], None] | None = None) -> str:
         try:
-            result = await self._fetch_service.get_text(url, source_key=self.key, on_retry=on_retry)
+            result = await self._fetch_service.get_text(url, source_key=self.source_key, on_retry=on_retry)
         except SourceError as exc:
             raise SourceError(f"Failed to fetch page from {url}: {exc}") from exc
         return result.text
@@ -332,7 +333,7 @@ class GenericSource(SourceAdapter):
             chapters = [{"id": "1", "num": 1, "title": title or "Chapter 1", "url": url}]
 
         return {
-            "source": self.key,
+            "source_key": self.source_key,
             "source_url": url,
             "title": title,
             "author": author,

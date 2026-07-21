@@ -30,6 +30,7 @@ from novelai.utils.text_normalization import normalize_text
 
 
 class SyosetuNcodeSource(SourceAdapter):
+    source_key = "syosetu_ncode"
     """Source adapter for syosetu.com novels (ncode)."""
 
     NOVEL_ID_PATTERN = re.compile(r"^n\d{4}[a-z]{2}$", re.IGNORECASE)
@@ -96,11 +97,7 @@ class SyosetuNcodeSource(SourceAdapter):
     def __init__(self, fetch_service: FetchService | None = None) -> None:
         self._fetch_service = fetch_service or get_default_fetch_service()
 
-    @property
-    def key(self) -> str:
-        return "syosetu_ncode"
-
-    def matches_url(self, identifier_or_url: str) -> bool:
+    def can_handle(self, identifier_or_url: str) -> bool:
         candidate = identifier_or_url.strip()
         if not candidate.startswith(("http://", "https://")):
             return False
@@ -171,7 +168,7 @@ class SyosetuNcodeSource(SourceAdapter):
     async def _fetch_page(self, url: str, *, on_retry: Callable[[int, Exception], None] | None = None) -> str:
         result = await self._fetch_service.get_text(
             url,
-            source_key=self.key,
+            source_key=self.source_key,
             headers=self._request_headers(),
             cookies=self._build_request_cookies(),
             on_retry=on_retry,
@@ -183,7 +180,7 @@ class SyosetuNcodeSource(SourceAdapter):
     async def fetch_asset(self, url: str, *, referer: str | None = None) -> dict[str, Any]:
         response = await self._fetch_service.get_bytes(
             url,
-            source_key=self.key,
+            source_key=self.source_key,
             referer=referer,
             headers=self._request_headers(referer=referer),
             cookies=self._build_request_cookies(),
@@ -693,7 +690,7 @@ class SyosetuNcodeSource(SourceAdapter):
         status_payload = self._publication_status_payload_from_html(html, url)
 
         return {
-            "source": self.key,
+            "source_key": self.source_key,
             "source_url": url,
             "title": title,
             "author": author,

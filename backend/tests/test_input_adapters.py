@@ -4,6 +4,7 @@ import importlib.util
 import shutil
 from collections.abc import Generator
 from pathlib import Path
+from unittest.mock import MagicMock
 from uuid import uuid4
 from zipfile import ZipFile
 
@@ -132,7 +133,7 @@ async def test_pdf_adapter_requires_optional_dependency_when_missing(temp_root: 
 
 
 class _StubWebSource:
-    key = "stub"
+    source_key = "stub"
 
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, object]:
         return {
@@ -150,8 +151,9 @@ class _StubWebSource:
 
 @pytest.mark.asyncio
 async def test_web_adapter_wraps_registered_sources(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("novelai.inputs.web.detect_source", lambda source: "stub")
-    monkeypatch.setattr("novelai.inputs.web.get_source", lambda key: _StubWebSource())
+    registry = MagicMock()
+    registry.get_adapter.return_value = _StubWebSource()
+    monkeypatch.setattr("novelai.inputs.web.get_registry", lambda: registry)
     adapter = WebDocumentAdapter()
 
     document = await adapter.import_document("https://example.com/story")

@@ -23,14 +23,7 @@ class DummySource(SourceAdapter):
 
     source_key = "dummy-e2e"
 
-    @property
-    def key(self) -> str:
-        return self.source_key
-
     def can_handle(self, identifier_or_url: str) -> bool:
-        return identifier_or_url == "dummy://test-novel"
-
-    def matches_url(self, identifier_or_url: str) -> bool:
         return identifier_or_url == "dummy://test-novel"
 
     async def fetch_metadata(

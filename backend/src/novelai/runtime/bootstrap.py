@@ -34,22 +34,21 @@ def bootstrap_providers() -> None:
 
 def bootstrap_sources() -> None:
     """Register all known novel sources (built-in) then run pkgutil discovery."""
-    from novelai.infrastructure.http.fetch_service import get_default_fetch_service
     from novelai.sources.generic import GenericSource
     from novelai.sources.kakuyomu import KakuyomuSource
     from novelai.sources.novel18_syosetu import Novel18SyosetuSource
-    from novelai.sources.registry import discover, list_adapters, register_source
+    from novelai.sources.registry import get_registry
     from novelai.sources.syosetu_ncode import SyosetuNcodeSource
 
-    fetch_service = get_default_fetch_service()
-    register_source("syosetu_ncode", lambda: SyosetuNcodeSource(fetch_service=fetch_service))
-    register_source("novel18_syosetu", lambda: Novel18SyosetuSource(fetch_service=fetch_service))
-    register_source("kakuyomu", lambda: KakuyomuSource())
-    register_source("generic", lambda: GenericSource())
+    registry = get_registry()
+    registry.register(SyosetuNcodeSource)
+    registry.register(Novel18SyosetuSource)
+    registry.register(KakuyomuSource)
+    registry.register(GenericSource)
 
     # Discover any extra adapter modules registered via pkgutil.
-    discover()
-    logger.info("Startup source adapters: %s", list_adapters())
+    registry.discover()
+    logger.info("Adapter registry initialized: %d adapters registered", len(registry.list_adapters()))
 
 
 def bootstrap_input_adapters() -> None:

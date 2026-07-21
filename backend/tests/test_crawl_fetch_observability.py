@@ -49,15 +49,14 @@ class FakeSource(SourceAdapter):
         fetch_errors: dict[str, Exception] | None = None,
         retry_callbacks: list[tuple[int, Exception]] | None = None,
     ) -> None:
-        self._source_key = source_key
+        self.source_key = source_key
         self._chapter_payloads = chapter_payloads or {}
         self._fetch_errors = fetch_errors or {}
         self._retry_callbacks = retry_callbacks or []
         self.fetch_count = 0
 
-    @property
-    def key(self) -> str:
-        return self._source_key
+    def can_handle(self, identifier_or_url: str) -> bool:
+        return False
 
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         novel_id = url
@@ -65,7 +64,7 @@ class FakeSource(SourceAdapter):
             "novel_id": novel_id,
             "title": f"Test Novel {novel_id}",
             "author": "Test Author",
-            "source": self._source_key,
+            "source_key": self.source_key,
             "chapters": [
                 {"id": str(i), "num": i, "title": f"Chapter {i}", "url": f"http://example.test/{novel_id}/{i}"}
                 for i in range(1, 4)
