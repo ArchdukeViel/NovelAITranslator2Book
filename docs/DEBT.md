@@ -143,7 +143,9 @@ Deferred items are tracked but excluded from the active count.
   tests register the three canonical public routers explicitly, while shared
   models/helpers live in `public_contracts.py`. The unused frontend
   `formatAdminErrorString` compatibility wrapper is removed; admin error UI
-  uses the canonical structured `formatAdminError` result. The unused
+  uses the canonical structured `formatAdminError` result. The runtime
+  container now exposes one canonical `preferences` singleton; its `settings`
+  property alias and duplicate fixture store are removed. The unused
   `novels.status` database mirror remains until an explicit column-removal
   migration is approved and verified.
 

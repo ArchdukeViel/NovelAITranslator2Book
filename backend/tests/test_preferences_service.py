@@ -9,6 +9,7 @@ import pytest
 
 from novelai.config.settings import settings
 from novelai.config.workflow_profiles import WORKFLOW_PROFILE_STEPS
+from novelai.runtime.container import Container
 from novelai.services.preferences_service import PreferencesService
 
 _TMP = Path(__file__).resolve().parent / ".tmp" / "prefs"
@@ -22,6 +23,13 @@ def prefs_dir() -> Path:
 
 
 class TestPreferencesService:
+    def test_container_exposes_only_canonical_preferences_service(self, prefs_dir: Path) -> None:
+        preferences = PreferencesService(storage_dir=prefs_dir)
+        container = Container(_preferences=preferences)
+
+        assert container.preferences is preferences
+        assert not hasattr(container, "settings")
+
     def test_get_returns_default_on_missing_key(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
         assert svc.get("missing", "default_val") == "default_val"

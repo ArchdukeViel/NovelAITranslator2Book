@@ -154,7 +154,6 @@ def _reset_global_container() -> None:
 
     runtime_container._storage = None
     runtime_container._translation_cache = None
-    runtime_container._settings = None
     runtime_container._preferences = None
     runtime_container._usage = None
     runtime_container._translation = None
@@ -413,7 +412,6 @@ class TestFixture:
         self.storage = StorageService(self.data_dir)
         self.cache = TranslationCache(self.data_dir)
         self.usage_service = UsageService(self.data_dir)
-        self.preferences_service = PreferencesService(self.data_dir)
         self.settings_service = PreferencesService(self.data_dir)
 
         # Create mock components
@@ -456,8 +454,7 @@ class TestFixture:
         return Container(
             _storage=self.storage,
             _translation_cache=self.cache,
-            _settings=self.settings_service,
-            _preferences=self.preferences_service,
+            _preferences=self.settings_service,
             _usage=self.usage_service,
             _translation=self.translation_service,
         )

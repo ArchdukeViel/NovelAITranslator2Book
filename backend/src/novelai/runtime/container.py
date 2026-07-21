@@ -37,7 +37,6 @@ class Container:
 
     _storage: StorageService | None = None
     _translation_cache: TranslationCache | None = None
-    _settings: PreferencesService | None = None
     _preferences: PreferencesService | None = None
     _usage: UsageService | None = None
     _activity_log: ActivityQueueService | None = None
@@ -69,17 +68,10 @@ class Container:
         return self._translation_cache
 
     @property
-    def settings(self) -> PreferencesService:
-        if self._settings is None:
-            self._settings = PreferencesService()
-        return self._settings
-
-    @property
     def preferences(self) -> PreferencesService:
-        # Compatibility alias: older code asks for "preferences" while the
-        # translation pipeline asks for "settings". They must share one live
-        # service so admin changes affect translation immediately.
-        return self.settings
+        if self._preferences is None:
+            self._preferences = PreferencesService()
+        return self._preferences
 
     @property
     def usage(self) -> UsageService:
@@ -174,7 +166,7 @@ class Container:
                 TranslateStage(
                     provider_factory=get_provider,
                     cache=self.translation_cache,
-                    settings_service=self.settings,
+                    settings_service=self.preferences,
                     usage_service=self.usage,
                     storage=self.storage,
                 ),
