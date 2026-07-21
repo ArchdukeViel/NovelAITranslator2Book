@@ -141,9 +141,11 @@ Deferred items are tracked but excluded from the active count.
   the dead auth-email accessor shim are removed; callers use `AuthService`
   directly. The public compatibility aggregator is removed; applications and
   tests register the three canonical public routers explicitly, while shared
-  models/helpers live in `public_contracts.py`. The unused `novels.status`
-  database mirror remains until an explicit column-removal migration is
-  approved and verified.
+  models/helpers live in `public_contracts.py`. The unused frontend
+  `formatAdminErrorString` compatibility wrapper is removed; admin error UI
+  uses the canonical structured `formatAdminError` result. The unused
+  `novels.status` database mirror remains until an explicit column-removal
+  migration is approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

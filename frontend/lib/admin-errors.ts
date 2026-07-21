@@ -148,12 +148,3 @@ export function formatAdminError(
     trace_id: traceId,
   };
 }
-
-/**
- * Simple string overload for backward compatibility.
- * Returns just the message string.
- */
-export function formatAdminErrorString(error: unknown, fallback = "Something went wrong."): string {
-  const result = formatAdminError(error, fallback);
-  return result.message;
-}

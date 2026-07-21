@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
-import { formatAdminError, formatAdminErrorString } from "../admin-errors";
+import { formatAdminError } from "../admin-errors";
 import { ApiError } from "../api";
 
 // Feature: admin-ui-rework, Property 6: Error output redacts secrets
@@ -234,28 +234,5 @@ Traceback (most recent call last):
     expect(result.message).not.toContain("AIzaSyD1234567890");
     expect(result.message).not.toContain("sk-1234567890abcdef");
     expect(result.message).toContain("Validation failed");
-  });
-});
-
-describe("formatAdminErrorString", () => {
-  it("returns just the message string for backward compatibility", () => {
-    const error = new Error("Test error");
-    const result = formatAdminErrorString(error);
-    expect(typeof result).toBe("string");
-    expect(result).toBe("Test error");
-  });
-
-  it("handles ApiError with trace_id", () => {
-    const apiError = new ApiError({
-      status: 404,
-      message: "Not found",
-      code: "NOT_FOUND",
-      trace_id: "req_xyz",
-    });
-    const result = formatAdminErrorString(apiError);
-    expect(result).toContain("404 Not found");
-    // trace_id should be separate
-    const fullResult = formatAdminError(apiError);
-    expect(fullResult.trace_id).toBe("req_xyz");
   });
 });
