@@ -480,8 +480,8 @@ class ActivityWorkerService:
         )
         return completed
 
-    async def run_next(self, *, activity_type: str | None = None, job_type: str | None = None) -> dict[str, Any] | None:
-        activity = self.activity_log.next_pending_activity(activity_type=activity_type or job_type)
+    async def run_next(self, *, activity_type: str | None = None) -> dict[str, Any] | None:
+        activity = self.activity_log.next_pending_activity(activity_type=activity_type)
         if activity is None:
             return None
         return await self.run_activity(str(activity["id"]))
@@ -489,11 +489,6 @@ class ActivityWorkerService:
     async def retry_activity(self, activity_id: str) -> dict[str, Any] | None:
         return self.activity_log.retry_activity(activity_id)
 
-    async def run_job(self, job_id: str) -> dict[str, Any] | None:
-        return await self.run_activity(job_id)
-
-
-JobWorkerService = ActivityWorkerService
 
 
 async def run_export_freshness_check(

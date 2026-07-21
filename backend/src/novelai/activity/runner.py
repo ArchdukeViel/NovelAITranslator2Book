@@ -21,12 +21,10 @@ class BackgroundActivityRunner:
         *,
         poll_seconds: float = 2.0,
         activity_type: str | None = None,
-        job_type: str | None = None,
     ) -> None:
         self.worker = worker
         self.poll_seconds = max(0.05, float(poll_seconds))
-        self.activity_type = activity_type or job_type
-        self.job_type = self.activity_type
+        self.activity_type = activity_type
         self._task: asyncio.Task[None] | None = None
         self._stop_event: asyncio.Event | None = None
         self._started_at: str | None = None
@@ -102,18 +100,12 @@ class BackgroundActivityRunner:
             "running": self.is_running(),
             "poll_seconds": self.poll_seconds,
             "activity_type": self.activity_type,
-            "job_type": self.activity_type,
             "started_at": self._started_at,
             "stopped_at": self._stopped_at,
             "last_tick_at": self._last_tick_at,
             "last_activity_id": self._last_activity_id,
-            "last_job_id": self._last_activity_id,
             "last_error": self._last_error,
             "activity_processed": self._activity_processed,
-            "jobs_processed": self._activity_processed,
             "idle_ticks": self._idle_ticks,
             "error_count": self._error_count,
         }
-
-
-BackgroundJobRunner = BackgroundActivityRunner

@@ -175,7 +175,9 @@ Deferred items are tracked but excluded from the active count.
   back to the obsolete provider/model/text hash format. The `jobs` router shim,
   hidden `/jobs/*` aliases, request-model aliases, query-parameter aliases, and
   startup migration from the obsolete `jobs/` runtime directory are removed;
-  only the canonical activity router and `activity_log/` layout remain.
+  only the canonical activity router and `activity_log/` layout remain. Queue,
+  worker, runner, package exports, runner status, and frontend types no longer
+  expose `Job*`, `job_type`, `last_job_id`, or `jobs_processed` aliases.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

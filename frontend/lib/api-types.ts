@@ -216,7 +216,6 @@ export type WorkerStatus = {
   poll_seconds: number;
   last_tick_at?: string | null;
   last_activity_id?: string | null;
-  last_job_id?: string | null;
   last_error?: string | null;
   activity_processed: number;
   idle_ticks: number;

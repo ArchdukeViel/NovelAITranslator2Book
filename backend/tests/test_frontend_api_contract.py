@@ -47,7 +47,7 @@ def test_frontend_api_client_exposes_error_and_progress_contracts() -> None:
     assert "model_states?: ModelState[]" in types_text
     assert "provider_key?: string" in types_text
     assert "provider_model?: string" in types_text
-    assert "last_job_id?: string | null" in types_text
+    assert "last_job_id?: string | null" not in types_text
     assert "request_id?: string" in types_text
     assert "source_url?: string | null" in types_text
     assert "provider_key?: string | null" in types_text
