@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from novelai.core.errors import PipelineStageError
-from novelai.translation.pipeline.context import PipelineContext
+from novelai.translation.pipeline.context import PipelineState
 from novelai.translation.pipeline.stages.base import PipelineStage
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ class FetchStage(PipelineStage):
     Expects source_adapter in context.metadata["_source_adapter"].
     """
 
-    async def run(self, context: PipelineContext) -> PipelineContext:
+    async def run(self, context: PipelineState) -> PipelineState:
         prefetched_text = context.metadata.get("_prefetched_text")
         if isinstance(prefetched_text, str):
             logger.info("Using prefetched chapter text for %s", context.chapter_url)

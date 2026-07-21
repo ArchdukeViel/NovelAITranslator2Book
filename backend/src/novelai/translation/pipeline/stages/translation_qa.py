@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from novelai.shared.pipeline import ChunkTranslationStatus
-from novelai.translation.pipeline.context import PipelineContext, TranslationChunk
+from novelai.translation.pipeline.context import PipelineState, TranslationChunk
 from novelai.translation.pipeline.stages.base import PipelineStage
 from novelai.translation.qa import (
     TranslationQAError,
@@ -16,7 +16,7 @@ from novelai.translation.qa import (
 logger = logging.getLogger(__name__)
 
 
-def _extract_glossary_terms(context: PipelineContext) -> list[dict] | None:
+def _extract_glossary_terms(context: PipelineState) -> list[dict] | None:
     """Extract approved glossary terms from context metadata (REQ-5.5)."""
     terms = context.metadata.get("glossary_approved_terms")
     if isinstance(terms, list) and terms:
@@ -28,13 +28,13 @@ class TranslationQAStage(PipelineStage):
     """Deterministic validation of translated chunks before final post-processing."""
 
     @staticmethod
-    def _chunk_for_index(context: PipelineContext, index: int) -> TranslationChunk | None:
+    def _chunk_for_index(context: PipelineState, index: int) -> TranslationChunk | None:
         if index < len(context.translation_chunks):
             return context.translation_chunks[index]
         return None
 
     @staticmethod
-    def _source_for_chunk(context: PipelineContext, index: int, chunk: TranslationChunk | None) -> str:
+    def _source_for_chunk(context: PipelineState, index: int, chunk: TranslationChunk | None) -> str:
         if chunk is not None:
             return chunk.source_text
         if index < len(context.chunks):
@@ -48,7 +48,7 @@ class TranslationQAStage(PipelineStage):
         return f"legacy_{index + 1:04d}"
 
     @staticmethod
-    def _provider_models(context: PipelineContext) -> set[str]:
+    def _provider_models(context: PipelineState) -> set[str]:
         models: set[str] = set()
         for state in context.chunk_states.values():
             model = state.get("provider_model") if isinstance(state, dict) else None
@@ -73,7 +73,7 @@ class TranslationQAStage(PipelineStage):
             errors=unique_errors,
         )
 
-    async def run(self, context: PipelineContext) -> PipelineContext:
+    async def run(self, context: PipelineState) -> PipelineState:
         raw_translations = list(context.translations)
         context.metadata["raw_provider_translations"] = list(raw_translations)
         structured_output = bool(context.metadata.get("json_output", False))

@@ -327,10 +327,10 @@ class TestTranslateStageResolvesPlatformNovelId:
         slug = novel.slug
         session.commit()
 
-        from novelai.translation.pipeline.context import PipelineContext
+        from novelai.translation.pipeline.context import PipelineState
         from novelai.translation.pipeline.stages.translate import TranslateStage
 
-        context = PipelineContext(
+        context = PipelineState(
             chapter_url="",
             novel_id=slug,
             provider_key="dummy",
@@ -361,10 +361,10 @@ class TestTranslateStageNoGlossaryWhenNovelNotInDb:
     """DB query returns None → no glossary injection, no exception."""
 
     def test_translate_stage_no_glossary_injection_when_novel_not_in_db(self) -> None:
-        from novelai.translation.pipeline.context import PipelineContext
+        from novelai.translation.pipeline.context import PipelineState
         from novelai.translation.pipeline.stages.translate import TranslateStage
 
-        context = PipelineContext(
+        context = PipelineState(
             chapter_url="",
             novel_id="non-existent-slug",
             provider_key="dummy",

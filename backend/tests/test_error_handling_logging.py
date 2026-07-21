@@ -140,7 +140,7 @@ class TestStructuredExceptionHandler:
         assert "timestamp" in data
 
 
-class TestPipelineContextLogging:
+class TestPipelineStateLogging:
     def test_stage_lifecycle_logs_json(self) -> None:
         from novelai.services.pipeline.context import StageLogContext
 

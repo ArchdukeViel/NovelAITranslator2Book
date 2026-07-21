@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 from novelai.config.settings import settings
 from novelai.shared.pipeline import ChunkTranslationStatus
-from novelai.translation.pipeline.context import Paragraph, PipelineContext, TranslationChunk, paragraph_source_hash
+from novelai.translation.pipeline.context import Paragraph, PipelineState, TranslationChunk, paragraph_source_hash
 from novelai.translation.pipeline.stages.base import PipelineStage
 
 logger = logging.getLogger(__name__)
@@ -153,7 +153,7 @@ class SmartSegmentStage(PipelineStage):
         return cleaned or None
 
     @classmethod
-    def _infer_chapter_id(cls, context: PipelineContext) -> str:
+    def _infer_chapter_id(cls, context: PipelineState) -> str:
         explicit = cls._clean_id(context.chapter_id) or cls._clean_id(context.metadata.get("chapter_id"))
         if explicit:
             return explicit
@@ -165,7 +165,7 @@ class SmartSegmentStage(PipelineStage):
         return "chapter"
 
     @classmethod
-    def _infer_novel_id(cls, context: PipelineContext) -> str:
+    def _infer_novel_id(cls, context: PipelineState) -> str:
         explicit = cls._clean_id(context.novel_id) or cls._clean_id(context.metadata.get("novel_id"))
         if explicit:
             return explicit
@@ -266,7 +266,7 @@ class SmartSegmentStage(PipelineStage):
             for piece in pieces
         ]
 
-    def _chapter_inputs(self, context: PipelineContext) -> list[_ChapterParagraphs]:
+    def _chapter_inputs(self, context: PipelineState) -> list[_ChapterParagraphs]:
         raw_chapters = context.metadata.get("_normalized_chapters")
         if isinstance(raw_chapters, list):
             chapters: list[_ChapterParagraphs] = []
@@ -828,7 +828,7 @@ class SmartSegmentStage(PipelineStage):
         )
         return paragraphs, chunks, warnings
 
-    async def run(self, context: PipelineContext) -> PipelineContext:
+    async def run(self, context: PipelineState) -> PipelineState:
         chapters = self._chapter_inputs(context)
         paragraphs = [paragraph for chapter in chapters for paragraph in chapter.paragraphs]
         chunks, warnings = self._pack_chunks(chapters)

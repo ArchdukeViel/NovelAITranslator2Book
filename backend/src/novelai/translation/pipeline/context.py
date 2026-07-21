@@ -370,7 +370,3 @@ class PipelineResult:
             data=state.data,
             metadata=state.metadata,
         )
-
-
-# For backwards compatibility, PipelineContext is an alias for PipelineState
-PipelineContext = PipelineState

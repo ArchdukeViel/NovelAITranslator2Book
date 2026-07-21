@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
-from novelai.translation.pipeline.context import PipelineContext
+from novelai.translation.pipeline.context import PipelineState
 from novelai.translation.pipeline.stages.base import PipelineStage
 
 
@@ -19,7 +19,7 @@ class PipelineStageError(RuntimeError):
         self,
         original: BaseException,
         *,
-        pipeline_context: PipelineContext,
+        pipeline_context: PipelineState,
         pipeline_events: list[dict[str, Any]],
         failed_stage_name: str,
     ) -> None:
@@ -57,7 +57,7 @@ def _event_code_from_exception(exc: BaseException) -> str:
     return exc.__class__.__name__
 
 
-def _append_event(context: PipelineContext, event: dict[str, Any]) -> None:
+def _append_event(context: PipelineState, event: dict[str, Any]) -> None:
     event.setdefault("timestamp", _utc_now_iso())
     context.pipeline_events.append(event)
     context.metadata["pipeline_events"] = context.pipeline_events
@@ -69,16 +69,16 @@ class TranslationPipeline:
     def __init__(self, stages: Iterable[PipelineStage]) -> None:
         self.stages = list(stages)
 
-    async def run(self, initial_context: dict[str, object] | PipelineContext) -> PipelineContext:
+    async def run(self, initial_context: dict[str, object] | PipelineState) -> PipelineState:
         """Run the pipeline through all stages.
 
-        The context is converted to a typed PipelineContext instance and passed through
+        The context is converted to a typed PipelineState instance and passed through
         each stage. This helps make stage inputs/outputs explicit and reduces bugs.
         """
         context = (
             initial_context
-            if isinstance(initial_context, PipelineContext)
-            else PipelineContext.from_dict(initial_context)
+            if isinstance(initial_context, PipelineState)
+            else PipelineState.from_dict(initial_context)
         )
 
         for stage in self.stages:

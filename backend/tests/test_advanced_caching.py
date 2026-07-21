@@ -22,7 +22,7 @@ from novelai.db.base import Base
 from novelai.db.models.novel import Novel
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.translation_cache import CacheEntry, TranslationCacheService, make_cache_key
-from novelai.translation.pipeline.context import PipelineContext
+from novelai.translation.pipeline.context import PipelineState
 from novelai.translation.pipeline.stages.translate import TranslateStage
 
 _TMP = Path(__file__).resolve().parent / ".tmp" / "advanced_caching"
@@ -286,7 +286,7 @@ class TestPipelineIntegration:
             glossary_prompt_service=MagicMock(),
         )
 
-        context = PipelineContext(
+        context = PipelineState(
             chapter_url="https://example.com/chapter1",
             novel_id="novel123",
             chapter_id="chapter1",
@@ -319,7 +319,7 @@ class TestPipelineIntegration:
         service.set(ck, seed_entry)
 
         # Second run: cache hit (now that entry is seeded)
-        context2 = PipelineContext(
+        context2 = PipelineState(
             chapter_url="https://example.com/chapter1",
             novel_id="novel123",
             chapter_id="chapter1",
@@ -496,7 +496,7 @@ async def test_cache_flush_stage_writes_pending_entries(cache_dir: Path) -> None
         source_language="en", target_language="ja", glossary_hash="g1",
         provider_key="p", provider_model="m", created_at=datetime.now(UTC).isoformat(),
     )
-    ctx = PipelineContext(
+    ctx = PipelineState(
         chapter_url="https://example.com/c1",
         novel_id="novel1",
         chapter_id="ch1",
@@ -528,7 +528,7 @@ async def test_cache_flush_stage_skips_empty_pending(cache_dir: Path) -> None:
 
     svc = TranslationCacheService(cache_dir=cache_dir)
     stage = CacheFlushStage(cache_service=svc)
-    ctx = PipelineContext(
+    ctx = PipelineState(
         chapter_url="https://example.com/c1",
         novel_id="novel1",
         chapter_id="ch1",
@@ -556,7 +556,7 @@ async def test_cache_flush_stage_disabled_when_cache_off(cache_dir: Path) -> Non
             source_language="en", target_language="ja", glossary_hash="g",
             provider_key="p", provider_model="m", created_at=datetime.now(UTC).isoformat(),
         )
-        ctx = PipelineContext(
+        ctx = PipelineState(
             chapter_url="https://example.com/c1",
             novel_id="novel1",
             chapter_id="ch1",
@@ -607,7 +607,7 @@ async def test_translate_stage_progress_counts_hits_and_misses(cache_dir: Path) 
         glossary_prompt_service=MagicMock(),
     )
 
-    ctx = PipelineContext(
+    ctx = PipelineState(
         chapter_url="https://example.com/c1",
         novel_id="novel1",
         chapter_id="ch1",
@@ -641,7 +641,7 @@ async def test_translate_stage_progress_counts_hits_and_misses(cache_dir: Path) 
     service.set(ck, seed_entry)
 
     # Second call with same text: hit
-    ctx2 = PipelineContext(
+    ctx2 = PipelineState(
         chapter_url="https://example.com/c1",
         novel_id="novel1",
         chapter_id="ch1",
@@ -692,7 +692,7 @@ async def test_translate_stage_appends_pending_cache_entries(cache_dir: Path) ->
         glossary_prompt_service=MagicMock(),
     )
 
-    ctx = PipelineContext(
+    ctx = PipelineState(
         chapter_url="https://example.com/c1",
         novel_id="novel1",
         chapter_id="ch1",

@@ -25,7 +25,7 @@ from novelai.services.translation_cache import TranslationCache, TranslationCach
 from novelai.services.usage_service import UsageService
 from novelai.shared.pipeline import ChunkAttemptStatus, ChunkTranslationStatus
 from novelai.storage.service import StorageService
-from novelai.translation.pipeline.context import PipelineContext, TranslationChunk
+from novelai.translation.pipeline.context import PipelineState, TranslationChunk
 from novelai.translation.pipeline.stages.base import PipelineStage
 from novelai.translation.pipeline.stages.translate_cache_lookup import (
     cached_translation,
@@ -183,7 +183,7 @@ class TranslateStage(PipelineStage):
 
     def _max_attempts_exceeded_error(
         self,
-        context: PipelineContext,
+        context: PipelineState,
         *,
         chunk_id: str,
         attempt_count: int,
@@ -211,7 +211,7 @@ class TranslateStage(PipelineStage):
         error.pipeline_context = context
         return error
 
-    def _save_scheduler_state(self, context: PipelineContext, scheduler: TranslationScheduler) -> None:
+    def _save_scheduler_state(self, context: PipelineState, scheduler: TranslationScheduler) -> None:
         context.scheduler_state = scheduler.to_dict()
         context.metadata["model_states"] = scheduler.to_model_state_list()
         progress = context.metadata.setdefault("progress", {})
@@ -223,7 +223,7 @@ class TranslateStage(PipelineStage):
 
     def _build_scheduler(
         self,
-        context: PipelineContext,
+        context: PipelineState,
         *,
         provider_key: str,
         model: str,
@@ -343,15 +343,15 @@ class TranslateStage(PipelineStage):
         return configs
 
     # Backward-compat shims for extracted cache methods
-    def _save_chunk_records(self, context: PipelineContext, chunks: list[str | TranslationChunk]) -> None:
+    def _save_chunk_records(self, context: PipelineState, chunks: list[str | TranslationChunk]) -> None:
         save_chunk_records(self._storage, context, chunks)
 
-    def _load_persisted_chunk_states(self, context: PipelineContext) -> None:
+    def _load_persisted_chunk_states(self, context: PipelineState) -> None:
         load_persisted_chunk_states(self._storage, context)
 
     def _load_existing_chunk_output(
         self,
-        context: PipelineContext,
+        context: PipelineState,
         *,
         chunk_id: str,
         chunk_text: str,
@@ -366,7 +366,7 @@ class TranslateStage(PipelineStage):
 
     def _save_chunk_attempt(
         self,
-        context: PipelineContext,
+        context: PipelineState,
         *,
         chunk: str | TranslationChunk,
         chunk_index: int,
@@ -392,7 +392,7 @@ class TranslateStage(PipelineStage):
 
     def _save_chunk_output(
         self,
-        context: PipelineContext,
+        context: PipelineState,
         *,
         chunk: str | TranslationChunk,
         chunk_index: int,
@@ -415,12 +415,12 @@ class TranslateStage(PipelineStage):
             glossary_hash=glossary_hash,
         )
 
-    def _persist_chunk_state(self, context: PipelineContext, chunk_id: str) -> None:
+    def _persist_chunk_state(self, context: PipelineState, chunk_id: str) -> None:
         persist_chunk_state(self._storage, context, chunk_id)
 
     def _build_prompt_glossary_block(
         self,
-        context: PipelineContext,
+        context: PipelineState,
         chunk_text: str,
     ) -> PromptGlossaryBlock | None:
         novel_id = platform_novel_id(context)
@@ -451,7 +451,7 @@ class TranslateStage(PipelineStage):
 
     def _cached_translation(
         self,
-        context: PipelineContext,
+        context: PipelineState,
         *,
         provider_key: str,
         provider_model: str,
@@ -468,7 +468,7 @@ class TranslateStage(PipelineStage):
 
     async def _translate_with_model(
         self,
-        context: PipelineContext,
+        context: PipelineState,
         *,
         provider_key: str,
         provider_model: str,
@@ -613,7 +613,7 @@ class TranslateStage(PipelineStage):
         )
         return text, provider.key, provider_model, False
 
-    async def run(self, context: PipelineContext) -> PipelineContext:
+    async def run(self, context: PipelineState) -> PipelineState:
         chunks: list[str | TranslationChunk] = list(context.translation_chunks or context.chunks)
         request_id = context.metadata.get("request_id")
         if not request_id or not isinstance(request_id, str) or not request_id.strip():

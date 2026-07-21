@@ -12,7 +12,7 @@ from typing import Any
 from novelai.services.translation_cache import TranslationCache, TranslationCacheService
 from novelai.shared.pipeline import ChunkTranslationStatus
 from novelai.storage.service import StorageService
-from novelai.translation.pipeline.context import PipelineContext, TranslationChunk
+from novelai.translation.pipeline.context import PipelineState, TranslationChunk
 from novelai.translation.pipeline.stages.translate_result_assembly import (
     chapter_ids as chapter_ids_fn,
 )
@@ -44,7 +44,7 @@ from novelai.translation.pipeline.stages.translate_result_assembly import (
 
 def save_chunk_records(
     storage: StorageService,
-    context: PipelineContext,
+    context: PipelineState,
     chunks: list[str | TranslationChunk],
 ) -> None:
     novel_id = context.novel_id
@@ -76,7 +76,7 @@ def save_chunk_records(
 
 def load_persisted_chunk_states(
     storage: StorageService,
-    context: PipelineContext,
+    context: PipelineState,
 ) -> None:
     novel_id = context.novel_id
     if not isinstance(novel_id, str) or not novel_id.strip():
@@ -102,7 +102,7 @@ def load_persisted_chunk_states(
 
 def load_existing_chunk_output(
     storage: StorageService,
-    context: PipelineContext,
+    context: PipelineState,
     *,
     chunk_id: str,
     chunk_text: str,
@@ -149,7 +149,7 @@ def load_existing_chunk_output(
 
 def save_chunk_attempt(
     storage: StorageService,
-    context: PipelineContext,
+    context: PipelineState,
     *,
     chunk: str | TranslationChunk,
     chunk_index: int,
@@ -194,7 +194,7 @@ def save_chunk_attempt(
 
 def save_chunk_output(
     storage: StorageService,
-    context: PipelineContext,
+    context: PipelineState,
     *,
     chunk: str | TranslationChunk,
     chunk_index: int,
@@ -247,7 +247,7 @@ def save_chunk_output(
 
 def persist_chunk_state(
     storage: StorageService,
-    context: PipelineContext,
+    context: PipelineState,
     chunk_id: str,
 ) -> None:
     state = context.chunk_states.get(chunk_id)
@@ -265,7 +265,7 @@ def persist_chunk_state(
 def cached_translation(
     cache: TranslationCache,
     cache_service: TranslationCacheService,
-    context: PipelineContext,
+    context: PipelineState,
     *,
     provider_key: str,
     provider_model: str,

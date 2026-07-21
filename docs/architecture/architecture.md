@@ -420,7 +420,7 @@ owner  - authenticated single owner; dangerous operations
 | CSRF enforcement for cookie-auth mutations | Implemented. |
 | Basic public rate limits | Implemented. |
 | Production session secret fail-closed | Implemented. |
-| Structured error handling + logging system | Implemented. StructuredHTTPException, PipelineContext, JsonFormatter, /health/errors endpoint, trace_id propagation. |
+| Structured error handling + logging system | Implemented. StructuredHTTPException, PipelineState, JsonFormatter, /health/errors endpoint, trace_id propagation. |
 | Glossary auto-population | Implemented. SuggestionExtractor, GlossarySuggestionService, review/reject/apply API, pipeline integration. |
 | Microservice-split readiness | Implemented. main_reader/main_admin entry points, DEPLOY_MODE dispatch (monolith/split), Docker Compose + Caddy split routing, 14 contract tests. |
 | Advanced translation caching | Implemented. TranslationCacheService (SHA-256 keys, sharded file storage, TTL), pipeline integration, glossary invalidation, /api/admin/cache/* endpoints. |

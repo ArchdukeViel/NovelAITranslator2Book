@@ -4,7 +4,7 @@ import logging
 import re
 import unicodedata
 
-from novelai.translation.pipeline.context import PipelineContext
+from novelai.translation.pipeline.context import PipelineState
 from novelai.translation.pipeline.stages.base import PipelineStage
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ class ParseStage(PipelineStage):
 
         return text
 
-    async def run(self, context: PipelineContext) -> PipelineContext:
+    async def run(self, context: PipelineState) -> PipelineState:
         raw = context.raw_text or ""
         logger.info(f"Parsing {len(raw)} bytes of raw text")
 

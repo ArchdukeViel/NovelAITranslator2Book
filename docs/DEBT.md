@@ -136,8 +136,9 @@ Deferred items are tracked but excluded from the active count.
   request, and provider errors require structured codes instead of accepting a
   legacy message-only constructor. `PreferencesService` provider key/model
   setter aliases are removed and all callers use the canonical preferred-
-  provider methods. The unused `novels.status` database mirror remains until an
-  explicit column-removal migration is approved and verified.
+  provider methods. The translation pipeline now uses only `PipelineState`; the
+  `PipelineContext` alias is removed. The unused `novels.status` database mirror
+  remains until an explicit column-removal migration is approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

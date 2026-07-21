@@ -12,7 +12,7 @@ from typing import Any
 
 from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.prompts.models import TranslationRequest
-from novelai.translation.pipeline.context import PipelineContext
+from novelai.translation.pipeline.context import PipelineState
 from novelai.translation.pipeline.stages.translate_result_assembly import (
     glossary_hash as _glossary_hash,
 )
@@ -63,7 +63,7 @@ def provider_error_metadata(
 
 
 def provider_request_record(
-    context: PipelineContext,
+    context: PipelineState,
     *,
     chunk_id: str,
     chunk_text: str,

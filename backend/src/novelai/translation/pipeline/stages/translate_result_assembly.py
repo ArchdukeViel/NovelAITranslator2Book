@@ -21,7 +21,7 @@ from novelai.glossary import (
 )
 from novelai.prompts import build_translation_request
 from novelai.prompts.models import TranslationRequest
-from novelai.translation.pipeline.context import PipelineContext, TranslationChunk
+from novelai.translation.pipeline.context import PipelineState, TranslationChunk
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ def hash_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def infer_source_language(context: PipelineContext) -> str | None:
+def infer_source_language(context: PipelineState) -> str | None:
     explicit = context.metadata.get("source_language")
     if isinstance(explicit, str) and explicit.strip():
         return explicit.strip()
@@ -53,7 +53,7 @@ def infer_source_language(context: PipelineContext) -> str | None:
     return None
 
 
-def normalize_runtime_glossary(context: PipelineContext) -> dict[str, GlossaryTerm]:
+def normalize_runtime_glossary(context: PipelineState) -> dict[str, GlossaryTerm]:
     raw_entries = context.metadata.get("glossary")
     runtime: dict[str, GlossaryTerm] = {}
     for entry in normalize_glossary_entries(raw_entries):
@@ -90,7 +90,7 @@ def chunk_id(chunk: str | TranslationChunk, chunk_index: int) -> str:
     return f"legacy_{chunk_index + 1:04d}"
 
 
-def chapter_ids(context: PipelineContext, chunk: str | TranslationChunk) -> list[str]:
+def chapter_ids(context: PipelineState, chunk: str | TranslationChunk) -> list[str]:
     if isinstance(chunk, TranslationChunk):
         return list(chunk.chapter_ids)
     return [context.chapter_id] if isinstance(context.chapter_id, str) and context.chapter_id.strip() else []
@@ -114,29 +114,29 @@ def paragraph_lineage(chunk: str | TranslationChunk) -> list[dict[str, Any]]:
     return []
 
 
-def prompt_version(context: PipelineContext) -> str:
+def prompt_version(context: PipelineState) -> str:
     value = context.metadata.get("prompt_version")
     return value if isinstance(value, str) and value.strip() else "translation_request_v1"
 
 
-def glossary_hash(context: PipelineContext, glossary_block_text: str | None = None) -> str:
+def glossary_hash(context: PipelineState, glossary_block_text: str | None = None) -> str:
     if isinstance(glossary_block_text, str):
         return hash_text(glossary_block_text)
     return hash_text(str(context.metadata.get("glossary") or ""))
 
 
-def force_retranslate(context: PipelineContext) -> bool:
+def force_retranslate(context: PipelineState) -> bool:
     return bool(context.metadata.get("force_retranslate_chunks") or context.metadata.get("force_retranslate"))
 
 
-def safe_job_id(context: PipelineContext) -> str | None:
+def safe_job_id(context: PipelineState) -> str | None:
     for value in (context.job_id, context.activity_id, context.novel_id):
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
 
 
-def translation_run_id(context: PipelineContext) -> str:
+def translation_run_id(context: PipelineState) -> str:
     for value in (
         context.metadata.get("translation_run_id"),
         context.job_id,
@@ -147,14 +147,14 @@ def translation_run_id(context: PipelineContext) -> str:
     return "run_manual"
 
 
-def explicit_translation_run_id(context: PipelineContext) -> bool:
+def explicit_translation_run_id(context: PipelineState) -> bool:
     return any(
         isinstance(context.metadata.get(key), str) and context.metadata[key].strip()
         for key in ("translation_run_id", "run_id")
     )
 
 
-def platform_novel_id(context: PipelineContext) -> int | None:
+def platform_novel_id(context: PipelineState) -> int | None:
     for key in ("platform_novel_id", "db_novel_id", "glossary_novel_id"):
         value = context.metadata.get(key)
         if isinstance(value, int) and value > 0:
@@ -203,7 +203,7 @@ def observe_chunk_context(
 
 
 def build_prompt_request(
-    context: PipelineContext,
+    context: PipelineState,
     chunk: str,
     *,
     chunk_glossary: list[GlossaryTerm],
@@ -235,7 +235,7 @@ def build_prompt_request(
     )
 
 
-def glossary_prompt_options(context: PipelineContext):
+def glossary_prompt_options(context: PipelineState):
     from novelai.services.glossary_prompt_injection import GlossaryPromptInjectionOptions
 
     return GlossaryPromptInjectionOptions(
@@ -248,7 +248,7 @@ def glossary_prompt_options(context: PipelineContext):
 
 
 def record_prompt_glossary_metadata(
-    context: PipelineContext,
+    context: PipelineState,
     *,
     chunk_id: str,
     block: Any,

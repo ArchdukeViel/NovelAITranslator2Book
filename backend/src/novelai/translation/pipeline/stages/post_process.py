@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING, cast
 
 from novelai.glossary.glossary import Glossary
-from novelai.translation.pipeline.context import PipelineContext
+from novelai.translation.pipeline.context import PipelineState
 from novelai.translation.pipeline.stages.base import PipelineStage
 
 if TYPE_CHECKING:
@@ -35,7 +35,7 @@ class PostProcessStage(PipelineStage):
         self.suggestion_extractor = suggestion_extractor
         self.suggestion_service = suggestion_service
 
-    async def run(self, context: PipelineContext) -> PipelineContext:
+    async def run(self, context: PipelineState) -> PipelineState:
         text = "\n\n".join(context.translations)
         logger.info("Post-processing %d translated chunks", len(context.translations))
 
@@ -53,7 +53,7 @@ class PostProcessStage(PipelineStage):
 
         return context
 
-    def _extract_suggestions(self, context: PipelineContext) -> None:
+    def _extract_suggestions(self, context: PipelineState) -> None:
         if not self.suggestion_extractor or not self.suggestion_service:
             return
         novel_id = context.novel_id or context.metadata.get("platform_novel_id", "")

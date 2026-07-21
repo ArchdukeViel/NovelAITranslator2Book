@@ -4,7 +4,7 @@ import logging
 
 from novelai.config.settings import settings
 from novelai.services.translation_cache import TranslationCacheService
-from novelai.translation.pipeline.context import PipelineContext
+from novelai.translation.pipeline.context import PipelineState
 from novelai.translation.pipeline.stages.base import PipelineStage
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class CacheFlushStage(PipelineStage):
     def __init__(self, cache_service: TranslationCacheService | None = None) -> None:
         self._cache_service = cache_service or TranslationCacheService()
 
-    async def run(self, context: PipelineContext) -> PipelineContext:
+    async def run(self, context: PipelineState) -> PipelineState:
         if not settings.TRANSLATION_CACHE_ENABLED:
             return context
 
