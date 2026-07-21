@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from uuid import uuid4
 
@@ -48,14 +49,15 @@ class TestTranslationCache:
         cache = TranslationCache(base_dir=cache_dir)
         assert cache.get("any", "p", "m") is None
 
-    def test_reads_legacy_provider_model_text_key(self, cache_dir: Path) -> None:
-        legacy_key = TranslationCache._legacy_hash_key("hello", "openai", "gpt-4")
+    def test_ignores_legacy_provider_model_text_key(self, cache_dir: Path) -> None:
+        legacy_payload = "openai:gpt-4:hello"
+        legacy_key = hashlib.sha256(legacy_payload.encode("utf-8")).hexdigest()
         cache_file = cache_dir / "translation_cache.json"
         cache_file.write_text(f'{{"{legacy_key}": "legacy translation"}}', encoding="utf-8")
 
         cache = TranslationCache(base_dir=cache_dir)
 
-        assert cache.get("hello", "openai", "gpt-4") == "legacy translation"
+        assert cache.get("hello", "openai", "gpt-4") is None
 
     def test_exact_key_changes_when_prompt_affecting_metadata_changes(self) -> None:
         base = {

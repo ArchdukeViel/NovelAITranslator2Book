@@ -166,11 +166,6 @@ class TranslationCache:
         )
 
     @staticmethod
-    def _legacy_hash_key(text: str, provider: str, model: str | None) -> str:
-        payload = f"{provider}:{model}:{text}"
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-    @staticmethod
     def build_key(**kwargs: Any) -> str:
         return build_translation_cache_key(**kwargs)
 
@@ -184,7 +179,7 @@ class TranslationCache:
 
     def get(self, text: str, provider: str, model: str | None) -> str | None:
         key = self._hash_key(text, provider, model)
-        return self._data.get(key) or self._data.get(self._legacy_hash_key(text, provider, model))
+        return self._data.get(key)
 
     def set(self, text: str, provider: str, model: str | None, translation: str) -> None:
         key = self._hash_key(text, provider, model)

@@ -170,7 +170,9 @@ Deferred items are tracked but excluded from the active count.
   responses, and frontend normalization now use only `provider_key` and
   `provider_model`. Scheduler policy normalization ignores legacy `provider`
   and `model` fields, and the obsolete `SegmentStage` compatibility subclass is
-  removed; runtime and tests use `SmartSegmentStage` directly.
+  removed; runtime and tests use `SmartSegmentStage` directly. The disposable
+  translation cache now reads only exact canonical keys and no longer falls
+  back to the obsolete provider/model/text hash format.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
