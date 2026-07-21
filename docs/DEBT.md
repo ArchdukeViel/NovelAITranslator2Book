@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 33
+- **Total active debt entries:** 32
 - **V1 launch blockers:** 6 (DEBT-075 through DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
@@ -199,7 +199,7 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M5 (Admin Operations)
 - **Category:** Frontend | Feature
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** `frontend/app/(admin)/admin/settings/`, `backend/src/novelai/api/routers/admin_provider_credentials.py`
 - **Description:** Owner-only encrypted credential CRUD/test routes exist, but
   the admin settings UI does not expose them. Environment credentials remain a
@@ -796,9 +796,9 @@ Deferred items are tracked but excluded from the active count.
 - **Affected areas:** `frontend/next.config.mjs`, local build environment
 - **Description:** Next.js selects `C:\Akmal\package-lock.json` as the workspace
   root instead of this repository because multiple lockfiles are visible.
-- **Completion criteria:** Configure an explicit repository-safe tracing root or
-  otherwise remove the ambiguity; production builds emit no workspace-root
-  warning and retain the required standalone files.
+- **Resolution:** `frontend/next.config.mjs` now sets
+  `outputFileTracingRoot` to the repository root explicitly. The production
+  build emits no workspace-root warning and retains standalone output.
 
 ### DEBT-092 — Browse-page test leaks an unwrapped React state update
 - **Milestone:** Milestone M7 (Final Hardening)
