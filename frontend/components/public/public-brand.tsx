@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { cn } from "@/lib/utils";
@@ -26,9 +27,12 @@ export function PublicBrand({
         )}
         aria-hidden="true"
       >
-        <img
+        <Image
           src="/assets/dokushodo/brand/dokushodo-mark.png"
           alt=""
+          width={32}
+          height={32}
+          sizes="32px"
           className="h-full w-full object-cover"
         />
       </span>

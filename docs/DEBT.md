@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 31
+- **Total active debt entries:** 30
 - **V1 launch blockers:** 6 (DEBT-075 through DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
@@ -816,12 +816,14 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M4 (Reader/Catalog UX)
 - **Category:** Frontend | Performance
 - **Priority:** Low
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** Public brand, novel card, and fallback-cover components
 - **Description:** Production lint reports direct `<img>` elements on public
   routes, which can increase LCP and bandwidth.
-- **Completion criteria:** Use `next/image` with an appropriate remote/loading
-  policy or document and test a deliberate optimized alternative; production
+- **Resolution:** Public brand and generated cover assets now use optimized
+  `next/image` rendering with explicit dimensions or responsive sizes. Optional
+  externally hosted cover URLs use a direct, unoptimized browser loader because
+  their hosts are not trusted for the server-side image optimizer. Production
   lint/build emit no `no-img-element` warnings.
 
 ### DEBT-094 — Render Free Blueprint failed live schema validation

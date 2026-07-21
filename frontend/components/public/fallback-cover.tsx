@@ -1,6 +1,5 @@
-"use client";
-
 import { BookOpen } from "lucide-react";
+import Image from "next/image";
 
 import { cn } from "@/lib/utils";
 
@@ -118,11 +117,12 @@ export function FallbackCover({
         className
       )}
     >
-      <img
+      <Image
         src={coverAsset}
         alt=""
         aria-hidden="true"
-        loading="lazy"
+        fill
+        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
         className="absolute inset-0 h-full w-full object-cover"
       />
       <div

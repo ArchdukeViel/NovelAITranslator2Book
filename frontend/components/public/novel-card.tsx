@@ -1,5 +1,6 @@
 "use client";
 
+import Image, { type ImageLoaderProps } from "next/image";
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
 
@@ -20,6 +21,10 @@ type DiscoveryNovel = PublicNovelSummary & {
 
 const MAX_VISIBLE_GENRES = 3;
 const MAX_VISIBLE_TAGS = 2;
+
+function directCoverLoader({ src }: ImageLoaderProps): string {
+  return src;
+}
 
 function genreLabel(slug: string, labelMap: Map<string, string> | null): string {
   if (labelMap) {
@@ -44,11 +49,15 @@ export function NovelCard({ novel }: NovelCardProps) {
     <div className="group flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card/85 transition-all duration-200 hover:border-accent/30 hover:bg-card">
       {/* Title and metadata - primary click target */}
       <Link href={publicNovelHref(novel.slug)} className="flex-1">
-        <div className="aspect-[2/3] overflow-hidden bg-muted">
+        <div className="relative aspect-[2/3] overflow-hidden bg-muted">
           {novel.cover_url ? (
-            <img
+            <Image
               src={novel.cover_url}
               alt={`Cover for ${title}`}
+              fill
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+              loader={directCoverLoader}
+              unoptimized
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
             />
           ) : (

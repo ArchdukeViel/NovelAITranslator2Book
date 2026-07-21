@@ -80,7 +80,10 @@ describe("NovelCard genre/tag rendering", () => {
     renderWithClient(<NovelCard novel={novel} />);
 
     const image = document.querySelector("img");
-    expect(image).toHaveAttribute("src", "/assets/dokushodo/covers/cover-archive.png");
+    expect(image?.getAttribute("src")).toContain("/_next/image?");
+    expect(image?.getAttribute("src")).toContain(
+      encodeURIComponent("/assets/dokushodo/covers/cover-archive.png")
+    );
     expect(screen.queryByText(/cover_url/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/https?:\/\//i)).not.toBeInTheDocument();
   });
