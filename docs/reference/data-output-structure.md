@@ -1006,7 +1006,8 @@ Typical web workflow:
 The web backend reads and writes this storage through service classes. Current canonical API routes:
 
 ```text
-GET  /api/health
+GET  /health/live                              — process liveness
+GET  /health/ready                             — dependency readiness
 GET  /api/public/catalog                        — paginated novel list
 GET  /api/public/novels/{slug}                   — novel detail
 GET  /api/public/novels/{slug}/chapters          — chapter list

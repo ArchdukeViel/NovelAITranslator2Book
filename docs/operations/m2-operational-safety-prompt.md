@@ -1,8 +1,9 @@
 # Implementation Prompt - Milestone M2 (Operational Safety)
 
-Copy-paste fenced block into new session. It is pre-filled from
-`docs/operations/implementation-prompt-template.md`, M2 in `docs/roadmap.md`,
-and matching active specs.
+Historical implementation prompt retained as completion evidence. Do not use it
+as current repository guidance; the implemented contracts in `AGENTS.md`,
+`docs/architecture/architecture.md`, and `docs/operations/runbook.md` are
+authoritative.
 
 ---
 
@@ -56,9 +57,11 @@ Do not register, implement, or advertise PDF export. Before editing, report this
 - Replace tests asserting `NotImplementedError` with tests for unregistered/deprecated PDF behavior and preserved non-PDF exporters.
 - Document formal PDF deprecation and upgrade path: reintroduce only after approved renderer, font policy, security review, and real export tests.
 
-### Current State (verified before this prompt)
+### Historical baseline (verified before implementation)
 
-- `backend/src/novelai/api/app.py` owns static `GET /api/health` and `GET /health`; both return `{ "status": "ok" }`. There is no `api/routers/health.py`; do not assume spec path exists.
+- Before M2, `backend/src/novelai/api/app.py` owned static `GET /api/health` and
+  `GET /health` routes. M2 replaced them with the canonical health router; this
+  statement is retained only as historical baseline evidence.
 - `runtime/bootstrap.py` imports `PDFExporter` and registers `pdf`; `pdf_exporter.py` raises `NotImplementedError`; `ExportService.export_pdf()` delegates to `self.export("pdf", ...)`.
 - `BackupManager` exists in `backend/src/novelai/services/backup_manager.py`, but DEBT-010 says it has no scheduler/container integration or retention policy.
 - Atomic JSON storage recovery already has focused coverage in `backend/tests/test_atomic_json_storage_recovery.py`. Keep this behavior; extend only where M2c requires locking/cleanup.
@@ -130,7 +133,9 @@ Use full matching checklist files by path. Apply only items necessary for M2 acc
 2. Add SQLAlchemy models and a new Alembic migration only for durable backup, maintenance, or scheduler-runtime records that cannot reuse existing durable state.
 3. Implement service/domain behavior: health probes, exporter deprecation error, backup scheduling/retention, safe cleanup, atomic locking, scheduler state persistence.
 4. Add factories in `api/routers/dependencies.py`.
-5. Add thin routes for health/admin operations. Preserve existing `/health` and `/api/health` compatibility only if callers/tests prove a need; otherwise point them at public-safe readiness/liveness semantics and document it.
+5. Add thin routes for health/admin operations. Use `/health/live`,
+   `/health/ready`, and owner-only `/api/admin/health`; do not retain static
+   compatibility routes.
 6. Add/adjust tests before docs status changes.
 7. Update operations docs, DEBT evidence, and roadmap state after verification.
 

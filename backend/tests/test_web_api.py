@@ -1171,11 +1171,6 @@ class TestAdminCsrf:
 
 
 class TestListDetail:
-    def test_api_health(self, client: TestClient) -> None:
-        resp = client.get("/api/health")
-        assert resp.status_code == 200
-        assert resp.json() == {"status": "ok"}
-
     def test_api_prefixed_novels_route(self, seeded_client: TestClient) -> None:
         resp = seeded_client.get("/api/novels/")
         assert resp.status_code == 200

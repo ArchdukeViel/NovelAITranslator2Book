@@ -23,9 +23,11 @@ Deferred items are tracked but excluded from the active count.
 - **Priority:** Blocker
 - **Status:** Resolved
 - **Affected areas:** `backend/src/novelai/services/health_service.py`, `backend/src/novelai/api/routers/health.py`
-- **Description:** `/api/health` returns static `{"status": "ok"}`. Missing actual DB probe, storage probe, and worker state check.
+- **Description:** The legacy `/api/health` endpoint returned static
+  `{"status": "ok"}` without database, storage, or worker probes.
 - **Completion criteria:**
-  - `/health` and `/api/health` return live/ready checks.
+  - `/health/live` provides process-only liveness and `/health/ready` provides
+    dependency readiness.
   - Ready check fails with 503 if DB or storage is down.
   - Probes sanitize credentials and raw error tracebacks.
 - **Resolution:** Implemented `HealthService` with bounded probes for database, storage, worker, and disk. Added `/health/live` (liveness), `/health/ready` (readiness, 503 on unhealthy), and `/api/admin/health` (owner-only diagnostics). Public responses redact paths, credentials, and stack traces. 16 health service tests + 8 API tests pass.
@@ -147,9 +149,12 @@ Deferred items are tracked but excluded from the active count.
   container now exposes one canonical `preferences` singleton; its `settings`
   property alias and duplicate fixture store are removed. Translation
   orchestration no longer re-exports helpers from its lineage, metadata,
-  progress, or resume modules; callers import from the owning modules. The
-  unused `novels.status` database mirror remains until an explicit
-  column-removal migration is approved and verified.
+  progress, or resume modules; callers import from the owning modules. Static
+  `/health` and `/api/health` aliases, the unused frontend health wrapper, and
+  the unused application getter alias are removed; callers use the canonical
+  health routes or module-level application. The unused `novels.status`
+  database mirror remains until an explicit column-removal migration is
+  approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

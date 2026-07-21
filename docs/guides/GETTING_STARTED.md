@@ -182,7 +182,7 @@ http://127.0.0.1:3000/admin
 Health check:
 
 ```text
-http://127.0.0.1:8000/api/health
+http://127.0.0.1:8000/health/live
 ```
 
 ## 8. Admin Workflow
@@ -415,8 +415,8 @@ docker compose --env-file .env -f deploy/compose.yml up -d
 ### Health Checks
 
 ```bash
-curl http://localhost/api/health
-# Expected: {"status":"ok"}
+curl http://localhost/health/live
+# Expected: {"status":"ok","service":"novelai","timestamp":"..."}
 curl http://localhost/
 curl http://localhost/api/auth/me
 # Expected: {"user_id":null,"email":null,"role":"guest","is_authenticated":false,"is_owner":false}

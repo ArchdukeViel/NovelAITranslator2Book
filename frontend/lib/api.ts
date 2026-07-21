@@ -308,7 +308,6 @@ async function apiDownload(path: string, body: unknown): Promise<Blob> {
 }
 
 export const api = {
-  health: () => apiFetch<{ status: string }>("/health"),
   inputAdapters: () => apiFetch<string[]>("/admin/input-adapters"),
   novels: () => apiFetch<NovelSummary[]>("/admin/novels"),
   novel: (novelId: string) => apiFetch<NovelMetadata>(`/admin/novels/${encodeURIComponent(novelId)}`),

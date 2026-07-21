@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
 from novelai.api.app import create_app as create_monolith_app
+from novelai.api.routers.health import router as health_router
 from novelai.api.routers.public_catalog import router as public_catalog_router
 from novelai.api.routers.public_chapter import router as public_chapter_router
 from novelai.api.routers.public_novel import router as public_novel_router
@@ -50,7 +51,7 @@ def _public_only_app() -> FastAPI:
     app.include_router(public_novel_router)
     app.include_router(public_chapter_router)
     app.include_router(user_data_router)
-    app.add_api_route("/health", lambda: {"status": "ok"})
+    app.include_router(health_router)
     return app
 
 
@@ -75,18 +76,11 @@ class TestMonolithMode:
         assert any(p.startswith("/api/auth") for p in paths), "Monolith missing /api/auth routes"
 
     def test_monolith_has_health(self) -> None:
-        app = create_monolith_app()
-        # Need manual route iteration since /health uses include_in_schema=False
-        found_health = False
-        found_api_health = False
-        for r in app.routes:
-            p = getattr(r, "path", None)
-            if p == "/health":
-                found_health = True
-            elif p == "/api/health":
-                found_api_health = True
-        assert found_health, "Monolith missing /health route"
-        assert found_api_health, "Monolith missing /api/health"
+        paths = _route_paths(create_monolith_app())
+        assert "/health/live" in paths
+        assert "/health/ready" in paths
+        assert "/health" not in paths
+        assert "/api/health" not in paths
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +115,10 @@ class TestReaderServiceEndpoints:
 
     def test_reader_health(self, reader_app: FastAPI) -> None:
         paths = _route_paths(reader_app)
-        assert "/health" in paths, "Reader missing /health"
+        assert "/health/live" in paths
+        assert "/health/ready" in paths
+        assert "/health" not in paths
+        assert "/api/health" not in paths
 
     def test_reader_no_db_catalog(self, reader_app: FastAPI) -> None:
         """Reader can serve /api/public/catalog without crash."""
