@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 34
+- **Total active debt entries:** 33
 - **V1 launch blockers:** 6 (DEBT-075 through DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
@@ -83,7 +83,7 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M5 (Admin Operations)
 - **Category:** Backend | Feature
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** `backend/src/novelai/api/routers/admin.py`
 - **Description:** CRUD endpoints for listing, creating, and modifying admin users do not exist.
 - **Completion criteria:** Functional admin CRUD endpoints restricted to owner.
@@ -782,8 +782,11 @@ Deferred items are tracked but excluded from the active count.
 - **Affected areas:** `frontend/package.json`, ESLint configuration, CI
 - **Description:** `npm run lint` still invokes `next lint`, which Next.js marks
   deprecated and removes in Next.js 16.
-- **Completion criteria:** Migrate to the ESLint CLI with equivalent Next.js,
-  React, TypeScript, and accessibility rules; local and hosted lint pass.
+- **Resolution:** The frontend lint script now runs `eslint .` against the
+  existing flat configuration and Next.js Core Web Vitals rules. Generated
+  `.next`, `.next-dev`, and dependency directories are explicitly ignored.
+  Local lint completes non-interactively; remaining source warnings are tracked
+  separately, and hosted confirmation remains part of DEBT-077.
 
 ### DEBT-091 — Next.js build infers an external workspace root
 - **Milestone:** Milestone M7 (Final Hardening)
