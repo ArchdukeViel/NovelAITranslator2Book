@@ -158,8 +158,13 @@ Deferred items are tracked but excluded from the active count.
   functions, `key`, `matches_url`, and mirrored `source` metadata are removed.
   Storage chapter-ID normalization now has one public implementation;
   `_logical_id_from_stem` is removed and all storage callers use
-  `logical_id_from_stem`. The unused `novels.status` database mirror remains
-  until an explicit column-removal migration is approved and verified.
+  `logical_id_from_stem`. Metadata quality, catalog taxonomy persistence, and
+  stale retranslation now read only `source_key`; crawler metadata supplies
+  canonical `source_key` and `source_novel_id`, and legacy `source` metadata
+  fails the quality gate. Metadata storage also rejects the legacy top-level
+  `source` field at both write and read boundaries. The unused `novels.status`
+  database mirror remains until an explicit column-removal migration is
+  approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
@@ -711,3 +716,16 @@ Deferred items are tracked but excluded from the active count.
   tracks the unrelated admin audit viewer.
 - **Resolution:** Replaced the obsolete table with the enforced current router
   boundary and its canonical guard command. The guard reports no violations.
+
+### DEBT-087 — Stale retranslation source contract lacked behavior coverage
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Backend | Testing | Data Contracts
+- **Priority:** Medium
+- **Status:** Resolved
+- **Affected areas:** `OperationsService.retranslate_stale`, operations tests
+- **Description:** The stale-retranslation route was registered, but no test
+  proved whether workflow metadata used canonical `source_key` or the legacy
+  `source` field.
+- **Resolution:** Added focused behavior tests proving legacy-only metadata is
+  rejected without scheduling translation and canonical `source_key` metadata
+  completes the no-stale path without a provider call.

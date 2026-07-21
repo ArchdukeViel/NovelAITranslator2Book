@@ -43,8 +43,8 @@ def _get_crawl_lock(source_key: str, novel_id: str) -> asyncio.Lock:
 
 def _apply_metadata_quality_gate(meta: dict[str, Any], *, source_key: str, novel_id: str) -> dict[str, Any]:
     meta.setdefault("source_key", source_key)
-    meta.setdefault("source", source_key)
-    quality = evaluate_metadata_quality(meta, source_key=source_key, novel_id=novel_id)
+    meta.setdefault("source_novel_id", novel_id)
+    quality = evaluate_metadata_quality(meta, source_key=source_key)
     meta["source_quality"] = quality.to_dict()
     if quality.warnings:
         logger.warning("Metadata quality warnings for %s/%s: %s", source_key, novel_id, quality.warnings)

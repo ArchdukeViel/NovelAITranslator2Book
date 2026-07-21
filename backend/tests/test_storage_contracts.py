@@ -503,6 +503,26 @@ def test_metadata_additive_unknown_fields_preserved(storage: StorageService) -> 
     assert loaded.get("custom_additive_field") == "keep-me"
 
 
+def test_metadata_write_rejects_legacy_source_field(storage: StorageService) -> None:
+    with pytest.raises(ValueError, match="source_key"):
+        storage.save_metadata("legacy-source-write", {"title": "T", "source": "syosetu"})
+
+    assert storage.load_metadata("legacy-source-write") is None
+
+
+def test_metadata_read_rejects_legacy_source_field(storage: StorageService) -> None:
+    payload = {
+        "schema_version": storage.SCHEMA_VERSION,
+        "novel_id": "legacy-source-read",
+        "title": "T",
+        "source": "syosetu",
+    }
+    _write_metadata(storage, "legacy-source-read", payload)
+
+    with pytest.raises(ValueError, match="source_key"):
+        storage.load_metadata("legacy-source-read")
+
+
 def test_unversioned_metadata_is_rejected(storage: StorageService) -> None:
     _write_metadata(storage, "current-novel-1", _load_fixture("legacy_metadata.json"))
     with pytest.raises(UnsupportedStorageSchemaVersionError):

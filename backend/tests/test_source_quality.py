@@ -63,8 +63,8 @@ def test_age_gate_detection_fails_quality_gate():
 def test_duplicate_chapter_url_warns_metadata_quality():
     result = evaluate_metadata_quality(
         {
-            "source": "syosetu_ncode",
             "source_key": "syosetu_ncode",
+            "source_novel_id": "n1234ab",
             "source_url": "https://ncode.syosetu.com/n1234ab/",
             "title": "Valid Novel",
             "chapters": [
@@ -73,7 +73,6 @@ def test_duplicate_chapter_url_warns_metadata_quality():
             ],
         },
         source_key="syosetu_ncode",
-        novel_id="n1234ab",
     )
 
     assert result.passed is True
@@ -83,8 +82,8 @@ def test_duplicate_chapter_url_warns_metadata_quality():
 def test_valid_dedicated_source_quality_passes():
     metadata = evaluate_metadata_quality(
         {
-            "source": "syosetu_ncode",
             "source_key": "syosetu_ncode",
+            "source_novel_id": "n1234ab",
             "source_url": "https://ncode.syosetu.com/n1234ab/",
             "title": "Valid Novel",
             "chapters": [
@@ -92,7 +91,6 @@ def test_valid_dedicated_source_quality_passes():
             ],
         },
         source_key="syosetu_ncode",
-        novel_id="n1234ab",
     )
     chapter = evaluate_chapter_quality(
         "これは有効な本文です。" * 20,
@@ -103,6 +101,25 @@ def test_valid_dedicated_source_quality_passes():
     assert metadata.errors == []
     assert chapter.passed is True
     assert "age_gate" not in chapter.errors
+
+
+def test_legacy_source_metadata_field_is_rejected():
+    result = evaluate_metadata_quality(
+        {
+            "source": "syosetu_ncode",
+            "source_key": "syosetu_ncode",
+            "source_novel_id": "n1234ab",
+            "source_url": "https://ncode.syosetu.com/n1234ab/",
+            "title": "Valid Novel",
+            "chapters": [
+                {"id": "1", "num": 1, "title": "One", "url": "https://ncode.syosetu.com/n1234ab/1/"}
+            ],
+        },
+        source_key="syosetu_ncode",
+    )
+
+    assert result.passed is False
+    assert "metadata_legacy_source_forbidden" in result.errors
 
 
 @pytest.mark.asyncio

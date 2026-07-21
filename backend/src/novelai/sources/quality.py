@@ -61,7 +61,6 @@ def evaluate_metadata_quality(
     metadata: dict[str, Any],
     *,
     source_key: str,
-    novel_id: str | None = None,
     expected_episode_count: int | None = None,
 ) -> QualityGateResult:
     warnings: list[str] = []
@@ -75,13 +74,16 @@ def evaluate_metadata_quality(
     if not isinstance(source_url, str) or not source_url.strip():
         errors.append("metadata_source_url_missing")
 
-    metadata_source_key = metadata.get("source_key") or metadata.get("source")
+    if "source" in metadata:
+        errors.append("metadata_legacy_source_forbidden")
+
+    metadata_source_key = metadata.get("source_key")
     if not isinstance(metadata_source_key, str) or not metadata_source_key.strip():
         errors.append("metadata_source_key_missing")
     elif metadata_source_key != source_key:
         warnings.append("metadata_source_key_mismatch")
 
-    source_novel_id = metadata.get("source_novel_id") or metadata.get("novel_id") or novel_id
+    source_novel_id = metadata.get("source_novel_id")
     if source_key != "generic" and (not isinstance(source_novel_id, str) or not source_novel_id.strip()):
         warnings.append("metadata_novel_id_missing")
 

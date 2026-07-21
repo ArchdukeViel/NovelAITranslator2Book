@@ -285,7 +285,7 @@ class CatalogService:
         self.recompute_catalog_projection(novel.slug, novel=novel, metadata=metadata)
 
         # Persist taxonomy assignments from scraped metadata
-        source_key = metadata.get("source_key") or metadata.get("source")
+        source_key = metadata.get("source_key")
         persist_taxonomy_assignments(
             self._session,
             novel.id,

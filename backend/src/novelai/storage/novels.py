@@ -30,6 +30,11 @@ _WINDOWS_RESERVED_NAMES = {
 }
 
 
+def _validate_canonical_metadata_fields(payload: dict[str, Any]) -> None:
+    if "source" in payload:
+        raise ValueError("Legacy metadata field 'source' is not supported; use 'source_key'.")
+
+
 def _index_path(self: Any) -> Path:
     return self.novels_dir / self.INDEX_FILENAME
 
@@ -368,6 +373,7 @@ def delete_novel(self: Any, novel_id: str) -> None:
 
 def save_metadata(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
     """Save novel metadata (chapter list, title, etc.) as JSON."""
+    _validate_canonical_metadata_fields(data)
     novel_id = self._normalize_library_novel_id(novel_id) or novel_id
     existing = self.load_metadata(novel_id) or {}
     merged = dict(existing)
@@ -452,6 +458,7 @@ def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
 
 
 def _normalize_loaded_metadata(self: Any, payload: dict[str, Any], novel_id: str) -> dict[str, Any]:
+    _validate_canonical_metadata_fields(payload)
     payload["translation_profiles"] = normalize_workflow_profiles(payload.get("translation_profiles"))["steps"]
     payload["translation_defaults"] = normalize_workflow_defaults(payload.get("translation_defaults"))
     source_url_text = self._clean_string(payload.get("source_url"))

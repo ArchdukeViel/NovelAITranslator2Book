@@ -670,7 +670,7 @@ class OperationsService:
         )
 
         meta = require_novel_meta(self.storage, novel_id)
-        source_key = str(meta.get("source") or "")
+        source_key = str(meta.get("source_key") or "")
         if not source_key.strip():
             raise OperationError(400, {"error": "Novel has no source_key in metadata", "novel_id": novel_id})
 
