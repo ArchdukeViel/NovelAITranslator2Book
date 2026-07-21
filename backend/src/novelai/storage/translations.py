@@ -500,7 +500,7 @@ def list_translated_chapters(self: Any, novel_id: str) -> list[str]:
                 logger.debug("Skipping unreadable chapter file %s.", chapter_path)
                 continue
             if isinstance(payload, dict) and isinstance(payload.get("translated"), dict):
-                ids.add(self._logical_id_from_stem(chapter_path.stem))
+                ids.add(self.logical_id_from_stem(chapter_path.stem))
 
     return sorted(ids)
 

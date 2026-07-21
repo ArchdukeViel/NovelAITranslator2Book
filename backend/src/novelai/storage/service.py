@@ -244,7 +244,7 @@ class StorageService:
         return default
 
     @staticmethod
-    def _logical_id_from_stem(stem: str) -> str:
+    def logical_id_from_stem(stem: str) -> str:
         """Convert a physical filename stem to a logical chapter ID.
 
         ``0001`` (zero-padded) → ``1``, ``abc`` → ``abc``.
@@ -253,14 +253,6 @@ class StorageService:
             return str(int(stem))
         except (ValueError, TypeError):
             return stem
-
-    @staticmethod
-    def logical_id_from_stem(stem: str) -> str:
-        """Public alias for :meth:`_logical_id_from_stem`.
-
-        Cross-service callers must use this. Preserves ``"0001"`` → ``"1"``.
-        """
-        return StorageService._logical_id_from_stem(stem)
 
     def __init__(self, base_dir: Path | None = None, backend: Any | None = None) -> None:
         if backend is not None:

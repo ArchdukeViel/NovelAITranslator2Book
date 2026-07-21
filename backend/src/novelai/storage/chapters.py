@@ -198,7 +198,7 @@ def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
                 artifact_type="chapter bundle",
             )
             if isinstance(payload.get("raw"), dict) or isinstance(payload.get("translated"), dict):
-                ids.add(self._logical_id_from_stem(chapter_path.stem))
+                ids.add(self.logical_id_from_stem(chapter_path.stem))
 
     return sorted(ids)
 

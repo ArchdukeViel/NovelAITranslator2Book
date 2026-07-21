@@ -156,8 +156,10 @@ Deferred items are tracked but excluded from the active count.
   canonical `AdapterRegistry`, `source_key`, `can_handle`, `get_adapter`,
   `get_by_key`, and `list_adapters` contracts; the older module registry
   functions, `key`, `matches_url`, and mirrored `source` metadata are removed.
-  The unused `novels.status` database mirror remains until an explicit
-  column-removal migration is approved and verified.
+  Storage chapter-ID normalization now has one public implementation;
+  `_logical_id_from_stem` is removed and all storage callers use
+  `logical_id_from_stem`. The unused `novels.status` database mirror remains
+  until an explicit column-removal migration is approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

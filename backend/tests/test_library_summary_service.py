@@ -462,8 +462,8 @@ class TestPosixKeyAndLogicalId:
         assert StorageService.logical_id_from_stem("0001") == "1"
         assert StorageService.logical_id_from_stem("1") == "1"
         assert StorageService.logical_id_from_stem("abc") == "abc"
-        # Private alias still resolves for in-package callers.
-        assert StorageService._logical_id_from_stem("0042") == "42"
+        # Forward-only contract exposes no private compatibility alias.
+        assert not hasattr(StorageService, "_logical_id_from_stem")
 
 
 # ── deterministic single-flight suite ────────────────────────────────
