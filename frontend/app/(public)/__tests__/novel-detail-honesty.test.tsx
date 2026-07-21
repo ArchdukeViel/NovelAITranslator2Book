@@ -176,9 +176,10 @@ describe("Novel detail page — data honesty", () => {
       })
     ).toBeInTheDocument();
     expect(screen.getAllByText("テスト小説").length).toBeGreaterThanOrEqual(1);
-    expect(document.querySelector("img")).toHaveAttribute(
-      "src",
-      "/assets/dokushodo/covers/cover-fantasy.png"
+    const coverSource = document.querySelector("img")?.getAttribute("src");
+    expect(coverSource).toContain("/_next/image?");
+    expect(coverSource).toContain(
+      encodeURIComponent("/assets/dokushodo/covers/cover-fantasy.png")
     );
     expect(screen.queryByText(/official cover/i)).not.toBeInTheDocument();
   });

@@ -207,7 +207,10 @@ export default function LibraryPage() {
     },
   });
 
-  const rows = Array.isArray(novels.data) ? novels.data : [];
+  const rows = React.useMemo(
+    () => (Array.isArray(novels.data) ? novels.data : []),
+    [novels.data],
+  );
   const unexpectedPayload = novels.data && !Array.isArray(novels.data);
 
   const translationMetadata = useQuery({
@@ -308,7 +311,7 @@ export default function LibraryPage() {
           !summaryAvailable && (summaryInitialError || summary.data !== undefined),
       };
     });
-  }, [rows, summaryMap, summaryInitialError, summaryInitialLoading]);
+  }, [rows, summary.data, summaryMap, summaryInitialError, summaryInitialLoading]);
 
   const sortedRows = React.useMemo(() => {
     return [...mergedRows].sort((left, right) => {

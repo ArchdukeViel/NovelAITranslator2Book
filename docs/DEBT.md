@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 30
+- **Total active debt entries:** 29
 - **V1 launch blockers:** 6 (DEBT-075 through DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
@@ -649,15 +649,17 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M7 (Final Hardening)
 - **Category:** Frontend | Quality
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** Admin activity, library, requests, auth guard, and shared
   table-sort components
 - **Description:** The production build succeeds but reports multiple
   `react-hooks/exhaustive-deps` warnings for unstable row expressions, missing
   dependencies, unstable callbacks, and unnecessary dependencies.
-- **Completion criteria:** Resolve each hook dependency warning with stable
-  values/callbacks and focused behavior tests; production build emits no hook
-  dependency warnings.
+- **Resolution:** Query-derived row arrays and the reauthentication callback are
+  stable, the library summary memo lists every reactive dependency, and the
+  table-sort hook no longer memoizes a module-level comparator. Focused tests,
+  lint, type checking, and the production build pass with zero hook dependency
+  warnings.
 
 ### DEBT-082 — Direct public routes bypassed publication visibility
 - **Milestone:** Milestone M4 (Reader/Catalog UX)

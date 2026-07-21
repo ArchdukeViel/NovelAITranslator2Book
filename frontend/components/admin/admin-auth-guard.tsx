@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Suspense } from "react";
 
@@ -57,11 +57,11 @@ export function AdminAuthGuard({ children }: AdminAuthGuardProps) {
   }, []);
 
   // Expose a function to trigger re-auth check (called on 401/403 from adminApi)
-  const triggerReauth = () => {
+  const triggerReauth = useCallback(() => {
     setShowLogin(true);
     setIsOwner(false);
     setAuthChecked(false);
-  };
+  }, []);
 
   // Make triggerReauth globally accessible for adminApi error handling
   useEffect(() => {

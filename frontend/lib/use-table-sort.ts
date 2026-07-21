@@ -164,10 +164,7 @@ export function useTableSort<T extends Record<string, unknown>>(
   );
 
   // Memoized comparator for external use
-  const compareRowsFn = useMemo(
-    () => compareRows<T>,
-    [sortState.activeKey, sortState.direction]
-  );
+  const compareRowsFn = compareRows<T>;
 
   return {
     sortState,

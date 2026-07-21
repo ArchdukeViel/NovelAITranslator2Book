@@ -51,7 +51,7 @@ export default function RequestsPage() {
   const [pendingAction, setPendingAction] = React.useState<PendingRequestAction>(null);
   const { sortKey, sortDirection, handleSort } = useSortableTable<RequestSortKey>("created", "desc");
   const requests = useQuery({ queryKey: ["requests"], queryFn: () => api.requests() });
-  const rows = requests.data?.requests ?? [];
+  const rows = React.useMemo(() => requests.data?.requests ?? [], [requests.data?.requests]);
   const processRequest = useMutation({
     mutationFn: async ({ request, status }: { request: NovelRequestRecord; status: "approved" | "rejected" }) => {
       const updated = await api.updateRequestStatus(request.id, { status, reviewed_by: "admin" });

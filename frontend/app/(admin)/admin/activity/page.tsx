@@ -56,7 +56,7 @@ export default function ActivityPage() {
     refetchInterval: 5000
   });
   const novels = useQuery({ queryKey: ["novels"], queryFn: () => api.novels() });
-  const rows = activity.data?.activity ?? [];
+  const rows = React.useMemo(() => activity.data?.activity ?? [], [activity.data?.activity]);
   const groups = React.useMemo(() => groupActivityByNovel(rows, novels.data ?? []), [novels.data, rows]);
   const sortedGroups = React.useMemo(() => {
     return [...groups].sort((left, right) => {
