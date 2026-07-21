@@ -17,7 +17,9 @@ from sqlalchemy.orm import sessionmaker
 from starlette.middleware.sessions import SessionMiddleware
 
 from novelai.api.routers.dependencies import get_db_session, get_storage
-from novelai.api.routers.public import router as public_router
+from novelai.api.routers.public_catalog import router as public_catalog_router
+from novelai.api.routers.public_chapter import router as public_chapter_router
+from novelai.api.routers.public_novel import router as public_novel_router
 from novelai.db.base import Base
 from novelai.db.models.genre import Genre
 from novelai.db.models.glossary import NovelGlossaryAlias, NovelGlossaryEntry
@@ -62,7 +64,9 @@ def storage(tmp_path: Path) -> StorageService:
 def app(storage: StorageService, db_session):
     _app = FastAPI()
     _app.add_middleware(SessionMiddleware, secret_key="test", https_only=False)
-    _app.include_router(public_router)
+    _app.include_router(public_catalog_router)
+    _app.include_router(public_novel_router)
+    _app.include_router(public_chapter_router)
     _app.dependency_overrides[get_storage] = lambda: storage
     _app.dependency_overrides[get_db_session] = lambda: db_session
     return _app

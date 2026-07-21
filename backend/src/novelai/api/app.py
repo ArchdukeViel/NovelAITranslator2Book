@@ -28,7 +28,9 @@ from novelai.api.routers import (
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.health import admin_router as health_admin_router
 from novelai.api.routers.library import NovelSummary, list_novels
-from novelai.api.routers.public import router as public_router
+from novelai.api.routers.public_catalog import router as public_catalog_router
+from novelai.api.routers.public_chapter import router as public_chapter_router
+from novelai.api.routers.public_novel import router as public_novel_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.config.production_validator import assert_production_config
 from novelai.config.settings import settings
@@ -99,7 +101,9 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
 
     # Public catalog routes (guest-accessible, no auth required)
-    app.include_router(public_router)
+    app.include_router(public_catalog_router)
+    app.include_router(public_novel_router)
+    app.include_router(public_chapter_router)
 
     # User data routes (authenticated users: library, progress, history, reviews, requests)
     app.include_router(user_data_router)

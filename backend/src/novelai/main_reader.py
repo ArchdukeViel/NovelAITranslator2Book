@@ -16,7 +16,9 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from novelai.api.error_handlers import add_error_handlers
 from novelai.api.middleware.security import SecurityHeadersMiddleware
 from novelai.api.routers.health import router as health_router
-from novelai.api.routers.public import router as public_router
+from novelai.api.routers.public_catalog import router as public_catalog_router
+from novelai.api.routers.public_chapter import router as public_chapter_router
+from novelai.api.routers.public_novel import router as public_novel_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.config.production_validator import assert_production_config
 from novelai.config.settings import settings
@@ -56,7 +58,9 @@ if settings.ALLOWED_HOSTS:
 add_error_handlers(app)
 
 # Public endpoints (guest-accessible)
-app.include_router(public_router)
+app.include_router(public_catalog_router)
+app.include_router(public_novel_router)
+app.include_router(public_chapter_router)
 
 # User data endpoints (auth'd, but auth is per-request — reader has no session)
 app.include_router(user_data_router)

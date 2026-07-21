@@ -1,4 +1,4 @@
-"""Public catalog router — guest-accessible, no auth required.
+"""Shared contracts and helpers for guest-accessible public reader routes.
 
 Provides the public reader surface (architecture.md §20):
 - GET /api/public/catalog        — paginated novel list with search/filter
@@ -6,12 +6,12 @@ Provides the public reader surface (architecture.md §20):
 - GET /api/public/novels/{slug}/chapters — chapter list
 - GET /api/public/novels/{slug}/chapters/{chapter_id} — translated chapter reader
 
-Endpoints are split across three router files:
+Endpoints live in three canonical router files:
 - ``public_catalog.py`` — catalog browse + genres
 - ``public_novel.py`` — novel detail + chapter list
 - ``public_chapter.py`` — chapter reader + tags search
 
-This file holds shared Pydantic models, constants, and cross-router helpers.
+This module holds only shared Pydantic models, constants, and helpers.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ import re
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -119,17 +118,3 @@ def _parse_csv_filter(value: str | None) -> list[str]:
 
 def _datetime_to_public_string(value: datetime | None) -> str | None:
     return value.isoformat() if isinstance(value, datetime) else None
-
-
-# ---------------------------------------------------------------------------
-# Re-exports — unified router for backward compatibility
-# ---------------------------------------------------------------------------
-
-from novelai.api.routers.public_catalog import router as _catalog_router  # noqa: E402
-from novelai.api.routers.public_chapter import router as _chapter_router  # noqa: E402
-from novelai.api.routers.public_novel import router as _novel_router  # noqa: E402
-
-router = APIRouter(prefix="/api/public", tags=["public"])
-router.routes.extend(_catalog_router.routes)
-router.routes.extend(_novel_router.routes)
-router.routes.extend(_chapter_router.routes)

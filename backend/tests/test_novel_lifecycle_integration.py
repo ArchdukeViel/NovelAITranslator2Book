@@ -33,7 +33,9 @@ from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.dependencies import get_db_session, get_storage
 from novelai.api.routers.library import router as library_router
-from novelai.api.routers.public import router as public_router
+from novelai.api.routers.public_catalog import router as public_catalog_router
+from novelai.api.routers.public_chapter import router as public_chapter_router
+from novelai.api.routers.public_novel import router as public_novel_router
 from novelai.db.base import Base
 from novelai.db.models.novel import Novel
 from novelai.services.orchestration.operations import (
@@ -77,7 +79,9 @@ def _build_app(storage: StorageService, session_factory: Any) -> FastAPI:
     app.dependency_overrides[get_current_user] = _user_override
     app.include_router(auth_router)
     app.include_router(library_router, prefix="/api/admin/novels")
-    app.include_router(public_router)
+    app.include_router(public_catalog_router)
+    app.include_router(public_novel_router)
+    app.include_router(public_chapter_router)
     return app
 
 

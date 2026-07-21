@@ -14,7 +14,7 @@ Covers:
 from __future__ import annotations
 
 # ORM models are registered by the session-scoped autouse fixture in conftest.py.
-from novelai.api.routers.public import PublicCatalogResponse
+from novelai.api.routers.public_contracts import PublicCatalogResponse
 from novelai.services.catalog_service import (
     _PROJECTION_REFRESH_FAILURES,
     _clear_projection_refresh_failure,

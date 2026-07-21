@@ -139,8 +139,11 @@ Deferred items are tracked but excluded from the active count.
   provider methods. The translation pipeline now uses only `PipelineState`; the
   `PipelineContext` alias is removed. Auth router test-only token helpers and
   the dead auth-email accessor shim are removed; callers use `AuthService`
-  directly. The unused `novels.status` database mirror remains until an
-  explicit column-removal migration is approved and verified.
+  directly. The public compatibility aggregator is removed; applications and
+  tests register the three canonical public routers explicitly, while shared
+  models/helpers live in `public_contracts.py`. The unused `novels.status`
+  database mirror remains until an explicit column-removal migration is
+  approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
@@ -668,3 +671,27 @@ Deferred items are tracked but excluded from the active count.
   non-fatal and records `unavailable` without calling the dummy provider.
   Regression tests prove missing credentials and production dummy selection
   make no provider call and create no translation runtime records.
+
+### DEBT-085 — Pytest class-scoped instance fixtures are deprecated
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Backend | Testing | Dependencies
+- **Priority:** Low
+- **Status:** Resolved
+- **Affected areas:** `backend/tests/test_microservice_split.py`
+- **Description:** The microservice split tests declared class-scoped fixtures
+  as instance methods, a pattern that pytest 10 removes.
+- **Resolution:** Replaced the deprecated instance-method fixtures with
+  module-scoped fixture functions. The focused microservice split suite runs
+  without `PytestRemovedIn10Warning`.
+
+### DEBT-086 — Architecture listed obsolete router-layer violations
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Documentation | Architecture
+- **Priority:** Medium
+- **Status:** Resolved
+- **Affected areas:** `docs/architecture/architecture.md`, router-layer guard
+- **Description:** The canonical architecture still listed already-removed
+  direct router dependencies and incorrectly linked them to DEBT-054, which
+  tracks the unrelated admin audit viewer.
+- **Resolution:** Replaced the obsolete table with the enforced current router
+  boundary and its canonical guard command. The guard reports no violations.

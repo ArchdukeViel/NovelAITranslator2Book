@@ -642,11 +642,15 @@ class TestPublicReaderAvailability:
 
         from novelai.api.auth.session import get_current_user
         from novelai.api.routers.dependencies import get_storage
-        from novelai.api.routers.public import router as public_router
+        from novelai.api.routers.public_catalog import router as public_catalog_router
+        from novelai.api.routers.public_chapter import router as public_chapter_router
+        from novelai.api.routers.public_novel import router as public_novel_router
 
         app = FastAPI()
         app.add_middleware(SessionMiddleware, secret_key="t", https_only=False)
-        app.include_router(public_router)
+        app.include_router(public_catalog_router)
+        app.include_router(public_novel_router)
+        app.include_router(public_chapter_router)
         app.dependency_overrides[get_storage] = lambda: storage
         app.dependency_overrides[get_current_user] = lambda: (self._owner_user() if as_owner else None)
         return TestClient(app, raise_server_exceptions=False)

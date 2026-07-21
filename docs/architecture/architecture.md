@@ -112,19 +112,10 @@ backend/src/novelai/
 - Persistence belongs behind `storage/*` and `db/*` boundaries.
 - Scheduler policy belongs in backend translation/service/job layers, not React.
 
-**Router layer violations (deferred — see DEBT-054):**
-
-| Router | Violations | Target Service |
-|--------|------------|----------------|
-| `library.py` | 3 `db.models` imports, 1 `sources.status`, 1 `StorageService`, ~30 storage calls | `LibraryService` |
-| `admin_glossary.py` + 4 split routers | 6 `db.models.glossary`, `Novel`, 2 `providers.*`, `StorageService`, 6 storage calls | `GlossaryWorkflowService` |
-| `auth.py` | 3 `db.models.users`, ~25 `session.*` CRUD calls | `AuthService` |
-| `user_data.py` | 7 `db.models` symbols, 27 `session.*` CRUD calls | `UserLibraryService`, `ReadingService`, `ReviewService` |
-| `public.py` | 3 `db.models` symbols, 1 `sources.status`, `StorageService`, ~18 storage calls | `PublicCatalogService` |
-| `editor.py` | 1 inline `db.models.novel`, `StorageService`, 12 storage calls | `EditorService` |
-| `requests.py` | 2 `db.models` symbols, full CRUD | `NovelRequestService` |
-| `admin.py` | `StorageService`, 3 preflight `storage.load_metadata` | `AdminService` |
-| `operations.py` | `StorageService`, 1 preflight `storage.load_metadata` | `OperationsService` |
+**Router layer enforcement:** Routers do not directly import database models,
+storage services, or source modules. The router-layer guard in `AGENTS.md`
+enforces this boundary; dependency construction remains isolated in
+`api/routers/dependencies.py`.
 
 **Dependency direction**:
 

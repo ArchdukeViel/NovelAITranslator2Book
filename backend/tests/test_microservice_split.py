@@ -13,7 +13,9 @@ from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
 from novelai.api.app import create_app as create_monolith_app
-from novelai.api.routers.public import router as public_router
+from novelai.api.routers.public_catalog import router as public_catalog_router
+from novelai.api.routers.public_chapter import router as public_chapter_router
+from novelai.api.routers.public_novel import router as public_novel_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.runtime.bootstrap import bootstrap
 
@@ -44,7 +46,9 @@ def _public_only_app() -> FastAPI:
     bootstrap()
     app = FastAPI(title="Novel AI Reader")
     app.add_middleware(SessionMiddleware, secret_key="test", https_only=False)
-    app.include_router(public_router)
+    app.include_router(public_catalog_router)
+    app.include_router(public_novel_router)
+    app.include_router(public_chapter_router)
     app.include_router(user_data_router)
     app.add_api_route("/health", lambda: {"status": "ok"})
     return app
@@ -90,12 +94,18 @@ class TestMonolithMode:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(scope="module")
+def reader_app() -> FastAPI:
+    return _public_only_app()
+
+
+@pytest.fixture(scope="module")
+def admin_app() -> FastAPI:
+    return create_monolith_app()
+
+
 class TestReaderServiceEndpoints:
     """Reader service registers ONLY public + user_data routes + health."""
-
-    @pytest.fixture(scope="class")
-    def reader_app(self) -> FastAPI:
-        return _public_only_app()
 
     def test_reader_has_public_routes(self, reader_app: FastAPI) -> None:
         paths = _route_paths(reader_app)
@@ -121,10 +131,6 @@ class TestReaderServiceEndpoints:
 
 class TestAdminServiceEndpoints:
     """Admin service registers admin + auth + public routes."""
-
-    @pytest.fixture(scope="class")
-    def admin_app(self) -> FastAPI:
-        return create_monolith_app()
 
     def test_admin_has_admin_routes(self, admin_app: FastAPI) -> None:
         paths = _route_paths(admin_app)

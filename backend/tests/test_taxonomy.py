@@ -348,7 +348,9 @@ class TestPublicGenreEndpoint:
         from starlette.middleware.sessions import SessionMiddleware
 
         from novelai.api.routers.dependencies import get_db_session
-        from novelai.api.routers.public import router as public_router
+        from novelai.api.routers.public_catalog import router as public_catalog_router
+        from novelai.api.routers.public_chapter import router as public_chapter_router
+        from novelai.api.routers.public_novel import router as public_novel_router
 
         engine = create_engine(
             _SQLITE,
@@ -362,7 +364,9 @@ class TestPublicGenreEndpoint:
 
         app = FastAPI()
         app.add_middleware(SessionMiddleware, secret_key="test", https_only=False)
-        app.include_router(public_router)
+        app.include_router(public_catalog_router)
+        app.include_router(public_novel_router)
+        app.include_router(public_chapter_router)
 
         def _override_db():
             yield sess

@@ -1,4 +1,4 @@
-"""Public catalog + genres endpoints — extracted from public.py.
+"""Public catalog and genre endpoints.
 
 Catalog browse, genre listing, and catalog-specific helpers.
 Novel detail and chapter list are in ``public_novel.py``.
@@ -18,7 +18,7 @@ from novelai.api.routers.dependencies import (
     get_db_session,
     get_public_catalog_service,
 )
-from novelai.api.routers.public import (
+from novelai.api.routers.public_contracts import (
     DEFAULT_ORDER,
     DEFAULT_SORT_BY,
     VALID_ORDER_VALUES,

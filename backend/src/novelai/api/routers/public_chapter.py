@@ -1,4 +1,4 @@
-"""Public chapter reader + tags search endpoints — extracted from public.py.
+"""Public chapter reader and tag-search endpoints.
 
 Chapter reader, tags search, reader text helpers, and availability helpers.
 Catalog browse and genres are in ``public_catalog.py``.
@@ -21,7 +21,7 @@ from novelai.api.routers.dependencies import (
     metadata_chapters,
     reader_title,
 )
-from novelai.api.routers.public import (
+from novelai.api.routers.public_contracts import (
     DEFAULT_UNAVAILABLE_POLICY,
     PUBLIC_PARAGRAPH_MARKER_RE,
     PUBLIC_PROTOCOL_MARKER_RE,
