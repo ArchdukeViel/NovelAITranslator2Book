@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 32
+- **Total active debt entries:** 31
 - **V1 launch blockers:** 6 (DEBT-075 through DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
@@ -83,7 +83,7 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M5 (Admin Operations)
 - **Category:** Backend | Feature
 - **Priority:** Medium
-- **Status:** Resolved
+- **Status:** Pending
 - **Affected areas:** `backend/src/novelai/api/routers/admin.py`
 - **Description:** CRUD endpoints for listing, creating, and modifying admin users do not exist.
 - **Completion criteria:** Functional admin CRUD endpoints restricted to owner.
@@ -199,7 +199,7 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M5 (Admin Operations)
 - **Category:** Frontend | Feature
 - **Priority:** Medium
-- **Status:** Resolved
+- **Status:** Pending
 - **Affected areas:** `frontend/app/(admin)/admin/settings/`, `backend/src/novelai/api/routers/admin_provider_credentials.py`
 - **Description:** Owner-only encrypted credential CRUD/test routes exist, but
   the admin settings UI does not expose them. Environment credentials remain a
@@ -426,8 +426,8 @@ Deferred items are tracked but excluded from the active count.
 - **Status:** Pending
 - **Affected areas:** `frontend/components/public/public-shell.tsx`, `frontend/app/(public)/`
 - **Description:** Nested `<main>` landmarks, no skip link, no reduced-motion
-  rules, incomplete focus management, and a tag suggestion `role="option"`
-  without `aria-selected` remain in the public reader.
+  rules, and incomplete focus management remain in the public reader. Tag
+  suggestions now provide the required `aria-selected` state.
 - **Completion criteria:** Single main landmark, skip link, reduced-motion CSS, focus management, accessible reader controls.
 
 ### DEBT-059 — Public reader performance budget
@@ -778,7 +778,7 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M7 (Final Hardening)
 - **Category:** Frontend | Tooling
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** `frontend/package.json`, ESLint configuration, CI
 - **Description:** `npm run lint` still invokes `next lint`, which Next.js marks
   deprecated and removes in Next.js 16.
@@ -792,7 +792,7 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M7 (Final Hardening)
 - **Category:** Frontend | Build | Reproducibility
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** `frontend/next.config.mjs`, local build environment
 - **Description:** Next.js selects `C:\Akmal\package-lock.json` as the workspace
   root instead of this repository because multiple lockfiles are visible.
@@ -804,12 +804,13 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M7 (Final Hardening)
 - **Category:** Frontend | Testing
 - **Priority:** Low
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** Browse-page tag-filter tests
 - **Description:** The frontend suite passes but reports an update to
   `TagFilterSection` outside `act(...)`, weakening timing guarantees.
-- **Completion criteria:** Await or wrap the triggering interaction correctly;
-  the focused test and complete frontend suite pass without the warning.
+- **Resolution:** The debounce wait that triggers `TagFilterSection` state now
+  runs inside async `act(...)`. The focused browse-page suite passes without
+  the React state-update warning.
 
 ### DEBT-093 — Public image elements bypass Next.js optimization
 - **Milestone:** Milestone M4 (Reader/Catalog UX)

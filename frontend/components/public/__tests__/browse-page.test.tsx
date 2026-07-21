@@ -333,7 +333,9 @@ describe("BrowsePage tag filter UI", () => {
     fireEvent.input(inputs[0], { target: { value: "i" } });
 
     // After a short wait, searchTags should NOT have been called
-    await new Promise((r) => setTimeout(r, 450));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
     expect(mocks.searchTags).not.toHaveBeenCalled();
   });
 

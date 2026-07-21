@@ -198,7 +198,7 @@ function TagFilterSection({
             {isDoneFetching && hasResults && (
               <ul role="listbox" aria-label={`${label} tag suggestions`}>
                 {filteredResults.map((tag) => (
-                  <li key={tag.name} role="option">
+                  <li key={tag.name} role="option" aria-selected="false">
                     <button
                       type="button"
                       onClick={() => onAdd(tag.name)}
