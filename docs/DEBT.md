@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 27
+- **Total active debt entries:** 33
 - **V1 launch blockers:** 5 (DEBT-075 through DEBT-079)
 - **Critical security/data integrity:** 0
 
@@ -512,10 +512,11 @@ Deferred items are tracked but excluded from the active count.
 - **Completion criteria:** Required checks and review rules protect the default
   branch, Actions permissions are least-privilege, third-party actions are
   pinned or restricted, and security scanners remain green.
-- **Implementation note (2026-07-18):** Tracked workflows now pin actions to
+- **Implementation note (2026-07-22):** Tracked workflows now pin actions to
   immutable commit SHAs and scope write permissions to the publication job.
-  The default-branch ruleset, allowed-actions policy, and live scanner status
-  still require owner verification in GitHub settings.
+  Live inspection found push protection enabled with zero open CodeQL and
+  secret-scanning alerts, but no default-branch ruleset, unrestricted Actions,
+  and no required SHA policy. Those repository settings remain owner actions.
 
 ### DEBT-079 — Free preview and production deployment acceptance missing
 - **Milestone:** Milestone M3.5 (Hosted Topology)
@@ -747,3 +748,62 @@ Deferred items are tracked but excluded from the active count.
   `publication_status`, and maps source identity from `source_key`. A forward
   migration removes `novels.status`, all ORM fixtures use
   `publication_status`, and focused tests enforce the backfill boundary.
+
+### DEBT-089 — Frontend development tree contained vulnerable brace expansion
+- **Milestone:** Milestone M0 (CI Confidence)
+- **Category:** Frontend | Security | Supply Chain
+- **Priority:** High
+- **Status:** Resolved locally; hosted rescan pending
+- **Affected areas:** `frontend/package-lock.json`, GitHub Dependabot
+- **Description:** Live Dependabot and local `npm audit` identified
+  `GHSA-3jxr-9vmj-r5cp` in two transitive development-only
+  `brace-expansion` paths.
+- **Resolution:** Refreshed the lockfile to `brace-expansion` 1.1.16 and 5.0.7.
+  Local `npm audit` reports zero vulnerabilities. GitHub alert closure requires
+  pushing the lockfile and allowing Dependabot to rescan it.
+
+### DEBT-090 — Frontend lint script uses deprecated Next.js wrapper
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Frontend | Tooling
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** `frontend/package.json`, ESLint configuration, CI
+- **Description:** `npm run lint` still invokes `next lint`, which Next.js marks
+  deprecated and removes in Next.js 16.
+- **Completion criteria:** Migrate to the ESLint CLI with equivalent Next.js,
+  React, TypeScript, and accessibility rules; local and hosted lint pass.
+
+### DEBT-091 — Next.js build infers an external workspace root
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Frontend | Build | Reproducibility
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** `frontend/next.config.mjs`, local build environment
+- **Description:** Next.js selects `C:\Akmal\package-lock.json` as the workspace
+  root instead of this repository because multiple lockfiles are visible.
+- **Completion criteria:** Configure an explicit repository-safe tracing root or
+  otherwise remove the ambiguity; production builds emit no workspace-root
+  warning and retain the required standalone files.
+
+### DEBT-092 — Browse-page test leaks an unwrapped React state update
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Frontend | Testing
+- **Priority:** Low
+- **Status:** Pending
+- **Affected areas:** Browse-page tag-filter tests
+- **Description:** The frontend suite passes but reports an update to
+  `TagFilterSection` outside `act(...)`, weakening timing guarantees.
+- **Completion criteria:** Await or wrap the triggering interaction correctly;
+  the focused test and complete frontend suite pass without the warning.
+
+### DEBT-093 — Public image elements bypass Next.js optimization
+- **Milestone:** Milestone M4 (Reader/Catalog UX)
+- **Category:** Frontend | Performance
+- **Priority:** Low
+- **Status:** Pending
+- **Affected areas:** Public brand, novel card, and fallback-cover components
+- **Description:** Production lint reports direct `<img>` elements on public
+  routes, which can increase LCP and bandwidth.
+- **Completion criteria:** Use `next/image` with an appropriate remote/loading
+  policy or document and test a deliberate optimized alternative; production
+  lint/build emit no `no-img-element` warnings.

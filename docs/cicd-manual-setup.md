@@ -4,8 +4,8 @@ This guide covers the manual steps required to complete the CI/CD pipeline setup
 All workflow files are already implemented and committed to `.github/workflows/`.
 What remains is GitHub UI configuration and verification.
 
-**Last updated:** 2026-07-18 (live CI and repository-control reconciliation)
-**Current status:** Local workflow hardening is implemented: vanilla PostgreSQL receives a minimal CI-only Supabase auth compatibility shim, previously excluded backend tests run in bounded matrix shards, publication cannot report success when image push is skipped or fails, and tracked actions are pinned to immutable SHAs. Local focused tests, Ruff, Pyright, and workflow parsing pass. A fresh hosted Actions run is still required. The last live inspection found CodeQL, dependency graph, Dependabot, and secret-scanning checks green with zero open alerts, but the default branch had no protection/ruleset and repository-setting changes remain manual owner actions.
+**Last updated:** 2026-07-22 (live CI and repository-control reconciliation)
+**Current status:** Local workflow hardening is implemented: vanilla PostgreSQL receives a minimal CI-only Supabase auth compatibility shim, previously excluded backend tests run in bounded matrix shards, publication cannot report success when image push is skipped or fails, and tracked actions are pinned to immutable SHAs. Local focused tests, Ruff, Pyright, and workflow parsing pass. A fresh hosted Actions run is still required. Live inspection on 2026-07-22 found zero open CodeQL and secret-scanning alerts, push protection enabled, one Dependabot alert for transitive development dependency `brace-expansion`, no default-branch protection/ruleset, and unrestricted Actions without SHA enforcement. The local lockfile remediates the dependency alert; closure still requires a push and hosted rescan. Repository-setting changes remain manual owner actions.
 
 ---
 
