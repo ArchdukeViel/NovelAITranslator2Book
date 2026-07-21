@@ -619,7 +619,7 @@ class TranslateStage(PipelineStage):
         if not request_id or not isinstance(request_id, str) or not request_id.strip():
             request_id = str(uuid.uuid4())
             context.metadata["request_id"] = request_id
-        provider_key = context.provider_key or self._settings.get_provider_key()
+        provider_key = context.provider_key or self._settings.get_preferred_provider()
         model = context.provider_model or self._settings.get_provider_model()
         provider_key, model = self._resolve_provider_and_model(provider_key, model)
         context.provider_key = provider_key

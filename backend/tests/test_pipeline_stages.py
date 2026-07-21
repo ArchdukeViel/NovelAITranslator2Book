@@ -95,8 +95,8 @@ class _PromptCaptureProvider(TranslationProvider):
 
 def _fallback_stage_env(tmp_path):
     prefs = PreferencesService(tmp_path / "prefs")
-    prefs.set_provider_key("gemini")
-    prefs.set_provider_model(settings.PROVIDER_GEMINI_DEFAULT_MODEL)
+    prefs.set_preferred_provider("gemini")
+    prefs.set_preferred_model(settings.PROVIDER_GEMINI_DEFAULT_MODEL)
     prefs.set_api_key("gemini-key", provider_key="gemini")
     return {
         "prefs": prefs,
@@ -876,8 +876,8 @@ async def test_translate_stage_missing_gemini_key_fails_before_provider_or_stora
 @pytest.mark.asyncio
 async def test_translate_stage_rejects_dummy_provider_outside_test_environment(tmp_path, monkeypatch):
     env = _fallback_stage_env(tmp_path)
-    env["prefs"].set_provider_key("dummy")
-    env["prefs"].set_provider_model("dummy")
+    env["prefs"].set_preferred_provider("dummy")
+    env["prefs"].set_preferred_model("dummy")
     monkeypatch.setattr(settings, "ENV", "production")
     requested_provider_keys: list[str] = []
 

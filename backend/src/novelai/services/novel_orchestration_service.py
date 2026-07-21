@@ -273,7 +273,7 @@ class NovelOrchestrationService:
         provider_key: str | None = None,
         provider_model: str | None = None,
     ) -> tuple[str, str]:
-        key = provider_key or self._settings.get_provider_key()
+        key = provider_key or self._settings.get_preferred_provider()
         model = provider_model or self._settings.get_provider_model()
         if self._provider_requires_api_key(key) and not self._settings.get_api_key(key):
             raise ProviderConfigError(

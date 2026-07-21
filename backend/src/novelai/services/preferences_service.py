@@ -435,22 +435,10 @@ class PreferencesService:
         payload["prompt_template"] = self._clean_text(prompt_template)
         self.set(self.GLOSSARY_EXTRACTION_KEY, payload)
 
-    # ============================================================================
-    # Backward-compatible aliases (formerly in SettingsService)
-    # ============================================================================
-
-    def get_provider_key(self) -> str:
-        """Alias for get_preferred_provider (backward compat)."""
-        return self.get_preferred_provider()
-
-    def set_provider_key(self, key: str) -> None:
-        """Alias for set_preferred_provider (backward compat)."""
-        self.set_preferred_provider(key)
-
     def get_provider_model(self) -> str:
-        """Get preferred model with provider-aware compatibility cleanup."""
+        """Get the preferred model after validating it for the provider."""
         model = self.get_preferred_model()
-        provider_key = self.get_provider_key()
+        provider_key = self.get_preferred_provider()
         if provider_key == "gemini" and model == "gpt-5.4":
             return settings.PROVIDER_GEMINI_DEFAULT_MODEL
         if provider_key not in {"gemini"}:
@@ -464,10 +452,6 @@ class PreferencesService:
         if model in supported_models:
             return model
         return supported_models[0] if supported_models else model
-
-    def set_provider_model(self, model: str) -> None:
-        """Alias for set_preferred_model (backward compat)."""
-        self.set_preferred_model(model)
 
     # ============================================================================
     # Runtime API key management (from environment, never persisted)

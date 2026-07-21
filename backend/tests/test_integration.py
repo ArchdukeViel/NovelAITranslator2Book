@@ -322,8 +322,8 @@ async def test_translate_stage_falls_back_from_gemini_to_dummy(integration_fixtu
     gemini_provider = FallbackPipelineProvider("gemini")
     dummy_provider = FallbackPipelineProvider("dummy")
     fixture.add_source_chapter("http://example.com/fallback", "ãƒ†ã‚¹ãƒˆã§ã™ã€‚")
-    fixture.settings_service.set_provider_key("gemini")
-    fixture.settings_service.set_provider_model("gemini-3.1-flash-lite")
+    fixture.settings_service.set_preferred_provider("gemini")
+    fixture.settings_service.set_preferred_model("gemini-3.1-flash-lite")
     fixture.settings_service.set_api_key("gemini-key", provider_key="gemini")
 
     pipeline = TranslationPipeline(

@@ -113,8 +113,8 @@ def crawl_env():
 
     storage = StorageService(data_dir)
     prefs = PreferencesService(data_dir)
-    prefs.set_provider_key("mock")
-    prefs.set_provider_model("mock-1.0")
+    prefs.set_preferred_provider("mock")
+    prefs.set_preferred_model("mock-1.0")
     cache = TranslationCache(data_dir)
     usage = UsageService(data_dir)
 

@@ -134,8 +134,10 @@ Deferred items are tracked but excluded from the active count.
   aliases are removed. Provider-registry lookups and registrations now reject
   unsupported keys instead of silently falling back to Gemini or ignoring the
   request, and provider errors require structured codes instead of accepting a
-  legacy message-only constructor. The unused `novels.status` database mirror
-  remains until an explicit column-removal migration is approved and verified.
+  legacy message-only constructor. `PreferencesService` provider key/model
+  setter aliases are removed and all callers use the canonical preferred-
+  provider methods. The unused `novels.status` database mirror remains until an
+  explicit column-removal migration is approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

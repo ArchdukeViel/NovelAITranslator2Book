@@ -58,8 +58,8 @@ def orchestration_env(monkeypatch):
 
     storage = StorageService(data_dir)
     settings_service = PreferencesService(data_dir)
-    settings_service.set_provider_key("mock")
-    settings_service.set_provider_model("mock-1.0")
+    settings_service.set_preferred_provider("mock")
+    settings_service.set_preferred_model("mock-1.0")
     cache = TranslationCache(data_dir)
     usage = UsageService(data_dir)
     catalog_sessionmaker, catalog_engine = _configure_catalog_projection_db(data_dir, monkeypatch)

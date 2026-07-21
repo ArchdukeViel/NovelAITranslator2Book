@@ -557,8 +557,8 @@ def orchestration_env(monkeypatch):
 
     storage = StorageService(data_dir)
     settings = PreferencesService(data_dir)
-    settings.set_provider_key("mock")
-    settings.set_provider_model("mock-1.0")
+    settings.set_preferred_provider("mock")
+    settings.set_preferred_model("mock-1.0")
     cache = TranslationCache(data_dir)
     usage = UsageService(data_dir)
     catalog_sessionmaker, catalog_engine = _configure_catalog_projection_db(data_dir, monkeypatch)
@@ -1467,8 +1467,8 @@ async def test_scrape_metadata_falls_back_between_gemini_models(orchestration_en
     provider = GeminiFallbackProvider()
     source = StubSource()
     settings = orchestration_env["settings"]
-    settings.set_provider_key("gemini")
-    settings.set_provider_model("gemini-2.5-flash")
+    settings.set_preferred_provider("gemini")
+    settings.set_preferred_model("gemini-2.5-flash")
     settings.set_api_key("gemini-key", provider_key="gemini")
     orchestration_env["cache"].set(
         "metadata:chapter_title:English:第10話　初スカート、お披露目",
@@ -1499,8 +1499,8 @@ async def test_scrape_metadata_retries_incomplete_chapter_title_translation(orch
     provider = PartialGeminiTitleProvider()
     source = PartialTitleSource()
     settings = orchestration_env["settings"]
-    settings.set_provider_key("gemini")
-    settings.set_provider_model("gemini-2.5-flash")
+    settings.set_preferred_provider("gemini")
+    settings.set_preferred_model("gemini-2.5-flash")
     settings.set_api_key("gemini-key", provider_key="gemini")
 
     orchestrator = NovelOrchestrationService(
@@ -1770,8 +1770,8 @@ async def test_scrape_metadata_missing_gemini_key_never_calls_dummy_provider(orc
     provider = MockTranslationProvider(key="dummy", model="dummy")
     source = StubSource()
     settings = orchestration_env["settings"]
-    settings.set_provider_key("gemini")
-    settings.set_provider_model("gemini-2.0-flash")
+    settings.set_preferred_provider("gemini")
+    settings.set_preferred_model("gemini-2.0-flash")
     settings.clear_api_key("gemini")
 
     orchestrator = NovelOrchestrationService(
