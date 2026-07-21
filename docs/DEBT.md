@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 29
+- **Total active debt entries:** 28
 - **V1 launch blockers:** 6 (DEBT-075 through DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
@@ -635,7 +635,7 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M7 (Final Hardening)
 - **Category:** Tooling | Testing | Reproducibility
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** `pyproject.toml`, lockfiles, developer setup documentation
 - **Description:** Project instructions identify `pip install -e ".[dev]"` as
   the standard editable development install, but tests import packages such as
@@ -644,6 +644,12 @@ Deferred items are tracked but excluded from the active count.
 - **Completion criteria:** Choose one canonical local-development install,
   align extras and documentation, regenerate lockfiles, and prove a clean
   environment can collect and run the documented focused and full suites.
+- **Resolution:** The canonical `.[dev]` extra now includes the complete test
+  dependency set (`aiosqlite`, Hypothesis, `itsdangerous`, and Moto included), while the
+  narrower `test` extra remains available for test-only environments. Both
+  lockfiles were regenerated from `pyproject.toml`; a clean temporary Python
+  3.13 environment installed `.[dev]`, collected the full backend suite, and
+  ran a representative Hypothesis-backed test file successfully.
 
 ### DEBT-081 — Frontend hook dependency warnings remain in production builds
 - **Milestone:** Milestone M7 (Final Hardening)

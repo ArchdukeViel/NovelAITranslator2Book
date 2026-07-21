@@ -62,10 +62,14 @@ s3 = [
   "boto3>=1.43.47",
 ]
 dev = [
+  "aiosqlite>=0.20",
   "argon2-cffi>=25.1.0",
   "cryptography>=49.0.0",
   "croniter>=6.0.0",
   "google-genai>=2.11.0",
+  "hypothesis>=6.0",
+  "itsdangerous>=2.2",
+  "moto[s3]>=5.0.0",
   "openai>=2.45.0",
   "pip-tools>=7.5.3",
   "pyright[nodejs]>=1.1.411",
