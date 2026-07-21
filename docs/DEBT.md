@@ -133,8 +133,9 @@ Deferred items are tracked but excluded from the active count.
   The package-level meta-path compatibility loader and its legacy module import
   aliases are removed. Provider-registry lookups and registrations now reject
   unsupported keys instead of silently falling back to Gemini or ignoring the
-  request. The unused `novels.status` database mirror remains until an explicit
-  column-removal migration is approved and verified.
+  request, and provider errors require structured codes instead of accepting a
+  legacy message-only constructor. The unused `novels.status` database mirror
+  remains until an explicit column-removal migration is approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
@@ -647,14 +648,18 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M7 (Final Hardening)
 - **Category:** Backend | Providers | Data Integrity
 - **Priority:** High
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** Translation stage, novel orchestration, preferences,
   development/test provider configuration
 - **Description:** Several translation paths automatically select the echoing
   dummy provider when a Gemini API key is unavailable. Outside an explicit test
   mode this can produce output that appears translated even though no real
   translation occurred.
-- **Completion criteria:** Restrict dummy-provider selection to explicit test
-  configuration; fail closed with a safe actionable error when production or
-  hosted development lacks usable Gemini credentials; and add regression tests
-  proving no implicit dummy translation can be persisted.
+- **Resolution:** Provider resolution now raises a structured
+  `provider_configuration_error` before provider calls, scheduler-state writes,
+  or translation persistence when Gemini credentials are missing. Production
+  validation requires `PROVIDER_DEFAULT=gemini`; registry discovery and lookup
+  hide/reject `dummy` outside `ENV=test`. Metadata translation remains
+  non-fatal and records `unavailable` without calling the dummy provider.
+  Regression tests prove missing credentials and production dummy selection
+  make no provider call and create no translation runtime records.

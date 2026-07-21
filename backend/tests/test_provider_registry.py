@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from novelai.config.settings import settings
+from novelai.core.errors import ProviderConfigError, ProviderErrorCode
 from novelai.providers.base import TranslationProvider
 from novelai.providers.gemini_provider import GeminiProvider
 from novelai.providers.registry import (
@@ -56,6 +58,15 @@ class TestProviderRegistry:
         assert {"dummy", "gemini"}.issubset(providers)
         assert "nvidia" not in providers
         assert "openai" not in providers
+
+    def test_dummy_provider_is_unavailable_outside_test_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+
+        assert "dummy" not in available_providers()
+        with pytest.raises(ProviderConfigError) as exc_info:
+            get_provider("dummy")
+
+        assert exc_info.value.provider_error_code == ProviderErrorCode.CONFIGURATION
 
     def test_bootstrap_registers_gemini_and_dummy_and_excludes_openai(self) -> None:
         _PROVIDER_REGISTRY.clear()

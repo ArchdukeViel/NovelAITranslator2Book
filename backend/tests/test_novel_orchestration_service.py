@@ -1766,7 +1766,7 @@ async def test_scrape_metadata_passes_max_chapter_to_source(orchestration_env) -
 
 
 @pytest.mark.asyncio
-async def test_scrape_metadata_logs_missing_gemini_key_only_once(orchestration_env) -> None:
+async def test_scrape_metadata_missing_gemini_key_never_calls_dummy_provider(orchestration_env) -> None:
     provider = MockTranslationProvider(key="dummy", model="dummy")
     source = StubSource()
     settings = orchestration_env["settings"]
@@ -1784,11 +1784,9 @@ async def test_scrape_metadata_logs_missing_gemini_key_only_once(orchestration_e
         usage_service=orchestration_env["usage"],
     )
 
-    with patch("novelai.services.novel_orchestration_service.logger.warning") as warning:
-        metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
-        await orchestrator.scrape_metadata("syosetu_ncode", "novel-2", mode="update")
+    metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
 
-    warning.assert_called_once_with("%s API key missing; falling back to dummy provider.", "Gemini")
+    assert provider.call_count == 0
     assert metadata["metadata_translation_status"] == "unavailable"
     assert metadata["metadata_translation_prompt_version"] == "metadata-literal-v3"
     assert "metadata_translation_error" not in metadata

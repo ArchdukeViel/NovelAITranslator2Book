@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from novelai.config.settings import settings
-from novelai.core.errors import PipelineStageError, ProviderError, ProviderErrorCode
+from novelai.core.errors import PipelineStageError, ProviderConfigError, ProviderError, ProviderErrorCode
 from novelai.prompts.models import TranslationRequest
 from novelai.providers.base import TranslationProvider
 from novelai.providers.model_fallbacks import model_candidates
@@ -166,8 +166,19 @@ class TranslateStage(PipelineStage):
 
     def _resolve_provider_and_model(self, provider_key: str, model: str) -> tuple[str, str]:
         if provider_key == "gemini" and not self._settings.get_api_key(provider_key):
-            logger.warning("%s API key missing; falling back to dummy provider for translation.", provider_key.capitalize())
-            return "dummy", "dummy"
+            raise ProviderConfigError(
+                ProviderErrorCode.CONFIGURATION,
+                provider_key=provider_key,
+                provider_model=model,
+                message="Gemini provider is not configured. Add an API key in Settings.",
+            )
+        if provider_key == "dummy" and settings.ENV != "test":
+            raise ProviderConfigError(
+                ProviderErrorCode.CONFIGURATION,
+                provider_key=provider_key,
+                provider_model=model,
+                message="The dummy provider is available only when ENV=test.",
+            )
         return provider_key, model
 
     def _max_attempts_exceeded_error(

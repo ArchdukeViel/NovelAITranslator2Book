@@ -15,6 +15,7 @@ class ConfigError(NovelAIError):
 
 
 class ProviderErrorCode(StrEnum):
+    CONFIGURATION = "provider_configuration_error"
     RATE_LIMITED = "provider_rate_limited"
     QUOTA_EXHAUSTED = "provider_quota_exhausted"
     MODEL_UNAVAILABLE = "provider_model_unavailable"
@@ -46,13 +47,6 @@ class ProviderError(NovelAIError):
         requests_this_minute: int | None = None,
         requests_today: int | None = None,
     ) -> None:
-        # Backward compatibility for older call sites: ProviderError("message").
-        if message is None and not isinstance(code, ProviderErrorCode):
-            raw_code = str(code)
-            if raw_code not in {item.value for item in ProviderErrorCode}:
-                message = raw_code
-                code = ProviderErrorCode.UNKNOWN
-
         self.provider_error_code = self._normalize_code(code)
         self.provider_key = provider_key or "unknown_provider"
         self.provider_model = provider_model or "unknown_model"

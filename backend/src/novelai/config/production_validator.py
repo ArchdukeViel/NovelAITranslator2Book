@@ -146,6 +146,13 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
 
     is_reader = settings.SERVICE_ROLE == "reader"
 
+    if settings.PROVIDER_DEFAULT != "gemini":
+        result.add(
+            Severity.FATAL,
+            "provider",
+            "PROVIDER_DEFAULT must be 'gemini' in production.",
+        )
+
     # --- Required secrets (admin only — reader has no session/auth)
     if not is_reader and _is_weak_secret(settings.SESSION_SECRET_KEY):
         result.add(

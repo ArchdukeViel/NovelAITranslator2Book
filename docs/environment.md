@@ -197,7 +197,7 @@ Set `DATABASE_RESTORE_VERIFICATION_ENABLED=true` only with a dedicated clean dat
 
 | Variable | Type | Default | Required? | Change? | Description | Example |
 |----------|------|---------|----------|---------|-------------|---------|
-| `PROVIDER_DEFAULT` | `str` | `gemini` | No | can leave default | Default translation provider. Use `dummy` for testing. | `gemini` |
+| `PROVIDER_DEFAULT` | `str` | `gemini` | No | can leave default | Default translation provider. Production requires `gemini`; `dummy` is restricted to `ENV=test`. | `gemini` |
 | `PROVIDER_GEMINI_API_KEY` | `SecretStr` | `None` | If using Gemini | **must change** | Google AI Studio API key for Gemini. | `AIza...` |
 | `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` | `SecretStr` | `None` | If storing API keys in DB | **must change** | Key for encrypting stored provider credentials. Generate with `secrets.token_urlsafe(32)`. | `aBcD...` |
 | `PROVIDER_GEMINI_DEFAULT_MODEL` | `str` | `gemini-3.1-flash-lite` | No | can leave default | Default Gemini model for translation. | `gemini-3.1-flash-lite` |

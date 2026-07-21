@@ -37,18 +37,28 @@ def test_all_exceptions_inherit_from_novelai_error() -> None:
 
 
 def test_provider_api_error_is_provider_error() -> None:
-    error = ProviderAPIError("api failed")
+    error = ProviderAPIError(
+        ProviderErrorCode.UNKNOWN,
+        provider_key="gemini",
+        provider_model="gemini-3.1-flash-lite",
+        message="api failed",
+    )
     assert isinstance(error, ProviderError)
     assert isinstance(error, NovelAIError)
     assert str(error) == "api failed"
 
 
-def test_provider_error_keeps_backward_compatible_message() -> None:
-    error = ProviderError("legacy provider failure")
+def test_provider_config_error_uses_structured_code() -> None:
+    error = ProviderConfigError(
+        ProviderErrorCode.CONFIGURATION,
+        provider_key="gemini",
+        provider_model="gemini-3.1-flash-lite",
+        message="Provider is not configured",
+    )
 
-    assert error.provider_error_code == ProviderErrorCode.UNKNOWN
-    assert error.provider_key == "unknown_provider"
-    assert str(error) == "legacy provider failure"
+    assert error.provider_error_code == ProviderErrorCode.CONFIGURATION
+    assert error.provider_key == "gemini"
+    assert str(error) == "Provider is not configured"
 
 
 def test_provider_error_exposes_public_details() -> None:

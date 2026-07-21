@@ -46,6 +46,10 @@ class TestProductionConfigValidator:
         assert result.has_fatal
         assert any("ENV" in i.message for i in result.fatals)
 
+    def test_dummy_provider_is_fatal_in_production(self):
+        result = validate_production_config(_make_prod_settings(PROVIDER_DEFAULT="dummy"))
+        assert any(i.category == "provider" for i in result.fatals)
+
     def test_weak_session_secret_fatal(self):
         result = validate_production_config(
             _make_prod_settings(SESSION_SECRET_KEY="changeme-generate-a-real-secret-in-production")

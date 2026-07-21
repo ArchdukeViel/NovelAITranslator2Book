@@ -337,7 +337,9 @@ must never be sent to a free-tier model. The approved model chain is
 **Baseline protections implemented**:
 
 - Owner-session authorization for dangerous backend routes.
-- Fail-closed legacy API-key behavior.
+- Translation fails closed when Gemini credentials are unavailable; the dummy
+  provider is selectable only under `ENV=test` and cannot persist production
+  translations.
 - HTTP-only same-site session cookies.
 - Production session secret fails closed when left at default value.
 - Path traversal protection for storage-backed identifiers.

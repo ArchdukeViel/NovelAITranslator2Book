@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from novelai.config.settings import settings
+from novelai.core.errors import ProviderConfigError, ProviderErrorCode
 from novelai.providers.base import TranslationProvider
 from novelai.providers.dummy_provider import DummyProvider
 from novelai.providers.gemini_provider import GeminiProvider
@@ -23,7 +25,7 @@ def register_provider(key: str, factory: Callable[[], TranslationProvider]) -> N
 
 def available_providers() -> list[str]:
     """Return the registered provider keys."""
-    return sorted(_PROVIDER_REGISTRY)
+    return sorted(key for key in _PROVIDER_REGISTRY if key != "dummy" or settings.ENV == "test")
 
 
 def available_models(key: str) -> list[str]:
@@ -37,5 +39,12 @@ def available_models(key: str) -> list[str]:
 
 def get_provider(key: str) -> TranslationProvider:
     """Return the provider registered for *key*."""
+    if key == "dummy" and settings.ENV != "test":
+        raise ProviderConfigError(
+            ProviderErrorCode.CONFIGURATION,
+            provider_key=key,
+            provider_model="dummy",
+            message="The dummy provider is available only when ENV=test.",
+        )
     factory = _PROVIDER_REGISTRY[key]
     return factory()

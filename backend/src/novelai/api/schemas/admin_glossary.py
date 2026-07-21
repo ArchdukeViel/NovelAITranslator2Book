@@ -580,6 +580,8 @@ def _qa_response(finding: Any) -> GlossaryQAFindingResponse:
 
 
 def _provider_error_status(exc: ProviderError) -> int:
+    if exc.provider_error_code == ProviderErrorCode.CONFIGURATION:
+        return 503
     if exc.provider_error_code == ProviderErrorCode.CONTEXT_TOO_LARGE:
         return 400
     if exc.provider_error_code == ProviderErrorCode.RATE_LIMITED:
@@ -597,6 +599,7 @@ def _provider_error_status(exc: ProviderError) -> int:
 
 def _safe_provider_error_detail(exc: ProviderError) -> str:
     messages = {
+        ProviderErrorCode.CONFIGURATION: "Provider is not configured.",
         ProviderErrorCode.RATE_LIMITED: "Provider rate limit reached.",
         ProviderErrorCode.QUOTA_EXHAUSTED: "Provider quota exhausted.",
         ProviderErrorCode.MODEL_UNAVAILABLE: "Provider model unavailable.",

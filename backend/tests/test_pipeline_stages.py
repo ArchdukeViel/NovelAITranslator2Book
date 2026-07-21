@@ -13,7 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from novelai.config.settings import settings
-from novelai.core.errors import ProviderError, ProviderErrorCode
+from novelai.core.errors import ProviderConfigError, ProviderError, ProviderErrorCode
 from novelai.db.base import Base
 from novelai.db.models.novel import Novel
 from novelai.prompts.models import TranslationRequest
@@ -846,6 +846,63 @@ async def test_translate_stage_saved_policy_skips_invalid_credentials(tmp_path):
     scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
 
     assert scheduler.to_model_state_list() == []
+
+@pytest.mark.asyncio
+async def test_translate_stage_missing_gemini_key_fails_before_provider_or_storage(tmp_path):
+    env = _fallback_stage_env(tmp_path)
+    env["prefs"].clear_api_key("gemini")
+    requested_provider_keys: list[str] = []
+
+    def provider_factory(provider_key: str) -> TranslationProvider:
+        requested_provider_keys.append(provider_key)
+        return _FallbackContractProvider(provider_key)
+
+    stage = TranslateStage(
+        provider_factory=provider_factory,
+        cache=env["cache"],
+        settings_service=env["prefs"],
+        usage_service=env["usage"],
+        storage=env["storage"],
+    )
+
+    with pytest.raises(ProviderConfigError) as exc_info:
+        await stage.run(_fallback_context())
+
+    assert exc_info.value.provider_error_code == ProviderErrorCode.CONFIGURATION
+    assert requested_provider_keys == []
+    assert env["storage"].list_keys_under("runtime/translation") == []
+
+
+@pytest.mark.asyncio
+async def test_translate_stage_rejects_dummy_provider_outside_test_environment(tmp_path, monkeypatch):
+    env = _fallback_stage_env(tmp_path)
+    env["prefs"].set_provider_key("dummy")
+    env["prefs"].set_provider_model("dummy")
+    monkeypatch.setattr(settings, "ENV", "production")
+    requested_provider_keys: list[str] = []
+
+    def provider_factory(provider_key: str) -> TranslationProvider:
+        requested_provider_keys.append(provider_key)
+        return _FallbackContractProvider(provider_key)
+
+    stage = TranslateStage(
+        provider_factory=provider_factory,
+        cache=env["cache"],
+        settings_service=env["prefs"],
+        usage_service=env["usage"],
+        storage=env["storage"],
+    )
+    context = _fallback_context()
+    context.provider_key = "dummy"
+    context.provider_model = "dummy"
+
+    with pytest.raises(ProviderConfigError) as exc_info:
+        await stage.run(context)
+
+    assert exc_info.value.provider_error_code == ProviderErrorCode.CONFIGURATION
+    assert requested_provider_keys == []
+    assert env["storage"].list_keys_under("runtime/translation") == []
+
 
 @pytest.mark.asyncio
 async def test_translate_stage_gemini_unknown_error_does_not_fallback(tmp_path):

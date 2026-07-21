@@ -431,8 +431,8 @@ class AdminService:
         self.preferences.clear_api_key(normalized_provider)
         self._upsert_credential_metadata(normalized_provider, is_active=False, validation_status="unchecked")
         if self.preferences.get_preferred_provider() == normalized_provider:
-            self.preferences.set_preferred_provider("dummy")
-            self.preferences.set_preferred_model("dummy")
+            self.preferences.set_preferred_provider(settings.PROVIDER_DEFAULT)
+            self.preferences.set_preferred_model(settings.PROVIDER_GEMINI_DEFAULT_MODEL)
         return self.provider_api_key_status(normalized_provider)
 
     def provider_inventory(self) -> dict[str, Any]:

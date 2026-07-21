@@ -182,7 +182,7 @@ class PreferencesService:
 
     def get_preferred_provider(self) -> str:
         """Get user's preferred translation provider."""
-        return self.get("preferred_provider", "dummy")
+        return self.get("preferred_provider", settings.PROVIDER_DEFAULT)
 
     def set_preferred_provider(self, provider_key: str) -> None:
         """Set user's preferred translation provider."""

@@ -6,7 +6,9 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from novelai.config.settings import settings
 from novelai.config.workflow_profiles import normalize_workflow_profile_step
+from novelai.core.errors import ProviderConfigError, ProviderErrorCode
 from novelai.inputs.base import DocumentAdapter
 from novelai.providers.base import TranslationProvider
 from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
@@ -92,7 +94,6 @@ class NovelOrchestrationService:
         self._settings = settings_service or PreferencesService()
         self._cache = translation_cache or TranslationCache()
         self._usage = usage_service or UsageService()
-        self._missing_api_key_warning_emitted = False
 
 
     @staticmethod
@@ -275,12 +276,20 @@ class NovelOrchestrationService:
         key = provider_key or self._settings.get_provider_key()
         model = provider_model or self._settings.get_provider_model()
         if self._provider_requires_api_key(key) and not self._settings.get_api_key(key):
-            if not self._missing_api_key_warning_emitted:
-                logger.warning("%s API key missing; falling back to dummy provider.", key.capitalize())
-                self._missing_api_key_warning_emitted = True
-            return "dummy", "dummy"
-        self._missing_api_key_warning_emitted = False
+            raise ProviderConfigError(
+                ProviderErrorCode.CONFIGURATION,
+                provider_key=key,
+                provider_model=model,
+                message="Gemini provider is not configured. Add an API key in Settings.",
+            )
         if key == "dummy":
+            if settings.ENV != "test":
+                raise ProviderConfigError(
+                    ProviderErrorCode.CONFIGURATION,
+                    provider_key=key,
+                    provider_model="dummy",
+                    message="The dummy provider is available only when ENV=test.",
+                )
             return "dummy", "dummy"
         return key, model
 

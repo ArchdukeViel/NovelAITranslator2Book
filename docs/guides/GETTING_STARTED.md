@@ -190,7 +190,7 @@ http://127.0.0.1:8000/api/health
 Use the web UI for daily work:
 
 1. `/admin/dashboard`: operational home, worker state, queue snapshot, and recent jobs.
-2. `/admin/settings`: API token state, dummy API mode, and backend health.
+2. `/admin/settings`: Gemini API token state and backend health.
 3. `/admin/crawler`: queue source crawls, run direct scrapes, import documents, and inspect quick source health.
 4. `/admin/translation`: queue translations, run direct translations, view progress, and download exports.
 5. `/admin/activity`: inspect queued, running, paused, failed, completed, and cancelled crawler/translation activity.
@@ -217,7 +217,7 @@ The reader stores theme, font size, and width preferences in the frontend state.
 
 1. Start backend and frontend.
 2. Open `/admin/settings`.
-3. Add a real API token, or click the dummy API button for UI-only testing.
+3. Add a Gemini API token before starting a translation.
 4. Open `/admin/crawler`.
 5. Select a source such as `syosetu_ncode`.
 6. Enter the novel ID or URL required by the source adapter.
@@ -342,7 +342,7 @@ No real translation output:
 
 - Check provider keys in `.env`.
 - Check `PROVIDER_DEFAULT`.
-- Use dummy provider only for UI and workflow testing.
+- The dummy provider is restricted to automated test runs with `ENV=test`.
 
 ---
 

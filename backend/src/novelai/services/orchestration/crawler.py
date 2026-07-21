@@ -7,7 +7,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from novelai.core.errors import SourceError
+from novelai.core.errors import ProviderConfigError, SourceError
 from novelai.db.engine import session_scope
 from novelai.db.models.novel import Novel
 from novelai.glossary import extract_candidate_glossary_terms
@@ -75,7 +75,7 @@ def _bounded_metadata_translation_error(exc: Exception) -> str:
 
 def _mark_metadata_translation_failure(meta: dict[str, Any], exc: Exception, *, config: dict[str, str]) -> None:
     meta["metadata_translation_prompt_version"] = METADATA_TRANSLATION_PROMPT_VERSION
-    if _METADATA_TRANSLATION_UNAVAILABLE_MESSAGE in str(exc):
+    if isinstance(exc, ProviderConfigError) or _METADATA_TRANSLATION_UNAVAILABLE_MESSAGE in str(exc):
         meta["metadata_translation_status"] = "unavailable"
         meta.pop("metadata_translation_error", None)
         return

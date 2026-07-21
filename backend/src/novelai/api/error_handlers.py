@@ -117,6 +117,7 @@ _EXPLANATION_BY_CODE: dict[str, str] = {
 }
 
 _PROVIDER_STATUS_BY_CODE: dict[ProviderErrorCode, int] = {
+    ProviderErrorCode.CONFIGURATION: status.HTTP_503_SERVICE_UNAVAILABLE,
     ProviderErrorCode.RATE_LIMITED: status.HTTP_429_TOO_MANY_REQUESTS,
     ProviderErrorCode.QUOTA_EXHAUSTED: status.HTTP_503_SERVICE_UNAVAILABLE,
     ProviderErrorCode.MODEL_UNAVAILABLE: status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -339,6 +340,7 @@ def _provider_error_status(exc: ProviderError) -> int:
 
 def _provider_error_message(exc: ProviderError) -> str:
     messages = {
+        ProviderErrorCode.CONFIGURATION: "Provider is not configured",
         ProviderErrorCode.RATE_LIMITED: "Provider rate limit reached",
         ProviderErrorCode.QUOTA_EXHAUSTED: "Provider quota exhausted",
         ProviderErrorCode.MODEL_UNAVAILABLE: "Provider model unavailable",
@@ -355,6 +357,8 @@ def _provider_error_message(exc: ProviderError) -> str:
 
 
 def _provider_error_explanation(exc: ProviderError) -> str:
+    if exc.provider_error_code == ProviderErrorCode.CONFIGURATION:
+        return "Configure an active provider credential before starting translation."
     if exc.provider_error_code in {ProviderErrorCode.RATE_LIMITED, ProviderErrorCode.QUOTA_EXHAUSTED}:
         return "The selected provider/model cannot complete this request right now."
     if exc.provider_error_code in {ProviderErrorCode.MODEL_UNAVAILABLE, ProviderErrorCode.MODEL_DEPRECATED}:
