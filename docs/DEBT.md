@@ -145,9 +145,11 @@ Deferred items are tracked but excluded from the active count.
   `formatAdminErrorString` compatibility wrapper is removed; admin error UI
   uses the canonical structured `formatAdminError` result. The runtime
   container now exposes one canonical `preferences` singleton; its `settings`
-  property alias and duplicate fixture store are removed. The unused
-  `novels.status` database mirror remains until an explicit column-removal
-  migration is approved and verified.
+  property alias and duplicate fixture store are removed. Translation
+  orchestration no longer re-exports helpers from its lineage, metadata,
+  progress, or resume modules; callers import from the owning modules. The
+  unused `novels.status` database mirror remains until an explicit
+  column-removal migration is approved and verified.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

@@ -1,4 +1,4 @@
-"""Translation orchestration — core functions + re-exports.
+"""Core translation orchestration.
 
 This module holds the core orchestration functions:
 - DB state helpers, exception helpers, platform/glossary resolution
@@ -7,7 +7,6 @@ This module holds the core orchestration functions:
 
 Metadata translation and request estimation are in ``translation_metadata.py``.
 Paragraph lineage and delta retranslation are in ``translation_lineage.py``.
-Both are re-exported here for backward compatibility.
 """
 
 from __future__ import annotations
@@ -27,6 +26,11 @@ from novelai.glossary import glossary_status_counts, normalize_glossary_entries
 from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.services.library_summary_service import best_effort_invalidate
 from novelai.services.orchestration.common import PreflightIssue, _make_state_data
+from novelai.services.orchestration.translation_lineage import (
+    _count_pending_glossary_entries,
+    _try_delta_translate_chapter,
+)
+from novelai.services.orchestration.translation_progress import _build_chapter_summary
 from novelai.services.pipeline.checkpoint import Checkpoint
 from novelai.sources.base import SourceAdapter
 
@@ -765,6 +769,7 @@ async def translate_chapters(
         raise RuntimeError(f"Translation preflight failed: {details}")
 
     # Initialize CheckpointManager for segment-level resume (REQ-2)
+    from novelai.services.orchestration.translation_resume import _init_checkpoint_manager
 
     cp_mgr = _init_checkpoint_manager(
         self,
@@ -1142,52 +1147,3 @@ async def retranslate_chapter(
         json_output=json_output,
         allow_cross_provider_fallback=allow_cross_provider_fallback,
     )
-
-
-# ---------------------------------------------------------------------------
-# Re-exports — backward compatibility for novel_orchestration_service.py
-# ---------------------------------------------------------------------------
-
-from novelai.services.orchestration.translation_lineage import (  # noqa: E402
-    _compare_lineage,
-    _count_pending_glossary_entries,
-    _estimate_delta_requests,
-    _lineage_from_paragraphs,
-    _lineage_signature,
-    _old_lineage_by_chapter,
-    _try_delta_translate_chapter,
-)
-from novelai.services.orchestration.translation_metadata import (  # noqa: E402
-    _translate_metadata_batch,
-    _translate_metadata_fields,
-    _translate_metadata_items,
-    _translate_text,
-    estimate_translation_requests,
-)
-from novelai.services.orchestration.translation_progress import (  # noqa: E402
-    _build_chapter_summary,
-)
-from novelai.services.orchestration.translation_resume import (  # noqa: E402
-    _check_chapter_resume_state,
-    _init_checkpoint_manager,
-    _restore_checkpoint_for_chapter,
-)
-
-__all__ = [
-    "_build_chapter_summary",
-    "_check_chapter_resume_state",
-    "_compare_lineage",
-    "_count_pending_glossary_entries",
-    "_estimate_delta_requests",
-    "_init_checkpoint_manager",
-    "_lineage_from_paragraphs",
-    "_lineage_signature",
-    "_old_lineage_by_chapter",
-    "_restore_checkpoint_for_chapter",
-    "_translate_metadata_batch",
-    "_translate_metadata_fields",
-    "_translate_metadata_items",
-    "_translate_text",
-    "_try_delta_translate_chapter",
-    "estimate_translation_requests",
-]

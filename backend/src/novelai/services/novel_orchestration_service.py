@@ -26,13 +26,15 @@ from novelai.services.orchestration.importer import import_document
 from novelai.services.orchestration.ocr import _extract_ocr_candidate_text, ingest_ocr_candidates
 from novelai.services.orchestration.translation import (
     _preflight_translation,
-    _translate_metadata_fields,
-    _translate_text,
-    estimate_translation_requests,
     polish_low_confidence_chapters,
     retranslate_chapter,
     run_phased_translation_pipeline,
     translate_chapters,
+)
+from novelai.services.orchestration.translation_metadata import (
+    _translate_metadata_fields,
+    _translate_text,
+    estimate_translation_requests,
 )
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.translation_cache import TranslationCache
