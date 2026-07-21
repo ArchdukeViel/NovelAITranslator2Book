@@ -29,7 +29,7 @@ from novelai.translation.pipeline.pipeline import TranslationPipeline
 from novelai.translation.pipeline.stages.base import PipelineStage
 from novelai.translation.pipeline.stages.fetch import FetchStage
 from novelai.translation.pipeline.stages.parse import ParseStage
-from novelai.translation.pipeline.stages.segment import SegmentStage, SmartSegmentStage
+from novelai.translation.pipeline.stages.segment import SmartSegmentStage
 from novelai.translation.pipeline.stages.translate import TranslateStage
 from novelai.translation.scheduler import SchedulerPausedError
 from tests.conftest import MockSourceAdapter
@@ -555,8 +555,8 @@ async def test_parse_stage(pipeline_context):
 
 @pytest.mark.asyncio
 async def test_segment_stage():
-    """Test SegmentStage."""
-    segment = SegmentStage()
+    """Test SmartSegmentStage."""
+    segment = SmartSegmentStage()
     context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
     context.normalized_text = "Paragraph 1\n\nParagraph 2\n\nParagraph 3"
 
@@ -579,8 +579,8 @@ async def test_segment_stage():
 
 @pytest.mark.asyncio
 async def test_segment_stage_empty():
-    """Test SegmentStage with empty text."""
-    segment = SegmentStage()
+    """Test SmartSegmentStage with empty text."""
+    segment = SmartSegmentStage()
     context = PipelineState(chapter_url="test")
     context.normalized_text = ""
 
@@ -594,7 +594,7 @@ async def test_segment_stage_empty():
 
 @pytest.mark.asyncio
 async def test_pipeline_records_stage_transition_events():
-    segment = SegmentStage()
+    segment = SmartSegmentStage()
     pipeline = TranslationPipeline([segment])
     context = PipelineState(
         chapter_url="test",
@@ -612,7 +612,7 @@ async def test_pipeline_records_stage_transition_events():
     assert result.pipeline_events[0]["job_id"] == "job_1"
     assert result.pipeline_events[0]["activity_id"] == "activity_1"
     assert result.pipeline_events[0]["source_key"] == "kakuyomu"
-    assert result.pipeline_events[1]["stage_name"] == "SegmentStage"
+    assert result.pipeline_events[1]["stage_name"] == "SmartSegmentStage"
     assert result.pipeline_events[1]["timestamp"]
 
 

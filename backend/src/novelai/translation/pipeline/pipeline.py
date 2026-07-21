@@ -39,7 +39,6 @@ def _stage_status_after(stage_name: str) -> str:
         "FetchStage": "fetched",
         "ParseStage": "parsed",
         "SmartSegmentStage": "segmented",
-        "SegmentStage": "segmented",
         "TranslateStage": "translated",
         "TranslationQAStage": "translated",
         "PostProcessStage": "translated",

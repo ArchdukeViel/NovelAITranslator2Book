@@ -25,6 +25,7 @@ from novelai.translation.scheduler import (
     SchedulerPolicy,
     SelectionReason,
     TranslationScheduler,
+    normalize_model_configs,
 )
 from tests.conftest import TESTS_TMP_ROOT
 
@@ -128,6 +129,18 @@ def _context(*, policy: str = "volume_first") -> PipelineState:
         {"provider_key": "mock", "provider_model": "slow", "priority_order": 2, "quality_priority_order": 2},
     ]
     return context
+
+
+def test_normalize_model_configs_ignores_legacy_provider_fields() -> None:
+    configs = normalize_model_configs(
+        [{"provider": "legacy", "model": "legacy-model"}],
+        default_provider_key="gemini",
+        default_models=["gemini-3.1-flash-lite"],
+    )
+
+    assert [(item.provider_key, item.provider_model) for item in configs] == [
+        ("gemini", "gemini-3.1-flash-lite")
+    ]
 
 
 def _two_chunk_context() -> PipelineState:

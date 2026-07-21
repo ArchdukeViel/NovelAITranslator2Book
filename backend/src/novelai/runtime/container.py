@@ -156,14 +156,14 @@ class Container:
             from novelai.translation.pipeline.stages.fetch import FetchStage
             from novelai.translation.pipeline.stages.parse import ParseStage
             from novelai.translation.pipeline.stages.post_process import PostProcessStage
-            from novelai.translation.pipeline.stages.segment import SegmentStage
+            from novelai.translation.pipeline.stages.segment import SmartSegmentStage
             from novelai.translation.pipeline.stages.translate import TranslateStage
             from novelai.translation.pipeline.stages.translation_qa import TranslationQAStage
 
             stages = [
                 FetchStage(),
                 ParseStage(),
-                SegmentStage(),
+                SmartSegmentStage(),
                 TranslateStage(
                     provider_factory=get_provider,
                     cache=self.translation_cache,

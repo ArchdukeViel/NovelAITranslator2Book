@@ -872,7 +872,3 @@ class SmartSegmentStage(PipelineStage):
             logger.warning("Segmentation warnings: %s", warnings)
         logger.debug("Chunk sizes: %s", [chunk.char_count for chunk in chunks])
         return context
-
-
-class SegmentStage(SmartSegmentStage):
-    """Backward-compatible name for the smart segmenter."""

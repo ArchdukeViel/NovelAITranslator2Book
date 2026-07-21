@@ -18,7 +18,7 @@ from novelai.translation.pipeline.pipeline import PipelineStageError, Translatio
 from novelai.translation.pipeline.stages.fetch import FetchStage
 from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.post_process import PostProcessStage
-from novelai.translation.pipeline.stages.segment import SegmentStage, SmartSegmentStage
+from novelai.translation.pipeline.stages.segment import SmartSegmentStage
 from novelai.translation.pipeline.stages.translate import TranslateStage
 from novelai.translation.scheduler import SchedulerPausedError
 from novelai.translation.service import TranslationService
@@ -91,7 +91,7 @@ def _seed_trace_chapter(fixture: Any, novel_id: str = "trace_novel") -> None:
         {
             "novel_id": novel_id,
             "title": "Trace Novel",
-            "source": "mock_source",
+            "source_key": "mock_source",
             "source_language": "Japanese",
             "chapters": [
                 {
@@ -233,7 +233,7 @@ async def test_full_translation_pipeline(integration_fixture):
         stages=[
             FetchStage(),
             ParseStage(),
-            SegmentStage(),
+            SmartSegmentStage(),
             TranslateStage(
                 provider_factory=lambda key: fixture.mock_provider,
                 cache=fixture.cache,
@@ -330,7 +330,7 @@ async def test_translate_stage_falls_back_from_gemini_to_dummy(integration_fixtu
         stages=[
             FetchStage(),
             ParseStage(),
-            SegmentStage(),
+            SmartSegmentStage(),
             TranslateStage(
                 provider_factory=lambda key: gemini_provider if key == "gemini" else dummy_provider,  # type: ignore[arg-type]
                 cache=fixture.cache,
@@ -556,7 +556,7 @@ async def test_full_pipeline_scrape_translate_export(integration_fixture):
         "novel_id": novel_id,
         "title": "テスト小説",
         "author": "テスト作者",
-        "source": "mock_source",
+        "source_key": "mock_source",
         "chapters": [
             {"id": str(i), "num": i, "title": f"第{i}章", "url": f"http://example.com/{novel_id}/{i}"}
             for i in range(1, 4)
