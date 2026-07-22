@@ -124,7 +124,7 @@ def crawl_env():
     # (which requires metadata to exist) before the full-mode re-scrape saves new metadata.
     for novel_id in ("novel-1", "novel-2", "novel-A", "novel-B"):
         storage.save_metadata(novel_id, {
-            "source": "test_source",
+            "source_key": "test_source",
             "source_url": f"https://example.com/{novel_id}",
             "title": f"Test Novel {novel_id}",
             "author": "Test Author",
@@ -169,7 +169,7 @@ class TestAdminTaxonomyPreservation:
 
         # Simulate existing metadata with admin-only fields
         existing = {
-            "source": "test",
+            "source_key": "test",
             "source_url": "https://example.com/novel",
             "title": "Original",
             "author": "Author",
@@ -181,7 +181,7 @@ class TestAdminTaxonomyPreservation:
 
         # Simulate recrawl: new metadata without admin_notes or custom_field
         new_data = {
-            "source": "test",
+            "source_key": "test",
             "source_url": "https://example.com/novel",
             "title": "Updated Title",
             "author": "Updated Author",
@@ -204,7 +204,7 @@ class TestAdminTaxonomyPreservation:
         storage = crawl_env["storage"]
 
         existing = {
-            "source": "test",
+            "source_key": "test",
             "source_url": "https://example.com/novel",
             "title": "Novel",
             "author": "Author",
@@ -218,7 +218,7 @@ class TestAdminTaxonomyPreservation:
 
         # Recrawl returns only 2 chapters (chapter 3 was removed at source)
         new_data = {
-            "source": "test",
+            "source_key": "test",
             "source_url": "https://example.com/novel",
             "title": "Novel",
             "author": "Author",
@@ -242,7 +242,7 @@ class TestAdminTaxonomyPreservation:
         storage = crawl_env["storage"]
 
         existing = {
-            "source": "test",
+            "source_key": "test",
             "source_url": "https://example.com/novel",
             "title": "Novel",
             "author": "Author",
@@ -252,7 +252,7 @@ class TestAdminTaxonomyPreservation:
         storage.save_metadata("taxonomy-novel", existing)
 
         new_data = {
-            "source": "test",
+            "source_key": "test",
             "source_url": "https://example.com/novel",
             "title": "Novel Updated",
             "author": "Author",

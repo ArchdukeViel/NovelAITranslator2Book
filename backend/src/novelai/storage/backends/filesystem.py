@@ -48,6 +48,22 @@ class FilesystemBackend(StorageBackend):
     def delete(self, path: str | Path) -> None:
         dest = self._resolve(path)
         _try_unlink(dest)
+        self._prune_empty_parents(dest)
+
+    def _prune_empty_parents(self, path: Path) -> None:
+        """Remove empty object-prefix directories without deleting the root."""
+        try:
+            current = path.resolve().parent
+            current.relative_to(self._root)
+        except ValueError:
+            return
+
+        while current != self._root:
+            try:
+                current.rmdir()
+            except OSError:
+                break
+            current = current.parent
 
     def exists(self, path: str | Path) -> bool:
         return self._resolve(path).exists()

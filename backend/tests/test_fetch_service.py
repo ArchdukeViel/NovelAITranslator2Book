@@ -214,7 +214,7 @@ async def test_syosetu_adapter_uses_fetch_service():
     metadata = await source.fetch_metadata("https://ncode.syosetu.com/n1234ab/")
 
     assert metadata["title"] == "Test Novel"
-    assert metadata["source"] == "syosetu_ncode"
+    assert metadata["source_key"] == "syosetu_ncode"
     assert metadata["chapters"][0]["url"] == "https://ncode.syosetu.com/n1234ab/1/"
     assert fake_fetch.calls[0]["source_key"] == "syosetu_ncode"
 
@@ -233,7 +233,7 @@ async def test_kakuyomu_adapter_uses_fetch_service():
     metadata = await source.fetch_metadata("https://kakuyomu.jp/works/16818093000000000000/")
 
     assert metadata["title"] == "Kakuyomu Work"
-    assert metadata["source"] == "kakuyomu"
+    assert metadata["source_key"] == "kakuyomu"
     assert metadata["chapters"][0]["source_episode_id"] == "16818093000000000001"
     assert fake_fetch.calls[0]["source_key"] == "kakuyomu"
 
@@ -273,7 +273,7 @@ async def test_generic_adapter_uses_fetch_service():
     metadata = await source.fetch_metadata("https://example.com/novel")
 
     assert metadata["title"] == "Generic Novel"
-    assert metadata["source"] == "generic"
+    assert metadata["source_key"] == "generic"
     assert [chapter["url"] for chapter in metadata["chapters"]] == [
         "https://example.com/novel/chapter-1",
         "https://example.com/novel/chapter-2",

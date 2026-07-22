@@ -122,7 +122,10 @@ def test_load_metadata_skips_invalid_backup_and_uses_older_valid_backup(storage:
     backup_dir.mkdir(parents=True, exist_ok=True)
     # Newest backup is corrupt; older backup is valid.
     (backup_dir / "2024-03-02T00_00_00Z.json").write_text("{corrupt", encoding="utf-8")
-    (backup_dir / "2024-03-01T00_00_00Z.json").write_text(json.dumps({"title": "Older"}), encoding="utf-8")
+    (backup_dir / "2024-03-01T00_00_00Z.json").write_text(
+        json.dumps({"schema_version": storage.SCHEMA_VERSION, "title": "Older"}),
+        encoding="utf-8",
+    )
 
     loaded = storage.load_metadata("skip-novel")
     assert loaded is not None

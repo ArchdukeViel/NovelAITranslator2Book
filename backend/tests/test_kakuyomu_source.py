@@ -146,7 +146,7 @@ def test_parse_metadata_html_collects_episode_links_in_order() -> None:
 
     metadata = source._parse_metadata_html(html, "https://kakuyomu.jp/works/822139845959461179/")
 
-    assert metadata["source"] == "kakuyomu"
+    assert metadata["source_key"] == "kakuyomu"
     assert metadata["title"] == "霧の旅"
     assert metadata["author"] == "作家B"
     assert metadata["published_at"] == "2026-03-01T09:00:00+09:00"

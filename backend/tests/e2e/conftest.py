@@ -149,12 +149,20 @@ def e2e_test_client(
     # Step 5: Propagate the safely_refresh noop to every other module
     # that imports it (crawler, translation already done via noop above
     # but we re-assert here).
-    import novelai.api.routers.editor as _editor
     import novelai.services.backup_manager as _backup
     import novelai.services.checkpoint_manager as _checkpoint
+    import novelai.services.editor_service as _editor_service
     import novelai.services.orchestration.importer as _importer
 
-    for _mod in (_crawler, _translation_svc, _editor, _backup, _checkpoint, _importer):
+    for _mod in (
+        _crawler,
+        _glossary_svc,
+        _translation_svc,
+        _editor_service,
+        _backup,
+        _checkpoint,
+        _importer,
+    ):
         monkeypatch_session.setattr(
             _mod,
             "safely_refresh_catalog_projection_after_storage_write",
@@ -223,6 +231,12 @@ def e2e_test_client(
 
     # Temp storage
     storage = StorageService(e2e_storage_dir)
+    # Rebuild the storage-dependent service graph against the isolated root.
+    # Reassigning only ``orchestrator.storage`` leaves TranslateStage writing
+    # chunk lineage through the container's default StorageService.
+    monkeypatch_session.setattr(container, "_storage", storage)
+    monkeypatch_session.setattr(container, "_translation", None)
+    monkeypatch_session.setattr(container, "_orchestrator", None)
     container.orchestrator.storage = storage
 
     from novelai.api.app import create_app

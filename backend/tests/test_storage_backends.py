@@ -40,6 +40,14 @@ class TestFilesystemBackend:
         fs.delete("x.txt")
         assert not fs.exists("x.txt")
 
+    def test_delete_prunes_empty_prefix_directories(self, fs: FilesystemBackend, tmp_path: Path) -> None:
+        fs.save("novels/example/chapters/1.json", b"data")
+
+        fs.delete("novels/example/chapters/1.json")
+
+        assert not (tmp_path / "novels" / "example").exists()
+        assert tmp_path.exists()
+
     def test_delete_missing_is_noop(self, fs: FilesystemBackend) -> None:
         fs.delete("nope.txt")
 

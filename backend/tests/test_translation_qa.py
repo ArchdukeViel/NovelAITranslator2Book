@@ -433,7 +433,7 @@ async def test_orchestration_does_not_save_final_translation_when_qa_fails():
             {
                 "novel_id": novel_id,
                 "title": "QA No Save",
-                "source": "mock_source",
+                "source_key": "mock_source",
                 "source_language": "Japanese",
                 "chapters": [
                     {"id": "1", "num": 1, "title": "Chapter 1", "url": "http://example.com/qa/1"}

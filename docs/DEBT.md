@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 29
+- **Total active debt entries:** 28
 - **V1 launch blockers:** 6 (DEBT-075 through DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
@@ -862,7 +862,7 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M7 (Final Hardening)
 - **Category:** Backend | Testing | CI
 - **Priority:** High
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** Source-adapter, reader-availability, crawl,
   orchestration, recovery, and e2e test fixtures
 - **Description:** Forward-only metadata enforcement removed `source` and
@@ -874,6 +874,13 @@ Deferred items are tracked but excluded from the active count.
 - **Completion criteria:** Replace removed metadata aliases throughout active
   tests, fix any remaining suite-isolation failures exposed afterward, and run
   the exact local equivalents of all backend CI shards successfully.
+- **Resolution:** Active source, reader, crawl, orchestration, recovery, and e2e
+  fixtures now use `source_key`, `publication_status`, and current schema
+  versions. The e2e container rebuilds its storage-dependent service graph
+  against isolated storage, so translation lineage and idempotency are tested
+  in one boundary. Local CI-equivalent evidence includes 1,947 core tests,
+  592 extended-shard tests, and 5 e2e tests passing; Ruff, Pyright, and the
+  router-layer guard are clean.
 
 ### DEBT-096 — OpenAI vestiges contradict the Gemini-only provider contract
 - **Milestone:** Milestone M7 (Final Hardening)
@@ -891,3 +898,19 @@ Deferred items are tracked but excluded from the active count.
   install, remove OpenAI from product-facing UI and active-provider fixtures,
   retain provider-neutral persistence boundaries and generic secret-redaction
   defenses, regenerate lockfiles, and verify backend/frontend checks.
+
+### DEBT-097 — Full filesystem rescrape changes the public storage slug
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Storage | Data Integrity | Public Routing
+- **Priority:** High
+- **Status:** Resolved
+- **Affected areas:** Filesystem storage backend, full-rescrape lifecycle,
+  public catalog slug stability
+- **Description:** Object-prefix deletion removed every file but left empty
+  filesystem directories behind. A subsequent full scrape treated the empty
+  former slug directory as a collision and appended a source suffix, changing
+  the public catalog route for the same novel.
+- **Resolution:** Filesystem object deletion now prunes empty parent-prefix
+  directories up to, but never including, the configured storage root. Tests
+  prove root confinement, and the e2e create/full-scrape/publish flow preserves
+  the original canonical public slug.

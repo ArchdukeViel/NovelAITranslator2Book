@@ -115,7 +115,6 @@ def _seed_novel(
         "translated_title": kwargs.get("translated_title"),
         "author": kwargs.get("author", "Test Author"),
         "language": kwargs.get("language", "ja"),
-        "status": kwargs.get("status", "ongoing"),
         "publication_status": kwargs.get("publication_status", "ongoing"),
         "chapters": chapters
         if chapters is not None

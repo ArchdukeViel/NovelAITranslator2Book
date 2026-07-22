@@ -172,7 +172,7 @@ def _seed_metadata(storage: StorageService, novel_id: str, chapters: int = 3) ->
         "novel_id": novel_id,
         "title": f"Test Novel {novel_id}",
         "author": "Test Author",
-        "source": "test_source",
+        "source_key": "test_source",
         "chapters": [
             {"id": str(i), "num": i, "title": f"Chapter {i}", "url": f"http://example.test/{novel_id}/{i}"}
             for i in range(1, chapters + 1)
