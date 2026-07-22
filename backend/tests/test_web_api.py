@@ -2627,10 +2627,14 @@ class TestAdmin:
         rejected = c.put(
             "/api/admin/providers/fallback-policy",
             json={
-                "default_provider": "gemini",
-                "default_model": "google/gemma-4-31b-it",
+                "default_provider_key": "gemini",
+                "default_provider_model": "google/gemma-4-31b-it",
                 "candidates": [
-                    {"provider": "gemini", "model": "google/gemma-4-31b-it", "credential_id": "gemini"},
+                    {
+                        "provider_key": "gemini",
+                        "provider_model": "google/gemma-4-31b-it",
+                        "credential_id": "gemini",
+                    },
                 ],
             },
             headers=_csrf_headers(c),
@@ -2685,8 +2689,8 @@ class TestAdmin:
         policy_resp = c.put(
             "/api/admin/providers/fallback-policy",
             json={
-                "default_provider": "gemini",
-                "default_model": "gemma-4-31b-it",
+                "default_provider_key": "gemini",
+                "default_provider_model": "gemma-4-31b-it",
                 "default_credential_id": "gemini",
                 "allow_cross_provider_fallback": False,
                 "fallback_on_qa_failure": False,
@@ -2704,14 +2708,41 @@ class TestAdmin:
         )
         assert policy_resp.status_code == 200
         policy = policy_resp.json()
-        assert policy["default_provider"] == "gemini"
-        assert policy["default_model"] == "gemma-4-31b-it"
+        assert policy["default_provider_key"] == "gemini"
+        assert policy["default_provider_model"] == "gemma-4-31b-it"
         assert policy["allow_cross_provider_fallback"] is False
         assert policy["fallback_on_qa_failure"] is False
         assert "qa_failure" in policy["disallowed_failure_reasons"]
         assert [(item["provider_key"], item["provider_model"]) for item in policy["candidates"]] == [
             ("gemini", "gemma-4-31b-it"),
         ]
+
+    def test_provider_fallback_policy_rejects_legacy_provider_fields(
+        self,
+        _session_auth_defaults: None,
+    ) -> None:
+        bootstrap()
+        c = _make_app(_fresh_storage(), preferences=PreferencesService(_TMP / "prefs-policy-legacy"))
+
+        response = c.put(
+            "/api/admin/providers/fallback-policy",
+            json={"default_provider": "gemini", "default_model": "legacy"},
+            headers=_csrf_headers(c),
+        )
+
+        assert response.status_code == 422
+
+        candidate_response = c.put(
+            "/api/admin/providers/fallback-policy",
+            json={
+                "default_provider_key": "gemini",
+                "default_provider_model": "gemini-3.1-flash-lite",
+                "candidates": [{"provider": "gemini", "model": "legacy"}],
+            },
+            headers=_csrf_headers(c),
+        )
+
+        assert candidate_response.status_code == 400
 
     def test_admin_runtime_state_can_list_refresh_and_clear(self, _session_auth_defaults: None) -> None:
         bootstrap()

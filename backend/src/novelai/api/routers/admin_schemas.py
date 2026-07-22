@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class ProviderApiKeyRequest(BaseModel):
@@ -39,8 +39,10 @@ class ProviderCredentialUpdateRequest(BaseModel):
 
 
 class ProviderFallbackPolicyRequest(BaseModel):
-    default_provider: str | None = None
-    default_model: str | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    default_provider_key: str | None = None
+    default_provider_model: str | None = None
     default_credential_id: str | None = None
     allow_cross_provider_fallback: bool | None = None
     allow_run_overrides: bool | None = None

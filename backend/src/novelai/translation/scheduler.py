@@ -187,7 +187,9 @@ class SchedulerModelRuntimeState:
         self.last_error_message = str(error)
         if error.provider_error_code == ProviderErrorCode.RATE_LIMITED:
             self.status = SchedulerModelStatus.COOLING_DOWN.value
-            self.cooldown_until = error.cooldown_until or iso_after_seconds(error.retry_after_seconds or 60, now=current)
+            self.cooldown_until = error.cooldown_until or iso_after_seconds(
+                error.retry_after_seconds or 60, now=current
+            )
             return
         if error.provider_error_code == ProviderErrorCode.QUOTA_EXHAUSTED:
             self.status = SchedulerModelStatus.DAILY_EXHAUSTED.value
@@ -243,8 +245,8 @@ MAX_SCHEDULER_DECISION_CANDIDATES = 20
 
 @dataclass
 class SchedulerCandidateDecision:
-    provider: str
-    model: str
+    provider_key: str
+    provider_model: str
     status: str | None
     selected: bool
     skip_reason: str | None
@@ -261,8 +263,8 @@ class SchedulerDecision:
     job_id: str | None = None
     chapter_id: str | None = None
     checkpoint_id: str | None = None
-    selected_provider: str | None = None
-    selected_model: str | None = None
+    selected_provider_key: str | None = None
+    selected_provider_model: str | None = None
     policy: str = ""
     fallback_used: bool = False
     selected_at: str | None = None
@@ -291,8 +293,11 @@ class SchedulerDecision:
             result["chapter_id"] = self.chapter_id
         if self.checkpoint_id:
             result["checkpoint_id"] = self.checkpoint_id
-        if self.selected_provider and self.selected_model:
-            result["selected"] = {"provider": self.selected_provider, "model": self.selected_model}
+        if self.selected_provider_key and self.selected_provider_model:
+            result["selected"] = {
+                "provider_key": self.selected_provider_key,
+                "provider_model": self.selected_provider_model,
+            }
         else:
             result["selected"] = None
         if self.fallback_used:
@@ -302,8 +307,8 @@ class SchedulerDecision:
         if self.candidates:
             result["candidates"] = [
                 {
-                    "provider": c.provider,
-                    "model": c.model,
+                    "provider_key": c.provider_key,
+                    "provider_model": c.provider_model,
                     "status": c.status,
                     "selected": c.selected,
                     "skip_reason": c.skip_reason,
@@ -349,8 +354,8 @@ def build_scheduler_summary(decisions: list[dict[str, Any]]) -> dict[str, Any]:
         - ``fallback_count``
         - ``no_capacity_count``
         - ``skip_reason_counts``
-        - ``selected_model_counts``
-        - ``provider_counts``
+        - ``selected_provider_model_counts``
+        - ``provider_key_counts``
         - ``checkpoint_blocked_count``
         - ``memory_pressure_count``
         - ``peak_exact_memory_bytes``
@@ -362,8 +367,8 @@ def build_scheduler_summary(decisions: list[dict[str, Any]]) -> dict[str, Any]:
     fallback_count = 0
     no_capacity_count = 0
     skip_reason_counts: dict[str, int] = {}
-    selected_model_counts: dict[str, int] = {}
-    provider_counts: dict[str, int] = {}
+    selected_provider_model_counts: dict[str, int] = {}
+    provider_key_counts: dict[str, int] = {}
     checkpoint_blocked_count = 0
     memory_pressure_count = 0
     peak_exact_memory_bytes = 0
@@ -376,12 +381,12 @@ def build_scheduler_summary(decisions: list[dict[str, Any]]) -> dict[str, Any]:
 
         selected = d.get("selected")
         if isinstance(selected, dict):
-            provider = str(selected.get("provider") or "")
-            model = str(selected.get("model") or "")
-            if provider and model:
-                key = f"{provider}:{model}"
-                selected_model_counts[key] = selected_model_counts.get(key, 0) + 1
-                provider_counts[provider] = provider_counts.get(provider, 0) + 1
+            provider_key = str(selected.get("provider_key") or "")
+            provider_model = str(selected.get("provider_model") or "")
+            if provider_key and provider_model:
+                key = f"{provider_key}:{provider_model}"
+                selected_provider_model_counts[key] = selected_provider_model_counts.get(key, 0) + 1
+                provider_key_counts[provider_key] = provider_key_counts.get(provider_key, 0) + 1
 
         candidates = d.get("candidates")
         if isinstance(candidates, list):
@@ -410,8 +415,8 @@ def build_scheduler_summary(decisions: list[dict[str, Any]]) -> dict[str, Any]:
         "memory_pressure_count": memory_pressure_count,
         "peak_exact_memory_bytes": peak_exact_memory_bytes,
         "skip_reason_counts": dict(sorted(skip_reason_counts.items())),
-        "selected_model_counts": dict(sorted(selected_model_counts.items())),
-        "provider_counts": dict(sorted(provider_counts.items())),
+        "selected_provider_model_counts": dict(sorted(selected_provider_model_counts.items())),
+        "provider_key_counts": dict(sorted(provider_key_counts.items())),
     }
 
 
@@ -445,8 +450,8 @@ class SchedulerDecisionRecorder:
     def record_candidate(
         self,
         *,
-        provider: str,
-        model: str,
+        provider_key: str,
+        provider_model: str,
         status: str | None,
         selected: bool,
         skip_reason: str | None = None,
@@ -460,8 +465,8 @@ class SchedulerDecisionRecorder:
             return
         self._candidates.append(
             SchedulerCandidateDecision(
-                provider=provider,
-                model=model,
+                provider_key=provider_key,
+                provider_model=provider_model,
                 status=status,
                 selected=selected,
                 skip_reason=skip_reason,
@@ -482,14 +487,17 @@ class SchedulerDecisionRecorder:
     ) -> SchedulerDecision:
         self._decision.policy = policy
         self._decision.selected_at = selected_at or utc_now_iso()
-        self._decision.selected_provider = selection.provider_key
-        self._decision.selected_model = selection.provider_model
+        self._decision.selected_provider_key = selection.provider_key
+        self._decision.selected_provider_model = selection.provider_model
         self._decision.fallback_used = (
-            selection.reason != SelectionReason.PRIMARY_AVAILABLE.value
-            and selection.provider_key is not None
+            selection.reason != SelectionReason.PRIMARY_AVAILABLE.value and selection.provider_key is not None
         )
         self._decision.failure_reason = (
-            "no_capacity" if selection.paused and "cooldown" not in (selection.reason or "") and "exhausted" not in (selection.reason or "") else None
+            "no_capacity"
+            if selection.paused
+            and "cooldown" not in (selection.reason or "")
+            and "exhausted" not in (selection.reason or "")
+            else None
         )
         self._decision.candidates = self._candidates
         self._decision.candidate_count_total = total_candidates
@@ -557,8 +565,8 @@ class TranslationScheduler:
             if decision_recorder is not None:
                 skip_reason = None if available else _reason_for_unavailable_state(state)
                 decision_recorder.record_candidate(
-                    provider=config.provider_key,
-                    model=config.provider_model,
+                    provider_key=config.provider_key,
+                    provider_model=config.provider_model,
                     status=state.status,
                     selected=available and (index == 0 or first_unavailable_reason is not None),
                     skip_reason=skip_reason,
@@ -658,7 +666,9 @@ def normalize_policy(value: str | SchedulerPolicy | None) -> SchedulerPolicy:
     return SchedulerPolicy.VOLUME_FIRST
 
 
-def normalize_model_configs(raw_items: Any, *, default_provider_key: str, default_models: list[str], allow_empty: bool = False) -> list[SchedulerModelConfig]:
+def normalize_model_configs(
+    raw_items: Any, *, default_provider_key: str, default_models: list[str], allow_empty: bool = False
+) -> list[SchedulerModelConfig]:
     configs: list[SchedulerModelConfig] = []
     if isinstance(raw_items, list):
         for index, item in enumerate(raw_items):

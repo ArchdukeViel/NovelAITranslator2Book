@@ -94,11 +94,11 @@ export default function SchedulerHealthPage() {
               <PanelBody className="space-y-3 text-sm">
                 <div>
                   <div className="text-muted-foreground">Default Provider</div>
-                  <div className="font-medium">{health.data.policy.default_provider}</div>
+                  <div className="font-medium">{health.data.policy.default_provider_key}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Default Model</div>
-                  <div className="font-medium">{health.data.policy.default_model}</div>
+                  <div className="font-medium">{health.data.policy.default_provider_model}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Cross-Provider Fallback</div>

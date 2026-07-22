@@ -270,6 +270,12 @@ Deferred items are tracked but excluded from the active count.
   `provider_model`; setter and metadata boundaries reject the removed
   `provider` and `model` fields. The 302 directly affected preference, prompt,
   storage, orchestration, and web API tests pass with focused Ruff validation.
+  Provider fallback policies, candidates, health responses, scheduler decision
+  records, and scheduler summaries now use only `provider_key` and
+  `provider_model` forms; removed top-level and candidate fields fail closed,
+  and the frontend consumes the canonical observability contract. The 282
+  focused backend tests and 9 focused frontend tests pass with Ruff, Pyright,
+  TypeScript, and ESLint validation.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

@@ -91,8 +91,8 @@ class TestSchedulerDecisionRecorder:
         assert selection.provider_model == "model_a"
 
         decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
-        assert decision.selected_provider == "provider_a"
-        assert decision.selected_model == "model_a"
+        assert decision.selected_provider_key == "provider_a"
+        assert decision.selected_provider_model == "model_a"
 
     def test_decision_includes_chapter_id(self) -> None:
         scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
@@ -158,10 +158,10 @@ class TestSkipReasons:
         selection = scheduler.select_model(decision_recorder=recorder)
         decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
         # p2 is selected as fallback (p1 was cooling down)
-        assert decision.selected_provider == "p2"
+        assert decision.selected_provider_key == "p2"
         assert decision.candidates is not None
         # First candidate should have a skip reason
-        skip_candidate = next(c for c in decision.candidates if c.provider == "p1")
+        skip_candidate = next(c for c in decision.candidates if c.provider_key == "p1")
         assert skip_candidate.skip_reason is not None
         assert skip_candidate.selected is False
         # Fallback flag should be set
@@ -180,8 +180,8 @@ class TestSkipReasons:
         selection = scheduler.select_model(now=now, decision_recorder=recorder)
         decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
         # Model is RPM-limited — no capacity
-        assert decision.selected_provider is None
-        assert decision.selected_model is None
+        assert decision.selected_provider_key is None
+        assert decision.selected_provider_model is None
         # Candidate was recorded with status
         assert decision.candidates is not None
         assert len(decision.candidates) == 1
@@ -210,8 +210,8 @@ class TestSkipReasons:
         selection = scheduler.select_model(decision_recorder=recorder)
         decision = recorder.finalize(selection=selection, policy=scheduler.policy.value)
         # Both models are unavailable — no capacity
-        assert decision.selected_provider is None
-        assert decision.selected_model is None
+        assert decision.selected_provider_key is None
+        assert decision.selected_provider_model is None
         assert decision.candidates is not None
         assert len(decision.candidates) == 2
 
@@ -222,17 +222,17 @@ class TestSkipReasons:
         selection = scheduler.select_model(decision_recorder=recorder)
         decision = recorder.finalize(selection=selection, policy=scheduler.policy.value, total_candidates=25)
         # First available candidate is selected, remaining are skipped
-        assert decision.selected_provider == "p0"
+        assert decision.selected_provider_key == "p0"
         assert decision.candidates is not None
         assert len(decision.candidates) == 1  # Only first candidate evaluated before selection
 
 
 # ---------------------------------------------------------------------------
-# Task 17: Legacy compatibility
+# Task 17: Optional observability
 # ---------------------------------------------------------------------------
 
 
-class TestLegacyCompatibility:
+class TestOptionalObservability:
     def test_scheduler_works_without_recorder(self) -> None:
         """Not passing a decision_recorder must not change behavior."""
         scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
@@ -290,19 +290,19 @@ class TestDecisionAccumulator:
         # Clear any prior decisions
         collect_scheduler_decisions()
 
-        push_scheduler_decision({"selected": {"provider": "p", "model": "m"}})
-        push_scheduler_decision({"selected": {"provider": "q", "model": "n"}})
+        push_scheduler_decision({"selected": {"provider_key": "p", "provider_model": "m"}})
+        push_scheduler_decision({"selected": {"provider_key": "q", "provider_model": "n"}})
 
         decisions = collect_scheduler_decisions()
         assert len(decisions) == 2
-        assert decisions[0]["selected"]["provider"] == "p"
-        assert decisions[1]["selected"]["provider"] == "q"
+        assert decisions[0]["selected"]["provider_key"] == "p"
+        assert decisions[1]["selected"]["provider_key"] == "q"
 
     def test_collect_clears_accumulator(self) -> None:
         from novelai.translation.scheduler import collect_scheduler_decisions, push_scheduler_decision
 
         collect_scheduler_decisions()
-        push_scheduler_decision({"selected": {"provider": "p", "model": "m"}})
+        push_scheduler_decision({"selected": {"provider_key": "p", "provider_model": "m"}})
         first = collect_scheduler_decisions()
         assert len(first) == 1
         second = collect_scheduler_decisions()
@@ -447,16 +447,16 @@ class TestMemoryObservability:
 class TestSchedulerSummary:
     def test_summary_counts_chapters_with_decisions(self) -> None:
         decisions = [
-            {"selected": {"provider": "p", "model": "m"}, "candidates": []},
-            {"selected": {"provider": "p", "model": "m"}, "candidates": []},
+            {"selected": {"provider_key": "p", "provider_model": "m"}, "candidates": []},
+            {"selected": {"provider_key": "p", "provider_model": "m"}, "candidates": []},
         ]
         summary = build_scheduler_summary(decisions)
         assert summary["chapters_with_decisions"] == 2
 
     def test_summary_counts_fallback(self) -> None:
         decisions = [
-            {"selected": {"provider": "p", "model": "m"}, "fallback_used": True, "candidates": []},
-            {"selected": {"provider": "p", "model": "m"}, "fallback_used": False, "candidates": []},
+            {"selected": {"provider_key": "p", "provider_model": "m"}, "fallback_used": True, "candidates": []},
+            {"selected": {"provider_key": "p", "provider_model": "m"}, "fallback_used": False, "candidates": []},
         ]
         summary = build_scheduler_summary(decisions)
         assert summary["fallback_count"] == 1
@@ -464,7 +464,7 @@ class TestSchedulerSummary:
     def test_summary_counts_no_capacity(self) -> None:
         decisions = [
             {"selected": None, "failure_reason": "no_capacity", "candidates": []},
-            {"selected": {"provider": "p", "model": "m"}, "candidates": []},
+            {"selected": {"provider_key": "p", "provider_model": "m"}, "candidates": []},
         ]
         summary = build_scheduler_summary(decisions)
         assert summary["no_capacity_count"] == 1
@@ -472,7 +472,7 @@ class TestSchedulerSummary:
     def test_summary_aggregates_skip_reasons(self) -> None:
         decisions = [
             {
-                "selected": {"provider": "p", "model": "m"},
+                "selected": {"provider_key": "p", "provider_model": "m"},
                 "candidates": [
                     {"skip_reason": "cooldown_active"},
                     {"skip_reason": "cooldown_active"},
@@ -484,18 +484,22 @@ class TestSchedulerSummary:
 
     def test_summary_aggregates_selected_models(self) -> None:
         decisions = [
-            {"selected": {"provider": "p", "model": "m"}, "candidates": []},
-            {"selected": {"provider": "p", "model": "m"}, "candidates": []},
-            {"selected": {"provider": "q", "model": "n"}, "candidates": []},
+            {"selected": {"provider_key": "p", "provider_model": "m"}, "candidates": []},
+            {"selected": {"provider_key": "p", "provider_model": "m"}, "candidates": []},
+            {"selected": {"provider_key": "q", "provider_model": "n"}, "candidates": []},
         ]
         summary = build_scheduler_summary(decisions)
-        assert summary["selected_model_counts"] == {"p:m": 2, "q:n": 1}
-        assert summary["provider_counts"] == {"p": 2, "q": 1}
+        assert summary["selected_provider_model_counts"] == {"p:m": 2, "q:n": 1}
+        assert summary["provider_key_counts"] == {"p": 2, "q": 1}
 
     def test_summary_counts_checkpoint(self) -> None:
         decisions = [
-            {"selected": {"provider": "p", "model": "m"}, "checkpoint_id": "cp-1", "candidates": []},
-            {"selected": {"provider": "p", "model": "m"}, "candidates": []},
+            {
+                "selected": {"provider_key": "p", "provider_model": "m"},
+                "checkpoint_id": "cp-1",
+                "candidates": [],
+            },
+            {"selected": {"provider_key": "p", "provider_model": "m"}, "candidates": []},
         ]
         summary = build_scheduler_summary(decisions)
         assert summary["checkpoint_blocked_count"] == 1
@@ -503,17 +507,17 @@ class TestSchedulerSummary:
     def test_summary_tracks_peak_memory(self) -> None:
         decisions = [
             {
-                "selected": {"provider": "p", "model": "m"},
+                "selected": {"provider_key": "p", "provider_model": "m"},
                 "memory": {"exact_memory_bytes": 100, "memory_pressure": False},
                 "candidates": [],
             },
             {
-                "selected": {"provider": "p", "model": "m"},
+                "selected": {"provider_key": "p", "provider_model": "m"},
                 "memory": {"exact_memory_bytes": 500, "memory_pressure": True},
                 "candidates": [],
             },
             {
-                "selected": {"provider": "p", "model": "m"},
+                "selected": {"provider_key": "p", "provider_model": "m"},
                 "memory": {"exact_memory_bytes": 300, "memory_pressure": False},
                 "candidates": [],
             },
@@ -526,12 +530,16 @@ class TestSchedulerSummary:
         summary = build_scheduler_summary([])
         assert summary["chapters_with_decisions"] == 0
         assert summary["skip_reason_counts"] == {}
-        assert summary["selected_model_counts"] == {}
-        assert summary["provider_counts"] == {}
+        assert summary["selected_provider_model_counts"] == {}
+        assert summary["provider_key_counts"] == {}
 
     def test_summary_excludes_noise_fields(self) -> None:
         decisions = [
-            {"selected": {"provider": "p", "model": "m"}, "candidates": [], "extra_noise": "should_not_appear"},
+            {
+                "selected": {"provider_key": "p", "provider_model": "m"},
+                "candidates": [],
+                "extra_noise": "should_not_appear",
+            },
         ]
         summary = build_scheduler_summary(decisions)
         assert "extra_noise" not in summary
@@ -558,7 +566,7 @@ class TestActivityMetadataSummary:
 
         push_scheduler_decision(
             {
-                "selected": {"provider": "p", "model": "m"},
+                "selected": {"provider_key": "p", "provider_model": "m"},
                 "fallback_used": False,
                 "candidates": [],
                 "chapter_id": "1",
@@ -566,7 +574,7 @@ class TestActivityMetadataSummary:
         )
         push_scheduler_decision(
             {
-                "selected": {"provider": "q", "model": "n"},
+                "selected": {"provider_key": "q", "provider_model": "n"},
                 "fallback_used": True,
                 "candidates": [{"skip_reason": "preferred_model_cooling_down"}],
                 "chapter_id": "2",
@@ -576,7 +584,7 @@ class TestActivityMetadataSummary:
         summary = build_scheduler_summary(collect_scheduler_decisions())
         assert summary["chapters_with_decisions"] == 2
         assert summary["fallback_count"] == 1
-        assert summary["selected_model_counts"] == {"p:m": 1, "q:n": 1}
+        assert summary["selected_provider_model_counts"] == {"p:m": 1, "q:n": 1}
         assert "preferred_model_cooling_down" in summary["skip_reason_counts"]
 
     def test_scheduler_summary_combined_with_chapter_progress(self) -> None:
@@ -590,7 +598,7 @@ class TestActivityMetadataSummary:
         collect_scheduler_decisions()
         push_scheduler_decision(
             {
-                "selected": {"provider": "p", "model": "m"},
+                "selected": {"provider_key": "p", "provider_model": "m"},
                 "fallback_used": True,
                 "candidates": [],
             }
@@ -672,7 +680,7 @@ class TestSchedulerHealthData:
             health = service.scheduler_health()
             assert "policy" in health
             assert "models" in health
-            assert "default_provider" in health["policy"]
+            assert "default_provider_key" in health["policy"]
             assert "allow_cross_provider_fallback" in health["policy"]
             assert len(health["models"]) >= 1
             # Verify JSON-serializable

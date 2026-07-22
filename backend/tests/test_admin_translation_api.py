@@ -74,8 +74,8 @@ class TestSchedulerHealthHandler:
 
         svc = self._fake_service(tmp_path)
         result = await scheduler_health(service=svc)
-        assert "default_provider" in result["policy"]
-        assert "default_model" in result["policy"]
+        assert "default_provider_key" in result["policy"]
+        assert "default_provider_model" in result["policy"]
         assert "allow_cross_provider_fallback" in result["policy"]
 
     @pytest.mark.asyncio

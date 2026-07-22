@@ -67,11 +67,11 @@ export function SchedulerSummaryPanel({ summary, className }: { summary: Schedul
         </div>
       ) : null}
 
-      {Object.keys(summary.selected_model_counts).length > 0 ? (
+      {Object.keys(summary.selected_provider_model_counts).length > 0 ? (
         <div>
           <div className="mb-1 text-xs font-medium text-muted-foreground">Selected Models</div>
           <div className="flex flex-wrap gap-1.5">
-            {Object.entries(summary.selected_model_counts).map(([key, count]) => (
+            {Object.entries(summary.selected_provider_model_counts).map(([key, count]) => (
               <Badge key={key} tone="green">
                 {key}: {count}
               </Badge>
@@ -80,11 +80,11 @@ export function SchedulerSummaryPanel({ summary, className }: { summary: Schedul
         </div>
       ) : null}
 
-      {Object.keys(summary.provider_counts).length > 0 ? (
+      {Object.keys(summary.provider_key_counts).length > 0 ? (
         <div>
           <div className="mb-1 text-xs font-medium text-muted-foreground">By Provider</div>
           <div className="flex flex-wrap gap-1.5">
-            {Object.entries(summary.provider_counts).map(([provider, count]) => (
+            {Object.entries(summary.provider_key_counts).map(([provider, count]) => (
               <Badge key={provider} tone="blue">
                 {provider}: {count}
               </Badge>

@@ -45,8 +45,8 @@ describe("SchedulerSummaryPanel", () => {
           memory_pressure_count: 0,
           peak_exact_memory_bytes: 0,
           skip_reason_counts: {},
-          selected_model_counts: { "gemini:g-1": 5 },
-          provider_counts: { gemini: 5 },
+          selected_provider_model_counts: { "gemini:g-1": 5 },
+          provider_key_counts: { gemini: 5 },
         }}
       />
     );
@@ -66,8 +66,8 @@ describe("SchedulerSummaryPanel", () => {
           memory_pressure_count: 1,
           peak_exact_memory_bytes: 0,
           skip_reason_counts: { preferred_model_cooling_down: 2 },
-          selected_model_counts: { "gemini:g-1": 1, "gemini:g-2": 2 },
-          provider_counts: { gemini: 3 },
+          selected_provider_model_counts: { "gemini:g-1": 1, "gemini:g-2": 2 },
+          provider_key_counts: { gemini: 3 },
         }}
       />
     );
@@ -89,8 +89,11 @@ describe("SchedulerSummaryPanel", () => {
           memory_pressure_count: 0,
           peak_exact_memory_bytes: 0,
           skip_reason_counts: {},
-          selected_model_counts: { "gemini:gemini-3.1-flash-lite": 1, "gemini:gemma-4-31b-it": 1 },
-          provider_counts: { gemini: 2 },
+          selected_provider_model_counts: {
+            "gemini:gemini-3.1-flash-lite": 1,
+            "gemini:gemma-4-31b-it": 1,
+          },
+          provider_key_counts: { gemini: 2 },
         }}
       />
     );
@@ -110,8 +113,11 @@ describe("SchedulerSummaryPanel", () => {
           memory_pressure_count: 0,
           peak_exact_memory_bytes: 0,
           skip_reason_counts: {},
-          selected_model_counts: { "gemini:gemini-3.1-flash-lite": 1, "gemini:gemma-4-31b-it": 1 },
-          provider_counts: { gemini: 2 },
+          selected_provider_model_counts: {
+            "gemini:gemini-3.1-flash-lite": 1,
+            "gemini:gemma-4-31b-it": 1,
+          },
+          provider_key_counts: { gemini: 2 },
         }}
       />
     );
@@ -130,8 +136,8 @@ describe("SchedulerSummaryPanel", () => {
           memory_pressure_count: 1,
           peak_exact_memory_bytes: 52428800,
           skip_reason_counts: {},
-          selected_model_counts: { "gemini:g-1": 1 },
-          provider_counts: { gemini: 1 },
+          selected_provider_model_counts: { "gemini:g-1": 1 },
+          provider_key_counts: { gemini: 1 },
         }}
       />
     );

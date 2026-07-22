@@ -204,7 +204,7 @@ class TranslateStage(PipelineStage):
         if not isinstance(raw_policy, list):
             raw_policy = self._admin_provider_policy_models(
                 provider_key=provider_key,
-                model=model,
+                provider_model=model,
                 allow_cross_provider_fallback=context.metadata.get("allow_cross_provider_fallback", True) is not False,
             )
             admin_policy_consulted = True
@@ -220,8 +220,7 @@ class TranslateStage(PipelineStage):
                 raw_policy = [
                     item
                     for item in original_policy
-                    if isinstance(item, dict)
-                    and (item.get("provider_key") or item.get("provider") or provider_key) == provider_key
+                    if isinstance(item, dict) and (item.get("provider_key") or provider_key) == provider_key
                 ]
                 filtered_count = len(original_policy) - len(raw_policy)
                 if not raw_policy:
@@ -259,7 +258,7 @@ class TranslateStage(PipelineStage):
         self,
         *,
         provider_key: str,
-        model: str,
+        provider_model: str,
         allow_cross_provider_fallback: bool,
     ) -> list[dict[str, Any]] | None:
         management = self._settings.get_provider_management()
@@ -275,8 +274,8 @@ class TranslateStage(PipelineStage):
         for index, item in enumerate(raw_candidates):
             if not isinstance(item, dict):
                 continue
-            candidate_provider = item.get("provider_key") or item.get("provider") or provider_key
-            candidate_model = item.get("provider_model") or item.get("model") or model
+            candidate_provider = item.get("provider_key") or provider_key
+            candidate_model = item.get("provider_model") or provider_model
             credential_id = item.get("credential_id") or candidate_provider
             if not isinstance(candidate_provider, str) or not isinstance(candidate_model, str):
                 continue

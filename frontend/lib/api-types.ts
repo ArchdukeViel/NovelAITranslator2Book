@@ -375,8 +375,8 @@ export type SchedulerHealthModel = {
 
 export type SchedulerHealthResponse = {
   policy: {
-    default_provider: string;
-    default_model: string;
+    default_provider_key: string;
+    default_provider_model: string;
     allow_cross_provider_fallback: boolean;
     fallback_on_qa_failure: boolean;
   };
@@ -391,8 +391,8 @@ export type SchedulerSummary = {
   memory_pressure_count: number;
   peak_exact_memory_bytes: number;
   skip_reason_counts: Record<string, number>;
-  selected_model_counts: Record<string, number>;
-  provider_counts: Record<string, number>;
+  selected_provider_model_counts: Record<string, number>;
+  provider_key_counts: Record<string, number>;
 };
 
 // ===========================================

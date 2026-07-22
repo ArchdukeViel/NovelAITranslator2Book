@@ -458,8 +458,8 @@ class AdminService:
         if apply_globally:
             self.set_provider_globally(normalized_provider, resolved_model)
             policy = self.get_provider_fallback_policy()
-            policy["default_provider"] = normalized_provider
-            policy["default_model"] = resolved_model
+            policy["default_provider_key"] = normalized_provider
+            policy["default_provider_model"] = resolved_model
             policy["default_credential_id"] = normalized_provider
             self.set_provider_fallback_policy(policy)
         return ProviderCredentialService.safe_response(credential)
@@ -511,6 +511,10 @@ class AdminService:
         raw_policy = state.get("fallback_policy") if isinstance(state.get("fallback_policy"), dict) else {}
         policy = self._default_fallback_policy()
         if isinstance(raw_policy, dict):
+            supported_fields = set(policy)
+            unsupported_fields = set(raw_policy) - supported_fields
+            if unsupported_fields:
+                raise ValueError(f"Unsupported fallback policy fields: {', '.join(sorted(unsupported_fields))}")
             policy.update({key: value for key, value in raw_policy.items() if key != "candidates"})
             if isinstance(raw_policy.get("candidates"), list):
                 policy["candidates"] = [
@@ -527,9 +531,12 @@ class AdminService:
         if not isinstance(policy, dict):
             raise ValueError("Fallback policy must be an object.")
         normalized = self.get_provider_fallback_policy()
+        unsupported_fields = set(policy) - set(normalized)
+        if unsupported_fields:
+            raise ValueError(f"Unsupported fallback policy fields: {', '.join(sorted(unsupported_fields))}")
         for key in (
-            "default_provider",
-            "default_model",
+            "default_provider_key",
+            "default_provider_model",
             "default_credential_id",
             "allow_cross_provider_fallback",
             "allow_run_overrides",
@@ -537,13 +544,15 @@ class AdminService:
         ):
             if key in policy:
                 normalized[key] = policy[key]
-        default_provider = self.normalize_provider(str(normalized.get("default_provider") or "gemini"))
-        default_model = str(normalized.get("default_model") or self.resolve_default_model(default_provider))
-        self.validate_provider_model(default_provider, default_model)
-        normalized["default_provider"] = default_provider
-        normalized["default_model"] = default_model
+        default_provider_key = self.normalize_provider(str(normalized.get("default_provider_key") or "gemini"))
+        default_provider_model = str(
+            normalized.get("default_provider_model") or self.resolve_default_model(default_provider_key)
+        )
+        self.validate_provider_model(default_provider_key, default_provider_model)
+        normalized["default_provider_key"] = default_provider_key
+        normalized["default_provider_model"] = default_provider_model
         normalized["default_credential_id"] = self.normalize_provider(
-            str(normalized.get("default_credential_id") or default_provider)
+            str(normalized.get("default_credential_id") or default_provider_key)
         )
         if "candidates" in policy:
             if not isinstance(policy["candidates"], list):
@@ -564,7 +573,7 @@ class AdminService:
         self,
         *,
         provider_key: str,
-        model: str,
+        provider_model: str,
         allow_cross_provider_fallback: bool,
     ) -> list[dict[str, Any]]:
         policy = self.get_provider_fallback_policy()
@@ -572,7 +581,7 @@ class AdminService:
         for item in policy.get("candidates", []):
             if not isinstance(item, dict) or not item.get("enabled", True):
                 continue
-            provider = self.normalize_provider(str(item.get("provider") or item.get("provider_key") or provider_key))
+            provider = self.normalize_provider(str(item.get("provider_key") or provider_key))
             credential_id = self.normalize_provider(str(item.get("credential_id") or provider))
             credential = self._credential_metadata(credential_id)
             if credential.get("is_active") is False:
@@ -581,7 +590,7 @@ class AdminService:
                 continue
             if not allow_cross_provider_fallback and provider != provider_key:
                 continue
-            candidate_model = str(item.get("model") or item.get("provider_model") or model)
+            candidate_model = str(item.get("provider_model") or provider_model)
             self.validate_provider_model(provider, candidate_model)
             candidates.append(
                 {
@@ -594,7 +603,7 @@ class AdminService:
             )
         if candidates:
             return candidates
-        return [{"provider_key": provider_key, "provider_model": model, "priority_order": 0}]
+        return [{"provider_key": provider_key, "provider_model": provider_model, "priority_order": 0}]
 
     def _provider_management_state(self) -> dict[str, Any]:
         state = self.preferences.get_provider_management()
@@ -739,8 +748,8 @@ class AdminService:
         )
         primary_quota = DEFAULT_QUOTA_HINTS.get((provider, model), {})
         return {
-            "default_provider": provider,
-            "default_model": model,
+            "default_provider_key": provider,
+            "default_provider_model": model,
             "default_credential_id": provider,
             "allow_cross_provider_fallback": False,
             "allow_run_overrides": True,
@@ -765,8 +774,25 @@ class AdminService:
         }
 
     def _normalize_policy_candidate(self, item: dict[str, Any], index: int) -> dict[str, Any]:
-        provider = self.normalize_provider(str(item.get("provider") or item.get("provider_key") or "gemini"))
-        model = str(item.get("model") or item.get("provider_model") or self.resolve_default_model(provider))
+        supported_fields = {
+            "priority_order",
+            "provider_key",
+            "provider_model",
+            "credential_id",
+            "enabled",
+            "allowed_failure_reasons",
+            "rpm_limit",
+            "tpm_limit",
+            "rpd_limit",
+            "cooldown_seconds",
+            "daily_reset",
+            "manual_usage_snapshot",
+        }
+        unsupported_fields = set(item) - supported_fields
+        if unsupported_fields:
+            raise ValueError(f"Unsupported fallback candidate fields: {', '.join(sorted(unsupported_fields))}")
+        provider = self.normalize_provider(str(item.get("provider_key") or "gemini"))
+        model = str(item.get("provider_model") or self.resolve_default_model(provider))
         self.validate_provider_model(provider, model)
         credential_id = self.normalize_provider(str(item.get("credential_id") or provider))
         raw_reasons = item.get("allowed_failure_reasons")
@@ -882,8 +908,8 @@ class AdminService:
     def scheduler_health(self) -> dict[str, Any]:
         policy = self.get_provider_fallback_policy()
         configs = self.scheduler_policy_models(
-            provider_key=str(policy.get("default_provider", "gemini")),
-            model=str(policy.get("default_model", "")),
+            provider_key=str(policy.get("default_provider_key", "gemini")),
+            provider_model=str(policy.get("default_provider_model", "")),
             allow_cross_provider_fallback=bool(policy.get("allow_cross_provider_fallback", False)),
         )
         health: list[dict[str, Any]] = []
@@ -920,12 +946,12 @@ class AdminService:
                     model["last_error_code"] = state.get("last_error_code")
                     model["last_error_message"] = state.get("last_error_message")
 
-        default_provider = str(policy.get("default_provider", "gemini"))
-        default_model = str(policy.get("default_model", ""))
+        default_provider_key = str(policy.get("default_provider_key", "gemini"))
+        default_provider_model = str(policy.get("default_provider_model", ""))
         return {
             "policy": {
-                "default_provider": default_provider,
-                "default_model": default_model,
+                "default_provider_key": default_provider_key,
+                "default_provider_model": default_provider_model,
                 "allow_cross_provider_fallback": bool(policy.get("allow_cross_provider_fallback", False)),
                 "fallback_on_qa_failure": bool(policy.get("fallback_on_qa_failure", False)),
             },
