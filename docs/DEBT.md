@@ -261,7 +261,10 @@ Deferred items are tracked but excluded from the active count.
   versions (DEBT-116). The unused file-era `CrawlJob`, `TranslationJob`,
   `ChapterVersion`, and `EditHistoryEntry` dataclasses are deleted; runtime code
   retains only the shared enums, while persistence uses the canonical activity,
-  database, and storage models.
+  database, and storage models. The simple translation cache API now names its
+  complete identity and value as `source_text`, `provider_key`,
+  `provider_model`, and `translated_text`; its remaining generic parameter
+  aliases are removed without changing the exact-key behavior.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

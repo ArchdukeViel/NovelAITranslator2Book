@@ -159,11 +159,15 @@ class TranslationCache:
         self._persist()
 
     @staticmethod
-    def _hash_key(text: str, provider: str, model: str | None) -> str:
+    def _hash_key(
+        source_text: str,
+        provider_key: str,
+        provider_model: str | None,
+    ) -> str:
         return build_translation_cache_key(
-            source_text=text,
-            provider_key=provider,
-            provider_model=model,
+            source_text=source_text,
+            provider_key=provider_key,
+            provider_model=provider_model,
         )
 
     @staticmethod
@@ -178,13 +182,24 @@ class TranslationCache:
         self._evict_if_needed()
         self._persist()
 
-    def get(self, text: str, provider: str, model: str | None) -> str | None:
-        key = self._hash_key(text, provider, model)
+    def get(
+        self,
+        source_text: str,
+        provider_key: str,
+        provider_model: str | None,
+    ) -> str | None:
+        key = self._hash_key(source_text, provider_key, provider_model)
         return self._data.get(key)
 
-    def set(self, text: str, provider: str, model: str | None, translation: str) -> None:
-        key = self._hash_key(text, provider, model)
-        self._data[key] = translation
+    def set(
+        self,
+        source_text: str,
+        provider_key: str,
+        provider_model: str | None,
+        translated_text: str,
+    ) -> None:
+        key = self._hash_key(source_text, provider_key, provider_model)
+        self._data[key] = translated_text
         self._evict_if_needed()
         self._persist()
 
