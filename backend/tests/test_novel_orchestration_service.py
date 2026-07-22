@@ -2244,7 +2244,9 @@ def _save_delta_execution_fixture(
             }
         )
     if translated_chapter_text is not None:
-        storage.save_translated_chapter("novel-delta", "1", translated_chapter_text, provider="mock", model="mock-1.0")
+        storage.save_translated_chapter(
+            "novel-delta", "1", translated_chapter_text, provider_key="mock", provider_model="mock-1.0"
+        )
 
 
 async def _run_delta_translate(

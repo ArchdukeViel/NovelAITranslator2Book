@@ -55,9 +55,7 @@ def test_atomic_write_failure_before_replace_preserves_existing_file(
     assert json.loads(target.read_text(encoding="utf-8")) == {"title": "old"}
 
 
-def test_atomic_write_uses_unique_temp_names(
-    storage: StorageService, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_atomic_write_uses_unique_temp_names(storage: StorageService, monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[Path] = []
     original_replace = os.replace
 
@@ -165,9 +163,7 @@ def test_temp_files_are_ignored_by_metadata_listing(storage: StorageService) -> 
 # ── Bundle coverage ─────────────────────────────────────────────────────────
 
 
-def test_chapter_bundle_write_uses_atomic_helper(
-    storage: StorageService, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_chapter_bundle_write_uses_atomic_helper(storage: StorageService, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[Path] = []
     original = storage._write_text_atomic
 
@@ -181,9 +177,7 @@ def test_chapter_bundle_write_uses_atomic_helper(
     assert any(path.name == "c1.json" for path in calls)
 
 
-def test_translation_bundle_write_uses_atomic_helper(
-    storage: StorageService, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_translation_bundle_write_uses_atomic_helper(storage: StorageService, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[Path] = []
     original = storage._write_text_atomic
 
@@ -192,6 +186,6 @@ def test_translation_bundle_write_uses_atomic_helper(
         original(path, content, **kwargs)
 
     monkeypatch.setattr(storage, "_write_text_atomic", _spy)
-    storage.save_translated_chapter("tr-novel", "c1", "Translated", provider="gemini", model="m")
+    storage.save_translated_chapter("tr-novel", "c1", "Translated", provider_key="gemini", provider_model="m")
 
     assert any(path.name == "c1.json" for path in calls)

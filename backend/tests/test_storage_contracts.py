@@ -57,10 +57,13 @@ def assert_raw_chapter_contract(payload: dict[str, Any]) -> None:
 
 def assert_translation_version_contract(payload: dict[str, Any]) -> None:
     assert isinstance(payload, dict)
-    assert isinstance(payload.get("id"), str)
+    assert isinstance(payload.get("chapter_id"), str)
+    assert isinstance(payload.get("version_id"), str)
+    assert isinstance(payload.get("version_kind"), str)
     assert isinstance(payload.get("text"), str)
-    assert payload.get("provider") is None or isinstance(payload.get("provider"), str)
-    assert payload.get("model") is None or isinstance(payload.get("model"), str)
+    assert payload.get("provider_key") is None or isinstance(payload.get("provider_key"), str)
+    assert payload.get("provider_model") is None or isinstance(payload.get("provider_model"), str)
+    assert isinstance(payload.get("glossary_revision"), int)
 
 
 def assert_edit_history_contract(payload: dict[str, Any]) -> None:
@@ -360,7 +363,9 @@ def test_translation_runtime_records_are_scoped_by_run_and_chapter(storage: Stor
 
 def test_temporary_bundle_delete_does_not_delete_canonical_chapter_data(storage: StorageService) -> None:
     storage.save_chapter("novel1", "chapter_001", "Raw chapter text", title="Chapter 1")
-    storage.save_translated_chapter("novel1", "chapter_001", "Final translated text", provider="dummy", model="dummy")
+    storage.save_translated_chapter(
+        "novel1", "chapter_001", "Final translated text", provider_key="dummy", provider_model="dummy"
+    )
 
     storage.save_translation_bundle(
         {
@@ -762,8 +767,8 @@ def test_translated_chapter_save_load_round_trip(storage: StorageService) -> Non
         "novel-tr-1",
         "chapter_001",
         "Translated text.",
-        provider="gemini",
-        model="gemini-2.5-flash",
+        provider_key="gemini",
+        provider_model="gemini-2.5-flash",
     )
     assert path.name == "chapter_001.json"
 
@@ -771,12 +776,12 @@ def test_translated_chapter_save_load_round_trip(storage: StorageService) -> Non
     assert loaded is not None
     assert_translation_version_contract(loaded)
     assert loaded["text"] == "Translated text."
-    assert loaded["provider"] == "gemini"
+    assert loaded["provider_key"] == "gemini"
 
 
 def test_translation_version_listing_and_activation(storage: StorageService) -> None:
-    storage.save_translated_chapter("novel-tr-2", "chapter_001", "V1 text", provider="gemini", model="m1")
-    storage.save_translated_chapter("novel-tr-2", "chapter_001", "V2 text", provider="gemini", model="m2")
+    storage.save_translated_chapter("novel-tr-2", "chapter_001", "V1 text", provider_key="gemini", provider_model="m1")
+    storage.save_translated_chapter("novel-tr-2", "chapter_001", "V2 text", provider_key="gemini", provider_model="m2")
 
     versions = storage.list_translated_chapter_versions("novel-tr-2", "chapter_001")
     assert len(versions) == 2
@@ -792,6 +797,58 @@ def test_translation_version_listing_and_activation(storage: StorageService) -> 
     assert next(v for v in versions if v["version_id"] == first_id)["active"] is True
 
 
+def test_current_schema_rejects_legacy_translation_version_fields(storage: StorageService) -> None:
+    _write_chapter_payload(
+        storage,
+        "current-novel-1",
+        "chapter-1",
+        {
+            "schema_version": storage.SCHEMA_VERSION,
+            "id": "chapter-1",
+            "translation_versions": [
+                {
+                    "id": "v1",
+                    "kind": "machine_translation",
+                    "provider": "gemini",
+                    "model": "gemini-3.1-flash-lite",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "text": "legacy",
+                }
+            ],
+            "active_translation_version_id": "v1",
+        },
+    )
+
+    with pytest.raises(ValueError, match="version_id"):
+        storage.load_translated_chapter("current-novel-1", "chapter-1")
+
+
+def test_current_schema_rejects_duplicate_translation_version_ids(storage: StorageService) -> None:
+    version = {
+        "version_id": "v1",
+        "version_kind": "machine_translation",
+        "provider_key": "gemini",
+        "provider_model": "gemini-3.1-flash-lite",
+        "glossary_revision": 0,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "text": "canonical",
+    }
+    _write_chapter_payload(
+        storage,
+        "current-novel-2",
+        "chapter-1",
+        {
+            "schema_version": storage.SCHEMA_VERSION,
+            "id": "chapter-1",
+            "translation_versions": [version, dict(version)],
+            "active_translation_version_id": "v1",
+        },
+    )
+
+    with pytest.raises(ValueError, match="Duplicate translation version_id"):
+        storage.load_translated_chapter("current-novel-2", "chapter-1")
+
+
 def test_unversioned_translation_fixture_is_rejected(storage: StorageService) -> None:
     _write_chapter_payload(storage, "current-novel-1", "chapter-1", _load_fixture("legacy_translation_bundle.json"))
     with pytest.raises(UnsupportedStorageSchemaVersionError):
@@ -802,8 +859,15 @@ def test_unversioned_translation_fixture_is_rejected(storage: StorageService) ->
 
 
 def test_edit_history_save_and_load(storage: StorageService) -> None:
-    storage.save_translated_chapter("novel-ed-1", "chapter_001", "Base text", provider="gemini", model="m")
-    storage.save_edited_translation("novel-ed-1", "chapter_001", "Edited text", editor="human", note="fix")
+    storage.save_translated_chapter("novel-ed-1", "chapter_001", "Base text", provider_key="gemini", provider_model="m")
+    storage.save_edited_translation(
+        "novel-ed-1",
+        "chapter_001",
+        "Edited text",
+        editor="human",
+        note="fix",
+        glossary_revision=0,
+    )
 
     history = storage.load_translation_edit_history("novel-ed-1", "chapter_001")
     assert len(history) == 1

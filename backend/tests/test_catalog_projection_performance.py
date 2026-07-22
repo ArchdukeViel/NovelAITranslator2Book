@@ -27,6 +27,7 @@ from novelai.services.public_catalog_service import PublicCatalogService
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_meta(
     *,
     novel_id: str = "test-novel",
@@ -43,6 +44,7 @@ def _make_meta(
 # Task 9.2 / 9.3: N+1 elimination in catalog_service
 # ---------------------------------------------------------------------------
 
+
 def test_latest_chapter_determined_from_id_set_only(tmp_path):
     """_latest_translated_chapter uses only translated_ids + metadata chapters.
     No load_translated_chapter call — N+1 eliminated.
@@ -51,17 +53,15 @@ def test_latest_chapter_determined_from_id_set_only(tmp_path):
 
     storage = StorageService(tmp_path / "lib")
     # Save translated chapter so it appears in list
-    storage.save_translated_chapter(
-        "test-novel", "1", "Ch1 text", provider="test"
-    )
-    storage.save_translated_chapter(
-        "test-novel", "2", "Ch2 text", provider="test"
-    )
+    storage.save_translated_chapter("test-novel", "1", "Ch1 text", provider_key="test")
+    storage.save_translated_chapter("test-novel", "2", "Ch2 text", provider_key="test")
 
-    meta = _make_meta(chapters=[
-        {"id": "1", "title": "Ch1", "translated_at": "2025-01-02T00:00:00"},
-        {"id": "2", "title": "Ch2", "translated_at": "2025-01-03T00:00:00"},
-    ])
+    meta = _make_meta(
+        chapters=[
+            {"id": "1", "title": "Ch1", "translated_at": "2025-01-02T00:00:00"},
+            {"id": "2", "title": "Ch2", "translated_at": "2025-01-03T00:00:00"},
+        ]
+    )
 
     result = PublicCatalogService(storage=storage)._latest_translated_chapter("test-novel", meta)
 
@@ -76,9 +76,11 @@ def test_latest_chapter_empty_when_no_translated_ids(tmp_path):
 
     storage = StorageService(tmp_path / "lib")
 
-    meta = _make_meta(chapters=[
-        {"id": "1", "title": "Ch1"},
-    ])
+    meta = _make_meta(
+        chapters=[
+            {"id": "1", "title": "Ch1"},
+        ]
+    )
 
     result = PublicCatalogService(storage=storage)._latest_translated_chapter("test-novel", meta)
     assert result is None
@@ -87,6 +89,7 @@ def test_latest_chapter_empty_when_no_translated_ids(tmp_path):
 # ---------------------------------------------------------------------------
 # Task 9.4 / 9.5: Conditional raw chapter read
 # ---------------------------------------------------------------------------
+
 
 def test_public_chapter_skips_raw_read_when_paragraph_map_present():
     """When paragraph_map is present in translated artifact, load_chapter is skipped.
@@ -114,6 +117,7 @@ def test_public_chapter_loads_raw_when_paragraph_map_absent():
 # Task 9.6 / 9.7: Slug resolver with DB lookup (unit-level)
 # ---------------------------------------------------------------------------
 
+
 def test_slug_resolver_falls_back_to_storage_scan_on_db_miss(tmp_path):
     """When slug is not a direct storage key and not in DB, fall back to scan."""
     from novelai.storage.service import StorageService
@@ -128,6 +132,7 @@ def test_slug_resolver_falls_back_to_storage_scan_on_db_miss(tmp_path):
 # ---------------------------------------------------------------------------
 # Task 9.8: Catalog health (module-level)
 # ---------------------------------------------------------------------------
+
 
 def test_projection_refresh_failure_recorded_and_cleared():
     """_record_projection_refresh_failure adds a record,
@@ -152,7 +157,5 @@ def test_storage_fallback_degraded_flag():
     resp = PublicCatalogResponse(novels=[], total=0, page=1, page_size=24)
     assert resp.degraded is False
 
-    resp = PublicCatalogResponse(
-        novels=[], total=0, page=1, page_size=24, degraded=True
-    )
+    resp = PublicCatalogResponse(novels=[], total=0, page=1, page_size=24, degraded=True)
     assert resp.degraded is True

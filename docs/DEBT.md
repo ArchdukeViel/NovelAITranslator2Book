@@ -247,7 +247,12 @@ Deferred items are tracked but excluded from the active count.
   filtering branches and tests, and the unreferenced frontend language
   navigation component are removed. The DB-path predicate now accepts only its
   actual `sort_by` input. All 118 public-router tests, focused Pyright/Ruff,
-  frontend TypeScript, and ESLint pass.
+  frontend TypeScript, and ESLint pass. Translation-version storage now uses
+  only `version_id`, `version_kind`, `provider_key`, and `provider_model`, with
+  one explicit active-version pointer. Mirrored translated payloads, synthesized
+  or repaired IDs, implicit active selection, and legacy response fields are
+  removed (DEBT-115). The 306 directly affected storage, translation, public,
+  editor, and API tests pass with zero focused Pyright/Ruff errors.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
@@ -1296,3 +1301,27 @@ Deferred items are tracked but excluded from the active count.
 - **Resolution:** Editor QA now loads `Novel` directly through the repository
   session, and the real editor API path verifies revision `5` is persisted in
   the QA summary.
+
+### DEBT-115 — Translation versions retained a legacy mirrored schema
+- **Milestone:** Milestone M2c (Backup & Storage)
+- **Category:** Backend | Storage | Data Integrity
+- **Priority:** High
+- **Status:** Resolved
+- **Affected areas:** translation-version storage, editor and public chapter
+  responses, checkpoint restore, translation orchestration
+- **Description:** Current-schema chapter bundles still persisted translation
+  versions with `id`, `kind`, `provider`, and `model`, mirrored the active
+  version into a top-level `translated` object, synthesized missing IDs, repaired
+  duplicate IDs, and selected an implicit active version. These behaviors
+  contradicted the forward-only storage and canonical naming contracts.
+- **Completion criteria:** Persist and expose only `version_id`, `version_kind`,
+  `provider_key`, and `provider_model`; require glossary revision metadata;
+  remove the mirrored active payload and all translation-version repair or
+  fallback readers; reject malformed current-schema records; and update all
+  direct callers and tests.
+- **Resolution:** Translation versions now use one canonical list plus an
+  explicit `active_translation_version_id`. Reads reject missing canonical
+  fields, invalid kinds, duplicate IDs, missing glossary revisions, and dangling
+  active IDs. Storage, checkpoint restore, orchestration, editor/public API
+  responses, and directly affected tests use only canonical field names. Tests
+  also prove legacy current-schema records and duplicate IDs fail closed.

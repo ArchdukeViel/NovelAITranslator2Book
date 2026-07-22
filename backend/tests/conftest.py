@@ -77,9 +77,10 @@ def _force_remove_tree(path: Path) -> None:
 
     try:
         subprocess.run(
-            [_sys.executable, "-c",
-             f"import shutil; shutil.rmtree(r'{path}', onerror=lambda f, t, e: None)"],
-            timeout=10, capture_output=True, check=False,
+            [_sys.executable, "-c", f"import shutil; shutil.rmtree(r'{path}', onerror=lambda f, t, e: None)"],
+            timeout=10,
+            capture_output=True,
+            check=False,
         )
     except (subprocess.TimeoutExpired, Exception):
         shutil.rmtree(path, onerror=on_error, ignore_errors=True)
@@ -461,9 +462,7 @@ class TestFixture:
         """Clean up test resources."""
         shutil.rmtree(self.data_dir, ignore_errors=True)
 
-    def add_test_chapters(
-        self, novel_id: str, count: int = 5, content_prefix: str = "Chapter"
-    ) -> list[str]:
+    def add_test_chapters(self, novel_id: str, count: int = 5, content_prefix: str = "Chapter") -> list[str]:
         """Add test chapters to storage."""
         chapter_ids = []
         for i in range(1, count + 1):
@@ -484,7 +483,7 @@ class TestFixture:
                 novel_id,
                 chapter_id,
                 f"[TRANSLATED] {content_prefix} {i} content",
-                provider="test_provider",
+                provider_key="test_provider",
             )
 
             # Add state
@@ -512,9 +511,7 @@ class TestFixture:
         self.storage.save_metadata(novel_id, metadata)
         return metadata
 
-    def set_provider_failure(
-        self, should_fail: bool = True, message: str = "Test failure"
-    ) -> None:
+    def set_provider_failure(self, should_fail: bool = True, message: str = "Test failure") -> None:
         """Configure mock provider to fail on next call."""
         self.mock_provider.should_fail = should_fail
         self.mock_provider.failure_message = message
@@ -528,11 +525,7 @@ class TestFixture:
         novels = self.storage.list_novels()
         stats = {
             "novel_count": len(novels),
-            "data_dir_size": sum(
-                f.stat().st_size
-                for f in self.data_dir.rglob("*")
-                if f.is_file()
-            ),
+            "data_dir_size": sum(f.stat().st_size for f in self.data_dir.rglob("*") if f.is_file()),
             "novels": {},
         }
 
@@ -577,6 +570,7 @@ class MockPipeline:
 
 # Convenience factory functions
 
+
 def create_test_fixture() -> TestFixture:
     """Create a new isolated test fixture."""
     return TestFixture()
@@ -589,6 +583,7 @@ def create_mock_container() -> Container:
 
 
 # Auto-cleanup fixture
+
 
 @pytest.fixture(scope="session", autouse=True)
 def cleanup_pytest_cache():

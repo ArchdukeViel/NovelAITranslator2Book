@@ -32,9 +32,7 @@ logger = logging.getLogger(__name__)
 class EditorService:
     """Business logic for translation editing, QA, versioning, and rollback."""
 
-    def __init__(
-        self, *, storage: StorageService, db_session: Session | None = None
-    ) -> None:
+    def __init__(self, *, storage: StorageService, db_session: Session | None = None) -> None:
         self.storage = storage
         self.db_session = db_session
 
@@ -44,9 +42,7 @@ class EditorService:
         if self.db_session is None:
             return None
         try:
-            novel = self.db_session.execute(
-                select(Novel).where(Novel.slug == novel_slug)
-            ).scalar_one_or_none()
+            novel = self.db_session.execute(select(Novel).where(Novel.slug == novel_slug)).scalar_one_or_none()
             if novel is not None:
                 return int(novel.id)
             if novel_slug.isdigit():
@@ -142,9 +138,7 @@ class EditorService:
 
     # -- storage operations -----------------------------------------------------
 
-    def get_translated_chapter_versions(
-        self, novel_id: str, chapter_id: str
-    ) -> dict[str, Any] | None:
+    def get_translated_chapter_versions(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
         if self.storage.load_metadata(novel_id) is None:
             return None
         versions = self.storage.list_translated_chapter_versions(novel_id, chapter_id)
@@ -156,9 +150,7 @@ class EditorService:
             "versions": versions,
         }
 
-    def get_translation_edit_history(
-        self, novel_id: str, chapter_id: str
-    ) -> dict[str, Any] | None:
+    def get_translation_edit_history(self, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
         if self.storage.load_metadata(novel_id) is None:
             return None
         if self.storage.load_translated_chapter(novel_id, chapter_id) is None:
@@ -200,8 +192,11 @@ class EditorService:
             qa_result = self.check_edit(novel_id, chapter_id, text, source_text)
             elapsed_ms = int((time.monotonic() - start) * 1000)
             self.log_qa_event(
-                novel_id, chapter_id,
-                qa_result.platform_novel_id, qa_result, elapsed_ms,
+                novel_id,
+                chapter_id,
+                qa_result.platform_novel_id,
+                qa_result,
+                elapsed_ms,
             )
 
             if glossary_override is not None:
@@ -220,10 +215,12 @@ class EditorService:
                             "issue_count": qa_result.issue_count,
                         },
                     )
-                    raise ValueError({
-                        "message": "Glossary QA blocked save.",
-                        "glossary_qa": qa_result.to_dict(),
-                    })
+                    raise ValueError(
+                        {
+                            "message": "Glossary QA blocked save.",
+                            "glossary_qa": qa_result.to_dict(),
+                        }
+                    )
 
                 qa_result = GlossaryEditorQAService().apply_override(qa_result)
                 logger.info(
@@ -238,10 +235,16 @@ class EditorService:
                 )
 
         qa_summary: dict[str, Any] | None = None
-        glossary_revision: int | None = None
+        active_translation = self.storage.load_translated_chapter(novel_id, chapter_id)
+        active_glossary_revision = (
+            active_translation.get("glossary_revision") if isinstance(active_translation, dict) else None
+        )
+        glossary_revision: int = active_glossary_revision if isinstance(active_glossary_revision, int) else 0
         if qa_result is not None:
             qa_summary = self.compact_qa_summary(qa_result)
-            glossary_revision = qa_result.glossary_revision
+            glossary_revision = (
+                qa_result.glossary_revision if isinstance(qa_result.glossary_revision, int) else glossary_revision
+            )
             if glossary_override and qa_result.status == STATUS_OVERRIDDEN:
                 qa_summary["override"] = {
                     "user_id": owner_user_id,
@@ -251,13 +254,17 @@ class EditorService:
                 }
 
         self.storage.save_edited_translation(
-            novel_id, chapter_id, text,
-            editor=editor, note=note,
+            novel_id,
+            chapter_id,
+            text,
+            editor=editor,
+            note=note,
             glossary_qa=qa_summary,
             glossary_revision=glossary_revision,
         )
         safely_refresh_catalog_projection_after_storage_write(
-            novel_id, self.storage,
+            novel_id,
+            self.storage,
             context="editor_update_translation",
             session=self.db_session,
         )
@@ -283,12 +290,16 @@ class EditorService:
         if self.storage.load_metadata(novel_id) is None:
             raise ValueError("Novel not found")
         if not self.storage.activate_translated_chapter_version(
-            novel_id, chapter_id, version_id,
-            editor=editor, note=note,
+            novel_id,
+            chapter_id,
+            version_id,
+            editor=editor,
+            note=note,
         ):
             raise ValueError("Translation version not found")
         safely_refresh_catalog_projection_after_storage_write(
-            novel_id, self.storage,
+            novel_id,
+            self.storage,
             context="editor_rollback_translation",
             session=self.db_session,
         )

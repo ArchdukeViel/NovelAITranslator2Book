@@ -32,12 +32,13 @@ class GlossaryApplyStorage(Protocol):
         novel_id: str,
         chapter_id: str,
         text: str,
-        provider: str | None = None,
-        model: str | None = None,
+        provider_key: str | None = None,
+        provider_model: str | None = None,
         confidence_score: float | None = None,
         polish_needed: bool | None = None,
         confidence_details: dict[str, Any] | None = None,
         source_hash: str | None = None,
+        glossary_revision: int = 0,
         version_kind: ChapterVersionKind = ChapterVersionKind.MANUAL_EDIT,
     ) -> Any: ...
 
@@ -167,7 +168,9 @@ class GlossaryApplyService:
                 continue
             original = self._chapter_text(storage_novel_id, chapter.chapter_storage_id)
             if original is None:
-                warnings.append(f"Skipped chapter {chapter.chapter_storage_id}: translated text was missing at apply time.")
+                warnings.append(
+                    f"Skipped chapter {chapter.chapter_storage_id}: translated text was missing at apply time."
+                )
                 failed = True
                 continue
             next_text = _apply_replacements(original, replacements)
@@ -176,8 +179,9 @@ class GlossaryApplyService:
                     storage_novel_id,
                     chapter.chapter_storage_id,
                     next_text,
-                    provider="glossary_apply",
-                    model=None,
+                    provider_key="glossary_apply",
+                    provider_model=None,
+                    glossary_revision=0,
                     source_hash=_hash_text(original),
                     version_kind=ChapterVersionKind.MANUAL_EDIT,
                 )
@@ -248,7 +252,11 @@ class GlossaryApplyService:
             storage_id = chapter.get("chapter_storage_id")
             original_text = chapter.get("original_text")
             applied_hash = chapter.get("applied_hash")
-            if not isinstance(storage_id, str) or not isinstance(original_text, str) or not isinstance(applied_hash, str):
+            if (
+                not isinstance(storage_id, str)
+                or not isinstance(original_text, str)
+                or not isinstance(applied_hash, str)
+            ):
                 warnings.append("Skipped malformed backup chapter record.")
                 continue
             current = self._chapter_text(storage_novel_id, storage_id)
@@ -262,8 +270,9 @@ class GlossaryApplyService:
                 storage_novel_id,
                 storage_id,
                 original_text,
-                provider="glossary_rollback",
-                model=None,
+                provider_key="glossary_rollback",
+                provider_model=None,
+                glossary_revision=0,
                 source_hash=_hash_text(current),
                 version_kind=ChapterVersionKind.ROLLBACK,
             )
@@ -409,7 +418,9 @@ def _apply_replacements(text: str, replacements: list[GlossaryReplacementPreview
 def _non_overlapping(replacements: list[GlossaryReplacementPreview]) -> list[GlossaryReplacementPreview]:
     selected: list[GlossaryReplacementPreview] = []
     occupied: list[tuple[int, int]] = []
-    for replacement in sorted(replacements, key=lambda item: (item.start_offset, -(item.end_offset - item.start_offset))):
+    for replacement in sorted(
+        replacements, key=lambda item: (item.start_offset, -(item.end_offset - item.start_offset))
+    ):
         if any(replacement.start_offset < end and replacement.end_offset > start for start, end in occupied):
             continue
         selected.append(replacement)

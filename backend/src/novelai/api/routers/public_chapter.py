@@ -290,18 +290,12 @@ def _latest_version_with_text(
     versions: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
     """Return the newest version that has usable string text."""
-    candidates = [
-        version
-        for version in versions
-        if isinstance(version, dict) and isinstance(version.get("text"), str)
-    ]
+    candidates = [version for version in versions if isinstance(version, dict) and isinstance(version.get("text"), str)]
     if not candidates:
         return None
     return sorted(
         candidates,
-        key=lambda version: (
-            version.get("created_at") or version.get("translated_at") or ""
-        ),
+        key=lambda version: version.get("created_at") or version.get("translated_at") or "",
         reverse=True,
     )[0]
 
@@ -314,11 +308,11 @@ def _translated_from_version(
     created_at = version.get("created_at") or version.get("translated_at")
     translated_at = version.get("translated_at") or version.get("created_at")
     return {
-        "id": chapter_id,
-        "version_id": version.get("id") or version.get("version_id"),
-        "version_kind": version.get("version_kind") or version.get("kind"),
-        "provider": version.get("provider"),
-        "model": version.get("model"),
+        "chapter_id": chapter_id,
+        "version_id": version.get("version_id"),
+        "version_kind": version.get("version_kind"),
+        "provider_key": version.get("provider_key"),
+        "provider_model": version.get("provider_model"),
         "translated_at": translated_at,
         "created_at": created_at,
         "text": version.get("text"),
@@ -358,8 +352,7 @@ def _chapter_shell_response(
         "chapter_id": chapter_id,
         "chapter_number": chapter.get("num") or (index + 1),
         "novel_title": reader_title(meta),
-        "title": _optional_str(chapter.get("translated_title"))
-        or _optional_str(chapter.get("title")),
+        "title": _optional_str(chapter.get("translated_title")) or _optional_str(chapter.get("title")),
         "text": None,
         "reader_blocks": [],
         "previous_chapter_id": prev_id if prev_id in translated_ids else None,
@@ -371,8 +364,8 @@ def _chapter_shell_response(
         "version_id": None,
         "version_kind": None,
         "is_active_version": False,
-        "provider": None,
-        "model": None,
+        "provider_key": None,
+        "provider_model": None,
         "translated_at": None,
     }
 
@@ -390,8 +383,8 @@ def _availability_fields(
             "version_id": None,
             "version_kind": None,
             "is_active_version": is_active_version,
-            "provider": None,
-            "model": None,
+            "provider_key": None,
+            "provider_model": None,
             "translated_at": None,
         }
     return {
@@ -400,8 +393,8 @@ def _availability_fields(
         "version_id": translated.get("version_id"),
         "version_kind": translated.get("version_kind"),
         "is_active_version": is_active_version,
-        "provider": translated.get("provider"),
-        "model": translated.get("model"),
+        "provider_key": translated.get("provider_key"),
+        "provider_model": translated.get("provider_model"),
         "translated_at": translated.get("translated_at"),
     }
 
@@ -551,9 +544,7 @@ async def search_tags(
         return []
 
     pattern = f"%{query_str}%"
-    base = db.query(Tag).filter(
-        Tag.name.ilike(pattern) | Tag.name_ja.ilike(pattern)
-    )
+    base = db.query(Tag).filter(Tag.name.ilike(pattern) | Tag.name_ja.ilike(pattern))
     if not include_adult:
         base = base.filter(Tag.is_adult.is_(False))
 

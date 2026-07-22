@@ -18,6 +18,7 @@ _TMP = Path(__file__).resolve().parent / ".tmp" / "resume"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _fresh_storage() -> StorageService:
     d = _TMP / uuid4().hex[:8]
     d.mkdir(parents=True, exist_ok=True)
@@ -26,7 +27,7 @@ def _fresh_storage() -> StorageService:
 
 def _add_chapter(storage: StorageService, novel_id: str, chapter_id: str, text: str = "raw text") -> None:
     storage.save_chapter(novel_id, chapter_id, text, source_url=f"http://example.com/{chapter_id}")
-    storage.save_translated_chapter(novel_id, chapter_id, text, provider="p", model="m")
+    storage.save_translated_chapter(novel_id, chapter_id, text, provider_key="p", provider_model="m")
 
 
 def _fail_chapter(storage: StorageService, novel_id: str, chapter_id: str) -> None:
@@ -36,6 +37,7 @@ def _fail_chapter(storage: StorageService, novel_id: str, chapter_id: str) -> No
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestCheckpointRestoreContract:
     def test_checkpoint_restore_on_error_count_gt_zero(self) -> None:
@@ -126,7 +128,7 @@ class TestCheckpointRestoreContract:
 
         # Mutate all three after checkpoint
         storage.save_chapter("n1", "5", "corrupted raw")
-        storage.save_translated_chapter("n1", "5", "corrupted trans", provider="p", model="m")
+        storage.save_translated_chapter("n1", "5", "corrupted trans", provider_key="p", provider_model="m")
         _fail_chapter(storage, "n1", "5")
 
         cp_name = storage.list_checkpoints("n1", "5")[-1]["checkpoint_name"]

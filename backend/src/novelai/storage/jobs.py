@@ -12,6 +12,7 @@ from novelai.storage.common import CheckpointInfo, _utc_now, _utc_now_iso
 
 logger = logging.getLogger(__name__)
 
+
 def _get_state_dir(self: Any, novel_id: str) -> Path:
     """Get the directory for chapter state files."""
     novel_dir = self._novel_dir(novel_id)
@@ -32,9 +33,7 @@ def save_chapter_state(self: Any, novel_id: str, chapter_id: str, state_data: di
             from_state = transition.from_state.value if transition.from_state else None
             to_state = transition.to_state.value if transition.to_state else None
             timestamp = (
-                transition.timestamp.isoformat()
-                if isinstance(transition.timestamp, datetime)
-                else transition.timestamp
+                transition.timestamp.isoformat() if isinstance(transition.timestamp, datetime) else transition.timestamp
             )
             error = transition.error
         elif isinstance(transition, dict):
@@ -56,18 +55,24 @@ def save_chapter_state(self: Any, novel_id: str, chapter_id: str, state_data: di
         else:
             continue
 
-        transitions.append({
-            "from_state": from_state,
-            "to_state": to_state,
-            "timestamp": timestamp,
-            "error": error,
-        })
+        transitions.append(
+            {
+                "from_state": from_state,
+                "to_state": to_state,
+                "timestamp": timestamp,
+                "error": error,
+            }
+        )
 
     payload = {
         "chapter_id": safe_chapter_id,
-        "current_state": state_data["current_state"].value if isinstance(state_data["current_state"], ChapterState) else state_data["current_state"],
+        "current_state": state_data["current_state"].value
+        if isinstance(state_data["current_state"], ChapterState)
+        else state_data["current_state"],
         "transitions": transitions,
-        "last_updated": state_data["last_updated"].isoformat() if isinstance(state_data["last_updated"], datetime) else state_data["last_updated"],
+        "last_updated": state_data["last_updated"].isoformat()
+        if isinstance(state_data["last_updated"], datetime)
+        else state_data["last_updated"],
         "error_count": state_data.get("error_count", 0),
         "retry_count": state_data.get("retry_count", 0),
     }
@@ -92,18 +97,24 @@ def load_chapter_state(self: Any, novel_id: str, chapter_id: str) -> dict[str, A
         # Deserialize to proper types
         transitions = []
         for t in data.get("transitions", []):
-            transitions.append(ChapterStateTransition(
-                from_state=ChapterState(t["from_state"]) if t["from_state"] else None,
-                to_state=ChapterState(t["to_state"]) if t["to_state"] else ChapterState.SCRAPED,
-                timestamp=datetime.fromisoformat(t["timestamp"]) if isinstance(t["timestamp"], str) else t["timestamp"],
-                error=t.get("error"),
-            ))
+            transitions.append(
+                ChapterStateTransition(
+                    from_state=ChapterState(t["from_state"]) if t["from_state"] else None,
+                    to_state=ChapterState(t["to_state"]) if t["to_state"] else ChapterState.SCRAPED,
+                    timestamp=datetime.fromisoformat(t["timestamp"])
+                    if isinstance(t["timestamp"], str)
+                    else t["timestamp"],
+                    error=t.get("error"),
+                )
+            )
 
         return {
             "chapter_id": data["chapter_id"],
             "current_state": ChapterState(data["current_state"]),
             "transitions": transitions,
-            "last_updated": datetime.fromisoformat(data["last_updated"]) if isinstance(data["last_updated"], str) else data["last_updated"],
+            "last_updated": datetime.fromisoformat(data["last_updated"])
+            if isinstance(data["last_updated"], str)
+            else data["last_updated"],
             "error_count": data.get("error_count", 0),
             "retry_count": data.get("retry_count", 0),
         }
@@ -237,11 +248,13 @@ def list_checkpoints(self: Any, novel_id: str, chapter_id: str) -> list[Checkpoi
                 continue
             if not isinstance(checkpoint_name, str):
                 continue
-            checkpoints.append({
-                "filename": checkpoint_file.name,
-                "timestamp": timestamp,
-                "checkpoint_name": checkpoint_name,
-            })
+            checkpoints.append(
+                {
+                    "filename": checkpoint_file.name,
+                    "timestamp": timestamp,
+                    "checkpoint_name": checkpoint_name,
+                }
+            )
         except (json.JSONDecodeError, OSError):
             logger.debug("Skipping unreadable checkpoint file %s.", checkpoint_file)
             continue
@@ -307,11 +320,22 @@ def restore_from_checkpoint(
                 novel_id,
                 safe_chapter_id,
                 translated_chapter.get("text", ""),
-                provider=translated_chapter.get("provider"),
-                model=translated_chapter.get("model"),
-                confidence_score=translated_chapter.get("confidence_score") if isinstance(translated_chapter.get("confidence_score"), float) else None,
-                polish_needed=translated_chapter.get("polish_needed") if isinstance(translated_chapter.get("polish_needed"), bool) else None,
-                confidence_details=translated_chapter.get("confidence_details") if isinstance(translated_chapter.get("confidence_details"), dict) else None,
+                provider_key=translated_chapter.get("provider_key"),
+                provider_model=translated_chapter.get("provider_model"),
+                glossary_revision=(
+                    translated_chapter["glossary_revision"]
+                    if isinstance(translated_chapter.get("glossary_revision"), int)
+                    else 0
+                ),
+                confidence_score=translated_chapter.get("confidence_score")
+                if isinstance(translated_chapter.get("confidence_score"), float)
+                else None,
+                polish_needed=translated_chapter.get("polish_needed")
+                if isinstance(translated_chapter.get("polish_needed"), bool)
+                else None,
+                confidence_details=translated_chapter.get("confidence_details")
+                if isinstance(translated_chapter.get("confidence_details"), dict)
+                else None,
             )
 
         # Restore state (if available)
@@ -366,8 +390,7 @@ def rollback_to_state(self: Any, novel_id: str, chapter_id: str, target_state: C
     # Delete files for states beyond target
     if target_idx < state_order.index(ChapterState.TRANSLATED):
         chapter_payload = self._load_chapter_bundle(novel_id, safe_chapter_id)
-        if chapter_payload and "translated" in chapter_payload:
-            del chapter_payload["translated"]
+        if chapter_payload and "translation_versions" in chapter_payload:
             chapter_payload.pop("translation_versions", None)
             chapter_payload.pop("active_translation_version_id", None)
             chapter_payload.pop("edit_history", None)

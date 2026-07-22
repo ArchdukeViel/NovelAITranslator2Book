@@ -16,18 +16,22 @@ _TMP = Path(__file__).resolve().parent / ".tmp" / "qa_hardening"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _fresh_storage() -> StorageService:
     d = _TMP / uuid4().hex[:8]
     d.mkdir(parents=True, exist_ok=True)
     return StorageService(d)
 
+
 def _add_chapter(storage: StorageService, novel_id: str, chapter_id: str, text: str = "raw text") -> None:
     storage.save_chapter(novel_id, chapter_id, text, source_url=f"http://example.com/{chapter_id}")
-    storage.save_translated_chapter(novel_id, chapter_id, text, provider="p", model="m")
+    storage.save_translated_chapter(novel_id, chapter_id, text, provider_key="p", provider_model="m")
+
 
 # ---------------------------------------------------------------------------
 # CJK residue (Tasks 1.x)
 # ---------------------------------------------------------------------------
+
 
 class TestCjkResidue:
     def test_cjk_residue_error(self) -> None:
@@ -76,9 +80,11 @@ class TestCjkResidue:
         assert "cjk_residue_high" not in result.errors
         assert "cjk_residue_moderate" not in result.warnings
 
+
 # ---------------------------------------------------------------------------
 # Repetition (Tasks 2.x)
 # ---------------------------------------------------------------------------
+
 
 class TestRepetition:
     def test_repetition_error(self) -> None:
@@ -150,9 +156,11 @@ class TestRepetition:
         assert "repetition_high" not in result.errors
         assert "repetition_moderate" not in result.warnings
 
+
 # ---------------------------------------------------------------------------
 # Glossary term check (Tasks 3.x)
 # ---------------------------------------------------------------------------
+
 
 class TestGlossaryCheck:
     def test_glossary_term_missing_warning(self) -> None:
@@ -205,9 +213,11 @@ class TestGlossaryCheck:
         glossary_warnings = [w for w in result.warnings if w.startswith("glossary_term_missing")]
         assert len(glossary_warnings) <= 20
 
+
 # ---------------------------------------------------------------------------
 # QA score (Task 11.13)
 # ---------------------------------------------------------------------------
+
 
 class TestQAScore:
     def test_qa_score_decreases_on_new_errors(self) -> None:
@@ -234,9 +244,11 @@ class TestQAScore:
         assert "cjk_residue_high" in dirty_result.errors
         assert dirty_result.score < 0.75
 
+
 # ---------------------------------------------------------------------------
 # Low-confidence activation gate (Tasks 7.x-9.x)
 # ---------------------------------------------------------------------------
+
 
 class TestActivationGate:
     def test_low_confidence_not_activated(self) -> None:
@@ -244,8 +256,11 @@ class TestActivationGate:
         storage = _fresh_storage()
         _add_chapter(storage, "n1", "c1", "original text")
         storage.save_translated_chapter(
-            "n1", "c1", "low confidence translation",
-            provider="p", model="m",
+            "n1",
+            "c1",
+            "low confidence translation",
+            provider_key="p",
+            provider_model="m",
             confidence_score=0.40,
             auto_activate=False,
         )
@@ -259,8 +274,11 @@ class TestActivationGate:
         storage = _fresh_storage()
         storage.save_chapter("n1", "c1", "raw text", source_url="http://example.com")
         storage.save_translated_chapter(
-            "n1", "c1", "high confidence translation",
-            provider="p", model="m",
+            "n1",
+            "c1",
+            "high confidence translation",
+            provider_key="p",
+            provider_model="m",
             confidence_score=0.85,
             auto_activate=True,
         )
@@ -273,17 +291,22 @@ class TestActivationGate:
         storage = _fresh_storage()
         storage.save_chapter("n1", "c1", "raw text", source_url="http://example.com")
         storage.save_translated_chapter(
-            "n1", "c1", "default activated",
-            provider="p", model="m",
+            "n1",
+            "c1",
+            "default activated",
+            provider_key="p",
+            provider_model="m",
             confidence_score=0.90,
         )
         active = storage.load_translated_chapter("n1", "c1")
         assert active is not None
         assert "default activated" in active.get("text", "")
 
+
 # ---------------------------------------------------------------------------
 # QA status in chunk output records (Tasks 4.x)
 # ---------------------------------------------------------------------------
+
 
 class TestQaStatusInChunkOutput:
     def test_qa_status_passed_in_chunk_state(self) -> None:

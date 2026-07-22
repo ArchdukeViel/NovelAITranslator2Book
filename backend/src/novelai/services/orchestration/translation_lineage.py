@@ -39,7 +39,9 @@ def _lineage_key(item: dict[str, Any]) -> tuple[str, str]:
     return str(item.get("chapter_id") or ""), str(item.get("paragraph_id") or "")
 
 
-def _normalize_lineage_item(item: dict[str, Any], *, fallback_index: int, text: str | None = None) -> dict[str, Any] | None:
+def _normalize_lineage_item(
+    item: dict[str, Any], *, fallback_index: int, text: str | None = None
+) -> dict[str, Any] | None:
     source_hash = item.get("source_hash")
     if not isinstance(source_hash, str) or not source_hash.strip():
         source_hash = item.get("paragraph_hash")
@@ -206,9 +208,7 @@ def _compare_lineage(old_items: list[dict[str, Any]], new_items: list[dict[str, 
     anchors = _stable_anchor_pairs(old_items, new_items)
     unchanged_new_indexes = {new_index for _, new_index in anchors}
     moved_hashes = {
-        source_hash
-        for source_hash, count in old_counts.items()
-        if count == 1 and new_counts.get(source_hash) == 1
+        source_hash for source_hash, count in old_counts.items() if count == 1 and new_counts.get(source_hash) == 1
     } - {str(new_items[new_index].get("source_hash") or "") for _, new_index in anchors}
 
     inserted: set[int] = set()
@@ -387,7 +387,9 @@ def _lineage_signature(lineage: list[dict[str, Any]]) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _structured_paragraphs_from_outputs(storage: Any, novel_id: str, chapter_id: str) -> dict[tuple[str, str], dict[str, str]]:
+def _structured_paragraphs_from_outputs(
+    storage: Any, novel_id: str, chapter_id: str
+) -> dict[tuple[str, str], dict[str, str]]:
     outputs = storage.read_translation_output(novel_id)
     if not isinstance(outputs, list):
         return {}
@@ -403,7 +405,9 @@ def _structured_paragraphs_from_outputs(storage: Any, novel_id: str, chapter_id:
                     continue
                 normalized = _normalize_lineage_item(item, fallback_index=0)
                 if normalized is not None and normalized["chapter_id"] == chapter_id:
-                    paragraph_hash_by_ref[(normalized["chapter_id"], normalized["paragraph_id"])] = normalized["source_hash"]
+                    paragraph_hash_by_ref[(normalized["chapter_id"], normalized["paragraph_id"])] = normalized[
+                        "source_hash"
+                    ]
         paragraph_map = output.get("structured_paragraph_map")
         if not isinstance(paragraph_map, list):
             continue
@@ -456,7 +460,9 @@ def _structured_map_from_result(result: Any, window_items: list[dict[str, Any]])
     return mapped[: len(window_items)]
 
 
-def _qa_reassembled_chapter(*, source_text: str, translated_text: str, chapter_id: str, lineage: list[dict[str, Any]]) -> dict[str, Any]:
+def _qa_reassembled_chapter(
+    *, source_text: str, translated_text: str, chapter_id: str, lineage: list[dict[str, Any]]
+) -> dict[str, Any]:
     chunk = TranslationChunk(
         chunk_id="delta_final",
         novel_id="delta",
@@ -613,7 +619,9 @@ async def _try_delta_translate_chapter(
         return {"applied": False, "fallback_reason": "incomplete_reassembly"}
 
     final_text = "\n\n".join(final_parts)
-    qa_result = _qa_reassembled_chapter(source_text=raw_text, translated_text=final_text, chapter_id=chapter_id, lineage=new_lineage)
+    qa_result = _qa_reassembled_chapter(
+        source_text=raw_text, translated_text=final_text, chapter_id=chapter_id, lineage=new_lineage
+    )
     if not qa_result.get("passed"):
         return {"applied": False, "fallback_reason": "final_qa_failed", "qa_result": qa_result}
 
@@ -621,8 +629,8 @@ async def _try_delta_translate_chapter(
         "applied": True,
         "mode": "delta",
         "text": final_text,
-        "provider": provider_key,
-        "model": provider_model,
+        "provider_key": provider_key,
+        "provider_model": provider_model,
         "provenance": {
             "delta_retranslation": True,
             "mode": "delta",

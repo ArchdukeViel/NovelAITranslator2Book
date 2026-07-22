@@ -189,7 +189,9 @@ def _persist_chunk_qa_results_to_outputs(storage: Any, novel_id: str, chunk_stat
         outputs = storage.read_translation_output(
             novel_id,
             chunk_id=chunk_id,
-            translation_run_id=state.get("translation_run_id") if isinstance(state.get("translation_run_id"), str) else None,
+            translation_run_id=state.get("translation_run_id")
+            if isinstance(state.get("translation_run_id"), str)
+            else None,
             chapter_ids=state.get("chapter_ids") if isinstance(state.get("chapter_ids"), list) else None,
             chapter_id=state.get("chapter_id") if isinstance(state.get("chapter_id"), str) else None,
         )
@@ -241,10 +243,7 @@ def _preflight_translation(
         issues.append(
             PreflightIssue(
                 code="onboarding_not_ready",
-                reason=(
-                    f"Novel onboarding is {onboarding_status!r}; "
-                    "complete chapter scraping before translation."
-                ),
+                reason=(f"Novel onboarding is {onboarding_status!r}; complete chapter scraping before translation."),
                 details={"onboarding_status": onboarding_status},
             )
         )
@@ -282,8 +281,7 @@ def _preflight_translation(
             PreflightIssue(
                 code="missing_chapter_url",
                 reason=(
-                    "Some selected chapters have no source URL: "
-                    + ", ".join(str(number) for number in unresolved_urls)
+                    "Some selected chapters have no source URL: " + ", ".join(str(number) for number in unresolved_urls)
                 ),
             )
         )
@@ -303,9 +301,7 @@ def _preflight_translation(
         issues.append(
             PreflightIssue(
                 code="missing_source_language",
-                reason=(
-                    "Source language is unknown. Provide source_language explicitly or include it in metadata."
-                ),
+                reason=("Source language is unknown. Provide source_language explicitly or include it in metadata."),
             )
         )
 
@@ -336,10 +332,7 @@ def _preflight_translation(
         issues.append(
             PreflightIssue(
                 code="pending_glossary_terms",
-                reason=(
-                    "Review glossary terms before translation. "
-                    f"Pending terms: {preview}."
-                ),
+                reason=(f"Review glossary terms before translation. Pending terms: {preview}."),
             )
         )
 
@@ -469,15 +462,23 @@ async def polish_low_confidence_chapters(
         translated_raw_text = translated.get("text")
         source_text = raw_text if isinstance(raw_text, str) else ""
         translated_text = translated_raw_text if isinstance(translated_raw_text, str) else ""
-        stored_score = translated.get("confidence_score") if isinstance(translated.get("confidence_score"), float) else None
-        polish_needed_flag = translated.get("polish_needed") if isinstance(translated.get("polish_needed"), bool) else None
+        stored_score = (
+            translated.get("confidence_score") if isinstance(translated.get("confidence_score"), float) else None
+        )
+        polish_needed_flag = (
+            translated.get("polish_needed") if isinstance(translated.get("polish_needed"), bool) else None
+        )
 
         if low_confidence_only and isinstance(polish_needed_flag, bool):
             if polish_needed_flag:
                 low_confidence_ids.append(chapter_id)
             continue
 
-        confidence_score = stored_score if isinstance(stored_score, float) else self._score_translation_confidence(source_text, translated_text)
+        confidence_score = (
+            stored_score
+            if isinstance(stored_score, float)
+            else self._score_translation_confidence(source_text, translated_text)
+        )
 
         if confidence_score < normalized_threshold:
             low_confidence_ids.append(chapter_id)
@@ -497,7 +498,8 @@ async def polish_low_confidence_chapters(
     approved_glossary = [
         dict(entry)
         for entry in self.storage.load_glossary(novel_id)
-        if isinstance(entry, dict) and str(entry.get("status") or "pending").strip().lower() in {"approved", "translated"}
+        if isinstance(entry, dict)
+        and str(entry.get("status") or "pending").strip().lower() in {"approved", "translated"}
     ]
     retranslate_selection = ",".join(low_confidence_ids)
     await self.translate_chapters(
@@ -740,7 +742,9 @@ async def translate_chapters(
     if not isinstance(workflow_defaults, dict):
         workflow_defaults = {}
     effective_style_preset = style_preset if style_preset is not None else workflow_defaults.get("style_preset")
-    effective_consistency_mode = consistency_mode if consistency_mode else bool(workflow_defaults.get("consistency_mode", False))
+    effective_consistency_mode = (
+        consistency_mode if consistency_mode else bool(workflow_defaults.get("consistency_mode", False))
+    )
     effective_honorific_policy = workflow_defaults.get("honorific_policy")
 
     # Auto-load stored glossary when none was explicitly provided.
@@ -809,9 +813,7 @@ async def translate_chapters(
             # Per-chapter lock to serialize same-chapter re-entry (REQ-2.1)
             lock = _get_translation_lock(novel_id, chapter_id)
             if lock.locked():
-                raise TranslationInProgressError(
-                    f"Translation is already in progress for {novel_id}/{chapter_id}"
-                )
+                raise TranslationInProgressError(f"Translation is already in progress for {novel_id}/{chapter_id}")
             await lock.acquire()
 
             _update_db_translation_state(novel_id, chapter_id, TranslationState.FETCHING)
@@ -841,7 +843,9 @@ async def translate_chapters(
                     else:
                         raw_text = raw_chapter.get("text") if isinstance(raw_chapter.get("text"), str) else None
                     raw_images = raw_chapter.get("images") if isinstance(raw_chapter.get("images"), list) else None
-                chapter_url = str(chapter.get("url") or (raw_chapter or {}).get("source_url") or f"import://{novel_id}/{chapter_id}")
+                chapter_url = str(
+                    chapter.get("url") or (raw_chapter or {}).get("source_url") or f"import://{novel_id}/{chapter_id}"
+                )
                 delta_fallback_reason: str | None = None
                 delta_result: dict[str, Any] | None = None
                 if raw_text is not None and not force:
@@ -877,8 +881,12 @@ async def translate_chapters(
                             novel_id,
                             chapter_id,
                             translated,
-                            provider=delta_result.get("provider") if isinstance(delta_result.get("provider"), str) else effective_provider_key,
-                            model=delta_result.get("model") if isinstance(delta_result.get("model"), str) else effective_provider_model,
+                            provider_key=delta_result.get("provider_key")
+                            if isinstance(delta_result.get("provider_key"), str)
+                            else effective_provider_key,
+                            provider_model=delta_result.get("provider_model")
+                            if isinstance(delta_result.get("provider_model"), str)
+                            else effective_provider_model,
                             confidence_score=confidence_score,
                             polish_needed=polish_needed,
                             confidence_details={
@@ -906,13 +914,15 @@ async def translate_chapters(
                         )
                         self.storage.create_checkpoint(novel_id, chapter_id, "translated")
                         _update_db_translation_state(novel_id, chapter_id, TranslationState.COMPLETE)
-                        cp_mgr.save(Checkpoint(
-                            chapter_id=chapter_id,
-                            state=TranslationState.COMPLETE,
-                            completed_stages=["delta_translate"],
-                            segments_completed=1,
-                            segments_total=1,
-                        ))
+                        cp_mgr.save(
+                            Checkpoint(
+                                chapter_id=chapter_id,
+                                state=TranslationState.COMPLETE,
+                                completed_stages=["delta_translate"],
+                                segments_completed=1,
+                                segments_total=1,
+                            )
+                        )
                         cp_mgr.delete(chapter_id)
                         return {"chapter_id": chapter_id, "status": "succeeded"}
                     delta_fallback_reason = str(delta_result.get("fallback_reason") or "unsafe_delta")
@@ -921,11 +931,13 @@ async def translate_chapters(
 
                 # Update DB state + write checkpoint before full pipeline (REQ-1.4, REQ-2.3)
                 _update_db_translation_state(novel_id, chapter_id, TranslationState.TRANSLATING)
-                cp_mgr.save(Checkpoint(
-                    chapter_id=chapter_id,
-                    state=TranslationState.TRANSLATING,
-                    current_stage="translate",
-                ))
+                cp_mgr.save(
+                    Checkpoint(
+                        chapter_id=chapter_id,
+                        state=TranslationState.TRANSLATING,
+                        current_stage="translate",
+                    )
+                )
 
                 result = await self.translation.translate_chapter(
                     source_adapter=source,
@@ -959,13 +971,15 @@ async def translate_chapters(
                     confidence_score is None
                     or confidence_score >= settings.TRANSLATION_LOW_CONFIDENCE_ACTIVATION_THRESHOLD
                 )
-                scheduler_policy = result.scheduler_state.get("policy") if isinstance(result.scheduler_state, dict) else None
+                scheduler_policy = (
+                    result.scheduler_state.get("policy") if isinstance(result.scheduler_state, dict) else None
+                )
                 self.storage.save_translated_chapter(
                     novel_id,
                     chapter_id,
                     translated,
-                    provider=result.provider_key,
-                    model=result.provider_model,
+                    provider_key=result.provider_key,
+                    provider_model=result.provider_model,
                     confidence_score=confidence_score,
                     polish_needed=polish_needed,
                     confidence_details={
@@ -978,7 +992,9 @@ async def translate_chapters(
                             "delta_retranslation": False,
                             "mode": "full",
                             "fallback_reason": delta_fallback_reason,
-                        } if delta_fallback_reason else None,
+                        }
+                        if delta_fallback_reason
+                        else None,
                     },
                     glossary_revision=glossary_revision,
                     glossary_injected_term_count=glossary_injected_term_count,
@@ -992,7 +1008,8 @@ async def translate_chapters(
                 # Invalidate library summary cache after successful storage write
                 best_effort_invalidate()
                 self.storage.save_chapter_state(
-                    novel_id, chapter_id,
+                    novel_id,
+                    chapter_id,
                     _make_state_data(ChapterState.TRANSLATED, previous=prev_state),
                 )
                 self.storage.append_pipeline_events(result.pipeline_events)
@@ -1003,13 +1020,15 @@ async def translate_chapters(
                 # Mark COMPLETE in DB + write CheckpointManager checkpoint (REQ-2.3, REQ-3.1)
                 _update_db_translation_state(novel_id, chapter_id, TranslationState.COMPLETE)
                 n_segments = len(result.chunk_states)
-                cp_mgr.save(Checkpoint(
-                    chapter_id=chapter_id,
-                    state=TranslationState.COMPLETE,
-                    completed_stages=["fetch", "parse", "segment", "translate", "qa", "post_process"],
-                    segments_completed=n_segments,
-                    segments_total=n_segments,
-                ))
+                cp_mgr.save(
+                    Checkpoint(
+                        chapter_id=chapter_id,
+                        state=TranslationState.COMPLETE,
+                        completed_stages=["fetch", "parse", "segment", "translate", "qa", "post_process"],
+                        segments_completed=n_segments,
+                        segments_total=n_segments,
+                    )
+                )
                 cp_mgr.delete(chapter_id)
                 return {"chapter_id": chapter_id, "status": "succeeded"}
             except Exception as exc:
@@ -1027,7 +1046,8 @@ async def translate_chapters(
                 else:
                     failed_state = ChapterState.NEEDS_RETRY if isinstance(provider_code, str) else ChapterState.FAILED
                 self.storage.save_chapter_state(
-                    novel_id, chapter_id,
+                    novel_id,
+                    chapter_id,
                     _make_state_data(failed_state, error=str(exc), previous=prev_state),
                 )
                 details = getattr(failure, "details", None)
@@ -1077,11 +1097,13 @@ async def translate_chapters(
                     )
                 self.storage.create_checkpoint(novel_id, chapter_id, "failed")
                 _update_db_translation_state(novel_id, chapter_id, TranslationState.FAILED, error=str(exc))
-                cp_mgr.save(Checkpoint(
-                    chapter_id=chapter_id,
-                    state=TranslationState.FAILED,
-                    error=str(exc)[:1024],
-                ))
+                cp_mgr.save(
+                    Checkpoint(
+                        chapter_id=chapter_id,
+                        state=TranslationState.FAILED,
+                        error=str(exc)[:1024],
+                    )
+                )
                 raise
             finally:
                 lock.release()

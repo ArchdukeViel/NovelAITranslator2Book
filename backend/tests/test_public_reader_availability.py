@@ -85,9 +85,7 @@ def client(app: FastAPI) -> TestClient:
 @pytest.fixture()
 def owner_client(app: FastAPI, client: TestClient) -> TestClient:
     """Client authenticated as owner via get_current_user override."""
-    app.dependency_overrides[get_current_user] = lambda: SessionUser(
-        user_id=1, email="owner@example.com", role="owner"
-    )
+    app.dependency_overrides[get_current_user] = lambda: SessionUser(user_id=1, email="owner@example.com", role="owner")
     return client
 
 
@@ -134,11 +132,15 @@ def _seed_translated(
     chapter_id: str,
     text: str = "Translated text.",
     *,
-    provider: str | None = None,
-    model: str | None = None,
+    provider_key: str | None = None,
+    provider_model: str | None = None,
 ) -> None:
     storage.save_translated_chapter(
-        novel_id, chapter_id, text, provider=provider, model=model
+        novel_id,
+        chapter_id,
+        text,
+        provider_key=provider_key,
+        provider_model=provider_model,
     )
 
 
@@ -217,12 +219,8 @@ class TestLatestVersionPolicy:
         monkeypatch.setattr(settings, "PUBLIC_READER_UNAVAILABLE_POLICY", "latest_version")
         _seed_novel(storage, "novel-001")
         # Save two versions; v2 becomes active by default
-        storage.save_translated_chapter(
-            "novel-001", "ch001", "First version.", auto_activate=False
-        )
-        storage.save_translated_chapter(
-            "novel-001", "ch001", "Second version.", auto_activate=False
-        )
+        storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
+        storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
         # Activate v1 so the active translation is the older version
         storage.activate_translated_chapter_version("novel-001", "ch001", "v1")
 
@@ -249,9 +247,7 @@ class TestLatestVersionPolicy:
 
 
 class TestActiveVersionAlwaysServed:
-    def test_active_version_served_under_hard_404(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_active_version_served_under_hard_404(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001")
         _seed_translated(storage, "novel-001", "ch001", "Active text.")
         resp = client.get("/api/public/novels/novel-001/chapters/ch001")
@@ -287,7 +283,11 @@ class TestActiveVersionAlwaysServed:
 
 class TestInvalidPolicyFallback:
     def test_invalid_global_policy_falls_back_to_hard_404(
-        self, client: TestClient, storage: StorageService, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+        self,
+        client: TestClient,
+        storage: StorageService,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         monkeypatch.setattr(settings, "PUBLIC_READER_UNAVAILABLE_POLICY", "bogus_policy")
         _seed_novel(storage, "novel-001")
@@ -299,9 +299,7 @@ class TestInvalidPolicyFallback:
     def test_invalid_per_novel_policy_falls_back_to_hard_404(
         self, client: TestClient, storage: StorageService, caplog: pytest.LogCaptureFixture
     ) -> None:
-        _seed_novel(
-            storage, "novel-001", public_reader_unavailable_policy="bogus_per_novel"
-        )
+        _seed_novel(storage, "novel-001", public_reader_unavailable_policy="bogus_per_novel")
         with caplog.at_level(logging.WARNING):
             resp = client.get("/api/public/novels/novel-001/chapters/ch001")
         assert resp.status_code == 404
@@ -314,64 +312,41 @@ class TestInvalidPolicyFallback:
 
 
 class TestOwnerVersionPreview:
-    def test_owner_can_load_specific_version(
-        self, owner_client: TestClient, storage: StorageService
-    ) -> None:
+    def test_owner_can_load_specific_version(self, owner_client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001")
-        storage.save_translated_chapter(
-            "novel-001", "ch001", "First version.", auto_activate=False
-        )
-        storage.save_translated_chapter(
-            "novel-001", "ch001", "Second version.", auto_activate=False
-        )
-        # v2 is active
-        resp = owner_client.get(
-            "/api/public/novels/novel-001/chapters/ch001?version_id=v1"
-        )
+        storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
+        storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
+        assert storage.activate_translated_chapter_version("novel-001", "ch001", "v2")
+        resp = owner_client.get("/api/public/novels/novel-001/chapters/ch001?version_id=v1")
         assert resp.status_code == 200
         data = resp.json()
         assert data["version_id"] == "v1"
         assert data["is_active_version"] is False
         assert "First version." in data["text"]
 
-    def test_owner_preview_of_active_version(
-        self, owner_client: TestClient, storage: StorageService
-    ) -> None:
+    def test_owner_preview_of_active_version(self, owner_client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001")
-        storage.save_translated_chapter(
-            "novel-001", "ch001", "First version.", auto_activate=False
-        )
-        storage.save_translated_chapter(
-            "novel-001", "ch001", "Second version.", auto_activate=False
-        )
-        resp = owner_client.get(
-            "/api/public/novels/novel-001/chapters/ch001?version_id=v2"
-        )
+        storage.save_translated_chapter("novel-001", "ch001", "First version.", auto_activate=False)
+        storage.save_translated_chapter("novel-001", "ch001", "Second version.", auto_activate=False)
+        assert storage.activate_translated_chapter_version("novel-001", "ch001", "v2")
+        resp = owner_client.get("/api/public/novels/novel-001/chapters/ch001?version_id=v2")
         assert resp.status_code == 200
         data = resp.json()
         assert data["version_id"] == "v2"
         assert data["is_active_version"] is True
 
-    def test_owner_unknown_version_returns_404(
-        self, owner_client: TestClient, storage: StorageService
-    ) -> None:
+    def test_owner_unknown_version_returns_404(self, owner_client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001")
         _seed_translated(storage, "novel-001", "ch001", "Active text.")
-        resp = owner_client.get(
-            "/api/public/novels/novel-001/chapters/ch001?version_id=v999"
-        )
+        resp = owner_client.get("/api/public/novels/novel-001/chapters/ch001?version_id=v999")
         assert resp.status_code == 404
         assert resp.json()["detail"] == "Version not found."
 
-    def test_unauthenticated_version_id_is_ignored(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_unauthenticated_version_id_is_ignored(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001")
         _seed_translated(storage, "novel-001", "ch001", "Active text.")
         # No owner auth — version_id should be silently ignored
-        resp = client.get(
-            "/api/public/novels/novel-001/chapters/ch001?version_id=v999"
-        )
+        resp = client.get("/api/public/novels/novel-001/chapters/ch001?version_id=v999")
         assert resp.status_code == 200
         data = resp.json()
         assert data["text"] == "Active text."
@@ -382,9 +357,7 @@ class TestOwnerVersionPreview:
     ) -> None:
         _seed_novel(storage, "novel-001")
         _seed_translated(storage, "novel-001", "ch001", "Active text.")
-        resp = client.get(
-            "/api/public/novels/novel-001/chapters/ch001?version_id=v999"
-        )
+        resp = client.get("/api/public/novels/novel-001/chapters/ch001?version_id=v999")
         # Should serve normal active version, NOT "Version not found."
         assert resp.status_code == 200
         body = resp.json()
@@ -419,9 +392,7 @@ class TestPerNovelPolicyOverride:
 
 
 class TestChapterListAvailability:
-    def test_chapter_list_includes_availability_status(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_chapter_list_includes_availability_status(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001")
         _seed_translated(storage, "novel-001", "ch001", "First.")
         resp = client.get("/api/public/novels/novel-001/chapters")
@@ -435,9 +406,7 @@ class TestChapterListAvailability:
         assert data[1]["availability_status"] == "not_translated"
         assert data[1]["translated"] is False
 
-    def test_chapter_list_preserves_existing_fields(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_chapter_list_preserves_existing_fields(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001")
         _seed_translated(storage, "novel-001", "ch001", "First.")
         resp = client.get("/api/public/novels/novel-001/chapters")
@@ -456,12 +425,15 @@ class TestChapterListAvailability:
 
 
 class TestAdditiveFieldsOnNormalResponse:
-    def test_normal_response_includes_availability_fields(
-        self, client: TestClient, storage: StorageService
-    ) -> None:
+    def test_normal_response_includes_availability_fields(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001")
         _seed_translated(
-            storage, "novel-001", "ch001", "Hello.", provider="gemini", model="gemini-3.1-flash-lite"
+            storage,
+            "novel-001",
+            "ch001",
+            "Hello.",
+            provider_key="gemini",
+            provider_model="gemini-3.1-flash-lite",
         )
         resp = client.get("/api/public/novels/novel-001/chapters/ch001")
         assert resp.status_code == 200
@@ -475,5 +447,5 @@ class TestAdditiveFieldsOnNormalResponse:
         assert data["availability_message"] is None
         assert data["is_active_version"] is True
         assert data["version_id"] is not None
-        assert data["provider"] == "gemini"
-        assert data["model"] == "gemini-3.1-flash-lite"
+        assert data["provider_key"] == "gemini"
+        assert data["provider_model"] == "gemini-3.1-flash-lite"

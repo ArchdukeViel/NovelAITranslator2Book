@@ -450,7 +450,7 @@ class StorageService:
 
     @staticmethod
     def _next_translation_version_id(versions: list[dict[str, Any]]) -> str:
-        used = {str(version.get("id")) for version in versions if version.get("id") is not None}
+        used = {str(version.get("version_id")) for version in versions if version.get("version_id") is not None}
         index = len(used) + 1
         while f"v{index}" in used:
             index += 1

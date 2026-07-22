@@ -200,7 +200,7 @@ def _record_projection_refresh_failure(
                 "novel_id": novel_id,
                 "error": str(error),
                 "context": context,
-            "recorded_at": datetime.now(UTC).isoformat(),
+                "recorded_at": datetime.now(UTC).isoformat(),
             }
         )
 
@@ -347,7 +347,7 @@ class CatalogService:
         chapter_id: str,
         content: str,
         *,
-        provider: str | None = None,
+        provider_key: str | None = None,
     ) -> Chapter:
         """Save translated chapter text to file storage; persist key+checksum in DB.
 
@@ -355,12 +355,18 @@ class CatalogService:
             novel_id: Parent novel identifier.
             chapter_id: Chapter identifier.
             content: Translated chapter text.
-            provider: Optional provider key for traceability.
+            provider_key: Optional provider key for traceability.
 
         Returns:
             The Chapter ORM instance (updated in session, not yet committed).
         """
-        self._storage.save_translated_chapter(novel_id, chapter_id, content, provider=provider)
+        self._storage.save_translated_chapter(
+            novel_id,
+            chapter_id,
+            content,
+            provider_key=provider_key,
+            glossary_revision=0,
+        )
         storage_key = f"{novel_id}/{chapter_id}/translated"
         checksum = _sha256(content)
 

@@ -58,28 +58,31 @@ def _attach_freshness_fields(
     return result
 
 
-def _translated_payload_to_version(self: Any, translated: dict[str, Any], fallback_id: str) -> dict[str, Any]:
+def _translated_payload_to_version(self: Any, translated: dict[str, Any]) -> dict[str, Any]:
+    version_id = translated.get("version_id")
+    version_kind = translated.get("version_kind")
+    glossary_revision = translated.get("glossary_revision")
+    if not isinstance(version_id, str) or not version_id:
+        raise ValueError("Translation version requires version_id")
+    if not isinstance(version_kind, str) or version_kind not in {kind.value for kind in ChapterVersionKind}:
+        raise ValueError("Translation version requires a valid version_kind")
+    if type(glossary_revision) is not int or glossary_revision < 0:
+        raise ValueError("Translation version requires a non-negative glossary_revision")
     raw_text = translated.get("text")
-    text = raw_text if isinstance(raw_text, str) else ""
-    created_at = (
-        self._clean_string(translated.get("created_at"))
-        or self._clean_string(translated.get("translated_at"))
-        or _utc_now_iso()
-    )
-    raw_version_id = translated.get("version_id")
-    raw_id = translated.get("id")
+    created_at = self._clean_string(translated.get("created_at"))
+    if not isinstance(raw_text, str) or not created_at:
+        raise ValueError("Translation version requires text and created_at")
 
     version: dict[str, Any] = {
-        "id": (
-            raw_version_id if isinstance(raw_version_id, str) else raw_id if isinstance(raw_id, str) else fallback_id
-        ),
-        "kind": self._normalize_version_kind(translated.get("version_kind") or translated.get("kind")),
-        "provider": translated.get("provider"),
-        "model": translated.get("model"),
+        "version_id": version_id,
+        "version_kind": version_kind,
+        "provider_key": translated.get("provider_key"),
+        "provider_model": translated.get("provider_model"),
         "created_at": created_at,
         "translated_at": created_at,
-        "text": text,
-        "paragraphs": self._text_paragraphs(text),
+        "text": raw_text,
+        "paragraphs": self._text_paragraphs(raw_text),
+        "glossary_revision": glossary_revision,
     }
     if isinstance(translated.get("editor"), str):
         version["editor"] = translated["editor"]
@@ -95,8 +98,6 @@ def _translated_payload_to_version(self: Any, translated: dict[str, Any], fallba
         version["polish_needed"] = translated["polish_needed"]
     if isinstance(translated.get("confidence_details"), dict):
         version["confidence_details"] = dict(translated["confidence_details"])
-    if isinstance(translated.get("glossary_revision"), int):
-        version["glossary_revision"] = translated["glossary_revision"]
     if isinstance(translated.get("glossary_injected_term_count"), int):
         version["glossary_injected_term_count"] = translated["glossary_injected_term_count"]
     if isinstance(translated.get("prompt_template_version"), str) and translated["prompt_template_version"]:
@@ -120,25 +121,22 @@ def _translated_payload_to_version(self: Any, translated: dict[str, Any], fallba
 
 
 def _translation_versions_from_payload(self: Any, payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_versions = payload.get("translation_versions")
+    if raw_versions is None:
+        return []
+    if not isinstance(raw_versions, list):
+        raise ValueError("translation_versions must be a list")
     versions: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
-
-    raw_versions = payload.get("translation_versions")
-    if isinstance(raw_versions, list):
-        for index, raw_version in enumerate(raw_versions, start=1):
-            if not isinstance(raw_version, dict):
-                continue
-            version = self._translated_payload_to_version(raw_version, f"v{index}")
-            version_id = str(version["id"])
-            if version_id in seen_ids:
-                version["id"] = self._next_translation_version_id(versions)
-                version_id = str(version["id"])
-            seen_ids.add(version_id)
-            versions.append(version)
-
-    if not versions and isinstance(payload.get("translated"), dict):
-        versions.append(self._translated_payload_to_version(payload["translated"], "v1"))
-
+    for raw_version in raw_versions:
+        if not isinstance(raw_version, dict):
+            raise ValueError("translation_versions entries must be objects")
+        version = self._translated_payload_to_version(raw_version)
+        version_id = str(version["version_id"])
+        if version_id in seen_ids:
+            raise ValueError(f"Duplicate translation version_id: {version_id}")
+        seen_ids.add(version_id)
+        versions.append(version)
     return versions
 
 
@@ -148,48 +146,20 @@ def _active_translation_version(self: Any, payload: dict[str, Any]) -> dict[str,
         return None
 
     active_id = payload.get("active_translation_version_id")
+    if active_id is None:
+        return None
     if isinstance(active_id, str):
         for version in versions:
-            if version.get("id") == active_id:
+            if version.get("version_id") == active_id:
                 return version
-
-    translated = payload.get("translated")
-    if isinstance(translated, dict) and isinstance(translated.get("version_id"), str):
-        for version in versions:
-            if version.get("id") == translated["version_id"]:
-                return version
-
-    return versions[-1]
+    raise ValueError("active_translation_version_id must reference a stored version")
 
 
 def _set_active_translation_version(self: Any, payload: dict[str, Any], version: dict[str, Any]) -> None:
-    raw_text = version.get("text")
-    text = raw_text if isinstance(raw_text, str) else ""
-    payload["active_translation_version_id"] = version.get("id")
-    payload["translated"] = {
-        "version_id": version.get("id"),
-        "version_kind": self._normalize_version_kind(version.get("kind")),
-        "provider": version.get("provider"),
-        "model": version.get("model"),
-        "translated_at": version.get("created_at") or version.get("translated_at") or _utc_now_iso(),
-        "created_at": version.get("created_at") or version.get("translated_at") or _utc_now_iso(),
-        "text": text,
-        "paragraphs": self._text_paragraphs(text),
-    }
-    for optional_key in (
-        "editor",
-        "note",
-        "base_version_id",
-        "source_hash",
-        "confidence_score",
-        "polish_needed",
-        "confidence_details",
-        "prompt_template_version",
-        "glossary_hash",
-        "batch_id",
-    ):
-        if optional_key in version:
-            payload["translated"][optional_key] = version[optional_key]
+    version_id = version.get("version_id")
+    if not isinstance(version_id, str) or not version_id:
+        raise ValueError("Active translation version requires version_id")
+    payload["active_translation_version_id"] = version_id
 
 
 def _append_edit_history(
@@ -226,13 +196,13 @@ def save_translated_chapter(
     novel_id: str,
     chapter_id: str,
     text: str,
-    provider: str | None = None,
-    model: str | None = None,
+    provider_key: str | None = None,
+    provider_model: str | None = None,
     confidence_score: float | None = None,
     polish_needed: bool | None = None,
     confidence_details: dict[str, Any] | None = None,
     source_hash: str | None = None,
-    glossary_revision: int | None = None,
+    glossary_revision: int = 0,
     glossary_injected_term_count: int | None = None,
     version_kind: ChapterVersionKind = ChapterVersionKind.MACHINE_TRANSLATION,
     prompt_template_version: str | None = None,
@@ -242,18 +212,27 @@ def save_translated_chapter(
     auto_activate: bool = True,
 ) -> Path:
     """Save a translated chapter as structured JSON and append a version."""
+    if not isinstance(version_kind, ChapterVersionKind):
+        raise TypeError("version_kind must be ChapterVersionKind")
+    if type(glossary_revision) is not int or glossary_revision < 0:
+        raise ValueError("glossary_revision must be a non-negative integer")
+    if provider_key is not None and not isinstance(provider_key, str):
+        raise TypeError("provider_key must be a string or None")
+    if provider_model is not None and not isinstance(provider_model, str):
+        raise TypeError("provider_model must be a string or None")
     payload = self._load_chapter_bundle(novel_id, chapter_id) or {"id": chapter_id}
     versions = self._translation_versions_from_payload(payload)
     created_at = _utc_now_iso()
     translated_payload: dict[str, Any] = {
-        "id": self._next_translation_version_id(versions),
-        "kind": self._normalize_version_kind(version_kind),
-        "provider": provider,
-        "model": model,
+        "version_id": self._next_translation_version_id(versions),
+        "version_kind": self._normalize_version_kind(version_kind),
+        "provider_key": provider_key,
+        "provider_model": provider_model,
         "created_at": created_at,
         "translated_at": created_at,
         "text": text,
         "paragraphs": self._text_paragraphs(text),
+        "glossary_revision": glossary_revision,
     }
     if isinstance(source_hash, str) and source_hash.strip():
         translated_payload["source_hash"] = source_hash.strip()
@@ -263,8 +242,6 @@ def save_translated_chapter(
         translated_payload["polish_needed"] = polish_needed
     if isinstance(confidence_details, dict):
         translated_payload["confidence_details"] = dict(confidence_details)
-    if isinstance(glossary_revision, int) and glossary_revision >= 0:
-        translated_payload["glossary_revision"] = glossary_revision
     if isinstance(glossary_injected_term_count, int) and glossary_injected_term_count >= 0:
         translated_payload["glossary_injected_term_count"] = glossary_injected_term_count
     if isinstance(prompt_template_version, str) and prompt_template_version.strip():
@@ -294,7 +271,7 @@ def save_translated_chapter(
 def load_translated_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | None:
     """Load the translated content for a single chapter.
 
-    Returns a dict with id, text, provider, model, and timestamp,
+    Returns a dict with canonical chapter/version/provider fields and text,
     or ``None`` if the chapter has not been translated.
     """
     payload = self._load_chapter_bundle(novel_id, chapter_id)
@@ -310,11 +287,11 @@ def load_translated_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[s
     version_with_freshness = _attach_freshness_fields(translated, snapshot)
 
     return {
-        "id": chapter_id,
-        "version_id": version_with_freshness.get("version_id") or translated.get("id"),
-        "version_kind": self._normalize_version_kind(translated.get("kind")),
-        "provider": translated.get("provider"),
-        "model": translated.get("model"),
+        "chapter_id": chapter_id,
+        "version_id": translated.get("version_id"),
+        "version_kind": translated.get("version_kind"),
+        "provider_key": translated.get("provider_key"),
+        "provider_model": translated.get("provider_model"),
         "translated_at": translated.get("translated_at") or translated.get("created_at"),
         "created_at": translated.get("created_at") or translated.get("translated_at"),
         "text": translated.get("text"),
@@ -379,16 +356,16 @@ def load_translated_chapter_by_version_id(
     for version in versions:
         if not isinstance(version, dict):
             continue
-        if str(version.get("id")) != str(version_id):
+        if version.get("version_id") != version_id:
             continue
         created_at = version.get("created_at") or version.get("translated_at")
         translated_at = version.get("translated_at") or version.get("created_at")
         return {
-            "id": chapter_id,
-            "version_id": version.get("id"),
-            "version_kind": self._normalize_version_kind(version.get("kind")),
-            "provider": version.get("provider"),
-            "model": version.get("model"),
+            "chapter_id": chapter_id,
+            "version_id": version.get("version_id"),
+            "version_kind": version.get("version_kind"),
+            "provider_key": version.get("provider_key"),
+            "provider_model": version.get("provider_model"),
             "created_at": created_at,
             "translated_at": translated_at,
             "text": version.get("text"),
@@ -413,7 +390,7 @@ def list_translated_chapter_versions(self: Any, novel_id: str, chapter_id: str) 
     active_id = payload.get("active_translation_version_id")
     if not isinstance(active_id, str):
         active = self._active_translation_version(payload)
-        active_id = active.get("id") if isinstance(active, dict) else None
+        active_id = active.get("version_id") if isinstance(active, dict) else None
 
     metadata = self.load_metadata(novel_id) if hasattr(self, "load_metadata") else None
     snapshot = _resolve_glossary_snapshot_from_metadata(metadata)
@@ -421,9 +398,7 @@ def list_translated_chapter_versions(self: Any, novel_id: str, chapter_id: str) 
     normalized: list[dict[str, Any]] = []
     for version in versions:
         item = dict(version)
-        item["version_id"] = item.get("id")
-        item["version_kind"] = self._normalize_version_kind(item.get("kind"))
-        item["active"] = bool(active_id and item.get("id") == active_id)
+        item["active"] = bool(active_id and item.get("version_id") == active_id)
         item.update(_attach_freshness_fields(item, snapshot))
         normalized.append(item)
     return normalized
@@ -438,25 +413,28 @@ def save_edited_translation(
     editor: str | None = None,
     note: str | None = None,
     glossary_qa: dict[str, Any] | None = None,
-    glossary_revision: int | None = None,
+    glossary_revision: int,
 ) -> Path:
     """Persist a manual translation edit as a new active version."""
+    if type(glossary_revision) is not int or glossary_revision < 0:
+        raise ValueError("glossary_revision must be a non-negative integer")
     payload = self._load_chapter_bundle(novel_id, chapter_id) or {"id": chapter_id}
     versions = self._translation_versions_from_payload(payload)
     previous = self._active_translation_version(payload)
-    previous_version_id = previous.get("id") if isinstance(previous, dict) else None
+    previous_version_id = previous.get("version_id") if isinstance(previous, dict) else None
     created_at = _utc_now_iso()
 
     edited_payload: dict[str, Any] = {
-        "id": self._next_translation_version_id(versions),
-        "kind": ChapterVersionKind.MANUAL_EDIT.value,
-        "provider": previous.get("provider") if isinstance(previous, dict) else None,
-        "model": previous.get("model") if isinstance(previous, dict) else None,
+        "version_id": self._next_translation_version_id(versions),
+        "version_kind": ChapterVersionKind.MANUAL_EDIT.value,
+        "provider_key": previous.get("provider_key") if isinstance(previous, dict) else None,
+        "provider_model": previous.get("provider_model") if isinstance(previous, dict) else None,
         "created_at": created_at,
         "translated_at": created_at,
         "text": text,
         "paragraphs": self._text_paragraphs(text),
         "base_version_id": previous_version_id,
+        "glossary_revision": glossary_revision,
     }
     if isinstance(editor, str) and editor.strip():
         edited_payload["editor"] = editor.strip()
@@ -464,15 +442,13 @@ def save_edited_translation(
         edited_payload["note"] = note.strip()
     if isinstance(glossary_qa, dict) and glossary_qa:
         edited_payload["glossary_qa"] = glossary_qa
-    if isinstance(glossary_revision, int):
-        edited_payload["glossary_revision"] = glossary_revision
     versions.append(edited_payload)
     payload["translation_versions"] = versions
     self._set_active_translation_version(payload, edited_payload)
     self._append_edit_history(
         payload,
         action=ChapterVersionKind.MANUAL_EDIT,
-        version_id=str(edited_payload["id"]),
+        version_id=str(edited_payload["version_id"]),
         previous_version_id=str(previous_version_id) if previous_version_id else None,
         editor=edited_payload.get("editor"),
         note=edited_payload.get("note"),
@@ -499,7 +475,11 @@ def list_translated_chapters(self: Any, novel_id: str) -> list[str]:
             except (json.JSONDecodeError, OSError):
                 logger.debug("Skipping unreadable chapter file %s.", chapter_path)
                 continue
-            if isinstance(payload, dict) and isinstance(payload.get("translated"), dict):
+            if not isinstance(payload, dict):
+                continue
+            versions = self._translation_versions_from_payload(payload)
+            if versions and isinstance(payload.get("active_translation_version_id"), str):
+                self._active_translation_version(payload)
                 ids.add(self.logical_id_from_stem(chapter_path.stem))
 
     return sorted(ids)
@@ -524,12 +504,12 @@ def activate_translated_chapter_version(
         return False
 
     versions = self._translation_versions_from_payload(payload)
-    target = next((version for version in versions if version.get("id") == version_id), None)
+    target = next((version for version in versions if version.get("version_id") == version_id), None)
     if target is None:
         return False
 
     previous = self._active_translation_version(payload)
-    previous_version_id = previous.get("id") if isinstance(previous, dict) else None
+    previous_version_id = previous.get("version_id") if isinstance(previous, dict) else None
     payload["translation_versions"] = versions
     self._set_active_translation_version(payload, target)
     self._append_edit_history(
