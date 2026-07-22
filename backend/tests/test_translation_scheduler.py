@@ -121,7 +121,6 @@ def _context(*, policy: str = "volume_first") -> PipelineState:
         provider_model="fast",
     )
     context.translation_chunks = [_chunk()]
-    context.chunks = [context.translation_chunks[0].source_text]
     context.metadata["scheduler_policy"] = policy
     context.metadata["scheduler_models"] = [
         {"provider_key": "mock", "provider_model": "fast", "priority_order": 0, "quality_priority_order": 1},
@@ -138,9 +137,7 @@ def test_normalize_model_configs_ignores_legacy_provider_fields() -> None:
         default_models=["gemini-3.1-flash-lite"],
     )
 
-    assert [(item.provider_key, item.provider_model) for item in configs] == [
-        ("gemini", "gemini-3.1-flash-lite")
-    ]
+    assert [(item.provider_key, item.provider_model) for item in configs] == [("gemini", "gemini-3.1-flash-lite")]
 
 
 def _two_chunk_context() -> PipelineState:
@@ -156,7 +153,6 @@ def _two_chunk_context() -> PipelineState:
         paragraph_refs=[("chapter_001", "p0002")],
     )
     context.translation_chunks = [first, second]
-    context.chunks = [chunk.source_text for chunk in context.translation_chunks]
     return context
 
 
@@ -357,9 +353,13 @@ async def test_translate_stage_prunes_stale_novel_scoped_failed_scheduler_state(
 ) -> None:
     cache, preferences, usage = scheduler_services
     provider = ScheduledProvider(models=["fast"])
-    stale_failed_at = (datetime.now(UTC) - timedelta(seconds=FAILED_MODEL_STATE_TTL_SECONDS + 1)).isoformat().replace(
-        "+00:00",
-        "Z",
+    stale_failed_at = (
+        (datetime.now(UTC) - timedelta(seconds=FAILED_MODEL_STATE_TTL_SECONDS + 1))
+        .isoformat()
+        .replace(
+            "+00:00",
+            "Z",
+        )
     )
     scheduler_storage.save_scheduler_state(
         "novel1",

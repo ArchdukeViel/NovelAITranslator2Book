@@ -102,7 +102,9 @@ class TranslationChunk:
         raw_hashes = data.get("paragraph_hashes")
         paragraph_hashes = [str(value) for value in raw_hashes] if isinstance(raw_hashes, list) else []
         raw_lineage = data.get("paragraph_lineage")
-        paragraph_lineage = [dict(item) for item in raw_lineage if isinstance(item, dict)] if isinstance(raw_lineage, list) else []
+        paragraph_lineage = (
+            [dict(item) for item in raw_lineage if isinstance(item, dict)] if isinstance(raw_lineage, list) else []
+        )
 
         return cls(
             chunk_id=str(data["chunk_id"]),
@@ -175,7 +177,6 @@ class PipelineState:
     # Pipeline stages' working state
     raw_text: str | None = None
     normalized_text: str | None = None
-    chunks: list[str] = field(default_factory=list)
     paragraphs: list[Paragraph] = field(default_factory=list)
     translation_chunks: list[TranslationChunk] = field(default_factory=list)
     translations: list[str] = field(default_factory=list)
@@ -205,7 +206,6 @@ class PipelineState:
             "current_stage": self.current_stage,
             "raw_text": self.raw_text,
             "normalized_text": self.normalized_text,
-            "chunks": self.chunks,
             "paragraphs": [paragraph.to_dict() for paragraph in self.paragraphs],
             "translation_chunks": [chunk.to_dict() for chunk in self.translation_chunks],
             "translations": self.translations,
@@ -221,37 +221,42 @@ class PipelineState:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PipelineState:
+        if "chunks" in data:
+            raise ValueError("Legacy pipeline chunks are not supported; use translation_chunks.")
+
         raw_paragraphs = data.get("paragraphs")
-        paragraphs = [
-            Paragraph.from_dict(paragraph)
-            for paragraph in raw_paragraphs
-            if isinstance(paragraph, dict)
-        ] if isinstance(raw_paragraphs, list) else []
+        paragraphs = (
+            [Paragraph.from_dict(paragraph) for paragraph in raw_paragraphs if isinstance(paragraph, dict)]
+            if isinstance(raw_paragraphs, list)
+            else []
+        )
 
         raw_translation_chunks = data.get("translation_chunks")
-        translation_chunks = [
-            TranslationChunk.from_dict(chunk)
-            for chunk in raw_translation_chunks
-            if isinstance(chunk, dict)
-        ] if isinstance(raw_translation_chunks, list) else []
+        translation_chunks = (
+            [TranslationChunk.from_dict(chunk) for chunk in raw_translation_chunks if isinstance(chunk, dict)]
+            if isinstance(raw_translation_chunks, list)
+            else []
+        )
         raw_pipeline_events = data.get("pipeline_events")
-        pipeline_events: list[dict[str, Any]] = [
-            dict(event) for event in raw_pipeline_events if isinstance(event, dict)
-        ] if isinstance(raw_pipeline_events, list) else []
+        pipeline_events: list[dict[str, Any]] = (
+            [dict(event) for event in raw_pipeline_events if isinstance(event, dict)]
+            if isinstance(raw_pipeline_events, list)
+            else []
+        )
         raw_chunk_states = data.get("chunk_states")
-        chunk_states: dict[str, dict[str, Any]] = {
-            str(key): dict(value)
-            for key, value in raw_chunk_states.items()
-            if isinstance(value, dict)
-        } if isinstance(raw_chunk_states, dict) else {}
+        chunk_states: dict[str, dict[str, Any]] = (
+            {str(key): dict(value) for key, value in raw_chunk_states.items() if isinstance(value, dict)}
+            if isinstance(raw_chunk_states, dict)
+            else {}
+        )
         raw_scheduler_state = data.get("scheduler_state")
         scheduler_state: dict[str, Any] = dict(raw_scheduler_state) if isinstance(raw_scheduler_state, dict) else {}
         raw_warnings = data.get("warnings")
         warnings: list[str] = [str(item) for item in raw_warnings] if isinstance(raw_warnings, list) else []
         raw_errors = data.get("errors")
-        errors: list[dict[str, Any]] = [
-            dict(item) for item in raw_errors if isinstance(item, dict)
-        ] if isinstance(raw_errors, list) else []
+        errors: list[dict[str, Any]] = (
+            [dict(item) for item in raw_errors if isinstance(item, dict)] if isinstance(raw_errors, list) else []
+        )
         raw_data = data.get("data")
         context_data: dict[str, Any] = dict(raw_data) if isinstance(raw_data, dict) else {}
 
@@ -267,7 +272,6 @@ class PipelineState:
             current_stage=data.get("current_stage"),
             raw_text=data.get("raw_text"),
             normalized_text=data.get("normalized_text"),
-            chunks=data.get("chunks") or [],
             paragraphs=paragraphs,
             translation_chunks=translation_chunks,
             translations=data.get("translations") or [],
@@ -300,9 +304,15 @@ class PipelineState:
             source_key=self.source_key,
             provider_key=self.provider_key,
             provider_model=self.provider_model,
-            credential_id=self.metadata.get("credential_id") if isinstance(self.metadata.get("credential_id"), str) else None,
-            credential_owner_user_id=self.metadata.get("credential_owner_user_id") if isinstance(self.metadata.get("credential_owner_user_id"), str) else None,
-            requesting_user_id=self.metadata.get("requesting_user_id") if isinstance(self.metadata.get("requesting_user_id"), str) else None,
+            credential_id=self.metadata.get("credential_id")
+            if isinstance(self.metadata.get("credential_id"), str)
+            else None,
+            credential_owner_user_id=self.metadata.get("credential_owner_user_id")
+            if isinstance(self.metadata.get("credential_owner_user_id"), str)
+            else None,
+            requesting_user_id=self.metadata.get("requesting_user_id")
+            if isinstance(self.metadata.get("requesting_user_id"), str)
+            else None,
             chunk_id=chunk_id,
             stage_name=stage_name,
             status_before=status_before,
@@ -330,7 +340,6 @@ class PipelineResult:
     current_stage: str | None = None
     raw_text: str | None = None
     normalized_text: str | None = None
-    chunks: list[str] = field(default_factory=list)
     paragraphs: list[Paragraph] = field(default_factory=list)
     translation_chunks: list[TranslationChunk] = field(default_factory=list)
     translations: list[str] = field(default_factory=list)
@@ -358,7 +367,6 @@ class PipelineResult:
             current_stage=state.current_stage,
             raw_text=state.raw_text,
             normalized_text=state.normalized_text,
-            chunks=state.chunks,
             paragraphs=state.paragraphs,
             translation_chunks=state.translation_chunks,
             translations=state.translations,

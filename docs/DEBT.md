@@ -210,6 +210,12 @@ Deferred items are tracked but excluded from the active count.
   aliases and dynamic CLI fallback are removed. The 31 focused container,
   worker, and CLI tests pass (7 environment-dependent skips) with zero focused
   Pyright errors.
+  Pipeline segmentation, persistence, translation, QA, result serialization,
+  and tests now carry only `TranslationChunk` records. The mirrored string
+  `chunks` field, fallback selection, synthesized `legacy_*` chunk IDs, and
+  string-chunk helper branches are removed; deserialization rejects the old
+  field explicitly. The 116 directly affected cache, pipeline, scheduler, and
+  QA tests pass with zero focused Pyright errors.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

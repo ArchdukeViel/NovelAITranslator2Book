@@ -22,10 +22,22 @@ from novelai.db.base import Base
 from novelai.db.models.novel import Novel
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.translation_cache import CacheEntry, TranslationCacheService, make_cache_key
-from novelai.translation.pipeline.context import PipelineState
+from novelai.translation.pipeline.context import PipelineState, TranslationChunk
 from novelai.translation.pipeline.stages.translate import TranslateStage
 
 _TMP = Path(__file__).resolve().parent / ".tmp" / "advanced_caching"
+
+
+def _translation_chunk(text: str, *, novel_id: str, chapter_id: str) -> TranslationChunk:
+    return TranslationChunk(
+        chunk_id="c0001",
+        novel_id=novel_id,
+        chapter_ids=[chapter_id],
+        paragraph_ids=["p0001"],
+        source_text=text,
+        char_count=len(text),
+        paragraph_refs=[(chapter_id, "p0001")],
+    )
 
 
 @pytest.fixture()
@@ -36,6 +48,7 @@ def cache_dir() -> Generator[Path]:
     # Clean up
     try:
         import shutil
+
         shutil.rmtree(d, ignore_errors=True)
     except Exception:
         pass
@@ -244,6 +257,7 @@ class TestTranslationCacheService:
                 service.set(f"key{i}", entry)
                 # Sleep briefly to ensure distinct mtimes
                 import time
+
                 time.sleep(0.01)
 
             # The oldest entry (key0) should be evicted
@@ -262,8 +276,10 @@ class TestPipelineIntegration:
         # Mock provider factory
         class MockProvider:
             key = "mock"
+
             def available_models(self):
                 return ["mock-model"]
+
             async def translate(self, prompt, model, request=None):
                 return {"text": "translated: " + prompt, "metadata": {}}
 
@@ -274,6 +290,7 @@ class TestPipelineIntegration:
         from unittest.mock import MagicMock
 
         from novelai.storage.service import StorageService
+
         mock_storage = MagicMock(spec=StorageService)
         mock_storage.load_chunk_states.return_value = []
         mock_storage.read_translation_output.return_value = []
@@ -293,7 +310,7 @@ class TestPipelineIntegration:
             provider_key="mock",
             provider_model="mock-model",
         )
-        context.chunks = ["hello"]
+        context.translation_chunks = [_translation_chunk("hello", novel_id="novel123", chapter_id="chapter1")]
         context.metadata["source_language"] = "ja"
         context.metadata["target_language"] = "en"
         context.metadata["prompt_version"] = "translation_request_v1"
@@ -310,12 +327,29 @@ class TestPipelineIntegration:
 
         from novelai.services.glossary_apply import _hash_text
         from novelai.services.translation_cache import CacheEntry, make_cache_key
+
         glossary_hash = _hash_text("")
-        ck = make_cache_key("hello", "ja", "en", glossary_hash, provider_key="mock", provider_model="mock-model", prompt_version="translation_request_v1")
-        seed_entry = CacheEntry(key=ck, source_text="hello", translated_text="translated: hello",
-                                 source_language="ja", target_language="en", glossary_hash=glossary_hash,
-                                 provider_key="mock", provider_model="mock-model",
-                                 created_at=datetime.now(UTC).isoformat(), novel_id="novel123")
+        ck = make_cache_key(
+            "hello",
+            "ja",
+            "en",
+            glossary_hash,
+            provider_key="mock",
+            provider_model="mock-model",
+            prompt_version="translation_request_v1",
+        )
+        seed_entry = CacheEntry(
+            key=ck,
+            source_text="hello",
+            translated_text="translated: hello",
+            source_language="ja",
+            target_language="en",
+            glossary_hash=glossary_hash,
+            provider_key="mock",
+            provider_model="mock-model",
+            created_at=datetime.now(UTC).isoformat(),
+            novel_id="novel123",
+        )
         service.set(ck, seed_entry)
 
         # Second run: cache hit (now that entry is seeded)
@@ -326,7 +360,7 @@ class TestPipelineIntegration:
             provider_key="mock",
             provider_model="mock-model",
         )
-        context2.chunks = ["hello"]
+        context2.translation_chunks = [_translation_chunk("hello", novel_id="novel123", chapter_id="chapter1")]
         context2.metadata["source_language"] = "ja"
         context2.metadata["target_language"] = "en"
         context2.metadata["prompt_version"] = "translation_request_v1"
@@ -376,6 +410,7 @@ class TestGlossaryInvalidation:
 
             # Patch TranslationCacheService in GlossaryService to use our test cache_dir
             original_init = TranslationCacheService.__init__
+
             def patched_init(self, *args, **kwargs):
                 kwargs.setdefault("cache_dir", cache_dir)
                 original_init(self, *args, **kwargs)
@@ -448,6 +483,7 @@ class TestManualInvalidationEndpoint:
 
             # Patch TranslationCacheService to use our test cache_dir
             original_init = TranslationCacheService.__init__
+
             def patched_init(self, *args, **kwargs):
                 kwargs.setdefault("cache_dir", cache_dir)
                 original_init(self, *args, **kwargs)
@@ -487,14 +523,26 @@ async def test_cache_flush_stage_writes_pending_entries(cache_dir: Path) -> None
     svc = TranslationCacheService(cache_dir=cache_dir)
     stage = CacheFlushStage(cache_service=svc)
     entry1 = CacheEntry(
-        key="key1", source_text="hello", translated_text="hi",
-        source_language="en", target_language="ja", glossary_hash="g1",
-        provider_key="p", provider_model="m", created_at=datetime.now(UTC).isoformat(),
+        key="key1",
+        source_text="hello",
+        translated_text="hi",
+        source_language="en",
+        target_language="ja",
+        glossary_hash="g1",
+        provider_key="p",
+        provider_model="m",
+        created_at=datetime.now(UTC).isoformat(),
     )
     entry2 = CacheEntry(
-        key="key2", source_text="bye", translated_text="bai",
-        source_language="en", target_language="ja", glossary_hash="g1",
-        provider_key="p", provider_model="m", created_at=datetime.now(UTC).isoformat(),
+        key="key2",
+        source_text="bye",
+        translated_text="bai",
+        source_language="en",
+        target_language="ja",
+        glossary_hash="g1",
+        provider_key="p",
+        provider_model="m",
+        created_at=datetime.now(UTC).isoformat(),
     )
     ctx = PipelineState(
         chapter_url="https://example.com/c1",
@@ -552,9 +600,15 @@ async def test_cache_flush_stage_disabled_when_cache_off(cache_dir: Path) -> Non
     settings.TRANSLATION_CACHE_ENABLED = False
     try:
         entry = CacheEntry(
-            key="test", source_text="h", translated_text="t",
-            source_language="en", target_language="ja", glossary_hash="g",
-            provider_key="p", provider_model="m", created_at=datetime.now(UTC).isoformat(),
+            key="test",
+            source_text="h",
+            translated_text="t",
+            source_language="en",
+            target_language="ja",
+            glossary_hash="g",
+            provider_key="p",
+            provider_model="m",
+            created_at=datetime.now(UTC).isoformat(),
         )
         ctx = PipelineState(
             chapter_url="https://example.com/c1",
@@ -587,13 +641,17 @@ async def test_translate_stage_progress_counts_hits_and_misses(cache_dir: Path) 
 
     class CountingProvider:
         key = "mock"
-        def available_models(self): return ["mock-model"]
+
+        def available_models(self):
+            return ["mock-model"]
+
         async def translate(self, prompt, model=None, request=None):
             nonlocal written
             written += 1
             return {"text": f"translated: {prompt}", "metadata": {}}
 
-    def provider_factory(key): return CountingProvider()
+    def provider_factory(key):
+        return CountingProvider()
 
     mock_storage = MagicMock(spec=StorageService)
     mock_storage.load_chunk_states.return_value = []
@@ -614,7 +672,7 @@ async def test_translate_stage_progress_counts_hits_and_misses(cache_dir: Path) 
         provider_key="mock",
         provider_model="mock-model",
     )
-    ctx.chunks = ["hello"]
+    ctx.translation_chunks = [_translation_chunk("hello", novel_id="novel1", chapter_id="ch1")]
     ctx.metadata["progress"] = {}
     ctx.metadata["source_language"] = "ja"
     ctx.metadata["target_language"] = "en"
@@ -632,12 +690,29 @@ async def test_translate_stage_progress_counts_hits_and_misses(cache_dir: Path) 
     from datetime import UTC, datetime
 
     from novelai.services.glossary_apply import _hash_text
+
     glossary_hash = _hash_text("")
-    ck = make_cache_key("hello", "ja", "en", glossary_hash, provider_key="mock", provider_model="mock-model", prompt_version="translation_request_v1")
-    seed_entry = CacheEntry(key=ck, source_text="hello", translated_text="translated: hello",
-                             source_language="ja", target_language="en", glossary_hash=glossary_hash,
-                             provider_key="mock", provider_model="mock-model",
-                             created_at=datetime.now(UTC).isoformat(), novel_id="novel1")
+    ck = make_cache_key(
+        "hello",
+        "ja",
+        "en",
+        glossary_hash,
+        provider_key="mock",
+        provider_model="mock-model",
+        prompt_version="translation_request_v1",
+    )
+    seed_entry = CacheEntry(
+        key=ck,
+        source_text="hello",
+        translated_text="translated: hello",
+        source_language="ja",
+        target_language="en",
+        glossary_hash=glossary_hash,
+        provider_key="mock",
+        provider_model="mock-model",
+        created_at=datetime.now(UTC).isoformat(),
+        novel_id="novel1",
+    )
     service.set(ck, seed_entry)
 
     # Second call with same text: hit
@@ -648,7 +723,7 @@ async def test_translate_stage_progress_counts_hits_and_misses(cache_dir: Path) 
         provider_key="mock",
         provider_model="mock-model",
     )
-    ctx2.chunks = ["hello"]
+    ctx2.translation_chunks = [_translation_chunk("hello", novel_id="novel1", chapter_id="ch1")]
     ctx2.metadata["progress"] = {}
     ctx2.metadata["source_language"] = "ja"
     ctx2.metadata["target_language"] = "en"
@@ -674,11 +749,15 @@ async def test_translate_stage_appends_pending_cache_entries(cache_dir: Path) ->
 
     class EchoProvider:
         key = "mock"
-        def available_models(self): return ["mock-model"]
+
+        def available_models(self):
+            return ["mock-model"]
+
         async def translate(self, prompt, model=None, request=None):
             return {"text": f"translated: {prompt}", "metadata": {}}
 
-    def provider_factory(key): return EchoProvider()
+    def provider_factory(key):
+        return EchoProvider()
 
     mock_storage = MagicMock(spec=StorageService)
     mock_storage.load_chunk_states.return_value = []
@@ -699,7 +778,7 @@ async def test_translate_stage_appends_pending_cache_entries(cache_dir: Path) ->
         provider_key="mock",
         provider_model="mock-model",
     )
-    ctx.chunks = ["hello world"]
+    ctx.translation_chunks = [_translation_chunk("hello world", novel_id="novel1", chapter_id="ch1")]
     ctx.metadata["progress"] = {}
     ctx.metadata["platform_novel_id"] = 1
 

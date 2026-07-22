@@ -538,7 +538,7 @@ class TranslateStage(PipelineStage):
         return text, provider.key, provider_model, False
 
     async def run(self, context: PipelineState) -> PipelineState:
-        chunks: list[str | TranslationChunk] = list(context.translation_chunks or context.chunks)
+        chunks = list(context.translation_chunks)
         request_id = context.metadata.get("request_id")
         if not request_id or not isinstance(request_id, str) or not request_id.strip():
             request_id = str(uuid.uuid4())
@@ -610,11 +610,11 @@ class TranslateStage(PipelineStage):
                 progress["current_label"] = f"Chunk {chunk_index + 1} / {len(chunks)}"
                 progress["model_states"] = scheduler.to_model_state_list()
 
-        async def worker(chunk_index: int, chunk: str | TranslationChunk) -> str:
+        async def worker(chunk_index: int, chunk: TranslationChunk) -> str:
             cache_hit = False
             chunk_text = chunk_text_h(chunk)
-            chunk_id = chunk_id_h(chunk, chunk_index)
-            chapter_ids = chapter_ids_h(context, chunk)
+            chunk_id = chunk_id_h(chunk)
+            chapter_ids = chapter_ids_h(chunk)
             prompt_glossary = self._build_prompt_glossary_block(context, chunk_text)
             prompt_glossary_text = prompt_glossary.rendered_text if prompt_glossary is not None else ""
             prompt_glossary_hash = glossary_hash_h(context, prompt_glossary_text)
@@ -638,7 +638,6 @@ class TranslateStage(PipelineStage):
                     self._storage,
                     context,
                     chunk=chunk,
-                    chunk_index=chunk_index,
                     attempt_number=int(existing_state.get("attempt_number", 0) or 0),
                     provider_key=existing_state.get("provider_key")
                     if isinstance(existing_state.get("provider_key"), str)
@@ -746,7 +745,7 @@ class TranslateStage(PipelineStage):
                                 **context.chunk_states.get(chunk_id, {}),
                                 "chunk_id": chunk_id,
                                 "novel_id": context.novel_id or "unknown_novel",
-                                "chapter_ids": chapter_ids_h(context, chunk),
+                                "chapter_ids": chapter_ids_h(chunk),
                                 "paragraph_ids": paragraph_ids_h(chunk),
                                 "provider_key": used_provider_key,
                                 "provider_model": used_provider_model,
@@ -765,7 +764,6 @@ class TranslateStage(PipelineStage):
                                 self._storage,
                                 context,
                                 chunk=chunk,
-                                chunk_index=chunk_index,
                                 attempt_number=int(
                                     context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0
                                 ),
@@ -779,7 +777,6 @@ class TranslateStage(PipelineStage):
                                 self._storage,
                                 context,
                                 chunk=chunk,
-                                chunk_index=chunk_index,
                                 translated_text=translated,
                                 provider_key=used_provider_key,
                                 provider_model=used_provider_model,
@@ -799,7 +796,7 @@ class TranslateStage(PipelineStage):
                                 **context.chunk_states.get(chunk_id, {}),
                                 "chunk_id": chunk_id,
                                 "novel_id": context.novel_id or "unknown_novel",
-                                "chapter_ids": chapter_ids_h(context, chunk),
+                                "chapter_ids": chapter_ids_h(chunk),
                                 "paragraph_ids": paragraph_ids_h(chunk),
                                 "provider_key": used_provider_key,
                                 "provider_model": used_provider_model,
@@ -832,7 +829,7 @@ class TranslateStage(PipelineStage):
                             **context.chunk_states.get(chunk_id, {}),
                             "chunk_id": chunk_id,
                             "novel_id": context.novel_id or "unknown_novel",
-                            "chapter_ids": chapter_ids_h(context, chunk),
+                            "chapter_ids": chapter_ids_h(chunk),
                             "paragraph_ids": paragraph_ids_h(chunk),
                             "provider_key": used_provider_key,
                             "provider_model": used_provider_model,
@@ -847,7 +844,6 @@ class TranslateStage(PipelineStage):
                             self._storage,
                             context,
                             chunk=chunk,
-                            chunk_index=chunk_index,
                             attempt_number=attempt_number,
                             provider_key=used_provider_key,
                             provider_model=used_provider_model,
@@ -867,7 +863,7 @@ class TranslateStage(PipelineStage):
                                 provider_key=used_provider_key,
                                 provider_model=used_provider_model,
                                 chunk_id=chunk_id,
-                                chapter_ids=chapter_ids_h(context, chunk),
+                                chapter_ids=chapter_ids_h(chunk),
                                 paragraph_ids=paragraph_ids_h(chunk),
                                 attempt_number=attempt_number,
                                 scheduler_policy=scheduler.policy.value,
@@ -905,7 +901,6 @@ class TranslateStage(PipelineStage):
                                 self._storage,
                                 context,
                                 chunk=chunk,
-                                chunk_index=chunk_index,
                                 attempt_number=attempt_number,
                                 provider_key=exc.provider_key,
                                 provider_model=exc.provider_model,
@@ -927,7 +922,7 @@ class TranslateStage(PipelineStage):
                             **context.chunk_states.get(chunk_id, {}),
                             "chunk_id": chunk_id,
                             "novel_id": context.novel_id or "unknown_novel",
-                            "chapter_ids": chapter_ids_h(context, chunk),
+                            "chapter_ids": chapter_ids_h(chunk),
                             "paragraph_ids": paragraph_ids_h(chunk),
                             "provider_key": used_provider_key,
                             "provider_model": used_provider_model,
@@ -943,7 +938,6 @@ class TranslateStage(PipelineStage):
                             self._storage,
                             context,
                             chunk=chunk,
-                            chunk_index=chunk_index,
                             attempt_number=attempt_number,
                             provider_key=used_provider_key,
                             provider_model=used_provider_model,
@@ -955,7 +949,6 @@ class TranslateStage(PipelineStage):
                             self._storage,
                             context,
                             chunk=chunk,
-                            chunk_index=chunk_index,
                             translated_text=translated,
                             provider_key=used_provider_key,
                             provider_model=used_provider_model,
@@ -980,7 +973,7 @@ class TranslateStage(PipelineStage):
 
         context.translations = await asyncio.gather(*[worker(i, c) for i, c in enumerate(chunks)])
         self._save_scheduler_state(context, scheduler)
-        context.metadata["translated_chunk_ids"] = [chunk_id_h(chunk, index) for index, chunk in enumerate(chunks)]
+        context.metadata["translated_chunk_ids"] = [chunk_id_h(chunk) for chunk in chunks]
         context.metadata["glossary_runtime_state"] = [
             {
                 "source": term.source,

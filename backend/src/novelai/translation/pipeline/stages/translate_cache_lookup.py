@@ -45,22 +45,22 @@ from novelai.translation.pipeline.stages.translate_result_assembly import (
 def save_chunk_records(
     storage: StorageService,
     context: PipelineState,
-    chunks: list[str | TranslationChunk],
+    chunks: list[TranslationChunk],
 ) -> None:
     novel_id = context.novel_id
     if not isinstance(novel_id, str) or not novel_id.strip():
         return
     records: list[dict[str, Any]] = []
-    for index, chunk in enumerate(chunks):
+    for chunk in chunks:
         text = chunk_text_fn(chunk)
-        cid = chunk_id_fn(chunk, index)
+        cid = chunk_id_fn(chunk)
         records.append(
             {
                 "chunk_id": cid,
                 "novel_id": novel_id,
                 "request_id": context.metadata.get("request_id"),
                 "translation_run_id": translation_run_id(context),
-                "chapter_ids": chapter_ids_fn(context, chunk),
+                "chapter_ids": chapter_ids_fn(chunk),
                 "paragraph_ids": paragraph_ids_fn(chunk),
                 "paragraph_hashes": paragraph_hashes_fn(chunk),
                 "paragraph_lineage": paragraph_lineage_fn(chunk),
@@ -151,8 +151,7 @@ def save_chunk_attempt(
     storage: StorageService,
     context: PipelineState,
     *,
-    chunk: str | TranslationChunk,
-    chunk_index: int,
+    chunk: TranslationChunk,
     attempt_number: int,
     provider_key: str | None,
     provider_model: str | None,
@@ -166,7 +165,7 @@ def save_chunk_attempt(
     novel_id = context.novel_id
     if not isinstance(novel_id, str) or not novel_id.strip():
         return
-    cid = chunk_id_fn(chunk, chunk_index)
+    cid = chunk_id_fn(chunk)
     text = chunk_text_fn(chunk)
     storage.save_chunk_attempt_record(
         {
@@ -174,7 +173,7 @@ def save_chunk_attempt(
             "novel_id": novel_id,
             "request_id": context.metadata.get("request_id"),
             "translation_run_id": translation_run_id(context),
-            "chapter_ids": chapter_ids_fn(context, chunk),
+            "chapter_ids": chapter_ids_fn(chunk),
             "paragraph_ids": paragraph_ids_fn(chunk),
             "paragraph_hashes": paragraph_hashes_fn(chunk),
             "paragraph_lineage": paragraph_lineage_fn(chunk),
@@ -196,8 +195,7 @@ def save_chunk_output(
     storage: StorageService,
     context: PipelineState,
     *,
-    chunk: str | TranslationChunk,
-    chunk_index: int,
+    chunk: TranslationChunk,
     translated_text: str,
     provider_key: str,
     provider_model: str,
@@ -210,7 +208,7 @@ def save_chunk_output(
     novel_id = context.novel_id
     if not isinstance(novel_id, str) or not novel_id.strip():
         return
-    cid = chunk_id_fn(chunk, chunk_index)
+    cid = chunk_id_fn(chunk)
     text = chunk_text_fn(chunk)
     storage.save_translation_output(
         {
@@ -218,7 +216,7 @@ def save_chunk_output(
             "chunk_id": cid,
             "novel_id": novel_id,
             "translation_run_id": translation_run_id(context),
-            "chapter_ids": chapter_ids_fn(context, chunk),
+            "chapter_ids": chapter_ids_fn(chunk),
             "paragraph_ids": paragraph_ids_fn(chunk),
             "paragraph_hashes": paragraph_hashes_fn(chunk),
             "paragraph_lineage": paragraph_lineage_fn(chunk),
@@ -230,9 +228,7 @@ def save_chunk_output(
             "prompt_version": prompt_version(context),
             "glossary_hash": glossary_hash or glossary_hash_fn(context),
             "glossary_revision": int(context.metadata.get("glossary_revision", 0) or 0),
-            "glossary_injected_term_count": int(
-                context.metadata.get("glossary_injected_term_count", 0) or 0
-            ),
+            "glossary_injected_term_count": int(context.metadata.get("glossary_injected_term_count", 0) or 0),
             "style_preset": context.metadata.get("style_preset"),
             "json_output": bool(context.metadata.get("json_output", False)),
             "consistency_mode": bool(context.metadata.get("consistency_mode", False)),
@@ -285,7 +281,10 @@ def cached_translation(
             g_hash = glossary_hash or ""
             pv = context.metadata.get("prompt_version") or ""
             cache_key = make_cache_key(
-                chunk, source_language, target_language, g_hash,
+                chunk,
+                source_language,
+                target_language,
+                g_hash,
                 provider_key=provider_key,
                 provider_model=provider_model,
                 prompt_version=pv,

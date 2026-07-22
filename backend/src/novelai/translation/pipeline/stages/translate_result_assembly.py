@@ -78,40 +78,28 @@ def select_chunk_glossary(
     )
 
 
-def chunk_text(chunk: str | TranslationChunk) -> str:
-    if isinstance(chunk, TranslationChunk):
-        return chunk.source_text
-    return chunk
+def chunk_text(chunk: TranslationChunk) -> str:
+    return chunk.source_text
 
 
-def chunk_id(chunk: str | TranslationChunk, chunk_index: int) -> str:
-    if isinstance(chunk, TranslationChunk):
-        return chunk.chunk_id
-    return f"legacy_{chunk_index + 1:04d}"
+def chunk_id(chunk: TranslationChunk) -> str:
+    return chunk.chunk_id
 
 
-def chapter_ids(context: PipelineState, chunk: str | TranslationChunk) -> list[str]:
-    if isinstance(chunk, TranslationChunk):
-        return list(chunk.chapter_ids)
-    return [context.chapter_id] if isinstance(context.chapter_id, str) and context.chapter_id.strip() else []
+def chapter_ids(chunk: TranslationChunk) -> list[str]:
+    return list(chunk.chapter_ids)
 
 
-def paragraph_ids(chunk: str | TranslationChunk) -> list[str]:
-    if isinstance(chunk, TranslationChunk):
-        return list(chunk.paragraph_ids)
-    return []
+def paragraph_ids(chunk: TranslationChunk) -> list[str]:
+    return list(chunk.paragraph_ids)
 
 
-def paragraph_hashes(chunk: str | TranslationChunk) -> list[str]:
-    if isinstance(chunk, TranslationChunk):
-        return list(chunk.paragraph_hashes)
-    return []
+def paragraph_hashes(chunk: TranslationChunk) -> list[str]:
+    return list(chunk.paragraph_hashes)
 
 
-def paragraph_lineage(chunk: str | TranslationChunk) -> list[dict[str, Any]]:
-    if isinstance(chunk, TranslationChunk):
-        return [dict(item) for item in chunk.paragraph_lineage]
-    return []
+def paragraph_lineage(chunk: TranslationChunk) -> list[dict[str, Any]]:
+    return [dict(item) for item in chunk.paragraph_lineage]
 
 
 def prompt_version(context: PipelineState) -> str:
@@ -241,9 +229,7 @@ def glossary_prompt_options(context: PipelineState):
     return GlossaryPromptInjectionOptions(
         max_terms=int(context.metadata.get("glossary_prompt_max_terms", 20) or 20),
         max_block_chars=int(context.metadata.get("glossary_prompt_max_block_chars", 2000) or 2000),
-        max_avoid_variants_per_term=int(
-            context.metadata.get("glossary_prompt_max_avoid_variants_per_term", 3) or 3
-        ),
+        max_avoid_variants_per_term=int(context.metadata.get("glossary_prompt_max_avoid_variants_per_term", 3) or 3),
     )
 
 

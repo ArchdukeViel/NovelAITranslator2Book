@@ -17,9 +17,7 @@ _PARAGRAPH_SPLIT_RE = re.compile(r"\n\s*\n+")
 # Sentence boundary candidates used to split oversized paragraphs safely.
 # Picked to keep CJK dialogue/quote-pairs intact: prefer splitting AFTER
 # closing quotes/parentheses if the closer ends a sentence.
-_SENTENCE_SPLIT_RE = re.compile(
-    r"(?<=[。！？!?])|(?<=[」』）)])\s+|(?<=\.)\s+"
-)
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[。！？!?])|(?<=[」』）)])\s+|(?<=\.)\s+")
 
 
 @dataclass(frozen=True)
@@ -86,9 +84,7 @@ class SmartSegmentStage(PipelineStage):
         self.overlap_paragraphs = max(
             0,
             self._positive_int(
-                overlap_paragraphs
-                if overlap_paragraphs is not None
-                else settings.TRANSLATION_CHUNK_OVERLAP_PARAGRAPHS,
+                overlap_paragraphs if overlap_paragraphs is not None else settings.TRANSLATION_CHUNK_OVERLAP_PARAGRAPHS,
                 default=1,
                 allow_zero=True,
             ),
@@ -366,9 +362,8 @@ class SmartSegmentStage(PipelineStage):
             return True
         if self._has_protected_marker(previous_paragraph) or self._has_protected_marker(next_paragraph):
             return True
-        return (
-            not self._ends_with_sentence_punctuation(previous_paragraph)
-            and (previous_paragraph.char_count <= 160 or next_paragraph.char_count <= 160)
+        return not self._ends_with_sentence_punctuation(previous_paragraph) and (
+            previous_paragraph.char_count <= 160 or next_paragraph.char_count <= 160
         )
 
     def _source_overlap_for_boundary(
@@ -520,7 +515,10 @@ class SmartSegmentStage(PipelineStage):
                     chunk_count=chunk_count,
                     hard_max_chars=self.adaptive_hard_max_chars,
                 )
-                if all(sum(paragraph.char_count for paragraph in group) <= self.adaptive_hard_max_chars for group in balanced):
+                if all(
+                    sum(paragraph.char_count for paragraph in group) <= self.adaptive_hard_max_chars
+                    for group in balanced
+                ):
                     groups.extend(balanced)
                     break
                 chunk_count += 1
@@ -529,9 +527,7 @@ class SmartSegmentStage(PipelineStage):
         for paragraph in chapter.paragraphs:
             if paragraph.char_count > self.adaptive_hard_max_chars:
                 flush_segment()
-                splits = self.split_oversized_paragraph(
-                    paragraph, budget_chars=self.adaptive_hard_max_chars
-                )
+                splits = self.split_oversized_paragraph(paragraph, budget_chars=self.adaptive_hard_max_chars)
                 if len(splits) > 1:
                     warnings.append(
                         f"Oversized paragraph {chapter.chapter_id}/{paragraph.paragraph_id} "
@@ -680,9 +676,7 @@ class SmartSegmentStage(PipelineStage):
             pending_chapter_ids = self._ordered_unique(paragraph.chapter_id for paragraph in pending)
             would_add_chapter = chapter.chapter_id not in pending_chapter_ids
             too_many_chapters = (
-                bool(pending)
-                and would_add_chapter
-                and len(pending_chapter_ids) >= self.max_chapters_per_bundle
+                bool(pending) and would_add_chapter and len(pending_chapter_ids) >= self.max_chapters_per_bundle
             )
             would_exceed_target = bool(pending) and pending_chars + chapter.char_count > self.target_chars
             would_exceed_hard_max = bool(pending) and pending_chars + chapter.char_count > self.hard_max_chars
@@ -781,11 +775,11 @@ class SmartSegmentStage(PipelineStage):
             pending_chapter_ids = self._ordered_unique(paragraph.chapter_id for paragraph in pending)
             would_add_chapter = chapter.chapter_id not in pending_chapter_ids
             too_many_chapters = (
-                bool(pending)
-                and would_add_chapter
-                and len(pending_chapter_ids) >= self.max_chapters_per_bundle
+                bool(pending) and would_add_chapter and len(pending_chapter_ids) >= self.max_chapters_per_bundle
             )
-            would_exceed_soft_target = bool(pending) and pending_chars + chapter.char_count > self.adaptive_soft_target_chars
+            would_exceed_soft_target = (
+                bool(pending) and pending_chars + chapter.char_count > self.adaptive_soft_target_chars
+            )
             would_exceed_hard_max = bool(pending) and pending_chars + chapter.char_count > self.adaptive_hard_max_chars
             if too_many_chapters or would_exceed_soft_target or would_exceed_hard_max:
                 previous_paragraphs, pending_novel_id = self._flush_chunk(
@@ -835,7 +829,6 @@ class SmartSegmentStage(PipelineStage):
 
         context.paragraphs = paragraphs
         context.translation_chunks = chunks
-        context.chunks = [chunk.source_text for chunk in chunks]
         context.chunk_states = {
             chunk.chunk_id: {
                 "chunk_id": chunk.chunk_id,

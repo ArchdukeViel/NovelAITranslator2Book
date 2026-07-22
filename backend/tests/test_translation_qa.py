@@ -177,8 +177,7 @@ def test_translation_qa_rejects_ambiguous_multiple_structured_json_objects():
     result = evaluate_translation_quality(
         source_text=chunk.source_text,
         translated_text=(
-            '{"translated_text":"One.","paragraph_map":[]}\n'
-            '{"translated_text":"Two.","paragraph_map":[]}'
+            '{"translated_text":"One.","paragraph_map":[]}\n{"translated_text":"Two.","paragraph_map":[]}'
         ),
         chunk=chunk,
         structured_output=True,
@@ -214,11 +213,7 @@ def test_translation_qa_missing_paragraph_id_fails():
 def test_translation_qa_reports_final_marker_omission_without_text_excerpts():
     refs = [("chapter_001", f"p{index:04d}") for index in range(1, 110)]
     chunk = _chunk(paragraph_refs=refs)
-    translated = "\n".join(
-        line
-        for index in range(1, 109)
-        for line in (f"[P p{index:04d}]", "Translated paragraph.")
-    )
+    translated = "\n".join(line for index in range(1, 109) for line in (f"[P p{index:04d}]", "Translated paragraph."))
 
     result = evaluate_translation_quality(
         source_text=chunk.source_text,
@@ -376,7 +371,6 @@ async def test_translation_qa_stage_marks_failed_chunk_state():
     chunk = _chunk()
     context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
     context.translation_chunks = [chunk]
-    context.chunks = [chunk.source_text]
     context.translations = [""]
     context.chunk_states = {
         "c0001": {
@@ -397,10 +391,17 @@ async def test_translation_qa_stage_marks_failed_chunk_state():
     assert "qa_diagnostics" in context.chunk_states["c0001"]
 
 
+@pytest.mark.asyncio
+async def test_translation_qa_stage_rejects_translation_without_canonical_chunk():
+    context = PipelineState(chapter_url="test")
+    context.translations = ["Translated text"]
+
+    with pytest.raises(ValueError, match="one canonical translation chunk"):
+        await TranslationQAStage().run(context)
+
+
 def test_translation_qa_normalizes_structured_output_text():
-    text = normalized_translation_text(
-        '{"translated_text":"Final translated text.","paragraph_map":[]}'
-    )
+    text = normalized_translation_text('{"translated_text":"Final translated text.","paragraph_map":[]}')
 
     assert text == "Final translated text."
 
@@ -435,9 +436,7 @@ async def test_orchestration_does_not_save_final_translation_when_qa_fails():
                 "title": "QA No Save",
                 "source_key": "mock_source",
                 "source_language": "Japanese",
-                "chapters": [
-                    {"id": "1", "num": 1, "title": "Chapter 1", "url": "http://example.com/qa/1"}
-                ],
+                "chapters": [{"id": "1", "num": 1, "title": "Chapter 1", "url": "http://example.com/qa/1"}],
             },
         )
         fixture.storage.save_chapter(

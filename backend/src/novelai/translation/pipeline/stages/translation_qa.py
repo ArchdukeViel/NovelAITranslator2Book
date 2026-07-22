@@ -28,24 +28,16 @@ class TranslationQAStage(PipelineStage):
     """Deterministic validation of translated chunks before final post-processing."""
 
     @staticmethod
-    def _chunk_for_index(context: PipelineState, index: int) -> TranslationChunk | None:
-        if index < len(context.translation_chunks):
-            return context.translation_chunks[index]
-        return None
+    def _chunk_for_index(context: PipelineState, index: int) -> TranslationChunk:
+        return context.translation_chunks[index]
 
     @staticmethod
-    def _source_for_chunk(context: PipelineState, index: int, chunk: TranslationChunk | None) -> str:
-        if chunk is not None:
-            return chunk.source_text
-        if index < len(context.chunks):
-            return context.chunks[index]
-        return context.normalized_text or context.raw_text or ""
+    def _source_for_chunk(chunk: TranslationChunk) -> str:
+        return chunk.source_text
 
     @staticmethod
-    def _chunk_id(index: int, chunk: TranslationChunk | None) -> str:
-        if chunk is not None:
-            return chunk.chunk_id
-        return f"legacy_{index + 1:04d}"
+    def _chunk_id(chunk: TranslationChunk) -> str:
+        return chunk.chunk_id
 
     @staticmethod
     def _provider_models(context: PipelineState) -> set[str]:
@@ -75,6 +67,8 @@ class TranslationQAStage(PipelineStage):
 
     async def run(self, context: PipelineState) -> PipelineState:
         raw_translations = list(context.translations)
+        if len(raw_translations) != len(context.translation_chunks):
+            raise ValueError("Translation QA requires one canonical translation chunk per translation.")
         context.metadata["raw_provider_translations"] = list(raw_translations)
         structured_output = bool(context.metadata.get("json_output", False))
         qa_payloads: list[dict[str, Any]] = []
@@ -87,9 +81,9 @@ class TranslationQAStage(PipelineStage):
 
         for index, translated in enumerate(raw_translations):
             chunk = self._chunk_for_index(context, index)
-            chunk_id = self._chunk_id(index, chunk)
+            chunk_id = self._chunk_id(chunk)
             result = evaluate_translation_quality(
-                source_text=self._source_for_chunk(context, index, chunk),
+                source_text=self._source_for_chunk(chunk),
                 translated_text=translated,
                 chunk=chunk,
                 structured_output=structured_output,
@@ -110,7 +104,7 @@ class TranslationQAStage(PipelineStage):
             chunk_state = {
                 **context.chunk_states.get(chunk_id, {}),
                 "chunk_id": chunk_id,
-                "novel_id": (chunk.novel_id if chunk is not None else context.novel_id) or "unknown_novel",
+                "novel_id": chunk.novel_id or "unknown_novel",
                 "qa_score": result.score,
                 "qa_warnings": list(result.warnings),
                 "qa_errors": list(result.errors),

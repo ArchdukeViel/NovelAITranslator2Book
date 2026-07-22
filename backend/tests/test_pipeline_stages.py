@@ -42,6 +42,17 @@ from tests.conftest import MockSourceAdapter
 pytestmark = pytest.mark.slow
 
 
+def test_pipeline_state_serializes_only_canonical_translation_chunks() -> None:
+    state = PipelineState(chapter_url="test")
+
+    assert "chunks" not in state.to_dict()
+
+
+def test_pipeline_state_rejects_legacy_chunks_field() -> None:
+    with pytest.raises(ValueError, match="Legacy pipeline chunks"):
+        PipelineState.from_dict({"chapter_url": "test", "chunks": ["text"]})
+
+
 class _FallbackContractProvider(TranslationProvider):
     def __init__(self, key: str, *, error_code: ProviderErrorCode | None = None) -> None:
         self._key = key
@@ -567,7 +578,6 @@ async def test_segment_stage():
 
     result = await segment.run(context)
 
-    assert result.chunks is not None
     assert len(result.paragraphs) == 3
     assert [paragraph.paragraph_id for paragraph in result.paragraphs] == ["p0001", "p0002", "p0003"]
     assert [paragraph.chapter_id for paragraph in result.paragraphs] == ["chapter_001"] * 3
@@ -576,10 +586,9 @@ async def test_segment_stage():
     assert result.translation_chunks[0].novel_id == "novel1"
     assert result.translation_chunks[0].chapter_ids == ["chapter_001"]
     assert result.translation_chunks[0].paragraph_ids == ["p0001", "p0002", "p0003"]
-    assert result.chunks == [result.translation_chunks[0].source_text]
-    assert "[CHAPTER chapter_001]" in result.chunks[0]
-    assert "[P p0001]" in result.chunks[0]
-    assert "Paragraph 1" in result.chunks[0]
+    assert "[CHAPTER chapter_001]" in result.translation_chunks[0].source_text
+    assert "[P p0001]" in result.translation_chunks[0].source_text
+    assert "Paragraph 1" in result.translation_chunks[0].source_text
 
 
 @pytest.mark.asyncio
@@ -591,8 +600,6 @@ async def test_segment_stage_empty():
 
     result = await segment.run(context)
 
-    assert result.chunks is not None
-    assert len(result.chunks) == 0
     assert result.paragraphs == []
     assert result.translation_chunks == []
 
