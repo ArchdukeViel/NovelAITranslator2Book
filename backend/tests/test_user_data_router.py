@@ -276,12 +276,12 @@ class TestHistoryContract:
         assert listed.json()["items"][0]["id"] == second.json()["id"]
         assert listed.json()["items"][0]["chapter_number"] is None
 
-    def test_history_validation_and_legacy_query_compatibility(self, app, client, seeded_catalog) -> None:
+    def test_history_requires_canonical_request_body(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
         headers = csrf_headers(client)
-        assert client.post("/api/user/history", headers=headers).status_code == 400
+        assert client.post("/api/user/history", headers=headers).status_code == 422
         assert client.post("/api/user/history", json={"slug": "missing"}, headers=headers).status_code == 404
-        assert client.post("/api/user/history?slug=test-novel", headers=headers).status_code == 201
+        assert client.post("/api/user/history?slug=test-novel", headers=headers).status_code == 422
 
     def test_user_b_cannot_see_user_a_history(self, app, client, seeded_catalog) -> None:
         headers = csrf_headers(client)
@@ -321,13 +321,12 @@ class TestReviewContract:
         assert client.delete("/api/user/reviews/test-novel", headers=headers).status_code == 204
         assert client.delete("/api/user/reviews/test-novel", headers=headers).status_code == 204
 
-    def test_legacy_post_review_preserved_with_contract_shape(self, app, client, seeded_catalog) -> None:
+    def test_removed_post_review_route_is_not_registered(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
         resp = client.post(
             "/api/user/reviews/test-novel", json={"rating": 5, "body": "Great novel!"}, headers=csrf_headers(client)
         )
-        assert resp.status_code == 201
-        assert_keys(resp.json(), {"slug", "rating", "body", "status", "updated_at"})
+        assert resp.status_code == 405
 
     def test_review_validation_and_unknown_novel(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)

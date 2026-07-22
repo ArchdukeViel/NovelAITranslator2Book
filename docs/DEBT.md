@@ -221,6 +221,10 @@ Deferred items are tracked but excluded from the active count.
   request creation and owner list/get/status moderation remain canonical. Six
   focused authorization, moderation, and removed-route tests pass with zero
   focused Pyright errors.
+  Reading history now requires the canonical JSON body, and reviews use only
+  `PUT /api/user/reviews/{slug}`. Query-based history creation and the duplicate
+  POST review route are removed; the frontend already used the canonical forms.
+  All 43 user-data router tests pass with zero focused Pyright errors.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

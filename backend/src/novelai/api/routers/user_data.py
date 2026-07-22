@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from novelai.api.auth.roles import require_role
@@ -145,9 +145,7 @@ def update_progress(
 ) -> ProgressResponse:
     require_public_rate_limit(request, "progress_write", user_id=_uid(user))
     try:
-        progress = service.update_progress(
-            _uid(user), slug, payload.chapter_id, payload.progress_percent
-        )
+        progress = service.update_progress(_uid(user), slug, payload.chapter_id, payload.progress_percent)
     except ValueError as exc:
         detail = str(exc)
         status = 404 if "not found" in detail.lower() else 400
@@ -183,19 +181,13 @@ class HistoryListResponse(BaseModel):
 )
 def record_history(
     request: Request,
-    payload: HistoryRecordRequest | None = Body(default=None),
-    slug: str | None = Query(default=None),
-    chapter_id: str | None = Query(default=None),
+    payload: HistoryRecordRequest,
     user: SessionUser = Depends(require_role("user")),
     service: ReadingService = Depends(get_reading_service),
 ) -> HistoryEntryResponse:
     require_public_rate_limit(request, "history_record", user_id=_uid(user))
-    effective_slug = payload.slug if payload else slug
-    effective_chapter_id = payload.chapter_id if payload else chapter_id
-    if effective_slug is None:
-        raise HTTPException(status_code=400, detail="slug is required.")
     try:
-        entry = service.record_history(_uid(user), effective_slug, effective_chapter_id)
+        entry = service.record_history(_uid(user), payload.slug, payload.chapter_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return HistoryEntryResponse(**entry)
@@ -232,27 +224,6 @@ class ReviewResponse(BaseModel):
     dependencies=[Depends(require_csrf_token)],
 )
 def put_review(
-    slug: str,
-    payload: ReviewCreate,
-    request: Request,
-    user: SessionUser = Depends(require_role("user")),
-    service: ReviewService = Depends(get_review_service),
-) -> ReviewResponse:
-    require_public_rate_limit(request, "review_mutation", user_id=_uid(user))
-    try:
-        review = service.upsert_review(_uid(user), slug, payload.rating or 0, payload.body)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return ReviewResponse(**review)
-
-
-@router.post(
-    "/reviews/{slug}",
-    status_code=201,
-    response_model=ReviewResponse,
-    dependencies=[Depends(require_csrf_token)],
-)
-def post_review(
     slug: str,
     payload: ReviewCreate,
     request: Request,
@@ -342,7 +313,8 @@ def create_request(
     require_public_rate_limit(request, "request_create", user_id=_uid(user))
     try:
         result = service.create_user_request(
-            _uid(user), payload.request_type,
+            _uid(user),
+            payload.request_type,
             source_url=payload.source_url,
             slug=payload.slug,
             chapter_id=payload.chapter_id,
