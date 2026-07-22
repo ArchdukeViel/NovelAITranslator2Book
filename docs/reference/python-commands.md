@@ -146,12 +146,15 @@ from novelai.cost_estimator.compare import compare_models
 from novelai.cost_estimator.models import EstimationOptions
 
 comparison = compare_models(
-    ["gpt-5.2", "gpt-5.4"],
+    ["gemini-3.1-flash-lite", "gemma-4-31b-it"],
     EstimationOptions(japanese_characters=10_000),
 )
 for estimate in comparison.estimates:
     print(estimate.model_name, estimate.estimated_total_cost_usd)
 ```
+
+The default catalog models the approved development free tier, so both models
+currently estimate zero token cost while still reporting estimated token use.
 
 ## Related Docs
 

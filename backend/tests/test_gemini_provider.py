@@ -55,7 +55,7 @@ def test_gemini_provider_uses_request_prompt(monkeypatch: pytest.MonkeyPatch) ->
 
     try:
         provider = GeminiProvider()
-        result = asyncio.run(provider.translate(prompt=request.text, model="gemini-3-flash-preview", request=request))
+        result = asyncio.run(provider.translate(prompt=request.text, model="gemini-3.1-flash-lite", request=request))
     finally:
         settings.PROVIDER_GEMINI_API_KEY = previous_api_key
 
@@ -63,7 +63,7 @@ def test_gemini_provider_uses_request_prompt(monkeypatch: pytest.MonkeyPatch) ->
     assert result["text"] == "gemini translated"
     assert result["metadata"]["usage"]["prompt_tokens"] == 80
     assert result["metadata"]["usage"]["completion_tokens"] == 42
-    assert payload["model"] == "gemini-3-flash-preview"
+    assert payload["model"] == "gemini-3.1-flash-lite"
     assert "contents" in payload
 
 
@@ -86,7 +86,7 @@ def test_gemini_provider_json_mode_sets_response_mime_type(monkeypatch: pytest.M
 
     try:
         provider = GeminiProvider()
-        asyncio.run(provider.translate(prompt=request.text, model="gemini-3-flash-preview", request=request))
+        asyncio.run(provider.translate(prompt=request.text, model="gemini-3.1-flash-lite", request=request))
     finally:
         settings.PROVIDER_GEMINI_API_KEY = previous_api_key
 
@@ -116,7 +116,7 @@ def test_gemini_provider_accepts_custom_json_schema(monkeypatch: pytest.MonkeyPa
 
     try:
         provider = GeminiProvider()
-        asyncio.run(provider.translate(prompt="Extract terms", model="gemini-3-flash-preview", json_schema=schema))
+        asyncio.run(provider.translate(prompt="Extract terms", model="gemini-3.1-flash-lite", json_schema=schema))
     finally:
         settings.PROVIDER_GEMINI_API_KEY = previous_api_key
 
@@ -133,7 +133,7 @@ def test_gemini_provider_raises_when_api_key_missing() -> None:
     try:
         provider = GeminiProvider()
         with pytest.raises(Exception, match="API key"):
-            asyncio.run(provider.translate(prompt="hello", model="gemini-3-flash-preview"))
+            asyncio.run(provider.translate(prompt="hello", model="gemini-3.1-flash-lite"))
     finally:
         settings.PROVIDER_GEMINI_API_KEY = previous
 
@@ -170,7 +170,7 @@ def _run_gemini_with_state(monkeypatch: pytest.MonkeyPatch, state: dict[str, Any
     )
     try:
         provider = GeminiProvider()
-        asyncio.run(provider.translate(prompt="hello", model="gemini-2.5-flash-lite"))
+        asyncio.run(provider.translate(prompt="hello", model="gemini-3.1-flash-lite"))
     finally:
         settings.PROVIDER_GEMINI_API_KEY = previous_api_key
 
@@ -189,7 +189,7 @@ def test_gemini_provider_normalizes_resource_exhausted_retry_delay(monkeypatch: 
     error = caught.value
     assert error.provider_error_code == ProviderErrorCode.RATE_LIMITED
     assert error.provider_key == "gemini"
-    assert error.provider_model == "gemini-2.5-flash-lite"
+    assert error.provider_model == "gemini-3.1-flash-lite"
     assert error.retry_after_seconds == 21
     assert error.cooldown_until is not None
 
@@ -205,7 +205,7 @@ def test_gemini_provider_normalizes_daily_quota_exhaustion(monkeypatch: pytest.M
         _run_gemini_with_state(monkeypatch, state)
 
     assert caught.value.provider_error_code == ProviderErrorCode.QUOTA_EXHAUSTED
-    assert caught.value.provider_model == "gemini-2.5-flash-lite"
+    assert caught.value.provider_model == "gemini-3.1-flash-lite"
 
 
 def test_gemini_provider_normalizes_unknown_provider_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -258,7 +258,7 @@ def test_gemini_provider_normalizes_invalid_json(monkeypatch: pytest.MonkeyPatch
         provider = GeminiProvider()
         request = build_json_translation_request(text="hello", source_language="Japanese", target_language="English")
         with pytest.raises(ProviderError) as caught:
-            asyncio.run(provider.translate(prompt=request.text, model="gemini-2.5-flash-lite", request=request))
+            asyncio.run(provider.translate(prompt=request.text, model="gemini-3.1-flash-lite", request=request))
     finally:
         settings.PROVIDER_GEMINI_API_KEY = previous_api_key
 

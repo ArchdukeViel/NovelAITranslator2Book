@@ -7,15 +7,15 @@ from novelai.cost_estimator.models import CurrencyConverter, ModelPricing
 TOKENS_PER_MILLION = 1_000_000
 
 DEFAULT_PRICING: dict[str, ModelPricing] = {
-    "gpt-5.2": ModelPricing(
-        model_name="gpt-5.2",
-        input_per_million_usd=1.75,
-        output_per_million_usd=14.00,
+    "gemini-3.1-flash-lite": ModelPricing(
+        model_name="gemini-3.1-flash-lite",
+        input_per_million_usd=0.0,
+        output_per_million_usd=0.0,
     ),
-    "gpt-5.4": ModelPricing(
-        model_name="gpt-5.4",
-        input_per_million_usd=2.50,
-        output_per_million_usd=15.00,
+    "gemma-4-31b-it": ModelPricing(
+        model_name="gemma-4-31b-it",
+        input_per_million_usd=0.0,
+        output_per_million_usd=0.0,
     ),
 }
 

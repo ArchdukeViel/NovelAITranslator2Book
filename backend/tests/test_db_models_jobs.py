@@ -159,8 +159,8 @@ class TestProviderRequest:
         assert not cols & forbidden, f"Forbidden columns found: {cols & forbidden}"
 
     def test_repr(self, session) -> None:
-        req = ProviderRequest(provider_key="openai", status="success")
+        req = ProviderRequest(provider_key="gemini", status="success")
         session.add(req)
         session.commit()
-        assert "openai" in repr(req)
+        assert "gemini" in repr(req)
         assert "success" in repr(req)

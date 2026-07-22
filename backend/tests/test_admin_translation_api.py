@@ -37,8 +37,8 @@ class TestSchedulerHealthHandler:
             activity_runner=type("FakeRunner", (), {"status": lambda self: {}})(),  # type: ignore[arg-type]
         )
         svc.scheduler_policy_models = lambda **kw: [
-            {"provider_key": "gemini", "provider_model": "g-1", "priority_order": 0, "rpm_limit": 10, "rpd_limit": 100},
-            {"provider_key": "openai", "provider_model": "gpt-4", "priority_order": 1},
+            {"provider_key": "gemini", "provider_model": "gemini-3.1-flash-lite", "priority_order": 0, "rpm_limit": 10, "rpd_limit": 100},
+            {"provider_key": "gemini", "provider_model": "gemma-4-31b-it", "priority_order": 1},
         ]
         return svc
 

@@ -152,7 +152,7 @@ def test_save_and_load_translated_chapter(storage):
     """Test saving and loading translated chapters."""
     # Save
     path = storage.save_translated_chapter(
-        "novel1", "ch1", "[TRANSLATED] Test content", provider="openai", model="gpt-4"
+        "novel1", "ch1", "[TRANSLATED] Test content", provider="gemini", model="gemini-3.1-flash-lite"
     )
     assert path.exists()
 
@@ -160,12 +160,12 @@ def test_save_and_load_translated_chapter(storage):
     loaded = storage.load_translated_chapter("novel1", "ch1")
     assert loaded is not None
     assert "[TRANSLATED]" in loaded["text"]
-    assert loaded["provider"] == "openai"
+    assert loaded["provider"] == "gemini"
 
 
 def test_translated_chapter_versions_keep_machine_history(storage):
-    storage.save_translated_chapter("novel1", "ch1", "machine one", provider="openai", model="gpt-5.4")
-    storage.save_translated_chapter("novel1", "ch1", "machine two", provider="gemini", model="gemini-3")
+    storage.save_translated_chapter("novel1", "ch1", "machine one", provider="gemini", model="gemini-3.1-flash-lite")
+    storage.save_translated_chapter("novel1", "ch1", "machine two", provider="gemini", model="gemma-4-31b-it")
 
     versions = storage.list_translated_chapter_versions("novel1", "ch1")
     loaded = storage.load_translated_chapter("novel1", "ch1")
@@ -181,7 +181,7 @@ def test_translated_chapter_versions_keep_machine_history(storage):
 
 
 def test_save_edited_translation_creates_manual_version_and_history(storage):
-    storage.save_translated_chapter("novel1", "ch1", "machine translation", provider="openai", model="gpt-5.4")
+    storage.save_translated_chapter("novel1", "ch1", "machine translation", provider="gemini", model="gemini-3.1-flash-lite")
 
     storage.save_edited_translation(
         "novel1",
@@ -215,7 +215,7 @@ def test_save_edited_translation_creates_manual_version_and_history(storage):
 
 
 def test_activate_translated_chapter_version_rolls_back_active_output(storage):
-    storage.save_translated_chapter("novel1", "ch1", "machine translation", provider="openai", model="gpt-5.4")
+    storage.save_translated_chapter("novel1", "ch1", "machine translation", provider="gemini", model="gemini-3.1-flash-lite")
     storage.save_edited_translation("novel1", "ch1", "edited translation", editor="admin")
 
     assert (
@@ -245,7 +245,7 @@ def test_activate_translated_chapter_version_rolls_back_active_output(storage):
 
 def test_list_stored_chapters_includes_raw_and_translated_entries(storage):
     storage.save_chapter("novel1", "1", "raw only", title="Chapter 1")
-    storage.save_translated_chapter("novel1", "2", "translated only", provider="openai", model="gpt-5.4")
+    storage.save_translated_chapter("novel1", "2", "translated only", provider="gemini", model="gemini-3.1-flash-lite")
 
     assert storage.list_stored_chapters("novel1") == ["1", "2"]
     assert storage.count_stored_chapters("novel1") == 2
@@ -327,8 +327,8 @@ def test_save_translated_chapter_preserves_media_fields(storage):
         "novel1",
         "ch-media-roundtrip",
         "translated",
-        provider="openai",
-        model="gpt-5.4",
+        provider="gemini",
+        model="gemini-3.1-flash-lite",
     )
 
     payload = json.loads(chapter_path.read_text(encoding="utf-8"))
@@ -443,8 +443,8 @@ def test_chunk_status_persistence_records_provider_model(storage):
             "novel_id": "novel1",
             "chapter_ids": ["ch1"],
             "paragraph_ids": ["p0001"],
-            "provider_key": "openai",
-            "provider_model": "gpt-5.4",
+            "provider_key": "gemini",
+            "provider_model": "gemini-3.1-flash-lite",
             "attempt_number": 1,
             "status": "translated",
         }
@@ -470,8 +470,8 @@ def test_scheduler_state_can_represent_cooldown_and_exhaustion(storage):
                 status=SchedulerModelStatus.COOLING_DOWN.value,
             ),
             {
-                "provider_key": "openai",
-                "provider_model": "gpt-5.4",
+                "provider_key": "gemini",
+                "provider_model": "gemini-3.1-flash-lite",
                 "priority_order": 2,
                 "exhausted_until": "2026-06-05T00:00:00Z",
                 "last_error_code": "provider_quota_exhausted",

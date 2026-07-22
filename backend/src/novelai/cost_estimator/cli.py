@@ -11,7 +11,7 @@ from novelai.utils import format_usd
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Estimate Japanese-to-English translation cost for supported GPT models.",
+        description="Estimate free-tier Japanese-to-English translation usage for approved Gemini API models.",
     )
     parser.add_argument(
         "--chars",

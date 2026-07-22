@@ -76,21 +76,23 @@ class TestPreferencesService:
         profiles = svc.get_workflow_profiles()
         assert set(WORKFLOW_PROFILE_STEPS).issubset(set(profiles.keys()))
 
-    def test_workflow_profile_accepts_legacy_step_alias(self, prefs_dir: Path) -> None:
+    def test_workflow_profile_rejects_removed_step_alias(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
-        svc.set_workflow_profile("term_translation", provider="gemini", model="gemini-2.0-flash")
-        profile = svc.get_workflow_profile("glossary_translation")
-        assert profile["provider"] == "gemini"
-        assert profile["model"] == "gemini-2.0-flash"
+        with pytest.raises(ValueError, match="Unsupported workflow profile step"):
+            svc.set_workflow_profile(
+                "term_translation",
+                provider="gemini",
+                model="gemini-3.1-flash-lite",
+            )
 
     def test_llm_step_config_migrates_from_workflow_profile(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
-        svc.set_workflow_profile("glossary_translation", provider="gemini", model="gemini-2.0-flash")
+        svc.set_workflow_profile("glossary_translation", provider="gemini", model="gemini-3.1-flash-lite")
 
         reloaded = PreferencesService(storage_dir=prefs_dir)
         step_config = reloaded.get_llm_step_config("glossary_translation")
         assert step_config["provider"] == "gemini"
-        assert step_config["model"] == "gemini-2.0-flash"
+        assert step_config["model"] == "gemini-3.1-flash-lite"
 
     def test_provider_specific_runtime_api_key_methods(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
@@ -103,9 +105,9 @@ class TestPreferencesService:
         svc.clear_api_key(provider_key="gemini")
         assert svc.get_api_key("gemini") is None
 
-    def test_cleans_stale_gpt_default_on_non_gemini_provider(self, prefs_dir: Path) -> None:
+    def test_replaces_unsupported_gemini_model_with_default(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
         svc.set_preferred_provider("gemini")
-        svc.set_preferred_model("gpt-5.4")
+        svc.set_preferred_model("unsupported-model")
 
         assert svc.get_provider_model() == "gemini-3.1-flash-lite"

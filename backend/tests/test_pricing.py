@@ -22,23 +22,23 @@ class FixedRateConverter:
 
 
 def test_default_pricing_lookup_returns_expected_values() -> None:
-    pricing = get_model_pricing("gpt-5.2")
+    pricing = get_model_pricing("gemini-3.1-flash-lite")
 
-    assert pricing == DEFAULT_PRICING["gpt-5.2"]
-    assert pricing.input_per_million_usd == 1.75
-    assert pricing.output_per_million_usd == 14.00
+    assert pricing == DEFAULT_PRICING["gemini-3.1-flash-lite"]
+    assert pricing.input_per_million_usd == 0.0
+    assert pricing.output_per_million_usd == 0.0
 
 
 def test_pricing_calculations_are_correct() -> None:
-    pricing = get_model_pricing("gpt-5.4")
+    pricing = get_model_pricing("gemma-4-31b-it")
 
     input_cost = calculate_input_cost(9_200, pricing)
     output_cost = calculate_output_cost(8_000, pricing)
     total_cost = calculate_total_cost(9_200, 8_000, pricing)
 
-    assert math.isclose(input_cost, 0.023, rel_tol=0, abs_tol=1e-12)
-    assert math.isclose(output_cost, 0.12, rel_tol=0, abs_tol=1e-12)
-    assert math.isclose(total_cost, 0.143, rel_tol=0, abs_tol=1e-12)
+    assert input_cost == 0.0
+    assert output_cost == 0.0
+    assert total_cost == 0.0
 
 
 def test_pricing_rejects_unknown_models() -> None:

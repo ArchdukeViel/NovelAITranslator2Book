@@ -28,7 +28,7 @@ class PreferencesService:
 
     This service stores user choices like:
     - Which provider to use (gemini, dummy, etc)
-    - Which model to use (gemini-3.1-flash-lite, google/gemma-4-31b-it, etc)
+    - Which approved Gemini model to use
     - User UI preferences
 
     It NEVER stores API keys or other secrets.
@@ -439,8 +439,6 @@ class PreferencesService:
         """Get the preferred model after validating it for the provider."""
         model = self.get_preferred_model()
         provider_key = self.get_preferred_provider()
-        if provider_key == "gemini" and model == "gpt-5.4":
-            return settings.PROVIDER_GEMINI_DEFAULT_MODEL
         if provider_key not in {"gemini"}:
             return model
         try:

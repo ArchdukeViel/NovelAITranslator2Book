@@ -25,10 +25,10 @@ class ModelPricing:
     def __post_init__(self) -> None:
         if not self.model_name.strip():
             raise ValueError("model_name must not be empty.")
-        if self.input_per_million_usd <= 0:
-            raise ValueError("input_per_million_usd must be greater than 0.")
-        if self.output_per_million_usd <= 0:
-            raise ValueError("output_per_million_usd must be greater than 0.")
+        if self.input_per_million_usd < 0:
+            raise ValueError("input_per_million_usd must be greater than or equal to 0.")
+        if self.output_per_million_usd < 0:
+            raise ValueError("output_per_million_usd must be greater than or equal to 0.")
 
 
 @dataclass(frozen=True, slots=True)

@@ -78,10 +78,8 @@ class TestProviderRegistry:
 
     def test_available_models_returns_gemini_models(self) -> None:
         models = available_models("gemini")
-        assert "gemini-3.1-flash-lite" in models
-        assert "gemma-4-31b-it" in models
+        assert models == ["gemini-3.1-flash-lite", "gemma-4-31b-it"]
 
     def test_gemini_provider_lists_gemini_api_gemma_model_id(self) -> None:
         models = GeminiProvider().available_models()
-        assert "gemma-4-31b-it" in models
-        assert "google/gemma-4-31b-it" not in models
+        assert models == ["gemini-3.1-flash-lite", "gemma-4-31b-it"]

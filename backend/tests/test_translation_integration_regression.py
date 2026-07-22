@@ -185,31 +185,31 @@ def scheduler_primary_available() -> TranslationScheduler:
 
 
 def scheduler_fallback_cooldown() -> TranslationScheduler:
-    configs = _make_configs([("gemini", "gemini-flash"), ("openai", "gpt-4o-mini")])
+    configs = _make_configs([("gemini", "gemini-3.1-flash-lite"), ("gemini", "gemma-4-31b-it")])
     states = [
-        _make_state("gemini", "gemini-flash", SchedulerModelStatus.COOLING_DOWN.value,
+        _make_state("gemini", "gemini-3.1-flash-lite", SchedulerModelStatus.COOLING_DOWN.value,
                     cooldown_until="2999-01-01T00:00:00Z"),
-        _make_state("openai", "gpt-4o-mini", SchedulerModelStatus.AVAILABLE.value),
+        _make_state("gemini", "gemma-4-31b-it", SchedulerModelStatus.AVAILABLE.value),
     ]
     return _scheduler_with_states(configs, states)
 
 
 def scheduler_quota_exhausted() -> TranslationScheduler:
-    configs = _make_configs([("gemini", "gemini-flash"), ("openai", "gpt-4o-mini")])
+    configs = _make_configs([("gemini", "gemini-3.1-flash-lite"), ("gemini", "gemma-4-31b-it")])
     states = [
-        _make_state("gemini", "gemini-flash", SchedulerModelStatus.DAILY_EXHAUSTED.value,
+        _make_state("gemini", "gemini-3.1-flash-lite", SchedulerModelStatus.DAILY_EXHAUSTED.value,
                     exhausted_until="2999-01-01T00:00:00Z"),
-        _make_state("openai", "gpt-4o-mini", SchedulerModelStatus.AVAILABLE.value),
+        _make_state("gemini", "gemma-4-31b-it", SchedulerModelStatus.AVAILABLE.value),
     ]
     return _scheduler_with_states(configs, states)
 
 
 def scheduler_no_capacity() -> TranslationScheduler:
-    configs = _make_configs([("gemini", "gemini-flash"), ("openai", "gpt-4o-mini")])
+    configs = _make_configs([("gemini", "gemini-3.1-flash-lite"), ("gemini", "gemma-4-31b-it")])
     states = [
-        _make_state("gemini", "gemini-flash", SchedulerModelStatus.FAILED.value,
+        _make_state("gemini", "gemini-3.1-flash-lite", SchedulerModelStatus.FAILED.value,
                     failed_at="2999-01-01T00:00:00Z"),
-        _make_state("openai", "gpt-4o-mini", SchedulerModelStatus.DAILY_EXHAUSTED.value,
+        _make_state("gemini", "gemma-4-31b-it", SchedulerModelStatus.DAILY_EXHAUSTED.value,
                     exhausted_until="2999-01-01T00:00:00Z"),
     ]
     return _scheduler_with_states(configs, states)
@@ -417,14 +417,14 @@ class TestSchedulerSelection:
         s = scheduler_fallback_cooldown()
         sel = s.select_model(chapter_id="1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=SchedulerDecisionRecorder(chapter_id="1"))
         assert not sel.paused
-        assert sel.provider_key == "openai"
-        assert sel.provider_model == "gpt-4o-mini"
+        assert sel.provider_key == "gemini"
+        assert sel.provider_model == "gemma-4-31b-it"
 
     def test_fallback_on_quota_exhausted(self) -> None:
         s = scheduler_quota_exhausted()
         sel = s.select_model(chapter_id="1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=SchedulerDecisionRecorder(chapter_id="1"))
         assert not sel.paused
-        assert sel.provider_key == "openai"
+        assert sel.provider_key == "gemini"
 
     def test_no_capacity_pauses(self) -> None:
         s = scheduler_no_capacity()

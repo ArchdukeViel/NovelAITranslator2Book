@@ -1,5 +1,3 @@
-"use client";
-
 import Link from "next/link";
 import { AlertCircle, ArrowRight, Shield } from "lucide-react";
 
@@ -68,7 +66,6 @@ export default function ContributePage() {
               >
                 <option>Select a provider...</option>
                 <option>Gemini</option>
-                <option>OpenAI</option>
               </select>
               <p className="text-xs text-muted-foreground">
                 Provider selection and key submission are not available yet.

@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODEL, settings
 from novelai.core.errors import ProviderError, ProviderErrorCode
 from novelai.prompts.models import TranslationRequest
 from novelai.providers.base import TranslationProvider
@@ -23,21 +23,7 @@ class GeminiProvider(TranslationProvider):
         return "gemini"
 
     def available_models(self) -> list[str]:
-        return [
-            GEMINI_DEFAULT_MODEL,
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-            "gemini-2.5-flash-lite",
-            "gemini-3-flash-preview",
-            "gemini-3-pro-preview",
-            "gemini-3.1-flash-preview",
-            "gemini-3.1-pro-preview",
-            "gemini-3.1-flash-lite-preview",
-            "gemma-4-31b-it",
-            "gemini-flash-latest",
-            "gemini-pro-latest",
-            "gemini-2.0-flash",
-        ]
+        return [GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODEL]
 
     def _api_key_string(self) -> str:
         api_key = settings.PROVIDER_GEMINI_API_KEY

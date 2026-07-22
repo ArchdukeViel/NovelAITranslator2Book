@@ -11,8 +11,10 @@ class TestCostEstimatorCLI:
 
     def test_build_parser_has_optional_model_arg(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["--chars", "1000", "--model", "gpt-4o", "--model", "gpt-4o-mini"])
-        assert args.models == ["gpt-4o", "gpt-4o-mini"]
+        args = parser.parse_args(
+            ["--chars", "1000", "--model", "gemini-3.1-flash-lite", "--model", "gemma-4-31b-it"]
+        )
+        assert args.models == ["gemini-3.1-flash-lite", "gemma-4-31b-it"]
 
     def test_build_parser_model_defaults_to_none(self) -> None:
         parser = build_parser()
@@ -51,7 +53,9 @@ class TestCostEstimatorCLI:
         assert "Estimated total cost (USD):" in output
 
     def test_main_with_multiple_models_shows_comparison(self, capsys) -> None:
-        result = main(["--chars", "1000", "--model", "gpt-5.2", "--model", "gpt-5.4"])
+        result = main(
+            ["--chars", "1000", "--model", "gemini-3.1-flash-lite", "--model", "gemma-4-31b-it"]
+        )
         assert result == 0
         output = capsys.readouterr().out
         assert "Cheapest model:" in output

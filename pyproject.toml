@@ -29,9 +29,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-openai = [
-  "openai>=2.45.0",
-]
 gemini = [
   "google-genai>=2.11.0",
 ]
@@ -72,7 +69,6 @@ dev = [
   "httpx2>=2.7.0",
   "itsdangerous>=2.2",
   "moto[s3]>=5.0.0",
-  "openai>=2.45.0",
   "pip-tools>=7.5.3",
   "pyright[nodejs]>=1.1.411",
   "pytest>=9.1.1",

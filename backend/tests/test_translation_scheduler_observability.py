@@ -656,8 +656,8 @@ class TestSchedulerHealthData:
         service = self._make_service()
         original = service.scheduler_policy_models
         service.scheduler_policy_models = lambda **kw: [
-            {"provider_key": "gemini", "provider_model": "g-1", "priority_order": 0},
-            {"provider_key": "openai", "provider_model": "gpt-4", "priority_order": 1},
+            {"provider_key": "gemini", "provider_model": "gemini-3.1-flash-lite", "priority_order": 0},
+            {"provider_key": "gemini", "provider_model": "gemma-4-31b-it", "priority_order": 1},
         ]
         try:
             health = service.scheduler_health()

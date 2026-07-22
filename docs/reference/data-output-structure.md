@@ -73,7 +73,7 @@ Example:
 ```json
 {
   "preferred_provider": "gemini",
-  "preferred_model": "gemini-2.5-flash",
+  "preferred_model": "gemini-3.1-flash-lite",
   "theme": "auto",
   "language": "en",
   "glossary_extraction": {
@@ -119,7 +119,7 @@ Example:
   {
     "timestamp": "2026-06-02T10:05:00Z",
     "provider": "gemini",
-    "model": "gemini-2.5-flash",
+    "model": "gemini-3.1-flash-lite",
     "tokens": 2847,
     "estimated_cost_usd": 0.0,
     "metadata": {
@@ -334,7 +334,7 @@ Example:
     "version_id": "v1",
     "version_kind": "machine_translation",
     "provider": "gemini",
-    "model": "gemini-2.5-flash",
+    "model": "gemini-3.1-flash-lite",
     "translated_at": "2026-06-02T10:20:00Z",
     "created_at": "2026-06-02T10:20:00Z",
     "text": "Translated chapter text.",
@@ -349,7 +349,7 @@ Example:
       "id": "v1",
       "kind": "machine_translation",
       "provider": "gemini",
-      "model": "gemini-2.5-flash",
+      "model": "gemini-3.1-flash-lite",
       "created_at": "2026-06-02T10:20:00Z",
       "translated_at": "2026-06-02T10:20:00Z",
       "text": "Translated chapter text.",
@@ -383,7 +383,7 @@ Example edit version:
   "id": "v2",
   "kind": "manual_edit",
   "provider": "gemini",
-  "model": "gemini-2.5-flash",
+  "model": "gemini-3.1-flash-lite",
   "created_at": "2026-06-02T10:30:00Z",
   "translated_at": "2026-06-02T10:30:00Z",
   "text": "Edited translated text.",

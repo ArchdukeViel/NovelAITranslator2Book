@@ -89,14 +89,14 @@ describe("SchedulerSummaryPanel", () => {
           memory_pressure_count: 0,
           peak_exact_memory_bytes: 0,
           skip_reason_counts: {},
-          selected_model_counts: { "gemini:g-1": 1, "openai:gpt-4": 1 },
-          provider_counts: { gemini: 1, openai: 1 },
+          selected_model_counts: { "gemini:gemini-3.1-flash-lite": 1, "gemini:gemma-4-31b-it": 1 },
+          provider_counts: { gemini: 2 },
         }}
       />
     );
     expect(screen.getByText("Selected Models")).toBeTruthy();
-    expect(screen.getByText("gemini:g-1: 1")).toBeTruthy();
-    expect(screen.getByText("openai:gpt-4: 1")).toBeTruthy();
+    expect(screen.getByText("gemini:gemini-3.1-flash-lite: 1")).toBeTruthy();
+    expect(screen.getByText("gemini:gemma-4-31b-it: 1")).toBeTruthy();
   });
 
   it("renders provider breakdown", () => {
@@ -110,14 +110,13 @@ describe("SchedulerSummaryPanel", () => {
           memory_pressure_count: 0,
           peak_exact_memory_bytes: 0,
           skip_reason_counts: {},
-          selected_model_counts: { "gemini:g-1": 1, "openai:gpt-4": 1 },
-          provider_counts: { gemini: 1, openai: 1 },
+          selected_model_counts: { "gemini:gemini-3.1-flash-lite": 1, "gemini:gemma-4-31b-it": 1 },
+          provider_counts: { gemini: 2 },
         }}
       />
     );
     expect(screen.getByText("By Provider")).toBeTruthy();
-    expect(screen.getByText("gemini: 1")).toBeTruthy();
-    expect(screen.getByText("openai: 1")).toBeTruthy();
+    expect(screen.getByText("gemini: 2")).toBeTruthy();
   });
 
   it("displays peak memory when present", () => {

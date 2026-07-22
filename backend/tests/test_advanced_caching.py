@@ -56,14 +56,14 @@ class TestCacheKey:
 
     def test_make_cache_key_separates_provider_key(self) -> None:
         """Different provider keys produce different cache keys."""
-        key_a = make_cache_key("hello", "ja", "en", "hash1", provider_key="openai")
-        key_b = make_cache_key("hello", "ja", "en", "hash1", provider_key="gemini")
+        key_a = make_cache_key("hello", "ja", "en", "hash1", provider_key="provider-a")
+        key_b = make_cache_key("hello", "ja", "en", "hash1", provider_key="provider-b")
         assert key_a != key_b
 
     def test_make_cache_key_separates_provider_model(self) -> None:
         """Different provider models produce different cache keys."""
-        key_a = make_cache_key("hello", "ja", "en", "hash1", provider_model="gpt-4")
-        key_b = make_cache_key("hello", "ja", "en", "hash1", provider_model="gpt-5")
+        key_a = make_cache_key("hello", "ja", "en", "hash1", provider_model="model-a")
+        key_b = make_cache_key("hello", "ja", "en", "hash1", provider_model="model-b")
         assert key_a != key_b
 
     def test_make_cache_key_separates_prompt_version(self) -> None:

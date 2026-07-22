@@ -295,7 +295,7 @@ class TestCacheKeyRegression:
 
     def test_cache_key_different_per_provider(self) -> None:
         key_a = make_cache_key("text", "Japanese", "English", "hash", provider_key="gemini")
-        key_b = make_cache_key("text", "Japanese", "English", "hash", provider_key="openai")
+        key_b = make_cache_key("text", "Japanese", "English", "hash", provider_key="provider-b")
         assert key_a != key_b
 
     def test_cache_key_different_per_model(self) -> None:

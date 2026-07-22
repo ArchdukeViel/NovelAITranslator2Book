@@ -792,8 +792,6 @@ class AdminService:
         if provider not in API_KEY_PROVIDERS:
             provider = "gemini"
         model = self.preferences.get_provider_model() if provider in API_KEY_PROVIDERS else settings.PROVIDER_GEMINI_DEFAULT_MODEL
-        if provider == "gemini" and model == "google/gemma-4-31b-it":
-            model = settings.PROVIDER_GEMINI_DEFAULT_MODEL
         primary_quota = DEFAULT_QUOTA_HINTS.get((provider, model), {})
         return {
             "default_provider": provider,

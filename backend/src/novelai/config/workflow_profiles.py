@@ -13,19 +13,11 @@ WORKFLOW_PROFILE_STEPS = (
     "ocr",
 )
 
-LEGACY_WORKFLOW_PROFILE_ALIASES: dict[str, str] = {
-    "term_extraction": "glossary_extraction",
-    "term_translation": "glossary_translation",
-    "term_summary": "glossary_review",
-    "reembedding": "polish",
-}
-
 WORKFLOW_DEFAULTS_KEYS = ("style_preset", "consistency_mode", "honorific_policy")
 
 
 def normalize_workflow_profile_step(step: str) -> str:
-    key = step.strip()
-    return LEGACY_WORKFLOW_PROFILE_ALIASES.get(key, key)
+    return step.strip()
 
 
 def default_workflow_profiles() -> dict[str, dict[str, str | None]]:
@@ -76,12 +68,6 @@ def normalize_workflow_profiles(value: Any) -> dict[str, Any]:
 
     if isinstance(value, dict):
         merged_value = dict(value)
-        for legacy_step, canonical_step in LEGACY_WORKFLOW_PROFILE_ALIASES.items():
-            if canonical_step in merged_value:
-                continue
-            if legacy_step in merged_value:
-                merged_value[canonical_step] = merged_value.get(legacy_step)
-
         if "defaults" in merged_value:
             raw_defaults = merged_value.pop("defaults")
             if not isinstance(raw_defaults, dict):

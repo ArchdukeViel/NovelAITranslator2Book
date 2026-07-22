@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 28
+- **Total active debt entries:** 27
 - **V1 launch blockers:** 6 (DEBT-075 through DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
@@ -886,9 +886,10 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M7 (Final Hardening)
 - **Category:** Providers | Frontend | Dependencies
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** Python optional dependencies, public contribution page,
-  provider-related test fixtures
+  provider registry, cost estimator, documentation, and provider-related test
+  fixtures
 - **Description:** Runtime provider registration correctly rejects OpenAI, but
   `pyproject.toml` still offers and installs an OpenAI extra, the gated public
   contribution page still lists OpenAI, and several tests present OpenAI as an
@@ -898,6 +899,12 @@ Deferred items are tracked but excluded from the active count.
   install, remove OpenAI from product-facing UI and active-provider fixtures,
   retain provider-neutral persistence boundaries and generic secret-redaction
   defenses, regenerate lockfiles, and verify backend/frontend checks.
+- **Resolution:** Removed the OpenAI extra and development dependency, removed
+  OpenAI from the gated contribution UI and active-provider fixtures, limited
+  the Gemini registry to `gemini-3.1-flash-lite` and `gemma-4-31b-it`, and
+  converted the cost estimator and examples to the approved free-tier chain.
+  Generic OpenAI-shaped secret redaction and explicit unsupported-provider
+  rejection tests remain as security boundaries, not product support.
 
 ### DEBT-097 — Full filesystem rescrape changes the public storage slug
 - **Milestone:** Milestone M7 (Final Hardening)
@@ -914,3 +921,17 @@ Deferred items are tracked but excluded from the active count.
   directories up to, but never including, the configured storage root. Tests
   prove root confinement, and the e2e create/full-scrape/publish flow preserves
   the original canonical public slug.
+
+### DEBT-098 — Workflow profile aliases survived the forward-only policy
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Backend | Configuration
+- **Priority:** Medium
+- **Status:** Resolved
+- **Affected areas:** Workflow-profile normalization and preferences tests
+- **Description:** Workflow profiles still accepted and migrated the removed
+  `term_extraction`, `term_translation`, `term_summary`, and `reembedding`
+  aliases. This contradicted the explicit forward-only policy and could hide
+  stale operator configuration.
+- **Resolution:** Removed alias normalization and migration. Only canonical
+  workflow step names are accepted; tests now prove a removed alias fails
+  clearly.

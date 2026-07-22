@@ -23,19 +23,19 @@ def cache_dir() -> Path:
 class TestTranslationCache:
     def test_get_returns_none_on_miss(self, cache_dir: Path) -> None:
         cache = TranslationCache(base_dir=cache_dir)
-        assert cache.get("hello", "openai", "gpt-4") is None
+        assert cache.get("hello", "gemini", "gemini-3.1-flash-lite") is None
 
     def test_set_and_get(self, cache_dir: Path) -> None:
         cache = TranslationCache(base_dir=cache_dir)
-        cache.set("hello", "openai", "gpt-4", "こんにちは")
-        assert cache.get("hello", "openai", "gpt-4") == "こんにちは"
+        cache.set("hello", "gemini", "gemini-3.1-flash-lite", "こんにちは")
+        assert cache.get("hello", "gemini", "gemini-3.1-flash-lite") == "こんにちは"
 
     def test_different_model_is_separate_key(self, cache_dir: Path) -> None:
         cache = TranslationCache(base_dir=cache_dir)
-        cache.set("hello", "openai", "gpt-4", "A")
-        cache.set("hello", "openai", "gpt-5", "B")
-        assert cache.get("hello", "openai", "gpt-4") == "A"
-        assert cache.get("hello", "openai", "gpt-5") == "B"
+        cache.set("hello", "gemini", "gemini-3.1-flash-lite", "A")
+        cache.set("hello", "gemini", "gemma-4-31b-it", "B")
+        assert cache.get("hello", "gemini", "gemini-3.1-flash-lite") == "A"
+        assert cache.get("hello", "gemini", "gemma-4-31b-it") == "B"
 
     def test_persists_across_instances(self, cache_dir: Path) -> None:
         c1 = TranslationCache(base_dir=cache_dir)
@@ -50,14 +50,14 @@ class TestTranslationCache:
         assert cache.get("any", "p", "m") is None
 
     def test_ignores_legacy_provider_model_text_key(self, cache_dir: Path) -> None:
-        legacy_payload = "openai:gpt-4:hello"
+        legacy_payload = "gemini:gemini-3.1-flash-lite:hello"
         legacy_key = hashlib.sha256(legacy_payload.encode("utf-8")).hexdigest()
         cache_file = cache_dir / "translation_cache.json"
         cache_file.write_text(f'{{"{legacy_key}": "legacy translation"}}', encoding="utf-8")
 
         cache = TranslationCache(base_dir=cache_dir)
 
-        assert cache.get("hello", "openai", "gpt-4") is None
+        assert cache.get("hello", "gemini", "gemini-3.1-flash-lite") is None
 
     def test_exact_key_changes_when_prompt_affecting_metadata_changes(self) -> None:
         base = {
@@ -91,8 +91,8 @@ class TestTranslationCache:
             source_text="本文",
             source_language="Japanese",
             target_language="English",
-            provider_key="openai",
-            provider_model="gpt-5.4",
+            provider_key="gemini",
+            provider_model="gemini-3.1-flash-lite",
             prompt_version="translation-v1",
             glossary_hash="glossary-a",
             style_preset="balanced",

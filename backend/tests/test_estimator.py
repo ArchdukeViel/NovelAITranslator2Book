@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from typing import Any
 
 import pytest
@@ -13,15 +12,15 @@ def test_baseline_estimation_for_10000_characters() -> None:
     options = EstimationOptions(japanese_characters=10_000)
 
     token_estimate = estimate_tokens(options)
-    cost_estimate = estimate_cost("gpt-5.2", options)
+    cost_estimate = estimate_cost("gemini-3.1-flash-lite", options)
 
     assert token_estimate.estimated_input_tokens == 9_200
     assert token_estimate.estimated_output_tokens == 8_000
     assert cost_estimate.estimated_input_tokens == 9_200
     assert cost_estimate.estimated_output_tokens == 8_000
-    assert math.isclose(cost_estimate.estimated_input_cost_usd, 0.0161, rel_tol=0, abs_tol=1e-12)
-    assert math.isclose(cost_estimate.estimated_output_cost_usd, 0.1120, rel_tol=0, abs_tol=1e-12)
-    assert math.isclose(cost_estimate.estimated_total_cost_usd, 0.1281, rel_tol=0, abs_tol=1e-12)
+    assert cost_estimate.estimated_input_cost_usd == 0.0
+    assert cost_estimate.estimated_output_cost_usd == 0.0
+    assert cost_estimate.estimated_total_cost_usd == 0.0
 
 
 def test_glossary_adjustment_adds_input_overhead_only() -> None:
@@ -81,5 +80,5 @@ def test_invalid_estimation_options_raise_value_error(kwargs: dict[str, Any]) ->
 def test_unsupported_model_name_raises_clear_error() -> None:
     options = EstimationOptions(japanese_characters=10_000)
 
-    with pytest.raises(ValueError, match=r"Unsupported model 'gpt-5\.9'"):
-        estimate_cost("gpt-5.9", options)
+    with pytest.raises(ValueError, match="Unsupported model 'unsupported-model'"):
+        estimate_cost("unsupported-model", options)

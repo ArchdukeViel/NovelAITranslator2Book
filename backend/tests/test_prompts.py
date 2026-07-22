@@ -66,7 +66,7 @@ def test_build_json_translation_request_sets_json_mode_and_payload_schema() -> N
         style_preset="action",
         consistency_mode=True,
     )
-    payload = build_translation_responses_payload("gpt-5.4", request)
+    payload = build_translation_responses_payload("gemini-3.1-flash-lite", request)
 
     assert request.json_output is True
     assert "Return one valid JSON object only." in request.system_prompt
