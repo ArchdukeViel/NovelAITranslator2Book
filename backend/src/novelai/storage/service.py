@@ -112,6 +112,7 @@ from novelai.storage.traceability import (
     append_pipeline_event,
     append_pipeline_events,
     list_pipeline_events,
+    load_all_scheduler_states,
     load_chunk_states,
     load_scheduler_state,
     save_scheduler_state,
@@ -620,6 +621,7 @@ class StorageService:
     load_chunk_states = load_chunk_states
     save_scheduler_state = save_scheduler_state
     load_scheduler_state = load_scheduler_state
+    load_all_scheduler_states = load_all_scheduler_states
     _runtime_dir = _runtime_dir
     _translation_runtime_dir = _translation_runtime_dir
     _fetch_cache_dir = _fetch_cache_dir

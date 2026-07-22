@@ -230,6 +230,12 @@ Deferred items are tracked but excluded from the active count.
   test preserving omitted parameters are removed. All runtime and test callers
   provide the complete cache identity. The 98 focused cache, prompt-policy, and
   glossary-invalidation tests pass with zero focused Pyright errors.
+  `AdminService` now requires the canonical `StorageService`; its optional
+  untyped storage parameter, global-settings path reconstruction, and missing-
+  storage branches are removed. The same slice wires the previously unreachable
+  bulk scheduler-state reader tracked by DEBT-112. All 135 focused admin,
+  security, scheduler-observability, and storage tests pass with zero focused
+  Pyright errors.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
@@ -1225,3 +1231,24 @@ Deferred items are tracked but excluded from the active count.
   completed successfully in 3 minutes 42 seconds with warm caches. All lint,
   migration, backend, frontend, E2E, and three-image build gates remained
   enabled and green.
+
+### DEBT-112 — Scheduler health could not read persisted scheduler states
+- **Milestone:** Milestone M2c (Backup & Storage)
+- **Category:** Backend | Observability | Storage
+- **Priority:** High
+- **Status:** Resolved
+- **Affected areas:** `StorageService`, admin scheduler health, scheduler-state
+  tests
+- **Description:** `load_all_scheduler_states()` existed in the traceability
+  module but was not bound to the `StorageService` facade. `AdminService` was
+  typed as accepting any optional storage object and swallowed the resulting
+  attribute error, so scheduler health silently omitted persisted cooldown and
+  exhaustion state.
+- **Completion criteria:** Require the canonical storage dependency, expose the
+  bulk scheduler-state reader through `StorageService`, remove filesystem and
+  missing-storage fallbacks, and prove persisted state appears in scheduler
+  health.
+- **Resolution:** `AdminService` now requires `StorageService`; the legacy path
+  reconstruction and optional-storage branches are removed. The facade binds
+  `load_all_scheduler_states()`, and focused storage and scheduler-health tests
+  verify bulk loading and persisted model-state reporting.

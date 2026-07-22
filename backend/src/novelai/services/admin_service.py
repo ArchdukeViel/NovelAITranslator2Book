@@ -19,6 +19,7 @@ from novelai.services.preferences_service import PreferencesService
 from novelai.services.provider_credentials import ProviderCredentialService
 from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
+from novelai.storage.service import StorageService
 from novelai.utils.hashing import hexdigest
 
 API_KEY_PROVIDERS = {"gemini"}
@@ -149,7 +150,7 @@ class AdminService:
         translation_cache: TranslationCache,
         usage: UsageService,
         activity_runner: BackgroundActivityRunner,
-        storage: Any | None = None,
+        storage: StorageService,
         db_session: Session | None = None,
     ) -> None:
         self.preferences = preferences
@@ -862,8 +863,6 @@ class AdminService:
             return self.translation_cache.cache_file
         if key == "usage":
             return self.usage.usage_path
-        if self.storage is None:
-            return self._legacy_runtime_state_path(key)
         if key == "runtime_chunks":
             return self.storage.runtime_path("translation", "chunks.json")
         if key == "runtime_chunk_attempts":
@@ -874,20 +873,6 @@ class AdminService:
             return self.storage.runtime_path("translation", "outputs.json")
         if key == "backup_manifest":
             return self.storage.backups_path("manifest.json")
-        raise KeyError(f"Unknown runtime state file: {key}")
-
-    def _legacy_runtime_state_path(self, key: str) -> Path:
-        """Resolve fallback paths from the configured novel library directory."""
-        if key == "runtime_chunks":
-            return settings.NOVEL_LIBRARY_DIR / "runtime" / "translation" / "chunks.json"
-        if key == "runtime_chunk_attempts":
-            return settings.NOVEL_LIBRARY_DIR / "runtime" / "translation" / "chunk_attempts.json"
-        if key == "runtime_bundles":
-            return settings.NOVEL_LIBRARY_DIR / "runtime" / "translation" / "bundles.json"
-        if key == "runtime_outputs":
-            return settings.NOVEL_LIBRARY_DIR / "runtime" / "translation" / "outputs.json"
-        if key == "backup_manifest":
-            return settings.NOVEL_LIBRARY_DIR / "backups" / "manifest.json"
         raise KeyError(f"Unknown runtime state file: {key}")
 
     def scheduler_health(self) -> dict[str, Any]:
@@ -945,8 +930,6 @@ class AdminService:
 
     def _load_latest_scheduler_state(self) -> dict[tuple[str, str], dict[str, Any]] | None:
         """Load the most recent scheduler runtime state from storage."""
-        if self.storage is None:
-            return None
         try:
             all_states = self.storage.load_all_scheduler_states()
             if not all_states:

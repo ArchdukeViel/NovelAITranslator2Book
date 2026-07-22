@@ -55,7 +55,9 @@ def test_validate_safe_url_rejects_private_or_secret_bearing_urls(url: str) -> N
         validate_safe_url(url)
 
 
-def test_validate_safe_url_allows_http_public_hostname_when_resolution_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_validate_safe_url_allows_http_public_hostname_when_resolution_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import socket
 
     def raise_gaierror(*_args: Any, **_kwargs: Any) -> None:
@@ -186,6 +188,7 @@ def test_admin_runtime_state_does_not_expose_absolute_path(workspace_tmp_path: P
         translation_cache=TranslationCache(workspace_tmp_path),
         usage=UsageService(workspace_tmp_path),
         activity_runner=object(),  # type: ignore[arg-type]
+        storage=StorageService(workspace_tmp_path),
     )
 
     record = service.runtime_state_record("preferences")

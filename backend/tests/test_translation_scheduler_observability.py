@@ -17,8 +17,10 @@ No live translation providers. All tests are offline.
 from __future__ import annotations
 
 from datetime import timedelta
+from pathlib import Path
 
 from novelai.shared.pipeline import SchedulerModelStatus
+from novelai.storage.service import StorageService
 from novelai.translation.scheduler import (
     SchedulerDecisionRecorder,
     SchedulerModelConfig,
@@ -131,6 +133,7 @@ class TestSchedulerDecisionRecorder:
 
     def test_decision_is_json_serializable(self) -> None:
         import json
+
         scheduler = _make_scheduler([("p", "m", SchedulerModelStatus.AVAILABLE.value)])
         recorder = SchedulerDecisionRecorder(chapter_id="1", request_id="req-1")
         selection = scheduler.select_model(decision_recorder=recorder)
@@ -499,9 +502,21 @@ class TestSchedulerSummary:
 
     def test_summary_tracks_peak_memory(self) -> None:
         decisions = [
-            {"selected": {"provider": "p", "model": "m"}, "memory": {"exact_memory_bytes": 100, "memory_pressure": False}, "candidates": []},
-            {"selected": {"provider": "p", "model": "m"}, "memory": {"exact_memory_bytes": 500, "memory_pressure": True}, "candidates": []},
-            {"selected": {"provider": "p", "model": "m"}, "memory": {"exact_memory_bytes": 300, "memory_pressure": False}, "candidates": []},
+            {
+                "selected": {"provider": "p", "model": "m"},
+                "memory": {"exact_memory_bytes": 100, "memory_pressure": False},
+                "candidates": [],
+            },
+            {
+                "selected": {"provider": "p", "model": "m"},
+                "memory": {"exact_memory_bytes": 500, "memory_pressure": True},
+                "candidates": [],
+            },
+            {
+                "selected": {"provider": "p", "model": "m"},
+                "memory": {"exact_memory_bytes": 300, "memory_pressure": False},
+                "candidates": [],
+            },
         ]
         summary = build_scheduler_summary(decisions)
         assert summary["peak_exact_memory_bytes"] == 500
@@ -541,18 +556,22 @@ class TestActivityMetadataSummary:
 
         collect_scheduler_decisions()
 
-        push_scheduler_decision({
-            "selected": {"provider": "p", "model": "m"},
-            "fallback_used": False,
-            "candidates": [],
-            "chapter_id": "1",
-        })
-        push_scheduler_decision({
-            "selected": {"provider": "q", "model": "n"},
-            "fallback_used": True,
-            "candidates": [{"skip_reason": "preferred_model_cooling_down"}],
-            "chapter_id": "2",
-        })
+        push_scheduler_decision(
+            {
+                "selected": {"provider": "p", "model": "m"},
+                "fallback_used": False,
+                "candidates": [],
+                "chapter_id": "1",
+            }
+        )
+        push_scheduler_decision(
+            {
+                "selected": {"provider": "q", "model": "n"},
+                "fallback_used": True,
+                "candidates": [{"skip_reason": "preferred_model_cooling_down"}],
+                "chapter_id": "2",
+            }
+        )
 
         summary = build_scheduler_summary(collect_scheduler_decisions())
         assert summary["chapters_with_decisions"] == 2
@@ -569,11 +588,13 @@ class TestActivityMetadataSummary:
         )
 
         collect_scheduler_decisions()
-        push_scheduler_decision({
-            "selected": {"provider": "p", "model": "m"},
-            "fallback_used": True,
-            "candidates": [],
-        })
+        push_scheduler_decision(
+            {
+                "selected": {"provider": "p", "model": "m"},
+                "fallback_used": True,
+                "candidates": [],
+            }
+        )
         summary = build_scheduler_summary(collect_scheduler_decisions())
 
         full_result = {
@@ -611,30 +632,37 @@ class TestSchedulerHealthData:
     We patch at a high level to keep tests offline.
     """
 
-    def _make_service(self):
+    def _make_service(self, tmp_path: Path):
         from novelai.services.admin_service import AdminService
 
-        fake_prefs = type("FakePrefs", (), {
-            "prefs_path": "nope",
-            "get_provider_management": lambda self: {},
-            "get_preferred_provider": lambda self: "gemini",
-            "get_provider_model": lambda self: "gemini-3.1-flash-lite",
-            "get_api_key": lambda self, pk: "fake-key",
-            "reload": lambda self: None,
-            "clear": lambda self: None,
-        })()
+        fake_prefs = type(
+            "FakePrefs",
+            (),
+            {
+                "prefs_path": "nope",
+                "get_provider_management": lambda self: {},
+                "get_preferred_provider": lambda self: "gemini",
+                "get_provider_model": lambda self: "gemini-3.1-flash-lite",
+                "get_api_key": lambda self, pk: "fake-key",
+                "reload": lambda self: None,
+                "clear": lambda self: None,
+            },
+        )()
         return AdminService(
             preferences=fake_prefs,  # type: ignore[arg-type]
             translation_cache=type("FakeCache", (), {"cache_file": "nope"})(),  # type: ignore[arg-type]
-            usage=type("FakeUsage", (), {"usage_path": "nope", "reload": lambda self: None, "clear": lambda self: None})(),  # type: ignore[arg-type]
+            usage=type(
+                "FakeUsage", (), {"usage_path": "nope", "reload": lambda self: None, "clear": lambda self: None}
+            )(),  # type: ignore[arg-type]
             activity_runner=type("FakeRunner", (), {"status": lambda self: {}})(),  # type: ignore[arg-type]
+            storage=StorageService(tmp_path),
         )
 
-    def test_health_structure(self) -> None:
+    def test_health_structure(self, tmp_path: Path) -> None:
         """scheduler_health() returns policy + models."""
         import json
 
-        service = self._make_service()
+        service = self._make_service(tmp_path)
         # Patch scheduler_policy_models to avoid provider registry calls
         original = service.scheduler_policy_models
         service.scheduler_policy_models = lambda **kw: [
@@ -652,8 +680,8 @@ class TestSchedulerHealthData:
         finally:
             service.scheduler_policy_models = original
 
-    def test_health_models_have_required_fields(self) -> None:
-        service = self._make_service()
+    def test_health_models_have_required_fields(self, tmp_path: Path) -> None:
+        service = self._make_service(tmp_path)
         original = service.scheduler_policy_models
         service.scheduler_policy_models = lambda **kw: [
             {"provider_key": "gemini", "provider_model": "gemini-3.1-flash-lite", "priority_order": 0},
@@ -669,9 +697,9 @@ class TestSchedulerHealthData:
         finally:
             service.scheduler_policy_models = original
 
-    def test_health_redacts_secrets(self) -> None:
+    def test_health_redacts_secrets(self, tmp_path: Path) -> None:
         """scheduler_health must not include API keys or credential secrets."""
-        service = self._make_service()
+        service = self._make_service(tmp_path)
         original = service.scheduler_policy_models
         service.scheduler_policy_models = lambda **kw: [
             {"provider_key": "gemini", "provider_model": "g-1", "priority_order": 0},
@@ -683,3 +711,30 @@ class TestSchedulerHealthData:
             assert "secret" not in dumped
         finally:
             service.scheduler_policy_models = original
+
+    def test_health_includes_latest_persisted_model_state(self, tmp_path: Path) -> None:
+        service = self._make_service(tmp_path)
+        service.storage.save_scheduler_state(
+            "activity-1",
+            [
+                {
+                    "provider_key": "gemini",
+                    "provider_model": "gemini-3.1-flash-lite",
+                    "priority_order": 0,
+                    "status": "cooling_down",
+                    "requests_this_minute": 3,
+                }
+            ],
+        )
+        service.scheduler_policy_models = lambda **kw: [
+            {
+                "provider_key": "gemini",
+                "provider_model": "gemini-3.1-flash-lite",
+                "priority_order": 0,
+            }
+        ]
+
+        health = service.scheduler_health()
+
+        assert health["models"][0]["status"] == "cooling_down"
+        assert health["models"][0]["requests_this_minute"] == 3

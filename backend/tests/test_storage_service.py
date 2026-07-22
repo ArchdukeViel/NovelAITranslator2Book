@@ -181,7 +181,9 @@ def test_translated_chapter_versions_keep_machine_history(storage):
 
 
 def test_save_edited_translation_creates_manual_version_and_history(storage):
-    storage.save_translated_chapter("novel1", "ch1", "machine translation", provider="gemini", model="gemini-3.1-flash-lite")
+    storage.save_translated_chapter(
+        "novel1", "ch1", "machine translation", provider="gemini", model="gemini-3.1-flash-lite"
+    )
 
     storage.save_edited_translation(
         "novel1",
@@ -215,7 +217,9 @@ def test_save_edited_translation_creates_manual_version_and_history(storage):
 
 
 def test_activate_translated_chapter_version_rolls_back_active_output(storage):
-    storage.save_translated_chapter("novel1", "ch1", "machine translation", provider="gemini", model="gemini-3.1-flash-lite")
+    storage.save_translated_chapter(
+        "novel1", "ch1", "machine translation", provider="gemini", model="gemini-3.1-flash-lite"
+    )
     storage.save_edited_translation("novel1", "ch1", "edited translation", editor="admin")
 
     assert (
@@ -482,6 +486,7 @@ def test_scheduler_state_can_represent_cooldown_and_exhaustion(storage):
 
     loaded = storage.load_scheduler_state("job_123")
     assert loaded == saved
+    assert storage.load_all_scheduler_states() == {"job_123": saved}
     statuses = {item["status"] for item in loaded["model_states"]}
     assert statuses == {"cooling_down", "daily_exhausted"}
 
