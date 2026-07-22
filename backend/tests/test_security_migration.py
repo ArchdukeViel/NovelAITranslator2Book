@@ -51,9 +51,9 @@ def test_security_migration_has_one_policy_per_command() -> None:
 
 
 def test_security_migration_handles_missing_supabase_roles() -> None:
-    source = (
-        MIGRATIONS_DIR / "2026-07-16_3da9f497264c_remove_pg_net_and_reconcile_rls_policies.py"
-    ).read_text(encoding="utf-8")
+    source = (MIGRATIONS_DIR / "2026-07-16_3da9f497264c_remove_pg_net_and_reconcile_rls_policies.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "SELECT rolname FROM pg_roles WHERE rolname = ANY(:role_names)" in source
     assert "if available_roles is None:" in source
@@ -69,15 +69,21 @@ def test_ci_auth_compatibility_shim_is_minimal_and_fail_closed() -> None:
     assert "SELECT NULL::UUID" in normalized
     assert "REVOKE ALL ON SCHEMA AUTH FROM PUBLIC" in normalized
     assert "REVOKE ALL ON FUNCTION AUTH.UID() FROM PUBLIC" in normalized
-    assert "CREATE ROLE" not in normalized
+    assert normalized.count("CREATE ROLE") == 2
+    assert "CREATE ROLE ANON NOLOGIN" in normalized
+    assert "CREATE ROLE AUTHENTICATED NOLOGIN" in normalized
+    assert "SUPERUSER" not in normalized
+    assert "CREATEDB" not in normalized
+    assert "CREATEROLE" not in normalized
+    assert "PASSWORD" not in normalized
     assert "CREATE TABLE" not in normalized
     assert "GRANT " not in normalized
 
 
 def test_security_migration_removes_pg_net_and_cron_table_grants() -> None:
-    source = (
-        MIGRATIONS_DIR / "2026-07-16_3da9f497264c_remove_pg_net_and_reconcile_rls_policies.py"
-    ).read_text(encoding="utf-8")
+    source = (MIGRATIONS_DIR / "2026-07-16_3da9f497264c_remove_pg_net_and_reconcile_rls_policies.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "DROP EXTENSION IF EXISTS pg_net" in source
     assert "REVOKE ALL PRIVILEGES ON TABLE public.scheduled_cron_log FROM {data_api_roles}" in source

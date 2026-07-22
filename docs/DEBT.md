@@ -1118,6 +1118,8 @@ Deferred items are tracked but excluded from the active count.
 - **Resolution:** The CI-only shim now creates missing `anon` and
   `authenticated` roles as `NOLOGIN`. A disposable PostgreSQL 16 container
   verifies the raw bootstrap and complete Alembic upgrade from an empty DB.
+  The focused security contract permits exactly those two inert role
+  declarations and rejects login-capable or privileged role attributes.
 
 ### DEBT-108 — Local GitGuardian hook authentication is invalid
 - **Milestone:** Milestone M0 (CI Confidence)
