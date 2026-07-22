@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from novelai.services.public_glossary_annotations import (
     MAX_ANNOTATIONS,
     find_annotations,
@@ -13,64 +15,148 @@ from novelai.services.public_glossary_annotations import (
 
 class TestTermSelection:
     def test_selects_approved_character(self) -> None:
-        terms = select_public_terms([
-            {"id": 1, "canonical_term": "魔王", "approved_translation": "Demon King",
-             "term_type": "character", "status": "approved", "public_visible": True},
-        ])
+        terms = select_public_terms(
+            [
+                {
+                    "id": 1,
+                    "canonical_term": "魔王",
+                    "approved_translation": "Demon King",
+                    "term_type": "character",
+                    "status": "approved",
+                    "public_visible": True,
+                },
+            ]
+        )
         assert len(terms) == 1
         assert terms[0]["display_term"] == "Demon King"
         assert terms[0]["term_type"] == "character"
 
     def test_skips_pending_term(self) -> None:
-        terms = select_public_terms([
-            {"id": 1, "canonical_term": "魔王", "approved_translation": "Demon King",
-             "term_type": "character", "status": "pending", "public_visible": True},
-        ])
+        terms = select_public_terms(
+            [
+                {
+                    "id": 1,
+                    "canonical_term": "魔王",
+                    "approved_translation": "Demon King",
+                    "term_type": "character",
+                    "status": "pending",
+                    "public_visible": True,
+                },
+            ]
+        )
         assert len(terms) == 0
 
     def test_skips_unknown_term_type(self) -> None:
-        terms = select_public_terms([
-            {"id": 1, "canonical_term": "internal", "approved_translation": "x",
-             "term_type": "admin_note", "status": "approved", "public_visible": True},
-        ])
+        terms = select_public_terms(
+            [
+                {
+                    "id": 1,
+                    "canonical_term": "internal",
+                    "approved_translation": "x",
+                    "term_type": "admin_note",
+                    "status": "approved",
+                    "public_visible": True,
+                },
+            ]
+        )
         assert len(terms) == 0
 
     def test_includes_aliases(self) -> None:
-        terms = select_public_terms([
-            {"id": 1, "canonical_term": "魔王", "approved_translation": "Demon King",
-             "term_type": "character", "status": "approved", "public_visible": True,
-             "aliases": [{"alias_text": "Dark Lord"}]},
-        ])
+        terms = select_public_terms(
+            [
+                {
+                    "id": 1,
+                    "canonical_term": "魔王",
+                    "approved_translation": "Demon King",
+                    "term_type": "character",
+                    "status": "approved",
+                    "public_visible": True,
+                    "aliases": [{"alias_text": "Dark Lord"}],
+                },
+            ]
+        )
         assert len(terms[0].get("aliases", [])) == 1
 
+    @pytest.mark.parametrize(
+        "aliases",
+        ["Dark Lord", ["Dark Lord"], [{"text": "Dark Lord"}], [{"alias_text": 7}]],
+    )
+    def test_rejects_noncanonical_alias_shapes(self, aliases: object) -> None:
+        entry = {
+            "id": 1,
+            "canonical_term": "魔王",
+            "approved_translation": "Demon King",
+            "term_type": "character",
+            "status": "approved",
+            "public_visible": True,
+            "aliases": aliases,
+        }
+
+        with pytest.raises(ValueError, match="Public glossary alias"):
+            select_public_terms([entry])
+
     def test_skips_no_canonical_or_translation(self) -> None:
-        terms = select_public_terms([
-            {"id": 1, "canonical_term": "", "approved_translation": "",
-             "term_type": "character", "status": "approved", "public_visible": True},
-        ])
+        terms = select_public_terms(
+            [
+                {
+                    "id": 1,
+                    "canonical_term": "",
+                    "approved_translation": "",
+                    "term_type": "character",
+                    "status": "approved",
+                    "public_visible": True,
+                },
+            ]
+        )
         assert len(terms) == 0
 
     def test_admin_only_fields_excluded(self) -> None:
-        terms = select_public_terms([
-            {"id": 1, "canonical_term": "魔王", "approved_translation": "Demon King",
-             "term_type": "character", "status": "approved", "public_visible": True,
-             "internal_notes": "secret", "confidence_score": 0.9},
-        ])
+        terms = select_public_terms(
+            [
+                {
+                    "id": 1,
+                    "canonical_term": "魔王",
+                    "approved_translation": "Demon King",
+                    "term_type": "character",
+                    "status": "approved",
+                    "public_visible": True,
+                    "internal_notes": "secret",
+                    "confidence_score": 0.9,
+                },
+            ]
+        )
         assert "internal_notes" not in terms[0]
         assert "confidence_score" not in terms[0]
 
     def test_reading_field(self) -> None:
-        terms = select_public_terms([
-            {"id": 1, "canonical_term": "魔王", "approved_translation": "Demon King",
-             "term_type": "character", "status": "approved", "public_visible": True, "reading": "maou"},
-        ])
+        terms = select_public_terms(
+            [
+                {
+                    "id": 1,
+                    "canonical_term": "魔王",
+                    "approved_translation": "Demon King",
+                    "term_type": "character",
+                    "status": "approved",
+                    "public_visible": True,
+                    "reading": "maou",
+                },
+            ]
+        )
         assert terms[0]["reading"] == "maou"
 
     def test_skips_term_not_explicitly_public(self) -> None:
-        terms = select_public_terms([
-            {"id": 1, "canonical_term": "魔王", "approved_translation": "Demon King",
-             "term_type": "character", "status": "approved", "public_visible": False},
-        ])
+        terms = select_public_terms(
+            [
+                {
+                    "id": 1,
+                    "canonical_term": "魔王",
+                    "approved_translation": "Demon King",
+                    "term_type": "character",
+                    "status": "approved",
+                    "public_visible": False,
+                },
+            ]
+        )
         assert terms == []
 
 
@@ -99,10 +185,7 @@ class TestAnnotationMatching:
         assert len(annotations) == 0
 
     def test_bounded_to_max(self) -> None:
-        many_terms = [
-            {"term_id": i, "display_term": f"Term{i}"}
-            for i in range(100)
-        ]
+        many_terms = [{"term_id": i, "display_term": f"Term{i}"} for i in range(100)]
         text = " ".join([f"Term{i}" for i in range(100)])
         annotations = find_annotations(many_terms, text)
         assert len(annotations) <= MAX_ANNOTATIONS

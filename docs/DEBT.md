@@ -200,6 +200,10 @@ Deferred items are tracked but excluded from the active count.
   persistence helpers as private static or instance methods. Production and
   tests import the owning modules directly; 75 focused pipeline, glossary, and
   smart-chunking tests pass with zero focused Pyright errors.
+  Public glossary annotations now accept only the catalog's canonical alias
+  record shape with string `alias_text`; string, `text`, object-attribute, and
+  implicit stringification adapters are removed. The 137 focused annotation
+  and public-router tests pass with zero focused Pyright errors.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

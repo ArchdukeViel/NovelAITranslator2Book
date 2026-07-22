@@ -30,9 +30,17 @@ _PUBLIC_SAFE_STATUSES = {"approved", "published"}
 
 # Fields that must never be exposed in public annotations
 _ADMIN_ONLY_FIELDS = {
-    "status", "review_state", "internal_notes", "confidence_score",
-    "editor_notes", "locked_by", "owner_locked", "created_by",
-    "updated_by", "revision", "enforcement_level",
+    "status",
+    "review_state",
+    "internal_notes",
+    "confidence_score",
+    "editor_notes",
+    "locked_by",
+    "owner_locked",
+    "created_by",
+    "updated_by",
+    "revision",
+    "enforcement_level",
 }
 
 
@@ -77,20 +85,16 @@ def select_public_terms(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return results
 
 
-def _safe_aliases(aliases: list[Any]) -> list[str]:
-    """Extract safe alias texts, bounded."""
+def _safe_aliases(aliases: Any) -> list[str]:
+    """Extract bounded alias text from the canonical catalog record shape."""
+    if not isinstance(aliases, list):
+        raise ValueError("Public glossary aliases must be a list of alias records.")
+
     result: list[str] = []
-    for alias in (aliases or [])[:MAX_ALIASES]:
-        if isinstance(alias, str):
-            text = alias
-        elif isinstance(alias, dict):
-            text = str(alias.get("alias_text") or alias.get("text", ""))
-        elif hasattr(alias, "alias_text"):
-            text = str(alias.alias_text)
-        elif hasattr(alias, "text"):
-            text = str(alias.text)
-        else:
-            text = str(alias)
+    for alias in aliases[:MAX_ALIASES]:
+        if not isinstance(alias, dict) or not isinstance(alias.get("alias_text"), str):
+            raise ValueError("Public glossary alias records require string alias_text.")
+        text = alias["alias_text"]
         if text.strip():
             result.append(text.strip())
     return result
@@ -156,21 +160,25 @@ def _find_matches(
         for block_idx, block in enumerate(blocks):
             block_text = str(block.get("text", ""))
             for m in pattern.finditer(block_text):
-                matches.append({
-                    "surface": m.group(),
-                    "block_index": block_idx,
-                    "start": m.start(),
-                    "end": m.end(),
-                })
+                matches.append(
+                    {
+                        "surface": m.group(),
+                        "block_index": block_idx,
+                        "start": m.start(),
+                        "end": m.end(),
+                    }
+                )
                 if len(matches) >= MAX_MATCHES:
                     return matches
     else:
         for m in pattern.finditer(text):
-            matches.append({
-                "surface": m.group(),
-                "start": m.start(),
-                "end": m.end(),
-            })
+            matches.append(
+                {
+                    "surface": m.group(),
+                    "start": m.start(),
+                    "end": m.end(),
+                }
+            )
             if len(matches) >= MAX_MATCHES:
                 return matches
 
