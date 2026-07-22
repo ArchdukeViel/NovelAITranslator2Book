@@ -19,7 +19,7 @@ from novelai.api.routers.admin_glossary import router as admin_glossary_router
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.dependencies import get_db_session, get_storage
 from novelai.db.base import Base
-from novelai.db.models.glossary import NovelGlossaryEntry
+from novelai.db.models.glossary import NovelGlossaryAlias, NovelGlossaryEntry
 from novelai.db.models.novel import Novel
 from novelai.db.models.users import User
 
@@ -139,12 +139,14 @@ class FakeStorage:
         self.translated[(novel_id, chapter_id)] = {"text": text, **kwargs}
 
     def save_edited_translation(self, novel_id, chapter_id, text, **kwargs):
-        self.saved_edits.append({
-            "novel_id": novel_id,
-            "chapter_id": chapter_id,
-            "text": text,
-            **kwargs,
-        })
+        self.saved_edits.append(
+            {
+                "novel_id": novel_id,
+                "chapter_id": chapter_id,
+                "text": text,
+                **kwargs,
+            }
+        )
         self.translated[(novel_id, chapter_id)] = {"text": text, **kwargs}
 
     def list_translated_chapter_versions(self, novel_id, chapter_id):
@@ -231,6 +233,31 @@ class TestLintEndpoint:
         assert resp.status_code == 200
         assert resp.json()["glossary_qa"]["status"] == "passed"
 
+    def test_lint_uses_canonical_banned_alias_records(
+        self, client, novel, approved_entry, fake_storage, db_session
+    ) -> None:
+        db_session.add(
+            NovelGlossaryAlias(
+                glossary_entry_id=approved_entry.id,
+                novel_id=novel.id,
+                alias_text="Devil Lord",
+                alias_type="banned",
+            )
+        )
+        db_session.commit()
+        fake_storage.save_chapter(novel.slug, "1", "魔王が現れた。")
+
+        resp = client.post(
+            f"/api/admin/novels/{novel.slug}/chapters/1/translated/lint",
+            json={"text": "The Devil Lord appeared.", "source_text": "魔王が現れた。"},
+        )
+
+        assert resp.status_code == 200
+        issues = resp.json()["glossary_qa"]["issues"]
+        assert any(
+            issue["code"] == "forbidden_variant" and issue["matched_variant"] == "Devil Lord" for issue in issues
+        )
+
     def test_lint_unresolved_novel_returns_advisory(self, client, fake_storage) -> None:
         resp = client.post(
             "/api/admin/novels/unknown-novel/chapters/1/translated/lint",
@@ -249,7 +276,7 @@ class TestLintEndpoint:
         assert resp.status_code == 200
         qa = resp.json()["glossary_qa"]
         assert qa["source_context"] == "missing"
-        assert "legacy_no_source_context" in qa["notes"]
+        assert "missing_source_context" in qa["notes"]
 
     def test_lint_empty_text_400(self, client, novel) -> None:
         resp = client.post(
@@ -343,6 +370,7 @@ class TestSaveWithQA:
         edit = fake_storage.saved_edits[0]
         assert "glossary_qa" in edit
         assert edit["glossary_qa"]["status"] in ("warning", "blocked", "passed", "advisory")
+        assert edit["glossary_qa"]["glossary_revision"] == 5
 
 
 class TestApproveTranslationChange:
@@ -363,9 +391,8 @@ class TestApproveTranslationChange:
             json={"new_translation": "Demon Lord", "rationale": "Better fit"},
         )
         from novelai.db.models.glossary import NovelGlossaryDecisionEvent
-        events = db_session.query(NovelGlossaryDecisionEvent).filter_by(
-            glossary_entry_id=approved_entry.id
-        ).all()
+
+        events = db_session.query(NovelGlossaryDecisionEvent).filter_by(glossary_entry_id=approved_entry.id).all()
         assert len(events) >= 1
         assert events[0].event_type == "approve"
 

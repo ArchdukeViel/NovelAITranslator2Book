@@ -33,11 +33,7 @@ from novelai.services.glossary_editor_qa_service import (
 @dataclass
 class FakeAlias:
     alias_text: str = ""
-
-
-@dataclass
-class FakeVariant:
-    variant_text: str = ""
+    alias_type: str = "observed"
 
 
 @dataclass
@@ -46,8 +42,6 @@ class FakeEntry:
     canonical_term: str = "魔王"
     approved_translation: str | None = "Demon King"
     aliases: list[FakeAlias] = field(default_factory=list)
-    forbidden_variants: list[FakeVariant] = field(default_factory=list)
-    known_variants: list[FakeVariant] = field(default_factory=list)
     status: str = "approved"
     owner_locked: bool = False
     enforcement_level: str = "warning"
@@ -77,8 +71,11 @@ class TestGlossaryEditorQAService:
     def test_empty_glossary_returns_passed(self) -> None:
         svc = self._service(entries=[])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="anything", source_text="anything",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="anything",
+            source_text="anything",
         )
         assert result.status == STATUS_PASSED
         assert result.checked_terms == 0
@@ -88,8 +85,11 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King")
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The Demon King appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The Demon King appeared.",
+            source_text="魔王が現れた。",
         )
         assert result.status == STATUS_PASSED
         assert result.issue_count == 0
@@ -98,8 +98,11 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King", enforcement_level="warning")
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The dark lord appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The dark lord appeared.",
+            source_text="魔王が現れた。",
         )
         assert result.status == STATUS_WARNING
         assert result.issue_count == 1
@@ -110,8 +113,11 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King", owner_locked=True)
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The dark lord appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The dark lord appeared.",
+            source_text="魔王が現れた。",
         )
         assert result.status == STATUS_BLOCKED
         assert result.issues[0].code == CODE_MISSING_REQUIRED
@@ -121,8 +127,11 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King", enforcement_level="strict")
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The dark lord appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The dark lord appeared.",
+            source_text="魔王が現れた。",
         )
         assert result.status == STATUS_BLOCKED
         assert result.issues[0].severity == SEVERITY_ERROR
@@ -131,8 +140,11 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King", enforcement_level="required")
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The dark lord appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The dark lord appeared.",
+            source_text="魔王が現れた。",
         )
         assert result.status == STATUS_BLOCKED
 
@@ -140,8 +152,11 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King", enforcement_level="blocking")
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The dark lord appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The dark lord appeared.",
+            source_text="魔王が現れた。",
         )
         assert result.status == STATUS_BLOCKED
 
@@ -149,8 +164,11 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King", enforcement_level="advisory")
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The dark lord appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The dark lord appeared.",
+            source_text="魔王が現れた。",
         )
         assert result.status == STATUS_ADVISORY
         assert result.issues[0].severity == SEVERITY_ADVISORY
@@ -159,8 +177,11 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King", enforcement_level="soft")
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The dark lord appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The dark lord appeared.",
+            source_text="魔王が現れた。",
         )
         assert result.status == STATUS_ADVISORY
 
@@ -168,47 +189,62 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King", enforcement_level="weird")
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The dark lord appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The dark lord appeared.",
+            source_text="魔王が現れた。",
         )
         assert result.issues[0].severity == SEVERITY_WARNING
 
     def test_forbidden_variant_detected(self) -> None:
         entry = FakeEntry(
-            canonical_term="魔王", approved_translation="Demon King",
-            forbidden_variants=[FakeVariant(variant_text="Devil Lord")],
+            canonical_term="魔王",
+            approved_translation="Demon King",
+            aliases=[FakeAlias(alias_text="Devil Lord", alias_type="banned")],
         )
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The Devil Lord appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The Devil Lord appeared.",
+            source_text="魔王が現れた。",
         )
         codes = [i.code for i in result.issues]
         assert CODE_FORBIDDEN_VARIANT in codes
 
     def test_non_approved_variant_detected(self) -> None:
         entry = FakeEntry(
-            canonical_term="魔王", approved_translation="Demon King",
-            known_variants=[FakeVariant(variant_text="Dark Lord")],
+            canonical_term="魔王",
+            approved_translation="Demon King",
+            aliases=[FakeAlias(alias_text="Dark Lord", alias_type="observed")],
         )
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The Dark Lord appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The Dark Lord appeared.",
+            source_text="魔王が現れた。",
         )
         codes = [i.code for i in result.issues]
         assert CODE_NON_APPROVED in codes
 
     def test_alias_relevance_matching(self) -> None:
         entry = FakeEntry(
-            canonical_term="魔王", approved_translation="Demon King",
+            canonical_term="魔王",
+            approved_translation="Demon King",
             aliases=[FakeAlias(alias_text="魔王様")],
         )
         svc = self._service([entry])
         # Source contains alias but not canonical
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The Demon King appeared.", source_text="魔王様が来た。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The Demon King appeared.",
+            source_text="魔王様が来た。",
         )
         assert result.checked_terms == 1
         assert result.status == STATUS_PASSED
@@ -217,22 +253,26 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King")
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The dark lord appeared.", source_text=None,
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The dark lord appeared.",
+            source_text=None,
         )
         assert CODE_NO_SOURCE in result.notes
         # Without source, all entries are checked but blocking is suppressed
         assert result.status in (STATUS_ADVISORY, STATUS_WARNING)
 
     def test_max_terms_cap(self) -> None:
-        entries = [
-            FakeEntry(id=i, canonical_term=f"term{i}", approved_translation=f"trans{i}")
-            for i in range(1, 11)
-        ]
+        entries = [FakeEntry(id=i, canonical_term=f"term{i}", approved_translation=f"trans{i}") for i in range(1, 11)]
         svc = self._service(entries)
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="nothing", source_text=None, max_terms=3,
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="nothing",
+            source_text=None,
+            max_terms=3,
         )
         assert result.cap_reached is True
         assert result.cap_limit == 3
@@ -242,12 +282,18 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(id=42, canonical_term="魔王", approved_translation="Demon King", owner_locked=True)
         svc = self._service([entry])
         r1 = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The dark lord appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The dark lord appeared.",
+            source_text="魔王が現れた。",
         )
         r2 = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The dark lord appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The dark lord appeared.",
+            source_text="魔王が現れた。",
         )
         assert r1.issues[0].issue_id == r2.issues[0].issue_id
 
@@ -255,8 +301,11 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King")
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="the DEMON king appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="the DEMON king appeared.",
+            source_text="魔王が現れた。",
         )
         assert result.status == STATUS_PASSED
 
@@ -264,8 +313,11 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King")
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The  Demon  King  appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The  Demon  King  appeared.",
+            source_text="魔王が現れた。",
         )
         assert result.status == STATUS_PASSED
 
@@ -273,8 +325,11 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King", owner_locked=True)
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The dark lord appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The dark lord appeared.",
+            source_text="魔王が現れた。",
         )
         assert result.status == STATUS_BLOCKED
         overridden = svc.apply_override(result)
@@ -284,8 +339,11 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King")
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The Demon King appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The Demon King appeared.",
+            source_text="魔王が現れた。",
         )
         assert result.status == STATUS_PASSED
         assert svc.apply_override(result).status == STATUS_PASSED
@@ -294,10 +352,14 @@ class TestGlossaryEditorQAService:
         entry = FakeEntry(canonical_term="魔王", approved_translation="Demon King", owner_locked=True)
         svc = self._service([entry])
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="The dark lord appeared.", source_text="魔王が現れた。",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="The dark lord appeared.",
+            source_text="魔王が現れた。",
         )
         import json
+
         d = result.to_dict()
         json.dumps(d)
         assert d["status"] == STATUS_BLOCKED
@@ -307,8 +369,11 @@ class TestGlossaryEditorQAService:
     def test_no_repository_returns_advisory(self) -> None:
         svc = GlossaryEditorQAService(repository=None)
         result = svc.check_edit(
-            platform_novel_id=1, novel_slug="n", chapter_id="c",
-            edited_text="anything", source_text="anything",
+            platform_novel_id=1,
+            novel_slug="n",
+            chapter_id="c",
+            edited_text="anything",
+            source_text="anything",
         )
         assert result.status == STATUS_PASSED
         assert result.checked_terms == 0

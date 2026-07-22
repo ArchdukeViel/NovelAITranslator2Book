@@ -41,7 +41,7 @@ def infer_source_language(context: PipelineState) -> str | None:
         return explicit.strip()
 
     source_adapter = context.metadata.get("_source_adapter")
-    source_key = getattr(source_adapter, "key", None)
+    source_key = getattr(source_adapter, "source_key", None)
     source_language_map = {
         "syosetu_ncode": "Japanese",
         "novel18_syosetu": "Japanese",

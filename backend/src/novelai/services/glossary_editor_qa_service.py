@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from novelai.db.models.glossary import NovelGlossaryEntry
+from novelai.db.models.novel import Novel
 from novelai.services.glossary_repository import GlossaryRepository
 
 # ---------------------------------------------------------------------------
@@ -25,7 +27,7 @@ CODE_MISSING_REQUIRED = "missing_required_term"
 CODE_FORBIDDEN_VARIANT = "forbidden_variant"
 CODE_NON_APPROVED = "non_approved_translation"
 CODE_AMBIGUOUS = "ambiguous_match"
-CODE_NO_SOURCE = "legacy_no_source_context"
+CODE_NO_SOURCE = "missing_source_context"
 CODE_GLOSSARY_UNAVAILABLE = "glossary_unavailable"
 
 # ---------------------------------------------------------------------------
@@ -45,6 +47,8 @@ STATUS_OVERRIDDEN = "overridden"
 _BLOCKING_ENFORCEMENT = {"strict", "required", "blocking"}
 _NON_BLOCKING_ENFORCEMENT = {"advisory", "soft"}
 _UNKNOWN_ENFORCEMENT = {"none", ""}
+_FORBIDDEN_ALIAS_TYPES = {"banned", "rejected", "deprecated"}
+_KNOWN_ALIAS_TYPES = {"allowed", "observed", "source_variant"}
 
 # ---------------------------------------------------------------------------
 # Data contracts  (REQ-1.7, Tasks 2-3)
@@ -140,11 +144,11 @@ def _contains(haystack: str, needle: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _severity_for_entry(entry: Any) -> str:
+def _severity_for_entry(entry: NovelGlossaryEntry) -> str:
     """Map a glossary entry to a severity level."""
-    enforcement = getattr(entry, "enforcement_level", None) or ""
+    enforcement = entry.enforcement_level or ""
     enforcement = str(enforcement).strip().lower()
-    owner_locked = bool(getattr(entry, "owner_locked", False))
+    owner_locked = bool(entry.owner_locked)
 
     if owner_locked:
         return SEVERITY_ERROR
@@ -292,113 +296,109 @@ class GlossaryEditorQAService:
         if platform_novel_id is None or self._repository is None:
             return None
         try:
-            novel = self._repository.db.get(type(self._repository)._novel_model(), platform_novel_id)  # type: ignore[attr-defined]
-            if novel is not None and hasattr(novel, "glossary_revision"):
+            novel = self._repository.db.get(Novel, platform_novel_id)
+            if novel is not None:
                 return int(novel.glossary_revision)
         except Exception:
             return None
         return None
 
-    def _load_entries(self, platform_novel_id: int | None) -> list[Any]:
+    def _load_entries(self, platform_novel_id: int | None) -> list[NovelGlossaryEntry]:
         if platform_novel_id is None or self._repository is None:
             return []
         try:
-            return list(
-                self._repository.list_glossary_entries_for_novel(
-                    platform_novel_id, status="approved"
-                )
-            )
+            return list(self._repository.list_glossary_entries_for_novel(platform_novel_id, status="approved"))
         except Exception:
             return []
 
     def _select_relevant(
-        self, entries: list[Any], source_text: str | None
-    ) -> tuple[list[Any], list[str]]:
+        self, entries: list[NovelGlossaryEntry], source_text: str | None
+    ) -> tuple[list[NovelGlossaryEntry], list[str]]:
         notes: list[str] = []
         if not source_text:
             notes.append(CODE_NO_SOURCE)
             return list(entries), notes
 
         norm_source = _normalize(source_text)
-        relevant: list[Any] = []
+        relevant: list[NovelGlossaryEntry] = []
         for entry in entries:
-            terms = [getattr(entry, "canonical_term", "") or ""]
-            aliases = getattr(entry, "aliases", None) or []
-            for alias in aliases:
-                a_text = getattr(alias, "alias_text", None) or getattr(alias, "text", None)
-                if a_text:
-                    terms.append(str(a_text))
+            terms = [entry.canonical_term]
+            terms.extend(alias.alias_text for alias in entry.aliases if alias.alias_text)
             if any(_contains(norm_source, _normalize(t)) for t in terms if t):
                 relevant.append(entry)
         return relevant, notes
 
-    def _detect_issues(
-        self, entries: Iterable[Any], edited_text: str
-    ) -> list[GlossaryQAIssue]:
+    def _detect_issues(self, entries: Iterable[NovelGlossaryEntry], edited_text: str) -> list[GlossaryQAIssue]:
         norm_edited = _normalize(edited_text)
         issues: list[GlossaryQAIssue] = []
 
         for entry in entries:
-            entry_id = getattr(entry, "id", None)
-            canonical = str(getattr(entry, "canonical_term", "") or "")
-            approved = getattr(entry, "approved_translation", None)
+            entry_id = entry.id
+            canonical = entry.canonical_term
+            approved = entry.approved_translation
             approved_str = str(approved) if approved else None
             severity = _severity_for_entry(entry)
-            owner_locked = bool(getattr(entry, "owner_locked", False))
+            owner_locked = bool(entry.owner_locked)
 
             # 1. Forbidden variants
-            forbidden = getattr(entry, "forbidden_variants", None) or []
-            for variant in forbidden:
-                v_text = getattr(variant, "variant_text", None) or getattr(variant, "text", None) or str(variant)
+            forbidden_aliases = (alias for alias in entry.aliases if alias.alias_type in _FORBIDDEN_ALIAS_TYPES)
+            for alias in forbidden_aliases:
+                v_text = alias.alias_text
                 if v_text and _contains(norm_edited, _normalize(str(v_text))):
-                    issues.append(GlossaryQAIssue(
-                        issue_id=_make_issue_id(entry_id, CODE_FORBIDDEN_VARIANT, canonical),
-                        entry_id=entry_id,
-                        canonical_term=canonical,
-                        approved_translation=approved_str,
-                        matched_variant=str(v_text),
-                        severity=severity,
-                        code=CODE_FORBIDDEN_VARIANT,
-                        owner_locked=owner_locked,
-                        context_hint=f"Remove forbidden variant '{v_text}'; use approved translation.",
-                    ))
-
-            # 2. Known non-approved variants
-            known_variants = getattr(entry, "known_variants", None) or []
-            for variant in known_variants:
-                v_text = getattr(variant, "variant_text", None) or getattr(variant, "text", None) or str(variant)
-                if not v_text:
-                    continue
-                if _contains(norm_edited, _normalize(str(v_text))):
-                    # Only flag if approved translation is absent
-                    if not approved_str or not _contains(norm_edited, _normalize(approved_str)):
-                        issues.append(GlossaryQAIssue(
-                            issue_id=_make_issue_id(entry_id, CODE_NON_APPROVED, canonical),
+                    issues.append(
+                        GlossaryQAIssue(
+                            issue_id=_make_issue_id(entry_id, CODE_FORBIDDEN_VARIANT, canonical),
                             entry_id=entry_id,
                             canonical_term=canonical,
                             approved_translation=approved_str,
                             matched_variant=str(v_text),
                             severity=severity,
-                            code=CODE_NON_APPROVED,
+                            code=CODE_FORBIDDEN_VARIANT,
                             owner_locked=owner_locked,
-                            context_hint=f"Replace '{v_text}' with approved translation: {approved_str or '(unset)'}.",
-                        ))
+                            context_hint=f"Remove forbidden variant '{v_text}'; use approved translation.",
+                        )
+                    )
+
+            # 2. Known non-approved variants
+            known_aliases = (alias for alias in entry.aliases if alias.alias_type in _KNOWN_ALIAS_TYPES)
+            for alias in known_aliases:
+                v_text = alias.alias_text
+                if not v_text:
+                    continue
+                if _contains(norm_edited, _normalize(str(v_text))):
+                    # Only flag if approved translation is absent
+                    if not approved_str or not _contains(norm_edited, _normalize(approved_str)):
+                        issues.append(
+                            GlossaryQAIssue(
+                                issue_id=_make_issue_id(entry_id, CODE_NON_APPROVED, canonical),
+                                entry_id=entry_id,
+                                canonical_term=canonical,
+                                approved_translation=approved_str,
+                                matched_variant=str(v_text),
+                                severity=severity,
+                                code=CODE_NON_APPROVED,
+                                owner_locked=owner_locked,
+                                context_hint=f"Replace '{v_text}' with approved translation: {approved_str or '(unset)'}.",
+                            )
+                        )
 
             # 3. Missing approved translation
             if approved_str:
                 if not _contains(norm_edited, _normalize(approved_str)):
                     code = CODE_MISSING_REQUIRED if _is_blocking(severity) else CODE_MISSING_APPROVED
-                    issues.append(GlossaryQAIssue(
-                        issue_id=_make_issue_id(entry_id, code, canonical),
-                        entry_id=entry_id,
-                        canonical_term=canonical,
-                        approved_translation=approved_str,
-                        matched_variant=None,
-                        severity=severity,
-                        code=code,
-                        owner_locked=owner_locked,
-                        context_hint=f"Add approved translation: {approved_str}.",
-                    ))
+                    issues.append(
+                        GlossaryQAIssue(
+                            issue_id=_make_issue_id(entry_id, code, canonical),
+                            entry_id=entry_id,
+                            canonical_term=canonical,
+                            approved_translation=approved_str,
+                            matched_variant=None,
+                            severity=severity,
+                            code=code,
+                            owner_locked=owner_locked,
+                            context_hint=f"Add approved translation: {approved_str}.",
+                        )
+                    )
 
         return issues
 

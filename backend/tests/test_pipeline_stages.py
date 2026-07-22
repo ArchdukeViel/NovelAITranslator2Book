@@ -35,11 +35,18 @@ from novelai.translation.pipeline.stages.translate_cache_lookup import (
     load_existing_chunk_output,
     load_persisted_chunk_states,
 )
-from novelai.translation.pipeline.stages.translate_result_assembly import glossary_hash
+from novelai.translation.pipeline.stages.translate_result_assembly import glossary_hash, infer_source_language
 from novelai.translation.scheduler import SchedulerPausedError
 from tests.conftest import MockSourceAdapter
 
 pytestmark = pytest.mark.slow
+
+
+def test_infer_source_language_uses_canonical_adapter_source_key() -> None:
+    context = PipelineState(chapter_url="https://ncode.syosetu.com/n1234ab/1/")
+    context.metadata["_source_adapter"] = MockSourceAdapter(source_key="syosetu_ncode")
+
+    assert infer_source_language(context) == "Japanese"
 
 
 def test_pipeline_state_serializes_only_canonical_translation_chunks() -> None:

@@ -235,7 +235,14 @@ Deferred items are tracked but excluded from the active count.
   storage branches are removed. The same slice wires the previously unreachable
   bulk scheduler-state reader tracked by DEBT-112. All 135 focused admin,
   security, scheduler-observability, and storage tests pass with zero focused
-  Pyright errors.
+  Pyright errors. Glossary editor QA now consumes only canonical `alias_text`
+  and `alias_type` records; its `text`, arbitrary-string, `forbidden_variants`,
+  and `known_variants` adapters are removed, and missing source context uses
+  `missing_source_context` rather than a legacy-labeled result code. Translation
+  source-language inference also reads only canonical adapter `source_key`
+  (DEBT-113), and glossary revision lookup uses the canonical `Novel` model
+  instead of a nonexistent repository hook (DEBT-114). All 86 focused glossary-
+  QA, editor API, and pipeline tests pass with zero focused Pyright errors.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
@@ -1252,3 +1259,35 @@ Deferred items are tracked but excluded from the active count.
   reconstruction and optional-storage branches are removed. The facade binds
   `load_all_scheduler_states()`, and focused storage and scheduler-health tests
   verify bulk loading and persisted model-state reporting.
+
+### DEBT-113 — Source adapter language inference read a removed alias
+- **Milestone:** Milestone M1 (Glossary/Router Repair)
+- **Category:** Backend | Translation Pipeline | Data Integrity
+- **Priority:** High
+- **Status:** Resolved
+- **Affected areas:** translation result assembly, source adapters, pipeline
+  regression tests
+- **Description:** `infer_source_language()` still read the removed source-
+  adapter `key` alias even though the canonical adapter contract exposes only
+  `source_key`. Without explicit source-language metadata, known Japanese source
+  adapters therefore fell through to an unknown language.
+- **Completion criteria:** Read only `source_key` and prove a canonical Syosetu
+  adapter infers Japanese without explicit language metadata.
+- **Resolution:** Translation result assembly now reads `source_key`; focused
+  pipeline coverage proves canonical adapter-based inference.
+
+### DEBT-114 — Editor QA revision lookup called a nonexistent model hook
+- **Milestone:** Milestone M1 (Glossary/Router Repair)
+- **Category:** Backend | Glossary | Data Integrity
+- **Priority:** High
+- **Status:** Resolved
+- **Affected areas:** glossary editor QA service and editor API tests
+- **Description:** Glossary editor QA attempted to resolve a novel through a
+  nonexistent private `GlossaryRepository._novel_model()` hook, then swallowed
+  the resulting exception. Persisted QA summaries therefore reported no
+  glossary revision even when the novel had one.
+- **Completion criteria:** Resolve revisions through the canonical `Novel` ORM
+  model and prove linted editor saves persist the current revision.
+- **Resolution:** Editor QA now loads `Novel` directly through the repository
+  session, and the real editor API path verifies revision `5` is persisted in
+  the QA summary.
