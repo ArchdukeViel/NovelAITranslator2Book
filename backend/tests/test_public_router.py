@@ -178,6 +178,12 @@ def _seed_public_glossary_entry(db_session, novel: Novel) -> NovelGlossaryEntry:
 
 
 class TestCatalog:
+    def test_catalog_openapi_excludes_removed_language_filter(self, client: TestClient) -> None:
+        schema = client.get("/openapi.json").json()
+        parameters = schema["paths"]["/api/public/catalog"]["get"]["parameters"]
+
+        assert "language" not in {parameter["name"] for parameter in parameters}
+
     def test_empty_catalog(self, client: TestClient) -> None:
         resp = client.get("/api/public/catalog")
         assert resp.status_code == 200
@@ -241,13 +247,6 @@ class TestCatalog:
 
         assert novel["publication_status"] == "unknown"
         assert "status" not in novel
-
-    def test_catalog_filter_by_language(self, client: TestClient, storage: StorageService) -> None:
-        _seed_novel(storage, "novel-001", language="ja")
-        _seed_novel(storage, "novel-002", language="zh")
-        resp = client.get("/api/public/catalog?language=zh")
-        assert resp.status_code == 200
-        assert resp.json()["total"] == 1
 
     def test_catalog_pagination(self, client: TestClient, storage: StorageService) -> None:
         for i in range(5):
@@ -645,27 +644,6 @@ class TestCatalog:
 
         assert novel["publication_status"] == "completed"
         assert "status" not in novel
-
-    def test_catalog_language_filter_uses_db_path(
-        self,
-        client: TestClient,
-        storage: StorageService,
-        db_session,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        _seed_db_catalog_novel(db_session, "ja-novel", language="ja")
-        _seed_db_catalog_novel(db_session, "zh-novel", language="zh")
-        monkeypatch.setattr(
-            storage,
-            "list_novels",
-            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
-        )
-
-        data = client.get("/api/public/catalog?language=zh").json()
-
-        assert data["total"] == 1
-        assert data["novels"][0]["novel_id"] == "zh-novel"
-        assert data["novels"][0]["language"] == "zh"
 
     def test_catalog_chapter_count_range_uses_db_path(
         self,

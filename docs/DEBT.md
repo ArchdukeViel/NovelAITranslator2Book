@@ -243,6 +243,11 @@ Deferred items are tracked but excluded from the active count.
   (DEBT-113), and glossary revision lookup uses the canonical `Novel` model
   instead of a nonexistent repository hook (DEBT-114). All 86 focused glossary-
   QA, editor API, and pipeline tests pass with zero focused Pyright errors.
+  The deprecated public-catalog `language` query parameter, its DB/storage
+  filtering branches and tests, and the unreferenced frontend language
+  navigation component are removed. The DB-path predicate now accepts only its
+  actual `sort_by` input. All 118 public-router tests, focused Pyright/Ruff,
+  frontend TypeScript, and ESLint pass.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

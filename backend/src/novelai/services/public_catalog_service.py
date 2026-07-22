@@ -177,8 +177,7 @@ class PublicCatalogService:
         return not title or title == novel.slug
 
     @staticmethod
-    def is_db_catalog_base_request(**kwargs) -> bool:
-        sort_by = kwargs.get("sort_by")
+    def is_db_catalog_base_request(*, sort_by: str | None) -> bool:
         return sort_by is None or sort_by in VALID_SORT_FIELDS
 
     # -- instance helpers (need storage / db) ----------------------------------
