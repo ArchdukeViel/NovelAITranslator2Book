@@ -97,11 +97,8 @@ export type ChapterDetail = {
 export type TranslatedChapter = {
   novel_id: string;
   chapter_id: string;
-  id?: string;
   version_id?: string | null;
   version_kind?: string | null;
-  provider?: string | null;
-  model?: string | null;
   provider_key?: string | null;
   provider_model?: string | null;
   translated_at?: string | null;
@@ -120,14 +117,10 @@ export type TranslatedChapter = {
 };
 
 export type TranslationVersion = Record<string, unknown> & {
-  id?: string;
   version_id?: string;
   version_kind?: string;
-  kind?: string;
   text?: string;
   active?: boolean;
-  provider?: string | null;
-  model?: string | null;
   provider_key?: string | null;
   provider_model?: string | null;
   created_at?: string | null;

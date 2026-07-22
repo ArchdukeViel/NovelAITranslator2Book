@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
-from novelai.api.response_helpers import translated_chapter_response, translation_provider_response
+from novelai.api.response_helpers import translated_chapter_response
 from novelai.api.routers.dependencies import _rate_limit, get_editor_service
 from novelai.services.editor_service import EditorService
 
@@ -51,7 +51,7 @@ async def list_translated_chapter_versions(
     return {
         "novel_id": novel_id,
         "chapter_id": chapter_id,
-        "versions": [translation_provider_response(version) for version in result["versions"]],
+        "versions": result["versions"],
     }
 
 
@@ -79,7 +79,10 @@ async def lint_translated_chapter(
     if not body.text or not body.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
     result = service.check_edit(
-        novel_id, chapter_id, body.text, body.source_text,
+        novel_id,
+        chapter_id,
+        body.text,
+        body.source_text,
         max_terms=body.max_terms or 50,
     )
     return {"glossary_qa": result.to_dict()}
@@ -97,7 +100,9 @@ async def update_translated_chapter(
     _rate_limit(request, "edit")
     try:
         result = service.update_translated_chapter(
-            novel_id, chapter_id, body.text,
+            novel_id,
+            chapter_id,
+            body.text,
             editor=body.editor,
             note=body.note,
             lint=body.lint,
@@ -131,8 +136,11 @@ async def rollback_translated_chapter(
     _rate_limit(request, "edit")
     try:
         translated = service.rollback_translated_chapter(
-            novel_id, chapter_id, body.version_id,
-            editor=body.editor, note=body.note,
+            novel_id,
+            chapter_id,
+            body.version_id,
+            editor=body.editor,
+            note=body.note,
         )
     except ValueError as exc:
         status = 404 if "not found" in exc.args[0].lower() else 500

@@ -248,7 +248,9 @@ export default function EditorPage() {
               <PanelBody className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Provider / Model</span>
-                  <span className="font-medium">{translated.data.provider_key || translated.data.provider || "-"} / {translated.data.provider_model || translated.data.model || "-"}</span>
+                  <span className="font-medium">
+                    {translated.data.provider_key || "-"} / {translated.data.provider_model || "-"}
+                  </span>
                 </div>
                 {translated.data.confidence_details?.scheduler_policy ? (
                   <div className="flex items-center justify-between">

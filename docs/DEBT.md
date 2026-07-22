@@ -275,7 +275,11 @@ Deferred items are tracked but excluded from the active count.
   `provider_model` forms; removed top-level and candidate fields fail closed,
   and the frontend consumes the canonical observability contract. The 282
   focused backend tests and 9 focused frontend tests pass with Ruff, Pyright,
-  TypeScript, and ESLint validation.
+  TypeScript, and ESLint validation. The final translated-chapter response
+  adapter and frontend version aliases (`id`, `kind`, `provider`, and `model`)
+  are removed; editor and library endpoints now pass through the canonical
+  version record directly. All 11 focused editor/API-contract tests pass with
+  focused Ruff/Pyright, TypeScript, and ESLint validation.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
