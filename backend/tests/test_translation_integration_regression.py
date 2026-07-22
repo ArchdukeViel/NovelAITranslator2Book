@@ -501,7 +501,7 @@ class TestSchedulerSelection:
             chapter_id="c1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=rec
         )
         d = rec.finalize(selection=sel, policy=s.policy.value, total_candidates=2).to_dict()
-        assert d["selected"]["provider"] == "gemini"
+        assert d["selected"]["provider_key"] == "gemini"
         assert d["request_id"] == "r1"
         assert d["activity_id"] == "a1"
         assert d["chapter_id"] == "c1"
@@ -520,11 +520,16 @@ class TestSchedulerSelection:
     def test_scheduler_summary_aggregated(self) -> None:
         collect_scheduler_decisions()
         push_scheduler_decision(
-            {"selected": {"provider": "g", "model": "m"}, "fallback_used": False, "candidates": [], "chapter_id": "1"}
+            {
+                "selected": {"provider_key": "g", "provider_model": "m"},
+                "fallback_used": False,
+                "candidates": [],
+                "chapter_id": "1",
+            }
         )
         push_scheduler_decision(
             {
-                "selected": {"provider": "o", "model": "n"},
+                "selected": {"provider_key": "o", "provider_model": "n"},
                 "fallback_used": True,
                 "candidates": [{"skip_reason": "cooldown"}],
                 "chapter_id": "2",
@@ -873,7 +878,12 @@ class TestActivityMetadata:
     def test_scheduler_summary_in_activity(self) -> None:
         collect_scheduler_decisions()
         push_scheduler_decision(
-            {"selected": {"provider": "g", "model": "m"}, "fallback_used": False, "candidates": [], "chapter_id": "1"}
+            {
+                "selected": {"provider_key": "g", "provider_model": "m"},
+                "fallback_used": False,
+                "candidates": [],
+                "chapter_id": "1",
+            }
         )
         summary = build_scheduler_summary(collect_scheduler_decisions())
         assert summary["chapters_with_decisions"] == 1
