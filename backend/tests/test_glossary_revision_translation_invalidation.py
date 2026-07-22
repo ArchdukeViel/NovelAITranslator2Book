@@ -2,7 +2,7 @@
 
 Covers:
 - GlossarySnapshot dataclass
-- compute_glossary_freshness classification (fresh, stale, legacy_unknown, unknown)
+- compute_glossary_freshness classification (fresh, stale, unknown)
 - Stale reason semantics
 - Non-mutating behavior (never deactivates active versions)
 - Stale active translation counts
@@ -18,13 +18,11 @@ import pytest
 from novelai.services.translation_cache import make_cache_key
 from novelai.translation.glossary_freshness import (
     FRESHNESS_FRESH,
-    FRESHNESS_LEGACY_UNKNOWN,
     FRESHNESS_STALE,
     FRESHNESS_UNKNOWN,
     STALE_REASON_CURRENT_SNAPSHOT_UNAVAILABLE,
     STALE_REASON_FRESH,
     STALE_REASON_HASH_MISMATCH,
-    STALE_REASON_LEGACY_MISSING_REVISION,
     STALE_REASON_REVISION_MISMATCH,
     GlossarySnapshot,
     compute_glossary_freshness,
@@ -89,20 +87,10 @@ class TestFreshnessClassification:
         assert result["glossary_stale"] is True
         assert result["glossary_stale_reason"] == STALE_REASON_HASH_MISMATCH
 
-    def test_legacy_unknown_when_revision_missing(self) -> None:
+    def test_missing_revision_is_rejected(self) -> None:
         current = GlossarySnapshot(revision=12, hash="sha256:abc")
-        version = {"text": "old version without glossary metadata"}
-        result = compute_glossary_freshness(version, current)
-        assert result["glossary_freshness"] == FRESHNESS_LEGACY_UNKNOWN
-        assert result["glossary_stale"] is True
-        assert result["glossary_stale_reason"] == STALE_REASON_LEGACY_MISSING_REVISION
-
-    def test_legacy_unknown_not_stale_when_current_revision_zero(self) -> None:
-        current = GlossarySnapshot(revision=0, hash=None)
-        version = {"text": "old version"}
-        result = compute_glossary_freshness(version, current)
-        assert result["glossary_freshness"] == FRESHNESS_LEGACY_UNKNOWN
-        assert result["glossary_stale"] is False
+        with pytest.raises(ValueError, match="glossary_revision"):
+            compute_glossary_freshness({"text": "missing metadata"}, current)
 
     def test_unknown_when_current_snapshot_unavailable(self) -> None:
         version = {"glossary_revision": 12, "glossary_hash": "sha256:abc"}
@@ -182,7 +170,7 @@ class TestNonMutatingBehavior:
         """Stale detection is read-only; it never modifies the version."""
         current = GlossarySnapshot(revision=12, hash="sha256:new")
         version = {
-            "id": "v1",
+            "version_id": "v1",
             "active": True,
             "glossary_revision": 10,
             "glossary_hash": "sha256:old",
@@ -217,16 +205,16 @@ class TestFreshnessResponseFields:
         """Freshness fields are additive — they don't replace existing fields."""
         current = GlossarySnapshot(revision=12, hash="sha256:new")
         version = {
-            "id": "v1",
+            "version_id": "v1",
             "text": "translated text",
             "glossary_revision": 10,
             "glossary_hash": "sha256:old",
         }
         result = compute_glossary_freshness(version, current)
         # Original fields preserved
-        assert result.get("id") is None  # result is freshness-only
+        assert result.get("version_id") is None  # result is freshness-only
         # But the version dict is unchanged
-        assert version["id"] == "v1"
+        assert version["version_id"] == "v1"
         assert version["text"] == "translated text"
 
 
@@ -245,7 +233,6 @@ class TestStaleActiveTranslationCounts:
         result = compute_stale_active_translation_counts(versions, current)
         assert result["fresh_active_translation_count"] == 2
         assert result["stale_active_translation_count"] == 0
-        assert result["legacy_unknown_translation_count"] == 0
         assert result["current_glossary_revision"] == 12
 
     def test_counts_mixed_freshness(self) -> None:
@@ -253,12 +240,10 @@ class TestStaleActiveTranslationCounts:
         versions = [
             {"glossary_revision": 12, "glossary_hash": "sha256:new"},  # fresh
             {"glossary_revision": 10, "glossary_hash": "sha256:old"},  # stale
-            {"text": "no glossary metadata"},  # legacy_unknown
         ]
         result = compute_stale_active_translation_counts(versions, current)
         assert result["fresh_active_translation_count"] == 1
         assert result["stale_active_translation_count"] == 1
-        assert result["legacy_unknown_translation_count"] == 1
 
     def test_returns_none_when_no_snapshot(self) -> None:
         versions = [{"glossary_revision": 12}]

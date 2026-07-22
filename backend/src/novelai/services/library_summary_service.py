@@ -111,7 +111,7 @@ def _is_chapter_key(key: str) -> bool:
 
 
 def _parse_novel_id_from_key(key: str, novels_prefix: str) -> str | None:
-    rest = key[len(novels_prefix):]
+    rest = key[len(novels_prefix) :]
     if "/" not in rest:
         return None
     folder = rest[: rest.index("/")]
@@ -135,12 +135,7 @@ def _newest_first_sort_key(activity: dict[str, Any]) -> tuple[str, str]:
     Sort tuple: ``(latest_timestamp, activity_id)`` — with ``reverse=True``
     yields newest timestamp first, breaking ties by descending id.
     """
-    timestamp = str(
-        activity.get("finished_at")
-        or activity.get("started_at")
-        or activity.get("created_at")
-        or ""
-    )
+    timestamp = str(activity.get("finished_at") or activity.get("started_at") or activity.get("created_at") or "")
     return (timestamp, str(activity.get("id") or ""))
 
 
@@ -234,7 +229,15 @@ def _build_summary_from_storage(
 
         payload = storage.read_payload(key)
         if payload is not None:
-            if isinstance(payload.get("translated"), dict):
+            active_version_id = payload.get("active_translation_version_id")
+            versions = payload.get("translation_versions")
+            if (
+                isinstance(active_version_id, str)
+                and isinstance(versions, list)
+                and any(
+                    isinstance(version, dict) and version.get("version_id") == active_version_id for version in versions
+                )
+            ):
                 bucket["translated_ids"].add(logical)
             if isinstance(payload.get("raw"), dict):
                 bucket["raw_ids"].add(logical)
@@ -425,10 +428,7 @@ class LibrarySummaryService:
         """
         while True:
             # Case 1: compatible active build — join it.
-            if (
-                self._active_generation is not None
-                and self._active_generation.identity == identity
-            ):
+            if self._active_generation is not None and self._active_generation.identity == identity:
                 generation = self._active_generation
                 return generation, False
 
@@ -446,9 +446,7 @@ class LibrarySummaryService:
 
             # Case 3: incompatible active build — wait for it out.
             incompatible_gen = self._active_generation
-            self._cv.wait_for(
-                lambda: self._active_generation != incompatible_gen
-            )
+            self._cv.wait_for(lambda: self._active_generation != incompatible_gen)
             # Loop: re-evaluate from scratch.
 
     def _wait_for_outcome(

@@ -30,9 +30,5 @@ export function GlossaryFreshnessBadge({
     return <Badge tone="amber" title={`Stale reason: ${staleReason || "unknown"}`}>Stale ({reasonLabel})</Badge>;
   }
 
-  if (freshness === "legacy_unknown") {
-    return <Badge tone="neutral" title="No glossary revision metadata on this version">Legacy</Badge>;
-  }
-
   return null;
 }

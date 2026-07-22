@@ -585,8 +585,8 @@ async def test_full_pipeline_scrape_translate_export(integration_fixture):
             novel_id,
             chapter_id,
             result.final_text,
-            provider="mock",
-            model="mock-1.0",
+            provider_key="mock",
+            provider_model="mock-1.0",
         )
 
     translated_ids = fixture.storage.list_translated_chapters(novel_id)

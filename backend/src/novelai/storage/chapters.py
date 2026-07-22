@@ -197,7 +197,8 @@ def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
                 current_version=self.SCHEMA_VERSION,
                 artifact_type="chapter bundle",
             )
-            if isinstance(payload.get("raw"), dict) or isinstance(payload.get("translated"), dict):
+            has_translation_versions = bool(self._translation_versions_from_payload(payload))
+            if isinstance(payload.get("raw"), dict) or has_translation_versions:
                 ids.add(self.logical_id_from_stem(chapter_path.stem))
 
     return sorted(ids)

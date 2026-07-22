@@ -3,12 +3,11 @@
 Provides:
 - ``GlossarySnapshot``: current glossary state (revision, hash, term count).
 - ``compute_glossary_freshness``: classify a translation version as
-  ``fresh``, ``stale``, ``legacy_unknown``, or ``unknown`` relative to
-  the current snapshot.
+  ``fresh``, ``stale``, or ``unknown`` relative to the current snapshot.
 
 Stale detection is non-mutating: it never deactivates active versions
 or rewrites stored translation files. Freshness is computed dynamically
-on read/list so legacy versions remain loadable.
+on read/list.
 """
 
 from __future__ import annotations
@@ -36,7 +35,6 @@ class GlossarySnapshot:
 
 # Stale reason constants (REQ-6, design §"Stale Reasons").
 STALE_REASON_FRESH = "fresh"
-STALE_REASON_LEGACY_MISSING_REVISION = "legacy_missing_revision"
 STALE_REASON_REVISION_MISMATCH = "revision_mismatch"
 STALE_REASON_HASH_MISMATCH = "hash_mismatch"
 STALE_REASON_CURRENT_SNAPSHOT_UNAVAILABLE = "current_snapshot_unavailable"
@@ -44,7 +42,6 @@ STALE_REASON_CURRENT_SNAPSHOT_UNAVAILABLE = "current_snapshot_unavailable"
 # Freshness state constants.
 FRESHNESS_FRESH = "fresh"
 FRESHNESS_STALE = "stale"
-FRESHNESS_LEGACY_UNKNOWN = "legacy_unknown"
 FRESHNESS_UNKNOWN = "unknown"
 
 
@@ -55,17 +52,20 @@ def compute_glossary_freshness(
     """Classify a translation version's glossary freshness.
 
     Returns a dict with:
-        - ``glossary_freshness``: one of ``fresh``, ``stale``,
-          ``legacy_unknown``, ``unknown``.
+        - ``glossary_freshness``: one of ``fresh``, ``stale``, ``unknown``.
         - ``glossary_stale``: boolean convenience flag.
         - ``glossary_stale_reason``: deterministic reason string.
         - ``current_glossary_revision``: current revision or None.
         - ``current_glossary_hash``: current hash or None.
 
     Never mutates ``version`` or ``current``. Never deactivates active
-    versions. Legacy versions without glossary metadata are reported as
-    ``legacy_unknown`` rather than treated as errors.
+    versions. Canonical versions without glossary metadata are rejected.
     """
+    version_revision = version.get("glossary_revision")
+    version_hash = version.get("glossary_hash")
+    if type(version_revision) is not int or version_revision < 0:
+        raise ValueError("Translation version requires a non-negative glossary_revision")
+
     if current is None:
         return {
             "glossary_freshness": FRESHNESS_UNKNOWN,
@@ -73,18 +73,6 @@ def compute_glossary_freshness(
             "glossary_stale_reason": STALE_REASON_CURRENT_SNAPSHOT_UNAVAILABLE,
             "current_glossary_revision": None,
             "current_glossary_hash": None,
-        }
-
-    version_revision = version.get("glossary_revision")
-    version_hash = version.get("glossary_hash")
-
-    if not isinstance(version_revision, int):
-        return {
-            "glossary_freshness": FRESHNESS_LEGACY_UNKNOWN,
-            "glossary_stale": current.revision > 0,
-            "glossary_stale_reason": STALE_REASON_LEGACY_MISSING_REVISION,
-            "current_glossary_revision": current.revision,
-            "current_glossary_hash": current.hash,
         }
 
     if version_revision < current.revision:
@@ -129,28 +117,20 @@ def compute_stale_active_translation_counts(
     Returns:
         - ``fresh_active_translation_count``
         - ``stale_active_translation_count``
-        - ``legacy_unknown_translation_count``
         - ``current_glossary_revision``: current revision or None.
     """
     fresh = 0
     stale = 0
-    legacy = 0
-
     for version in versions:
-        if not isinstance(version, dict):
-            continue
         freshness = compute_glossary_freshness(version, current)
         state = freshness.get("glossary_freshness")
         if state == FRESHNESS_FRESH:
             fresh += 1
         elif state == FRESHNESS_STALE:
             stale += 1
-        elif state == FRESHNESS_LEGACY_UNKNOWN:
-            legacy += 1
 
     return {
         "fresh_active_translation_count": fresh,
         "stale_active_translation_count": stale,
-        "legacy_unknown_translation_count": legacy,
         "current_glossary_revision": current.revision if current else None,
     }

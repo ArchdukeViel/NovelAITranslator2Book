@@ -152,7 +152,11 @@ def test_save_and_load_translated_chapter(storage):
     """Test saving and loading translated chapters."""
     # Save
     path = storage.save_translated_chapter(
-        "novel1", "ch1", "[TRANSLATED] Test content", provider="gemini", model="gemini-3.1-flash-lite"
+        "novel1",
+        "ch1",
+        "[TRANSLATED] Test content",
+        provider_key="gemini",
+        provider_model="gemini-3.1-flash-lite",
     )
     assert path.exists()
 
@@ -160,12 +164,16 @@ def test_save_and_load_translated_chapter(storage):
     loaded = storage.load_translated_chapter("novel1", "ch1")
     assert loaded is not None
     assert "[TRANSLATED]" in loaded["text"]
-    assert loaded["provider"] == "gemini"
+    assert loaded["provider_key"] == "gemini"
 
 
 def test_translated_chapter_versions_keep_machine_history(storage):
-    storage.save_translated_chapter("novel1", "ch1", "machine one", provider="gemini", model="gemini-3.1-flash-lite")
-    storage.save_translated_chapter("novel1", "ch1", "machine two", provider="gemini", model="gemma-4-31b-it")
+    storage.save_translated_chapter(
+        "novel1", "ch1", "machine one", provider_key="gemini", provider_model="gemini-3.1-flash-lite"
+    )
+    storage.save_translated_chapter(
+        "novel1", "ch1", "machine two", provider_key="gemini", provider_model="gemma-4-31b-it"
+    )
 
     versions = storage.list_translated_chapter_versions("novel1", "ch1")
     loaded = storage.load_translated_chapter("novel1", "ch1")
@@ -182,7 +190,11 @@ def test_translated_chapter_versions_keep_machine_history(storage):
 
 def test_save_edited_translation_creates_manual_version_and_history(storage):
     storage.save_translated_chapter(
-        "novel1", "ch1", "machine translation", provider="gemini", model="gemini-3.1-flash-lite"
+        "novel1",
+        "ch1",
+        "machine translation",
+        provider_key="gemini",
+        provider_model="gemini-3.1-flash-lite",
     )
 
     storage.save_edited_translation(
@@ -191,6 +203,7 @@ def test_save_edited_translation_creates_manual_version_and_history(storage):
         "edited translation",
         editor="admin",
         note="fixed honorifics",
+        glossary_revision=0,
     )
 
     loaded = storage.load_translated_chapter("novel1", "ch1")
@@ -218,9 +231,13 @@ def test_save_edited_translation_creates_manual_version_and_history(storage):
 
 def test_activate_translated_chapter_version_rolls_back_active_output(storage):
     storage.save_translated_chapter(
-        "novel1", "ch1", "machine translation", provider="gemini", model="gemini-3.1-flash-lite"
+        "novel1",
+        "ch1",
+        "machine translation",
+        provider_key="gemini",
+        provider_model="gemini-3.1-flash-lite",
     )
-    storage.save_edited_translation("novel1", "ch1", "edited translation", editor="admin")
+    storage.save_edited_translation("novel1", "ch1", "edited translation", editor="admin", glossary_revision=0)
 
     assert (
         storage.activate_translated_chapter_version(
@@ -249,7 +266,9 @@ def test_activate_translated_chapter_version_rolls_back_active_output(storage):
 
 def test_list_stored_chapters_includes_raw_and_translated_entries(storage):
     storage.save_chapter("novel1", "1", "raw only", title="Chapter 1")
-    storage.save_translated_chapter("novel1", "2", "translated only", provider="gemini", model="gemini-3.1-flash-lite")
+    storage.save_translated_chapter(
+        "novel1", "2", "translated only", provider_key="gemini", provider_model="gemini-3.1-flash-lite"
+    )
 
     assert storage.list_stored_chapters("novel1") == ["1", "2"]
     assert storage.count_stored_chapters("novel1") == 2
@@ -257,14 +276,16 @@ def test_list_stored_chapters_includes_raw_and_translated_entries(storage):
 
 def test_chapter_storage_uses_single_merged_file(storage):
     storage.save_chapter("novel1", "ch1", "raw text", title="Chapter 1")
-    storage.save_translated_chapter("novel1", "ch1", "translated text", provider="dummy", model="dummy")
+    storage.save_translated_chapter("novel1", "ch1", "translated text", provider_key="dummy", provider_model="dummy")
 
     chapter_path = storage.base_dir / "novels" / "novel1" / "chapters" / "ch1.json"
     assert chapter_path.exists()
 
     payload = json.loads(chapter_path.read_text(encoding="utf-8"))
     assert payload["raw"]["text"] == "raw text"
-    assert payload["translated"]["text"] == "translated text"
+    assert payload["active_translation_version_id"] == "v1"
+    assert payload["translation_versions"][0]["text"] == "translated text"
+    assert "translated" not in payload
 
 
 def test_chapter_storage_media_fields_default_for_existing_chapters(storage):
@@ -331,8 +352,8 @@ def test_save_translated_chapter_preserves_media_fields(storage):
         "novel1",
         "ch-media-roundtrip",
         "translated",
-        provider="gemini",
-        model="gemini-3.1-flash-lite",
+        provider_key="gemini",
+        provider_model="gemini-3.1-flash-lite",
     )
 
     payload = json.loads(chapter_path.read_text(encoding="utf-8"))

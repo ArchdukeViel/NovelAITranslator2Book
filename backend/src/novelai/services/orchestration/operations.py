@@ -345,14 +345,16 @@ class OperationsService:
             chapter_id = str(chapter.get("id"))
             state = self.storage.load_chapter_state(novel_id, chapter_id)
             translated = self.storage.load_translated_chapter(novel_id, chapter_id)
-            chapters.append({
-                "id": chapter_id,
-                "title": chapter.get("title"),
-                "translated": translated is not None,
-                "state": state["current_state"].value if state else "pending",
-                "translation_state": state["current_state"].value if state else "pending",
-                "error_count": state.get("error_count", 0) if state else 0,
-            })
+            chapters.append(
+                {
+                    "id": chapter_id,
+                    "title": chapter.get("title"),
+                    "translated": translated is not None,
+                    "state": state["current_state"].value if state else "pending",
+                    "translation_state": state["current_state"].value if state else "pending",
+                    "error_count": state.get("error_count", 0) if state else 0,
+                }
+            )
 
         translated_count = sum(1 for c in chapters if c["translated"])
         failed_count = sum(1 for c in chapters if c["state"] == "failed")
@@ -495,7 +497,9 @@ class OperationsService:
                 "failure_explanation": failure_explanation,
             },
         )
-        error_text = "; ".join(errors) if errors else "Preliminary crawl failed before any source adapter returned metadata."
+        error_text = (
+            "; ".join(errors) if errors else "Preliminary crawl failed before any source adapter returned metadata."
+        )
         failed = self.activity_log.update_activity_status(activity["id"], "failed", error=error_text)
         return failed or activity
 
@@ -578,6 +582,7 @@ class OperationsService:
         activity_id: str | None = None
         try:
             from novelai.core.platform import CrawlJobKind
+
             activity = self.activity_log.create_crawl_activity(
                 novel_id=novel_id,
                 source_key=resolved_source_key,
@@ -657,13 +662,10 @@ class OperationsService:
         *,
         novel_id: str,
         chapter_ids: list[str] | None = None,
-        include_legacy_unknown: bool = False,
-        activate: bool = False,
         provider_key: str | None = None,
         provider_model: str | None = None,
     ) -> dict[str, Any]:
         from novelai.translation.glossary_freshness import (
-            FRESHNESS_LEGACY_UNKNOWN,
             FRESHNESS_STALE,
             GlossarySnapshot,
             compute_glossary_freshness,
@@ -688,7 +690,6 @@ class OperationsService:
             )
 
         stale_chapter_ids: list[str] = []
-        legacy_chapter_ids: list[str] = []
         for ch in chapters:
             ch_id = str(ch.get("id", ""))
             if not ch_id:
@@ -702,15 +703,12 @@ class OperationsService:
             state = freshness.get("glossary_freshness")
             if state == FRESHNESS_STALE:
                 stale_chapter_ids.append(ch_id)
-            elif state == FRESHNESS_LEGACY_UNKNOWN and include_legacy_unknown:
-                legacy_chapter_ids.append(ch_id)
 
-        target_ids = stale_chapter_ids + (legacy_chapter_ids if include_legacy_unknown else [])
+        target_ids = stale_chapter_ids
         if not target_ids:
             return {
                 "novel_id": novel_id,
                 "stale_chapter_count": len(stale_chapter_ids),
-                "legacy_unknown_chapter_count": len(legacy_chapter_ids),
                 "scheduled_chapter_count": 0,
                 "activity_id": None,
             }
@@ -728,9 +726,6 @@ class OperationsService:
         return {
             "novel_id": novel_id,
             "stale_chapter_count": len(stale_chapter_ids),
-            "legacy_unknown_chapter_count": len(legacy_chapter_ids),
             "scheduled_chapter_count": len(target_ids),
             "activity_id": None,
         }
-
-

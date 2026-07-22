@@ -2567,7 +2567,7 @@ def test_estimate_translation_requests_can_exclude_or_include_translated_chapter
     )
     storage.save_chapter("novel-1", "1", "already translated text")
     storage.save_chapter("novel-1", "2", "pending text")
-    storage.save_translated_chapter("novel-1", "1", "Translated body", provider="mock", model="mock-1.0")
+    storage.save_translated_chapter("novel-1", "1", "Translated body", provider_key="mock", provider_model="mock-1.0")
     orchestrator = NovelOrchestrationService(
         storage=storage,
         translation=StubTranslationService(),
@@ -2746,7 +2746,9 @@ async def test_translate_chapters_preflight_blocks_when_nothing_to_translate(orc
             ],
         },
     )
-    storage.save_translated_chapter("novel-1", "1", "already translated", provider="mock", model="mock-1.0")
+    storage.save_translated_chapter(
+        "novel-1", "1", "already translated", provider_key="mock", provider_model="mock-1.0"
+    )
 
     orchestrator = NovelOrchestrationService(
         storage=storage,
@@ -3093,7 +3095,7 @@ async def test_retranslate_chapter_forces_single_chapter_translation(orchestrati
     )
     storage.save_chapter("novel-1", "1", "raw text 1", source_key="stub", source_url="https://example.com/novel-1/1")
     storage.save_chapter("novel-1", "2", "raw text 2", source_key="stub", source_url="https://example.com/novel-1/2")
-    storage.save_translated_chapter("novel-1", "1", "old translation", provider="mock", model="mock-1.0")
+    storage.save_translated_chapter("novel-1", "1", "old translation", provider_key="mock", provider_model="mock-1.0")
 
     translation = StubTranslationService(final_text="new translation")
     orchestrator = NovelOrchestrationService(
@@ -3328,11 +3330,13 @@ async def test_translate_chapters_persists_confidence_metadata(orchestration_env
 
     await orchestrator.translate_chapters("stub", "novel-1", "1", confidence_threshold=0.55)
 
-    translated = storage.load_translated_chapter("novel-1", "1")
-    assert translated is not None
-    assert isinstance(translated.get("confidence_score"), float)
-    assert translated.get("polish_needed") is True
-    assert isinstance(translated.get("confidence_details"), dict)
+    assert storage.load_translated_chapter("novel-1", "1") is None
+    versions = storage.list_translated_chapter_versions("novel-1", "1")
+    assert len(versions) == 1
+    assert versions[0]["active"] is False
+    assert isinstance(versions[0].get("confidence_score"), float)
+    assert versions[0].get("polish_needed") is True
+    assert isinstance(versions[0].get("confidence_details"), dict)
 
 
 @pytest.mark.asyncio

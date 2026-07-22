@@ -523,8 +523,6 @@ export const api = {
     novelId: string,
     payload: {
       chapter_ids?: string[];
-      include_legacy_unknown?: boolean;
-      activate?: boolean;
       provider_key?: string | null;
       provider_model?: string | null;
     }
@@ -532,7 +530,6 @@ export const api = {
     apiFetch<{
       novel_id: string;
       stale_chapter_count: number;
-      legacy_unknown_chapter_count: number;
       scheduled_chapter_count: number;
       activity_id: string | null;
     }>(`/admin/novels/${encodeURIComponent(novelId)}/retranslate-stale`, {

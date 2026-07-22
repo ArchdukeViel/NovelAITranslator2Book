@@ -419,7 +419,7 @@ export default function LibraryPage() {
   });
 
   const runRetranslateStale = useMutation({
-    mutationFn: async (options: { includeLegacy: boolean; activate: boolean }) => {
+    mutationFn: async () => {
       if (!retranslateStaleNovel) {
         throw new Error("No novel selected.");
       }
@@ -429,8 +429,6 @@ export default function LibraryPage() {
       }
 
       return api.retranslateStale(retranslateStaleNovel.novel_id, {
-        include_legacy_unknown: options.includeLegacy,
-        activate: options.activate,
         provider_key: null,
         provider_model: null,
       });
@@ -987,13 +985,10 @@ export default function LibraryPage() {
 
       <RetranslateStaleDialog
         open={Boolean(retranslateStaleNovel)}
-        novelId={retranslateStaleNovel?.novel_id ?? ""}
         title={retranslateStaleNovel?.title ?? ""}
-        staleCount={0}
-        legacyCount={0}
         pending={runRetranslateStale.isPending}
         onCancel={() => setRetranslateStaleNovel(null)}
-        onConfirm={(options) => runRetranslateStale.mutate(options)}
+        onConfirm={() => runRetranslateStale.mutate()}
       />
     </>
   );

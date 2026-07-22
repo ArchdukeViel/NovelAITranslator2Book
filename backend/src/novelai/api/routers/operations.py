@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.api.auth.roles import require_role
@@ -45,9 +45,9 @@ class TranslateRequest(BaseModel):
 
 
 class RetranslateStaleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     chapter_ids: list[str] | None = None
-    include_legacy_unknown: bool = False
-    activate: bool = False
     provider_key: str | None = None
     provider_model: str | None = None
 
@@ -184,8 +184,6 @@ async def retranslate_stale(
         return await service.retranslate_stale(
             novel_id=novel_id,
             chapter_ids=body.chapter_ids,
-            include_legacy_unknown=body.include_legacy_unknown,
-            activate=body.activate,
             provider_key=body.provider_key,
             provider_model=body.provider_model,
         )

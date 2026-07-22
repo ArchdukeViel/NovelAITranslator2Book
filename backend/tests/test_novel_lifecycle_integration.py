@@ -181,7 +181,7 @@ def test_create_to_public_read_lifecycle(owner_client, app, session_factory):
         SLUG,
         "1",
         "Translated text chapter 1",
-        provider="test_provider",
+        provider_key="test_provider",
     )
 
     # Step 5: Refresh projection again after translation

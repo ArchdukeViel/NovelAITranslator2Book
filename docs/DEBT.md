@@ -253,6 +253,12 @@ Deferred items are tracked but excluded from the active count.
   or repaired IDs, implicit active selection, and legacy response fields are
   removed (DEBT-115). The 306 directly affected storage, translation, public,
   editor, and API tests pass with zero focused Pyright/Ruff errors.
+  Because every canonical translation version now carries a glossary revision,
+  the `legacy_unknown` freshness state, legacy counts, optional inclusion flag,
+  and frontend badge/checkbox are removed. The stale-retranslation dialog no
+  longer disables itself from hard-coded zero counts or exposes an ignored
+  activation option; the backend scans and schedules only canonical stale
+  versions (DEBT-116).
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
@@ -1323,5 +1329,31 @@ Deferred items are tracked but excluded from the active count.
   explicit `active_translation_version_id`. Reads reject missing canonical
   fields, invalid kinds, duplicate IDs, missing glossary revisions, and dangling
   active IDs. Storage, checkpoint restore, orchestration, editor/public API
-  responses, and directly affected tests use only canonical field names. Tests
-  also prove legacy current-schema records and duplicate IDs fail closed.
+  responses, chapter inventory, Library summary, and directly affected tests use
+  only canonical field names. Tests also prove legacy current-schema records and
+  duplicate IDs fail closed. The exact core CI shard passes locally with 1,913
+  tests and 7 environment-dependent skips; the extended storage, summary,
+  integration, lifecycle, and orchestration paths cover unactivated low-
+  confidence versions without restoring implicit active-version selection.
+
+### DEBT-116 — Stale retranslation dialog could never schedule work
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Frontend | Backend | Data Contracts
+- **Priority:** High
+- **Status:** Resolved
+- **Affected areas:** stale-retranslation API, glossary freshness classifier,
+  admin Library dialog
+- **Description:** The admin dialog was always passed zero stale and legacy
+  counts, so it disabled its confirmation button. It also exposed legacy-version
+  inclusion and immediate-activation options even though canonical versions now
+  require glossary metadata and the backend ignored the activation option.
+- **Completion criteria:** Make stale retranslation reachable, remove dead or
+  unreachable options from backend and frontend contracts, reject removed
+  request fields, and schedule only canonical versions proven stale against the
+  current glossary snapshot.
+- **Resolution:** The dialog is now an enabled confirmation whose backend scan
+  determines the exact stale chapter set. The legacy freshness state/count and
+  both dead request options are removed end to end. Missing glossary revisions
+  fail closed, removed request fields are rejected, and focused tests prove only
+  stale canonical versions are scheduled while normal confidence activation
+  policy remains authoritative.
