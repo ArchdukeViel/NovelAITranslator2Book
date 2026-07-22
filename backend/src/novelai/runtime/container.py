@@ -87,18 +87,10 @@ class Container:
         return self._activity_log
 
     @property
-    def jobs(self) -> ActivityQueueService:
-        return self.activity_log
-
-    @property
     def activity_worker(self) -> ActivityWorkerService:
         if self._activity_worker is None:
             self._activity_worker = ActivityWorkerService(self.activity_log, self.orchestrator)
         return self._activity_worker
-
-    @property
-    def job_worker(self) -> ActivityWorkerService:
-        return self.activity_worker
 
     @property
     def activity_runner(self) -> BackgroundActivityRunner:
@@ -108,10 +100,6 @@ class Container:
                 poll_seconds=settings.JOB_WORKER_POLL_SECONDS,
             )
         return self._activity_runner
-
-    @property
-    def job_runner(self) -> BackgroundActivityRunner:
-        return self.activity_runner
 
     @property
     def auth_email(self) -> AuthEmailService:
@@ -288,6 +276,7 @@ class Container:
     def scheduler_service(self) -> SchedulerService:
         if self._scheduler_service is None:
             from novelai.db.engine import session_scope
+
             self._scheduler_service = SchedulerService(
                 backup_service=self.backup_service,
                 maintenance_service=self.maintenance_service,

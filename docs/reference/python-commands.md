@@ -59,7 +59,7 @@ bootstrap()
 storage = container.storage
 orchestrator = container.orchestrator
 translation = container.translation
-jobs = container.jobs
+activity_log = container.activity_log
 ```
 
 ### Enqueue Jobs
@@ -89,7 +89,7 @@ translation_job = jobs.enqueue_translation_job(
 import asyncio
 
 async def main() -> None:
-    result = await container.job_runner.run_once()
+    result = await container.activity_runner.run_once()
     print(result)
 
 asyncio.run(main())

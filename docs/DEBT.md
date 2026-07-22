@@ -204,6 +204,12 @@ Deferred items are tracked but excluded from the active count.
   record shape with string `alias_text`; string, `text`, object-attribute, and
   implicit stringification adapters are removed. The 137 focused annotation
   and public-router tests pass with zero focused Pyright errors.
+  The runtime container, CLI worker entry points, activity worker, and Python
+  command reference now expose only `activity_log`, `activity_worker`, and
+  `activity_runner`; the remaining `jobs`, `job_worker`, and `job_runner`
+  aliases and dynamic CLI fallback are removed. The 31 focused container,
+  worker, and CLI tests pass (7 environment-dependent skips) with zero focused
+  Pyright errors.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

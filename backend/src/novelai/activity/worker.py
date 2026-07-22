@@ -24,7 +24,6 @@ class ActivityWorkerService:
 
     def __init__(self, activity_log: ActivityQueueService, orchestrator: NovelOrchestrationService) -> None:
         self.activity_log = activity_log
-        self.jobs = activity_log
         self.orchestrator = orchestrator
 
     @staticmethod
@@ -303,16 +302,8 @@ class ActivityWorkerService:
         model_value = activity.get("provider_model")
         provider = provider_value if isinstance(provider_value, str) else None
         model = model_value if isinstance(model_value, str) else None
-        source_language = (
-            metadata.get("source_language")
-            if isinstance(metadata.get("source_language"), str)
-            else None
-        )
-        target_language = (
-            metadata.get("target_language")
-            if isinstance(metadata.get("target_language"), str)
-            else None
-        )
+        source_language = metadata.get("source_language") if isinstance(metadata.get("source_language"), str) else None
+        target_language = metadata.get("target_language") if isinstance(metadata.get("target_language"), str) else None
         force = bool(metadata.get("force")) or kind in {
             TranslationJobKind.RETRANSLATE.value,
             TranslationJobKind.BATCH_RETRANSLATE.value,
@@ -395,7 +386,9 @@ class ActivityWorkerService:
                 and isinstance(activity.get("source_key"), str)
                 and str(activity.get("source_key") or "").strip()
             ):
-                self.activity_log.record_source_health(str(activity.get("source_key") or ""), success=False, error=str(exc))
+                self.activity_log.record_source_health(
+                    str(activity.get("source_key") or ""), success=False, error=str(exc)
+                )
             # Per-chapter progress attached by the orchestrator for partial-failure
             # summary (REQ-3.3).  Surface it on both the paused and failed paths.
             chapter_progress = getattr(exc, "chapter_progress", None)
@@ -454,7 +447,14 @@ class ActivityWorkerService:
                 **activity_metadata,
                 **self._provider_failure_metadata(activity, exc),
                 "current_stage": "failed",
-                "errors": [{"message": str(exc), "error_code": getattr(getattr(exc, "provider_error_code", None), "value", exc.__class__.__name__)}],
+                "errors": [
+                    {
+                        "message": str(exc),
+                        "error_code": getattr(
+                            getattr(exc, "provider_error_code", None), "value", exc.__class__.__name__
+                        ),
+                    }
+                ],
                 "failure_code": self._failure_code(activity),
                 "failure_category": activity_metadata["activity_subtype"],
                 "failure_explanation": str(exc),
@@ -488,7 +488,6 @@ class ActivityWorkerService:
 
     async def retry_activity(self, activity_id: str) -> dict[str, Any] | None:
         return self.activity_log.retry_activity(activity_id)
-
 
 
 async def run_export_freshness_check(

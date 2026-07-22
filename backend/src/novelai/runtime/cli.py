@@ -82,7 +82,8 @@ def _doctor_check() -> tuple[int, list[str]]:
 
 async def _run_worker_once() -> None:
     from novelai.runtime.container import container
-    runner = getattr(container, "activity_runner", None) or container.job_runner
+
+    runner = container.activity_runner
     activity = await runner.run_once()
     if activity is None:
         print("No pending job.")
@@ -92,7 +93,8 @@ async def _run_worker_once() -> None:
 
 async def _run_worker_forever(poll_seconds: float | None) -> None:
     from novelai.runtime.container import container
-    runner = getattr(container, "activity_runner", None) or container.job_runner
+
+    runner = container.activity_runner
     if poll_seconds is not None:
         runner.poll_seconds = max(0.05, float(poll_seconds))
 
@@ -178,7 +180,9 @@ def main(argv: list[str] | None = None) -> None:
     create_user_parser = subparsers.add_parser("create-user", help="Create a password-based user (owner or user role)")
     create_user_parser.add_argument("email", help="User email address")
     create_user_parser.add_argument("password", help="User password (will be Argon2id-hashed)")
-    create_user_parser.add_argument("--role", default="user", choices=["user", "owner"], help="Role to assign (default: user)")
+    create_user_parser.add_argument(
+        "--role", default="user", choices=["user", "owner"], help="Role to assign (default: user)"
+    )
     create_user_parser.add_argument("--display-name", default=None, help="Optional display name")
 
     subparsers.add_parser("doctor", help="Check launcher wiring and environment health")
@@ -208,10 +212,12 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     from novelai.runtime.bootstrap import bootstrap
+
     bootstrap()
 
     if command == "web":
         from novelai.api.server import main as web_main
+
         web_main(reload=bool(getattr(args, "reload", False)))
         return
 

@@ -30,6 +30,14 @@ class TestPreferencesService:
         assert container.preferences is preferences
         assert not hasattr(container, "settings")
 
+    def test_container_exposes_only_canonical_activity_services(self) -> None:
+        assert isinstance(Container.activity_log, property)
+        assert isinstance(Container.activity_worker, property)
+        assert isinstance(Container.activity_runner, property)
+        assert not hasattr(Container, "jobs")
+        assert not hasattr(Container, "job_worker")
+        assert not hasattr(Container, "job_runner")
+
     def test_get_returns_default_on_missing_key(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
         assert svc.get("missing", "default_val") == "default_val"
