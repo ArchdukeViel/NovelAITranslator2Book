@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 29
+- **Total active debt entries:** 28
 - **V1 launch blockers:** 6 (DEBT-075 through DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
@@ -1123,7 +1123,7 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M0 (CI Confidence)
 - **Category:** Security | Developer Tooling | Secret Scanning
 - **Priority:** High
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** Local ggshield authentication, pre-commit secret scan
 - **Description:** The staged GitGuardian hook exits before scanning with
   `Invalid API key`. No credential value was printed or committed. GitHub
@@ -1132,6 +1132,9 @@ Deferred items are tracked but excluded from the active count.
 - **Completion criteria:** Re-authenticate ggshield locally without placing the
   token in chat, shell history, repository files, or logs; rerun the staged
   hook successfully; and record a zero-finding result or remediate findings.
+- **Resolution:** GitGuardian was reconnected locally without exposing its API
+  key. `ggshield secret scan commit-range HEAD~2..HEAD` and the staged
+  pre-commit hook both complete successfully with zero findings.
 
 ### DEBT-109 — Text hooks could mutate byte-preserved archived specs
 - **Milestone:** Milestone M7 (Final Hardening)
