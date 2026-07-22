@@ -258,7 +258,10 @@ Deferred items are tracked but excluded from the active count.
   and frontend badge/checkbox are removed. The stale-retranslation dialog no
   longer disables itself from hard-coded zero counts or exposes an ignored
   activation option; the backend scans and schedules only canonical stale
-  versions (DEBT-116).
+  versions (DEBT-116). The unused file-era `CrawlJob`, `TranslationJob`,
+  `ChapterVersion`, and `EditHistoryEntry` dataclasses are deleted; runtime code
+  retains only the shared enums, while persistence uses the canonical activity,
+  database, and storage models.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
