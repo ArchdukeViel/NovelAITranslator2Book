@@ -196,6 +196,10 @@ Deferred items are tracked but excluded from the active count.
   their aggregator module, and the obsolete token-based HTML admin dashboard
   are removed. Caddy now sends public `/novels/*` browser pages to the frontend,
   while admin and public APIs use only `/api/admin/*` and `/api/public/*`.
+  `TranslateStage` no longer re-exposes extracted result-assembly and cache
+  persistence helpers as private static or instance methods. Production and
+  tests import the owning modules directly; 75 focused pipeline, glossary, and
+  smart-chunking tests pass with zero focused Pyright errors.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

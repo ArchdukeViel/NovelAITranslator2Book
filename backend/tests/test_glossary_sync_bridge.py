@@ -17,6 +17,7 @@ from novelai.db.models.novel import Novel
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.glossary_sync_service import GlossarySyncService
 from novelai.storage.service import StorageService
+from novelai.translation.pipeline.stages.translate_result_assembly import platform_novel_id
 
 pytestmark = pytest.mark.slow
 
@@ -354,7 +355,7 @@ class TestReviewSucceedsEvenIfSyncRaises:
 # ── REQ-7.10 ─────────────────────────────────────────────────────────
 
 
-class TestTranslateStageResolvesPlatformNovelId:
+class TestPlatformNovelId:
     """TranslateStage resolves platform_novel_id when missing from context."""
 
     def test_translate_stage_resolves_platform_novel_id(self, session, storage, monkeypatch) -> None:
@@ -363,7 +364,6 @@ class TestTranslateStageResolvesPlatformNovelId:
         session.commit()
 
         from novelai.translation.pipeline.context import PipelineState
-        from novelai.translation.pipeline.stages.translate import TranslateStage
 
         context = PipelineState(
             chapter_url="",
@@ -384,7 +384,7 @@ class TestTranslateStageResolvesPlatformNovelId:
 
         context.metadata["platform_novel_id"] = novel.id
 
-        resolved = TranslateStage._platform_novel_id(context)
+        resolved = platform_novel_id(context)
         assert resolved == novel.id
 
 

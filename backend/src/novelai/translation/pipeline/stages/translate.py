@@ -49,7 +49,6 @@ from novelai.translation.pipeline.stages.translate_result_assembly import (
     normalize_runtime_glossary,
     observe_chunk_context,
     platform_novel_id,
-    prompt_version,
     record_prompt_glossary_metadata,
     safe_job_id,
     select_chunk_glossary,
@@ -65,25 +64,13 @@ from novelai.translation.pipeline.stages.translate_result_assembly import (
     chunk_text as chunk_text_h,
 )
 from novelai.translation.pipeline.stages.translate_result_assembly import (
-    explicit_translation_run_id as explicit_run_id_h,
-)
-from novelai.translation.pipeline.stages.translate_result_assembly import (
     force_retranslate as force_retranslate_h,
 )
 from novelai.translation.pipeline.stages.translate_result_assembly import (
     glossary_hash as glossary_hash_h,
 )
 from novelai.translation.pipeline.stages.translate_result_assembly import (
-    paragraph_hashes as paragraph_hashes_h,
-)
-from novelai.translation.pipeline.stages.translate_result_assembly import (
     paragraph_ids as paragraph_ids_h,
-)
-from novelai.translation.pipeline.stages.translate_result_assembly import (
-    paragraph_lineage as paragraph_lineage_h,
-)
-from novelai.translation.pipeline.stages.translate_result_assembly import (
-    translation_run_id as run_id_h,
 )
 from novelai.translation.scheduler import (
     SchedulerDecisionRecorder,
@@ -101,31 +88,6 @@ MAX_ATTEMPTS_EXCEEDED_ERROR_CODE = "max_attempts_exceeded"
 
 
 class TranslateStage(PipelineStage):
-    # Backward-compat shims for extracted static methods
-    _glossary_hash = staticmethod(glossary_hash_h)
-    _chunk_text = staticmethod(chunk_text_h)
-    _chunk_id = staticmethod(chunk_id_h)
-    _chapter_ids = staticmethod(chapter_ids_h)
-    _paragraph_ids = staticmethod(paragraph_ids_h)
-    _paragraph_hashes = staticmethod(paragraph_hashes_h)
-    _paragraph_lineage = staticmethod(paragraph_lineage_h)
-    _translation_run_id = staticmethod(run_id_h)
-    _explicit_translation_run_id = staticmethod(explicit_run_id_h)
-    _force_retranslate = staticmethod(force_retranslate_h)
-    _safe_job_id = staticmethod(safe_job_id)
-    _platform_novel_id = staticmethod(platform_novel_id)
-    _infer_source_language = staticmethod(infer_source_language)
-    _provider_error_from_generic = staticmethod(provider_error_from_generic)
-    _provider_error_metadata = staticmethod(provider_error_metadata)
-    _provider_request_record = staticmethod(provider_request_record)
-    _build_prompt_request = staticmethod(build_prompt_request)
-    _observe_chunk_context = staticmethod(observe_chunk_context)
-    _glossary_prompt_options = staticmethod(glossary_prompt_options)
-    _record_prompt_glossary_metadata = staticmethod(record_prompt_glossary_metadata)
-    _select_chunk_glossary = staticmethod(select_chunk_glossary)
-    _normalize_runtime_glossary = staticmethod(normalize_runtime_glossary)
-    _nonnegative_int = staticmethod(nonnegative_int)
-    _prompt_version = staticmethod(prompt_version)
     """Translate chunks using a configured provider.
 
     This stage supports caching and concurrency to reduce both cost and latency.
@@ -151,6 +113,7 @@ class TranslateStage(PipelineStage):
         if provider_factory is None:
             # Default: import and use registry
             from novelai.providers.registry import get_provider
+
             provider_factory = get_provider
 
         self._provider_factory = provider_factory
@@ -257,7 +220,8 @@ class TranslateStage(PipelineStage):
                 raw_policy = [
                     item
                     for item in original_policy
-                    if isinstance(item, dict) and (item.get("provider_key") or item.get("provider") or provider_key) == provider_key
+                    if isinstance(item, dict)
+                    and (item.get("provider_key") or item.get("provider") or provider_key) == provider_key
                 ]
                 filtered_count = len(original_policy) - len(raw_policy)
                 if not raw_policy:
@@ -277,7 +241,12 @@ class TranslateStage(PipelineStage):
                     "priority_order": 0,
                 },
             ]
-        configs = normalize_model_configs(raw_policy, default_provider_key=provider_key, default_models=candidates, allow_empty=admin_policy_intentionally_empty)
+        configs = normalize_model_configs(
+            raw_policy,
+            default_provider_key=provider_key,
+            default_models=candidates,
+            allow_empty=admin_policy_intentionally_empty,
+        )
         existing_state = context.scheduler_state
         job_id = safe_job_id(context)
         if job_id is not None:
@@ -312,20 +281,42 @@ class TranslateStage(PipelineStage):
             if not isinstance(candidate_provider, str) or not isinstance(candidate_model, str):
                 continue
             if item.get("enabled", True) is False:
-                skipped.append({"provider_key": candidate_provider, "provider_model": candidate_model, "reason": "disabled"})
+                skipped.append(
+                    {"provider_key": candidate_provider, "provider_model": candidate_model, "reason": "disabled"}
+                )
                 continue
             if not allow_cross_provider_fallback and candidate_provider != provider_key:
-                skipped.append({"provider_key": candidate_provider, "provider_model": candidate_model, "reason": "provider_locked"})
+                skipped.append(
+                    {"provider_key": candidate_provider, "provider_model": candidate_model, "reason": "provider_locked"}
+                )
                 continue
             credential = credentials.get(credential_id) if isinstance(credentials, dict) else None
             if isinstance(credential, dict) and credential.get("is_active") is False:
-                skipped.append({"provider_key": candidate_provider, "provider_model": candidate_model, "reason": "credential_disabled"})
+                skipped.append(
+                    {
+                        "provider_key": candidate_provider,
+                        "provider_model": candidate_model,
+                        "reason": "credential_disabled",
+                    }
+                )
                 continue
             if isinstance(credential, dict) and credential.get("validation_status") == "failed":
-                skipped.append({"provider_key": candidate_provider, "provider_model": candidate_model, "reason": "credential_invalid"})
+                skipped.append(
+                    {
+                        "provider_key": candidate_provider,
+                        "provider_model": candidate_model,
+                        "reason": "credential_invalid",
+                    }
+                )
                 continue
             if isinstance(credential_id, str) and self._settings.get_api_key(credential_id) is None:
-                skipped.append({"provider_key": candidate_provider, "provider_model": candidate_model, "reason": "credential_missing"})
+                skipped.append(
+                    {
+                        "provider_key": candidate_provider,
+                        "provider_model": candidate_model,
+                        "reason": "credential_missing",
+                    }
+                )
                 continue
             configs.append(
                 {
@@ -341,82 +332,6 @@ class TranslateStage(PipelineStage):
             context_skips.extend(skipped)
             self._last_admin_policy_skips = context_skips
         return configs
-
-    # Backward-compat shims for extracted cache methods
-    def _save_chunk_records(self, context: PipelineState, chunks: list[str | TranslationChunk]) -> None:
-        save_chunk_records(self._storage, context, chunks)
-
-    def _load_persisted_chunk_states(self, context: PipelineState) -> None:
-        load_persisted_chunk_states(self._storage, context)
-
-    def _load_existing_chunk_output(
-        self,
-        context: PipelineState,
-        *,
-        chunk_id: str,
-        chunk_text: str,
-        chapter_ids: list[str],
-        glossary_hash: str | None = None,
-    ) -> str | None:
-        return load_existing_chunk_output(
-            self._storage, context,
-            chunk_id=chunk_id, chunk_text=chunk_text,
-            chapter_ids=chapter_ids, glossary_hash=glossary_hash,
-        )
-
-    def _save_chunk_attempt(
-        self,
-        context: PipelineState,
-        *,
-        chunk: str | TranslationChunk,
-        chunk_index: int,
-        attempt_number: int,
-        provider_key: str | None,
-        provider_model: str | None,
-        scheduler_policy: str | None,
-        selection_reason: str | None,
-        status: str,
-        error_code: str | None = None,
-        qa_score: float | None = None,
-        qa_status: str | None = None,
-    ) -> None:
-        save_chunk_attempt(
-            self._storage, context,
-            chunk=chunk, chunk_index=chunk_index,
-            attempt_number=attempt_number,
-            provider_key=provider_key, provider_model=provider_model,
-            scheduler_policy=scheduler_policy, selection_reason=selection_reason,
-            status=status, error_code=error_code,
-            qa_score=qa_score, qa_status=qa_status,
-        )
-
-    def _save_chunk_output(
-        self,
-        context: PipelineState,
-        *,
-        chunk: str | TranslationChunk,
-        chunk_index: int,
-        translated_text: str,
-        provider_key: str,
-        provider_model: str,
-        cache_hit: bool,
-        attempt_number: int,
-        scheduler_policy: str | None,
-        selection_reason: str | None,
-        glossary_hash: str | None = None,
-    ) -> None:
-        save_chunk_output(
-            self._storage, context,
-            chunk=chunk, chunk_index=chunk_index,
-            translated_text=translated_text,
-            provider_key=provider_key, provider_model=provider_model,
-            cache_hit=cache_hit, attempt_number=attempt_number,
-            scheduler_policy=scheduler_policy, selection_reason=selection_reason,
-            glossary_hash=glossary_hash,
-        )
-
-    def _persist_chunk_state(self, context: PipelineState, chunk_id: str) -> None:
-        persist_chunk_state(self._storage, context, chunk_id)
 
     def _build_prompt_glossary_block(
         self,
@@ -461,9 +376,14 @@ class TranslateStage(PipelineStage):
     ) -> tuple[str, str, str, bool] | None:
         p_key, p_model = self._resolve_provider_and_model(provider_key, provider_model)
         return cached_translation(
-            self._cache, self._cache_service, context,
-            provider_key=p_key, provider_model=p_model,
-            chunk=chunk, request=request, glossary_hash=glossary_hash,
+            self._cache,
+            self._cache_service,
+            context,
+            provider_key=p_key,
+            provider_model=p_model,
+            chunk=chunk,
+            request=request,
+            glossary_hash=glossary_hash,
         )
 
     async def _translate_with_model(
@@ -558,12 +478,16 @@ class TranslateStage(PipelineStage):
         if settings.TRANSLATION_CACHE_ENABLED:
             try:
                 from novelai.services.translation_cache import CacheEntry, make_cache_key
+
                 source_language = infer_source_language(context) or "auto"
                 target_language = context.metadata.get("target_language") or settings.TRANSLATION_TARGET_LANGUAGE
                 g_hash = glossary_hash or ""
                 prompt_version = context.metadata.get("prompt_version") or ""
                 cache_key = make_cache_key(
-                    chunk, source_language, target_language, g_hash,
+                    chunk,
+                    source_language,
+                    target_language,
+                    g_hash,
                     provider_key=provider.key,
                     provider_model=provider_model,
                     prompt_version=prompt_version,
@@ -626,7 +550,8 @@ class TranslateStage(PipelineStage):
         context.provider_model = model
         scheduler = self._build_scheduler(context, provider_key=provider_key, model=model)
         context.metadata["model_fallbacks"] = [
-            state["provider_model"] for state in scheduler.to_model_state_list()
+            state["provider_model"]
+            for state in scheduler.to_model_state_list()
             if state.get("provider_key") == provider_key
         ]
         load_persisted_chunk_states(self._storage, context)
@@ -640,9 +565,7 @@ class TranslateStage(PipelineStage):
                 from novelai.db.models.novel import Novel as NovelModel
 
                 with session_scope() as session:
-                    novel_row = session.query(NovelModel).filter_by(
-                        slug=context.novel_id.strip()
-                    ).one_or_none()
+                    novel_row = session.query(NovelModel).filter_by(slug=context.novel_id.strip()).one_or_none()
                     if novel_row is not None:
                         context.metadata["platform_novel_id"] = novel_row.id
             except Exception as exc:
@@ -701,7 +624,8 @@ class TranslateStage(PipelineStage):
                 block=prompt_glossary,
                 glossary_hash=prompt_glossary_hash,
             )
-            existing = self._load_existing_chunk_output(
+            existing = load_existing_chunk_output(
+                self._storage,
                 context,
                 chunk_id=chunk_id,
                 chunk_text=chunk_text,
@@ -710,13 +634,18 @@ class TranslateStage(PipelineStage):
             )
             if existing is not None and not force_retranslate_h(context):
                 existing_state = context.chunk_states.get(chunk_id, {})
-                self._save_chunk_attempt(
+                save_chunk_attempt(
+                    self._storage,
                     context,
                     chunk=chunk,
                     chunk_index=chunk_index,
                     attempt_number=int(existing_state.get("attempt_number", 0) or 0),
-                    provider_key=existing_state.get("provider_key") if isinstance(existing_state.get("provider_key"), str) else None,
-                    provider_model=existing_state.get("provider_model") if isinstance(existing_state.get("provider_model"), str) else None,
+                    provider_key=existing_state.get("provider_key")
+                    if isinstance(existing_state.get("provider_key"), str)
+                    else None,
+                    provider_model=existing_state.get("provider_model")
+                    if isinstance(existing_state.get("provider_model"), str)
+                    else None,
                     scheduler_policy=scheduler.policy.value,
                     selection_reason="resume_successful_chunk",
                     status=ChunkAttemptStatus.SKIPPED_ALREADY_SUCCEEDED.value,
@@ -743,7 +672,9 @@ class TranslateStage(PipelineStage):
                     if request.honorific_policy:
                         context.metadata["applied_honorific_policy"] = request.honorific_policy
                 attempted_models: set[tuple[str, str]] = set()
-                qa_failed = context.chunk_states.get(chunk_id, {}).get("status") == ChunkTranslationStatus.QA_FAILED.value
+                qa_failed = (
+                    context.chunk_states.get(chunk_id, {}).get("status") == ChunkTranslationStatus.QA_FAILED.value
+                )
                 last_provider_error_code: str | None = None
                 last_provider_error_message: str | None = None
                 try:
@@ -793,6 +724,7 @@ class TranslateStage(PipelineStage):
                         decision_dict = decision.to_dict()
                         context.metadata.setdefault("scheduler_decisions", []).append(decision_dict)
                         from novelai.translation.scheduler import push_scheduler_decision
+
                         push_scheduler_decision(decision_dict)
 
                         attempted_models.add((used_provider_key, used_provider_model))
@@ -807,7 +739,9 @@ class TranslateStage(PipelineStage):
                         if cached is not None:
                             translated, used_provider_key, used_provider_model, _cache_hit = cached
                             cache_hit = True
-                            logger.debug("Cache hit for chunk %s using %s/%s", chunk_id, used_provider_key, used_provider_model)
+                            logger.debug(
+                                "Cache hit for chunk %s using %s/%s", chunk_id, used_provider_key, used_provider_model
+                            )
                             context.chunk_states[chunk_id] = {
                                 **context.chunk_states.get(chunk_id, {}),
                                 "chunk_id": chunk_id,
@@ -816,7 +750,9 @@ class TranslateStage(PipelineStage):
                                 "paragraph_ids": paragraph_ids_h(chunk),
                                 "provider_key": used_provider_key,
                                 "provider_model": used_provider_model,
-                                "attempt_number": int(context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0),
+                                "attempt_number": int(
+                                    context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0
+                                ),
                                 "policy": scheduler.policy.value,
                                 "selection_reason": selection.reason,
                                 "status": ChunkTranslationStatus.TRANSLATED.value,
@@ -825,18 +761,22 @@ class TranslateStage(PipelineStage):
                                 "updated_at": utc_now_iso(),
                             }
                             persist_chunk_state(self._storage, context, chunk_id)
-                            self._save_chunk_attempt(
+                            save_chunk_attempt(
+                                self._storage,
                                 context,
                                 chunk=chunk,
                                 chunk_index=chunk_index,
-                                attempt_number=int(context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0),
+                                attempt_number=int(
+                                    context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0
+                                ),
                                 provider_key=used_provider_key,
                                 provider_model=used_provider_model,
                                 scheduler_policy=scheduler.policy.value,
                                 selection_reason=selection.reason,
                                 status=ChunkAttemptStatus.SKIPPED_CACHE_HIT.value,
                             )
-                            self._save_chunk_output(
+                            save_chunk_output(
+                                self._storage,
                                 context,
                                 chunk=chunk,
                                 chunk_index=chunk_index,
@@ -844,7 +784,9 @@ class TranslateStage(PipelineStage):
                                 provider_key=used_provider_key,
                                 provider_model=used_provider_model,
                                 cache_hit=True,
-                                attempt_number=int(context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0),
+                                attempt_number=int(
+                                    context.chunk_states.get(chunk_id, {}).get("attempt_number", 0) or 0
+                                ),
                                 scheduler_policy=scheduler.policy.value,
                                 selection_reason=selection.reason,
                                 glossary_hash=prompt_glossary_hash,
@@ -901,7 +843,8 @@ class TranslateStage(PipelineStage):
                             "updated_at": utc_now_iso(),
                         }
                         persist_chunk_state(self._storage, context, chunk_id)
-                        self._save_chunk_attempt(
+                        save_chunk_attempt(
+                            self._storage,
                             context,
                             chunk=chunk,
                             chunk_index=chunk_index,
@@ -914,7 +857,12 @@ class TranslateStage(PipelineStage):
                         )
                         cache_hit = False
                         try:
-                            translated, used_provider_key, used_provider_model, cache_hit = await self._translate_with_model(
+                            (
+                                translated,
+                                used_provider_key,
+                                used_provider_model,
+                                cache_hit,
+                            ) = await self._translate_with_model(
                                 context,
                                 provider_key=used_provider_key,
                                 provider_model=used_provider_model,
@@ -953,7 +901,8 @@ class TranslateStage(PipelineStage):
                                 "updated_at": utc_now_iso(),
                             }
                             persist_chunk_state(self._storage, context, chunk_id)
-                            self._save_chunk_attempt(
+                            save_chunk_attempt(
+                                self._storage,
                                 context,
                                 chunk=chunk,
                                 chunk_index=chunk_index,
@@ -990,7 +939,8 @@ class TranslateStage(PipelineStage):
                             "updated_at": utc_now_iso(),
                         }
                         persist_chunk_state(self._storage, context, chunk_id)
-                        self._save_chunk_attempt(
+                        save_chunk_attempt(
+                            self._storage,
                             context,
                             chunk=chunk,
                             chunk_index=chunk_index,
@@ -1001,7 +951,8 @@ class TranslateStage(PipelineStage):
                             selection_reason=selection.reason,
                             status=ChunkAttemptStatus.SUCCEEDED.value,
                         )
-                        self._save_chunk_output(
+                        save_chunk_output(
+                            self._storage,
                             context,
                             chunk=chunk,
                             chunk_index=chunk_index,
@@ -1029,10 +980,7 @@ class TranslateStage(PipelineStage):
 
         context.translations = await asyncio.gather(*[worker(i, c) for i, c in enumerate(chunks)])
         self._save_scheduler_state(context, scheduler)
-        context.metadata["translated_chunk_ids"] = [
-            chunk_id_h(chunk, index)
-            for index, chunk in enumerate(chunks)
-        ]
+        context.metadata["translated_chunk_ids"] = [chunk_id_h(chunk, index) for index, chunk in enumerate(chunks)]
         context.metadata["glossary_runtime_state"] = [
             {
                 "source": term.source,

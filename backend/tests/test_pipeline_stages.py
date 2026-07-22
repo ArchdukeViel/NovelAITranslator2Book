@@ -31,6 +31,11 @@ from novelai.translation.pipeline.stages.fetch import FetchStage
 from novelai.translation.pipeline.stages.parse import ParseStage
 from novelai.translation.pipeline.stages.segment import SmartSegmentStage
 from novelai.translation.pipeline.stages.translate import TranslateStage
+from novelai.translation.pipeline.stages.translate_cache_lookup import (
+    load_existing_chunk_output,
+    load_persisted_chunk_states,
+)
+from novelai.translation.pipeline.stages.translate_result_assembly import glossary_hash
 from novelai.translation.scheduler import SchedulerPausedError
 from tests.conftest import MockSourceAdapter
 
@@ -333,9 +338,9 @@ def test_translate_stage_glossary_hash_changes_only_for_approved_prompt_rules():
         context = _glossary_pipeline_context(novel.id, "seireikai candidate-term")
 
         first = stage._build_prompt_glossary_block(context, "seireikai candidate-term")
-        first_hash = stage._glossary_hash(context, first.rendered_text if first is not None else "")
+        first_hash = glossary_hash(context, first.rendered_text if first is not None else "")
         second = stage._build_prompt_glossary_block(context, "seireikai candidate-term")
-        second_hash = stage._glossary_hash(context, second.rendered_text if second is not None else "")
+        second_hash = glossary_hash(context, second.rendered_text if second is not None else "")
         candidate = _create_pipeline_glossary_entry(
             repo,
             novel.id,
@@ -345,14 +350,14 @@ def test_translate_stage_glossary_hash_changes_only_for_approved_prompt_rules():
         )
         session.commit()
         candidate_only = stage._build_prompt_glossary_block(context, "seireikai candidate-term")
-        candidate_only_hash = stage._glossary_hash(
+        candidate_only_hash = glossary_hash(
             context,
             candidate_only.rendered_text if candidate_only is not None else "",
         )
         repo.change_glossary_entry_status(candidate.id, novel_id=novel.id, status="approved")
         session.commit()
         approved_changed = stage._build_prompt_glossary_block(context, "seireikai candidate-term")
-        approved_changed_hash = stage._glossary_hash(
+        approved_changed_hash = glossary_hash(
             context,
             approved_changed.rendered_text if approved_changed is not None else "",
         )
@@ -405,16 +410,9 @@ async def test_translate_stage_audit_metadata_matches_db_state(tmp_path, revisio
         Base.metadata.drop_all(engine)
 
 
-def test_translate_stage_scopes_existing_output_by_run_and_chapter(tmp_path):
+def test_load_existing_chunk_output_scopes_by_run_and_chapter(tmp_path):
     env = _fallback_stage_env(tmp_path)
     storage = env["storage"]
-    stage = TranslateStage(
-        provider_factory=lambda _key: _FallbackContractProvider("dummy"),
-        cache=env["cache"],
-        settings_service=env["prefs"],
-        usage_service=env["usage"],
-        storage=storage,
-    )
     source_text = "[P p0001]\nこんにちは。"
     source_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
     empty_glossary_hash = hashlib.sha256(b"").hexdigest()
@@ -448,7 +446,8 @@ def test_translate_stage_scopes_existing_output_by_run_and_chapter(tmp_path):
     }
 
     assert (
-        stage._load_existing_chunk_output(
+        load_existing_chunk_output(
+            storage,
             context,
             chunk_id="c0001",
             chunk_text=source_text,
@@ -474,7 +473,8 @@ def test_translate_stage_scopes_existing_output_by_run_and_chapter(tmp_path):
     )
 
     assert (
-        stage._load_existing_chunk_output(
+        load_existing_chunk_output(
+            storage,
             context,
             chunk_id="c0001",
             chunk_text=source_text,
@@ -484,16 +484,9 @@ def test_translate_stage_scopes_existing_output_by_run_and_chapter(tmp_path):
     )
 
 
-def test_translate_stage_does_not_load_full_chunk_state_for_small_chunk_retry(tmp_path):
+def test_load_persisted_chunk_states_skips_other_translation_runs(tmp_path):
     env = _fallback_stage_env(tmp_path)
     storage = env["storage"]
-    stage = TranslateStage(
-        provider_factory=lambda _key: _FallbackContractProvider("dummy"),
-        cache=env["cache"],
-        settings_service=env["prefs"],
-        usage_service=env["usage"],
-        storage=storage,
-    )
     storage.upsert_chunk_state(
         {
             "chunk_id": "c0001",
@@ -511,7 +504,7 @@ def test_translate_stage_does_not_load_full_chunk_state_for_small_chunk_retry(tm
         metadata={"translation_run_id": "run_small_chunk"},
     )
 
-    stage._load_persisted_chunk_states(context)
+    load_persisted_chunk_states(storage, context)
 
     assert context.chunk_states == {}
 

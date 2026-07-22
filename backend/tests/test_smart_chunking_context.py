@@ -26,6 +26,7 @@ from novelai.translation.pipeline.stages.segment import SmartSegmentStage
 _CONTEXT_OVERLAP_OPEN = "[CONTEXT OVERLAP]"
 _CONTEXT_OVERLAP_CLOSE = "[END CONTEXT OVERLAP]"
 
+
 def _strip_context_overlap_block(text: str) -> str:
     if not isinstance(text, str) or _CONTEXT_OVERLAP_OPEN not in text:
         return text
@@ -93,12 +94,7 @@ async def test_segment_splits_when_exceeding_hard_max_chars():
     segment = _build_segment(target_chars=50, hard_max_chars=80)
     context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
     # 4 paragraphs, each ~40 chars; budget forces a split
-    context.normalized_text = (
-        "A" * 40 + ".\n\n"
-        + "B" * 40 + ".\n\n"
-        + "C" * 40 + ".\n\n"
-        + "D" * 40 + "."
-    )
+    context.normalized_text = "A" * 40 + ".\n\n" + "B" * 40 + ".\n\n" + "C" * 40 + ".\n\n" + "D" * 40 + "."
 
     result = await segment.run(context)
 
@@ -117,11 +113,7 @@ async def test_segment_splits_when_exceeding_hard_max_chars():
 async def test_segment_prefers_scene_break_boundaries():
     segment = _build_segment(target_chars=80, hard_max_chars=120)
     context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
-    context.normalized_text = (
-        "A" * 60 + ".\n\n"
-        + "***\n\n"
-        + "B" * 60 + "."
-    )
+    context.normalized_text = "A" * 60 + ".\n\n" + "***\n\n" + "B" * 60 + "."
 
     result = await segment.run(context)
 
@@ -129,10 +121,13 @@ async def test_segment_prefers_scene_break_boundaries():
     first = result.translation_chunks[0]
     assert "p0001" in first.paragraph_ids
     # No chunk should straddle across the scene break while still fitting
-    assert all(
-        "p0001" in c.paragraph_ids and "p0002" in c.paragraph_ids and "p0003" in c.paragraph_ids
-        for c in result.translation_chunks
-    ) is False, "Expected scene break to land at a chunk boundary"
+    assert (
+        all(
+            "p0001" in c.paragraph_ids and "p0002" in c.paragraph_ids and "p0003" in c.paragraph_ids
+            for c in result.translation_chunks
+        )
+        is False
+    ), "Expected scene break to land at a chunk boundary"
 
 
 @pytest.mark.asyncio
@@ -199,9 +194,7 @@ async def test_segment_splits_hard_window_when_no_safe_boundary():
     # context-overlap block, so we only check the body length here.
     for chunk in split_chunks:
         body = _extract_paragraph_body(chunk.source_text)
-        assert len(body) <= 40, (
-            f"Split chunk body exceeded hard window: {len(body)} chars"
-        )
+        assert len(body) <= 40, f"Split chunk body exceeded hard window: {len(body)} chars"
 
 
 # ---------------------------------------------------------------------------
@@ -336,22 +329,20 @@ def test_strip_context_overlap_block_handles_non_string_input():
 
 
 # ---------------------------------------------------------------------------
-# REQ-3: TranslateStage._build_prompt_request derives the flag from chunk
+# REQ-3: build_prompt_request derives the flag from chunk
 # ---------------------------------------------------------------------------
 
 
-def test_translate_stage_build_prompt_request_derives_flag_from_chunk():
+def test_build_prompt_request_derives_flag_from_chunk():
     """The flag should be set when chunk.previous_context is non-empty."""
-    from novelai.translation.pipeline.stages.translate import TranslateStage
+    from novelai.translation.pipeline.stages.translate_result_assembly import build_prompt_request
 
-    stage = TranslateStage()
     chunk = _build_chunk(with_context=True)
     context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
     context.metadata["source_language"] = "Japanese"
     context.metadata["target_language"] = "English"
 
-    # _build_prompt_request takes the chunk source text, not the chunk object
-    request = stage._build_prompt_request(
+    request = build_prompt_request(
         context,
         chunk.source_text,
         chunk_glossary=[],
@@ -360,16 +351,15 @@ def test_translate_stage_build_prompt_request_derives_flag_from_chunk():
     assert request is not None
 
 
-def test_translate_stage_build_prompt_request_skips_flag_without_context():
-    from novelai.translation.pipeline.stages.translate import TranslateStage
+def test_build_prompt_request_skips_flag_without_context():
+    from novelai.translation.pipeline.stages.translate_result_assembly import build_prompt_request
 
-    stage = TranslateStage()
     chunk = _build_chunk(with_context=False)
     context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
     context.metadata["source_language"] = "Japanese"
     context.metadata["target_language"] = "English"
 
-    request = stage._build_prompt_request(
+    request = build_prompt_request(
         context,
         chunk.source_text,
         chunk_glossary=[],
@@ -379,18 +369,17 @@ def test_translate_stage_build_prompt_request_skips_flag_without_context():
     assert CONTEXT_OVERLAP_PROMPT_BLOCK.strip() not in request.user_prompt
 
 
-def test_translate_stage_build_prompt_request_accepts_legacy_string_chunk():
-    """Legacy str chunks have no previous_context, so flag is False."""
-    from novelai.translation.pipeline.stages.translate import TranslateStage
+def test_build_prompt_request_accepts_string_chunk_text():
+    """Plain chunk text without a context block leaves the flag disabled."""
+    from novelai.translation.pipeline.stages.translate_result_assembly import build_prompt_request
 
-    stage = TranslateStage()
     context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
     context.metadata["source_language"] = "Japanese"
     context.metadata["target_language"] = "English"
 
-    request = stage._build_prompt_request(
+    request = build_prompt_request(
         context,
-        "[CHAPTER chapter_001]\n[P p0001]\nLegacy text.",
+        "[CHAPTER chapter_001]\n[P p0001]\nChapter text.",
         chunk_glossary=[],
         prompt_glossary_block=None,
     )
