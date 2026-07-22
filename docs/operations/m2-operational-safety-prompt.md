@@ -51,7 +51,7 @@ Implement **Milestone M2 - Operational Safety (Phase 2)** from `docs/roadmap.md`
 Do not register, implement, or advertise PDF export. Before editing, report this spec conflict. Implement the roadmap direction:
 
 - Remove `PDFExporter` import and `register_exporter("pdf", ...)` from `novelai.runtime.bootstrap.bootstrap_exporters()`.
-- Remove or deprecate dead `PDFExporter` code only after finding all callers. Do not add PDF dependency.
+- Remove the dead `PDFExporter` code after finding all callers. Do not add a PDF dependency.
 - Make `ExportService.export_pdf()` reject with a controlled, safe unsupported/deprecated-format error. Raw `KeyError` and `NotImplementedError` must not reach API callers.
 - Remove PDF from supported/exportable format discovery. Do not rewrite historical manifests that already record `format: "pdf"`.
 - Replace tests asserting `NotImplementedError` with tests for unregistered/deprecated PDF behavior and preserved non-PDF exporters.
@@ -62,7 +62,9 @@ Do not register, implement, or advertise PDF export. Before editing, report this
 - Before M2, `backend/src/novelai/api/app.py` owned static `GET /api/health` and
   `GET /health` routes. M2 replaced them with the canonical health router; this
   statement is retained only as historical baseline evidence.
-- `runtime/bootstrap.py` imports `PDFExporter` and registers `pdf`; `pdf_exporter.py` raises `NotImplementedError`; `ExportService.export_pdf()` delegates to `self.export("pdf", ...)`.
+- `runtime/bootstrap.py` does not register `pdf`; no `PDFExporter`
+  implementation is shipped; `ExportService.export_pdf()` delegates to the
+  controlled rejection in `self.export("pdf", ...)`.
 - `BackupManager` exists in `backend/src/novelai/services/backup_manager.py`, but DEBT-010 says it has no scheduler/container integration or retention policy.
 - Atomic JSON storage recovery already has focused coverage in `backend/tests/test_atomic_json_storage_recovery.py`. Keep this behavior; extend only where M2c requires locking/cleanup.
 - Current focused test files include `test_backup_manager.py`, `test_backup_restore_catalog_refresh.py`, `test_pdf_exporter.py`, `test_atomic_json_storage_recovery.py`, `test_translation_scheduler.py`, and `test_translation_scheduler_observability.py`.

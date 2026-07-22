@@ -206,7 +206,7 @@ Public reader routes:
 /novels/[slug]/chapter/[chapterId] — chapter reader
 /account/history               — reading history (authenticated)
 /account/requests              — novel/chapter requests (authenticated)
-/account/contribute            — contribution (gated/unavailable)
+/contribute                    — contribution (gated/unavailable)
 ```
 
 Public users can log in with Google OAuth, save novels to their library, track reading progress, view reading history, rate/review novels, and submit novel/chapter requests. Contribution credentials remain gated and unavailable.

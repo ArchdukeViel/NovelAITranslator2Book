@@ -72,8 +72,8 @@ def bootstrap_input_adapters() -> None:
 def bootstrap_exporters() -> None:
     """Register all known export formats.
 
-    PDF export is deprecated (DEBT-007). The ``PDFExporter`` stub is not
-    registered. ``ExportService.export("pdf", ...)`` returns a controlled
+    PDF export is deprecated (DEBT-007), and no PDF exporter implementation is
+    shipped. ``ExportService.export("pdf", ...)`` returns a controlled
     ``OperationError`` instead of a raw ``KeyError`` or ``NotImplementedError``.
     Historical manifests with ``format: "pdf"`` are preserved but new PDF
     export requests are rejected.

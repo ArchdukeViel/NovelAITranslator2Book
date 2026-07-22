@@ -71,23 +71,23 @@ class TestPreferencesService:
         svc = PreferencesService(storage_dir=prefs_dir)
         assert svc.get_language() == "en"
 
-    def test_workflow_profiles_include_new_phase_keys(self, prefs_dir: Path) -> None:
+    def test_llm_step_configs_include_current_phase_keys(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
-        profiles = svc.get_workflow_profiles()
+        profiles = svc.get_llm_step_configs()
         assert set(WORKFLOW_PROFILE_STEPS).issubset(set(profiles.keys()))
 
-    def test_workflow_profile_rejects_removed_step_alias(self, prefs_dir: Path) -> None:
+    def test_llm_step_config_rejects_removed_step_alias(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
         with pytest.raises(ValueError, match="Unsupported workflow profile step"):
-            svc.set_workflow_profile(
+            svc.set_llm_step_config(
                 "term_translation",
                 provider="gemini",
                 model="gemini-3.1-flash-lite",
             )
 
-    def test_llm_step_config_migrates_from_workflow_profile(self, prefs_dir: Path) -> None:
+    def test_llm_step_config_persists_current_configuration(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
-        svc.set_workflow_profile("glossary_translation", provider="gemini", model="gemini-3.1-flash-lite")
+        svc.set_llm_step_config("glossary_translation", provider="gemini", model="gemini-3.1-flash-lite")
 
         reloaded = PreferencesService(storage_dir=prefs_dir)
         step_config = reloaded.get_llm_step_config("glossary_translation")

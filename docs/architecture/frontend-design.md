@@ -54,7 +54,7 @@ This document governs the public frontend implementation inside the Novel AI mai
 | Reading history (`/account/history`) | ✅ Implemented | Paginated, filterable |
 | Reviews/ratings (`/account/reviews`) | ✅ Implemented | Rate-limited, moderation-ready |
 | Novel/chapter requests (`/account/requests`) | ✅ Implemented | History table with rejection reasons |
-| Contribution (`/account/contribute`) | 🚫 Gated | UI exists but backend not implemented (DEBT-009) |
+| Contribution (`/contribute`) | 🚫 Gated | UI exists, but credential submission remains behind the contribution readiness gate. |
 | Legal pages (About, Privacy, Terms, DMCA, Contact, Cookie Policy) | ⚠️ Partial | Static pages exist; takedown intake workflow not implemented (DEBT-060) |
 | SEO/discovery (sitemap, robots, JSON-LD, OG tags) | ❌ Not implemented | DEBT-038 |
 | Glossary annotations in reader | ✅ Implemented | Public-visible approved terms render inline with bounded, keyboard-accessible tooltips; `PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED` can disable the feature operationally. |
@@ -546,7 +546,6 @@ The approved future public hierarchy is:
 /account/settings
 
 /login
-/register
 /auth/callback
 /logout
 
@@ -564,7 +563,7 @@ The approved future public hierarchy is:
 
 ### 8.1 Current route drift to fix later
 
-Older or prototype route names may exist temporarily:
+Removed prototype route names must return 404 rather than redirect:
 
 ```text
 /
@@ -576,7 +575,7 @@ Older or prototype route names may exist temporarily:
 (legacy; consolidated to /novels/[slug])
 ```
 
-These are implementation drift relative to the approved future contract.
+These names are outside the approved contract.
 
 Do not create new design work around old names. Future route work should align toward:
 
@@ -589,7 +588,7 @@ Do not create new design work around old names. Future route work should align t
 /novels/:slug/chapter/:chapterId
 ```
 
-If old routes are still needed temporarily, preserve them as redirects or compatibility aliases. Do not let them become a second map.
+Do not restore redirects or compatibility aliases for removed route names.
 
 ---
 

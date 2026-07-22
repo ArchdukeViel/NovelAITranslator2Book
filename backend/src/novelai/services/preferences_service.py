@@ -45,7 +45,7 @@ class PreferencesService:
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.prefs_path = self.storage_dir / self.PREFS_FILENAME
         self._data = self._load()
-        self._migrate_legacy_data()
+        self._ensure_current_data()
 
     def _load(self) -> dict[str, Any]:
         if not self.prefs_path.exists():
@@ -63,14 +63,14 @@ class PreferencesService:
         )
 
     def reload(self) -> None:
-        """Reload preferences from disk and reapply migrations."""
+        """Reload preferences from disk and restore current defaults."""
         self._data = self._load()
-        self._migrate_legacy_data()
+        self._ensure_current_data()
 
     def clear(self) -> None:
         """Reset persisted preferences to defaults."""
         self._data = {}
-        self._migrate_legacy_data()
+        self._ensure_current_data()
 
     @staticmethod
     def _clean_text(value: Any) -> str | None:
@@ -96,8 +96,8 @@ class PreferencesService:
             for step in WORKFLOW_PROFILE_STEPS
         }
 
-    def _migrate_legacy_data(self) -> None:
-        """Backfill new LLM config keys from legacy workflow_profiles data."""
+    def _ensure_current_data(self) -> None:
+        """Populate missing current-schema preference defaults."""
         changed = False
 
         if self.LLM_ENDPOINT_PROFILES_KEY not in self._data or not isinstance(self._data.get(self.LLM_ENDPOINT_PROFILES_KEY), dict):
@@ -124,16 +124,6 @@ class PreferencesService:
                         "prompt_template": self._clean_text(payload.get("prompt_template")),
                     }
                 )
-
-        legacy_profiles = normalize_workflow_profiles(self._data.get("workflow_profiles", {}))["steps"]
-        for step in WORKFLOW_PROFILE_STEPS:
-            profile = legacy_profiles[step]
-            if merged_step_configs[step].get("provider") is None and profile.get("provider") is not None:
-                merged_step_configs[step]["provider"] = profile.get("provider")
-                changed = True
-            if merged_step_configs[step].get("model") is None and profile.get("model") is not None:
-                merged_step_configs[step]["model"] = profile.get("model")
-                changed = True
 
         if self._data.get(self.LLM_STEP_CONFIGS_KEY) != merged_step_configs:
             self._data[self.LLM_STEP_CONFIGS_KEY] = merged_step_configs
@@ -220,48 +210,6 @@ class PreferencesService:
     def set_language(self, language: str) -> None:
         """Set user's preferred UI language."""
         self.set("language", language)
-
-    def get_workflow_profiles(self) -> dict[str, dict[str, str | None]]:
-        """Return per-step provider/model preferences."""
-        result = normalize_workflow_profiles(self.get("workflow_profiles", {}))
-        step_configs = self.get_llm_step_configs()
-        profiles = result["steps"]
-        for step in WORKFLOW_PROFILE_STEPS:
-            provider = step_configs[step].get("provider")
-            model = step_configs[step].get("model")
-            if isinstance(provider, str) and provider.strip():
-                profiles[step]["provider"] = provider.strip()
-            if isinstance(model, str) and model.strip():
-                profiles[step]["model"] = model.strip()
-        return profiles
-
-    def get_workflow_profile(self, step: str) -> dict[str, str | None]:
-        normalized_step = normalize_workflow_profile_step(step)
-        if normalized_step not in WORKFLOW_PROFILE_STEPS:
-            raise ValueError(f"Unsupported workflow profile step: {step}")
-        return self.get_workflow_profiles()[normalized_step]
-
-    def set_workflow_profile(
-        self,
-        step: str,
-        *,
-        provider: str | None = None,
-        model: str | None = None,
-    ) -> None:
-        normalized_step = normalize_workflow_profile_step(step)
-        if normalized_step not in WORKFLOW_PROFILE_STEPS:
-            raise ValueError(f"Unsupported workflow profile step: {step}")
-        profiles = self.get_workflow_profiles()
-        profiles[normalized_step] = {
-            "provider": provider.strip() if isinstance(provider, str) and provider.strip() else None,
-            "model": model.strip() if isinstance(model, str) and model.strip() else None,
-        }
-        self.set("workflow_profiles", profiles)
-        self.set_llm_step_config(
-            normalized_step,
-            provider=provider,
-            model=model,
-        )
 
     def get_llm_endpoint_profiles(self) -> dict[str, dict[str, Any]]:
         raw = self.get(self.LLM_ENDPOINT_PROFILES_KEY, {})

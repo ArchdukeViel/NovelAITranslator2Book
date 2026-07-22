@@ -1,7 +1,7 @@
 """Tests for PDF export deprecation (DEBT-007).
 
-PDF export is deprecated. The ``PDFExporter`` stub is not registered in the
-export registry. ``ExportService.export("pdf", ...)`` and
+PDF export is deprecated and no exporter implementation exists.
+``ExportService.export("pdf", ...)`` and
 ``ExportService.export_pdf()`` raise ``UnsupportedExportFormatError`` with a
 safe deprecation message. Historical manifests with ``format: "pdf"`` are
 preserved (no manifest rewriting). Non-PDF exporters remain registered.
@@ -11,28 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from novelai.export.base_exporter import BaseExporter
-from novelai.export.pdf_exporter import PDFExporter
 from novelai.export.registry import available_exporters
 from novelai.runtime.bootstrap import bootstrap
 from novelai.services.export_service import ExportService, UnsupportedExportFormatError
-
-
-class TestPDFExporterDeprecation:
-    """The PDFExporter class still exists for historical reference but is deprecated."""
-
-    def test_pdf_exporter_still_subclasses_base(self) -> None:
-        assert issubclass(PDFExporter, BaseExporter)
-
-    def test_pdf_exporter_export_raises_not_implemented(self) -> None:
-        """The stub class itself still raises NotImplementedError (not registered)."""
-        exporter = PDFExporter()
-        with pytest.raises(NotImplementedError, match="deprecated"):
-            exporter.export(
-                novel_id="n1",
-                chapters=[{"title": "Ch1", "text": "Hello"}],
-                output_path="/tmp/out.pdf",
-            )
 
 
 class TestPDFNotRegistered:

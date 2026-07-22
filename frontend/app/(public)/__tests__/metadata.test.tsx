@@ -16,7 +16,6 @@ vi.mock("@/app/(public)/error/page", () => ({ metadata: { title: "Error", descri
 vi.mock("@/app/(public)/maintenance/page", () => ({ metadata: { title: "Maintenance", description: "Maintenance page.", robots: { index: false, follow: false } } }));
 vi.mock("@/app/not-found", () => ({ metadata: { title: "Not Found", description: "Page not found.", robots: { index: false, follow: false } } }));
 vi.mock("@/app/(public)/page", () => ({ metadata: { title: "Home", description: "Home page." } }));
-vi.mock("@/app/(public)/account/contribute/page", () => ({ metadata: { title: "Contribute", description: "Contribute page.", robots: { index: false, follow: false } } }));
 vi.mock("@/app/layout", () => ({ metadata: { title: { template: "%s | Novel AI", default: "Novel AI" }, description: "Novel AI is a web-based Japanese novel crawling, translation, editing, and reader platform.", openGraph: { siteName: "Novel AI" }, twitter: { card: "summary" } } }));
 vi.mock("@/app/(public)/layout", () => ({ metadata: { title: { default: "Dokushodo", template: "%s | Dokushodo" }, description: "Dokushodo public reader.", openGraph: { siteName: "Dokushodo" }, robots: { index: true, follow: true } } }));
 vi.mock("@/app/(public)/account/layout", () => ({ metadata: { title: "Account", description: "Account layout.", robots: { index: false, follow: false } } }));
@@ -47,7 +46,6 @@ import { metadata as errorMeta } from "@/app/(public)/error/page";
 import { metadata as maintenanceMeta } from "@/app/(public)/maintenance/page";
 import { metadata as notFoundMeta } from "@/app/not-found";
 import { metadata as redirectIndexMeta } from "@/app/(public)/page";
-import { metadata as accountContributeMeta } from "@/app/(public)/account/contribute/page";
 
 // ---------------------------------------------------------------------------
 // Layout metadata
@@ -142,12 +140,9 @@ describe("metadata — page titles use correct patterns", () => {
     });
   }
 
-  it("redirect pages have appropriate titles", () => {
+  it("root redirect has an appropriate title", () => {
     const redirectIndex = redirectIndexMeta as TitleMetadata;
     expect(redirectIndex.title).toBe("Home");
-
-    const acctContribute = accountContributeMeta as TitleMetadata;
-    expect(acctContribute.title).toBe("Contribute");
   });
 
   it("page descriptions are non-empty and specific", () => {
@@ -212,11 +207,6 @@ describe("metadata — robots / noindex", () => {
     expect(r?.follow).toBe(false);
   });
 
-  it("account/contribute redirect is noindex", () => {
-    const r = getRobots(accountContributeMeta);
-    expect(r?.index).toBe(false);
-    expect(r?.follow).toBe(false);
-  });
 });
 
 describe("metadata — browse-novels", () => {

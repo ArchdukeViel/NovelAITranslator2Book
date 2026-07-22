@@ -246,13 +246,11 @@ describe("Route inventory completeness", () => {
    */
   const knownExcludedRoutes: { route: string; reason: string }[] = [
     { route: "/login", reason: "Auth is reached from header/sidebar as /login?mode=signin or /login?mode=signup" },
-    { route: "/register", reason: "Legacy route redirects to /login?mode=signup" },
     { route: "/logout", reason: "Logout calls API mutation with server-side redirect, not a nav link" },
     { route: "/auth/callback", reason: "OAuth redirect_uri target — never user-facing" },
     { route: "/error", reason: "Next.js error boundary fallback" },
     { route: "/not-found", reason: "Next.js 404 fallback" },
     { route: "/maintenance", reason: "Server-side maintenance redirect" },
-    { route: "/account/contribute", reason: "Legacy redirect-only stub → /contribute (no rendered page)" },
     { route: "/", reason: "Root redirects to /home (page.tsx contains redirect())" },
   ];
 
@@ -308,14 +306,5 @@ describe("Route inventory completeness", () => {
     const staticNotFound = notCovered.filter((r) => !r.includes("[") && !r.includes("]"));
 
     expect(staticNotFound, `Routes without nav link or exclusion doc: ${staticNotFound.join(", ")}`).toHaveLength(0);
-  });
-
-  it("/account/contribute is a redirect-only stub (no nav link needed)", () => {
-    // Verify the file content confirms redirect behavior
-    const pagePath = hrefToPagePath("/account/contribute");
-    expect(existsSync(pagePath), `Missing /account/contribute page`).toBe(true);
-    // Should not appear in any nav
-    const sidebar = readFileSync(pagePath, "utf-8");
-    expect(sidebar).toMatch(/redirect\("/);  // contains redirect("/contribute")
   });
 });

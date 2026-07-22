@@ -74,10 +74,16 @@ Deferred items are tracked but excluded from the active count.
 - **Category:** Backend | Feature
 - **Priority:** Medium
 - **Status:** Resolved
-- **Affected areas:** `backend/src/novelai/export/pdf_exporter.py`, `backend/src/novelai/runtime/bootstrap.py`, `backend/src/novelai/services/export_service.py`
+- **Affected areas:** `backend/src/novelai/runtime/bootstrap.py`, `backend/src/novelai/services/export_service.py`
 - **Description:** PDFExporter registered but raises NotImplementedError. No font policy or generator dependency available.
 - **Completion criteria:** Remove active registration, deprecate format, reject requests, preserve historical manifests.
-- **Resolution:** Removed `PDFExporter` import and `register_exporter("pdf", ...)` from `bootstrap_exporters()`. `ExportService.export("pdf", ...)` and `export_pdf()` raise `UnsupportedExportFormatError` with safe deprecation message. `OperationsService` catches this and returns `OperationError(400)`. Historical manifests with `format: "pdf"` are preserved (manifest service stores format as free-form string). 10 PDF deprecation tests pass.
+- **Resolution:** Removed the dead `PDFExporter` implementation, its import,
+  and `register_exporter("pdf", ...)` from `bootstrap_exporters()`.
+  `ExportService.export("pdf", ...)` and `export_pdf()` raise
+  `UnsupportedExportFormatError` with a safe deprecation message.
+  `OperationsService` catches this and returns `OperationError(400)`.
+  Historical manifests with `format: "pdf"` are preserved because the manifest
+  service stores format as a free-form string.
 
 ### DEBT-008 — No admin user management endpoints
 - **Milestone:** Milestone M5 (Admin Operations)
@@ -178,6 +184,12 @@ Deferred items are tracked but excluded from the active count.
   only the canonical activity router and `activity_log/` layout remain. Queue,
   worker, runner, package exports, runner status, and frontend types no longer
   expose `Job*`, `job_type`, `last_job_id`, or `jobs_processed` aliases.
+  Workflow-step aliases and automatic preference migration from
+  `workflow_profiles` to `llm_step_configs` are removed. Redirect-only
+  `/register` and `/account/contribute` pages are removed in favor of the
+  canonical `/login?mode=signup` and `/contribute` routes. The empty export
+  orchestration compatibility module and dead PDF exporter stub are also
+  removed; PDF requests still fail through the canonical controlled error.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
