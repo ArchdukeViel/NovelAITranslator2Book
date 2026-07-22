@@ -26,6 +26,7 @@ anyio==4.12.1 \
     # via
     #   google-genai
     #   httpx
+    #   httpx2
     #   openai
     #   starlette
     #   watchfiles
@@ -486,11 +487,16 @@ h11==0.16.0 \
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
     # via
     #   httpcore
+    #   httpcore2
     #   uvicorn
 httpcore==1.0.9 \
     --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55 \
     --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8
     # via httpx
+httpcore2==2.7.0 \
+    --hash=sha256:1452f589fe23f55b44546cd884294c41a29330af902bc0b71a761fd52d18f92b \
+    --hash=sha256:6dc0fedf329a52a990930a5579edfebaea81118ea700ea0dd7de2b5e5be49efc
+    # via httpx2
 httptools==0.8.0 \
     --hash=sha256:0770728beb05094c809b98e814edff5fef69d26ad7d21185f2f6d5884a0ba683 \
     --hash=sha256:0ea897f0c729581ebf72131a438a7932d9b14efef72d75ada966700cac3caaeb \
@@ -550,6 +556,10 @@ httpx==0.28.1 \
     #   google-genai
     #   novel-ai (pyproject.toml)
     #   openai
+httpx2==2.7.0 \
+    --hash=sha256:8b30709aed5c8465b0dd3b95c09ce301c8f79e7e7a2d00ab0af551e0d0375b07 \
+    --hash=sha256:ed2a2719c696789e09493bd8e2bec3d8bd925cc6e26b68389ec25ade132f7bf4
+    # via novel-ai (pyproject.toml)
 hypothesis==6.158.1 \
     --hash=sha256:0824a730f4e88d0498f704a32a0b874626f68eceb4b4782b37526bd717dcf926 \
     --hash=sha256:0fc55d015e9ce0e4e58cb900adb7095bc88f43851f64d91d2b4b826d0ce81dca \
@@ -610,12 +620,13 @@ hypothesis==6.158.1 \
     --hash=sha256:fd23401575f76c62a385a44db363a4b7c8e10ddd907d387b83b84cf5ba6f87cc \
     --hash=sha256:ff3e271ebff4ebe53d3180532ab4be6e1bcbd32a38c5276c1c85a377cfabfee4
     # via novel-ai (pyproject.toml)
-idna==3.11 \
-    --hash=sha256:771a87f49d9defaf64091e6e6fe9c18d4833f140bd19464795bc32d966ca37ea \
-    --hash=sha256:795dafcc9c04ed0c1fb032c2aa73654d8e8c5023a7df64a53f39190ada629902
+idna==3.18 \
+    --hash=sha256:7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2 \
+    --hash=sha256:ffb385a7e039654cef1ab9ef32c6fafe283c0c0467bba1d9029738ce4a14a848
     # via
     #   anyio
     #   httpx
+    #   httpx2
     #   requests
 iniconfig==2.3.0 \
     --hash=sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730 \
@@ -1474,6 +1485,12 @@ tqdm==4.67.3 \
     --hash=sha256:7d825f03f89244ef73f1d4ce193cb1774a8179fd96f31d7e1dcde62092b960bb \
     --hash=sha256:ee1e4c0e59148062281c49d80b25b67771a127c85fc9676d3be5f243206826bf
     # via openai
+truststore==0.10.4 \
+    --hash=sha256:9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301 \
+    --hash=sha256:adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981
+    # via
+    #   httpcore2
+    #   httpx2
 typing-extensions==4.15.0 \
     --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
     --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548

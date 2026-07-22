@@ -36,6 +36,7 @@ gemini = [
   "google-genai>=2.11.0",
 ]
 test = [
+  "httpx2>=2.7.0",
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
   "aiosqlite>=0.20",
@@ -68,6 +69,7 @@ dev = [
   "croniter>=6.0.0",
   "google-genai>=2.11.0",
   "hypothesis>=6.0",
+  "httpx2>=2.7.0",
   "itsdangerous>=2.2",
   "moto[s3]>=5.0.0",
   "openai>=2.45.0",

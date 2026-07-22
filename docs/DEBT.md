@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 28
+- **Total active debt entries:** 29
 - **V1 launch blockers:** 6 (DEBT-075 through DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
@@ -686,7 +686,7 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M7 (Final Hardening)
 - **Category:** Backend | Testing | Dependencies
 - **Priority:** Low
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** Backend test client, FastAPI/Starlette/httpx dependency set,
   generated lockfiles
 - **Description:** Backend tests pass, but importing `fastapi.testclient` emits a
@@ -697,6 +697,14 @@ Deferred items are tracked but excluded from the active count.
   HTTP client dependency set; migrate the shared backend test-client setup;
   regenerate lockfiles; and run the backend suite with no test-client
   deprecation warning.
+- **Resolution:** Added `httpx2` to both test-bearing dependency extras so
+  Starlette 1.x selects its maintained test transport. Existing application
+  outbound HTTP remains on `httpx`; no compatibility wrapper or duplicate test
+  client abstraction was introduced. Regenerated lockfiles, full backend
+  collection, and focused HTTP/security tests run without
+  `StarletteDeprecationWarning`. A broad run likewise emitted no transport
+  deprecation warning; its unrelated stale-fixture failures are tracked in
+  DEBT-095.
 
 ### DEBT-084 — Missing Gemini credentials can silently select the dummy provider
 - **Milestone:** Milestone M7 (Final Hardening)
@@ -849,3 +857,37 @@ Deferred items are tracked but excluded from the active count.
   reports either schema error, but validation now stops at the workspace-level
   `need_payment_info` gate. Complete Render's account/payment verification,
   then rerun live validation and deployment before resolving this debt.
+
+### DEBT-095 — Backend tests still construct removed metadata aliases
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Backend | Testing | CI
+- **Priority:** High
+- **Status:** Pending
+- **Affected areas:** Source-adapter, reader-availability, crawl,
+  orchestration, recovery, and e2e test fixtures
+- **Description:** Forward-only metadata enforcement removed `source` and
+  `status`, but several tracked tests still construct or assert those aliases
+  instead of `source_key` and `publication_status`. A full Python 3.13 run
+  collected 2,569 tests but ended with 60 failures and 26 errors; representative
+  isolated failures confirm stale fixture fields rather than the new HTTP test
+  transport. Several affected files are assigned to GitHub Actions shards.
+- **Completion criteria:** Replace removed metadata aliases throughout active
+  tests, fix any remaining suite-isolation failures exposed afterward, and run
+  the exact local equivalents of all backend CI shards successfully.
+
+### DEBT-096 — OpenAI vestiges contradict the Gemini-only provider contract
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Providers | Frontend | Dependencies
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** Python optional dependencies, public contribution page,
+  provider-related test fixtures
+- **Description:** Runtime provider registration correctly rejects OpenAI, but
+  `pyproject.toml` still offers and installs an OpenAI extra, the gated public
+  contribution page still lists OpenAI, and several tests present OpenAI as an
+  active provider example. This contradicts the canonical Gemini-only
+  architecture and unnecessarily expands the dependency surface.
+- **Completion criteria:** Remove the OpenAI dependency extra and development
+  install, remove OpenAI from product-facing UI and active-provider fixtures,
+  retain provider-neutral persistence boundaries and generic secret-redaction
+  defenses, regenerate lockfiles, and verify backend/frontend checks.
