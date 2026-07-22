@@ -5,7 +5,7 @@ import logging
 import pytest
 from pydantic import SecretStr
 
-from novelai.config.settings import settings
+from novelai.config.settings import AppSettings, settings
 from novelai.runtime.container import Container
 from novelai.services.email import NoopAuthEmailService, SMTPAuthEmailService
 
@@ -63,20 +63,29 @@ def _smtp_service() -> SMTPAuthEmailService:
 
 def test_container_default_config_uses_noop_service(monkeypatch):
     monkeypatch.setattr(settings, "AUTH_EMAIL_DELIVERY_MODE", "noop")
+    monkeypatch.setattr(settings, "PUBLIC_FRONTEND_URL", "http://127.0.0.1:3000")
 
     service = Container().auth_email
 
     assert isinstance(service, NoopAuthEmailService)
+    assert service.public_base_url == "http://127.0.0.1:3000"
 
 
 def test_container_smtp_mode_constructs_smtp_service(monkeypatch):
     monkeypatch.setattr(settings, "AUTH_EMAIL_DELIVERY_MODE", "smtp")
+    monkeypatch.setattr(settings, "PUBLIC_FRONTEND_URL", "http://127.0.0.1:3000")
     monkeypatch.setattr(settings, "SMTP_HOST", "smtp.example")
     monkeypatch.setattr(settings, "SMTP_FROM_EMAIL", "noreply@dokushodo.example")
 
     service = Container().auth_email
 
     assert isinstance(service, SMTPAuthEmailService)
+
+
+def test_settings_default_public_frontend_url_supports_local_email_links():
+    clean_settings = AppSettings(_env_file=None)  # type: ignore[call-arg]
+
+    assert clean_settings.PUBLIC_FRONTEND_URL == "http://127.0.0.1:3000"
 
 
 def test_container_invalid_email_delivery_mode_fails_clearly(monkeypatch):

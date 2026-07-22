@@ -1152,3 +1152,22 @@ Deferred items are tracked but excluded from the active count.
 - **Resolution:** Excluded only the archived-spec subtree from the two
   mutating text fixers. Ruff and GitGuardian scopes are unchanged, and hash
   comparison confirms all 164 moved files remain byte-identical.
+
+### DEBT-110 — Email service default disagreed with documented local URL
+- **Milestone:** Milestone M0 (CI Confidence)
+- **Category:** Backend | Configuration | CI/CD
+- **Priority:** Blocker
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/config/settings.py`, auth email
+  container construction
+- **Description:** The documented development default for
+  `PUBLIC_FRONTEND_URL` was `http://127.0.0.1:3000`, but the settings model
+  defaulted to `None`. CI does not load a local `.env`, so constructing either
+  email delivery implementation failed before tests could run.
+- **Completion criteria:** Make the settings default match the canonical
+  environment documentation, retain explicit production validation, and prove
+  both no-op and SMTP container construction without a local environment file.
+- **Resolution:** Set the development default to
+  `http://127.0.0.1:3000`. Production still requires an explicit HTTPS value
+  through the existing production validator and Compose contract. Focused
+  email-service tests cover the canonical default and both delivery modes.

@@ -238,7 +238,7 @@ class AppSettings(BaseSettings):
     GOOGLE_OAUTH_CLIENT_ID: str | None = None
     GOOGLE_OAUTH_CLIENT_SECRET: SecretStr | None = None
     GOOGLE_OAUTH_REDIRECT_URI: str | None = None
-    PUBLIC_FRONTEND_URL: str | None = None
+    PUBLIC_FRONTEND_URL: str | None = "http://127.0.0.1:3000"
     AUTH_EMAIL_DELIVERY_MODE: str = "noop"
     AUTH_PASSWORD_RESET_PATH: str = "/password/reset"
     AUTH_EMAIL_VERIFICATION_PATH: str = "/email/verify"
