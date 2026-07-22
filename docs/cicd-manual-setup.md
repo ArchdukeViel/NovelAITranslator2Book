@@ -5,7 +5,7 @@ All workflow files are already implemented and committed to `.github/workflows/`
 What remains is GitHub UI configuration and verification.
 
 **Last updated:** 2026-07-22 (live CI and repository-control reconciliation)
-**Current status:** Workflow hardening is implemented and accepted on hosted runners. CI run [29941138116](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29941138116) passed lint, clean PostgreSQL migration, core and extended backend tests, frontend checks, E2E, and all three Docker builds at commit `74f83c8`. Dependent publication run [29941617651](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29941617651) pushed all three GHCR images and passed the aggregate gate. Live inspection on 2026-07-22 found zero open CodeQL and secret-scanning alerts and three high Dependabot alerts (`pyasn1` twice and `sharp` once); committed locks resolve to patched versions, but GitHub has not closed the alerts. The default branch still has no ruleset, Actions remains unrestricted without required SHA enforcement, and repository-setting changes remain manual owner actions. The successful CI run took 6 minutes 36 seconds, so the documented cache-hit duration target remains unaccepted under DEBT-111.
+**Current status:** Workflow hardening is implemented and accepted on hosted runners. CI run [29941138116](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29941138116) passed lint, clean PostgreSQL migration, core and extended backend tests, frontend checks, E2E, and all three Docker builds at commit `74f83c8`. Dependent publication run [29941617651](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29941617651) pushed all three GHCR images and passed the aggregate gate. Warm-cache CI run [29941879093](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29941879093) remained fully green and completed in 3 minutes 42 seconds, accepting the duration target. Live inspection on 2026-07-22 found zero open CodeQL and secret-scanning alerts and three high Dependabot alerts (`pyasn1` twice and `sharp` once); committed locks resolve to patched versions, but GitHub has not closed the alerts. The default branch still has no ruleset, Actions remains unrestricted without required SHA enforcement, and repository-setting changes remain manual owner actions.
 
 ---
 
@@ -191,7 +191,7 @@ docker compose up -d --remove-orphans
 - [x] E2E tests run when relevant paths change
 - [x] Merge or push to main triggers Docker build and push after successful CI
 - [x] Docker images pushed to GHCR by the SHA-and-`latest` publication workflow
-- [ ] CI completes in under 5 minutes on cache-hit
+- [x] CI completes in under 5 minutes on cache-hit
 - [ ] Compose consumes the requested immutable GHCR SHA tags
 - [ ] (Optional) Deploy workflow runs successfully on the selected backend host
 

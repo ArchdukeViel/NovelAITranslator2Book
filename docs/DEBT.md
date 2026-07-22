@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 27
+- **Total active debt entries:** 26
 - **V1 launch blockers:** 4 (DEBT-075, DEBT-078, DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
@@ -1177,7 +1177,7 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M0 (CI Confidence)
 - **Category:** CI/CD | Performance | Free-Tier Operations
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** `.github/workflows/ci.yml`, GitHub Actions cache behavior
 - **Description:** The first complete hardened CI run took 6 minutes 36 seconds,
   exceeding the operator guide's under-five-minute cache-hit target. Functional
@@ -1186,3 +1186,8 @@ Deferred items are tracked but excluded from the active count.
 - **Completion criteria:** Record a representative warm-cache run below five
   minutes, or profile the critical path and reduce it without weakening lint,
   type, test, migration, E2E, or image-build coverage.
+- **Resolution:** Follow-up hosted CI run
+  <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29941879093>
+  completed successfully in 3 minutes 42 seconds with warm caches. All lint,
+  migration, backend, frontend, E2E, and three-image build gates remained
+  enabled and green.
