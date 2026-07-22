@@ -3237,22 +3237,22 @@ class TestNovelRequests:
 
         assert resp.status_code == 400
 
-    def test_legacy_request_actions_return_gone(
+    def test_removed_admin_request_actions_are_not_routed(
         self, _session_auth_defaults: None, isolated_db_session: Session
     ) -> None:
         bootstrap()
         c = _make_app(_fresh_storage(), db_session=isolated_db_session)
 
         headers = _csrf_headers(c)
-        assert c.post("/api/admin/requests", json={"title": "Requested Novel"}, headers=headers).status_code == 410
-        assert c.post("/api/admin/requests/1/vote", json={"voter": "reader-2"}, headers=headers).status_code == 410
+        assert c.post("/api/admin/requests", json={"title": "Requested Novel"}, headers=headers).status_code == 405
+        assert c.post("/api/admin/requests/1/vote", json={"voter": "reader-2"}, headers=headers).status_code == 404
         assert (
             c.post(
                 "/api/admin/requests/1/source-candidates",
                 json={"source_key": "kakuyomu", "source_url": "https://kakuyomu.jp/works/123"},
                 headers=headers,
             ).status_code
-            == 410
+            == 404
         )
 
 

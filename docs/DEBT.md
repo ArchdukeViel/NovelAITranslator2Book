@@ -216,6 +216,11 @@ Deferred items are tracked but excluded from the active count.
   string-chunk helper branches are removed; deserialization rejects the old
   field explicitly. The 116 directly affected cache, pipeline, scheduler, and
   QA tests pass with zero focused Pyright errors.
+  Admin request moderation no longer registers creation, voting, or source-
+  candidate tombstone routes that existed only to return `410 Gone`; public
+  request creation and owner list/get/status moderation remain canonical. Six
+  focused authorization, moderation, and removed-route tests pass with zero
+  focused Pyright errors.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

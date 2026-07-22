@@ -216,12 +216,18 @@ class TestProgressContract:
         set_user(app, 42)
         headers = csrf_headers(client)
         assert client.get("/api/user/progress/missing").status_code == 404
-        assert client.put("/api/user/progress/test-novel", json={"progress_percent": 1.5}, headers=headers).status_code == 422
-        assert client.put(
-            "/api/user/progress/test-novel",
-            json={"chapter_id": str(seeded_catalog["other_chapter"].id), "progress_percent": 0.3},
-            headers=headers,
-        ).status_code == 404
+        assert (
+            client.put("/api/user/progress/test-novel", json={"progress_percent": 1.5}, headers=headers).status_code
+            == 422
+        )
+        assert (
+            client.put(
+                "/api/user/progress/test-novel",
+                json={"chapter_id": str(seeded_catalog["other_chapter"].id), "progress_percent": 0.3},
+                headers=headers,
+            ).status_code
+            == 404
+        )
 
     def test_user_b_cannot_read_or_update_user_a_progress(self, app, client, seeded_catalog) -> None:
         headers = csrf_headers(client)
@@ -317,7 +323,9 @@ class TestReviewContract:
 
     def test_legacy_post_review_preserved_with_contract_shape(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
-        resp = client.post("/api/user/reviews/test-novel", json={"rating": 5, "body": "Great novel!"}, headers=csrf_headers(client))
+        resp = client.post(
+            "/api/user/reviews/test-novel", json={"rating": 5, "body": "Great novel!"}, headers=csrf_headers(client)
+        )
         assert resp.status_code == 201
         assert_keys(resp.json(), {"slug", "rating", "body", "status", "updated_at"})
 
@@ -327,7 +335,10 @@ class TestReviewContract:
         assert client.put("/api/user/reviews/test-novel", json={"rating": 6}, headers=headers).status_code == 422
         assert client.put("/api/user/reviews/test-novel", json={"rating": 0}, headers=headers).status_code == 422
         assert client.put("/api/user/reviews/unknown", json={"rating": 3}, headers=headers).status_code == 404
-        assert client.put("/api/user/reviews/test-novel", json={"rating": 5, "user_id": 99}, headers=headers).status_code == 422
+        assert (
+            client.put("/api/user/reviews/test-novel", json={"rating": 5, "user_id": 99}, headers=headers).status_code
+            == 422
+        )
 
     def test_user_b_cannot_modify_user_a_review(self, app, client, seeded_catalog) -> None:
         headers = csrf_headers(client)
@@ -407,38 +418,57 @@ class TestRequestContract:
 
         assert client.post("/api/user/requests", json={"request_type": "bad"}, headers=headers).status_code == 422
         assert client.post("/api/user/requests", json={"request_type": "novel"}, headers=headers).status_code == 422
-        assert client.post(
-            "/api/user/requests",
-            json={"request_type": "chapter", "slug": "test-novel", "chapter_id": str(seeded_catalog["other_chapter"].id)},
-            headers=headers,
-        ).status_code == 404
-        assert client.post(
-            "/api/user/requests",
-            json={"request_type": "novel", "source_url": "https://example.com/novel", "user_id": 1},
-            headers=headers,
-        ).status_code == 422
-        assert client.post(
-            "/api/user/requests",
-            json={
-                "request_type": "novel",
-                "source_url": "https://example.com/novel",
-                "rejection_reason": "not allowed",
-                "approved_novel_id": seeded_catalog["novel"].id,
-            },
-            headers=headers,
-        ).status_code == 422
+        assert (
+            client.post(
+                "/api/user/requests",
+                json={
+                    "request_type": "chapter",
+                    "slug": "test-novel",
+                    "chapter_id": str(seeded_catalog["other_chapter"].id),
+                },
+                headers=headers,
+            ).status_code
+            == 404
+        )
+        assert (
+            client.post(
+                "/api/user/requests",
+                json={"request_type": "novel", "source_url": "https://example.com/novel", "user_id": 1},
+                headers=headers,
+            ).status_code
+            == 422
+        )
+        assert (
+            client.post(
+                "/api/user/requests",
+                json={
+                    "request_type": "novel",
+                    "source_url": "https://example.com/novel",
+                    "rejection_reason": "not allowed",
+                    "approved_novel_id": seeded_catalog["novel"].id,
+                },
+                headers=headers,
+            ).status_code
+            == 422
+        )
 
     def test_user_b_cannot_see_user_a_requests(self, app, client, seeded_catalog) -> None:
         headers = csrf_headers(client)
         set_user(app, 1)
-        client.post("/api/user/requests", json={"request_type": "novel", "source_url": "https://example.com/novel"}, headers=headers)
+        client.post(
+            "/api/user/requests",
+            json={"request_type": "novel", "source_url": "https://example.com/novel"},
+            headers=headers,
+        )
 
         set_user(app, 2)
         assert client.get("/api/user/requests").json()["items"] == []
 
     def test_requests_never_auto_trigger_jobs(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
-        resp = client.post("/api/user/requests", json={"request_type": "chapter", "slug": "test-novel"}, headers=csrf_headers(client))
+        resp = client.post(
+            "/api/user/requests", json={"request_type": "chapter", "slug": "test-novel"}, headers=csrf_headers(client)
+        )
         assert resp.status_code == 201
         assert resp.json()["status"] == "pending"
         assert "auto_translate" not in resp.json()
@@ -610,28 +640,36 @@ class TestRequestContract:
         assert client.get("/api/admin/requests").status_code == expected
         assert client.get("/api/admin/requests/1").status_code == expected
         headers = csrf_headers(client) if role != "guest" else None
-        assert client.patch("/api/admin/requests/1", json={"status": "approved"}, headers=headers).status_code == expected
-        assert client.patch(
-            "/api/admin/requests/1",
-            json={
-                "status": "rejected",
-                "rejection_reason": "Nope",
-                "approved_novel_id": seeded_catalog["novel"].id,
-            },
-            headers=headers,
-        ).status_code == expected
+        assert (
+            client.patch("/api/admin/requests/1", json={"status": "approved"}, headers=headers).status_code == expected
+        )
+        assert (
+            client.patch(
+                "/api/admin/requests/1",
+                json={
+                    "status": "rejected",
+                    "rejection_reason": "Nope",
+                    "approved_novel_id": seeded_catalog["novel"].id,
+                },
+                headers=headers,
+            ).status_code
+            == expected
+        )
 
     def test_admin_request_missing_id_and_invalid_status(self, app, client, seeded_catalog) -> None:
         set_user(app, 999, role="owner")
         assert client.get("/api/admin/requests/999").status_code == 404
-        assert client.patch(
-            "/api/admin/requests/999",
-            json={"status": "not-real"},
-            headers=csrf_headers(client),
-        ).status_code == 400
+        assert (
+            client.patch(
+                "/api/admin/requests/999",
+                json={"status": "not-real"},
+                headers=csrf_headers(client),
+            ).status_code
+            == 400
+        )
         assert client.get("/api/admin/requests", params={"status": "not-real"}).status_code == 400
 
-    def test_admin_legacy_request_actions_are_not_file_backed_on_canonical_route(
+    def test_removed_admin_request_actions_are_not_routed(
         self,
         app,
         client,
@@ -639,13 +677,16 @@ class TestRequestContract:
     ) -> None:
         set_user(app, 999, role="owner")
         headers = csrf_headers(client)
-        assert client.post("/api/admin/requests", json={"title": "Requested Novel"}, headers=headers).status_code == 410
-        assert client.post("/api/admin/requests/1/vote", json={"voter": "reader"}, headers=headers).status_code == 410
-        assert client.post(
-            "/api/admin/requests/1/source-candidates",
-            json={"source_key": "syosetu_ncode", "source_url": "https://ncode.syosetu.com/n1234ab/"},
-            headers=headers,
-        ).status_code == 410
+        assert client.post("/api/admin/requests", json={"title": "Requested Novel"}, headers=headers).status_code == 405
+        assert client.post("/api/admin/requests/1/vote", json={"voter": "reader"}, headers=headers).status_code == 404
+        assert (
+            client.post(
+                "/api/admin/requests/1/source-candidates",
+                json={"source_key": "syosetu_ncode", "source_url": "https://ncode.syosetu.com/n1234ab/"},
+                headers=headers,
+            ).status_code
+            == 404
+        )
 
     def test_request_create_rate_limit_eventually_returns_429(self, app, client, seeded_catalog) -> None:
         set_user(app, 42)
