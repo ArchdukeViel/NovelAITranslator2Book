@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 28
+- **Total active debt entries:** 29
 - **V1 launch blockers:** 6 (DEBT-075 through DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
@@ -511,7 +511,10 @@ Deferred items are tracked but excluded from the active count.
   fresh run remains required before resolving this debt. The hosted Supabase
   project migrated to repository head `9c2e4a6b8d0f` and passed post-migration
   schema and security checks on 2026-07-22. Only clean vanilla-PostgreSQL CI
-  execution at that head and a successful hosted workflow remain.
+  execution at that head and a successful hosted workflow remain. Local Docker
+  verification on 2026-07-22 replayed the CI shim and the complete Alembic
+  chain against a fresh PostgreSQL 16 container, reaching
+  `9c2e4a6b8d0f (head)`; the disposable container was removed afterward.
 
 ### DEBT-077 — CI exclusions and workflow success signals are misleading
 - **Milestone:** Milestone M0 (CI Confidence)
@@ -528,7 +531,10 @@ Deferred items are tracked but excluded from the active count.
 - **Implementation note (2026-07-18):** Previously excluded files now run in
   explicit bounded matrix shards, Docker builds depend on both backend suites,
   and the aggregate publication result fails unless image publication succeeds.
-  A hosted Actions run remains required before resolving this debt.
+  The 2026-07-22 hosted failure was traced to a SQLAlchemy URL passed to raw
+  psycopg and one stale Gemini-model assertion. Both are corrected locally,
+  and the exact orchestration shard passes 76 tests. A new hosted Actions run
+  remains required before resolving this debt.
 
 ### DEBT-078 — GitHub repository controls need hardening
 - **Milestone:** Milestone M0 (CI Confidence)
@@ -1084,7 +1090,7 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M0 (CI Confidence)
 - **Category:** Supply Chain | Security
 - **Priority:** High
-- **Status:** Resolved
+- **Status:** Resolved locally; hosted rescan pending
 - **Affected areas:** Python development lockfiles, frontend package override
 - **Description:** Dependabot reported `pyasn1 0.6.3` vulnerable to resource
   exhaustion and quadratic-time denial of service, and `sharp 0.34.5`
@@ -1093,6 +1099,9 @@ Deferred items are tracked but excluded from the active count.
   regenerate authoritative lockfiles, and rerun backend/frontend verification.
 - **Resolution:** Added secure dependency floors through the existing Python
   development extra and npm override, then regenerated pip, uv, and npm locks.
+  Local resolution selects `pyasn1 0.6.4` and `sharp 0.35.3`; GitHub's three
+  existing Dependabot alerts remain open until the commit is pushed and the
+  dependency graph rescans it.
 
 ### DEBT-107 — Vanilla PostgreSQL migration replay lacked Supabase roles
 - **Milestone:** Milestone M0 (CI Confidence)
