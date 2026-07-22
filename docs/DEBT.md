@@ -190,6 +190,9 @@ Deferred items are tracked but excluded from the active count.
   canonical `/login?mode=signup` and `/contribute` routes. The empty export
   orchestration compatibility module and dead PDF exporter stub are also
   removed; PDF requests still fail through the canonical controlled error.
+  `WEB_API_KEY`, its dead dependency helper/re-export, and related environment
+  guidance are removed; owner sessions and CSRF are the only admin web-auth
+  contract.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

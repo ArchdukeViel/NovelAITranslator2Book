@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import logging
 from collections import defaultdict
 from typing import Any
 
 from fastapi import Depends, HTTPException, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
-from starlette import status
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.activity.runner import BackgroundActivityRunner
@@ -33,36 +30,6 @@ from novelai.services.translation_cache import TranslationCache
 from novelai.services.usage_service import UsageService
 from novelai.services.user_library_service import UserLibraryService
 from novelai.storage.service import StorageService
-
-_bearer_scheme = HTTPBearer(auto_error=False)
-
-
-async def verify_api_key(
-    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
-) -> None:
-    """Reject requests when WEB_API_KEY is set and no valid token is provided."""
-    expected = settings.WEB_API_KEY
-    if expected is None:
-        logging.getLogger(__name__).warning("Legacy API-key auth attempted but WEB_API_KEY is unset")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Legacy API-key authentication is not configured.",
-        )
-
-    expected_value = expected.get_secret_value()
-    allowed = [value.strip() for value in expected_value.split(",") if value.strip()]
-    if not allowed:
-        logging.getLogger(__name__).warning("Legacy API-key auth attempted but WEB_API_KEY has no allowed values")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Legacy API-key authentication is not configured.",
-        )
-
-    supplied = credentials.credentials if credentials is not None else None
-    if supplied is None or supplied not in allowed:
-        logging.getLogger(__name__).warning("Failed web API auth attempt from unknown")
-        raise HTTPException(status_code=403, detail="Invalid or missing API key")
-
 
 _RATE_WINDOW = 60
 _RATE_LIMITS: dict[str, int] = {

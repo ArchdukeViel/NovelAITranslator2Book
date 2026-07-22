@@ -353,7 +353,7 @@ def test_extract_novel_code_from_novel_paths() -> None:
     assert error_handler_module._extract_novel_code_from_path("/novels/requests") is None
 
 
-def test_novelai_error_handler_uses_custom_exception_metadata(_no_api_key: None) -> None:
+def test_novelai_error_handler_uses_custom_exception_metadata(_session_auth_defaults: None) -> None:
     class CustomNovelAIError(NovelAIError):
         status_code = 409
         code = "CUSTOM_CONFLICT"
@@ -380,7 +380,7 @@ def test_novelai_error_handler_uses_custom_exception_metadata(_no_api_key: None)
     assert payload["details"]["path"] == str(Path("novels") / "n1")
 
 
-def test_storage_error_handler_uses_file_not_found_cause(_no_api_key: None) -> None:
+def test_storage_error_handler_uses_file_not_found_cause(_session_auth_defaults: None) -> None:
     bootstrap()
     app = create_app()
 
@@ -397,7 +397,7 @@ def test_storage_error_handler_uses_file_not_found_cause(_no_api_key: None) -> N
     assert payload["category"] == "storage"
 
 
-def test_provider_error_handler_returns_structured_public_envelope(_no_api_key: None) -> None:
+def test_provider_error_handler_returns_structured_public_envelope(_session_auth_defaults: None) -> None:
     bootstrap()
     app = create_app()
 
@@ -434,7 +434,7 @@ def test_provider_error_handler_returns_structured_public_envelope(_no_api_key: 
     assert "secret provider internals" not in json.dumps(payload)
 
 
-def test_provider_error_handler_maps_rate_limit_retry_after(_no_api_key: None) -> None:
+def test_provider_error_handler_maps_rate_limit_retry_after(_session_auth_defaults: None) -> None:
     bootstrap()
     app = create_app()
 
@@ -461,7 +461,7 @@ def test_provider_error_handler_maps_rate_limit_retry_after(_no_api_key: None) -
     assert payload["details"]["retry_after_seconds"] == 9
 
 
-def test_provider_error_handler_maps_unknown_provider_error(_no_api_key: None) -> None:
+def test_provider_error_handler_maps_unknown_provider_error(_session_auth_defaults: None) -> None:
     bootstrap()
     app = create_app()
 
@@ -482,7 +482,7 @@ def test_provider_error_handler_maps_unknown_provider_error(_no_api_key: None) -
 
 
 def test_unhandled_runtime_error_message_respects_debug_errors(
-    _no_api_key: None,
+    _session_auth_defaults: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bootstrap()
@@ -513,7 +513,7 @@ def test_unhandled_runtime_error_message_respects_debug_errors(
 
 
 def test_unhandled_generic_exception_hides_message_in_production(
-    _no_api_key: None,
+    _session_auth_defaults: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bootstrap()
@@ -537,7 +537,7 @@ def test_unhandled_generic_exception_hides_message_in_production(
 
 
 def test_unhandled_value_error_keeps_validation_message_in_production(
-    _no_api_key: None,
+    _session_auth_defaults: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bootstrap()
@@ -561,7 +561,7 @@ def test_unhandled_value_error_keeps_validation_message_in_production(
 
 
 def test_unhandled_job_and_request_runtime_errors_use_failed_dependency(
-    _no_api_key: None,
+    _session_auth_defaults: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bootstrap()
@@ -592,7 +592,7 @@ def test_unhandled_job_and_request_runtime_errors_use_failed_dependency(
 
 
 def test_unhandled_error_details_include_novel_code_for_novel_route(
-    _no_api_key: None,
+    _session_auth_defaults: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bootstrap()
@@ -613,7 +613,7 @@ def test_unhandled_error_details_include_novel_code_for_novel_route(
     assert payload["details"]["path"] == "/novels/n0813kx/debug-runtime"
 
 
-def test_request_validation_error_returns_validation_code(_no_api_key: None) -> None:
+def test_request_validation_error_returns_validation_code(_session_auth_defaults: None) -> None:
     class DebugPayload(BaseModel):
         count: int
 
@@ -634,7 +634,7 @@ def test_request_validation_error_returns_validation_code(_no_api_key: None) -> 
     assert isinstance(payload["details"], list)
 
 
-def test_unhandled_error_payload_distinguishes_translation_preflight(_no_api_key: None) -> None:
+def test_unhandled_error_payload_distinguishes_translation_preflight(_session_auth_defaults: None) -> None:
     bootstrap()
     app = create_app()
 
@@ -652,7 +652,7 @@ def test_unhandled_error_payload_distinguishes_translation_preflight(_no_api_key
 
 
 def test_unhandled_translation_runtime_error_keeps_message_in_production(
-    _no_api_key: None,
+    _session_auth_defaults: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bootstrap()
@@ -674,7 +674,7 @@ def test_unhandled_translation_runtime_error_keeps_message_in_production(
     assert payload["detail"] == "Translation provider returned malformed output."
 
 
-def test_unhandled_error_payload_distinguishes_source_parse_error(_no_api_key: None) -> None:
+def test_unhandled_error_payload_distinguishes_source_parse_error(_session_auth_defaults: None) -> None:
     bootstrap()
     app = create_app()
 
@@ -692,7 +692,7 @@ def test_unhandled_error_payload_distinguishes_source_parse_error(_no_api_key: N
     assert resp.json()["detail"] == "Source returned invalid chapter text for https://example.test/1."
 
 
-def test_unhandled_error_payload_distinguishes_storage_permission_error(_no_api_key: None) -> None:
+def test_unhandled_error_payload_distinguishes_storage_permission_error(_session_auth_defaults: None) -> None:
     bootstrap()
     app = create_app()
 
@@ -708,7 +708,7 @@ def test_unhandled_error_payload_distinguishes_storage_permission_error(_no_api_
     assert resp.json()["category"] == "storage"
 
 
-def test_custom_novelai_error_handlers_use_domain_codes(_no_api_key: None) -> None:
+def test_custom_novelai_error_handlers_use_domain_codes(_session_auth_defaults: None) -> None:
     bootstrap()
     app = create_app()
 
@@ -889,15 +889,8 @@ def _clean_tmp():
 
 
 @pytest.fixture()
-def _no_api_key(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(settings, "WEB_API_KEY", None)
-
-
-@pytest.fixture()
-def _with_api_key(monkeypatch: pytest.MonkeyPatch):
-    from pydantic import SecretStr
-
-    monkeypatch.setattr(settings, "WEB_API_KEY", SecretStr("test-secret"))
+def _session_auth_defaults() -> None:
+    """Mark tests that exercise the canonical owner-session auth boundary."""
 
 
 @pytest.fixture()
@@ -917,14 +910,14 @@ def isolated_db_session():
 
 
 @pytest.fixture()
-def client(_no_api_key: None, isolated_db_session: Session) -> TestClient:
+def client(_session_auth_defaults: None, isolated_db_session: Session) -> TestClient:
     """Owner-authenticated client."""
     bootstrap()
     return _make_app(_fresh_storage(), db_session=isolated_db_session)
 
 
 @pytest.fixture()
-def seeded_client(_no_api_key: None, isolated_db_session: Session) -> TestClient:
+def seeded_client(_session_auth_defaults: None, isolated_db_session: Session) -> TestClient:
     """Client with a pre-seeded novel."""
     bootstrap()
     storage = _fresh_storage()
@@ -942,25 +935,28 @@ class TestAuth:
         resp = seeded_client.get("/novels/")
         assert resp.status_code == 200
 
-    def test_unauthenticated_rejects_dangerous_access_when_web_api_key_unset(self, _no_api_key: None) -> None:
+    def test_unauthenticated_rejects_dangerous_access(self, _session_auth_defaults: None) -> None:
         bootstrap()
         c = _make_app(_fresh_storage(), session_user=None)
         resp = c.get("/novels/")
         assert resp.status_code == 401
 
-    def test_non_owner_rejects_dangerous_access(self, _no_api_key: None) -> None:
+    def test_non_owner_rejects_dangerous_access(self, _session_auth_defaults: None) -> None:
         bootstrap()
         c = _make_app(_fresh_storage(), session_user=REGULAR_USER)
         resp = c.get("/novels/")
         assert resp.status_code == 403
 
-    def test_valid_legacy_api_key_does_not_grant_owner_access(self, _with_api_key: None) -> None:
+    def test_bearer_header_does_not_grant_owner_access(self, _session_auth_defaults: None) -> None:
         bootstrap()
         c = _make_app(_fresh_storage(), session_user=None)
         resp = c.get("/novels/", headers={"Authorization": "Bearer test-secret"})
         assert resp.status_code == 401
 
-    def test_bad_legacy_api_key_does_not_change_session_auth_result(self, _with_api_key: None) -> None:
+    def test_arbitrary_bearer_header_does_not_change_session_auth_result(
+        self,
+        _session_auth_defaults: None,
+    ) -> None:
         bootstrap()
         c = _make_app(_fresh_storage(), session_user=REGULAR_USER)
         resp = c.get("/novels/", headers={"Authorization": "Bearer wrong"})
@@ -1006,7 +1002,7 @@ class TestAuth:
     )
     def test_dangerous_routes_reject_guest_and_non_owner(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         method: str,
         path: str,
         json_body: dict[str, object] | None,
@@ -1027,7 +1023,7 @@ class TestAuth:
 class TestAdminCsrf:
     def test_provider_credential_mutation_requires_and_accepts_csrf(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         bootstrap()
@@ -1055,7 +1051,7 @@ class TestAdminCsrf:
         assert accepted.status_code == 200
         assert preferences.get_api_key("gemini") == "AIza-test-key"
 
-    def test_representative_admin_mutations_reject_missing_csrf(self, _no_api_key: None) -> None:
+    def test_representative_admin_mutations_reject_missing_csrf(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         _seed_novel(storage)
@@ -1106,7 +1102,7 @@ class TestAdminCsrf:
 
         assert resp.status_code == 403
 
-    def test_non_owner_with_csrf_still_cannot_mutate_admin_routes(self, _no_api_key: None) -> None:
+    def test_non_owner_with_csrf_still_cannot_mutate_admin_routes(self, _session_auth_defaults: None) -> None:
         bootstrap()
         c = _make_app(_fresh_storage(), session_user=REGULAR_USER)
         resp = c.post(
@@ -1117,9 +1113,9 @@ class TestAdminCsrf:
 
         assert resp.status_code == 403
 
-    def test_bearer_api_key_still_does_not_grant_admin_mutation_access(
+    def test_bearer_header_does_not_grant_admin_mutation_access(
         self,
-        _with_api_key: None,
+        _session_auth_defaults: None,
     ) -> None:
         bootstrap()
         c = _make_app(_fresh_storage(), session_user=None)
@@ -1131,7 +1127,7 @@ class TestAdminCsrf:
 
         assert resp.status_code == 401
 
-    def test_public_guest_route_still_works(self, _no_api_key: None, isolated_db_session: Session) -> None:
+    def test_public_guest_route_still_works(self, _session_auth_defaults: None, isolated_db_session: Session) -> None:
         bootstrap()
         storage = _fresh_storage()
         _seed_novel(storage)
@@ -1141,7 +1137,7 @@ class TestAdminCsrf:
 
         assert resp.status_code == 200
 
-    def test_user_route_still_requires_user_session(self, _no_api_key: None) -> None:
+    def test_user_route_still_requires_user_session(self, _session_auth_defaults: None) -> None:
         bootstrap()
         guest = _make_app(_fresh_storage(), session_user=None)
 
@@ -1191,7 +1187,7 @@ class TestListDetail:
 
     def test_admin_list_uses_db_rows_without_storage_scan(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -1252,7 +1248,7 @@ class TestListDetail:
 
     def test_admin_list_limit_offset_use_db_pagination(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         storage = _fresh_storage()
@@ -1268,7 +1264,7 @@ class TestListDetail:
 
     def test_admin_list_legacy_aliases_use_db_listing(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -1291,7 +1287,7 @@ class TestListDetail:
 
     def test_admin_list_does_not_duplicate_storage_rows_when_db_exists(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         storage = _fresh_storage()
@@ -1307,7 +1303,7 @@ class TestListDetail:
 
     def test_list_novels_ignores_noncanonical_syosetu_folder_without_metadata(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -1336,7 +1332,7 @@ class TestListDetail:
         resp = client.get("/novels/does-not-exist")
         assert resp.status_code in {404, 405}
 
-    def test_owner_can_inspect_source_metadata(self, _no_api_key: None) -> None:
+    def test_owner_can_inspect_source_metadata(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         storage.save_metadata(
@@ -1389,7 +1385,7 @@ class TestListDetail:
         assert "secret-key" not in encoded
         assert "Bearer secret" not in encoded
 
-    def test_owner_can_inspect_source_metadata_history(self, _no_api_key: None) -> None:
+    def test_owner_can_inspect_source_metadata_history(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         storage.save_metadata(
@@ -1433,7 +1429,7 @@ class TestListDetail:
         assert "secret-key" not in encoded
         assert "Bearer secret" not in encoded
 
-    def test_source_metadata_history_limit_bounds_entries(self, _no_api_key: None) -> None:
+    def test_source_metadata_history_limit_bounds_entries(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         storage.save_metadata("history-limit", {"title": "Version 0"})
@@ -1449,7 +1445,7 @@ class TestListDetail:
         assert len(payload["entries"]) == 1
         assert payload["entries"][0]["snapshot_id"] == "current"
 
-    def test_owner_can_diff_source_metadata_backup_to_current(self, _no_api_key: None) -> None:
+    def test_owner_can_diff_source_metadata_backup_to_current(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         storage.save_metadata(
@@ -1504,7 +1500,7 @@ class TestListDetail:
         assert "api_key" not in encoded
         assert "raw_html" not in encoded
 
-    def test_owner_can_diff_current_to_backup_snapshot(self, _no_api_key: None) -> None:
+    def test_owner_can_diff_current_to_backup_snapshot(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         storage.save_metadata("diff-reverse", {"title": "Version 0", "legacy_key": "backup-only"})
@@ -1531,7 +1527,7 @@ class TestListDetail:
         assert changed["title"]["before"] == "Version 1"
         assert changed["title"]["after"] == "Version 0"
 
-    def test_source_metadata_diff_caps_changed_entries_and_truncates_values(self, _no_api_key: None) -> None:
+    def test_source_metadata_diff_caps_changed_entries_and_truncates_values(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         original = {f"field_{index:02d}": f"old-{index}" for index in range(55)}
@@ -1558,7 +1554,7 @@ class TestListDetail:
         assert "a" * 1200 not in encoded
         assert "b" * 1200 not in encoded
 
-    def test_source_metadata_diff_missing_snapshot_returns_404(self, _no_api_key: None) -> None:
+    def test_source_metadata_diff_missing_snapshot_returns_404(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         _seed_novel(storage, "diff-missing")
@@ -1571,7 +1567,7 @@ class TestListDetail:
 
         assert resp.status_code == 404
 
-    def test_source_metadata_diff_rejects_path_traversal(self, _no_api_key: None) -> None:
+    def test_source_metadata_diff_rejects_path_traversal(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         _seed_novel(storage, "diff-traversal")
@@ -1584,7 +1580,7 @@ class TestListDetail:
 
         assert resp.status_code == 400
 
-    def test_non_owner_cannot_diff_source_metadata_snapshots(self, _no_api_key: None) -> None:
+    def test_non_owner_cannot_diff_source_metadata_snapshots(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         _seed_novel(storage)
@@ -1603,7 +1599,7 @@ class TestListDetail:
         assert guest_resp.status_code == 401
         assert user_resp.status_code == 403
 
-    def test_source_metadata_diff_get_does_not_require_csrf(self, _no_api_key: None) -> None:
+    def test_source_metadata_diff_get_does_not_require_csrf(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         _seed_novel(storage)
@@ -1618,7 +1614,7 @@ class TestListDetail:
 
     def test_public_routes_do_not_expose_source_metadata_diff(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -1633,7 +1629,7 @@ class TestListDetail:
 
         assert resp.status_code == 404
 
-    def test_owner_can_inspect_current_source_metadata_snapshot_detail(self, _no_api_key: None) -> None:
+    def test_owner_can_inspect_current_source_metadata_snapshot_detail(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         huge_text = "x" * 1500
@@ -1680,7 +1676,7 @@ class TestListDetail:
         assert "Bearer secret" not in encoded
         assert "<html>" not in encoded
 
-    def test_owner_can_inspect_backup_source_metadata_snapshot_detail(self, _no_api_key: None) -> None:
+    def test_owner_can_inspect_backup_source_metadata_snapshot_detail(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         storage.save_metadata(
@@ -1717,7 +1713,7 @@ class TestListDetail:
         assert "<html>" not in encoded
         assert "cookie-secret" not in encoded
 
-    def test_source_metadata_snapshot_detail_missing_snapshot_returns_404(self, _no_api_key: None) -> None:
+    def test_source_metadata_snapshot_detail_missing_snapshot_returns_404(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         _seed_novel(storage, "snapshot-missing")
@@ -1727,7 +1723,7 @@ class TestListDetail:
 
         assert resp.status_code == 404
 
-    def test_source_metadata_snapshot_detail_rejects_path_traversal(self, _no_api_key: None) -> None:
+    def test_source_metadata_snapshot_detail_rejects_path_traversal(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         _seed_novel(storage, "snapshot-traversal")
@@ -1737,7 +1733,7 @@ class TestListDetail:
 
         assert resp.status_code == 400
 
-    def test_non_owner_cannot_inspect_source_metadata_snapshot_detail(self, _no_api_key: None) -> None:
+    def test_non_owner_cannot_inspect_source_metadata_snapshot_detail(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         _seed_novel(storage)
@@ -1750,7 +1746,7 @@ class TestListDetail:
         assert guest_resp.status_code == 401
         assert user_resp.status_code == 403
 
-    def test_source_metadata_snapshot_detail_get_does_not_require_csrf(self, _no_api_key: None) -> None:
+    def test_source_metadata_snapshot_detail_get_does_not_require_csrf(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         _seed_novel(storage)
@@ -1762,7 +1758,7 @@ class TestListDetail:
 
     def test_public_routes_do_not_expose_source_metadata_snapshot_detail(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -1774,7 +1770,7 @@ class TestListDetail:
 
         assert resp.status_code == 404
 
-    def test_non_owner_cannot_inspect_source_metadata_history(self, _no_api_key: None) -> None:
+    def test_non_owner_cannot_inspect_source_metadata_history(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         _seed_novel(storage)
@@ -1787,7 +1783,7 @@ class TestListDetail:
         assert guest_resp.status_code == 401
         assert user_resp.status_code == 403
 
-    def test_source_metadata_history_get_does_not_require_csrf(self, _no_api_key: None) -> None:
+    def test_source_metadata_history_get_does_not_require_csrf(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         _seed_novel(storage)
@@ -1797,7 +1793,7 @@ class TestListDetail:
 
         assert resp.status_code == 200
 
-    def test_source_metadata_history_missing_novel_returns_404(self, _no_api_key: None) -> None:
+    def test_source_metadata_history_missing_novel_returns_404(self, _session_auth_defaults: None) -> None:
         bootstrap()
         c = _make_app(_fresh_storage())
 
@@ -1807,7 +1803,7 @@ class TestListDetail:
 
     def test_public_routes_do_not_expose_source_metadata_history(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -1819,7 +1815,7 @@ class TestListDetail:
 
         assert resp.status_code == 404
 
-    def test_non_owner_cannot_inspect_source_metadata(self, _no_api_key: None) -> None:
+    def test_non_owner_cannot_inspect_source_metadata(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         _seed_novel(storage)
@@ -1837,7 +1833,7 @@ class TestListDetail:
 
         assert resp.status_code in {404, 405}
 
-    def test_source_metadata_inspection_rejects_noncanonical_folder(self, _no_api_key: None) -> None:
+    def test_source_metadata_inspection_rejects_noncanonical_folder(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         chapter_dir = storage.novels_dir / "0813kx" / "chapters"
@@ -1854,7 +1850,7 @@ class TestListDetail:
         assert resp.status_code == 404
         assert payload["detail"] == "Novel not found"
 
-    def test_source_metadata_inspection_unknown_status_warns(self, _no_api_key: None) -> None:
+    def test_source_metadata_inspection_unknown_status_warns(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         storage.save_metadata(
@@ -1879,7 +1875,7 @@ class TestListDetail:
 
     def test_public_routes_do_not_expose_source_metadata_inspection(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -1893,7 +1889,7 @@ class TestListDetail:
 
     def test_refresh_catalog_projection_endpoint_repairs_stale_db_fields(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -1948,7 +1944,7 @@ class TestListDetail:
 
     def test_refresh_catalog_projection_endpoint_creates_db_row_from_storage_metadata(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -1978,7 +1974,7 @@ class TestListDetail:
 
     def test_refresh_catalog_projection_endpoint_missing_novel_returns_404(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -1993,7 +1989,7 @@ class TestListDetail:
 
     def test_bulk_refresh_catalog_projections_dry_run_reports_without_commit(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2034,7 +2030,7 @@ class TestListDetail:
 
     def test_bulk_refresh_catalog_projections_apply_updates_and_creates(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2082,7 +2078,7 @@ class TestListDetail:
 
     def test_bulk_refresh_catalog_projections_requires_owner_and_csrf(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2109,7 +2105,7 @@ class TestListDetail:
 
     def test_bulk_refresh_catalog_projections_static_route_not_swallowed(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2125,7 +2121,7 @@ class TestListDetail:
 
     def test_bulk_refresh_catalog_projections_public_route_not_exposed(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2140,7 +2136,7 @@ class TestListDetail:
 
     def test_bulk_refresh_catalog_projections_limit_offset(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2162,7 +2158,7 @@ class TestListDetail:
 
     def test_public_routes_do_not_expose_catalog_projection_repair(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2181,7 +2177,7 @@ class TestListDetail:
 class TestAdminNovelPublish:
     def test_publish_requires_owner_and_csrf(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2209,7 +2205,7 @@ class TestAdminNovelPublish:
 
     def test_publish_fails_without_translated_chapter(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2227,7 +2223,7 @@ class TestAdminNovelPublish:
 
     def test_publish_refreshes_projection_and_exposes_safe_summary(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2281,7 +2277,7 @@ class TestAdminNovelPublish:
 
     def test_unpublish_removes_novel_from_default_public_catalog(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2304,7 +2300,7 @@ class TestAdminNovelPublish:
 
     def test_published_adult_novel_stays_hidden_by_default(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2340,7 +2336,7 @@ class TestAdminNovelPublish:
 
     def test_public_route_does_not_expose_publish_operation(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2550,7 +2546,7 @@ class TestSources:
 
 
 class TestAdmin:
-    def test_admin_dashboard_html(self, _no_api_key: None) -> None:
+    def test_admin_dashboard_html(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         runner = StubRunner()
@@ -2562,7 +2558,7 @@ class TestAdmin:
         assert "Novel AI Admin" in resp.text
         assert "worker-status" in resp.text
 
-    def test_admin_worker_controls(self, _no_api_key: None) -> None:
+    def test_admin_worker_controls(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         runner = StubRunner()
@@ -2592,7 +2588,7 @@ class TestAdmin:
 
     def test_admin_provider_api_key_updates_runtime_and_global_provider(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         bootstrap()
@@ -2646,7 +2642,7 @@ class TestAdmin:
 
     def test_admin_provider_api_key_validate_checks_temporary_key_without_storing(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         bootstrap()
@@ -2680,7 +2676,7 @@ class TestAdmin:
 
     def test_admin_provider_api_rejects_openai(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         bootstrap()
@@ -2694,7 +2690,7 @@ class TestAdmin:
 
     def test_provider_management_requires_owner_and_returns_safe_metadata(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2742,7 +2738,7 @@ class TestAdmin:
 
     def test_provider_management_model_registry_keeps_provider_ids_separate(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2774,7 +2770,7 @@ class TestAdmin:
 
     def test_provider_management_requires_encryption_key_for_storage(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2797,7 +2793,7 @@ class TestAdmin:
 
     def test_provider_management_fallback_policy_order_and_safe_defaults(
         self,
-        _no_api_key: None,
+        _session_auth_defaults: None,
         isolated_db_session: Session,
     ) -> None:
         bootstrap()
@@ -2848,7 +2844,7 @@ class TestAdmin:
             ("gemini", "gemma-4-31b-it"),
         ]
 
-    def test_admin_runtime_state_can_list_refresh_and_clear(self, _no_api_key: None) -> None:
+    def test_admin_runtime_state_can_list_refresh_and_clear(self, _session_auth_defaults: None) -> None:
         bootstrap()
         data_dir = _TMP / "runtime_state"
         shutil.rmtree(data_dir, ignore_errors=True)
@@ -2903,7 +2899,7 @@ class TestAdmin:
 
 
 class TestActivity:
-    def test_create_and_list_crawl_activity(self, _no_api_key: None) -> None:
+    def test_create_and_list_crawl_activity(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -2942,7 +2938,7 @@ class TestActivity:
         removed_route_resp = c.get("/novels/jobs", params={"job_type": "crawl", "status": "pending"})
         assert removed_route_resp.status_code == 404
 
-    def test_create_update_and_get_translation_activity(self, _no_api_key: None) -> None:
+    def test_create_update_and_get_translation_activity(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -2980,7 +2976,7 @@ class TestActivity:
         assert get_resp.status_code == 200
         assert get_resp.json()["metadata"]["worker"] == "local"
 
-    def test_activity_progress_fields_are_exposed_for_frontend(self, _no_api_key: None) -> None:
+    def test_activity_progress_fields_are_exposed_for_frontend(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3034,7 +3030,7 @@ class TestActivity:
         assert list_resp.json()["activity"][0]["current_stage"] == "TranslateStage"
         assert list_resp.json()["jobs"][0]["job_id"] == created["id"]
 
-    def test_activity_routes_preserve_canonical_provider_fields(self, _no_api_key: None) -> None:
+    def test_activity_routes_preserve_canonical_provider_fields(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3064,7 +3060,7 @@ class TestActivity:
         assert detail_payload["provider_key"] == "gemini"
         assert detail_payload["provider_model"] == "gemini-2.5-flash-lite"
 
-    def test_activity_root_metadata_progress_fields_and_default_arrays_are_normalized(self, _no_api_key: None) -> None:
+    def test_activity_root_metadata_progress_fields_and_default_arrays_are_normalized(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3100,7 +3096,7 @@ class TestActivity:
         assert payload["warnings"] == []
         assert payload["model_states"] == []
 
-    def test_delete_activity(self, _no_api_key: None) -> None:
+    def test_delete_activity(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3114,7 +3110,7 @@ class TestActivity:
         assert jobs.get_activity(str(created["id"])) is None
         assert c.delete("/novels/activity/missing", headers=headers).status_code == 404
 
-    def test_invalid_activity_kind_returns_400(self, _no_api_key: None) -> None:
+    def test_invalid_activity_kind_returns_400(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3127,7 +3123,7 @@ class TestActivity:
         )
         assert resp.status_code == 400
 
-    def test_run_next_activity_executes_pending_activity(self, _no_api_key: None) -> None:
+    def test_run_next_activity_executes_pending_activity(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3152,7 +3148,7 @@ class TestActivity:
         assert list_health_resp.status_code == 200
         assert list_health_resp.json()["sources"][0]["source_key"] == "syosetu_ncode"
 
-    def test_run_activity_not_found(self, _no_api_key: None) -> None:
+    def test_run_activity_not_found(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3163,7 +3159,7 @@ class TestActivity:
 
         assert resp.status_code == 404
 
-    def test_run_activity_returns_completed_stored_record(self, _no_api_key: None) -> None:
+    def test_run_activity_returns_completed_stored_record(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3187,7 +3183,7 @@ class TestActivity:
         assert payload["finished_at"] == stored["finished_at"]
         assert payload["metadata"] == stored["metadata"]
 
-    def test_run_activity_rejects_failed_activity_use_retry(self, _no_api_key: None) -> None:
+    def test_run_activity_rejects_failed_activity_use_retry(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3201,7 +3197,7 @@ class TestActivity:
         assert resp.status_code == 400
         assert "cannot be run from status: failed" in resp.text
 
-    def test_retry_failed_activity_resets_to_pending(self, _no_api_key: None) -> None:
+    def test_retry_failed_activity_resets_to_pending(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3224,7 +3220,7 @@ class TestActivity:
         assert payload["metadata"]["retry_history"][0]["error"] == "source timeout"
 
     @pytest.mark.parametrize("status", ["pending", "running", "completed"])
-    def test_retry_rejects_non_retryable_statuses(self, _no_api_key: None, status: str) -> None:
+    def test_retry_rejects_non_retryable_statuses(self, _session_auth_defaults: None, status: str) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3239,7 +3235,7 @@ class TestActivity:
         assert resp.status_code == 400
         assert f"cannot be retried from status: {status}" in resp.text
 
-    def test_retry_missing_activity_returns_404(self, _no_api_key: None) -> None:
+    def test_retry_missing_activity_returns_404(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3250,7 +3246,7 @@ class TestActivity:
 
         assert resp.status_code == 404
 
-    def test_retry_requires_owner_and_csrf(self, _no_api_key: None) -> None:
+    def test_retry_requires_owner_and_csrf(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3269,7 +3265,7 @@ class TestActivity:
         assert legacy_alias.status_code == 200
         assert legacy_alias.json()["status"] == "pending"
 
-    def test_manual_status_patch_rejects_running_transition(self, _no_api_key: None) -> None:
+    def test_manual_status_patch_rejects_running_transition(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3306,7 +3302,7 @@ def _assert_source_candidate_url_mirror(payload: dict[str, object]) -> str | Non
 
 
 class TestNovelRequests:
-    def test_list_db_backed_request(self, _no_api_key: None, isolated_db_session: Session) -> None:
+    def test_list_db_backed_request(self, _session_auth_defaults: None, isolated_db_session: Session) -> None:
         bootstrap()
         storage = _fresh_storage()
         req = NovelRequest(
@@ -3330,7 +3326,7 @@ class TestNovelRequests:
         assert canonical_list_resp.status_code == 200
         assert canonical_list_resp.json()["requests"][0]["id"] == str(req.id)
 
-    def test_update_db_backed_request_status(self, _no_api_key: None, isolated_db_session: Session) -> None:
+    def test_update_db_backed_request_status(self, _session_auth_defaults: None, isolated_db_session: Session) -> None:
         bootstrap()
         storage = _fresh_storage()
         req = NovelRequest(user_id=2, request_type="novel", source_url="https://example.com/novel", status="pending")
@@ -3355,7 +3351,7 @@ class TestNovelRequests:
         assert get_payload["status"] == "approved"
         assert get_payload["request_id"] == str(req.id)
 
-    def test_invalid_request_status_returns_400(self, _no_api_key: None, isolated_db_session: Session) -> None:
+    def test_invalid_request_status_returns_400(self, _session_auth_defaults: None, isolated_db_session: Session) -> None:
         bootstrap()
         storage = _fresh_storage()
         req = NovelRequest(user_id=2, request_type="novel", source_url="https://example.com/novel", status="pending")
@@ -3367,7 +3363,7 @@ class TestNovelRequests:
 
         assert resp.status_code == 400
 
-    def test_legacy_request_actions_return_gone(self, _no_api_key: None, isolated_db_session: Session) -> None:
+    def test_legacy_request_actions_return_gone(self, _session_auth_defaults: None, isolated_db_session: Session) -> None:
         bootstrap()
         c = _make_app(_fresh_storage(), db_session=isolated_db_session)
 
@@ -3390,7 +3386,7 @@ class TestNovelRequests:
 
 
 class TestRateLimit:
-    def test_preliminary_crawl_scrapes_metadata_only(self, _no_api_key: None) -> None:
+    def test_preliminary_crawl_scrapes_metadata_only(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3432,7 +3428,7 @@ class TestRateLimit:
             )
         ]
 
-    def test_preliminary_crawl_detects_novel18_url(self, _no_api_key: None) -> None:
+    def test_preliminary_crawl_detects_novel18_url(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3457,7 +3453,7 @@ class TestRateLimit:
             },
         )
 
-    def test_preliminary_crawl_prefers_novel18_for_bare_ncode_id(self, _no_api_key: None) -> None:
+    def test_preliminary_crawl_prefers_novel18_for_bare_ncode_id(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3475,7 +3471,7 @@ class TestRateLimit:
         assert resp.json()["chapters"] == 2
         assert [call[1][0] for call in orchestrator.calls] == ["novel18_syosetu"]
 
-    def test_preliminary_crawl_falls_back_to_syosetu_when_novel18_empty(self, _no_api_key: None) -> None:
+    def test_preliminary_crawl_falls_back_to_syosetu_when_novel18_empty(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3493,7 +3489,7 @@ class TestRateLimit:
         assert resp.json()["chapters"] == 1
         assert [call[1][0] for call in orchestrator.calls] == ["novel18_syosetu", "syosetu_ncode"]
 
-    def test_preliminary_crawl_falls_back_to_syosetu_when_novel18_url_empty(self, _no_api_key: None) -> None:
+    def test_preliminary_crawl_falls_back_to_syosetu_when_novel18_url_empty(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3510,7 +3506,7 @@ class TestRateLimit:
         assert resp.json()["source_key"] == "syosetu_ncode"
         assert [call[1][0] for call in orchestrator.calls] == ["novel18_syosetu", "syosetu_ncode"]
 
-    def test_preliminary_crawl_reports_attempt_errors_without_500(self, _no_api_key: None) -> None:
+    def test_preliminary_crawl_reports_attempt_errors_without_500(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3536,7 +3532,7 @@ class TestRateLimit:
         assert logged_activity[0]["metadata"]["preliminary_crawl"] is True
         assert logged_activity[0]["metadata"]["attempted_sources"] == ["novel18_syosetu", "syosetu_ncode"]
 
-    def test_preliminary_crawl_reports_partial_timeout_code(self, _no_api_key: None) -> None:
+    def test_preliminary_crawl_reports_partial_timeout_code(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3558,7 +3554,7 @@ class TestRateLimit:
         assert logged_activity[0]["metadata"]["failure_category"] == "crawler"
         assert "fallback source" in logged_activity[0]["metadata"]["failure_explanation"]
 
-    def test_scrape_rate_limit(self, _no_api_key: None) -> None:
+    def test_scrape_rate_limit(self, _session_auth_defaults: None) -> None:
         """Scrape endpoint should reject after exceeding rate limit."""
         bootstrap()
         storage = _fresh_storage()

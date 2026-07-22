@@ -24,7 +24,6 @@ from novelai.api.routers.dependencies import (
     get_storage,
     get_translation_cache,
     get_usage,
-    verify_api_key,
 )
 
 router = APIRouter()
@@ -51,5 +50,4 @@ __all__ = [
     "get_translation_cache",
     "get_usage",
     "router",
-    "verify_api_key",
 ]

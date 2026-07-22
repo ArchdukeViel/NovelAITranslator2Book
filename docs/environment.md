@@ -186,7 +186,6 @@ Set `DATABASE_RESTORE_VERIFICATION_ENABLED=true` only with a dedicated clean dat
 |----------|------|---------|----------|---------|-------------|---------|
 | `WEB_HOST` | `str` | `127.0.0.1` | No | can leave default | Bind address. Use `0.0.0.0` in Docker. | `0.0.0.0` |
 | `WEB_PORT` | `int` | `8000` | No | can leave default | Bind port. | `8000` |
-| `WEB_API_KEY` | `SecretStr` | `None` | No | **recommended** in prod | Bearer token for admin API. | `a-long-random-token` |
 | `WEB_CORS_ORIGINS` | `list[str]` | `[]` | No | **must change** with custom domain | CORS origins JSON array. Empty = same-origin (behind reverse proxy). | `["https://example.com"]` |
 | `WEB_REQUEST_TIMEOUT_SECONDS` | `int` | `600` | No | can leave default | HTTP request timeout. | `120` |
 | `WEB_RATE_LIMITER_BACKEND` | `str` | `memory` | No | **must change** for multi-instance | Rate limiter backend: `memory` (single-instance) or `redis` (multi-instance). | `redis` |
@@ -382,7 +381,6 @@ REDIS_URL: redis://redis:6379/0
 SESSION_SECRET_KEY: <strong-random-secret>
 OWNER_BOOTSTRAP_SECRET: <strong-random-secret>
 PUBLIC_FRONTEND_URL: https://yourdomain.com
-WEB_API_KEY: <long-random-admin-token>
 ```
 
 **Use case:** Production deployment with Caddy reverse proxy, Supabase/managed Postgres, Redis rate limiter.
@@ -401,7 +399,6 @@ All of these are **SecretStr** or sensitive strings. Their actual values must ne
 | `OWNER_BOOTSTRAP_SECRET` | Grants initial owner access before OAuth | `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
 | `PROVIDER_GEMINI_API_KEY` | Provider API key; compromise allows unauthorized API usage | Get from Google AI Studio |
 | `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` | Encrypts stored provider credentials; loss requires re-encryption | `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
-| `WEB_API_KEY` | Bearer token for admin API | `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | OAuth client secret; compromise allows token forgery | Get from Google Cloud Console |
 | `SMTP_PASSWORD` | Email password; compromise allows unauthorized email sending | Use app-specific password |
 | `DATABASE_URL` | Contains database password in the connection string | Set via Supabase dashboard or your DB provider |

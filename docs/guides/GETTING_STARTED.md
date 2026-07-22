@@ -131,11 +131,8 @@ GOOGLE_OAUTH_REDIRECT_URI=http://127.0.0.1:8000/api/auth/google/callback
 PUBLIC_FRONTEND_URL=http://127.0.0.1:3000
 ```
 
-Admin API protection is controlled by `WEB_API_KEY`.
-
-- Leave it unset for local development without bearer auth.
-- Set it in production.
-- If set, add the same token in `/admin/settings`.
+Admin API protection uses the owner session and CSRF controls. A bearer API key
+does not grant admin access.
 
 Provider API keys are runtime secrets. They should come from `.env` or the process environment, not committed files.
 
@@ -256,7 +253,6 @@ Set at least:
 PUBLIC_HTTP_PORT=8080
 PROVIDER_DEFAULT=gemini
 PROVIDER_GEMINI_API_KEY=your_gemini_key_here
-WEB_API_KEY=replace_with_a_long_random_admin_token
 NOVEL_LIBRARY_DIR=storage/novel_library
 ```
 
@@ -271,8 +267,6 @@ Open:
 ```text
 http://127.0.0.1:8080/admin
 ```
-
-If `WEB_API_KEY` is set, add it in `/admin/settings` so browser requests include the bearer token.
 
 ## 11. Verification Commands
 
@@ -332,11 +326,7 @@ npm run dev
 
 Then hard-refresh the browser. If the dev server was started before dependencies were installed, restart it.
 
-API calls return `401`:
-
-- `WEB_API_KEY` is set on the backend.
-- Add the same value in `/admin/settings`.
-- For local no-auth development, unset `WEB_API_KEY` and restart the backend.
+Admin API calls return `401` when there is no authenticated owner session.
 
 No real translation output:
 
@@ -362,7 +352,6 @@ See `.env.example` for full reference.
 | `DATABASE_URL` | Yes | `postgresql+psycopg://user:***@host:5432/dbname` |
 | `REDIS_URL` | Yes | `redis://host:6379/0` |
 | `PROVIDER_GEMINI_API_KEY` | If using Gemini | Translation provider key |
-| `WEB_API_KEY` | Recommended | Bearer token for admin API |
 
 ### Google OAuth Setup
 

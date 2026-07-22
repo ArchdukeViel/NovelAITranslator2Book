@@ -103,7 +103,6 @@ class AppSettings(BaseSettings):
     # --- Web
     WEB_HOST: str = "127.0.0.1"
     WEB_PORT: int = 8000
-    WEB_API_KEY: SecretStr | None = None
     WEB_CORS_ORIGINS: Annotated[list[str], NoDecode] = Field(default_factory=list)
     WEB_REQUEST_TIMEOUT_SECONDS: int = 600
     WEB_RATE_LIMITER_BACKEND: str = "memory"

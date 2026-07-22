@@ -272,7 +272,7 @@ library adapters.
 |---|---|
 | Admin namespace | `/api/admin/*` is canonical for implemented owner/admin behavior. Legacy `/api/novels/*` compatibility routes may remain temporarily. |
 | Dangerous admin routes | Protected by owner-session authorization through `require_role("owner")`. |
-| Legacy API-key auth | Fail-closed; do not rely on it for dangerous routes. |
+| Admin authentication | Owner session plus CSRF protection; bearer API keys do not grant admin access. |
 | Public reader | `frontend/lib/public-api.ts` calls `/api/public/*` catalog, novel, chapter list, and chapter endpoints. |
 | Public auth | Google OAuth and email/password public auth implemented: `GET /api/auth/google/start`, `GET /api/auth/google/callback`, `POST /api/auth/register`, and `POST /api/auth/password/login` create or resume `role="user"` sessions only. `POST /api/auth/login` remains admin-only owner bootstrap login. CSRF enforcement and rate limits protect auth mutations. |
 | Public user data | Backend `/api/user/*` routes exist and public frontend API methods/hooks are re-exported for library, progress, history, reviews, and requests. |
