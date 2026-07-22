@@ -23,8 +23,8 @@ def normalize_workflow_profile_step(step: str) -> str:
 def default_workflow_profiles() -> dict[str, dict[str, str | None]]:
     return {
         step: {
-            "provider": None,
-            "model": None,
+            "provider_key": None,
+            "provider_model": None,
         }
         for step in WORKFLOW_PROFILE_STEPS
     }
@@ -77,11 +77,20 @@ def normalize_workflow_profiles(value: Any) -> dict[str, Any]:
             raw_profile = merged_value.get(step)
             if not isinstance(raw_profile, dict):
                 continue
-            provider = raw_profile.get("provider")
-            model = raw_profile.get("model")
+            unsupported_keys = set(raw_profile) - {"provider_key", "provider_model"}
+            if unsupported_keys:
+                raise ValueError(
+                    f"Unsupported workflow profile fields for {step}: {', '.join(sorted(unsupported_keys))}"
+                )
+            provider_key = raw_profile.get("provider_key")
+            provider_model = raw_profile.get("provider_model")
             profiles[step] = {
-                "provider": provider.strip() if isinstance(provider, str) and provider.strip() else None,
-                "model": model.strip() if isinstance(model, str) and model.strip() else None,
+                "provider_key": provider_key.strip()
+                if isinstance(provider_key, str) and provider_key.strip()
+                else None,
+                "provider_model": provider_model.strip()
+                if isinstance(provider_model, str) and provider_model.strip()
+                else None,
             }
 
     return {

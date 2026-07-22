@@ -89,18 +89,54 @@ class TestPreferencesService:
         with pytest.raises(ValueError, match="Unsupported workflow profile step"):
             svc.set_llm_step_config(
                 "term_translation",
-                provider="gemini",
-                model="gemini-3.1-flash-lite",
+                provider_key="gemini",
+                provider_model="gemini-3.1-flash-lite",
             )
 
     def test_llm_step_config_persists_current_configuration(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)
-        svc.set_llm_step_config("glossary_translation", provider="gemini", model="gemini-3.1-flash-lite")
+        svc.set_llm_step_config(
+            "glossary_translation",
+            provider_key="gemini",
+            provider_model="gemini-3.1-flash-lite",
+        )
 
         reloaded = PreferencesService(storage_dir=prefs_dir)
         step_config = reloaded.get_llm_step_config("glossary_translation")
-        assert step_config["provider"] == "gemini"
-        assert step_config["model"] == "gemini-3.1-flash-lite"
+        assert step_config["provider_key"] == "gemini"
+        assert step_config["provider_model"] == "gemini-3.1-flash-lite"
+
+    def test_llm_step_config_rejects_legacy_provider_fields(self, prefs_dir: Path) -> None:
+        svc = PreferencesService(storage_dir=prefs_dir)
+
+        with pytest.raises(ValueError, match="Unsupported workflow step fields"):
+            svc.set_llm_step_config(
+                "body_translation",
+                provider="gemini",
+                model="legacy",
+            )
+
+    def test_llm_endpoint_profile_uses_canonical_provider_fields(self, prefs_dir: Path) -> None:
+        svc = PreferencesService(storage_dir=prefs_dir)
+        svc.set_llm_endpoint_profile(
+            "translation",
+            provider_key="gemini",
+            provider_model="gemini-3.1-flash-lite",
+        )
+
+        profile = svc.get_llm_endpoint_profiles()["translation"]
+        assert profile["provider_key"] == "gemini"
+        assert profile["provider_model"] == "gemini-3.1-flash-lite"
+
+    def test_llm_endpoint_profile_rejects_legacy_provider_fields(self, prefs_dir: Path) -> None:
+        svc = PreferencesService(storage_dir=prefs_dir)
+
+        with pytest.raises(ValueError, match="Unsupported endpoint profile fields"):
+            svc.set_llm_endpoint_profile(
+                "translation",
+                provider="gemini",
+                model="legacy",
+            )
 
     def test_provider_specific_runtime_api_key_methods(self, prefs_dir: Path) -> None:
         svc = PreferencesService(storage_dir=prefs_dir)

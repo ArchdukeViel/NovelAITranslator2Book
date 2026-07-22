@@ -223,7 +223,11 @@ class AdminService:
         self.preferences.set_preferred_provider(provider)
         self.preferences.set_preferred_model(model)
         for step in WORKFLOW_PROFILE_STEPS:
-            self.preferences.set_llm_step_config(step, provider=provider, model=model)
+            self.preferences.set_llm_step_config(
+                step,
+                provider_key=provider,
+                provider_model=model,
+            )
 
     def set_provider_api_key(
         self,

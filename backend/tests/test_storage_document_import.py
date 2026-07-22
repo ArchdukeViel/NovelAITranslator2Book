@@ -46,6 +46,26 @@ def test_metadata_defaults_include_translation_profiles(storage: StorageService)
         "ocr",
         "polish",
     }
+    assert loaded["translation_profiles"]["body_translation"] == {
+        "provider_key": None,
+        "provider_model": None,
+    }
+
+
+def test_metadata_rejects_legacy_translation_profile_fields(storage: StorageService) -> None:
+    with pytest.raises(ValueError, match="Unsupported workflow profile fields"):
+        storage.save_metadata(
+            "novel1",
+            {
+                "title": "Imported",
+                "translation_profiles": {
+                    "body_translation": {
+                        "provider": "gemini",
+                        "model": "legacy",
+                    }
+                },
+            },
+        )
 
 
 def test_save_and_load_chapter_round_trips_document_unit_fields(storage: StorageService) -> None:

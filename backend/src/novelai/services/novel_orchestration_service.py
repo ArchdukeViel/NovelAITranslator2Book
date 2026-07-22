@@ -89,9 +89,11 @@ class NovelOrchestrationService:
 
         if input_adapter_factory is None:
             from novelai.inputs.registry import get_input_adapter
+
             input_adapter_factory = get_input_adapter
         if provider_factory is None:
             from novelai.providers.registry import get_provider
+
             provider_factory = get_provider
 
         self.storage = storage
@@ -102,7 +104,6 @@ class NovelOrchestrationService:
         self._settings = settings_service or PreferencesService()
         self._cache = translation_cache or TranslationCache()
         self._usage = usage_service or UsageService()
-
 
     @staticmethod
     def _infer_source_language(source_key: str, metadata: dict[str, Any] | None = None) -> str | None:
@@ -120,7 +121,6 @@ class NovelOrchestrationService:
         }
         return language_map.get(source_key)
 
-
     @staticmethod
     def _infer_source_language_from_text(text: str) -> str | None:
         if any("\u3040" <= char <= "\u30ff" for char in text):
@@ -131,20 +131,18 @@ class NovelOrchestrationService:
             return "English"
         return None
 
-
     def _resolve_workflow_profile(
         self,
         step: str,
         metadata: dict[str, Any] | None = None,
     ) -> tuple[str | None, str | None]:
         step_config = self._resolve_workflow_step_config(step, metadata)
-        provider = step_config.get("provider")
-        model = step_config.get("model")
+        provider_key = step_config.get("provider_key")
+        provider_model = step_config.get("provider_model")
         return (
-            provider if isinstance(provider, str) and provider.strip() else None,
-            model if isinstance(model, str) and model.strip() else None,
+            provider_key if isinstance(provider_key, str) and provider_key.strip() else None,
+            provider_model if isinstance(provider_model, str) and provider_model.strip() else None,
         )
-
 
     def _resolve_workflow_step_config(
         self,
@@ -159,6 +157,11 @@ class NovelOrchestrationService:
             if isinstance(raw_overrides, dict):
                 override_payload = raw_overrides.get(normalized_step)
                 if isinstance(override_payload, dict):
+                    unsupported_fields = set(override_payload) - set(step_config)
+                    if unsupported_fields:
+                        raise ValueError(
+                            f"Unsupported translation step fields: {', '.join(sorted(unsupported_fields))}"
+                        )
                     merged = dict(step_config)
                     merged.update(override_payload)
                     if not isinstance(merged.get("kwargs"), dict):
@@ -169,11 +172,9 @@ class NovelOrchestrationService:
             step_config["kwargs"] = {}
         return step_config
 
-
     @staticmethod
     def _provider_requires_api_key(provider_key: str) -> bool:
         return provider_key in {"gemini"}
-
 
     @staticmethod
     def _phase_payload(
@@ -191,7 +192,6 @@ class NovelOrchestrationService:
         }
         payload.update(data)
         return payload
-
 
     @staticmethod
     def _score_translation_confidence(source_text: str, translated_text: str) -> float:
@@ -225,7 +225,6 @@ class NovelOrchestrationService:
 
         return max(0.0, min(1.0, score))
 
-
     @classmethod
     def _is_low_confidence_translation(
         cls,
@@ -235,7 +234,6 @@ class NovelOrchestrationService:
     ) -> bool:
         normalized_threshold = max(0.0, min(1.0, threshold))
         return cls._score_translation_confidence(source_text, translated_text) < normalized_threshold
-
 
     def _selected_chapter_numbers(self, metadata: dict[str, Any], selection: str) -> list[int]:
         """Resolve a chapter selection string into concrete chapter numbers.
@@ -252,7 +250,6 @@ class NovelOrchestrationService:
             return sorted(chapter_map.keys())
 
         return [spec.chapter for spec in parse_chapter_selection(selection)]
-
 
     @staticmethod
     def _chapter_content_signature(text: str, images: list[dict[str, Any]] | None = None) -> str:
@@ -274,7 +271,6 @@ class NovelOrchestrationService:
             "images": image_items,
         }
         return json.dumps(payload, ensure_ascii=False, sort_keys=True)
-
 
     def _resolve_provider_and_model(
         self,
@@ -301,7 +297,6 @@ class NovelOrchestrationService:
             return "dummy", "dummy"
         return key, model
 
-
     def _record_usage(self, provider_key: str, model: str, metadata: Any) -> None:
         usage = metadata.get("usage") if isinstance(metadata, dict) else None
         self._usage.record(
@@ -314,14 +309,12 @@ class NovelOrchestrationService:
             }
         )
 
-
     @staticmethod
     def _latest_checkpoint_name(storage: StorageService, novel_id: str, chapter_id: str) -> str | None:
         checkpoints = storage.list_checkpoints(novel_id, chapter_id)
         if not checkpoints:
             return None
         return checkpoints[-1].get("checkpoint_name")
-
 
     def _restore_latest_checkpoint_for_resume(self, novel_id: str, chapter_id: str) -> bool:
         checkpoint_name = self._latest_checkpoint_name(self.storage, novel_id, chapter_id)
@@ -341,7 +334,6 @@ class NovelOrchestrationService:
                 chapter_id,
             )
         return restored
-
 
     # OCR workflows
     _extract_ocr_candidate_text = staticmethod(_extract_ocr_candidate_text)

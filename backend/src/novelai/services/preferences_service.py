@@ -84,8 +84,8 @@ class PreferencesService:
         return {
             step: {
                 "endpoint_profile": None,
-                "provider": None,
-                "model": None,
+                "provider_key": None,
+                "provider_model": None,
                 "temperature": None,
                 "timeout": None,
                 "max_retries": None,
@@ -100,7 +100,9 @@ class PreferencesService:
         """Populate missing current-schema preference defaults."""
         changed = False
 
-        if self.LLM_ENDPOINT_PROFILES_KEY not in self._data or not isinstance(self._data.get(self.LLM_ENDPOINT_PROFILES_KEY), dict):
+        if self.LLM_ENDPOINT_PROFILES_KEY not in self._data or not isinstance(
+            self._data.get(self.LLM_ENDPOINT_PROFILES_KEY), dict
+        ):
             self._data[self.LLM_ENDPOINT_PROFILES_KEY] = {}
             changed = True
 
@@ -114,8 +116,8 @@ class PreferencesService:
                 merged_step_configs[normalized_step].update(
                     {
                         "endpoint_profile": self._clean_text(payload.get("endpoint_profile")),
-                        "provider": self._clean_text(payload.get("provider")),
-                        "model": self._clean_text(payload.get("model")),
+                        "provider_key": self._clean_text(payload.get("provider_key")),
+                        "provider_model": self._clean_text(payload.get("provider_model")),
                         "temperature": payload.get("temperature"),
                         "timeout": payload.get("timeout"),
                         "max_retries": payload.get("max_retries"),
@@ -129,7 +131,9 @@ class PreferencesService:
             self._data[self.LLM_STEP_CONFIGS_KEY] = merged_step_configs
             changed = True
 
-        if self.GLOSSARY_EXTRACTION_KEY not in self._data or not isinstance(self._data.get(self.GLOSSARY_EXTRACTION_KEY), dict):
+        if self.GLOSSARY_EXTRACTION_KEY not in self._data or not isinstance(
+            self._data.get(self.GLOSSARY_EXTRACTION_KEY), dict
+        ):
             self._data[self.GLOSSARY_EXTRACTION_KEY] = {
                 "mode": "heuristic",
                 "prompt_template": None,
@@ -223,9 +227,13 @@ class PreferencesService:
             if not profile_name:
                 continue
             normalized[profile_name] = {
-                "provider": payload.get("provider") if isinstance(payload.get("provider"), str) else None,
-                "model": payload.get("model") if isinstance(payload.get("model"), str) else None,
-                "temperature": payload.get("temperature") if isinstance(payload.get("temperature"), (int, float)) else None,
+                "provider_key": payload.get("provider_key") if isinstance(payload.get("provider_key"), str) else None,
+                "provider_model": payload.get("provider_model")
+                if isinstance(payload.get("provider_model"), str)
+                else None,
+                "temperature": payload.get("temperature")
+                if isinstance(payload.get("temperature"), (int, float))
+                else None,
                 "timeout": payload.get("timeout") if isinstance(payload.get("timeout"), (int, float)) else None,
                 "max_retries": payload.get("max_retries") if isinstance(payload.get("max_retries"), int) else None,
                 "concurrency": payload.get("concurrency") if isinstance(payload.get("concurrency"), int) else None,
@@ -240,10 +248,25 @@ class PreferencesService:
         profile_name = name.strip()
         if not profile_name:
             raise ValueError("Endpoint profile name must not be empty.")
+        supported_fields = {
+            "provider_key",
+            "provider_model",
+            "temperature",
+            "timeout",
+            "max_retries",
+            "concurrency",
+            "kwargs",
+            "api_key_env",
+            "base_url",
+            "api_version",
+        }
+        unsupported_fields = set(payload) - supported_fields
+        if unsupported_fields:
+            raise ValueError(f"Unsupported endpoint profile fields: {', '.join(sorted(unsupported_fields))}")
         profiles = self.get_llm_endpoint_profiles()
         profiles[profile_name] = {
-            "provider": self._clean_text(payload.get("provider")),
-            "model": self._clean_text(payload.get("model")),
+            "provider_key": self._clean_text(payload.get("provider_key")),
+            "provider_model": self._clean_text(payload.get("provider_model")),
             "temperature": payload.get("temperature") if isinstance(payload.get("temperature"), (int, float)) else None,
             "timeout": payload.get("timeout") if isinstance(payload.get("timeout"), (int, float)) else None,
             "max_retries": payload.get("max_retries") if isinstance(payload.get("max_retries"), int) else None,
@@ -271,12 +294,18 @@ class PreferencesService:
                 merged[normalized_step].update(
                     {
                         "endpoint_profile": self._clean_text(payload.get("endpoint_profile")),
-                        "provider": self._clean_text(payload.get("provider")),
-                        "model": self._clean_text(payload.get("model")),
-                        "temperature": payload.get("temperature") if isinstance(payload.get("temperature"), (int, float)) else None,
+                        "provider_key": self._clean_text(payload.get("provider_key")),
+                        "provider_model": self._clean_text(payload.get("provider_model")),
+                        "temperature": payload.get("temperature")
+                        if isinstance(payload.get("temperature"), (int, float))
+                        else None,
                         "timeout": payload.get("timeout") if isinstance(payload.get("timeout"), (int, float)) else None,
-                        "max_retries": payload.get("max_retries") if isinstance(payload.get("max_retries"), int) else None,
-                        "concurrency": payload.get("concurrency") if isinstance(payload.get("concurrency"), int) else None,
+                        "max_retries": payload.get("max_retries")
+                        if isinstance(payload.get("max_retries"), int)
+                        else None,
+                        "concurrency": payload.get("concurrency")
+                        if isinstance(payload.get("concurrency"), int)
+                        else None,
                         "kwargs": payload.get("kwargs") if isinstance(payload.get("kwargs"), dict) else {},
                         "prompt_template": self._clean_text(payload.get("prompt_template")),
                     }
@@ -295,11 +324,14 @@ class PreferencesService:
             raise ValueError(f"Unsupported workflow profile step: {step}")
         step_configs = self.get_llm_step_configs()
         current = dict(step_configs[normalized_step])
+        unsupported_fields = set(overrides) - set(current)
+        if unsupported_fields:
+            raise ValueError(f"Unsupported workflow step fields: {', '.join(sorted(unsupported_fields))}")
         current.update(overrides)
         sanitized = {
             "endpoint_profile": self._clean_text(current.get("endpoint_profile")),
-            "provider": self._clean_text(current.get("provider")),
-            "model": self._clean_text(current.get("model")),
+            "provider_key": self._clean_text(current.get("provider_key")),
+            "provider_model": self._clean_text(current.get("provider_model")),
             "temperature": current.get("temperature") if isinstance(current.get("temperature"), (int, float)) else None,
             "timeout": current.get("timeout") if isinstance(current.get("timeout"), (int, float)) else None,
             "max_retries": current.get("max_retries") if isinstance(current.get("max_retries"), int) else None,
@@ -320,13 +352,17 @@ class PreferencesService:
             raise ValueError(f"Unsupported workflow profile step: {step}")
 
         global_step = self.get_llm_step_config(normalized_step)
-        novel_profiles = normalize_workflow_profiles(metadata.get("translation_profiles"))["steps"] if isinstance(metadata, dict) else normalize_workflow_profiles(None)["steps"]
+        novel_profiles = (
+            normalize_workflow_profiles(metadata.get("translation_profiles"))["steps"]
+            if isinstance(metadata, dict)
+            else normalize_workflow_profiles(None)["steps"]
+        )
         endpoint_profiles = self.get_llm_endpoint_profiles()
 
         resolved = {
             "endpoint_profile": global_step.get("endpoint_profile"),
-            "provider": novel_profiles[normalized_step]["provider"] or global_step.get("provider"),
-            "model": novel_profiles[normalized_step]["model"] or global_step.get("model"),
+            "provider_key": novel_profiles[normalized_step]["provider_key"] or global_step.get("provider_key"),
+            "provider_model": novel_profiles[normalized_step]["provider_model"] or global_step.get("provider_model"),
             "temperature": global_step.get("temperature"),
             "timeout": global_step.get("timeout"),
             "max_retries": global_step.get("max_retries"),
@@ -338,7 +374,14 @@ class PreferencesService:
         endpoint_name = resolved.get("endpoint_profile")
         if isinstance(endpoint_name, str) and endpoint_name in endpoint_profiles:
             profile = endpoint_profiles[endpoint_name]
-            for key in ("provider", "model", "temperature", "timeout", "max_retries", "concurrency"):
+            for key in (
+                "provider_key",
+                "provider_model",
+                "temperature",
+                "timeout",
+                "max_retries",
+                "concurrency",
+            ):
                 if resolved.get(key) is None and profile.get(key) is not None:
                     resolved[key] = profile.get(key)
             profile_kwargs: dict[str, Any] = profile["kwargs"] if isinstance(profile.get("kwargs"), dict) else {}
@@ -391,6 +434,7 @@ class PreferencesService:
             return model
         try:
             from novelai.providers.registry import available_models
+
             supported_models = available_models(provider_key)
         except Exception:
             logger.debug("Could not load available models for provider %s.", provider_key)

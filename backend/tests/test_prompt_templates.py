@@ -32,6 +32,7 @@ from novelai.services.translation_cache import build_translation_cache_key
 # Snapshot: constants
 # ============================================================================
 
+
 class TestConstants:
     def test_prompt_template_version(self) -> None:
         assert PROMPT_TEMPLATE_VERSION == "v2"
@@ -49,6 +50,7 @@ class TestConstants:
 # ============================================================================
 # Snapshot: system prompt rendering
 # ============================================================================
+
 
 class TestSystemPrompt:
     def test_basic_system_prompt(self) -> None:
@@ -90,6 +92,7 @@ class TestSystemPrompt:
 # Snapshot: user prompt rendering
 # ============================================================================
 
+
 class TestUserPrompt:
     def test_basic_user_prompt(self) -> None:
         prompt = build_user_prompt("Hello world", "Japanese", "English")
@@ -123,6 +126,7 @@ class TestUserPrompt:
 # Honorific policy
 # ============================================================================
 
+
 class TestHonorificPolicy:
     def test_normalize_valid(self) -> None:
         assert _normalize_honorific_policy("retain") == "retain"
@@ -150,6 +154,7 @@ class TestHonorificPolicy:
 # ============================================================================
 # TranslationRequest model fields
 # ============================================================================
+
 
 class TestTranslationRequest:
     def test_new_fields_default(self) -> None:
@@ -213,6 +218,7 @@ class TestTranslationRequest:
 # Conflict suppression
 # ============================================================================
 
+
 class TestConflictSuppression:
     def test_no_conflict_no_warnings(self) -> None:
         additional, warnings = _format_additional_instructions(
@@ -258,6 +264,7 @@ class TestConflictSuppression:
 # Glossary locked / advisory rendering
 # ============================================================================
 
+
 class TestGlossaryRendering:
     def test_glossary_prompt_injection_service_imports(self) -> None:
         """Verify the service module loads without error."""
@@ -288,6 +295,7 @@ class TestGlossaryRendering:
 # ============================================================================
 # Cache key
 # ============================================================================
+
 
 class TestCacheKey:
     def test_prompt_template_version_invalidates(self) -> None:
@@ -340,6 +348,7 @@ class TestCacheKey:
 # Workflow profiles
 # ============================================================================
 
+
 class TestWorkflowDefaults:
     def test_default_workflow_defaults(self) -> None:
         from novelai.config.workflow_profiles import default_workflow_defaults
@@ -362,11 +371,13 @@ class TestWorkflowDefaults:
     def test_normalize_workflow_defaults_valid(self) -> None:
         from novelai.config.workflow_profiles import normalize_workflow_defaults
 
-        result = normalize_workflow_defaults({
-            "style_preset": "  Fantasy  ",
-            "consistency_mode": True,
-            "honorific_policy": "RETAIN",
-        })
+        result = normalize_workflow_defaults(
+            {
+                "style_preset": "  Fantasy  ",
+                "consistency_mode": True,
+                "honorific_policy": "RETAIN",
+            }
+        )
         assert result["style_preset"] == "fantasy"
         assert result["consistency_mode"] is True
         assert result["honorific_policy"] == "retain"
@@ -374,11 +385,13 @@ class TestWorkflowDefaults:
     def test_normalize_workflow_defaults_invalid_ignored(self) -> None:
         from novelai.config.workflow_profiles import normalize_workflow_defaults
 
-        result = normalize_workflow_defaults({
-            "style_preset": "bogus",
-            "consistency_mode": "not_a_bool",
-            "honorific_policy": "invalid",
-        })
+        result = normalize_workflow_defaults(
+            {
+                "style_preset": "bogus",
+                "consistency_mode": "not_a_bool",
+                "honorific_policy": "invalid",
+            }
+        )
         assert result["style_preset"] is None
         assert result["consistency_mode"] is False
         assert result["honorific_policy"] is None
@@ -386,12 +399,23 @@ class TestWorkflowDefaults:
     def test_normalize_workflow_profiles_with_defaults(self) -> None:
         from novelai.config.workflow_profiles import normalize_workflow_profiles
 
-        result = normalize_workflow_profiles({
-            "body_translation": {"provider": "gemini", "model": "gemini-2.0-flash"},
-            "defaults": {"style_preset": "fantasy", "honorific_policy": "retain"},
-        })
+        result = normalize_workflow_profiles(
+            {
+                "body_translation": {
+                    "provider_key": "gemini",
+                    "provider_model": "gemini-2.0-flash",
+                },
+                "defaults": {"style_preset": "fantasy", "honorific_policy": "retain"},
+            }
+        )
         assert "steps" in result
         assert "defaults" in result
-        assert result["steps"]["body_translation"]["provider"] == "gemini"
+        assert result["steps"]["body_translation"]["provider_key"] == "gemini"
         assert result["defaults"]["style_preset"] == "fantasy"
         assert result["defaults"]["honorific_policy"] == "retain"
+
+    def test_normalize_workflow_profiles_rejects_legacy_provider_fields(self) -> None:
+        from novelai.config.workflow_profiles import normalize_workflow_profiles
+
+        with pytest.raises(ValueError, match="Unsupported workflow profile fields"):
+            normalize_workflow_profiles({"body_translation": {"provider": "gemini", "model": "legacy"}})

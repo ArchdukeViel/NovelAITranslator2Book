@@ -264,7 +264,12 @@ Deferred items are tracked but excluded from the active count.
   database, and storage models. The simple translation cache API now names its
   complete identity and value as `source_text`, `provider_key`,
   `provider_model`, and `translated_text`; its remaining generic parameter
-  aliases are removed without changing the exact-key behavior.
+  aliases are removed without changing the exact-key behavior. Workflow
+  profiles, endpoint profiles, step preferences, novel metadata overrides, and
+  orchestration resolution now persist and consume only `provider_key` and
+  `provider_model`; setter and metadata boundaries reject the removed
+  `provider` and `model` fields. The 302 directly affected preference, prompt,
+  storage, orchestration, and web API tests pass with focused Ruff validation.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

@@ -2499,7 +2499,7 @@ class TestAdmin:
         assert preferences.get_api_key("gemini") == "AIza-test-key"
         assert preferences.get_preferred_provider() == "gemini"
         assert preferences.get_preferred_model() == "gemini-3.1-flash-lite"
-        assert preferences.get_llm_step_config("body_translation")["provider"] == "gemini"
+        assert preferences.get_llm_step_config("body_translation")["provider_key"] == "gemini"
         canonical_credential_resp = c.get("/api/admin/providers/gemini")
         assert canonical_credential_resp.status_code == 200
         assert canonical_credential_resp.json()["configured"] is True

@@ -2782,7 +2782,11 @@ async def test_extract_glossary_llm_mode_enforces_json_schema(orchestration_env)
     storage.save_chapter("novel-llm", "1", "魔導具は王都で使われる。")
 
     settings = orchestration_env["settings"]
-    settings.set_llm_step_config("glossary_extraction", provider="mock", model="mock-1.0")
+    settings.set_llm_step_config(
+        "glossary_extraction",
+        provider_key="mock",
+        provider_model="mock-1.0",
+    )
 
     orchestrator = NovelOrchestrationService(
         storage=storage,
