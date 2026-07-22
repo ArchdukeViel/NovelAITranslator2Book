@@ -277,33 +277,46 @@ class TestStaleActiveTranslationCounts:
 # ---------------------------------------------------------------------------
 
 
+_CACHE_IDENTITY = {
+    "provider_key": "gemini",
+    "provider_model": "gemini-3.1-flash-lite",
+    "prompt_version": "translation_request_v1",
+}
+
+
 class TestCacheKeyRegression:
     def test_cache_key_includes_glossary_hash(self) -> None:
-        key_a = make_cache_key("text", "Japanese", "English", "hash_a")
-        key_b = make_cache_key("text", "Japanese", "English", "hash_b")
+        key_a = make_cache_key("text", "Japanese", "English", "hash_a", **_CACHE_IDENTITY)
+        key_b = make_cache_key("text", "Japanese", "English", "hash_b", **_CACHE_IDENTITY)
         assert key_a != key_b
 
     def test_cache_key_different_per_source_text(self) -> None:
-        key_a = make_cache_key("text_a", "Japanese", "English", "hash")
-        key_b = make_cache_key("text_b", "Japanese", "English", "hash")
+        key_a = make_cache_key("text_a", "Japanese", "English", "hash", **_CACHE_IDENTITY)
+        key_b = make_cache_key("text_b", "Japanese", "English", "hash", **_CACHE_IDENTITY)
         assert key_a != key_b
 
     def test_cache_key_different_per_language(self) -> None:
-        key_a = make_cache_key("text", "Japanese", "English", "hash")
-        key_b = make_cache_key("text", "Chinese", "English", "hash")
+        key_a = make_cache_key("text", "Japanese", "English", "hash", **_CACHE_IDENTITY)
+        key_b = make_cache_key("text", "Chinese", "English", "hash", **_CACHE_IDENTITY)
         assert key_a != key_b
 
     def test_cache_key_different_per_provider(self) -> None:
-        key_a = make_cache_key("text", "Japanese", "English", "hash", provider_key="gemini")
-        key_b = make_cache_key("text", "Japanese", "English", "hash", provider_key="provider-b")
+        key_a = make_cache_key("text", "Japanese", "English", "hash", **_CACHE_IDENTITY)
+        key_b = make_cache_key(
+            "text", "Japanese", "English", "hash", **{**_CACHE_IDENTITY, "provider_key": "provider-b"}
+        )
         assert key_a != key_b
 
     def test_cache_key_different_per_model(self) -> None:
-        key_a = make_cache_key("text", "Japanese", "English", "hash", provider_model="model-a")
-        key_b = make_cache_key("text", "Japanese", "English", "hash", provider_model="model-b")
+        key_a = make_cache_key(
+            "text", "Japanese", "English", "hash", **{**_CACHE_IDENTITY, "provider_model": "model-a"}
+        )
+        key_b = make_cache_key(
+            "text", "Japanese", "English", "hash", **{**_CACHE_IDENTITY, "provider_model": "model-b"}
+        )
         assert key_a != key_b
 
     def test_cache_key_different_per_prompt_version(self) -> None:
-        key_a = make_cache_key("text", "Japanese", "English", "hash", prompt_version="v1")
-        key_b = make_cache_key("text", "Japanese", "English", "hash", prompt_version="v2")
+        key_a = make_cache_key("text", "Japanese", "English", "hash", **{**_CACHE_IDENTITY, "prompt_version": "v1"})
+        key_b = make_cache_key("text", "Japanese", "English", "hash", **{**_CACHE_IDENTITY, "prompt_version": "v2"})
         assert key_a != key_b

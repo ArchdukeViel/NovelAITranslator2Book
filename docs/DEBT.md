@@ -225,6 +225,11 @@ Deferred items are tracked but excluded from the active count.
   `PUT /api/user/reviews/{slug}`. Query-based history creation and the duplicate
   POST review route are removed; the frontend already used the canonical forms.
   All 43 user-data router tests pass with zero focused Pyright errors.
+  Segment cache keys now require explicit `provider_key`, `provider_model`, and
+  `prompt_version` keyword arguments; the empty compatibility defaults and the
+  test preserving omitted parameters are removed. All runtime and test callers
+  provide the complete cache identity. The 98 focused cache, prompt-policy, and
+  glossary-invalidation tests pass with zero focused Pyright errors.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

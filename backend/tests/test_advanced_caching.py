@@ -56,39 +56,63 @@ def cache_dir() -> Generator[Path]:
 
 class TestCacheKey:
     def test_make_cache_key_deterministic_and_unique(self) -> None:
-        key1 = make_cache_key("hello", "ja", "en", "hash1")
-        key2 = make_cache_key("hello", "ja", "en", "hash1")
+        identity = {
+            "provider_key": "gemini",
+            "provider_model": "gemini-3.1-flash-lite",
+            "prompt_version": "translation_request_v1",
+        }
+        key1 = make_cache_key("hello", "ja", "en", "hash1", **identity)
+        key2 = make_cache_key("hello", "ja", "en", "hash1", **identity)
         assert key1 == key2
         assert len(key1) == 64
 
         # Changing any field changes the key
-        assert make_cache_key("hello2", "ja", "en", "hash1") != key1
-        assert make_cache_key("hello", "zh", "en", "hash1") != key1
-        assert make_cache_key("hello", "ja", "fr", "hash1") != key1
-        assert make_cache_key("hello", "ja", "en", "hash2") != key1
+        assert make_cache_key("hello2", "ja", "en", "hash1", **identity) != key1
+        assert make_cache_key("hello", "zh", "en", "hash1", **identity) != key1
+        assert make_cache_key("hello", "ja", "fr", "hash1", **identity) != key1
+        assert make_cache_key("hello", "ja", "en", "hash2", **identity) != key1
 
     def test_make_cache_key_separates_provider_key(self) -> None:
         """Different provider keys produce different cache keys."""
-        key_a = make_cache_key("hello", "ja", "en", "hash1", provider_key="provider-a")
-        key_b = make_cache_key("hello", "ja", "en", "hash1", provider_key="provider-b")
+        key_a = make_cache_key(
+            "hello",
+            "ja",
+            "en",
+            "hash1",
+            provider_key="provider-a",
+            provider_model="model",
+            prompt_version="v1",
+        )
+        key_b = make_cache_key(
+            "hello",
+            "ja",
+            "en",
+            "hash1",
+            provider_key="provider-b",
+            provider_model="model",
+            prompt_version="v1",
+        )
         assert key_a != key_b
 
     def test_make_cache_key_separates_provider_model(self) -> None:
         """Different provider models produce different cache keys."""
-        key_a = make_cache_key("hello", "ja", "en", "hash1", provider_model="model-a")
-        key_b = make_cache_key("hello", "ja", "en", "hash1", provider_model="model-b")
+        key_a = make_cache_key(
+            "hello", "ja", "en", "hash1", provider_key="gemini", provider_model="model-a", prompt_version="v1"
+        )
+        key_b = make_cache_key(
+            "hello", "ja", "en", "hash1", provider_key="gemini", provider_model="model-b", prompt_version="v1"
+        )
         assert key_a != key_b
 
     def test_make_cache_key_separates_prompt_version(self) -> None:
         """Different prompt versions produce different cache keys."""
-        key_a = make_cache_key("hello", "ja", "en", "hash1", prompt_version="v1")
-        key_b = make_cache_key("hello", "ja", "en", "hash1", prompt_version="v2")
+        key_a = make_cache_key(
+            "hello", "ja", "en", "hash1", provider_key="gemini", provider_model="model", prompt_version="v1"
+        )
+        key_b = make_cache_key(
+            "hello", "ja", "en", "hash1", provider_key="gemini", provider_model="model", prompt_version="v2"
+        )
         assert key_a != key_b
-
-    def test_make_cache_key_legacy_omitted_params_empty(self) -> None:
-        """Omitting new params (defaults empty) maintains backward compatibility."""
-        key = make_cache_key("hello", "ja", "en", "hash1")
-        assert len(key) == 64
 
 
 class TestTranslationCacheService:

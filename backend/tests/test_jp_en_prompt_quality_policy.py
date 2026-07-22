@@ -288,56 +288,64 @@ class TestGoldenFixtures:
 
 class TestParserRegression:
     def test_parser_accepts_json_with_uncertainties(self) -> None:
-        raw = json.dumps({
-            "translated_text": "Hello world.",
-            "paragraph_map": [],
-            "uncertainties": [
-                {"source": "彼", "issue": "ambiguous referent", "resolution": "kept neutral"}
-            ],
-        })
+        raw = json.dumps(
+            {
+                "translated_text": "Hello world.",
+                "paragraph_map": [],
+                "uncertainties": [{"source": "彼", "issue": "ambiguous referent", "resolution": "kept neutral"}],
+            }
+        )
         result = normalize_translation_output(raw)
         assert result.text == "Hello world."
         assert result.structured is True
 
     def test_parser_accepts_json_with_glossary_conflicts(self) -> None:
-        raw = json.dumps({
-            "translated_text": "Hello world.",
-            "paragraph_map": [],
-            "glossary_conflicts": [
-                {"term": "公爵", "glossary_translation": "duke", "issue": "local context may differ"}
-            ],
-        })
+        raw = json.dumps(
+            {
+                "translated_text": "Hello world.",
+                "paragraph_map": [],
+                "glossary_conflicts": [
+                    {"term": "公爵", "glossary_translation": "duke", "issue": "local context may differ"}
+                ],
+            }
+        )
         result = normalize_translation_output(raw)
         assert result.text == "Hello world."
         assert result.structured is True
 
     def test_parser_accepts_json_with_style_notes(self) -> None:
-        raw = json.dumps({
-            "translated_text": "Hello world.",
-            "paragraph_map": [],
-            "style_notes": ["Kept formal register for duke's dialogue"],
-        })
+        raw = json.dumps(
+            {
+                "translated_text": "Hello world.",
+                "paragraph_map": [],
+                "style_notes": ["Kept formal register for duke's dialogue"],
+            }
+        )
         result = normalize_translation_output(raw)
         assert result.text == "Hello world."
         assert result.structured is True
 
     def test_parser_accepts_json_without_optional_fields(self) -> None:
-        raw = json.dumps({
-            "translated_text": "Hello world.",
-            "paragraph_map": [],
-        })
+        raw = json.dumps(
+            {
+                "translated_text": "Hello world.",
+                "paragraph_map": [],
+            }
+        )
         result = normalize_translation_output(raw)
         assert result.text == "Hello world."
         assert result.structured is True
 
     def test_parser_accepts_json_with_all_optional_fields(self) -> None:
-        raw = json.dumps({
-            "translated_text": "Hello world.",
-            "paragraph_map": [],
-            "uncertainties": [{"source": "彼", "issue": "ambiguous", "resolution": "neutral"}],
-            "glossary_conflicts": [{"term": "公爵", "glossary_translation": "duke", "issue": "context"}],
-            "style_notes": ["Formal register"],
-        })
+        raw = json.dumps(
+            {
+                "translated_text": "Hello world.",
+                "paragraph_map": [],
+                "uncertainties": [{"source": "彼", "issue": "ambiguous", "resolution": "neutral"}],
+                "glossary_conflicts": [{"term": "公爵", "glossary_translation": "duke", "issue": "context"}],
+                "style_notes": ["Formal register"],
+            }
+        )
         result = normalize_translation_output(raw)
         assert result.text == "Hello world."
         assert result.structured is True
@@ -358,6 +366,11 @@ class TestParserRegression:
 # Task 15: Cache-key regression tests
 # ---------------------------------------------------------------------------
 
+_CACHE_PROVIDER = {
+    "provider_key": "gemini",
+    "provider_model": "gemini-3.1-flash-lite",
+}
+
 
 class TestCacheKeyRegression:
     def test_jp_en_policy_version_contributes_to_cache_identity(self) -> None:
@@ -366,6 +379,7 @@ class TestCacheKeyRegression:
             "Japanese",
             "English",
             "glossary_hash_1",
+            **_CACHE_PROVIDER,
             prompt_version=JP_EN_PROMPT_POLICY_VERSION,
         )
         key_without_policy = make_cache_key(
@@ -373,6 +387,7 @@ class TestCacheKeyRegression:
             "Japanese",
             "English",
             "glossary_hash_1",
+            **_CACHE_PROVIDER,
             prompt_version="",
         )
         assert key_with_policy != key_without_policy
@@ -383,6 +398,7 @@ class TestCacheKeyRegression:
             "Japanese",
             "English",
             "glossary_hash_1",
+            **_CACHE_PROVIDER,
             prompt_version="jp_en_quality_v1",
         )
         key_v2 = make_cache_key(
@@ -390,6 +406,7 @@ class TestCacheKeyRegression:
             "Japanese",
             "English",
             "glossary_hash_1",
+            **_CACHE_PROVIDER,
             prompt_version="jp_en_quality_v2",
         )
         assert key_v1 != key_v2
@@ -401,6 +418,7 @@ class TestCacheKeyRegression:
             "Japanese",
             "Indonesian",
             "glossary_hash_1",
+            **_CACHE_PROVIDER,
             prompt_version="",
         )
         # The key is just a hash; we verify it doesn't change when
@@ -410,6 +428,7 @@ class TestCacheKeyRegression:
             "Japanese",
             "Indonesian",
             "glossary_hash_1",
+            **_CACHE_PROVIDER,
             prompt_version=JP_EN_PROMPT_POLICY_VERSION,
         )
         # Both keys are valid; the point is that non-JP-EN prompts
@@ -418,8 +437,9 @@ class TestCacheKeyRegression:
         assert isinstance(key_with_jp_en, str)
 
     def test_glossary_hash_remains_part_of_cache_identity(self) -> None:
-        key_a = make_cache_key("テスト。", "Japanese", "English", "hash_a")
-        key_b = make_cache_key("テスト。", "Japanese", "English", "hash_b")
+        identity = {**_CACHE_PROVIDER, "prompt_version": JP_EN_PROMPT_POLICY_VERSION}
+        key_a = make_cache_key("テスト。", "Japanese", "English", "hash_a", **identity)
+        key_b = make_cache_key("テスト。", "Japanese", "English", "hash_b", **identity)
         assert key_a != key_b
 
     def test_style_preset_remains_part_of_cache_identity(self) -> None:
@@ -455,8 +475,9 @@ class TestCacheKeyRegression:
         assert request_normal.cache_key() != request_consistent.cache_key()
 
     def test_source_and_target_language_part_of_cache_identity(self) -> None:
-        key_ja_en = make_cache_key("テスト。", "Japanese", "English", "hash")
-        key_ja_id = make_cache_key("テスト。", "Japanese", "Indonesian", "hash")
+        identity = {**_CACHE_PROVIDER, "prompt_version": JP_EN_PROMPT_POLICY_VERSION}
+        key_ja_en = make_cache_key("テスト。", "Japanese", "English", "hash", **identity)
+        key_ja_id = make_cache_key("テスト。", "Japanese", "Indonesian", "hash", **identity)
         assert key_ja_en != key_ja_id
 
 
@@ -497,8 +518,5 @@ class TestPromptLengthControl:
             honorific_policy="retain",
         )
         # Honorific policy block appears once
-        honorific_count = sum(
-            1 for _ in HONORIFIC_POLICY_BLOCKS.values()
-            if _ in prompt
-        )
+        honorific_count = sum(1 for _ in HONORIFIC_POLICY_BLOCKS.values() if _ in prompt)
         assert honorific_count == 1

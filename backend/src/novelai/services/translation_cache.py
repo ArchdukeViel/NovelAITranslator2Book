@@ -86,9 +86,10 @@ def make_cache_key(
     source_language: str,
     target_language: str,
     glossary_hash: str,
-    provider_key: str = "",
-    provider_model: str = "",
-    prompt_version: str = "",
+    *,
+    provider_key: str,
+    provider_model: str,
+    prompt_version: str,
 ) -> str:
     """Generate a deterministic SHA-256 cache key for a segment.
 
