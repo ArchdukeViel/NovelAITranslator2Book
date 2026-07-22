@@ -9,8 +9,8 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 28
-- **V1 launch blockers:** 6 (DEBT-075 through DEBT-079, DEBT-094)
+- **Total active debt entries:** 27
+- **V1 launch blockers:** 4 (DEBT-075, DEBT-078, DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
 ---
@@ -498,29 +498,28 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M0 (CI Confidence)
 - **Category:** Database | CI/CD
 - **Priority:** Blocker
-- **Status:** Ongoing
+- **Status:** Resolved
 - **Affected areas:** `backend/alembic/versions/`, `.github/workflows/ci.yml`
 - **Description:** The latest clean PostgreSQL CI migration fails because a
   migration expects Supabase's `auth` schema, while the vanilla PostgreSQL 16
   service does not provide it.
 - **Completion criteria:** A clean PostgreSQL service and the hosted Supabase
   project both migrate to head through an explicit, tested compatibility path.
-- **Implementation note (2026-07-18):** CI now installs a minimal, fail-closed
+- **Resolution:** CI installs a minimal, fail-closed
   `auth.uid()` compatibility shim before Alembic runs on vanilla PostgreSQL.
-  The shim and workflow wiring have focused tests. Hosted CI confirmation on a
-  fresh run remains required before resolving this debt. The hosted Supabase
-  project migrated to repository head `9c2e4a6b8d0f` and passed post-migration
-  schema and security checks on 2026-07-22. Only clean vanilla-PostgreSQL CI
-  execution at that head and a successful hosted workflow remain. Local Docker
-  verification on 2026-07-22 replayed the CI shim and the complete Alembic
-  chain against a fresh PostgreSQL 16 container, reaching
-  `9c2e4a6b8d0f (head)`; the disposable container was removed afterward.
+  The hosted Supabase project migrated to repository head `9c2e4a6b8d0f` and
+  passed post-migration schema and security checks on 2026-07-22. Local Docker
+  verification replayed the shim and complete Alembic chain against fresh
+  PostgreSQL 16, reaching that head. Hosted CI run
+  <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29941138116>
+  then passed the clean PostgreSQL service migration and all dependent tests at
+  commit `74f83c8`.
 
 ### DEBT-077 — CI exclusions and workflow success signals are misleading
 - **Milestone:** Milestone M0 (CI Confidence)
 - **Category:** Testing | CI/CD
 - **Priority:** Blocker
-- **Status:** Ongoing
+- **Status:** Resolved
 - **Affected areas:** `.github/workflows/ci.yml`, `.github/workflows/build.yml`
 - **Description:** Known test exclusions and the aggregate build job can report
   success without proving the complete behavior or image publication implied by
@@ -528,13 +527,15 @@ Deferred items are tracked but excluded from the active count.
 - **Completion criteria:** Every exclusion is justified or removed, migration
   and auth regressions run in CI, and aggregate jobs distinguish a skipped
   publication from a verified image push.
-- **Implementation note (2026-07-18):** Previously excluded files now run in
+- **Resolution:** Previously excluded files now run in
   explicit bounded matrix shards, Docker builds depend on both backend suites,
   and the aggregate publication result fails unless image publication succeeds.
-  The 2026-07-22 hosted failure was traced to a SQLAlchemy URL passed to raw
-  psycopg and one stale Gemini-model assertion. Both are corrected locally,
-  and the exact orchestration shard passes 76 tests. A new hosted Actions run
-  remains required before resolving this debt.
+  Hosted CI run
+  <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29941138116>
+  passed backend lint, core and extended backend tests, frontend checks, E2E,
+  and three Docker builds. The dependent publication run
+  <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29941617651>
+  pushed admin, reader, and frontend images and passed its aggregate gate.
 
 ### DEBT-078 — GitHub repository controls need hardening
 - **Milestone:** Milestone M0 (CI Confidence)
@@ -1171,3 +1172,17 @@ Deferred items are tracked but excluded from the active count.
   `http://127.0.0.1:3000`. Production still requires an explicit HTTPS value
   through the existing production validator and Compose contract. Focused
   email-service tests cover the canonical default and both delivery modes.
+
+### DEBT-111 — Hosted CI exceeds the documented cache-hit duration target
+- **Milestone:** Milestone M0 (CI Confidence)
+- **Category:** CI/CD | Performance | Free-Tier Operations
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** `.github/workflows/ci.yml`, GitHub Actions cache behavior
+- **Description:** The first complete hardened CI run took 6 minutes 36 seconds,
+  exceeding the operator guide's under-five-minute cache-hit target. Functional
+  correctness is green, but repeated over-target runs increase feedback time
+  and consume free hosted-runner minutes.
+- **Completion criteria:** Record a representative warm-cache run below five
+  minutes, or profile the critical path and reduce it without weakening lint,
+  type, test, migration, E2E, or image-build coverage.
