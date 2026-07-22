@@ -152,15 +152,16 @@ class FakeGlossary:
 
 def _make_configs(models: list[tuple[str, str]]) -> list[SchedulerModelConfig]:
     return [
-        SchedulerModelConfig(provider_key=pk, provider_model=pm, priority_order=i)
-        for i, (pk, pm) in enumerate(models)
+        SchedulerModelConfig(provider_key=pk, provider_model=pm, priority_order=i) for i, (pk, pm) in enumerate(models)
     ]
 
 
 def _make_state(provider: str, model: str, status: str, **extra: Any) -> SchedulerModelRuntimeState:
     return SchedulerModelRuntimeState(
-        provider_key=provider, provider_model=model,
-        status=status, **extra,
+        provider_key=provider,
+        provider_model=model,
+        status=status,
+        **extra,
     )
 
 
@@ -187,8 +188,12 @@ def scheduler_primary_available() -> TranslationScheduler:
 def scheduler_fallback_cooldown() -> TranslationScheduler:
     configs = _make_configs([("gemini", "gemini-3.1-flash-lite"), ("gemini", "gemma-4-31b-it")])
     states = [
-        _make_state("gemini", "gemini-3.1-flash-lite", SchedulerModelStatus.COOLING_DOWN.value,
-                    cooldown_until="2999-01-01T00:00:00Z"),
+        _make_state(
+            "gemini",
+            "gemini-3.1-flash-lite",
+            SchedulerModelStatus.COOLING_DOWN.value,
+            cooldown_until="2999-01-01T00:00:00Z",
+        ),
         _make_state("gemini", "gemma-4-31b-it", SchedulerModelStatus.AVAILABLE.value),
     ]
     return _scheduler_with_states(configs, states)
@@ -197,8 +202,12 @@ def scheduler_fallback_cooldown() -> TranslationScheduler:
 def scheduler_quota_exhausted() -> TranslationScheduler:
     configs = _make_configs([("gemini", "gemini-3.1-flash-lite"), ("gemini", "gemma-4-31b-it")])
     states = [
-        _make_state("gemini", "gemini-3.1-flash-lite", SchedulerModelStatus.DAILY_EXHAUSTED.value,
-                    exhausted_until="2999-01-01T00:00:00Z"),
+        _make_state(
+            "gemini",
+            "gemini-3.1-flash-lite",
+            SchedulerModelStatus.DAILY_EXHAUSTED.value,
+            exhausted_until="2999-01-01T00:00:00Z",
+        ),
         _make_state("gemini", "gemma-4-31b-it", SchedulerModelStatus.AVAILABLE.value),
     ]
     return _scheduler_with_states(configs, states)
@@ -207,10 +216,15 @@ def scheduler_quota_exhausted() -> TranslationScheduler:
 def scheduler_no_capacity() -> TranslationScheduler:
     configs = _make_configs([("gemini", "gemini-3.1-flash-lite"), ("gemini", "gemma-4-31b-it")])
     states = [
-        _make_state("gemini", "gemini-3.1-flash-lite", SchedulerModelStatus.FAILED.value,
-                    failed_at="2999-01-01T00:00:00Z"),
-        _make_state("gemini", "gemma-4-31b-it", SchedulerModelStatus.DAILY_EXHAUSTED.value,
-                    exhausted_until="2999-01-01T00:00:00Z"),
+        _make_state(
+            "gemini", "gemini-3.1-flash-lite", SchedulerModelStatus.FAILED.value, failed_at="2999-01-01T00:00:00Z"
+        ),
+        _make_state(
+            "gemini",
+            "gemma-4-31b-it",
+            SchedulerModelStatus.DAILY_EXHAUSTED.value,
+            exhausted_until="2999-01-01T00:00:00Z",
+        ),
     ]
     return _scheduler_with_states(configs, states)
 
@@ -219,8 +233,10 @@ def scheduler_rpm_limited() -> TranslationScheduler:
     configs = _make_configs([("gemini", "gemini-flash")])
     states = [
         SchedulerModelRuntimeState(
-            provider_key="gemini", provider_model="gemini-flash",
-            rpm_limit=10, requests_this_minute=10,
+            provider_key="gemini",
+            provider_model="gemini-flash",
+            rpm_limit=10,
+            requests_this_minute=10,
             status=SchedulerModelStatus.AVAILABLE.value,
         ),
     ]
@@ -249,8 +265,11 @@ def save_version(
 ) -> str:
     """Save a translated chapter and return the version ID (e.g. 'v1')."""
     storage.save_translated_chapter(
-        novel_id, chapter_id, text,
-        provider=provider, model=model,
+        novel_id,
+        chapter_id,
+        text,
+        provider=provider,
+        model=model,
         glossary_revision=glossary_revision,
         glossary_hash=glossary_hash,
         auto_activate=auto_activate,
@@ -357,6 +376,7 @@ class TestGlossaryGate:
     def test_approved_terms_in_prompt(self, fake_provider: FakeTranslationProvider) -> None:
         prompt = "Glossary: 王都 = Royal Capital, 太郎 = Taro"
         import asyncio
+
         asyncio.run(fake_provider.translate(prompt, model="m"))
         last = fake_provider.last_request()
         assert last is not None
@@ -376,6 +396,7 @@ class TestJpEnPromptPolicy:
 
     def _system_prompt(self, source: str, target: str) -> str:
         from novelai.prompts.builders import build_system_prompt
+
         return build_system_prompt(source_language=source, target_language=target)
 
     def test_jp_en_policy_present(self) -> None:
@@ -408,39 +429,71 @@ class TestJpEnPromptPolicy:
 class TestSchedulerSelection:
     def test_primary_available_selected(self) -> None:
         s = scheduler_primary_available()
-        sel = s.select_model(chapter_id="1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=SchedulerDecisionRecorder(chapter_id="1"))
+        sel = s.select_model(
+            chapter_id="1",
+            previous_attempts=set(),
+            qa_failed=False,
+            now=utc_now(),
+            decision_recorder=SchedulerDecisionRecorder(chapter_id="1"),
+        )
         assert not sel.paused
         assert sel.provider_key == "gemini"
         assert sel.provider_model == "gemini-flash"
 
     def test_fallback_on_cooldown(self) -> None:
         s = scheduler_fallback_cooldown()
-        sel = s.select_model(chapter_id="1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=SchedulerDecisionRecorder(chapter_id="1"))
+        sel = s.select_model(
+            chapter_id="1",
+            previous_attempts=set(),
+            qa_failed=False,
+            now=utc_now(),
+            decision_recorder=SchedulerDecisionRecorder(chapter_id="1"),
+        )
         assert not sel.paused
         assert sel.provider_key == "gemini"
         assert sel.provider_model == "gemma-4-31b-it"
 
     def test_fallback_on_quota_exhausted(self) -> None:
         s = scheduler_quota_exhausted()
-        sel = s.select_model(chapter_id="1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=SchedulerDecisionRecorder(chapter_id="1"))
+        sel = s.select_model(
+            chapter_id="1",
+            previous_attempts=set(),
+            qa_failed=False,
+            now=utc_now(),
+            decision_recorder=SchedulerDecisionRecorder(chapter_id="1"),
+        )
         assert not sel.paused
         assert sel.provider_key == "gemini"
 
     def test_no_capacity_pauses(self) -> None:
         s = scheduler_no_capacity()
-        sel = s.select_model(chapter_id="1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=SchedulerDecisionRecorder(chapter_id="1"))
+        sel = s.select_model(
+            chapter_id="1",
+            previous_attempts=set(),
+            qa_failed=False,
+            now=utc_now(),
+            decision_recorder=SchedulerDecisionRecorder(chapter_id="1"),
+        )
         assert sel.paused
 
     def test_rpm_limited_skips(self) -> None:
         s = scheduler_rpm_limited()
-        sel = s.select_model(chapter_id="1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=SchedulerDecisionRecorder(chapter_id="1"))
+        sel = s.select_model(
+            chapter_id="1",
+            previous_attempts=set(),
+            qa_failed=False,
+            now=utc_now(),
+            decision_recorder=SchedulerDecisionRecorder(chapter_id="1"),
+        )
         # RPM limit causes transition to cooling_down, so either pauses or selects
         assert sel.paused or sel.provider_key is not None
 
     def test_decision_identity_fields(self) -> None:
         s = scheduler_primary_available()
         rec = SchedulerDecisionRecorder(chapter_id="c1", request_id="r1", activity_id="a1", job_id="j1")
-        sel = s.select_model(chapter_id="c1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=rec)
+        sel = s.select_model(
+            chapter_id="c1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=rec
+        )
         d = rec.finalize(selection=sel, policy=s.policy.value, total_candidates=2).to_dict()
         assert d["selected"]["provider"] == "gemini"
         assert d["request_id"] == "r1"
@@ -450,7 +503,9 @@ class TestSchedulerSelection:
     def test_candidates_redacted(self) -> None:
         s = scheduler_primary_available()
         rec = SchedulerDecisionRecorder(chapter_id="1")
-        sel = s.select_model(chapter_id="1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=rec)
+        sel = s.select_model(
+            chapter_id="1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=rec
+        )
         d = rec.finalize(selection=sel, policy=s.policy.value, total_candidates=2).to_dict()
         dumped = json.dumps(d)
         assert "api_key" not in dumped.lower()
@@ -458,8 +513,17 @@ class TestSchedulerSelection:
 
     def test_scheduler_summary_aggregated(self) -> None:
         collect_scheduler_decisions()
-        push_scheduler_decision({"selected": {"provider": "g", "model": "m"}, "fallback_used": False, "candidates": [], "chapter_id": "1"})
-        push_scheduler_decision({"selected": {"provider": "o", "model": "n"}, "fallback_used": True, "candidates": [{"skip_reason": "cooldown"}], "chapter_id": "2"})
+        push_scheduler_decision(
+            {"selected": {"provider": "g", "model": "m"}, "fallback_used": False, "candidates": [], "chapter_id": "1"}
+        )
+        push_scheduler_decision(
+            {
+                "selected": {"provider": "o", "model": "n"},
+                "fallback_used": True,
+                "candidates": [{"skip_reason": "cooldown"}],
+                "chapter_id": "2",
+            }
+        )
         summary = build_scheduler_summary(collect_scheduler_decisions())
         assert summary["chapters_with_decisions"] == 2
         assert summary["fallback_count"] == 1
@@ -474,6 +538,7 @@ class TestSchedulerSelection:
 class TestCacheIdentity:
     def _make_entry(self, key: str, text: str = "translated") -> Any:
         from novelai.services.translation_cache import CacheEntry
+
         return CacheEntry(
             key=key,
             source_text="source",
@@ -487,6 +552,7 @@ class TestCacheIdentity:
     def test_cache_hit_on_unchanged(self, tmp_path: Path) -> None:
         from novelai.config.settings import settings
         from novelai.services.translation_cache import TranslationCacheService
+
         # Cache may be disabled in test env; verify set/get contract when enabled
         cache = TranslationCacheService(cache_dir=tmp_path / "cache")
         entry = self._make_entry("key-a", "value-a")
@@ -501,6 +567,7 @@ class TestCacheIdentity:
 
     def test_cache_miss_after_key_change(self, tmp_path: Path) -> None:
         from novelai.services.translation_cache import TranslationCacheService
+
         cache = TranslationCacheService(cache_dir=tmp_path / "cache")
         entry = self._make_entry("key-old", "val")
         cache.set("key-old", entry)
@@ -509,11 +576,17 @@ class TestCacheIdentity:
     def test_cache_invalidate(self, tmp_path: Path) -> None:
         from novelai.config.settings import settings
         from novelai.services.translation_cache import CacheEntry, TranslationCacheService
+
         cache = TranslationCacheService(cache_dir=tmp_path / "cache")
         entry = CacheEntry(
-            key="key-x", source_text="src", translated_text="val-x",
-            glossary_hash="gh1", provider_key="gemini", provider_model="m",
-            created_at="2026-01-01T00:00:00Z", novel_id="novel-123",
+            key="key-x",
+            source_text="src",
+            translated_text="val-x",
+            glossary_hash="gh1",
+            provider_key="gemini",
+            provider_model="m",
+            created_at="2026-01-01T00:00:00Z",
+            novel_id="novel-123",
         )
         cache.set("key-x", entry)
         if settings.TRANSLATION_CACHE_ENABLED:
@@ -641,10 +714,11 @@ class TestPublicReaderAvailability:
         from starlette.middleware.sessions import SessionMiddleware
 
         from novelai.api.auth.session import get_current_user
-        from novelai.api.routers.dependencies import get_storage
+        from novelai.api.routers.dependencies import get_public_catalog_service, get_storage
         from novelai.api.routers.public_catalog import router as public_catalog_router
         from novelai.api.routers.public_chapter import router as public_chapter_router
         from novelai.api.routers.public_novel import router as public_novel_router
+        from novelai.services.public_catalog_service import PublicCatalogService
 
         app = FastAPI()
         app.add_middleware(SessionMiddleware, secret_key="t", https_only=False)
@@ -652,12 +726,16 @@ class TestPublicReaderAvailability:
         app.include_router(public_novel_router)
         app.include_router(public_chapter_router)
         app.dependency_overrides[get_storage] = lambda: storage
-        app.dependency_overrides[get_current_user] = lambda: (self._owner_user() if as_owner else None)
+        app.dependency_overrides[get_public_catalog_service] = lambda: PublicCatalogService(
+            storage=storage,
+            db_session=None,
+        )
+        app.dependency_overrides[get_current_user] = lambda: self._owner_user() if as_owner else None
         return TestClient(app, raise_server_exceptions=False)
 
     def test_hard_404_for_missing(self, tmp_storage: StorageService) -> None:
         client = self._client(tmp_storage)
-        resp = client.get("/api/novels/unknown/chapters/1")
+        resp = client.get("/api/public/novels/unknown/chapters/1")
         assert resp.status_code == 404
 
     def test_owner_can_preview(self, tmp_storage: StorageService) -> None:
@@ -665,7 +743,7 @@ class TestPublicReaderAvailability:
         tmp_storage.save_chapter("n17", "1", SYNTHETIC_CHAPTER_JA)
         vid = save_version(tmp_storage, "n17", "1", text="Preview")
         client = self._client(tmp_storage, as_owner=True)
-        resp = client.get(f"/api/novels/n17/chapters/1?version_id={vid}")
+        resp = client.get(f"/api/public/novels/n17/chapters/1?version_id={vid}")
         assert resp.status_code in (200, 404)
 
     def test_public_no_admin_metadata(self, tmp_storage: StorageService) -> None:
@@ -673,7 +751,7 @@ class TestPublicReaderAvailability:
         tmp_storage.save_chapter("n17b", "1", SYNTHETIC_CHAPTER_JA)
         save_version(tmp_storage, "n17b", "1", text="Public", glossary_hash="secret-hash")
         client = self._client(tmp_storage, as_owner=False)
-        resp = client.get("/api/novels/n17b/chapters/1")
+        resp = client.get("/api/public/novels/n17b/chapters/1")
         if resp.status_code == 200:
             data = resp.json()
             assert "glossary_hash" not in data
@@ -721,7 +799,9 @@ class TestFailureSafety:
     def test_no_capacity_records_failure(self) -> None:
         s = scheduler_no_capacity()
         rec = SchedulerDecisionRecorder(chapter_id="1")
-        sel = s.select_model(chapter_id="1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=rec)
+        sel = s.select_model(
+            chapter_id="1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=rec
+        )
         assert sel.paused
 
     def test_failed_retranslation_preserves_active(self, tmp_storage: StorageService) -> None:
@@ -744,9 +824,13 @@ class TestActivityMetadata:
         with tempfile.TemporaryDirectory() as d:
             queue = ActivityQueueService(base_dir=Path(d))
             act = queue.create_translation_activity(novel_id="n20")
-            queue.update_activity_status(act["id"], "completed", metadata={
-                "result": {"succeeded": 2, "failed": 0, "skipped": 0, "total": 2},
-            })
+            queue.update_activity_status(
+                act["id"],
+                "completed",
+                metadata={
+                    "result": {"succeeded": 2, "failed": 0, "skipped": 0, "total": 2},
+                },
+            )
             completed = queue.get_activity(act["id"]) or {}
             meta = completed.get("metadata", {}) if isinstance(completed.get("metadata"), dict) else {}
             result = meta.get("result", {}) if isinstance(meta, dict) else {}
@@ -758,9 +842,13 @@ class TestActivityMetadata:
         with tempfile.TemporaryDirectory() as d:
             queue = ActivityQueueService(base_dir=Path(d))
             act = queue.create_translation_activity(novel_id="n20b")
-            queue.update_activity_status(act["id"], "completed", metadata={
-                "result": {"chapter_progress": {"1": {"status": "succeeded"}}},
-            })
+            queue.update_activity_status(
+                act["id"],
+                "completed",
+                metadata={
+                    "result": {"chapter_progress": {"1": {"status": "succeeded"}}},
+                },
+            )
             completed = queue.get_activity(act["id"]) or {}
             meta = completed.get("metadata", {}) if isinstance(completed.get("metadata"), dict) else {}
             result = meta.get("result", {}) if isinstance(meta, dict) else {}
@@ -768,7 +856,9 @@ class TestActivityMetadata:
 
     def test_scheduler_summary_in_activity(self) -> None:
         collect_scheduler_decisions()
-        push_scheduler_decision({"selected": {"provider": "g", "model": "m"}, "fallback_used": False, "candidates": [], "chapter_id": "1"})
+        push_scheduler_decision(
+            {"selected": {"provider": "g", "model": "m"}, "fallback_used": False, "candidates": [], "chapter_id": "1"}
+        )
         summary = build_scheduler_summary(collect_scheduler_decisions())
         assert summary["chapters_with_decisions"] == 1
 
@@ -786,6 +876,7 @@ class TestIsolationDeterminism:
 
     def test_fake_provider_no_network(self, fake_provider: FakeTranslationProvider) -> None:
         import asyncio
+
         r = asyncio.run(fake_provider.translate("hi", model="m"))
         assert r["text"]
 
@@ -796,8 +887,22 @@ class TestIsolationDeterminism:
     def test_scheduler_resets(self) -> None:
         s1 = scheduler_primary_available()
         s2 = scheduler_primary_available()
-        assert s1.select_model(chapter_id="1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=SchedulerDecisionRecorder(chapter_id="1")).provider_key == \
-               s2.select_model(chapter_id="1", previous_attempts=set(), qa_failed=False, now=utc_now(), decision_recorder=SchedulerDecisionRecorder(chapter_id="1")).provider_key
+        assert (
+            s1.select_model(
+                chapter_id="1",
+                previous_attempts=set(),
+                qa_failed=False,
+                now=utc_now(),
+                decision_recorder=SchedulerDecisionRecorder(chapter_id="1"),
+            ).provider_key
+            == s2.select_model(
+                chapter_id="1",
+                previous_attempts=set(),
+                qa_failed=False,
+                now=utc_now(),
+                decision_recorder=SchedulerDecisionRecorder(chapter_id="1"),
+            ).provider_key
+        )
 
 
 # ===================================================================

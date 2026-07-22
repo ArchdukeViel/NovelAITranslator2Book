@@ -42,6 +42,8 @@ comes from `docs/roadmap.md` and `docs/DEBT.md`.
 Archived designs represent historical feature work.
 Checklists inside archived directories are historical records and may conflict with current code.
 
+Directories moved to `docs/archive/specs/` on 2026-07-22.
+
 - `adapter-plugin-system`
 - `advanced-caching`
 - `atomic-json-storage-recovery`

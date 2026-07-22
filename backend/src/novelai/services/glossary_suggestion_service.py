@@ -84,7 +84,11 @@ class GlossarySuggestionService:
         atomic_write(path, json.dumps(data, ensure_ascii=False, indent=2))
 
     def _next_id(self, suggestions: list[dict[str, Any]]) -> str:
-        existing = {int(s.get("id", 0)) for s in suggestions if isinstance(s.get("id"), (int, str)) and str(s.get("id", "")).isdigit()}
+        existing = {
+            int(s.get("id", 0))
+            for s in suggestions
+            if isinstance(s.get("id"), (int, str)) and str(s.get("id", "")).isdigit()
+        }
         existing |= {int(s.get("id", 0)) for s in suggestions if isinstance(s.get("id"), int)}
         next_num = 1
         while next_num in existing:
@@ -163,7 +167,9 @@ class GlossarySuggestionService:
                     return None
         return None
 
-    def accept(self, novel_id: str, suggestion_id: str, *, modified_translation: str | None = None) -> GlossarySuggestion | None:
+    def accept(
+        self, novel_id: str, suggestion_id: str, *, modified_translation: str | None = None
+    ) -> GlossarySuggestion | None:
         """Mark suggestion as accepted. Optionally override translation."""
         data = self._load(novel_id)
         for s in data["suggestions"]:

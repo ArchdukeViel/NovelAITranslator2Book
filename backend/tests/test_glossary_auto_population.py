@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-from novelai.services.glossary.suggestion_extractor import SuggestionExtractor
-from novelai.services.glossary.suggestion_service import (
+from novelai.services.glossary_suggestion_extractor import SuggestionExtractor
+from novelai.services.glossary_suggestion_service import (
     GlossarySuggestion,
     GlossarySuggestionService,
 )
@@ -110,9 +110,12 @@ class TestGlossarySuggestionService:
         assert all_sugs[0].occurrence_count == 5
 
     def test_accept_flow(self, svc: GlossarySuggestionService) -> None:
-        svc.add_suggestions("novel_1", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
-        ])
+        svc.add_suggestions(
+            "novel_1",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
+            ],
+        )
         sug = svc.list_suggestions("novel_1")[0]
         accepted = svc.accept("novel_1", sug.id, modified_translation="主人公")
         assert accepted is not None
@@ -123,9 +126,12 @@ class TestGlossarySuggestionService:
         assert len(accepted_list) == 1
 
     def test_reject_flow(self, svc: GlossarySuggestionService) -> None:
-        svc.add_suggestions("novel_1", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
-        ])
+        svc.add_suggestions(
+            "novel_1",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
+            ],
+        )
         sug = svc.list_suggestions("novel_1")[0]
         rejected = svc.reject("novel_1", sug.id, reason="Not relevant")
         assert rejected is not None
@@ -134,39 +140,54 @@ class TestGlossarySuggestionService:
 
     def test_rejected_not_re_suggested(self, svc: GlossarySuggestionService) -> None:
         """Rejected terms should be skipped on subsequent add_suggestions."""
-        svc.add_suggestions("novel_1", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
-        ])
+        svc.add_suggestions(
+            "novel_1",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
+            ],
+        )
         sug = svc.list_suggestions("novel_1")[0]
         svc.reject("novel_1", sug.id)
         # Try adding same term again
-        added = svc.add_suggestions("novel_1", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=5, chapter_count=3),
-        ])
+        added = svc.add_suggestions(
+            "novel_1",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=5, chapter_count=3),
+            ],
+        )
         assert len(added) == 0  # should skip since it's rejected
 
     def test_accept_all(self, svc: GlossarySuggestionService) -> None:
-        svc.add_suggestions("novel_1", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
-            GlossarySuggestion(id="", source_term="Dragon", occurrence_count=2, chapter_count=1),
-        ])
+        svc.add_suggestions(
+            "novel_1",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
+                GlossarySuggestion(id="", source_term="Dragon", occurrence_count=2, chapter_count=1),
+            ],
+        )
         results = svc.accept_all("novel_1")
         assert len(results) == 2
         assert all(s.status == "accepted" for s in results)
 
     def test_reject_all(self, svc: GlossarySuggestionService) -> None:
-        svc.add_suggestions("novel_1", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
-            GlossarySuggestion(id="", source_term="Dragon", occurrence_count=2, chapter_count=1),
-        ])
+        svc.add_suggestions(
+            "novel_1",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
+                GlossarySuggestion(id="", source_term="Dragon", occurrence_count=2, chapter_count=1),
+            ],
+        )
         results = svc.reject_all("novel_1")
         assert len(results) == 2
         assert all(s.status == "rejected" for s in results)
 
     def test_filter_by_status(self, svc: GlossarySuggestionService) -> None:
-        svc.add_suggestions("novel_1", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
-        ])
+        svc.add_suggestions(
+            "novel_1",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
+            ],
+        )
         sug = svc.list_suggestions("novel_1")[0]
         svc.accept("novel_1", sug.id)
         pending = svc.list_suggestions("novel_1", status="pending")
@@ -184,9 +205,12 @@ class TestGlossarySuggestionService:
 
     def test_count_pending(self, svc: GlossarySuggestionService) -> None:
         assert svc.count_pending("novel_1") == 0
-        svc.add_suggestions("novel_1", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=2, chapter_count=1),
-        ])
+        svc.add_suggestions(
+            "novel_1",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=2, chapter_count=1),
+            ],
+        )
         assert svc.count_pending("novel_1") == 1
 
     def test_get_nonexistent(self, svc: GlossarySuggestionService) -> None:
@@ -212,9 +236,12 @@ class TestSuggestionAPI:
 
     def test_list_via_service(self, tmp_path: Path) -> None:
         svc = GlossarySuggestionService(base_dir=tmp_path)
-        svc.add_suggestions("test_novel", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
-        ])
+        svc.add_suggestions(
+            "test_novel",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
+            ],
+        )
         items = svc.list_suggestions("test_novel")
         assert len(items) == 1
         assert items[0].source_term == "Hero"
@@ -226,9 +253,12 @@ class TestSuggestionAPI:
 
     def test_list_filter_status(self, tmp_path: Path) -> None:
         svc = GlossarySuggestionService(base_dir=tmp_path)
-        svc.add_suggestions("test_novel", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
-        ])
+        svc.add_suggestions(
+            "test_novel",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
+            ],
+        )
         sug = svc.list_suggestions("test_novel")[0]
         svc.accept("test_novel", sug.id)
         pending = svc.list_suggestions("test_novel", status="pending")
@@ -238,9 +268,12 @@ class TestSuggestionAPI:
 
     def test_list_filter_source(self, tmp_path: Path) -> None:
         svc = GlossarySuggestionService(base_dir=tmp_path)
-        svc.add_suggestions("test_novel", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2, source="frequency"),
-        ])
+        svc.add_suggestions(
+            "test_novel",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2, source="frequency"),
+            ],
+        )
         freq = svc.list_suggestions("test_novel", source="frequency")
         llm = svc.list_suggestions("test_novel", source="llm")
         assert len(freq) == 1
@@ -248,9 +281,12 @@ class TestSuggestionAPI:
 
     def test_accept_suggestion(self, tmp_path: Path) -> None:
         svc = GlossarySuggestionService(base_dir=tmp_path)
-        svc.add_suggestions("test_novel", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
-        ])
+        svc.add_suggestions(
+            "test_novel",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
+            ],
+        )
         sug = svc.list_suggestions("test_novel")[0]
         result = svc.accept("test_novel", sug.id)
         assert result is not None
@@ -258,9 +294,12 @@ class TestSuggestionAPI:
 
     def test_accept_with_translation(self, tmp_path: Path) -> None:
         svc = GlossarySuggestionService(base_dir=tmp_path)
-        svc.add_suggestions("test_novel", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
-        ])
+        svc.add_suggestions(
+            "test_novel",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
+            ],
+        )
         sug = svc.list_suggestions("test_novel")[0]
         result = svc.accept("test_novel", sug.id, modified_translation="主人公")
         assert result is not None
@@ -268,9 +307,12 @@ class TestSuggestionAPI:
 
     def test_reject_suggestion(self, tmp_path: Path) -> None:
         svc = GlossarySuggestionService(base_dir=tmp_path)
-        svc.add_suggestions("test_novel", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
-        ])
+        svc.add_suggestions(
+            "test_novel",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
+            ],
+        )
         sug = svc.list_suggestions("test_novel")[0]
         result = svc.reject("test_novel", sug.id, reason="Not relevant")
         assert result is not None
@@ -287,20 +329,26 @@ class TestSuggestionAPI:
 
     def test_accept_all(self, tmp_path: Path) -> None:
         svc = GlossarySuggestionService(base_dir=tmp_path)
-        svc.add_suggestions("test_novel", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
-            GlossarySuggestion(id="", source_term="Dragon", occurrence_count=2, chapter_count=1),
-        ])
+        svc.add_suggestions(
+            "test_novel",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
+                GlossarySuggestion(id="", source_term="Dragon", occurrence_count=2, chapter_count=1),
+            ],
+        )
         results = svc.accept_all("test_novel")
         assert len(results) == 2
         assert all(s.status == "accepted" for s in results)
 
     def test_reject_all(self, tmp_path: Path) -> None:
         svc = GlossarySuggestionService(base_dir=tmp_path)
-        svc.add_suggestions("test_novel", [
-            GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
-            GlossarySuggestion(id="", source_term="Dragon", occurrence_count=2, chapter_count=1),
-        ])
+        svc.add_suggestions(
+            "test_novel",
+            [
+                GlossarySuggestion(id="", source_term="Hero", occurrence_count=3, chapter_count=2),
+                GlossarySuggestion(id="", source_term="Dragon", occurrence_count=2, chapter_count=1),
+            ],
+        )
         results = svc.reject_all("test_novel")
         assert len(results) == 2
         assert all(s.status == "rejected" for s in results)

@@ -1,3 +1,4 @@
+# pyright: strict
 """Logging configuration and utilities for Novel AI.
 
 This module is the canonical home for all logging setup, formatters, and
@@ -27,9 +28,7 @@ from novelai.core.security import redact_secret_text, redact_sensitive
 # Request/correlation ID tracking
 # ---------------------------------------------------------------------------
 
-_request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "request_id", default=None
-)
+_request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar("request_id", default=None)
 
 
 def get_request_id() -> str | None:
@@ -85,10 +84,28 @@ class JsonFormatter(logging.Formatter):
         # Merge extra fields from record.__dict__ (set via `extra={...}`)
         for key, value in record.__dict__.items():
             if key not in (
-                "args", "asctime", "created", "exc_info", "exc_text", "filename",
-                "funcName", "levelname", "levelno", "lineno", "message", "module",
-                "msecs", "msg", "name", "pathname", "process", "processName",
-                "relativeCreated", "stack_info", "thread", "threadName",
+                "args",
+                "asctime",
+                "created",
+                "exc_info",
+                "exc_text",
+                "filename",
+                "funcName",
+                "levelname",
+                "levelno",
+                "lineno",
+                "message",
+                "module",
+                "msecs",
+                "msg",
+                "name",
+                "pathname",
+                "process",
+                "processName",
+                "relativeCreated",
+                "stack_info",
+                "thread",
+                "threadName",
             ):
                 obj[key] = value
         if record.exc_info and record.exc_info[1]:
@@ -136,10 +153,10 @@ class SimpleFormatter(logging.Formatter):
 
     COLORS = {
         "DEBUG": "\033[36m",  # Cyan
-        "INFO": "\033[32m",   # Green
-        "WARNING": "\033[33m", # Yellow
+        "INFO": "\033[32m",  # Green
+        "WARNING": "\033[33m",  # Yellow
         "ERROR": "\033[31m",  # Red
-        "CRITICAL": "\033[41m", # Red background
+        "CRITICAL": "\033[41m",  # Red background
         "RESET": "\033[0m",
     }
 
@@ -177,9 +194,7 @@ def configure_logging() -> None:
     if log_format == "json":
         handler.setFormatter(JsonFormatter())
     else:
-        handler.setFormatter(
-            logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-        )
+        handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 
     root = logging.getLogger()
     root.setLevel(logging.INFO)

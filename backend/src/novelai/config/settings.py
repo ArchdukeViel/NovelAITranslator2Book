@@ -1,3 +1,4 @@
+# pyright: strict
 from __future__ import annotations
 
 from pathlib import Path
@@ -192,7 +193,7 @@ class AppSettings(BaseSettings):
     TRANSLATION_DELTA_REQUIRE_STRUCTURED_PARAGRAPH_MAP: bool = True
     TRANSLATION_DELTA_FORCE_FULL_ON_UNSAFE: bool = True
     TRANSLATION_SCHEDULER_POLICY: str = "volume_first"
-    TRANSLATION_MODEL_POLICY: list[dict[str, object]] = Field(
+    TRANSLATION_MODEL_POLICY: list[dict[str, Any]] = Field(  # pyright: ignore[reportUnknownVariableType]
         default_factory=list,
         description=(
             "Editable scheduler model policy. Items may define provider_key, provider_model, "

@@ -13,7 +13,8 @@
     "test:watch": "vitest"
   },
   "overrides": {
-    "postcss": "^8.5.19"
+    "postcss": "^8.5.19",
+    "sharp": "^0.35.0"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.2",

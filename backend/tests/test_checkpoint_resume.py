@@ -14,6 +14,8 @@ from novelai.core.errors import TranslationInProgressError
 from novelai.services.orchestration.operations import OperationError, OperationsService
 from novelai.services.pipeline.checkpoint import CHECKPOINT_MAX_AGE_DAYS, Checkpoint, CheckpointManager
 
+pytestmark = pytest.mark.slow
+
 
 @pytest.mark.asyncio
 async def test_translate_novel_409_on_translation_in_progress() -> None:
@@ -276,6 +278,7 @@ class TestCheckpointManager:
 async def test_update_db_translation_state() -> None:
     """_update_db_translation_state runs without error (integration via session_scope)."""
     from novelai.services.orchestration.translation import _update_db_translation_state
+
     # In test env without DB, this should log warning and return gracefully
     _update_db_translation_state("test_novel", "1", TranslationState.FETCHING)
     # No exception = pass
@@ -285,6 +288,7 @@ async def test_update_db_translation_state() -> None:
 async def test_load_db_translation_state_defaults_to_pending() -> None:
     """_load_db_translation_state returns PENDING when no DB row found."""
     from novelai.services.orchestration.translation import _load_db_translation_state
+
     state = _load_db_translation_state("nonexistent_novel", "1")
     assert state == TranslationState.PENDING.value
 
@@ -293,6 +297,7 @@ async def test_load_db_translation_state_defaults_to_pending() -> None:
 
 # We test the resume/force behavior by mocking the orchestration layer
 # at the OperationsService level.
+
 
 @pytest.mark.asyncio
 async def test_force_resets_all_chapters_to_pending() -> None:

@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
@@ -26,6 +25,7 @@ from novelai.services.scheduler_runtime_state_service import SchedulerRuntimeSta
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
 
+
 def _raise_admin_error(exc: Exception) -> None:
     if isinstance(exc, ValueError):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -33,14 +33,6 @@ def _raise_admin_error(exc: Exception) -> None:
         message = exc.args[0] if exc.args else "Unknown runtime state file"
         raise HTTPException(status_code=404, detail=str(message)) from exc
     raise exc
-
-
-@router.get("/admin", response_class=HTMLResponse)
-async def admin_dashboard(
-    service: AdminService = Depends(get_admin_service),
-    _owner=Depends(require_role("owner")),
-) -> HTMLResponse:
-    return HTMLResponse(service.dashboard_html())
 
 
 @router.get("/admin/provider-api-key/{provider_key}")
@@ -381,6 +373,7 @@ async def invalidate_novel_cache(
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     from novelai.services.translation_cache import TranslationCacheService
+
     try:
         service = TranslationCacheService()
         count = service.invalidate(novel_id)
@@ -408,6 +401,7 @@ async def health_errors(
     _owner=Depends(require_role("owner")),
 ) -> dict[str, Any]:
     from novelai.api.errors import get_error_metrics
+
     return get_error_metrics()
 
 

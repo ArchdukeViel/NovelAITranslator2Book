@@ -61,7 +61,9 @@ backend/tests/.pytest_cache/
 .hypothesis/
 
 # IDE / editor
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo

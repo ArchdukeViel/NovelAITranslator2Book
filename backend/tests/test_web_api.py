@@ -24,12 +24,12 @@ from novelai.activity.worker import ActivityWorkerService
 from novelai.api import error_handlers as error_handler_module
 from novelai.api.app import create_app
 from novelai.api.auth.session import GUEST, SessionUser, get_current_user
-from novelai.api.routers import novels
-from novelai.api.routers.dependencies import get_db_session
-from novelai.api.routers.novels import (
+from novelai.api.routers import dependencies as router_dependencies
+from novelai.api.routers.dependencies import (
     get_activity_log,
     get_activity_runner,
     get_activity_worker,
+    get_db_session,
     get_orchestrator,
     get_preferences,
     get_storage,
@@ -217,108 +217,16 @@ def _csrf_headers(client: TestClient) -> dict[str, str]:
     return {"X-CSRF-Token": resp.json()["csrf_token"]}
 
 
-def _get_routes_from_router(router) -> set:
-    """Recursively extract routes from a FastAPI router, including included routers."""
-    routes = set()
-    for route in router.routes:
-        if hasattr(route, "methods") and hasattr(route, "path"):
-            routes.add((tuple(sorted(route.methods)), route.path))
-        elif hasattr(route, "original_router"):  # _IncludedRouter
-            routes.update(_get_routes_from_router(route.original_router))
-    return routes
+def test_admin_routes_use_only_canonical_namespace() -> None:
+    paths = set(create_app().openapi()["paths"])
 
-
-def test_router_path_method_snapshot() -> None:
-    expected_routes = {
-        (("DELETE",), "/{novel_id}"),
-        (("DELETE",), "/activity/{activity_id}"),
-        (("GET",), "/"),
-        (("GET",), "/catalog-health"),
-        (("GET",), "/activity"),
-        (("GET",), "/activity/source-health"),
-        (("GET",), "/activity/source-health/{source_key}"),
-        (("GET",), "/activity/{activity_id}"),
-        (("GET",), "/admin"),
-        (("GET",), "/admin/providers"),
-        (("GET",), "/admin/providers/credentials"),
-        (("GET",), "/admin/providers/fallback-policy"),
-        (("GET",), "/admin/providers/models"),
-        (("GET",), "/admin/providers/{provider_key}"),
-        (("GET",), "/admin/provider-api-key/{provider_key}"),
-        (("GET",), "/admin/runtime-state"),
-        (("GET",), "/admin/worker"),
-        (("GET",), "/admin/translation/scheduler-health"),
-        (("GET",), "/admin/health/errors"),
-        (("GET",), "/admin/novels/{novel_id}/exports/latest/{export_format}"),
-        (("GET",), "/admin/novels/{novel_id}/exports"),
-        (("GET",), "/input-adapters"),
-        (("GET",), "/requests"),
-        (("GET",), "/requests/{request_id}"),
-        (("GET",), "/sources"),
-        (("GET",), "/{novel_id}"),
-        (("GET",), "/{novel_id}/chapters"),
-        (("GET",), "/{novel_id}/chapters/{chapter_id}"),
-        (("GET",), "/{novel_id}/chapters/{chapter_id}/translated"),
-        (("GET",), "/{novel_id}/chapters/{chapter_id}/translated/edit-history"),
-        (("GET",), "/{novel_id}/chapters/{chapter_id}/translated/versions"),
-        (("GET",), "/{novel_id}/progress"),
-        (("GET",), "/{novel_id}/checkpoints"),
-        (("GET",), "/{novel_id}/translate-status"),
-        (("GET",), "/{novel_id}/reader"),
-        (("GET",), "/{novel_id}/reader/chapters/{chapter_id}"),
-        (("GET",), "/{novel_id}/catalog-projection-health"),
-        (("GET",), "/{novel_id}/source-metadata"),
-        (("GET",), "/{novel_id}/source-metadata/history"),
-        (("GET",), "/{novel_id}/source-metadata/history/diff"),
-        (("GET",), "/{novel_id}/source-metadata/history/{snapshot_id}"),
-        (("PATCH",), "/activity/{activity_id}"),
-        (("PATCH",), "/requests/{request_id}"),
-        (("POST",), "/admin/worker/run-once"),
-        (("POST",), "/admin/worker/start"),
-        (("POST",), "/admin/worker/stop"),
-        (("POST",), "/admin/providers"),
-        (("POST",), "/admin/providers/credentials"),
-        (("POST",), "/admin/providers/credentials/{credential_id}/test"),
-        (("POST",), "/admin/providers/{provider_key}/validate"),
-        (("POST",), "/admin/provider-api-key"),
-        (("POST",), "/admin/provider-api-key/validate"),
-        (("POST",), "/admin/runtime-state/{state_key}/refresh"),
-        (("POST",), "/admin/runtime-state/cleanup"),
-        (("POST",), "/admin/novels/{novel_id}/cache/invalidate"),
-        (("POST",), "/activity/crawl"),
-        (("POST",), "/activity/run-next"),
-        (("POST",), "/activity/translation"),
-        (("POST",), "/activity/{activity_id}/retry"),
-        (("POST",), "/activity/{activity_id}/run"),
-        (("POST",), "/refresh-catalog-projections"),
-        (("POST",), "/"),
-        (("POST",), "/requests"),
-        (("POST",), "/requests/{request_id}/source-candidates"),
-        (("POST",), "/requests/{request_id}/vote"),
-        (("POST",), "/{novel_id}/chapters/{chapter_id}/translated/rollback"),
-        (("POST",), "/{novel_id}/export"),
-        (("POST",), "/{novel_id}/import"),
-        (("POST",), "/{novel_id}/preliminary-crawl"),
-        (("POST",), "/{novel_id}/publish"),
-        (("POST",), "/{novel_id}/refresh-catalog-projection"),
-        (("POST",), "/{novel_id}/scrape"),
-        (("POST",), "/{novel_id}/translate"),
-        (("POST",), "/{novel_id}/unpublish"),
-        (("POST",), "/{novel_id}/onboarding/cancel"),
-        (("POST",), "/{novel_id}/onboarding/resume"),
-        (("POST",), "/{novel_id}/retranslate-stale"),
-        (("POST",), "/{novel_id}/chapters/{chapter_id}/translated/lint"),
-        (("PUT",), "/{novel_id}/chapters/{chapter_id}/translated"),
-        (("PUT",), "/admin/providers/fallback-policy"),
-        (("PATCH",), "/admin/providers/credentials/{credential_id}"),
-        (("DELETE",), "/admin/providers/credentials/{credential_id}"),
-        (("DELETE",), "/admin/providers/{provider_key}"),
-        (("DELETE",), "/admin/provider-api-key/{provider_key}"),
-        (("DELETE",), "/admin/runtime-state/{state_key}"),
-    }
-    current_routes = _get_routes_from_router(novels.router)
-
-    assert current_routes == expected_routes
+    assert any(path == "/api/admin/novels" or path.startswith("/api/admin/novels/") for path in paths)
+    assert "/api/admin/activity" in paths
+    assert "/api/admin/sources" in paths
+    assert "/api/admin/requests" in paths
+    assert "/api/admin" not in paths
+    assert not any(path == "/novels" or path.startswith("/novels/") for path in paths)
+    assert not any(path == "/api/novels" or path.startswith("/api/novels/") for path in paths)
 
 
 def test_json_error_encodes_non_json_native_details() -> None:
@@ -346,11 +254,11 @@ def test_json_error_encodes_non_json_native_details() -> None:
 
 
 def test_extract_novel_code_from_novel_paths() -> None:
-    assert error_handler_module._extract_novel_code_from_path("/novels/n0813kx/translate") == "n0813kx"
-    assert error_handler_module._extract_novel_code_from_path("/api/novels/n1962jz/chapters/1") == "n1962jz"
-    assert error_handler_module._extract_novel_code_from_path("/novels/jobs") is None
-    assert error_handler_module._extract_novel_code_from_path("/novels/activity") is None
-    assert error_handler_module._extract_novel_code_from_path("/novels/requests") is None
+    assert error_handler_module._extract_novel_code_from_path("/api/admin/novels/n0813kx/translate") == "n0813kx"
+    assert error_handler_module._extract_novel_code_from_path("/api/admin/novels/n1962jz/chapters/1") == "n1962jz"
+    assert error_handler_module._extract_novel_code_from_path("/api/admin/novels/jobs") is None
+    assert error_handler_module._extract_novel_code_from_path("/api/admin/activity") is None
+    assert error_handler_module._extract_novel_code_from_path("/api/admin/requests") is None
 
 
 def test_novelai_error_handler_uses_custom_exception_metadata(_session_auth_defaults: None) -> None:
@@ -598,19 +506,19 @@ def test_unhandled_error_details_include_novel_code_for_novel_route(
     bootstrap()
     app = create_app()
 
-    @app.get("/novels/n0813kx/debug-runtime")
+    @app.get("/api/admin/novels/n0813kx/debug-runtime")
     async def debug_novel_runtime() -> None:
         raise RuntimeError("debug novel activity")
 
     monkeypatch.setattr(error_handler_module, "DEBUG_ERRORS", True)
     c = TestClient(app, raise_server_exceptions=False)
 
-    resp = c.get("/novels/n0813kx/debug-runtime")
+    resp = c.get("/api/admin/novels/n0813kx/debug-runtime")
     payload = resp.json()
 
     assert resp.status_code == 500
     assert payload["details"]["novel_code"] == "n0813kx"
-    assert payload["details"]["path"] == "/novels/n0813kx/debug-runtime"
+    assert payload["details"]["path"] == "/api/admin/novels/n0813kx/debug-runtime"
 
 
 def test_request_validation_error_returns_validation_code(_session_auth_defaults: None) -> None:
@@ -877,14 +785,14 @@ class _FakeGeminiClient:
 def _clean_tmp():
     old_gemini_key = settings.PROVIDER_GEMINI_API_KEY
     old_provider_credential_key = settings.PROVIDER_CREDENTIAL_ENCRYPTION_KEY
-    novels._hits.clear()
+    router_dependencies._hits.clear()
     if _TMP.exists():
         shutil.rmtree(_TMP, ignore_errors=True)
     _TMP.mkdir(parents=True, exist_ok=True)
     yield
     settings.PROVIDER_GEMINI_API_KEY = old_gemini_key
     settings.PROVIDER_CREDENTIAL_ENCRYPTION_KEY = old_provider_credential_key
-    novels._hits.clear()
+    router_dependencies._hits.clear()
     shutil.rmtree(_TMP, ignore_errors=True)
 
 
@@ -932,25 +840,25 @@ def seeded_client(_session_auth_defaults: None, isolated_db_session: Session) ->
 
 class TestAuth:
     def test_owner_session_allows_dangerous_access(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.get("/novels/")
+        resp = seeded_client.get("/api/admin/novels/")
         assert resp.status_code == 200
 
     def test_unauthenticated_rejects_dangerous_access(self, _session_auth_defaults: None) -> None:
         bootstrap()
         c = _make_app(_fresh_storage(), session_user=None)
-        resp = c.get("/novels/")
+        resp = c.get("/api/admin/novels/")
         assert resp.status_code == 401
 
     def test_non_owner_rejects_dangerous_access(self, _session_auth_defaults: None) -> None:
         bootstrap()
         c = _make_app(_fresh_storage(), session_user=REGULAR_USER)
-        resp = c.get("/novels/")
+        resp = c.get("/api/admin/novels/")
         assert resp.status_code == 403
 
     def test_bearer_header_does_not_grant_owner_access(self, _session_auth_defaults: None) -> None:
         bootstrap()
         c = _make_app(_fresh_storage(), session_user=None)
-        resp = c.get("/novels/", headers={"Authorization": "Bearer test-secret"})
+        resp = c.get("/api/admin/novels/", headers={"Authorization": "Bearer test-secret"})
         assert resp.status_code == 401
 
     def test_arbitrary_bearer_header_does_not_change_session_auth_result(
@@ -959,28 +867,12 @@ class TestAuth:
     ) -> None:
         bootstrap()
         c = _make_app(_fresh_storage(), session_user=REGULAR_USER)
-        resp = c.get("/novels/", headers={"Authorization": "Bearer wrong"})
+        resp = c.get("/api/admin/novels/", headers={"Authorization": "Bearer wrong"})
         assert resp.status_code == 403
 
     @pytest.mark.parametrize(
         ("method", "path", "json_body"),
         [
-            ("GET", "/novels/", None),
-            ("GET", "/novels/sources", None),
-            ("GET", "/novels/admin/worker", None),
-            ("GET", "/novels/activity", None),
-            ("POST", "/novels/activity/crawl", {"novel_id": "test-n1", "source_key": "dummy", "kind": "chapters"}),
-            ("POST", "/novels/activity/activity-1/retry", None),
-            ("PATCH", "/novels/activity/activity-1", {"status": "failed"}),
-            ("DELETE", "/novels/activity/activity-1", None),
-            ("POST", "/novels/test-n1/scrape", {"source_key": "dummy", "url": "https://example.com/n1"}),
-            ("POST", "/novels/test-n1/publish", None),
-            ("POST", "/novels/test-n1/refresh-catalog-projection", None),
-            ("POST", "/novels/test-n1/unpublish", None),
-            ("PUT", "/novels/test-n1/chapters/1/translated", {"text": "edited"}),
-            ("POST", "/novels/test-n1/chapters/1/translated/rollback", {"version_id": "v1"}),
-            ("PATCH", "/novels/requests/request-1", {"status": "approved"}),
-            ("POST", "/novels/test-n1/export", {"format": "epub"}),
             ("GET", "/api/admin/novels", None),
             ("GET", "/api/admin/sources", None),
             ("GET", "/api/admin/worker", None),
@@ -1094,9 +986,9 @@ class TestAdminCsrf:
 
         assert resp.status_code == 200
 
-    def test_legacy_alias_mutation_requires_csrf(self, seeded_client: TestClient) -> None:
+    def test_canonical_mutation_requires_csrf(self, seeded_client: TestClient) -> None:
         resp = seeded_client.post(
-            "/novels/test-n1/scrape",
+            "/api/admin/novels/test-n1/scrape",
             json={"source_key": "dummy", "url": "https://example.com/n1"},
         )
 
@@ -1152,17 +1044,9 @@ class TestAdminCsrf:
 
 
 class TestListDetail:
-    def test_api_prefixed_novels_route(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.get("/api/novels/")
-        assert resp.status_code == 200
-        assert resp.json()[0]["novel_id"] == "test-n1"
-
-    def test_api_prefixed_novels_route_without_trailing_slash_does_not_redirect(
-        self, seeded_client: TestClient
-    ) -> None:
-        resp = seeded_client.get("/api/novels", follow_redirects=False)
-        assert resp.status_code == 200
-        assert resp.json()[0]["novel_id"] == "test-n1"
+    @pytest.mark.parametrize("path", ["/novels", "/novels/", "/api/novels", "/api/novels/"])
+    def test_removed_novel_aliases_return_404(self, seeded_client: TestClient, path: str) -> None:
+        assert seeded_client.get(path, follow_redirects=False).status_code == 404
 
     def test_api_admin_novels_route_without_trailing_slash_does_not_redirect(self, seeded_client: TestClient) -> None:
         resp = seeded_client.get("/api/admin/novels", follow_redirects=False)
@@ -1170,12 +1054,12 @@ class TestListDetail:
         assert resp.json()[0]["novel_id"] == "test-n1"
 
     def test_list_novels_empty(self, client: TestClient) -> None:
-        resp = client.get("/novels/")
+        resp = client.get("/api/admin/novels/")
         assert resp.status_code == 200
         assert resp.json() == []
 
     def test_list_novels_with_data(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.get("/novels/")
+        resp = seeded_client.get("/api/admin/novels/")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) >= 1
@@ -1262,7 +1146,7 @@ class TestListDetail:
         assert resp.status_code == 200
         assert [novel["novel_id"] for novel in resp.json()] == ["second"]
 
-    def test_admin_list_legacy_aliases_use_db_listing(
+    def test_admin_list_uses_db_listing(
         self,
         _session_auth_defaults: None,
         isolated_db_session: Session,
@@ -1277,13 +1161,10 @@ class TestListDetail:
         )
         c = _make_app(storage, db_session=isolated_db_session)
 
-        legacy = c.get("/novels/")
-        api_legacy = c.get("/api/novels/")
+        response = c.get("/api/admin/novels/")
 
-        assert legacy.status_code == 200
-        assert api_legacy.status_code == 200
-        assert legacy.json()[0]["novel_id"] == "db-alias"
-        assert api_legacy.json()[0]["novel_id"] == "db-alias"
+        assert response.status_code == 200
+        assert response.json()[0]["novel_id"] == "db-alias"
 
     def test_admin_list_does_not_duplicate_storage_rows_when_db_exists(
         self,
@@ -1296,7 +1177,7 @@ class TestListDetail:
         _seed_db_novel(isolated_db_session, "same-id", title="DB Canonical")
         c = _make_app(storage, db_session=isolated_db_session)
 
-        resp = c.get("/novels/")
+        resp = c.get("/api/admin/novels/")
 
         assert resp.status_code == 200
         assert [novel["novel_id"] for novel in resp.json()] == ["same-id"]
@@ -1317,19 +1198,19 @@ class TestListDetail:
         )
         c = _make_app(storage, db_session=isolated_db_session)
 
-        resp = c.get("/novels/")
+        resp = c.get("/api/admin/novels/")
         assert resp.status_code == 200
         data = resp.json()
 
         assert data == []
 
     def test_get_novel(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.get("/novels/test-n1")
+        resp = seeded_client.get("/api/admin/novels/test-n1")
         assert resp.status_code == 200
         assert resp.json()["title"] == "Test Novel"
 
     def test_get_novel_not_found(self, client: TestClient) -> None:
-        resp = client.get("/novels/does-not-exist")
+        resp = client.get("/api/admin/novels/does-not-exist")
         assert resp.status_code in {404, 405}
 
     def test_owner_can_inspect_source_metadata(self, _session_auth_defaults: None) -> None:
@@ -2357,34 +2238,34 @@ class TestAdminNovelPublish:
 
 class TestChapters:
     def test_list_chapters(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.get("/novels/test-n1/chapters")
+        resp = seeded_client.get("/api/admin/novels/test-n1/chapters")
         assert resp.status_code == 200
         chapters = resp.json()
         assert len(chapters) == 2
         assert chapters[0]["id"] == "1"
 
     def test_get_chapter(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.get("/novels/test-n1/chapters/1")
+        resp = seeded_client.get("/api/admin/novels/test-n1/chapters/1")
         assert resp.status_code == 200
         assert "text" in resp.json()
 
     def test_get_chapter_not_found(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.get("/novels/test-n1/chapters/999")
+        resp = seeded_client.get("/api/admin/novels/test-n1/chapters/999")
         assert resp.status_code == 404
 
     def test_get_translated_chapter(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.get("/novels/test-n1/chapters/1/translated")
+        resp = seeded_client.get("/api/admin/novels/test-n1/chapters/1/translated")
         assert resp.status_code == 200
         payload = resp.json()
         assert payload["chapter_id"] == "1"
         _assert_provider_mirrors(payload)
 
     def test_get_translated_chapter_not_found(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.get("/novels/test-n1/chapters/2/translated")
+        resp = seeded_client.get("/api/admin/novels/test-n1/chapters/2/translated")
         assert resp.status_code == 404
 
     def test_list_translated_chapter_versions(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.get("/novels/test-n1/chapters/1/translated/versions")
+        resp = seeded_client.get("/api/admin/novels/test-n1/chapters/1/translated/versions")
         assert resp.status_code == 200
         data = resp.json()
         assert data["chapter_id"] == "1"
@@ -2399,7 +2280,7 @@ class TestChapters:
         isolated_db_session: Session,
     ) -> None:
         resp = seeded_client.put(
-            "/novels/test-n1/chapters/1/translated",
+            "/api/admin/novels/test-n1/chapters/1/translated",
             json={"text": "Edited ch1", "editor": "admin", "note": "line edit"},
             headers=_csrf_headers(seeded_client),
         )
@@ -2409,7 +2290,7 @@ class TestChapters:
         assert data["version_kind"] == "manual_edit"
         _assert_provider_mirrors(data)
 
-        history_resp = seeded_client.get("/novels/test-n1/chapters/1/translated/edit-history")
+        history_resp = seeded_client.get("/api/admin/novels/test-n1/chapters/1/translated/edit-history")
         assert history_resp.status_code == 200
         history = history_resp.json()["history"]
         assert len(history) == 1
@@ -2428,14 +2309,14 @@ class TestChapters:
         isolated_db_session: Session,
     ) -> None:
         edit_resp = seeded_client.put(
-            "/novels/test-n1/chapters/1/translated",
+            "/api/admin/novels/test-n1/chapters/1/translated",
             json={"text": "Edited ch1", "editor": "admin"},
             headers=_csrf_headers(seeded_client),
         )
         assert edit_resp.status_code == 200
 
         rollback_resp = seeded_client.post(
-            "/novels/test-n1/chapters/1/translated/rollback",
+            "/api/admin/novels/test-n1/chapters/1/translated/rollback",
             json={"version_id": "v1", "editor": "admin", "note": "restore original"},
             headers=_csrf_headers(seeded_client),
         )
@@ -2445,7 +2326,7 @@ class TestChapters:
         assert rollback_payload["version_id"] == "v1"
         _assert_provider_mirrors(rollback_payload)
 
-        history_resp = seeded_client.get("/novels/test-n1/chapters/1/translated/edit-history")
+        history_resp = seeded_client.get("/api/admin/novels/test-n1/chapters/1/translated/edit-history")
         history = history_resp.json()["history"]
         assert history[-1]["action"] == "rollback"
         assert history[-1]["previous_version_id"] == "v2"
@@ -2464,7 +2345,7 @@ class TestChapters:
 
 class TestReader:
     def test_get_reader_novel(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.get("/novels/test-n1/reader")
+        resp = seeded_client.get("/api/admin/novels/test-n1/reader")
 
         assert resp.status_code == 200
         data = resp.json()
@@ -2476,7 +2357,7 @@ class TestReader:
         assert data["chapters"][1]["translated"] is False
 
     def test_get_reader_chapter(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.get("/novels/test-n1/reader/chapters/1")
+        resp = seeded_client.get("/api/admin/novels/test-n1/reader/chapters/1")
 
         assert resp.status_code == 200
         data = resp.json()
@@ -2487,7 +2368,7 @@ class TestReader:
         assert data["next_chapter_id"] == "2"
 
     def test_get_reader_chapter_requires_translation(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.get("/novels/test-n1/reader/chapters/2")
+        resp = seeded_client.get("/api/admin/novels/test-n1/reader/chapters/2")
 
         assert resp.status_code == 404
 
@@ -2499,14 +2380,14 @@ class TestReader:
 
 class TestDelete:
     def test_delete_novel(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.delete("/novels/test-n1", headers=_csrf_headers(seeded_client))
+        resp = seeded_client.delete("/api/admin/novels/test-n1", headers=_csrf_headers(seeded_client))
         assert resp.status_code == 204
         # Verify gone
-        resp2 = seeded_client.get("/novels/test-n1")
+        resp2 = seeded_client.get("/api/admin/novels/test-n1")
         assert resp2.status_code == 404
 
     def test_delete_novel_not_found(self, client: TestClient) -> None:
-        resp = client.delete("/novels/does-not-exist", headers=_csrf_headers(client))
+        resp = client.delete("/api/admin/novels/does-not-exist", headers=_csrf_headers(client))
         assert resp.status_code == 404
 
 
@@ -2517,14 +2398,14 @@ class TestDelete:
 
 class TestProgress:
     def test_progress(self, seeded_client: TestClient) -> None:
-        resp = seeded_client.get("/novels/test-n1/progress")
+        resp = seeded_client.get("/api/admin/novels/test-n1/progress")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 2
         assert data["scraped"] >= 1
 
     def test_progress_not_found(self, client: TestClient) -> None:
-        resp = client.get("/novels/does-not-exist/progress")
+        resp = client.get("/api/admin/novels/does-not-exist/progress")
         assert resp.status_code == 404
 
 
@@ -2535,7 +2416,7 @@ class TestProgress:
 
 class TestSources:
     def test_list_sources(self, client: TestClient) -> None:
-        resp = client.get("/novels/sources")
+        resp = client.get("/api/admin/sources")
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
@@ -2546,25 +2427,13 @@ class TestSources:
 
 
 class TestAdmin:
-    def test_admin_dashboard_html(self, _session_auth_defaults: None) -> None:
-        bootstrap()
-        storage = _fresh_storage()
-        runner = StubRunner()
-        c = _make_app(storage, runner=runner)  # type: ignore[arg-type]
-
-        resp = c.get("/novels/admin")
-
-        assert resp.status_code == 200
-        assert "Novel AI Admin" in resp.text
-        assert "worker-status" in resp.text
-
     def test_admin_worker_controls(self, _session_auth_defaults: None) -> None:
         bootstrap()
         storage = _fresh_storage()
         runner = StubRunner()
         c = _make_app(storage, runner=runner)  # type: ignore[arg-type]
 
-        status_resp = c.get("/novels/admin/worker")
+        status_resp = c.get("/api/admin/worker")
         assert status_resp.status_code == 200
         assert status_resp.json()["running"] is False
         canonical_status_resp = c.get("/api/admin/worker")
@@ -2572,17 +2441,17 @@ class TestAdmin:
         assert canonical_status_resp.json()["running"] is False
 
         headers = _csrf_headers(c)
-        start_resp = c.post("/novels/admin/worker/start", headers=headers)
+        start_resp = c.post("/api/admin/worker/start", headers=headers)
         assert start_resp.status_code == 200
         assert start_resp.json()["running"] is True
 
-        run_once_resp = c.post("/novels/admin/worker/run-once", headers=headers)
+        run_once_resp = c.post("/api/admin/worker/run-once", headers=headers)
         assert run_once_resp.status_code == 200
         assert run_once_resp.json()["activity"]["id"] == "activity-1"
         assert run_once_resp.json()["job"]["id"] == "activity-1"
         assert run_once_resp.json()["worker"]["activity_processed"] == 1
 
-        stop_resp = c.post("/novels/admin/worker/stop", headers=headers)
+        stop_resp = c.post("/api/admin/worker/stop", headers=headers)
         assert stop_resp.status_code == 200
         assert stop_resp.json()["running"] is False
 
@@ -2602,7 +2471,7 @@ class TestAdmin:
         preferences = PreferencesService(_TMP / "prefs")
         c = _make_app(storage, preferences=preferences)
 
-        status_resp = c.get("/novels/admin/provider-api-key/gemini")
+        status_resp = c.get("/api/admin/provider-api-key/gemini")
         assert status_resp.status_code == 200
         assert status_resp.json()["configured"] is False
         assert status_resp.json()["provider_key"] == "gemini"
@@ -2617,7 +2486,7 @@ class TestAdmin:
         assert credential_resp.json()["validation_status"] == "Unchecked"
 
         set_resp = c.post(
-            "/novels/admin/provider-api-key",
+            "/api/admin/provider-api-key",
             json={"provider_key": "gemini", "api_key": "AIza-test-key"},
             headers=_csrf_headers(c),
         )
@@ -2636,7 +2505,7 @@ class TestAdmin:
         assert canonical_credential_resp.json()["configured"] is True
         assert canonical_credential_resp.json()["is_active"] is True
 
-        clear_resp = c.delete("/novels/admin/provider-api-key/gemini", headers=_csrf_headers(c))
+        clear_resp = c.delete("/api/admin/provider-api-key/gemini", headers=_csrf_headers(c))
         assert clear_resp.status_code == 200
         assert clear_resp.json()["configured"] is False
 
@@ -2657,7 +2526,7 @@ class TestAdmin:
         c = _make_app(storage, preferences=preferences)
 
         resp = c.post(
-            "/novels/admin/provider-api-key/validate",
+            "/api/admin/provider-api-key/validate",
             json={"provider_key": "gemini", "api_key": "AIza-temp-key"},
             headers=_csrf_headers(c),
         )
@@ -2862,7 +2731,7 @@ class TestAdmin:
             usage=usage,
         )
 
-        list_resp = c.get("/novels/admin/runtime-state")
+        list_resp = c.get("/api/admin/runtime-state")
 
         assert list_resp.status_code == 200
         canonical_list_resp = c.get("/api/admin/runtime-state")
@@ -2876,19 +2745,19 @@ class TestAdmin:
         assert items["usage"]["affects_process"] is False
 
         headers = _csrf_headers(c)
-        refresh_resp = c.post("/novels/admin/runtime-state/preferences/refresh", headers=headers)
+        refresh_resp = c.post("/api/admin/runtime-state/preferences/refresh", headers=headers)
         assert refresh_resp.status_code == 200
         assert refresh_resp.json()["key"] == "preferences"
 
-        clear_cache_resp = c.delete("/novels/admin/runtime-state/translation_cache", headers=headers)
+        clear_cache_resp = c.delete("/api/admin/runtime-state/translation_cache", headers=headers)
         assert clear_cache_resp.status_code == 200
         assert cache.get("source", "gemini", "gemini-2.5-flash") is None
 
-        clear_usage_resp = c.delete("/novels/admin/runtime-state/usage", headers=headers)
+        clear_usage_resp = c.delete("/api/admin/runtime-state/usage", headers=headers)
         assert clear_usage_resp.status_code == 200
         assert usage.summary(all_days=True)["total_requests"] == 0
 
-        clear_preferences_resp = c.delete("/novels/admin/runtime-state/preferences", headers=headers)
+        clear_preferences_resp = c.delete("/api/admin/runtime-state/preferences", headers=headers)
         assert clear_preferences_resp.status_code == 200
         assert preferences.get_preferred_provider() == "dummy"
 
@@ -2906,7 +2775,7 @@ class TestActivity:
         c = _make_app(storage, jobs)
 
         create_resp = c.post(
-            "/novels/activity/crawl",
+            "/api/admin/activity/crawl",
             json={
                 "novel_id": "test-n1",
                 "source_key": "syosetu_ncode",
@@ -2920,7 +2789,7 @@ class TestActivity:
         assert created["type"] == "crawl"
         assert created["status"] == "pending"
 
-        activity_resp = c.get("/novels/activity", params={"activity_type": "crawl", "status": "pending"})
+        activity_resp = c.get("/api/admin/activity", params={"activity_type": "crawl", "status": "pending"})
         assert activity_resp.status_code == 200
         activity_list = activity_resp.json()["activity"]
         assert len(activity_list) == 1
@@ -2929,14 +2798,15 @@ class TestActivity:
         assert canonical_activity_resp.status_code == 200
         assert canonical_activity_resp.json()["activity"][0]["id"] == created["id"]
 
-        list_resp = c.get("/novels/activity", params={"activity_type": "crawl", "status": "pending"})
+        list_resp = c.get("/api/admin/activity", params={"activity_type": "crawl", "status": "pending"})
         assert list_resp.status_code == 200
         listed = list_resp.json()["activity"]
         assert len(listed) == 1
         assert listed[0]["id"] == created["id"]
 
-        removed_route_resp = c.get("/novels/jobs", params={"job_type": "crawl", "status": "pending"})
-        assert removed_route_resp.status_code == 404
+        for removed_path in ("/novels/jobs", "/api/novels/jobs"):
+            removed_route_resp = c.get(removed_path, params={"job_type": "crawl", "status": "pending"})
+            assert removed_route_resp.status_code == 404
 
     def test_create_update_and_get_translation_activity(self, _session_auth_defaults: None) -> None:
         bootstrap()
@@ -2945,7 +2815,7 @@ class TestActivity:
         c = _make_app(storage, jobs)
 
         create_resp = c.post(
-            "/novels/activity/translation",
+            "/api/admin/activity/translation",
             json={
                 "novel_id": "test-n1",
                 "chapters": "1-2",
@@ -2963,7 +2833,7 @@ class TestActivity:
         assert created_payload["provider_model"] == "gemini-2.5-flash-lite"
 
         update_resp = c.patch(
-            f"/novels/activity/{job_id}",
+            f"/api/admin/activity/{job_id}",
             json={"status": "failed", "error": "worker failed", "metadata": {"worker": "local"}},
             headers=_csrf_headers(c),
         )
@@ -2972,7 +2842,7 @@ class TestActivity:
         assert update_resp.json()["finished_at"] is not None
         assert update_resp.json()["error"] == "worker failed"
 
-        get_resp = c.get(f"/novels/activity/{job_id}")
+        get_resp = c.get(f"/api/admin/activity/{job_id}")
         assert get_resp.status_code == 200
         assert get_resp.json()["metadata"]["worker"] == "local"
 
@@ -3006,8 +2876,8 @@ class TestActivity:
         )
         c = _make_app(storage, jobs)
 
-        get_resp = c.get(f"/novels/activity/{created['id']}")
-        list_resp = c.get("/novels/activity", params={"activity_type": "translation"})
+        get_resp = c.get(f"/api/admin/activity/{created['id']}")
+        list_resp = c.get("/api/admin/activity", params={"activity_type": "translation"})
 
         payload = get_resp.json()
         assert get_resp.status_code == 200
@@ -3042,8 +2912,8 @@ class TestActivity:
         )
         c = _make_app(storage, jobs)
 
-        list_resp = c.get("/novels/activity", params={"activity_type": "translation", "status": "pending"})
-        detail_resp = c.get(f"/novels/activity/{created['id']}")
+        list_resp = c.get("/api/admin/activity", params={"activity_type": "translation", "status": "pending"})
+        detail_resp = c.get(f"/api/admin/activity/{created['id']}")
 
         assert list_resp.status_code == 200
         list_payload = list_resp.json()
@@ -3060,7 +2930,9 @@ class TestActivity:
         assert detail_payload["provider_key"] == "gemini"
         assert detail_payload["provider_model"] == "gemini-2.5-flash-lite"
 
-    def test_activity_root_metadata_progress_fields_and_default_arrays_are_normalized(self, _session_auth_defaults: None) -> None:
+    def test_activity_root_metadata_progress_fields_and_default_arrays_are_normalized(
+        self, _session_auth_defaults: None
+    ) -> None:
         bootstrap()
         storage = _fresh_storage()
         jobs = ActivityQueueService(_TMP / "jobs")
@@ -3079,7 +2951,7 @@ class TestActivity:
         )
         c = _make_app(storage, jobs)
 
-        resp = c.get(f"/novels/activity/{created['id']}")
+        resp = c.get(f"/api/admin/activity/{created['id']}")
 
         assert resp.status_code == 200
         payload = resp.json()
@@ -3104,11 +2976,11 @@ class TestActivity:
         created = jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="metadata")
 
         headers = _csrf_headers(c)
-        delete_resp = c.delete(f"/novels/activity/{created['id']}", headers=headers)
+        delete_resp = c.delete(f"/api/admin/activity/{created['id']}", headers=headers)
 
         assert delete_resp.status_code == 204
         assert jobs.get_activity(str(created["id"])) is None
-        assert c.delete("/novels/activity/missing", headers=headers).status_code == 404
+        assert c.delete("/api/admin/activity/missing", headers=headers).status_code == 404
 
     def test_invalid_activity_kind_returns_400(self, _session_auth_defaults: None) -> None:
         bootstrap()
@@ -3117,7 +2989,7 @@ class TestActivity:
         c = _make_app(storage, jobs)
 
         resp = c.post(
-            "/novels/activity/crawl",
+            "/api/admin/activity/crawl",
             json={"novel_id": "test-n1", "source_key": "syosetu_ncode", "kind": "unknown"},
             headers=_csrf_headers(c),
         )
@@ -3133,18 +3005,18 @@ class TestActivity:
 
         jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="chapters", chapters="1")
 
-        resp = c.post("/novels/activity/run-next", params={"activity_type": "crawl"}, headers=_csrf_headers(c))
+        resp = c.post("/api/admin/activity/run-next", params={"activity_type": "crawl"}, headers=_csrf_headers(c))
 
         assert resp.status_code == 200
         assert resp.json()["status"] == "completed", resp.json().get("error")
         assert resp.json()["metadata"]["result"]["chapters"] == "1"
         assert orchestrator.calls[0][0] == "scrape_chapters"
 
-        health_resp = c.get("/novels/activity/source-health/syosetu_ncode")
+        health_resp = c.get("/api/admin/activity/source-health/syosetu_ncode")
         assert health_resp.status_code == 200
         assert health_resp.json()["success_count"] == 1
 
-        list_health_resp = c.get("/novels/activity/source-health")
+        list_health_resp = c.get("/api/admin/activity/source-health")
         assert list_health_resp.status_code == 200
         assert list_health_resp.json()["sources"][0]["source_key"] == "syosetu_ncode"
 
@@ -3155,7 +3027,7 @@ class TestActivity:
         worker = ActivityWorkerService(jobs, StubJobOrchestrator(storage))  # type: ignore[arg-type]
         c = _make_app(storage, jobs, worker)
 
-        resp = c.post("/novels/activity/missing/run", headers=_csrf_headers(c))
+        resp = c.post("/api/admin/activity/missing/run", headers=_csrf_headers(c))
 
         assert resp.status_code == 404
 
@@ -3173,7 +3045,7 @@ class TestActivity:
             chapters="1",
         )
 
-        resp = c.post(f"/novels/activity/{created['id']}/run", headers=_csrf_headers(c))
+        resp = c.post(f"/api/admin/activity/{created['id']}/run", headers=_csrf_headers(c))
 
         assert resp.status_code == 200
         payload = resp.json()
@@ -3192,7 +3064,7 @@ class TestActivity:
         created = jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="chapters")
         jobs.update_activity_status(str(created["id"]), "failed", error="source timeout")
 
-        resp = c.post(f"/novels/activity/{created['id']}/run", headers=_csrf_headers(c))
+        resp = c.post(f"/api/admin/activity/{created['id']}/run", headers=_csrf_headers(c))
 
         assert resp.status_code == 400
         assert "cannot be run from status: failed" in resp.text
@@ -3258,12 +3130,12 @@ class TestActivity:
 
         missing_csrf = owner.post(f"/api/admin/activity/{created['id']}/retry")
         non_owner = user.post(f"/api/admin/activity/{created['id']}/retry", headers=_csrf_headers(user))
-        legacy_alias = owner.post(f"/novels/activity/{created['id']}/retry", headers=_csrf_headers(owner))
+        canonical = owner.post(f"/api/admin/activity/{created['id']}/retry", headers=_csrf_headers(owner))
 
         assert missing_csrf.status_code == 403
         assert non_owner.status_code == 403
-        assert legacy_alias.status_code == 200
-        assert legacy_alias.json()["status"] == "pending"
+        assert canonical.status_code == 200
+        assert canonical.json()["status"] == "pending"
 
     def test_manual_status_patch_rejects_running_transition(self, _session_auth_defaults: None) -> None:
         bootstrap()
@@ -3315,7 +3187,7 @@ class TestNovelRequests:
         isolated_db_session.commit()
         c = _make_app(storage, db_session=isolated_db_session)
 
-        list_resp = c.get("/novels/requests", params={"status": "pending"})
+        list_resp = c.get("/api/admin/requests", params={"status": "pending"})
         assert list_resp.status_code == 200
         listed = list_resp.json()["requests"]
         assert len(listed) == 1
@@ -3335,7 +3207,7 @@ class TestNovelRequests:
         c = _make_app(storage, db_session=isolated_db_session)
 
         status_resp = c.patch(
-            f"/novels/requests/{req.id}",
+            f"/api/admin/requests/{req.id}",
             json={"status": "approved", "reviewed_by": "admin"},
             headers=_csrf_headers(c),
         )
@@ -3345,13 +3217,15 @@ class TestNovelRequests:
         assert status_payload["request_id"] == str(req.id)
         assert status_payload["resolved_at"] is not None
 
-        get_resp = c.get(f"/novels/requests/{req.id}")
+        get_resp = c.get(f"/api/admin/requests/{req.id}")
         assert get_resp.status_code == 200
         get_payload = get_resp.json()
         assert get_payload["status"] == "approved"
         assert get_payload["request_id"] == str(req.id)
 
-    def test_invalid_request_status_returns_400(self, _session_auth_defaults: None, isolated_db_session: Session) -> None:
+    def test_invalid_request_status_returns_400(
+        self, _session_auth_defaults: None, isolated_db_session: Session
+    ) -> None:
         bootstrap()
         storage = _fresh_storage()
         req = NovelRequest(user_id=2, request_type="novel", source_url="https://example.com/novel", status="pending")
@@ -3359,20 +3233,22 @@ class TestNovelRequests:
         isolated_db_session.commit()
         c = _make_app(storage, db_session=isolated_db_session)
 
-        resp = c.patch(f"/novels/requests/{req.id}", json={"status": "not-real"}, headers=_csrf_headers(c))
+        resp = c.patch(f"/api/admin/requests/{req.id}", json={"status": "not-real"}, headers=_csrf_headers(c))
 
         assert resp.status_code == 400
 
-    def test_legacy_request_actions_return_gone(self, _session_auth_defaults: None, isolated_db_session: Session) -> None:
+    def test_legacy_request_actions_return_gone(
+        self, _session_auth_defaults: None, isolated_db_session: Session
+    ) -> None:
         bootstrap()
         c = _make_app(_fresh_storage(), db_session=isolated_db_session)
 
         headers = _csrf_headers(c)
-        assert c.post("/novels/requests", json={"title": "Requested Novel"}, headers=headers).status_code == 410
-        assert c.post("/novels/requests/1/vote", json={"voter": "reader-2"}, headers=headers).status_code == 410
+        assert c.post("/api/admin/requests", json={"title": "Requested Novel"}, headers=headers).status_code == 410
+        assert c.post("/api/admin/requests/1/vote", json={"voter": "reader-2"}, headers=headers).status_code == 410
         assert (
             c.post(
-                "/novels/requests/1/source-candidates",
+                "/api/admin/requests/1/source-candidates",
                 json={"source_key": "kakuyomu", "source_url": "https://kakuyomu.jp/works/123"},
                 headers=headers,
             ).status_code
@@ -3394,7 +3270,7 @@ class TestRateLimit:
         c = _make_app(storage, activity_log=jobs, orchestrator=orchestrator)
 
         resp = c.post(
-            "/novels/n1234ab/preliminary-crawl",
+            "/api/admin/novels/n1234ab/preliminary-crawl",
             json={"identifier": "https://ncode.syosetu.com/n1234ab/", "source_key": "syosetu_ncode"},
             headers=_csrf_headers(c),
         )
@@ -3436,7 +3312,7 @@ class TestRateLimit:
         c = _make_app(storage, activity_log=jobs, orchestrator=orchestrator)
 
         resp = c.post(
-            "/novels/n1962jz/preliminary-crawl",
+            "/api/admin/novels/n1962jz/preliminary-crawl",
             json={"identifier": "https://novel18.syosetu.com/n1962jz/", "source_key": "syosetu_ncode"},
             headers=_csrf_headers(c),
         )
@@ -3461,7 +3337,7 @@ class TestRateLimit:
         c = _make_app(storage, activity_log=jobs, orchestrator=orchestrator)
 
         resp = c.post(
-            "/novels/n1962jz/preliminary-crawl",
+            "/api/admin/novels/n1962jz/preliminary-crawl",
             json={"identifier": "n1962jz", "source_key": "syosetu_ncode"},
             headers=_csrf_headers(c),
         )
@@ -3479,7 +3355,7 @@ class TestRateLimit:
         c = _make_app(storage, activity_log=jobs, orchestrator=orchestrator)
 
         resp = c.post(
-            "/novels/n1962jz/preliminary-crawl",
+            "/api/admin/novels/n1962jz/preliminary-crawl",
             json={"identifier": "n1962jz", "source_key": "syosetu_ncode"},
             headers=_csrf_headers(c),
         )
@@ -3497,7 +3373,7 @@ class TestRateLimit:
         c = _make_app(storage, activity_log=jobs, orchestrator=orchestrator)
 
         resp = c.post(
-            "/novels/n1962jz/preliminary-crawl",
+            "/api/admin/novels/n1962jz/preliminary-crawl",
             json={"identifier": "https://novel18.syosetu.com/n1962jz/"},
             headers=_csrf_headers(c),
         )
@@ -3514,7 +3390,7 @@ class TestRateLimit:
         c = _make_app(storage, activity_log=jobs, orchestrator=orchestrator)
 
         resp = c.post(
-            "/novels/n1962jz/preliminary-crawl",
+            "/api/admin/novels/n1962jz/preliminary-crawl",
             json={"identifier": "n1962jz", "source_key": "syosetu_ncode"},
             headers=_csrf_headers(c),
         )
@@ -3540,7 +3416,7 @@ class TestRateLimit:
         c = _make_app(storage, activity_log=jobs, orchestrator=orchestrator)
 
         resp = c.post(
-            "/novels/n1962jz/preliminary-crawl",
+            "/api/admin/novels/n1962jz/preliminary-crawl",
             json={"identifier": "n1962jz", "source_key": "novel18_syosetu"},
             headers=_csrf_headers(c),
         )
@@ -3568,13 +3444,13 @@ class TestRateLimit:
         mock_orch.scrape_chapters = AsyncMock()
         app.dependency_overrides[get_orchestrator] = lambda: mock_orch
 
-        with patch("novelai.api.routers.novels._hits", defaultdict(list)):
+        with patch("novelai.api.routers.dependencies._hits", defaultdict(list)):
             c = TestClient(app)
             body = {"url": "https://example.com/n1", "source_key": "dummy"}
             headers = _csrf_headers(c)
             for _ in range(5):
-                resp = c.post("/novels/test-n1/scrape", json=body, headers=headers)
+                resp = c.post("/api/admin/novels/test-n1/scrape", json=body, headers=headers)
                 assert resp.status_code == 200
             # 6th should be rate-limited
-            resp = c.post("/novels/test-n1/scrape", json=body, headers=headers)
+            resp = c.post("/api/admin/novels/test-n1/scrape", json=body, headers=headers)
             assert resp.status_code == 429

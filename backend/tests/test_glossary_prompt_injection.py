@@ -19,6 +19,8 @@ from novelai.services.glossary_prompt_injection import (
 )
 from novelai.services.glossary_repository import GlossaryRepository
 
+pytestmark = pytest.mark.slow
+
 _SQLITE = "sqlite:///:memory:"
 
 
@@ -172,7 +174,9 @@ def test_rejected_and_banned_aliases_render_only_as_avoid_variants(session, repo
     assert "Spirit Country" not in block.rendered_text
 
 
-def test_allowed_observed_and_source_variant_aliases_match_but_do_not_render_as_canonical(session, repo, service) -> None:
+def test_allowed_observed_and_source_variant_aliases_match_but_do_not_render_as_canonical(
+    session, repo, service
+) -> None:
     novel = _make_novel(session, "match-aliases")
     entry = _entry(repo, novel.id, "World Tree", "World Tree")
     other = _entry(repo, novel.id, "Origin", "Origin")

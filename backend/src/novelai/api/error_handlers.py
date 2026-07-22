@@ -70,8 +70,8 @@ _EXPLANATION_BY_CODE: dict[str, str] = {
     "APPLICATION_ERROR": "The backend application raised an uncategorized NovelAI error.",
     "ACTIVITY_ERROR": "An activity log operation failed while preparing or running the requested task.",
     "ACTIVITY_VALIDATION_ERROR": "The activity payload is missing required fields or contains unsupported values.",
-    "API_KEY_REQUIRED": "The admin API needs a valid bearer token before this action can run.",
-    "AUTH_FORBIDDEN": "The supplied API token is missing or does not match the configured backend token.",
+    "API_KEY_REQUIRED": "An authenticated owner session is required before this action can run.",
+    "AUTH_FORBIDDEN": "The current session is not authorized to perform this action.",
     "BAD_REQUEST": "The request payload could not be accepted. Check the input values and try again.",
     "CONFIGURATION_ERROR": "The backend configuration is incomplete or invalid.",
     "CONFLICT": "The requested change conflicts with the current stored state.",
@@ -193,7 +193,9 @@ def _is_storage_exhaustion(exc: BaseException) -> bool:
         if isinstance(item, OSError) and item.errno in exhaustion_errnos:
             return True
         message = str(item).lower()
-        if any(marker in message for marker in ("no space left", "disk full", "insufficient storage", "quota exceeded")):
+        if any(
+            marker in message for marker in ("no space left", "disk full", "insufficient storage", "quota exceeded")
+        ):
             return True
     return False
 
@@ -214,7 +216,9 @@ def _error_payload(
         "code": normalized_code,
         "detail": normalized_message,
         "message": normalized_message,
-        "explanation": explanation or _EXPLANATION_BY_CODE.get(normalized_code) or _EXPLANATION_BY_CODE[DEFAULT_INTERNAL_CODE],
+        "explanation": explanation
+        or _EXPLANATION_BY_CODE.get(normalized_code)
+        or _EXPLANATION_BY_CODE[DEFAULT_INTERNAL_CODE],
     }
     if category:
         payload["category"] = category
@@ -436,7 +440,12 @@ def _classify_unhandled_error(request: Request, exc: Exception) -> ErrorClassifi
     if isinstance(exc, KeyError):
         code = "INTERNAL_FIELD_MISSING"
         response_status = DEFAULT_INTERNAL_STATUS
-        if "registered" in lower_message or "unknown" in lower_message or "provider" in lower_message or "source" in lower_message:
+        if (
+            "registered" in lower_message
+            or "unknown" in lower_message
+            or "provider" in lower_message
+            or "source" in lower_message
+        ):
             code = "REGISTRY_LOOKUP_ERROR"
             response_status = status.HTTP_400_BAD_REQUEST
         return ErrorClassification(
@@ -476,7 +485,11 @@ def _classify_unhandled_error(request: Request, exc: Exception) -> ErrorClassifi
                 details,
                 "translation",
             )
-        if "metadata translation skipped" in lower_message or "api token" in lower_message or "api key" in lower_message:
+        if (
+            "metadata translation skipped" in lower_message
+            or "api token" in lower_message
+            or "api key" in lower_message
+        ):
             return ErrorClassification(
                 status.HTTP_400_BAD_REQUEST,
                 "PROVIDER_CONFIG_ERROR",
@@ -803,7 +816,11 @@ def add_error_handlers(app: FastAPI) -> None:
         details = getattr(exc, "details", None)
         if details is None:
             details = {"application_error": str(exc)}
-        message = _as_non_empty_string(getattr(exc, "message", None)) or _as_non_empty_string(str(exc)) or "An application error occurred."
+        message = (
+            _as_non_empty_string(getattr(exc, "message", None))
+            or _as_non_empty_string(str(exc))
+            or "An application error occurred."
+        )
         return _json_error(
             status_code=_as_status_code(getattr(exc, "status_code", DEFAULT_INTERNAL_STATUS)),
             code=_as_non_empty_string(getattr(exc, "code", None)) or "APPLICATION_ERROR",
@@ -820,11 +837,7 @@ def add_error_handlers(app: FastAPI) -> None:
         classified = _classify_unhandled_error(request, exc)
         logger.exception("Unhandled API error classified as %s: %s", classified.code, exc)
         is_server_error = classified.status_code == DEFAULT_INTERNAL_STATUS
-        public_message = (
-            classified.message
-            if DEBUG_ERRORS or not is_server_error
-            else DEFAULT_INTERNAL_MESSAGE
-        )
+        public_message = classified.message if DEBUG_ERRORS or not is_server_error else DEFAULT_INTERNAL_MESSAGE
         public_details = (
             classified.details
             if DEBUG_ERRORS or not is_server_error

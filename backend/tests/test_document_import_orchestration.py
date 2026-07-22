@@ -18,6 +18,8 @@ from novelai.translation.pipeline.context import PipelineResult
 from novelai.translation.service import TranslationService
 from tests.conftest import TESTS_TMP_ROOT, MockTranslationProvider
 
+pytestmark = pytest.mark.slow
+
 
 class StubDocumentAdapter(DocumentAdapter):
     @property

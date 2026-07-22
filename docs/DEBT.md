@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 27
+- **Total active debt entries:** 28
 - **V1 launch blockers:** 6 (DEBT-075 through DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
@@ -192,7 +192,10 @@ Deferred items are tracked but excluded from the active count.
   removed; PDF requests still fail through the canonical controlled error.
   `WEB_API_KEY`, its dead dependency helper/re-export, and related environment
   guidance are removed; owner sessions and CSRF are the only admin web-auth
-  contract.
+  contract. The duplicate backend `/novels/*` and `/api/novels/*` router mounts,
+  their aggregator module, and the obsolete token-based HTML admin dashboard
+  are removed. Caddy now sends public `/novels/*` browser pages to the frontend,
+  while admin and public APIs use only `/api/admin/*` and `/api/public/*`.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)
@@ -579,14 +582,14 @@ Deferred items are tracked but excluded from the active count.
 - **Status:** Resolved
 - **Affected areas:** `backend/src/novelai/storage/backends/{base,s3,filesystem}.py`, `backend/src/novelai/storage/service.py`, `backend/src/novelai/storage/{chapters,novels,translations}.py`
 - **Description:** The S3 backend had no concept of directory presence. Code that called `_path_exists()` on a logical directory (e.g. `chapters/`, `metadata_backups/`) received `False` on S3/R2 because physical directory-marker objects do not exist. This caused `list_stored_chapters`, `list_translated_chapters`, `list_metadata_history`, `_folder_has_novel_data`, `_get_folder_name`, and other storage operations to silently return zero results when using R2. A secondary issue: chapter filenames were unpadded (`1.json`), which broke lexical ordering on object stores (`10.json` sorts before `2.json`).
-- **Resolution:**  
-  - Added `has_keys(prefix) -> bool` to `StorageBackend` interface. S3 implementation uses `list_objects_v2(MaxKeys=1)`. Filesystem implementation uses `iterdir()`.  
-  - Added `StorageService._is_dir_present(path)` — a logical-directory presence check that normalizes the prefix and delegates to `backend.has_keys()`.  
-  - Replaced 14 `_path_exists(directory)` call sites in `chapters.py`, `novels.py`, and `translations.py` with `_is_dir_present(directory)`.  
-  - Chapter filenames changed to 4-digit zero-padded (`0001.json`) via `_chapter_filename()`. `list_stored_chapters` and `list_translated_chapters` convert padded stems back to logical IDs (`0001` → `1`) via `_logical_id_from_stem()`.  
-  - Added `StorageService._logical_id_from_stem()` static method.  
-- **Tests:** 10 unit tests + 10 S3 integration tests covering prefix presence, padding, listing, exclusion, recursive deletion, boundary separation. All pass.  
-- **Verification:** `count_stored_chapters("n2056dn")` returns 9 (was 0 before the fix) against live R2.  
+- **Resolution:**
+  - Added `has_keys(prefix) -> bool` to `StorageBackend` interface. S3 implementation uses `list_objects_v2(MaxKeys=1)`. Filesystem implementation uses `iterdir()`.
+  - Added `StorageService._is_dir_present(path)` — a logical-directory presence check that normalizes the prefix and delegates to `backend.has_keys()`.
+  - Replaced 14 `_path_exists(directory)` call sites in `chapters.py`, `novels.py`, and `translations.py` with `_is_dir_present(directory)`.
+  - Chapter filenames changed to 4-digit zero-padded (`0001.json`) via `_chapter_filename()`. `list_stored_chapters` and `list_translated_chapters` convert padded stems back to logical IDs (`0001` → `1`) via `_logical_id_from_stem()`.
+  - Added `StorageService._logical_id_from_stem()` static method.
+- **Tests:** 10 unit tests + 10 S3 integration tests covering prefix presence, padding, listing, exclusion, recursive deletion, boundary separation. All pass.
+- **Verification:** `count_stored_chapters("n2056dn")` returns 9 (was 0 before the fix) against live R2.
 - **R2 canonical note:** Object-store directories are virtual prefixes. Storage-aware code must use the storage abstraction, not `Path.exists()` or `Path.is_dir()`.
 
 ### DEBT-064 — Live admin Library summary and catalog projection validation (Phase 2)
@@ -636,7 +639,7 @@ Deferred items are tracked but excluded from the active count.
       - *Settled background refetch failure* → detected via `summary.isRefetchError` (or equivalently `status === "error" && data !== undefined && fetchStatus === "idle"`). Renders amber banner + Retry preserving previous values. Initial-load error and explicit-refresh error remain mutually exclusive.
       - *Explicit refresh failure* → amber banner reading `refreshSummary.error` + Retry triggering the mutation. Previous good values remain visible.
     - "Retry retry" typo removed.
-  - Single route: `GET /api/admin/library/summary` (operationId `library_summary_api_admin_library_summary_get`). Historical accidental aliases under `/novels/admin/library/summary` and `/api/novels/admin/library/summary` were removed by deleting `library.read_router` from `novels.router` in `backend/src/novelai/api/routers/novels.py`.
+  - Single route: `GET /api/admin/library/summary` (operationId `library_summary_api_admin_library_summary_get`). Historical accidental aliases under `/novels/admin/library/summary` and `/api/novels/admin/library/summary` were removed; the duplicate router aggregator was subsequently deleted entirely.
 - **Tests:**
   - 50 backend library-summary tests, including hardened cold-concurrent exactly-one-build, fake-clock expiry, forced-refresh single-flight joining active build, **successive-generation waiter-retention race**, **invalidation-epoch stale-build rejection** (proving only one stable rebuild after invalidation), **concurrent failed-generation propagation** with 8+ threads, **strengthened normal-callers-join-forced-build**, **incompatible-identity waits-and-rebuilds**, real `Path` prefix normalization, Windows-style string prefix normalization (spying on the backend argument), crawl-failure semantics (newest-clean overrides older failure, cancelled/running activities ignored, malformed payload does not resurrect, duplicates dedup, dict and scalar formats normalize, stored chapters excluded from failed, pending remains `max(total - scraped - failed, 0)`).
   - 7 Admin Library frontend tests in `frontend/app/(admin)/admin/library/__tests__/page.test.tsx`, including a real background-refetch failure test (initial success followed by a settled failed refetch: previous values remain, exactly one amber background warning, no initial-load warning, no explicit-refresh warning; Retry triggers the normal query refetch; a later successful refetch removes the warning).
@@ -950,3 +953,188 @@ Deferred items are tracked but excluded from the active count.
 - **Resolution:** Removed alias normalization and migration. Only canonical
   workflow step names are accepted; tests now prove a removed alias fails
   clearly.
+
+### DEBT-099 — Split-mode tests did not exercise real entrypoints
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Deployment | Authentication | Testing
+- **Priority:** High
+- **Status:** Resolved
+- **Affected areas:** `novelai.main_admin`, `novelai.main_reader`, Caddy route
+  ownership, split-mode contract tests, deployment and architecture guidance
+- **Description:** The split-mode test suite constructed a synthetic reader and
+  used the monolith as its admin fixture. It therefore could not detect that
+  session-dependent `/api/user/*` routes were registered on the sessionless
+  reader while Caddy sent those requests to the frontend catch-all. The real
+  admin entrypoint also lacked canonical library detail/action registrations
+  that had previously arrived only through the removed compatibility router.
+- **Completion criteria:** Test the real split entrypoints, assign every API
+  namespace to exactly one process, host session-dependent routes only behind
+  session middleware, route them explicitly through Caddy, prove the removed
+  backend novel aliases are absent, and align canonical deployment guidance.
+- **Resolution:** Split-mode tests now introspect the real `main_admin` and
+  `main_reader` applications. The session-enabled admin process owns
+  `/api/admin/*`, `/api/auth/*`, and `/api/user/*`; the sessionless reader owns
+  only `/api/public/*` and public health. Caddy routes `/api/user/*` to port
+  8000, canonical library detail/action routers are registered directly on the
+  admin app, and 17 real-entrypoint contract tests enforce route exclusivity
+  and absence of `/novels/*` and `/api/novels/*` backend aliases.
+
+### DEBT-100 — Local Git object store is unreadable
+- **Milestone:** Milestone M0 (CI Confidence)
+- **Category:** Tooling | Repository Integrity | Delivery
+- **Priority:** Blocker
+- **Status:** Resolved
+- **Affected areas:** Local `.git` object database, pack indexes, commit graph,
+  index cache-tree, reflogs, diff/stage/commit workflow
+- **Description:** Read-only final review failed because Git could not read
+  object `a24c652728060913ce2e2adf7675a8f877cf52e9`. `git fsck --full
+  --no-dangling` then reported permission-denied access across loose objects,
+  an unreadable pack index and commit graph, broken tree links, and invalid
+  cache-tree and reflog pointers. Until the object database is made readable
+  and verified, Git cannot produce a trustworthy diff or safely create the
+  requested commit. The tested worktree changes remain present and unstaged.
+- **Completion criteria:** Preserve the complete worktree patch outside Git;
+  identify whether ACLs, file locking, storage corruption, or missing objects
+  caused the failures; restore objects from a trusted remote or healthy clone
+  without rewriting published history; rebuild only derived metadata after a
+  backup; require a clean `git fsck`, readable `HEAD` and parent history, a
+  complete diff, and successful intentional stage/commit verification.
+- **Resolution:** Repository object access was restored without rewriting
+  history. `git fsck --full --no-dangling` completes cleanly, `HEAD` and the
+  previously unreadable blob are readable, and Git can again produce the
+  complete worktree diff. Intentional staging and commit verification are
+  recorded by the commits that include this resolution.
+
+### DEBT-101 — Slow-test marker removed pipeline-stage CI coverage
+- **Milestone:** Milestone M0 (CI Confidence)
+- **Category:** CI/CD | Testing
+- **Priority:** High
+- **Status:** Resolved
+- **Affected areas:** `.github/workflows/ci.yml`,
+  `backend/tests/test_pipeline_stages.py`
+- **Description:** Marking the pipeline-stage suite as slow while filtering
+  slow tests from the core job caused the suite to run in no CI job.
+- **Completion criteria:** Keep slow tests out of the core shard without
+  removing them from CI coverage.
+- **Resolution:** Added a dedicated `pipeline-stages` extended-test shard that
+  runs the marked file explicitly.
+
+### DEBT-102 — Maintenance cleanup script lacked path confinement
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Tooling | Filesystem Safety
+- **Priority:** High
+- **Status:** Resolved
+- **Affected areas:** `deploy/cleanup.ps1`
+- **Description:** The maintenance script recursively discovered and deleted
+  cache directories without resolving each deletion target or proving it was
+  inside the repository.
+- **Completion criteria:** Resolve the repository from the script location,
+  reject paths outside it and protected roots, use literal-path deletion, and
+  support a non-mutating preview.
+- **Resolution:** Added repository-bound path validation, protected-root
+  exclusions, `-LiteralPath` removal, strict error handling, and PowerShell
+  `-WhatIf` support.
+
+### DEBT-103 — VS Code recommendations were ignored and misconfigured
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Developer Experience | Tooling
+- **Priority:** Low
+- **Status:** Resolved
+- **Affected areas:** `.vscode/settings.json`, `.vscode/extensions.json`,
+  `.gitignore`
+- **Description:** Extension IDs were stored under an unsupported
+  `extensions` settings key, and the entire `.vscode` directory was ignored,
+  so the intended project setup could not be shared.
+- **Completion criteria:** Use VS Code's canonical extension-recommendation
+  file and track only the two approved project configuration files.
+- **Resolution:** Moved extension IDs to `.vscode/extensions.json`, kept editor
+  settings in valid JSONC-compatible settings, and narrowly unignored those
+  two files while leaving other workspace-local state ignored.
+
+### DEBT-104 — Slow markers broke test-module syntax
+- **Milestone:** Milestone M0 (CI Confidence)
+- **Category:** Testing | Code Quality
+- **Priority:** Blocker
+- **Status:** Resolved
+- **Affected areas:** Fourteen backend test modules marked as slow
+- **Description:** Module-level `pytestmark` assignments were appended near the
+  end of files, interrupting function and class bodies and preventing Ruff and
+  pytest from parsing thirteen modules.
+- **Completion criteria:** Put every marker at module scope and prove all
+  affected modules parse and collect.
+- **Resolution:** Moved all fourteen slow-marker assignments directly below
+  their `pytest` imports. Ruff and focused pytest collection verify the files.
+
+### DEBT-105 — CI passed a SQLAlchemy URL to raw psycopg
+- **Milestone:** Milestone M0 (CI Confidence)
+- **Category:** CI/CD | Database
+- **Priority:** Blocker
+- **Status:** Resolved
+- **Affected areas:** `.github/workflows/ci.yml`, vanilla PostgreSQL auth
+  compatibility bootstrap
+- **Description:** The bootstrap step called `psycopg.connect()` with the
+  SQLAlchemy-only `postgresql+psycopg://` scheme, so CI failed before Alembic
+  could run. The separate Alembic step correctly requires that scheme.
+- **Completion criteria:** Use a native PostgreSQL URL only for the direct
+  psycopg bootstrap and retain the SQLAlchemy URL for Alembic.
+- **Resolution:** The bootstrap step now uses `postgresql://`; the migration
+  step remains `postgresql+psycopg://` as required by application persistence.
+
+### DEBT-106 — Locked transitive dependencies had high-severity advisories
+- **Milestone:** Milestone M0 (CI Confidence)
+- **Category:** Supply Chain | Security
+- **Priority:** High
+- **Status:** Resolved
+- **Affected areas:** Python development lockfiles, frontend package override
+- **Description:** Dependabot reported `pyasn1 0.6.3` vulnerable to resource
+  exhaustion and quadratic-time denial of service, and `sharp 0.34.5`
+  vulnerable through bundled libvips issues.
+- **Completion criteria:** Require `pyasn1 >= 0.6.4` and `sharp >= 0.35.0`,
+  regenerate authoritative lockfiles, and rerun backend/frontend verification.
+- **Resolution:** Added secure dependency floors through the existing Python
+  development extra and npm override, then regenerated pip, uv, and npm locks.
+
+### DEBT-107 — Vanilla PostgreSQL migration replay lacked Supabase roles
+- **Milestone:** Milestone M0 (CI Confidence)
+- **Category:** CI/CD | Database | RLS
+- **Priority:** Blocker
+- **Status:** Resolved
+- **Affected areas:** `backend/sql/ci_vanilla_postgres_auth_compat.sql`, clean
+  PostgreSQL migration replay
+- **Description:** The CI compatibility shim supplied `auth.uid()` but not the
+  inert `anon` and `authenticated` roles referenced by RLS migrations. A clean
+  PostgreSQL 16 replay therefore failed at the scheduled-job lease policy.
+- **Completion criteria:** Define idempotent, non-login CI roles without
+  changing hosted Supabase or embedding an authentication implementation.
+- **Resolution:** The CI-only shim now creates missing `anon` and
+  `authenticated` roles as `NOLOGIN`. A disposable PostgreSQL 16 container
+  verifies the raw bootstrap and complete Alembic upgrade from an empty DB.
+
+### DEBT-108 — Local GitGuardian hook authentication is invalid
+- **Milestone:** Milestone M0 (CI Confidence)
+- **Category:** Security | Developer Tooling | Secret Scanning
+- **Priority:** High
+- **Status:** Pending
+- **Affected areas:** Local ggshield authentication, pre-commit secret scan
+- **Description:** The staged GitGuardian hook exits before scanning with
+  `Invalid API key`. No credential value was printed or committed. GitHub
+  native secret scanning reports zero open alerts, but it is not a substitute
+  for the required local pre-commit scan.
+- **Completion criteria:** Re-authenticate ggshield locally without placing the
+  token in chat, shell history, repository files, or logs; rerun the staged
+  hook successfully; and record a zero-finding result or remediate findings.
+
+### DEBT-109 — Text hooks could mutate byte-preserved archived specs
+- **Milestone:** Milestone M7 (Final Hardening)
+- **Category:** Documentation | Tooling | Archive Integrity
+- **Priority:** Medium
+- **Status:** Resolved
+- **Affected areas:** `.pre-commit-config.yaml`, `docs/archive/specs/`
+- **Description:** Generic trailing-whitespace and EOF fixers would rewrite
+  historical spec content during the archive move, defeating the verified
+  byte-identical preservation contract.
+- **Completion criteria:** Preserve archived files exactly while continuing to
+  scan active source and documentation normally.
+- **Resolution:** Excluded only the archived-spec subtree from the two
+  mutating text fixers. Ruff and GitGuardian scopes are unchanged, and hash
+  comparison confirms all 164 moved files remain byte-identical.

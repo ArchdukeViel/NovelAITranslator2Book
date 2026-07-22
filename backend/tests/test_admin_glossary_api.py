@@ -34,6 +34,8 @@ from novelai.db.models.novel import Novel
 from novelai.db.models.users import User
 from novelai.services.glossary_repository import GlossaryRepository
 
+pytestmark = pytest.mark.slow
+
 
 @pytest.fixture()
 def db_engine():
@@ -470,7 +472,9 @@ def test_owner_can_apply_glossary_candidate_import_as_reviewing_entries(
     assert entry.status == "candidate"
     assert entry.enforcement_level == "none"
     assert entry.owner_locked is False
-    event = db_session.query(NovelGlossaryDecisionEvent).filter_by(glossary_entry_id=entry.id, event_type="create").one()
+    event = (
+        db_session.query(NovelGlossaryDecisionEvent).filter_by(glossary_entry_id=entry.id, event_type="create").one()
+    )
     assert event.decision_source == "candidate_import"
 
 
@@ -705,7 +709,9 @@ def test_provider_suggestion_routes_reject_guest_user_and_missing_csrf(
 
 def test_provider_suggestion_route_handles_missing_provider_config(owner_client, db_session, monkeypatch) -> None:
     novel = _seed_novel(db_session, "provider-missing")
-    monkeypatch.setattr(admin_glossary_provider, "get_provider", lambda _key=None: (_ for _ in ()).throw(KeyError("missing")))
+    monkeypatch.setattr(
+        admin_glossary_provider, "get_provider", lambda _key=None: (_ for _ in ()).throw(KeyError("missing"))
+    )
 
     resp = owner_client.post(
         f"/api/admin/novels/{novel.id}/glossary/candidates/provider/preview",
@@ -1079,9 +1085,7 @@ def test_decision_event_listing_is_scoped_by_novel_and_entry(owner_client, db_se
 
     novel_a_events = owner_client.get(f"/api/admin/novels/{novel_a.id}/glossary/events").json()
     novel_b_events = owner_client.get(f"/api/admin/novels/{novel_b.id}/glossary/events").json()
-    wrong_entry_events = owner_client.get(
-        f"/api/admin/novels/{novel_b.id}/glossary/entries/{entry_a['id']}/events"
-    )
+    wrong_entry_events = owner_client.get(f"/api/admin/novels/{novel_b.id}/glossary/entries/{entry_a['id']}/events")
 
     assert [event["novel_id"] for event in novel_a_events] == [novel_a.id, novel_a.id]
     assert [event["novel_id"] for event in novel_b_events] == [novel_b.id]

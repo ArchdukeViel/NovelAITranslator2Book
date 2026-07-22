@@ -80,6 +80,8 @@ dev = [
   "rq>=2.10.0",
   "redis>=8.0.1",
   "fakeredis>=2.36.2",
+  "pre-commit>=4.2.0",
+  "pyasn1>=0.6.4",
 ]
 
 [project.urls]
@@ -104,6 +106,7 @@ tmp_path_retention_policy = "none"
 markers = [
     "e2e: end-to-end integration tests (full pipeline, slower, requires fixtures)",
     "integration: integration tests against external services (S3/R2, Redis, etc.)",
+    "slow: tests that require database, network, or are particularly slow",
 ]
 
 [tool.ruff]

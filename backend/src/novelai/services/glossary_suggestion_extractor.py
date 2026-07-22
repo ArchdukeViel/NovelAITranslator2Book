@@ -137,14 +137,16 @@ class SuggestionExtractor:
         for term, count in term_counts.most_common(self.max_suggestions * 2):
             if count < self.min_frequency:
                 continue
-            suggestions.append(TermSuggestion(
-                source_term=term,
-                occurrence_count=count,
-                chapter_count=len(term_chapters.get(term, set())),
-                context_snippets=term_snippets.get(term, [])[:3],
-                source="frequency",
-                confidence=min(0.9, 0.3 + count * 0.1),
-            ))
+            suggestions.append(
+                TermSuggestion(
+                    source_term=term,
+                    occurrence_count=count,
+                    chapter_count=len(term_chapters.get(term, set())),
+                    context_snippets=term_snippets.get(term, [])[:3],
+                    source="frequency",
+                    confidence=min(0.9, 0.3 + count * 0.1),
+                )
+            )
             if len(suggestions) >= self.max_suggestions:
                 break
 

@@ -56,7 +56,7 @@ Roadmap has no explicit acceptance-gate block. Use exact DEBT completion criteri
 
 - `RedisRateLimiter` exists in `backend/src/novelai/infrastructure/http/rate_limiter.py`, selected by `WEB_RATE_LIMITER_BACKEND=redis`, but DEBT-039 says split multi-process behavior has no verification.
 - Compose already starts `redis:7-alpine`, passes `REDIS_URL=redis://redis:6379/0`, and defaults `WEB_RATE_LIMITER_BACKEND` to `memory`. Production must use `redis`; memory is development-only / single-process only.
-- `deploy/Caddyfile` already has ordered handles, but routes `/health/*`, `/api/admin/*`, `/api/auth/*`, `/api/novels/*`, and `/novels/*` to `backend:8000`; `/api/public/*` to `reader:8001`; catch-all to `frontend:3000`. Validate route contract against actual Compose service names and split app entrypoints. Do not rename targets just to match outdated prose.
+- `deploy/Caddyfile` has ordered handles for `/health/*`, `/api/admin/*`, `/api/auth/*`, and session-authenticated `/api/user/*` to `backend:8000`; `/api/public/*` to `reader:8001`; and the catch-all, including public `/novels/*` pages, to `frontend:3000`. Validate the contract against actual Compose service names and split app entrypoints.
 - `frontend/package.json` defines `lint` as `next lint`, has ESLint packages, but no checked `eslint.config.mjs` is confirmed and `ci.yml` runs typecheck/tests but not lint.
 - S3 backend and mocked tests exist. DEBT-061 requires real integration checks, production validation, and S3 backup/restore drill evidence. Use an explicitly configured non-production bucket/prefix or S3-compatible test target. Never test against production data.
 - `deploy/compose.yml` runs Alembic through one-shot `migrate` before backend/reader. Preserve this gate. Do not run migrations inside long-running containers.
@@ -75,7 +75,7 @@ Roadmap has no explicit acceptance-gate block. Use exact DEBT completion criteri
 
 #### Caddy and split deployment
 
-- Caddy routing order is security-sensitive: `/api/admin/*`, `/api/auth/*`, `/api/novels/*`, `/novels/*` to admin backend on 8000; `/api/public/*` to reader on 8001; `/health/*` to admin backend; all remaining traffic to frontend on 3000.
+- Caddy routing order is security-sensitive: `/api/admin/*`, `/api/auth/*`, and `/api/user/*` go to the session-enabled backend on 8000; `/api/public/*` goes to the sessionless reader on 8001; `/health/*` goes to the backend; all remaining traffic, including frontend `/novels/*` pages, goes to the frontend on 3000.
 - Match Caddy upstream hostnames to actual Compose service names. Current service is named `backend`, even though its image/entrypoint is admin service. Do not break a working compose network by speculative renaming.
 - TLS terminates at Caddy. Preserve compression and safe headers. Add HSTS only for HTTPS production domain; never make localhost development unusable.
 - Caddy must not expose `storage/novel_library` as static files.

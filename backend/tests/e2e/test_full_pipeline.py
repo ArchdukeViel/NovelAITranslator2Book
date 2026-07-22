@@ -24,6 +24,8 @@ from fastapi.testclient import TestClient
 
 from tests.fixtures.e2e.mock_provider import MockGeminiProvider
 
+pytestmark = pytest.mark.slow
+
 NOVEL_ID = "test-novel-e2e"
 SOURCE_URL = "dummy://test-novel"
 

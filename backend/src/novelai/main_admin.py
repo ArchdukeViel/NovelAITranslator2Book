@@ -23,7 +23,8 @@ from novelai.api.routers import (
     editor,
     health,
     library,
-    novels,
+    library_actions,
+    library_detail,
     operations,
     requests,
     sources,
@@ -31,6 +32,7 @@ from novelai.api.routers import (
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.health import admin_router as health_admin_router
 from novelai.api.routers.library import NovelSummary, list_novels
+from novelai.api.routers.user_data import router as user_data_router
 from novelai.config.production_validator import assert_production_config
 from novelai.config.settings import settings
 from novelai.runtime.bootstrap import bootstrap
@@ -69,9 +71,7 @@ app.add_middleware(
     max_age=settings.SESSION_MAX_AGE,
     same_site="lax",
     https_only=(
-        settings.SESSION_COOKIE_SECURE
-        if settings.SESSION_COOKIE_SECURE is not None
-        else settings.ENV == "production"
+        settings.SESSION_COOKIE_SECURE if settings.SESSION_COOKIE_SECURE is not None else settings.ENV == "production"
     ),
 )
 
@@ -92,6 +92,7 @@ add_error_handlers(app)
 
 # Auth routes (login/logout/me)
 app.include_router(auth_router)
+app.include_router(user_data_router)
 
 # Admin orchestration routers
 app.include_router(admin.router, prefix="/api", tags=["admin-api"])
@@ -104,6 +105,8 @@ app.include_router(editor.router, prefix="/api/admin/novels", tags=["admin-api"]
 app.include_router(operations.router, prefix="/api/admin/novels", tags=["admin-api"])
 app.include_router(library.router, prefix="/api/admin/novels", tags=["admin-api"])
 app.include_router(library.read_router, prefix="/api", tags=["admin-api"])
+app.include_router(library_detail.router, prefix="/api/admin/novels", tags=["admin-api"])
+app.include_router(library_actions.router, prefix="/api/admin/novels", tags=["admin-api"])
 app.add_api_route(
     "/api/admin/novels",
     list_novels,
@@ -111,24 +114,6 @@ app.add_api_route(
     response_model=list[NovelSummary],
     include_in_schema=False,
 )
-
-app.include_router(novels.router, prefix="/novels", tags=["novels"])
-app.include_router(novels.router, prefix="/api/novels", tags=["novels-api"])
-app.add_api_route(
-    "/novels",
-    list_novels,
-    methods=["GET"],
-    response_model=list[NovelSummary],
-    include_in_schema=False,
-)
-app.add_api_route(
-    "/api/novels",
-    list_novels,
-    methods=["GET"],
-    response_model=list[NovelSummary],
-    include_in_schema=False,
-)
-
 
 app.include_router(health.router)
 app.include_router(health_admin_router, prefix="/api", tags=["health"])

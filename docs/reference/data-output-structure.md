@@ -1025,7 +1025,7 @@ GET  /api/auth/me                                — current session
 /api/admin/*                                     — admin operations (crawl, translate, settings, activity, editor, requests)
 ```
 
-Legacy `/api/novels/*` compatibility routes may remain for older callers, but new code should use the routes above and canonical `activity_id` / `job_id` fields.
+The former backend `/novels/*` and `/api/novels/*` compatibility routes are removed. Admin callers use `/api/admin/*`; public reader callers use `/api/public/*` and browser pages use frontend `/novels/*` routes. Use canonical `activity_id` / `job_id` fields.
 
 ## Scaling Notes
 

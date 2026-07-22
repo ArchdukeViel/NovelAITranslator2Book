@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session
 
 from novelai.services.scheduled_job_lease_service import ScheduledJobLeaseService
 
+pytestmark = pytest.mark.slow
+
 
 @pytest.fixture(scope="module")
 def managed_engine() -> Any:
@@ -33,26 +35,34 @@ def managed_engine() -> Any:
 @pytest.mark.integration
 def test_managed_postgres_operational_contracts(managed_engine: Any) -> None:
     with managed_engine.connect() as connection:
-        row = connection.execute(
-            text(
-                "SELECT current_setting('statement_timeout') AS statement_timeout, "
-                "current_setting('lock_timeout') AS lock_timeout, "
-                "current_setting('idle_in_transaction_session_timeout') AS idle_timeout, "
-                "(SELECT version_num FROM public.alembic_version) AS alembic_head"
+        row = (
+            connection.execute(
+                text(
+                    "SELECT current_setting('statement_timeout') AS statement_timeout, "
+                    "current_setting('lock_timeout') AS lock_timeout, "
+                    "current_setting('idle_in_transaction_session_timeout') AS idle_timeout, "
+                    "(SELECT version_num FROM public.alembic_version) AS alembic_head"
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         assert row["alembic_head"] == "9c2e4a6b8d0f"
         assert row["statement_timeout"]
         assert row["lock_timeout"]
         assert row["idle_timeout"]
-        privileges = connection.execute(
-            text(
-                "SELECT has_table_privilege('anon', 'public.scheduled_job_leases', "
-                "'select,insert,update,delete') AS anon_dml, "
-                "has_table_privilege('authenticated', 'public.scheduled_job_leases', "
-                "'select,insert,update,delete') AS authenticated_dml"
+        privileges = (
+            connection.execute(
+                text(
+                    "SELECT has_table_privilege('anon', 'public.scheduled_job_leases', "
+                    "'select,insert,update,delete') AS anon_dml, "
+                    "has_table_privilege('authenticated', 'public.scheduled_job_leases', "
+                    "'select,insert,update,delete') AS authenticated_dml"
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
         assert privileges == {"anon_dml": False, "authenticated_dml": False}
 
     managed_engine.dispose()

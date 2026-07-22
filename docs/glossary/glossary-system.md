@@ -72,7 +72,7 @@ Two parallel paths feed into the translation prompt:
 - Upserts on `canonical_term` match
 - No downgrade: existing DB `approved` stays even if file changes
 - Creates decision events, increments revision
-- API: `POST /novels/{id}/glossary/sync-to-db`, `GET /novels/{id}/glossary/sync-status`
+- API: `POST /api/admin/novels/{novel_id}/glossary/sync-to-db`, `GET /api/admin/novels/{novel_id}/glossary/sync-status`
 
 ---
 

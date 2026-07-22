@@ -10,15 +10,10 @@ from typing import Any
 
 import pytest
 from fastapi import FastAPI
-from starlette.middleware.sessions import SessionMiddleware
 
 from novelai.api.app import create_app as create_monolith_app
-from novelai.api.routers.health import router as health_router
-from novelai.api.routers.public_catalog import router as public_catalog_router
-from novelai.api.routers.public_chapter import router as public_chapter_router
-from novelai.api.routers.public_novel import router as public_novel_router
-from novelai.api.routers.user_data import router as user_data_router
-from novelai.runtime.bootstrap import bootstrap
+from novelai.main_admin import app as split_admin_app
+from novelai.main_reader import app as split_reader_app
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -40,19 +35,6 @@ def _sqlite_db(monkeypatch: Any) -> None:
 def _route_paths(app: FastAPI) -> set[str]:
     """Return set of registered route paths via OpenAPI schema."""
     return set(app.openapi()["paths"].keys())
-
-
-def _public_only_app() -> FastAPI:
-    """Build minimal app mirroring main_reader.py (public + user_data)."""
-    bootstrap()
-    app = FastAPI(title="Novel AI Reader")
-    app.add_middleware(SessionMiddleware, secret_key="test", https_only=False)
-    app.include_router(public_catalog_router)
-    app.include_router(public_novel_router)
-    app.include_router(public_chapter_router)
-    app.include_router(user_data_router)
-    app.include_router(health_router)
-    return app
 
 
 # ---------------------------------------------------------------------------
@@ -90,12 +72,12 @@ class TestMonolithMode:
 
 @pytest.fixture(scope="module")
 def reader_app() -> FastAPI:
-    return _public_only_app()
+    return split_reader_app
 
 
 @pytest.fixture(scope="module")
 def admin_app() -> FastAPI:
-    return create_monolith_app()
+    return split_admin_app
 
 
 class TestReaderServiceEndpoints:
@@ -113,6 +95,10 @@ class TestReaderServiceEndpoints:
         paths = _route_paths(reader_app)
         assert not any(p.startswith("/api/auth") for p in paths), "Reader must NOT have auth routes"
 
+    def test_reader_rejects_session_user_routes(self, reader_app: FastAPI) -> None:
+        paths = _route_paths(reader_app)
+        assert not any(p.startswith("/api/user") for p in paths), "Reader must NOT have session-authenticated routes"
+
     def test_reader_health(self, reader_app: FastAPI) -> None:
         paths = _route_paths(reader_app)
         assert "/health/live" in paths
@@ -127,7 +113,7 @@ class TestReaderServiceEndpoints:
 
 
 class TestAdminServiceEndpoints:
-    """Admin service registers admin + auth + public routes."""
+    """Session-enabled service registers admin, auth, and public-user routes."""
 
     def test_admin_has_admin_routes(self, admin_app: FastAPI) -> None:
         paths = _route_paths(admin_app)
@@ -137,9 +123,19 @@ class TestAdminServiceEndpoints:
         paths = _route_paths(admin_app)
         assert any(p.startswith("/api/auth") for p in paths), "Admin must serve auth routes"
 
-    def test_admin_has_public_routes(self, admin_app: FastAPI) -> None:
+    def test_admin_has_user_routes(self, admin_app: FastAPI) -> None:
         paths = _route_paths(admin_app)
-        assert any(p.startswith("/api/public") for p in paths), "Admin must also serve public routes"
+        assert any(p.startswith("/api/user") for p in paths), "Admin must serve session-authenticated user routes"
+
+    def test_admin_rejects_public_reader_routes(self, admin_app: FastAPI) -> None:
+        paths = _route_paths(admin_app)
+        assert not any(p.startswith("/api/public") for p in paths), "Admin must not duplicate public reader routes"
+
+    def test_admin_uses_only_canonical_novel_namespace(self, admin_app: FastAPI) -> None:
+        paths = _route_paths(admin_app)
+        assert any(p.startswith("/api/admin/novels") for p in paths)
+        assert not any(p == "/novels" or p.startswith("/novels/") for p in paths)
+        assert not any(p == "/api/novels" or p.startswith("/api/novels/") for p in paths)
 
 
 # ---------------------------------------------------------------------------

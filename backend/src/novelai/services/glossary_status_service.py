@@ -1,6 +1,6 @@
 """Service for novel glossary-status transitions.
 
-Handles the business logic for the PATCH /novels/{novel_id}/glossary-status
+Handles the business logic for PATCH /api/admin/novels/{novel_id}/glossary-status.
 endpoint: loading the novel, mutating status and revision, writing a
 NovelGlossaryDecisionEvent, and flushing within the caller's transaction.
 
@@ -60,9 +60,7 @@ class GlossaryStatusService:
         """
         session = self._session
 
-        novel: Novel | None = (
-            session.query(Novel).filter(Novel.slug == novel_id).one_or_none()
-        )
+        novel: Novel | None = session.query(Novel).filter(Novel.slug == novel_id).one_or_none()
         if novel is None:
             raise LookupError(f"Novel with slug {novel_id!r} not found.")
 
@@ -85,12 +83,8 @@ class GlossaryStatusService:
             alias_id=None,
             actor_user_id=actor_user_id,
             event_type=_EVENT_TYPE_NOVEL_STATUS_CHANGE,
-            old_value_json=json.dumps(
-                {"glossary_status": old_status}, sort_keys=True, separators=(",", ":")
-            ),
-            new_value_json=json.dumps(
-                {"glossary_status": target_status}, sort_keys=True, separators=(",", ":")
-            ),
+            old_value_json=json.dumps({"glossary_status": old_status}, sort_keys=True, separators=(",", ":")),
+            new_value_json=json.dumps({"glossary_status": target_status}, sort_keys=True, separators=(",", ":")),
             rationale=None,
             decision_source="owner",
             created_at=datetime.now(UTC),
@@ -99,8 +93,7 @@ class GlossaryStatusService:
         session.flush()
 
         logger.info(
-            "Novel %r glossary_status transitioned %r → %r by actor_user_id=%r; "
-            "glossary_revision=%d",
+            "Novel %r glossary_status transitioned %r → %r by actor_user_id=%r; glossary_revision=%d",
             novel_id,
             old_status,
             target_status,

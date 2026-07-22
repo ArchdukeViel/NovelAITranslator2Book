@@ -73,7 +73,7 @@ jobs:
 
       - name: Bootstrap Supabase auth signature on vanilla PostgreSQL
         env:
-          DATABASE_URL: postgresql+psycopg://novelai:novelai@localhost:5432/novelai
+          DATABASE_URL: postgresql://novelai:novelai@localhost:5432/novelai
         run: |
           python - <<'PY'
           import os
@@ -94,7 +94,7 @@ jobs:
 
       - name: Run unit tests
         run: >
-          pytest --basetemp=backend/tests/.tmp/pytest-core --tb=short -q -m "not e2e"
+          pytest --basetemp=backend/tests/.tmp/pytest-core --tb=short -q -m "not e2e and not slow"
           --ignore=backend/tests/test_admin_glossary_api.py
           --ignore=backend/tests/test_auth.py
           --ignore=backend/tests/test_checkpoint_resume.py
@@ -156,6 +156,9 @@ jobs:
               backend/tests/test_malformed_artifact_recovery.py
               backend/tests/test_project_layout.py
               backend/tests/test_public_reader_availability.py
+          - shard: pipeline-stages
+            test_files: >-
+              backend/tests/test_pipeline_stages.py
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 

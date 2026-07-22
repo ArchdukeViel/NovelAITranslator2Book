@@ -20,11 +20,7 @@
     reverse_proxy backend:8000
   }
 
-  handle /api/novels/* {
-    reverse_proxy backend:8000
-  }
-
-  handle /novels/* {
+  handle /api/user/* {
     reverse_proxy backend:8000
   }
 

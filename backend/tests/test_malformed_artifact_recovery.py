@@ -24,6 +24,8 @@ from novelai.storage.glossary import load_glossary
 from novelai.storage.jobs import load_chapter_state
 from novelai.storage.runtime_contracts import _read_json_file
 
+pytestmark = pytest.mark.slow
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

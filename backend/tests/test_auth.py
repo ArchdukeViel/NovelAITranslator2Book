@@ -32,9 +32,12 @@ from novelai.db.models.users import EmailVerificationToken, PasswordResetToken, 
 from novelai.services.auth_service import AuthService
 from novelai.services.email import EmailDeliveryResult, InMemoryAuthEmailService
 
+pytestmark = pytest.mark.slow
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def app():
@@ -74,6 +77,7 @@ def _reset_public_rate_limits():
 def owner_client(app, monkeypatch):
     """TestClient pre-authenticated as owner via bootstrap login."""
     from novelai.config.settings import settings
+
     monkeypatch.setattr(settings, "OWNER_BOOTSTRAP_SECRET", "test-owner-secret")
     c = TestClient(app, raise_server_exceptions=True)
     resp = c.post("/api/auth/login", json={"secret": "test-owner-secret"})
@@ -179,6 +183,7 @@ def _csrf_headers(client: TestClient) -> dict[str, str]:
 # SessionUser model
 # ---------------------------------------------------------------------------
 
+
 class TestSessionUser:
     def test_guest_is_not_authenticated(self):
         assert GUEST.is_authenticated is False
@@ -202,6 +207,7 @@ class TestSessionUser:
 # get_current_user dependency
 # ---------------------------------------------------------------------------
 
+
 class TestGetCurrentUser:
     def test_unauthenticated_returns_guest(self, client):
         resp = client.get("/test/me")
@@ -222,6 +228,7 @@ class TestGetCurrentUser:
 # ---------------------------------------------------------------------------
 # require_role dependency
 # ---------------------------------------------------------------------------
+
 
 class TestRequireRole:
     def test_guest_blocked_from_owner_route(self, client):
@@ -246,23 +253,25 @@ class TestRequireRole:
 # Auth router endpoints
 # ---------------------------------------------------------------------------
 
+
 class TestAuthRouterLogin:
-    def test_login_fails_without_bootstrap_secret_configured(
-        self, client, monkeypatch
-    ):
+    def test_login_fails_without_bootstrap_secret_configured(self, client, monkeypatch):
         from novelai.config.settings import settings
+
         monkeypatch.setattr(settings, "OWNER_BOOTSTRAP_SECRET", None)
         resp = client.post("/api/auth/login", json={"secret": "anything"})
         assert resp.status_code == 503
 
     def test_login_fails_with_wrong_secret(self, client, monkeypatch):
         from novelai.config.settings import settings
+
         monkeypatch.setattr(settings, "OWNER_BOOTSTRAP_SECRET", "correct-secret")
         resp = client.post("/api/auth/login", json={"secret": "wrong-secret"})
         assert resp.status_code == 401
 
     def test_login_succeeds_with_correct_secret(self, client, monkeypatch):
         from novelai.config.settings import settings
+
         monkeypatch.setattr(settings, "OWNER_BOOTSTRAP_SECRET", "correct-secret")
         resp = client.post("/api/auth/login", json={"secret": "correct-secret"})
         assert resp.status_code == 200
@@ -273,6 +282,7 @@ class TestAuthRouterLogin:
 
     def test_login_sets_session_cookie(self, client, monkeypatch):
         from novelai.config.settings import settings
+
         monkeypatch.setattr(settings, "OWNER_BOOTSTRAP_SECRET", "correct-secret")
         resp = client.post("/api/auth/login", json={"secret": "correct-secret"})
         assert resp.status_code == 200
@@ -584,9 +594,7 @@ class TestPublicPasswordReset:
         assert "known-reset-token" not in existing.text
         assert db_session.query(PasswordResetToken).count() == 1
 
-    def test_noop_reset_delivery_does_not_log_raw_token(
-        self, oauth_client, db_session, monkeypatch, caplog
-    ):
+    def test_noop_reset_delivery_does_not_log_raw_token(self, oauth_client, db_session, monkeypatch, caplog):
         monkeypatch.setattr(AuthService, "new_password_reset_token", staticmethod(lambda: "known-reset-token"))
         user = User(
             email="reader@example.com",
@@ -963,9 +971,7 @@ class TestPublicEmailVerification:
         db_session.refresh(user)
         assert user.email_verified_at is not None
 
-    def test_verification_request_generic_for_existing_and_missing_email(
-        self, oauth_client, db_session, monkeypatch
-    ):
+    def test_verification_request_generic_for_existing_and_missing_email(self, oauth_client, db_session, monkeypatch):
         monkeypatch.setattr(AuthService, "new_email_verification_token", staticmethod(lambda: "known-verify-token"))
         user = User(
             email="reader@example.com",
@@ -993,9 +999,7 @@ class TestPublicEmailVerification:
         assert "known-verify-token" not in existing.text
         assert db_session.query(EmailVerificationToken).count() == 1
 
-    def test_noop_verification_delivery_does_not_log_raw_token(
-        self, oauth_client, db_session, monkeypatch, caplog
-    ):
+    def test_noop_verification_delivery_does_not_log_raw_token(self, oauth_client, db_session, monkeypatch, caplog):
         monkeypatch.setattr(AuthService, "new_email_verification_token", staticmethod(lambda: "known-verify-token"))
         user = User(
             email="reader@example.com",
@@ -1057,9 +1061,7 @@ class TestPublicEmailVerification:
         assert db_session.query(EmailVerificationToken).count() == 0
         assert auth_email_outbox.outbox == []
 
-    def test_second_verification_request_invalidates_old_unused_tokens(
-        self, oauth_client, db_session, monkeypatch
-    ):
+    def test_second_verification_request_invalidates_old_unused_tokens(self, oauth_client, db_session, monkeypatch):
         tokens = iter(["first-verify-token", "second-verify-token"])
         monkeypatch.setattr(AuthService, "new_email_verification_token", staticmethod(lambda: next(tokens)))
         user = User(
@@ -1082,9 +1084,7 @@ class TestPublicEmailVerification:
         assert stored[0].used_at is not None
         assert stored[1].used_at is None
 
-    def test_verification_confirm_valid_token_sets_email_verified_at(
-        self, oauth_client, db_session, monkeypatch
-    ):
+    def test_verification_confirm_valid_token_sets_email_verified_at(self, oauth_client, db_session, monkeypatch):
         monkeypatch.setattr(AuthService, "new_email_verification_token", staticmethod(lambda: "known-verify-token"))
         user = User(
             email="reader@example.com",
@@ -1319,6 +1319,7 @@ class TestOwnerBoundaryContracts:
         """Public registration is separate from owner bootstrap login."""
         # Public registration exists, but it must not be a signup alias or owner login.
         from novelai.api.routers import auth as auth_module
+
         router = auth_module.router
         routes = {r.path for r in router.routes}  # type: ignore[attr-defined]
         assert "/api/auth/register" in routes
@@ -1327,6 +1328,7 @@ class TestOwnerBoundaryContracts:
     def test_no_jwt_endpoint_exists(self):
         """No JWT token endpoint — v1 uses session cookies only."""
         from novelai.api.routers import auth as auth_module
+
         router = auth_module.router
         routes = {r.path for r in router.routes}  # type: ignore[attr-defined]
         assert "/api/auth/token" not in routes
@@ -1358,10 +1360,7 @@ class TestGoogleOAuth:
         assert "state=" in resp.headers["location"]
 
     def test_start_rate_limit_eventually_returns_429(self, oauth_client):
-        statuses = [
-            oauth_client.get("/api/auth/google/start", follow_redirects=False).status_code
-            for _ in range(11)
-        ]
+        statuses = [oauth_client.get("/api/auth/google/start", follow_redirects=False).status_code for _ in range(11)]
         assert statuses[:10] == [302] * 10
         assert statuses[-1] == 429
 

@@ -20,7 +20,6 @@ from novelai.api.routers import (
     library,
     library_actions,
     library_detail,
-    novels,
     operations,
     requests,
     sources,
@@ -122,23 +121,6 @@ def create_app() -> FastAPI:
     app.include_router(library_actions.router, prefix="/api/admin/novels", tags=["admin-api"])
     app.add_api_route(
         "/api/admin/novels",
-        list_novels,
-        methods=["GET"],
-        response_model=list[NovelSummary],
-        include_in_schema=False,
-    )
-
-    app.include_router(novels.router, prefix="/novels", tags=["novels"])
-    app.include_router(novels.router, prefix="/api/novels", tags=["novels-api"])
-    app.add_api_route(
-        "/novels",
-        list_novels,
-        methods=["GET"],
-        response_model=list[NovelSummary],
-        include_in_schema=False,
-    )
-    app.add_api_route(
-        "/api/novels",
         list_novels,
         methods=["GET"],
         response_model=list[NovelSummary],

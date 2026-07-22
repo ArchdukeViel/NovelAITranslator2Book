@@ -18,6 +18,8 @@ from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.glossary_sync_service import GlossarySyncService
 from novelai.storage.service import StorageService
 
+pytestmark = pytest.mark.slow
+
 _SQLITE = "sqlite:///:memory:"
 
 
@@ -57,17 +59,22 @@ def _save_file_glossary(storage: StorageService, novel_id: str, entries: list[di
 
 # ── REQ-7.2 ──────────────────────────────────────────────────────────
 
+
 class TestSyncCreatesNewEntries:
     """File glossary with approved entries → created in DB."""
 
     def test_sync_creates_new_entries(self, session, repo, storage) -> None:
         novel = _make_novel(session)
         slug = novel.slug
-        _save_file_glossary(storage, slug, [
-            {"source": "君", "target": "You", "status": "approved", "confidence": 0.9},
-            {"source": "魔法", "target": "Magic", "status": "approved"},
-            {"source": "世界", "target": "World", "status": "approved", "notes": "Core concept"},
-        ])
+        _save_file_glossary(
+            storage,
+            slug,
+            [
+                {"source": "君", "target": "You", "status": "approved", "confidence": 0.9},
+                {"source": "魔法", "target": "Magic", "status": "approved"},
+                {"source": "世界", "target": "World", "status": "approved", "notes": "Core concept"},
+            ],
+        )
 
         svc = GlossarySyncService(repo, storage)
         result = svc.sync_from_file(slug)
@@ -90,6 +97,7 @@ class TestSyncCreatesNewEntries:
 
 # ── REQ-7.3 ──────────────────────────────────────────────────────────
 
+
 class TestSyncUpsertsExisting:
     """Existing DB entry for a term → updated without duplicate."""
 
@@ -107,9 +115,13 @@ class TestSyncUpsertsExisting:
             decision_source="test",
         )
 
-        _save_file_glossary(storage, slug, [
-            {"source": "君", "target": "You", "status": "approved"},
-        ])
+        _save_file_glossary(
+            storage,
+            slug,
+            [
+                {"source": "君", "target": "You", "status": "approved"},
+            ],
+        )
 
         svc = GlossarySyncService(repo, storage)
         result = svc.sync_from_file(slug)
@@ -125,6 +137,7 @@ class TestSyncUpsertsExisting:
 
 
 # ── REQ-7.4 ──────────────────────────────────────────────────────────
+
 
 class TestSyncDoesNotDowngrade:
     """DB entry is approved, file entry is needs_manual_review → status stays approved."""
@@ -144,9 +157,13 @@ class TestSyncDoesNotDowngrade:
         )
 
         # File says needs_manual_review (would map to candidate)
-        _save_file_glossary(storage, slug, [
-            {"source": "君", "target": "You", "status": "needs_manual_review"},
-        ])
+        _save_file_glossary(
+            storage,
+            slug,
+            [
+                {"source": "君", "target": "You", "status": "needs_manual_review"},
+            ],
+        )
 
         svc = GlossarySyncService(repo, storage)
         result = svc.sync_from_file(slug)
@@ -158,6 +175,7 @@ class TestSyncDoesNotDowngrade:
 
 # ── REQ-7.5 ──────────────────────────────────────────────────────────
 
+
 class TestSyncSkipsIgnored:
     """Ignored entries in file glossary → not created in DB."""
 
@@ -165,11 +183,15 @@ class TestSyncSkipsIgnored:
         novel = _make_novel(session)
         slug = novel.slug
 
-        _save_file_glossary(storage, slug, [
-            {"source": "君", "target": "You", "status": "approved"},
-            {"source": "bad_term", "target": "", "status": "ignored"},
-            {"source": "pending_term", "target": "", "status": "pending"},
-        ])
+        _save_file_glossary(
+            storage,
+            slug,
+            [
+                {"source": "君", "target": "You", "status": "approved"},
+                {"source": "bad_term", "target": "", "status": "ignored"},
+                {"source": "pending_term", "target": "", "status": "pending"},
+            ],
+        )
 
         svc = GlossarySyncService(repo, storage)
         result = svc.sync_from_file(slug)
@@ -184,6 +206,7 @@ class TestSyncSkipsIgnored:
 
 # ── REQ-7.6 ──────────────────────────────────────────────────────────
 
+
 class TestSyncDryRun:
     """dry_run=True → no DB writes, result shows created."""
 
@@ -191,10 +214,14 @@ class TestSyncDryRun:
         novel = _make_novel(session)
         slug = novel.slug
 
-        _save_file_glossary(storage, slug, [
-            {"source": "君", "target": "You", "status": "approved"},
-            {"source": "魔法", "target": "Magic", "status": "approved"},
-        ])
+        _save_file_glossary(
+            storage,
+            slug,
+            [
+                {"source": "君", "target": "You", "status": "approved"},
+                {"source": "魔法", "target": "Magic", "status": "approved"},
+            ],
+        )
 
         svc = GlossarySyncService(repo, storage)
         result = svc.sync_from_file(slug, dry_run=True)
@@ -209,6 +236,7 @@ class TestSyncDryRun:
 
 # ── REQ-7.7 ──────────────────────────────────────────────────────────
 
+
 class TestSyncIncrementsRevisionOnce:
     """Multiple entries synced → _increment_glossary_revision called exactly once."""
 
@@ -217,11 +245,15 @@ class TestSyncIncrementsRevisionOnce:
         slug = novel.slug
         original_revision = novel.glossary_revision
 
-        _save_file_glossary(storage, slug, [
-            {"source": "君", "target": "You", "status": "approved"},
-            {"source": "魔法", "target": "Magic", "status": "approved"},
-            {"source": "世界", "target": "World", "status": "approved"},
-        ])
+        _save_file_glossary(
+            storage,
+            slug,
+            [
+                {"source": "君", "target": "You", "status": "approved"},
+                {"source": "魔法", "target": "Magic", "status": "approved"},
+                {"source": "世界", "target": "World", "status": "approved"},
+            ],
+        )
 
         svc = GlossarySyncService(repo, storage)
         result = svc.sync_from_file(slug)
@@ -235,13 +267,12 @@ class TestSyncIncrementsRevisionOnce:
 
 # ── REQ-7.8 ──────────────────────────────────────────────────────────
 
+
 class TestReviewTriggersSync:
     """review_glossary_terms calls GlossarySyncService.sync_from_file."""
 
     @patch("novelai.services.glossary_sync_service.GlossarySyncService")
-    def test_review_triggers_sync(
-        self, mock_sync_service_cls, storage
-    ) -> None:
+    def test_review_triggers_sync(self, mock_sync_service_cls, storage) -> None:
         mock_sync_service = MagicMock()
         mock_sync_service_cls.return_value = mock_sync_service
 
@@ -255,9 +286,13 @@ class TestReviewTriggersSync:
 
         # Save some entries first
         slug = f"review-trigger-{uuid4().hex}"
-        _save_file_glossary(storage, slug, [
-            {"source": "君", "target": "You", "status": "approved"},
-        ])
+        _save_file_glossary(
+            storage,
+            slug,
+            [
+                {"source": "君", "target": "You", "status": "approved"},
+            ],
+        )
 
         # Import and call the real function
         from novelai.services.orchestration.glossary import review_glossary_terms
@@ -269,21 +304,18 @@ class TestReviewTriggersSync:
             result = import_asyncio.run(review_glossary_terms(fake_self, slug))
 
         # Verify sync was called
-        mock_sync_service.sync_from_file.assert_called_once_with(
-            slug, actor_user_id=None
-        )
+        mock_sync_service.sync_from_file.assert_called_once_with(slug, actor_user_id=None)
         assert "db_sync" in result
 
 
 # ── REQ-7.9 ──────────────────────────────────────────────────────────
 
+
 class TestReviewSucceedsEvenIfSyncRaises:
     """sync_from_file raises → review_glossary_terms still returns success."""
 
     @patch("novelai.services.glossary_sync_service.GlossarySyncService")
-    def test_review_succeeds_even_if_sync_raises(
-        self, mock_sync_service_cls, storage
-    ) -> None:
+    def test_review_succeeds_even_if_sync_raises(self, mock_sync_service_cls, storage) -> None:
         mock_sync_service = MagicMock()
         mock_sync_service.sync_from_file.side_effect = RuntimeError("DB down")
         mock_sync_service_cls.return_value = mock_sync_service
@@ -296,9 +328,13 @@ class TestReviewSucceedsEvenIfSyncRaises:
         fake_self._phase_payload.side_effect = lambda **kwargs: kwargs
 
         slug = f"review-raise-{uuid4().hex}"
-        _save_file_glossary(storage, slug, [
-            {"source": "君", "target": "You", "status": "approved"},
-        ])
+        _save_file_glossary(
+            storage,
+            slug,
+            [
+                {"source": "君", "target": "You", "status": "approved"},
+            ],
+        )
 
         from novelai.services.orchestration.glossary import review_glossary_terms
 
@@ -317,12 +353,11 @@ class TestReviewSucceedsEvenIfSyncRaises:
 
 # ── REQ-7.10 ─────────────────────────────────────────────────────────
 
+
 class TestTranslateStageResolvesPlatformNovelId:
     """TranslateStage resolves platform_novel_id when missing from context."""
 
-    def test_translate_stage_resolves_platform_novel_id(
-        self, session, storage, monkeypatch
-    ) -> None:
+    def test_translate_stage_resolves_platform_novel_id(self, session, storage, monkeypatch) -> None:
         novel = _make_novel(session)
         slug = novel.slug
         session.commit()
@@ -345,9 +380,7 @@ class TestTranslateStageResolvesPlatformNovelId:
         def mock_session_scope(url=None):
             yield session
 
-        monkeypatch.setattr(
-            "novelai.db.engine.session_scope", mock_session_scope
-        )
+        monkeypatch.setattr("novelai.db.engine.session_scope", mock_session_scope)
 
         context.metadata["platform_novel_id"] = novel.id
 
@@ -356,6 +389,7 @@ class TestTranslateStageResolvesPlatformNovelId:
 
 
 # ── REQ-7.11 ─────────────────────────────────────────────────────────
+
 
 class TestTranslateStageNoGlossaryWhenNovelNotInDb:
     """DB query returns None → no glossary injection, no exception."""
@@ -381,6 +415,7 @@ class TestTranslateStageNoGlossaryWhenNovelNotInDb:
 
 # ── REQ-7.12 ─────────────────────────────────────────────────────────
 
+
 class TestSyncStatusEndpointHealthy:
     """DB and file counts match → in_sync=True, recommendation=healthy."""
 
@@ -389,10 +424,14 @@ class TestSyncStatusEndpointHealthy:
         slug = novel.slug
 
         # File has 2 approved
-        _save_file_glossary(storage, slug, [
-            {"source": "君", "target": "You", "status": "approved"},
-            {"source": "魔法", "target": "Magic", "status": "approved"},
-        ])
+        _save_file_glossary(
+            storage,
+            slug,
+            [
+                {"source": "君", "target": "You", "status": "approved"},
+                {"source": "魔法", "target": "Magic", "status": "approved"},
+            ],
+        )
 
         # DB has same 2 approved
         for term, trans in [("君", "You"), ("魔法", "Magic")]:
@@ -419,6 +458,7 @@ class TestSyncStatusEndpointHealthy:
 
 # ── REQ-7.13 ─────────────────────────────────────────────────────────
 
+
 class TestSyncStatusEndpointSyncRequired:
     """File has more approved than DB → recommendation=sync_required."""
 
@@ -427,10 +467,9 @@ class TestSyncStatusEndpointSyncRequired:
         slug = novel.slug
 
         # File has 5 approved
-        _save_file_glossary(storage, slug, [
-            {"source": f"term{i}", "target": f"T{i}", "status": "approved"}
-            for i in range(5)
-        ])
+        _save_file_glossary(
+            storage, slug, [{"source": f"term{i}", "target": f"T{i}", "status": "approved"} for i in range(5)]
+        )
 
         # DB has only 3 approved
         for i in range(3):

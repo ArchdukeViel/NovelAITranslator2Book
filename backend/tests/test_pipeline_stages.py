@@ -34,6 +34,8 @@ from novelai.translation.pipeline.stages.translate import TranslateStage
 from novelai.translation.scheduler import SchedulerPausedError
 from tests.conftest import MockSourceAdapter
 
+pytestmark = pytest.mark.slow
+
 
 class _FallbackContractProvider(TranslationProvider):
     def __init__(self, key: str, *, error_code: ProviderErrorCode | None = None) -> None:
@@ -188,9 +190,13 @@ async def test_translate_stage_injects_approved_db_glossary_block_once(tmp_path)
     try:
         approved = _create_pipeline_glossary_entry(repo, novel.id, "seireikai", "Spirit Realm")
         _create_pipeline_glossary_entry(repo, novel.id, "candidate-term", "Candidate Translation", status="candidate")
-        _create_pipeline_glossary_entry(repo, novel.id, "recommended-term", "Recommended Translation", status="recommended")
+        _create_pipeline_glossary_entry(
+            repo, novel.id, "recommended-term", "Recommended Translation", status="recommended"
+        )
         _create_pipeline_glossary_entry(repo, novel.id, "rejected-term", "Rejected Translation", status="rejected")
-        _create_pipeline_glossary_entry(repo, novel.id, "deprecated-term", "Deprecated Translation", status="deprecated")
+        _create_pipeline_glossary_entry(
+            repo, novel.id, "deprecated-term", "Deprecated Translation", status="deprecated"
+        )
         _create_pipeline_glossary_entry(repo, novel.id, "blank-translation", None)
         repo.add_glossary_alias(
             entry_id=approved.id,
@@ -441,12 +447,15 @@ def test_translate_stage_scopes_existing_output_by_run_and_chapter(tmp_path):
         "status": "translated",
     }
 
-    assert stage._load_existing_chunk_output(
-        context,
-        chunk_id="c0001",
-        chunk_text=source_text,
-        chapter_ids=["chapter_002"],
-    ) is None
+    assert (
+        stage._load_existing_chunk_output(
+            context,
+            chunk_id="c0001",
+            chunk_text=source_text,
+            chapter_ids=["chapter_002"],
+        )
+        is None
+    )
 
     storage.save_translation_output(
         {
@@ -464,12 +473,15 @@ def test_translate_stage_scopes_existing_output_by_run_and_chapter(tmp_path):
         }
     )
 
-    assert stage._load_existing_chunk_output(
-        context,
-        chunk_id="c0001",
-        chunk_text=source_text,
-        chapter_ids=["chapter_002"],
-    ) == "Chapter 2 translation."
+    assert (
+        stage._load_existing_chunk_output(
+            context,
+            chunk_id="c0001",
+            chunk_text=source_text,
+            chapter_ids=["chapter_002"],
+        )
+        == "Chapter 2 translation."
+    )
 
 
 def test_translate_stage_does_not_load_full_chunk_state_for_small_chunk_retry(tmp_path):
@@ -672,11 +684,14 @@ async def test_translate_stage_default_fallback_order_is_gemini_only(tmp_path):
         storage=env["storage"],
     )
 
-    scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
+    scheduler = stage._build_scheduler(
+        _fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL
+    )
     model_states = scheduler.to_model_state_list()
 
     assert len(model_states) >= 1
     assert model_states[0]["provider_key"] == "gemini"
+
 
 @pytest.mark.asyncio
 async def test_translate_stage_provider_lock_filters_cross_provider_fallback(tmp_path):
@@ -702,6 +717,7 @@ async def test_translate_stage_provider_lock_filters_cross_provider_fallback(tmp
         ("gemini", "gemini-3.1-flash-lite"),
     ]
 
+
 @pytest.mark.asyncio
 async def test_translate_stage_gemini_quota_falls_back_to_fallback_model(tmp_path):
     env = _fallback_stage_env(tmp_path)
@@ -718,6 +734,7 @@ async def test_translate_stage_gemini_quota_falls_back_to_fallback_model(tmp_pat
         await stage.run(_fallback_context())
 
     assert gemini_provider.models_seen == ["gemini-3.1-flash-lite", "gemma-4-31b-it"]
+
 
 @pytest.mark.asyncio
 async def test_translate_stage_provider_locked_gemini_failure_stops_without_cross_provider_fallback(tmp_path):
@@ -738,6 +755,7 @@ async def test_translate_stage_provider_locked_gemini_failure_stops_without_cros
 
     assert gemini_provider.models_seen == ["gemini-3.1-flash-lite", "gemma-4-31b-it"]
     assert {item["provider_key"] for item in exc_info.value.model_states} == {"gemini"}
+
 
 @pytest.mark.asyncio
 async def test_translate_stage_uses_saved_admin_fallback_policy_order(tmp_path):
@@ -770,12 +788,15 @@ async def test_translate_stage_uses_saved_admin_fallback_policy_order(tmp_path):
         storage=env["storage"],
     )
 
-    scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
+    scheduler = stage._build_scheduler(
+        _fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL
+    )
     model_states = scheduler.to_model_state_list()
 
     assert [(item["provider_key"], item["provider_model"]) for item in model_states] == [
         ("gemini", "gemini-3.1-flash-lite"),
     ]
+
 
 @pytest.mark.asyncio
 async def test_translate_stage_saved_policy_skips_disabled_credentials(tmp_path):
@@ -808,9 +829,12 @@ async def test_translate_stage_saved_policy_skips_disabled_credentials(tmp_path)
         storage=env["storage"],
     )
 
-    scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
+    scheduler = stage._build_scheduler(
+        _fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL
+    )
 
     assert scheduler.to_model_state_list() == []
+
 
 @pytest.mark.asyncio
 async def test_translate_stage_saved_policy_skips_invalid_credentials(tmp_path):
@@ -843,9 +867,12 @@ async def test_translate_stage_saved_policy_skips_invalid_credentials(tmp_path):
         storage=env["storage"],
     )
 
-    scheduler = stage._build_scheduler(_fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL)
+    scheduler = stage._build_scheduler(
+        _fallback_context(), provider_key="gemini", model=settings.PROVIDER_GEMINI_DEFAULT_MODEL
+    )
 
     assert scheduler.to_model_state_list() == []
+
 
 @pytest.mark.asyncio
 async def test_translate_stage_missing_gemini_key_fails_before_provider_or_storage(tmp_path):
@@ -1211,11 +1238,7 @@ async def test_smart_segment_stage_isolates_oversized_paragraph_with_warning():
 
     result = await segment.run(context)
 
-    oversized_chunks = [
-        chunk
-        for chunk in result.translation_chunks
-        if chunk.paragraph_ids == ["p0002"]
-    ]
+    oversized_chunks = [chunk for chunk in result.translation_chunks if chunk.paragraph_ids == ["p0002"]]
     assert len(oversized_chunks) >= 1
     warnings = result.metadata["segmentation"]["warnings"]
     assert any("Oversized paragraph chapter_001/p0002" in warning for warning in warnings)

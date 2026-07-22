@@ -102,7 +102,7 @@ rg -n "^from novelai\.(db\.models|storage\.service|sources\.)" backend/src/novel
 ## Backend Entry Points
 
 * `novelai.api.app:app` — default monolithic application.
-* `novelai.main_admin:app` — admin-only application on port 8000; session and CSRF protected.
+* `novelai.main_admin:app` — session-enabled control-plane application on port 8000; admin and public-user mutations are CSRF protected.
 * `novelai.main_reader:app` — public reader on port 8001; no admin session.
 * `DEPLOY_MODE=split` runs the admin and reader processes separately.
 * CLI executable: `novelaibook`.
@@ -519,11 +519,10 @@ Do not add a dependency when the standard library or an existing dependency adeq
 
   * `/api/admin/*` → admin backend on port 8000.
   * `/api/auth/*` → admin backend on port 8000.
-  * `/api/novels/*` → admin backend on port 8000.
-  * `/novels/*` → admin backend on port 8000.
+  * `/api/user/*` → admin backend on port 8000 (session-authenticated public-user data).
   * `/api/public/*` → reader backend on port 8001.
   * `/health/*` → admin backend on port 8000 (liveness, readiness, admin health).
-  * all remaining routes → frontend on port 3000.
+  * all remaining routes, including public `/novels/*` pages → frontend on port 3000.
 * Local environment file: `.env`
 * Compose environment file: `deploy/.env`
 * Production environment file: `deploy/.env.production`

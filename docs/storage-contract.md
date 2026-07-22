@@ -49,7 +49,7 @@ misreported as a failure.
 Route: `GET /api/admin/library/summary` (operationId
 `library_summary_api_admin_library_summary_get`). Accidental aliases
 under `/novels/admin/library/summary` and `/api/novels/admin/library/summary`
-were removed.
+were removed with the rest of the duplicate backend novel namespaces.
 
 ### Cache behavior and concurrency
 

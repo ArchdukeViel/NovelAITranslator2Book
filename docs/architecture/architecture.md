@@ -270,12 +270,12 @@ library adapters.
 
 | Area | Current contract |
 |---|---|
-| Admin namespace | `/api/admin/*` is canonical for implemented owner/admin behavior. Legacy `/api/novels/*` compatibility routes may remain temporarily. |
+| Admin namespace | `/api/admin/*` is the only implemented owner/admin namespace. The former `/novels/*` and `/api/novels/*` backend aliases are removed. |
 | Dangerous admin routes | Protected by owner-session authorization through `require_role("owner")`. |
 | Admin authentication | Owner session plus CSRF protection; bearer API keys do not grant admin access. |
 | Public reader | `frontend/lib/public-api.ts` calls `/api/public/*` catalog, novel, chapter list, and chapter endpoints. |
 | Public auth | Google OAuth and email/password public auth implemented: `GET /api/auth/google/start`, `GET /api/auth/google/callback`, `POST /api/auth/register`, and `POST /api/auth/password/login` create or resume `role="user"` sessions only. `POST /api/auth/login` remains admin-only owner bootstrap login. CSRF enforcement and rate limits protect auth mutations. |
-| Public user data | Backend `/api/user/*` routes exist and public frontend API methods/hooks are re-exported for library, progress, history, reviews, and requests. |
+| Public user data | Backend `/api/user/*` routes are hosted by the session-enabled admin process in split mode; Caddy routes them to port 8000. Public frontend API methods/hooks are re-exported for library, progress, history, reviews, and requests. |
 | Admin future APIs | Exported future admin methods for missing endpoints are quarantined. Do not advertise `/api/admin/users`, `/api/admin/controls`, contributed credentials, or provider activation until backend routes exist. |
 
 Public/frontend-facing errors must not include raw tracebacks, API keys,
@@ -413,7 +413,7 @@ owner  - authenticated single owner; dangerous operations
 | Production session secret fail-closed | Implemented. |
 | Structured error handling + logging system | Implemented. StructuredHTTPException, PipelineState, JsonFormatter, /health/errors endpoint, trace_id propagation. |
 | Glossary auto-population | Implemented. SuggestionExtractor, GlossarySuggestionService, review/reject/apply API, pipeline integration. |
-| Microservice-split readiness | Implemented. main_reader/main_admin entry points, DEPLOY_MODE dispatch (monolith/split), Docker Compose + Caddy split routing, 14 contract tests. |
+| Microservice-split readiness | Implemented. Real `main_reader`/`main_admin` entry points, `DEPLOY_MODE` dispatch (monolith/split), exclusive Caddy namespace routing, and 17 contract tests. |
 | Advanced translation caching | Implemented. TranslationCacheService (SHA-256 keys, sharded file storage, TTL), pipeline integration, glossary invalidation, /api/admin/cache/* endpoints. |
 | Adapter plugin system | Implemented. SourceAdapter ABC, AdapterRegistry (pkgutil auto-discovery, get_by_key, list_adapters), all adapters refactored, bootstrap registration. |
 | Public contribution credential backend lifecycle | Deferred. |

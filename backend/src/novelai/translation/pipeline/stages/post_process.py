@@ -8,10 +8,10 @@ from novelai.translation.pipeline.context import PipelineState
 from novelai.translation.pipeline.stages.base import PipelineStage
 
 if TYPE_CHECKING:
-    from novelai.services.glossary.suggestion_extractor import SuggestionExtractor
-    from novelai.services.glossary.suggestion_service import GlossarySuggestionService
+    from novelai.services.glossary_suggestion_extractor import SuggestionExtractor
+    from novelai.services.glossary_suggestion_service import GlossarySuggestionService
 
-from novelai.services.glossary.suggestion_service import SuggestionSource
+from novelai.services.glossary_suggestion_service import SuggestionSource
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class PostProcessStage(PipelineStage):
                 [{"chapter_id": chapter_id, "translated_text": translated_text}],
             )
             if suggestions:
-                from novelai.services.glossary.suggestion_service import GlossarySuggestion
+                from novelai.services.glossary_suggestion_service import GlossarySuggestion
 
                 _Source = SuggestionSource
 

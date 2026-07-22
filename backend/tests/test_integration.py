@@ -26,6 +26,8 @@ from tests.conftest import (
     create_test_fixture,
 )
 
+pytestmark = pytest.mark.slow
+
 
 class FallbackPipelineProvider:
     def __init__(self, key: str) -> None:
@@ -223,10 +225,7 @@ async def test_full_translation_pipeline(integration_fixture):
     """Test complete translation pipeline."""
     # Setup
     fixture = integration_fixture
-    fixture.add_source_chapter(
-        "http://example.com/ch1",
-        "これはテストです。\n\n次の段落です。"
-    )
+    fixture.add_source_chapter("http://example.com/ch1", "これはテストです。\n\n次の段落です。")
 
     # Create pipeline
     pipeline = TranslationPipeline(
@@ -270,10 +269,7 @@ async def test_full_translation_pipeline(integration_fixture):
 async def test_translation_service_integration(integration_fixture):
     """Test TranslationService with full pipeline."""
     fixture = integration_fixture
-    fixture.add_source_chapter(
-        "http://example.com/ch1",
-        "Test content for translation."
-    )
+    fixture.add_source_chapter("http://example.com/ch1", "Test content for translation.")
 
     service = fixture.translation_service
     result = await service.translate_chapter(
@@ -566,7 +562,10 @@ async def test_full_pipeline_scrape_translate_export(integration_fixture):
 
     for chapter_id, text in chapter_texts.items():
         fixture.storage.save_chapter(
-            novel_id, chapter_id, text, source_key="mock_source",
+            novel_id,
+            chapter_id,
+            text,
+            source_key="mock_source",
         )
 
     stored_ids = fixture.storage.list_stored_chapters(novel_id)
@@ -615,7 +614,9 @@ async def test_full_pipeline_scrape_translate_export(integration_fixture):
     output_path = str(fixture.data_dir / f"{novel_id}.epub")
     exporter = EPUBExporter()
     result_path = exporter.export(
-        novel_id=novel_id, chapters=chapters_for_export, output_path=output_path,
+        novel_id=novel_id,
+        chapters=chapters_for_export,
+        output_path=output_path,
     )
 
     assert Path(result_path).exists()

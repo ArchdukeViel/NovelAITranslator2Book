@@ -15,7 +15,7 @@ from hypothesis import strategies as st
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from novelai.config.settings import GEMINI_DEFAULT_MODEL, settings
+from novelai.config.settings import GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODEL, settings
 from novelai.core.chapter_state import ChapterState
 from novelai.db.base import Base
 from novelai.db.models.novel import Novel
@@ -164,7 +164,12 @@ class StubTranslationService(TranslationService):
                 }
                 for index, part in enumerate(paragraphs, start=1)
             ]
-            raw = json.dumps({"translated_text": "\n\n".join(item["translated_text"] for item in paragraph_map), "paragraph_map": paragraph_map})
+            raw = json.dumps(
+                {
+                    "translated_text": "\n\n".join(item["translated_text"] for item in paragraph_map),
+                    "paragraph_map": paragraph_map,
+                }
+            )
             return PipelineResult(
                 final_text="\n\n".join(item["translated_text"] for item in paragraph_map),
                 chapter_url=str(kwargs.get("chapter_url") or ""),
@@ -393,11 +398,11 @@ class PromptInjectionCaptureProvider(TranslationProvider):
 
 class GeminiFallbackProvider(MockTranslationProvider):
     def __init__(self) -> None:
-        super().__init__(key="gemini", model="gemini-2.5-flash")
+        super().__init__(key="gemini", model=GEMINI_DEFAULT_MODEL)
         self.models_seen: list[str | None] = []
 
     def available_models(self) -> list[str]:
-        return ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+        return [GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODEL]
 
     async def translate(
         self,
@@ -407,7 +412,7 @@ class GeminiFallbackProvider(MockTranslationProvider):
         **kwargs: Any,
     ) -> dict[str, Any]:
         self.models_seen.append(model)
-        if model == "gemini-2.5-flash":
+        if model == GEMINI_DEFAULT_MODEL:
             raise RuntimeError("quota exceeded")
         source_text = prompt
         if "<source_text>" in prompt and "</source_text>" in prompt:
@@ -424,11 +429,11 @@ class GeminiFallbackProvider(MockTranslationProvider):
 
 class PartialGeminiTitleProvider(MockTranslationProvider):
     def __init__(self) -> None:
-        super().__init__(key="gemini", model="gemini-2.5-flash")
+        super().__init__(key="gemini", model=GEMINI_DEFAULT_MODEL)
         self.models_seen: list[str | None] = []
 
     def available_models(self) -> list[str]:
-        return ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+        return [GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODEL]
 
     async def translate(
         self,
@@ -441,7 +446,7 @@ class PartialGeminiTitleProvider(MockTranslationProvider):
         source_text = prompt
         if "<source_text>" in prompt and "</source_text>" in prompt:
             source_text = prompt.split("<source_text>", 1)[1].split("</source_text>", 1)[0].strip()
-        if model == "gemini-2.5-flash" and source_text == "第10話　初スカート、お披露目":
+        if model == GEMINI_DEFAULT_MODEL and source_text == "第10話　初スカート、お披露目":
             return {"text": "Episode", "metadata": {"usage": {"total_tokens": 3}}}
         if source_text == "第10話　初スカート、お披露目":
             return {"text": "Episode 10: First Skirt Reveal", "metadata": {"usage": {"total_tokens": 8}}}
@@ -649,7 +654,13 @@ async def test_scrape_metadata_bootstrap_exception_isolation(orchestration_env, 
         },
     )
     with SessionLocal() as session:
-        novel = Novel(slug=slug, title="Bootstrap Exception", language="ja", publication_status="ongoing", glossary_status="glossary_skipped")
+        novel = Novel(
+            slug=slug,
+            title="Bootstrap Exception",
+            language="ja",
+            publication_status="ongoing",
+            glossary_status="glossary_skipped",
+        )
         session.add(novel)
         session.commit()
 
@@ -742,7 +753,13 @@ async def test_bootstrap_produces_pending_status(orchestration_env, candidate_co
         },
     )
     with SessionLocal() as session:
-        novel = Novel(slug=slug, title="Bootstrap Pending", language="ja", publication_status="ongoing", glossary_status="glossary_skipped")
+        novel = Novel(
+            slug=slug,
+            title="Bootstrap Pending",
+            language="ja",
+            publication_status="ongoing",
+            glossary_status="glossary_skipped",
+        )
         session.add(novel)
         session.commit()
 
@@ -772,7 +789,9 @@ async def test_bootstrap_produces_pending_status(orchestration_env, candidate_co
 @pytest.mark.asyncio
 @hypothesis_settings(suppress_health_check=[HealthCheck.function_scoped_fixture], database=None, deadline=None)
 @given(st.sampled_from(["glossary_pending", "glossary_ready", "glossary_skipped"]), st.booleans())
-async def test_translate_guard_glossary_gate_properties(orchestration_env, glossary_status: str, skip_glossary_gate: bool) -> None:
+async def test_translate_guard_glossary_gate_properties(
+    orchestration_env, glossary_status: str, skip_glossary_gate: bool
+) -> None:
     SessionLocal = orchestration_env["catalog_sessionmaker"]
     storage = orchestration_env["storage"]
     slug = uuid4().hex
@@ -785,7 +804,9 @@ async def test_translate_guard_glossary_gate_properties(orchestration_env, gloss
         },
     )
     with SessionLocal() as session:
-        novel = Novel(slug=slug, title="Guard Novel", language="ja", publication_status="ongoing", glossary_status=glossary_status)
+        novel = Novel(
+            slug=slug, title="Guard Novel", language="ja", publication_status="ongoing", glossary_status=glossary_status
+        )
         session.add(novel)
         session.flush()
         if glossary_status == "glossary_pending":
@@ -957,7 +978,13 @@ async def test_translate_chapters_passes_platform_db_novel_id_to_translation_ser
     )
     storage.save_chapter("glossary-owned", "1", "Pocott arrives.", title="Chapter 1")
     with SessionLocal() as session:
-        novel = Novel(slug="glossary-owned", title="Glossary Owned", language="ja", publication_status="ongoing", glossary_status="glossary_skipped")
+        novel = Novel(
+            slug="glossary-owned",
+            title="Glossary Owned",
+            language="ja",
+            publication_status="ongoing",
+            glossary_status="glossary_skipped",
+        )
         session.add(novel)
         session.commit()
         platform_novel_id = novel.id
@@ -1136,7 +1163,13 @@ async def test_retranslate_chapter_preserves_platform_db_novel_id(orchestration_
     )
     storage.save_chapter("retry-glossary", "1", "Pocott arrives.", title="Chapter 1")
     with SessionLocal() as session:
-        novel = Novel(slug="retry-glossary", title="Retry Glossary", language="ja", publication_status="ongoing", glossary_status="glossary_skipped")
+        novel = Novel(
+            slug="retry-glossary",
+            title="Retry Glossary",
+            language="ja",
+            publication_status="ongoing",
+            glossary_status="glossary_skipped",
+        )
         session.add(novel)
         session.commit()
         platform_novel_id = novel.id
@@ -1238,7 +1271,11 @@ async def test_runtime_orchestration_sim_scopes_full_failure_and_small_retry(orc
         translation_run_id="job_chapter_2_small_retry",
         chapter_ids=["2"],
     )[0]
-    assert {chapter_1_chunk["runtime_key"], chapter_2_full_chunk["runtime_key"], chapter_2_retry_chunk["runtime_key"]} == {
+    assert {
+        chapter_1_chunk["runtime_key"],
+        chapter_2_full_chunk["runtime_key"],
+        chapter_2_retry_chunk["runtime_key"],
+    } == {
         "runtime-scope-novel:job_chapter_1:1:c0001",
         "runtime-scope-novel:job_chapter_2_full:2:c0001",
         "runtime-scope-novel:job_chapter_2_small_retry:2:c0001",
@@ -1333,20 +1370,20 @@ async def test_translation_service_generates_isolated_manual_run_ids() -> None:
 
 
 def test_gemini_model_candidates_default_to_stable_flash_lite() -> None:
-    candidates = model_candidates("gemini", None, ["gemini-2.5-flash"])
+    candidates = model_candidates("gemini", None, [GEMINI_FALLBACK_MODEL])
 
     assert len(candidates) >= 1
     assert candidates[0] == GEMINI_DEFAULT_MODEL
     # When no requested_model is given, the first supported model is included
     # as an additional candidate after defaults and fallbacks.
-    assert "gemini-2.5-flash" in candidates
+    assert GEMINI_FALLBACK_MODEL in candidates
     assert not candidates[0].endswith("-preview")
 
 
 def test_gemini_model_candidates_preserve_explicit_override() -> None:
-    candidates = model_candidates("gemini", "custom-gemini-model", [GEMINI_DEFAULT_MODEL])
+    candidates = model_candidates("gemini", GEMINI_FALLBACK_MODEL, [GEMINI_DEFAULT_MODEL])
 
-    assert candidates[:2] == ["custom-gemini-model", GEMINI_DEFAULT_MODEL]
+    assert candidates[:2] == [GEMINI_FALLBACK_MODEL, GEMINI_DEFAULT_MODEL]
 
 
 @pytest.mark.asyncio
@@ -1469,12 +1506,12 @@ async def test_scrape_metadata_falls_back_between_gemini_models(orchestration_en
     source = StubSource()
     settings = orchestration_env["settings"]
     settings.set_preferred_provider("gemini")
-    settings.set_preferred_model("gemini-2.5-flash")
+    settings.set_preferred_model(GEMINI_DEFAULT_MODEL)
     settings.set_api_key("gemini-key", provider_key="gemini")
     orchestration_env["cache"].set(
         "metadata:chapter_title:English:第10話　初スカート、お披露目",
         "gemini",
-        "gemini-2.5-flash",
+        GEMINI_DEFAULT_MODEL,
         "Episode",
     )
 
@@ -1490,8 +1527,8 @@ async def test_scrape_metadata_falls_back_between_gemini_models(orchestration_en
 
     metadata = await orchestrator.scrape_metadata("syosetu_ncode", "novel-1", mode="update")
 
-    assert provider.models_seen[:2] == ["gemini-2.5-flash", GEMINI_DEFAULT_MODEL]
-    assert metadata["translated_title"] == f"[{GEMINI_DEFAULT_MODEL}] Original Novel"
+    assert provider.models_seen[:2] == [GEMINI_DEFAULT_MODEL, GEMINI_FALLBACK_MODEL]
+    assert metadata["translated_title"] == f"[{GEMINI_FALLBACK_MODEL}] Original Novel"
     assert metadata["metadata_translation_status"] == "completed"
 
 
@@ -1501,7 +1538,7 @@ async def test_scrape_metadata_retries_incomplete_chapter_title_translation(orch
     source = PartialTitleSource()
     settings = orchestration_env["settings"]
     settings.set_preferred_provider("gemini")
-    settings.set_preferred_model("gemini-2.5-flash")
+    settings.set_preferred_model(GEMINI_DEFAULT_MODEL)
     settings.set_api_key("gemini-key", provider_key="gemini")
 
     orchestrator = NovelOrchestrationService(
@@ -1526,10 +1563,7 @@ async def test_metadata_chapter_titles_batch_by_default_size(orchestration_env) 
     provider = BatchMetadataProvider()
     metadata = {
         "source_key": "syosetu_ncode",
-        "chapters": [
-            {"id": str(index), "num": index, "title": f"Chapter {index}"}
-            for index in range(1, 31)
-        ],
+        "chapters": [{"id": str(index), "num": index, "title": f"Chapter {index}"} for index in range(1, 31)],
     }
     orchestrator = NovelOrchestrationService(
         storage=orchestration_env["storage"],
@@ -1795,7 +1829,9 @@ async def test_scrape_metadata_missing_gemini_key_never_calls_dummy_provider(orc
 
 
 @pytest.mark.asyncio
-async def test_scrape_metadata_failed_translation_preserves_source_fields_without_fake_translations(orchestration_env) -> None:
+async def test_scrape_metadata_failed_translation_preserves_source_fields_without_fake_translations(
+    orchestration_env,
+) -> None:
     provider = FailingMetadataProvider()
     source = SynopsisSource()
 
@@ -2002,7 +2038,9 @@ def test_estimate_translation_requests_delta_identical_has_no_windows(orchestrat
 
 
 def test_estimate_translation_requests_delta_changed_paragraph_has_padded_window(orchestration_env) -> None:
-    estimate = _delta_estimate(orchestration_env, old_paragraphs=["A.", "B.", "C."], new_paragraphs=["A.", "Bee.", "C."])
+    estimate = _delta_estimate(
+        orchestration_env, old_paragraphs=["A.", "B.", "C."], new_paragraphs=["A.", "Bee.", "C."]
+    )
 
     assert estimate["delta"]["changed_paragraphs"] == 1
     assert estimate["delta"]["delta_body_requests"] == 1
@@ -2011,7 +2049,11 @@ def test_estimate_translation_requests_delta_changed_paragraph_has_padded_window
             "chapter_id": "1",
             "start_paragraph_index": 1,
             "end_paragraph_index": 3,
-            "paragraph_hashes": [paragraph_source_hash("A."), paragraph_source_hash("Bee."), paragraph_source_hash("C.")],
+            "paragraph_hashes": [
+                paragraph_source_hash("A."),
+                paragraph_source_hash("Bee."),
+                paragraph_source_hash("C."),
+            ],
             "estimated_chunks": 1,
         }
     ]
@@ -2034,7 +2076,9 @@ def test_estimate_translation_requests_delta_deleted_paragraph_has_conservative_
 
 
 def test_estimate_translation_requests_delta_repeated_hashes_are_ambiguous(orchestration_env) -> None:
-    estimate = _delta_estimate(orchestration_env, old_paragraphs=["A.", "X.", "X.", "C."], new_paragraphs=["A.", "X.", "X.", "C."])
+    estimate = _delta_estimate(
+        orchestration_env, old_paragraphs=["A.", "X.", "X.", "C."], new_paragraphs=["A.", "X.", "X.", "C."]
+    )
 
     assert estimate["delta"]["ambiguous_paragraphs"] == 2
     assert estimate["delta"]["unchanged_paragraphs"] == 2
@@ -2203,7 +2247,9 @@ def _save_delta_execution_fixture(
         storage.save_translated_chapter("novel-delta", "1", translated_chapter_text, provider="mock", model="mock-1.0")
 
 
-async def _run_delta_translate(orchestration_env, translation: StubTranslationService) -> tuple[StorageService, StubTranslationService]:
+async def _run_delta_translate(
+    orchestration_env, translation: StubTranslationService
+) -> tuple[StorageService, StubTranslationService]:
     storage = orchestration_env["storage"]
     orchestrator = NovelOrchestrationService(
         storage=storage,
@@ -2234,7 +2280,9 @@ async def test_delta_disabled_preserves_full_translation_behavior(orchestration_
         new_paragraphs=["A.", "B."],
     )
 
-    storage, translation = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="full translation"))
+    storage, translation = await _run_delta_translate(
+        orchestration_env, StubTranslationService(final_text="full translation")
+    )
 
     saved = storage.load_translated_chapter("novel-delta", "1")
     assert saved is not None
@@ -2252,7 +2300,9 @@ async def test_delta_unchanged_chapter_reuses_whole_old_output(orchestration_env
         translated_chapter_text="old whole chapter",
     )
 
-    storage, translation = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="full translation"))
+    storage, translation = await _run_delta_translate(
+        orchestration_env, StubTranslationService(final_text="full translation")
+    )
 
     saved = storage.load_translated_chapter("novel-delta", "1")
     assert saved is not None
@@ -2270,7 +2320,9 @@ async def test_delta_changed_paragraph_translates_window_and_reassembles(orchest
         old_translations=["old:A.", "old:B.", "old:C."],
     )
 
-    storage, translation = await _run_delta_translate(orchestration_env, StubTranslationService(paragraph_prefix="new:"))
+    storage, translation = await _run_delta_translate(
+        orchestration_env, StubTranslationService(paragraph_prefix="new:")
+    )
 
     saved = storage.load_translated_chapter("novel-delta", "1")
     assert saved is not None
@@ -2324,7 +2376,9 @@ async def test_delta_ambiguous_region_falls_back_to_full_translation(orchestrati
         old_translations=["old:A.", "old:X1", "old:X2", "old:C."],
     )
 
-    storage, translation = await _run_delta_translate(orchestration_env, StubTranslationService(final_text="full fallback"))
+    storage, translation = await _run_delta_translate(
+        orchestration_env, StubTranslationService(final_text="full fallback")
+    )
 
     saved = storage.load_translated_chapter("novel-delta", "1")
     assert saved is not None
@@ -2895,10 +2949,10 @@ async def test_translate_chapters_allows_ready_status_and_skip_override(orchestr
     for novel_id in ("glossary-ready", "glossary-override"):
         storage.save_metadata(
             novel_id,
-                {
-                    "title": novel_id,
-                    "source_language": "Japanese",
-                    "onboarding_status": "ready_for_translation",
+            {
+                "title": novel_id,
+                "source_language": "Japanese",
+                "onboarding_status": "ready_for_translation",
                 "chapters": [
                     {"id": "1", "num": 1, "title": "Chapter One", "url": f"https://example.com/{novel_id}/1"},
                 ],

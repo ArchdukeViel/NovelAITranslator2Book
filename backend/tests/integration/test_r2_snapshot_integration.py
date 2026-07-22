@@ -10,6 +10,8 @@ import pytest
 
 from novelai.storage.backends.s3_snapshot import S3SnapshotTarget
 
+pytestmark = pytest.mark.slow
+
 
 def _required(name: str) -> str:
     value = os.environ.get(name)
@@ -22,6 +24,7 @@ def _required(name: str) -> str:
 def test_real_r2_snapshot_credential_split() -> None:
     boto3 = pytest.importorskip("boto3")
     from botocore.exceptions import ClientError
+
     endpoint = _required("TEST_R2_ENDPOINT")
     source_bucket = _required("TEST_R2_SOURCE_BUCKET")
     target_bucket = _required("TEST_R2_TARGET_BUCKET")

@@ -28,6 +28,8 @@ import pytest
 
 from novelai.storage.backends.s3 import S3Backend
 
+pytestmark = pytest.mark.slow
+
 
 def _env_or_skip(name: str) -> str:
     value = os.environ.get(name)
@@ -83,7 +85,8 @@ def s3_backend() -> Iterator[tuple[S3Backend, str]]:
             raw_client.delete_objects(Bucket=bucket, Delete={"Objects": keys})
             if resp.get("IsTruncated"):
                 resp = raw_client.list_objects_v2(
-                    Bucket=bucket, Prefix=test_prefix,
+                    Bucket=bucket,
+                    Prefix=test_prefix,
                     ContinuationToken=resp.get("NextContinuationToken"),
                 )
                 objects = resp.get("Contents", [])
@@ -226,6 +229,6 @@ class TestS3Integration:
 
     def test_absence_after_recursive_delete(self, s3_backend: tuple[S3Backend, str]) -> None:
         backend, _ = s3_backend
-        backend.save("novels/gone/chapters/0001.json", b'del')
+        backend.save("novels/gone/chapters/0001.json", b"del")
         backend.delete("novels/gone/chapters/0001.json")
         assert backend.has_keys("novels/gone") is False

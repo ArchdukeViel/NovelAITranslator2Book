@@ -51,7 +51,7 @@ class BulkActionResult(BaseModel):
 
 
 def _suggestion_service(storage: Any = Depends(get_storage)) -> Any:
-    from novelai.services.glossary.suggestion_service import GlossarySuggestionService
+    from novelai.services.glossary_suggestion_service import GlossarySuggestionService
 
     return GlossarySuggestionService(base_dir=storage.base_dir)
 
@@ -105,6 +105,7 @@ async def accept_glossary_suggestion(
             decision_source="owner",
         )
         from novelai.services.translation_cache import TranslationCacheService
+
         with suppress(Exception):
             TranslationCacheService().invalidate(novel_id)
     except Exception as exc:

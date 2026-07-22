@@ -102,84 +102,6 @@ RUNTIME_STATE_DEFINITIONS = {
 }
 
 
-ADMIN_DASHBOARD_HTML = """<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Novel AI Admin</title>
-  <style>
-    :root { color-scheme: light dark; font-family: Inter, Segoe UI, Arial, sans-serif; }
-    body { margin: 0; background: Canvas; color: CanvasText; }
-    header { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid color-mix(in srgb, CanvasText 16%, transparent); }
-    main { display: grid; gap: 16px; padding: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-    section { border: 1px solid color-mix(in srgb, CanvasText 16%, transparent); border-radius: 8px; padding: 12px; min-width: 0; }
-    h1 { font-size: 18px; margin: 0; }
-    h2 { font-size: 15px; margin: 0 0 10px; }
-    button, input { font: inherit; min-height: 32px; }
-    button { border-radius: 6px; border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); background: ButtonFace; color: ButtonText; padding: 0 10px; }
-    input { border-radius: 6px; border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); padding: 0 8px; }
-    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-    pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; max-height: 360px; overflow: auto; font-size: 12px; }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>Novel AI Admin</h1>
-    <div class="toolbar">
-      <input id="token" type="password" placeholder="API token">
-      <button id="save-token">Save</button>
-      <button id="refresh">Refresh</button>
-    </div>
-  </header>
-  <main>
-    <section>
-      <h2>Worker</h2>
-      <div class="toolbar">
-        <button id="start">Start</button>
-        <button id="stop">Stop</button>
-        <button id="run-once">Run Once</button>
-      </div>
-      <pre id="worker-status"></pre>
-    </section>
-    <section><h2>Activity</h2><pre id="activity"></pre></section>
-    <section><h2>Requests</h2><pre id="requests"></pre></section>
-    <section><h2>Sources</h2><pre id="sources"></pre></section>
-  </main>
-  <script>
-    const tokenInput = document.getElementById("token");
-    tokenInput.value = sessionStorage.getItem("novelai.token") || "";
-    document.getElementById("save-token").onclick = () => sessionStorage.setItem("novelai.token", tokenInput.value);
-    const headers = () => tokenInput.value ? {"Authorization": `Bearer ${tokenInput.value}`} : {};
-    async function request(path, options = {}) {
-      const response = await fetch(path, {...options, headers: {...headers(), ...(options.headers || {})}});
-      if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
-      return response.json();
-    }
-    const pretty = value => JSON.stringify(value, null, 2);
-    async function refresh() {
-      const [worker, activity, requests, sources] = await Promise.all([
-        request("/novels/admin/worker"),
-        request("/novels/activity?limit=20"),
-        request("/novels/requests?limit=20"),
-        request("/novels/activity/source-health"),
-      ]);
-      document.getElementById("worker-status").textContent = pretty(worker);
-      document.getElementById("activity").textContent = pretty(activity.activity);
-      document.getElementById("requests").textContent = pretty(requests.requests);
-      document.getElementById("sources").textContent = pretty(sources.sources);
-    }
-    document.getElementById("refresh").onclick = () => refresh().catch(alert);
-    document.getElementById("start").onclick = () => request("/novels/admin/worker/start", {method: "POST"}).then(refresh).catch(alert);
-    document.getElementById("stop").onclick = () => request("/novels/admin/worker/stop", {method: "POST"}).then(refresh).catch(alert);
-    document.getElementById("run-once").onclick = () => request("/novels/admin/worker/run-once", {method: "POST"}).then(refresh).catch(alert);
-    refresh().catch(console.error);
-  </script>
-</body>
-</html>
-"""
-
-
 def _iso_from_timestamp(timestamp: float) -> str:
     return datetime.fromtimestamp(timestamp, tz=UTC).isoformat().replace("+00:00", "Z")
 
@@ -236,9 +158,6 @@ class AdminService:
         self.activity_runner = activity_runner
         self.storage = storage
         self.db_session = db_session
-
-    def dashboard_html(self) -> str:
-        return ADMIN_DASHBOARD_HTML
 
     def provider_api_key_status(self, provider: str) -> dict[str, Any]:
         normalized_provider = self.normalize_provider(provider)
@@ -603,7 +522,14 @@ class AdminService:
         if not isinstance(policy, dict):
             raise ValueError("Fallback policy must be an object.")
         normalized = self.get_provider_fallback_policy()
-        for key in ("default_provider", "default_model", "default_credential_id", "allow_cross_provider_fallback", "allow_run_overrides", "fallback_on_qa_failure"):
+        for key in (
+            "default_provider",
+            "default_model",
+            "default_credential_id",
+            "allow_cross_provider_fallback",
+            "allow_run_overrides",
+            "fallback_on_qa_failure",
+        ):
             if key in policy:
                 normalized[key] = policy[key]
         default_provider = self.normalize_provider(str(normalized.get("default_provider") or "gemini"))
@@ -611,7 +537,9 @@ class AdminService:
         self.validate_provider_model(default_provider, default_model)
         normalized["default_provider"] = default_provider
         normalized["default_model"] = default_model
-        normalized["default_credential_id"] = self.normalize_provider(str(normalized.get("default_credential_id") or default_provider))
+        normalized["default_credential_id"] = self.normalize_provider(
+            str(normalized.get("default_credential_id") or default_provider)
+        )
         if "candidates" in policy:
             if not isinstance(policy["candidates"], list):
                 raise ValueError("Fallback policy candidates must be a list.")
@@ -688,8 +616,12 @@ class AdminService:
                     "model": credential.model,
                     "validation_status": credential.validation_status,
                     "validation_message": credential.validation_message,
-                    "created_at": credential.created_at.isoformat().replace("+00:00", "Z") if credential.created_at else None,
-                    "updated_at": credential.updated_at.isoformat().replace("+00:00", "Z") if credential.updated_at else None,
+                    "created_at": credential.created_at.isoformat().replace("+00:00", "Z")
+                    if credential.created_at
+                    else None,
+                    "updated_at": credential.updated_at.isoformat().replace("+00:00", "Z")
+                    if credential.updated_at
+                    else None,
                     "last_validated_at": credential.last_validated_at.isoformat().replace("+00:00", "Z")
                     if credential.last_validated_at
                     else None,
@@ -753,7 +685,11 @@ class AdminService:
                 return ProviderCredentialService.safe_response(credential)
         metadata = self._credential_metadata(normalized_provider)
         configured = self._provider_configured(normalized_provider)
-        model = metadata.get("model") if isinstance(metadata.get("model"), str) else self.resolve_default_model(normalized_provider)
+        model = (
+            metadata.get("model")
+            if isinstance(metadata.get("model"), str)
+            else self.resolve_default_model(normalized_provider)
+        )
         return {
             "id": normalized_provider,
             "provider": normalized_provider,
@@ -791,7 +727,11 @@ class AdminService:
         provider = self.preferences.get_preferred_provider()
         if provider not in API_KEY_PROVIDERS:
             provider = "gemini"
-        model = self.preferences.get_provider_model() if provider in API_KEY_PROVIDERS else settings.PROVIDER_GEMINI_DEFAULT_MODEL
+        model = (
+            self.preferences.get_provider_model()
+            if provider in API_KEY_PROVIDERS
+            else settings.PROVIDER_GEMINI_DEFAULT_MODEL
+        )
         primary_quota = DEFAULT_QUOTA_HINTS.get((provider, model), {})
         return {
             "default_provider": provider,
@@ -835,7 +775,9 @@ class AdminService:
             allowed_reasons = sorted(ALLOWED_FALLBACK_FAILURE_REASONS)
         quota = DEFAULT_QUOTA_HINTS.get((provider, model), {})
         return {
-            "priority_order": _optional_nonnegative_int(item.get("priority_order")) if _optional_nonnegative_int(item.get("priority_order")) is not None else index,
+            "priority_order": _optional_nonnegative_int(item.get("priority_order"))
+            if _optional_nonnegative_int(item.get("priority_order")) is not None
+            else index,
             "provider_key": provider,
             "provider_model": model,
             "credential_id": credential_id,
@@ -846,12 +788,13 @@ class AdminService:
             "rpd_limit": _optional_positive_int(item.get("rpd_limit")) or quota.get("rpd_limit"),
             "cooldown_seconds": _optional_positive_int(item.get("cooldown_seconds")) or quota.get("cooldown_seconds"),
             "daily_reset": _clean_text(item.get("daily_reset")) or quota.get("daily_reset"),
-            "manual_usage_snapshot": item.get("manual_usage_snapshot") if isinstance(item.get("manual_usage_snapshot"), dict) else None,
+            "manual_usage_snapshot": item.get("manual_usage_snapshot")
+            if isinstance(item.get("manual_usage_snapshot"), dict)
+            else None,
         }
 
     def list_runtime_state(self) -> dict[str, Any]:
         return {"items": [self.runtime_state_record(key) for key in RUNTIME_STATE_DEFINITIONS]}
-
 
     def refresh_runtime_state(self, state_key: str) -> dict[str, Any]:
         key = state_key.strip().lower()
@@ -861,7 +804,13 @@ class AdminService:
             self.translation_cache.reload()
         elif key == "usage":
             self.usage.reload()
-        elif key in ("runtime_chunks", "runtime_chunk_attempts", "runtime_bundles", "runtime_outputs", "backup_manifest"):
+        elif key in (
+            "runtime_chunks",
+            "runtime_chunk_attempts",
+            "runtime_bundles",
+            "runtime_outputs",
+            "backup_manifest",
+        ):
             pass  # File-backed — no in-memory state to reload.
         else:
             raise KeyError(f"Unknown runtime state file: {state_key}")
@@ -875,7 +824,13 @@ class AdminService:
             self.translation_cache.clear()
         elif key == "usage":
             self.usage.clear()
-        elif key in ("runtime_chunks", "runtime_chunk_attempts", "runtime_bundles", "runtime_outputs", "backup_manifest"):
+        elif key in (
+            "runtime_chunks",
+            "runtime_chunk_attempts",
+            "runtime_bundles",
+            "runtime_outputs",
+            "backup_manifest",
+        ):
             path = self.runtime_state_path(key)
             if path.exists():
                 path.unlink()
@@ -947,19 +902,18 @@ class AdminService:
             pk = str(item.get("provider_key") or "")
             pm = str(item.get("provider_model") or "")
             credential = self._credential_metadata(pk)
-            configured = (
-                credential.get("is_active") is not False
-                and self.preferences.get_api_key(pk) is not None
+            configured = credential.get("is_active") is not False and self.preferences.get_api_key(pk) is not None
+            health.append(
+                {
+                    "provider_key": pk,
+                    "provider_model": pm,
+                    "priority_order": item.get("priority_order", 0),
+                    "configured": configured,
+                    "credential_active": credential.get("is_active") if credential else None,
+                    "rpm_limit": item.get("rpm_limit"),
+                    "rpd_limit": item.get("rpd_limit"),
+                }
             )
-            health.append({
-                "provider_key": pk,
-                "provider_model": pm,
-                "priority_order": item.get("priority_order", 0),
-                "configured": configured,
-                "credential_active": credential.get("is_active") if credential else None,
-                "rpm_limit": item.get("rpm_limit"),
-                "rpd_limit": item.get("rpd_limit"),
-            })
 
         # Load persisted scheduler runtime state from most recent job
         runtime_state = self._load_latest_scheduler_state()
@@ -1037,7 +991,9 @@ class AdminService:
         manifests = list_manifests(self.storage, novel_id)
         for m in manifests:
             m["freshness"] = compute_export_freshness(
-                self.storage, novel_id, m,
+                self.storage,
+                novel_id,
+                m,
                 current_glossary_revision=meta.get("glossary_revision"),
                 current_novel_updated_at=meta.get("updated_at"),
             )

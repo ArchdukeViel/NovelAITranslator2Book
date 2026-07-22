@@ -44,6 +44,8 @@ from novelai.services.orchestration.operations import (
 )
 from novelai.storage.service import StorageService
 
+pytestmark = pytest.mark.slow
+
 SLUG = "test-lifecycle-novel"
 
 
@@ -300,9 +302,7 @@ def test_create_invalid_novel_id_returns_422(owner_client, bad_id):
         "/api/admin/novels/",
         json={"novel_id": bad_id, "title": "Bad"},
     )
-    assert resp.status_code == 422, (
-        f"novel_id={bad_id!r} expected 422, got {resp.status_code}: {resp.text}"
-    )
+    assert resp.status_code == 422, f"novel_id={bad_id!r} expected 422, got {resp.status_code}: {resp.text}"
 
 
 # ---------------------------------------------------------------------------

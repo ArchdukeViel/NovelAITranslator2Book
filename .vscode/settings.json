@@ -1,0 +1,72 @@
+{
+  "css.lint.unknownAtRules": "ignore",
+  "scss.lint.unknownAtRules": "ignore",
+  "less.lint.unknownAtRules": "ignore",
+  "tailwindCSS.includeLanguages": {
+    "typescript": "javascript",
+    "typescriptreact": "javascript",
+    "javascript": "javascript",
+    "javascriptreact": "javascript"
+  },
+  "[python]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.codeActionsOnSave": {
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+  "python.analysis.exclude": [
+    ".venv/**",
+    "**/node_modules/**",
+    "**/__pycache__/**",
+    "docs/archive/specs/**",
+    "backend/tests/.tmp/**",
+    ".agents/**",
+    ".opencode/**",
+    "storage/novel_library/**"
+  ],
+  "[typescript]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescriptreact]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "*.ts": "${capture}.test.ts, ${capture}.spec.ts",
+    "*.tsx": "${capture}.test.tsx, ${capture}.spec.tsx",
+    "*.py": "${capture}_test.py, ${capture}.pyi",
+    "package.json": "package-lock.json, tsconfig.json, vitest.config.ts",
+    "pyproject.toml": "requirements.lock, requirements-dev.lock, uv.lock"
+  },
+  "search.exclude": {
+    "backend/tests/.tmp/**": true,
+    "**/__pycache__/**": true,
+    "**/.pytest_cache/**": true,
+    "node_modules/**": true,
+    ".venv/**": true,
+    "docs/archive/specs/**": true,
+    ".agents/**": true,
+    ".opencode/**": true,
+    "storage/novel_library/**": true
+  },
+  "files.exclude": {
+    "**/__pycache__/**": true,
+    "**/.pytest_cache/**": true,
+    "node_modules/**": true,
+    ".venv/**": true
+  },
+  "editor.formatOnSave": true,
+  "editor.rulers": [120],
+  "editor.minimap.enabled": false,
+  "files.associations": {
+    "*.html": "html"
+  }
+}

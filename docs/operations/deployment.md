@@ -25,10 +25,9 @@ Caddy routes ingress traffic to backend containers using the following ordered r
 1. `/health/*` -> `backend:8000` (Health probe endpoints — liveness, readiness, admin)
 2. `/api/admin/*` -> `backend:8000` (Admin management endpoints)
 3. `/api/auth/*` -> `backend:8000` (Registration and authentication)
-4. `/api/novels/*` -> `backend:8000` (Admin novel settings and imports)
-5. `/novels/*` -> `backend:8000` (Novel assets and source actions)
-6. `/api/public/*` -> `reader:8001` (Unauthenticated public reader endpoints)
-7. Catch-all -> `frontend:3000` (Next.js server-side files)
+4. `/api/user/*` -> `backend:8000` (Session-authenticated public-user data)
+5. `/api/public/*` -> `reader:8001` (Unauthenticated public reader endpoints)
+6. Catch-all -> `frontend:3000` (Next.js pages and static assets, including public `/novels/*` pages)
 
 Caddy terminates TLS, adds baseline security headers (`Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`), and enables compression. HSTS is only emitted when `SITE_DOMAIN` is set to a public HTTPS domain; localhost dev deployments remain usable without HSTS preloading.
 

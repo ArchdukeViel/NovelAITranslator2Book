@@ -1,0 +1,22 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^docs/archive/specs/
+      - id: end-of-file-fixer
+        exclude: ^docs/archive/specs/
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.21
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/GitGuardian/ggshield
+    rev: v1.38.0
+    hooks:
+      - id: ggshield
+        language_version: python3
+        stages: [pre-commit]
