@@ -98,6 +98,8 @@ rg -n "^from novelai\.(db\.models|storage\.service|sources\.)" backend/src/novel
 * `.opencode/` contains local OpenCode plugins, goals, commands, and scratch state.
 * `.opencode/` is gitignored.
 * Do not commit files from `.opencode/`.
+* `.codex/` contains Codex hooks and per-project rules — now tracked in git.
+* `.codex/plans/`, `.codex/scratch/`, and `.codex/*.log` are gitignored.
 
 ---
 
@@ -309,8 +311,6 @@ Knowledge graph at `graphify-out/`. Use CLI commands for codebase questions:
 The git pre-commit hook rebuilds automatically. Codex users: see `.codex/rules/01-graphify.md`.
 
 ---
-
-
 
 ## CI Gotchas
 
@@ -559,159 +559,35 @@ STORAGE_BACKEND=s3
 
 * Use PowerShell-compatible commands.
 * Chain commands with:
-
-```powershell
-first-command; if ($?) { second-command }
-```
-
+  ```powershell
+  first-command; if ($?) { second-command }
+  ```
 * Do not use `&&`.
-* Run Python tools using:
-
-```powershell
-python -m <tool>
-```
-
-* Do not assume Python console scripts are available on `PATH`.
-* The Unix `grep` executable is not available.
-* Use available repository search and edit tools; prefer `rg`, `git ls-files`, and patch-based edits.
-* Confirm that a file does not already exist before creating it.
-* Use `git ls-files` rather than filesystem-wide enumeration when tracked files are sufficient.
+* Run Python tools using `python -m <tool>`.
+* Do not assume Python console scripts are on `PATH`.
+* The Unix `grep` executable is not available — use `rg` instead.
 * Quote paths containing spaces.
-* Do not run interactive or TTY-dependent commands unless the interaction is explicitly supported.
+* Do not run interactive or TTY-dependent commands unless supported.
 
 ---
 
 ## Managed Services and Tooling
 
-* Repository architecture, migrations, application abstractions, and tracked configuration define intended behavior. Provider APIs and connectors report live state.
-* Discover available skills, plugins, MCP servers, and tool names at task time. Do not encode their installation state, versions, project references, account IDs, bucket names, or current live settings in this file.
-* Use installed Supabase or Cloudflare guidance when available, but verify current provider documentation before relying on mutable APIs, limits, defaults, or pricing.
-* Default live-provider work to read-only inspection. Require an explicit user request before schema, data, function, secret, object, bucket, DNS, CORS, lifecycle, lock, domain, or deployment mutations.
-* For Supabase-hosted PostgreSQL, keep Alembic migrations as the repository source of truth. Use live tooling to inspect or verify state; do not replace tracked migrations with dashboard-only changes.
-* For Cloudflare R2, application data access remains behind the S3-compatible storage abstraction. Control-plane access does not authorize direct object mutation, and connectivity claims require both bucket/config access and object-list authorization.
-* Do not infer Vercel or any other hosting provider from the frontend framework. Determine active hosting from tracked configuration and live verification when available.
-* A new hosting target requires explicit deployment scope and review of backend reachability, routing, cookies, CSRF/CORS, secrets, observability, rollback, and origin security.
-* Store durable procedures in canonical documentation. Keep mutable live-state observations in task reports with a verification time, not in `AGENTS.md`.
-
----
-
-## GitHub Security Tools
-
-Use this section only for GitGuardian or CodeQL tasks.
-
-### GitGuardian
-
-* `generic_password_yaml` may flag YAML property names containing `password`, such as `POSTGRES_PASSWORD`.
-* Verify the finding before treating it as a secret.
-* GitGuardian API token prefix: `gg_pat_`.
-* API base:
-
-```text
-https://api.gitguardian.com/v1/
-```
-
-Relevant endpoints:
-
-```text
-GET  /v1/sources/{id}
-GET  /v1/incidents/secrets
-POST /v1/incidents/secrets/{id}/ignore
-POST /v1/incidents/secrets/{id}/resolve
-```
-
-Valid dismissal reason values use spaces:
-
-```text
-false positive
-won't fix
-used in tests
-```
-
-`.cache_ggshield/` is a local scan cache and must remain gitignored.
-
-Never display a GitGuardian token in command output, logs, documentation, or chat.
-
-### CodeQL
-
-Common findings:
-
-| Rule                                       | Meaning                                                      | Expected handling                                                                                                      |
-| ------------------------------------------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `py/weak-sensitive-data-hashing`           | Fast hashes may be flagged when applied to sensitive values. | Passwords require bcrypt or Argon2. Verify token, cache, or fingerprint hashing before dismissing as a false positive. |
-| `py/clear-text-logging-sensitive-data`     | Logs may expose a sensitive value.                           | Remove the sensitive value from the log.                                                                               |
-| `py/incomplete-url-substring-sanitization` | URL validation relies on unsafe substring matching.          | Parse the URL and validate `hostname` using explicit prefix or suffix rules.                                           |
-
-Do not rely solely on suppression comments such as:
-
-```text
-# codeql[rule-id]
-# lgtm[rule-id]
-```
-
-When a verified false positive must be dismissed, use the GitHub API and document the justification.
+* Discover available MCP servers, skills, and tool names at task time. Do not encode live state in this file.
+* Require explicit user request before schema, data, function, secret, or deployment mutations.
+* For Supabase-hosted PostgreSQL, Alembic migrations are the source of truth — do not replace with dashboard-only changes.
+* Determine hosting provider from tracked configuration, not from frontend framework inference.
 
 ---
 
 ## GitHub CLI on Windows
 
-* PowerShell quoting may break complex `gh --jq` filters.
-* Prefer piping JSON to:
-
-  * `ConvertFrom-Json`
-  * `Where-Object`
-  * `ForEach-Object`
-* `gh pr merge --squash` may report a local failure even when GitHub completed the merge.
-* Verify merge state with:
-
-```powershell
-gh pr view --json state
-```
-
-Required scopes may include:
-
-```text
-repo
-workflow
-```
-
-Do not create, merge, close, or modify pull requests unless explicitly requested.
-
----
-
-## Git History Operations
-
-History rewriting is destructive. Do not perform it without an explicit request.
-
-Important behavior:
-
-* `git filter-repo` removes the `origin` remote.
-* Re-add it afterward with:
-
-```powershell
-git remote add origin <url>
-```
-
-* `git filter-repo --force` may be run again for additional replacements.
-* After a force push, all clones must resynchronize:
-
-```powershell
-git fetch origin
-git reset --hard origin/main
-```
-
-* Remove stale Codex checkpoint refs with:
-
-```powershell
-git update-ref -d <ref>
-```
-
-Only do this for refs under:
-
-```text
-refs/codex/turn-diffs/checkpoints/
-```
-
-Never rewrite history, force-push, delete branches, or reset working files without explicit authorization.
+* `gh pr merge --squash` may report local failure even after GitHub completes the merge. Verify with:
+  ```powershell
+  gh pr view --json state
+  ```
+* Complex `gh --jq` filters break in PowerShell. Pipe JSON to `ConvertFrom-Json` instead.
+* Do not create, merge, close, or modify pull requests unless explicitly requested.
 
 ---
 
@@ -729,45 +605,6 @@ Never rewrite history, force-push, delete branches, or reset working files witho
 
 ---
 
-## Operating Style
-
-* Make the smallest complete change that solves the requested problem.
-* Do not add speculative abstractions.
-* Do not add hooks or extension points solely for hypothetical future use.
-* Match existing patterns in the same layer.
-* Read two neighboring implementations before inventing a third pattern.
-* Change behavior completely rather than introducing compatibility shims, duplicate paths, re-exports, or partially migrated callers.
-* Update directly affected callers, types, tests, migrations, configuration, and documentation in the same change.
-* Do not edit unrelated files.
-* Add or update tests for behavior changes.
-* Run focused verification commands.
-* State clearly when a command could not be run and why.
-* Report completed actions, not intended actions.
-* Separate verified facts from assumptions and inferences.
-* Do not fabricate command output, test results, file contents, line numbers, or repository state.
-* Do not commit, push, merge, or open a pull request unless explicitly requested.
-* Do not commit:
-
-  * `.env`;
-  * secrets;
-  * local OpenCode state;
-  * runtime storage;
-  * logs;
-  * backups;
-  * caches;
-  * generated build artifacts;
-  * Graphify output.
-
----
-
 ## Final Report
 
-After implementing or reviewing work, report:
-
-1. Files changed or reviewed.
-2. Behavior implemented or findings identified.
-3. Verification commands actually run.
-4. Results of those commands.
-5. Remaining risks, known failures, or unverified assumptions.
-
-Keep the final report proportional to the task. Do not claim completion when required behavior or verification remains unresolved.
+After implementing or reviewing work, report: files changed, behavior implemented or findings, commands run and results, remaining risks or unverified assumptions. Keep proportional to the task.
