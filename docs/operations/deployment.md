@@ -337,3 +337,73 @@ Only used for initial owner bootstrap. After the owner account exists, rotating 
 1. Set new `OWNER_BOOTSTRAP_SECRET`
 2. Start with empty database
 3. Use the new secret at `/api/auth/bootstrap`
+
+---
+
+## Manual GitHub CI Setup
+
+All workflow files are already committed to `.github/workflows/`.
+What remains below is GitHub UI configuration and verification.
+
+**Current status (2026-07-22):** Workflow hardening accepted on hosted runners. CI run [29941138116](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29941138116) passed all gates. Publication run [29941617651](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29941617651) pushed three GHCR images. Warm-cache CI [29941879093](https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29941879093) completed in 3m42s. Zero open CodeQL/secret-scanning alerts. Three high Dependabot alerts (`pyasn1` ×2, `sharp` ×1) — committed locks resolve to patched versions. Default branch has no ruleset; Actions remains unrestricted without required SHA enforcement.
+
+### Harden GitHub Repository Controls
+
+1. Create a `main` branch ruleset requiring pull requests, at least one review,
+   conversation resolution, and the CI/CodeQL checks.
+2. Block force pushes and branch deletion. Require linear history if desired.
+3. Under **Settings → Actions → General**, restrict allowed actions to GitHub-owned
+   plus an explicit allowlist. Require full commit SHA pinning for third-party actions.
+4. Keep default `GITHUB_TOKEN` permissions read-only; grant `packages: write` only
+   in the job that requires it.
+5. Keep Dependabot, dependency graph, secret scanning, push protection, and
+   CodeQL enabled.
+
+### Configure Repository Secrets
+
+**Deployment secrets** (if deploying):
+
+| Secret Name | Value | Required |
+|---|---|---|
+| `DEPLOY_HOST` | Server IP or hostname | If deploying |
+| `DEPLOY_USER` | SSH username | If deploying |
+| `DEPLOY_SSH_KEY` | Private SSH key (PEM) | If deploying |
+
+The managed-services workflow additionally requires `MANAGED_SERVICE_TESTS_ENABLED=true`, bucket variables, and `MANAGED_DATABASE_TEST_URL` plus R2 credential secrets.
+
+Generate an SSH key pair:
+```bash
+ssh-keygen -t ed25519 -C "github-actions-deploy" -f deploy_key -N ""
+cat deploy_key.pub >> ~/.ssh/authorized_keys  # on your server
+```
+
+**GHCR permissions**: Verify **Settings → Actions → General → Workflow permissions** has **Read and write permissions** selected.
+
+### Verify Pipeline
+
+1. Push a test PR → verify `backend-lint`, `backend-tests`, `frontend-check`, `docker-build` pass
+2. E2E only runs on changes to `backend/src/novelai/services/**`, `api/**`, `tests/e2e/**`
+3. Merge to main → verify Build and Push triggers and GHCR images appear with SHA + latest tags
+4. Cache-hit CI should complete under 5 minutes
+5. Do not run production deployment until Compose consumes GHCR SHA tags
+
+### CI Verification Checklist
+
+- [ ] PR CI runs backend-lint, backend-tests, frontend-check
+- [x] E2E tests run when relevant paths change
+- [x] Merge to main triggers Docker build+push after successful CI
+- [x] Docker images pushed to GHCR with SHA and `latest` tags
+- [x] CI completes in under 5 minutes on cache-hit
+- [ ] Compose consumes requested immutable GHCR SHA tags
+- [ ] Deploy workflow runs on selected backend host
+
+### Common CI Issues
+
+| Issue | Fix |
+|---|---|
+| `permission denied` on GHCR push | Verify `packages: write` in Settings → Actions → Workflow permissions |
+| `DEPLOY_HOST` secret missing | Add in Settings → Secrets and variables → Actions |
+| E2E tests don't run on PR | Check path filter in `ci.yml` |
+| Build images missing `latest` tag | Verify `docker/metadata-action` config in `build.yml` |
+| Deploy fails with `Host key verification` | Add host to `known_hosts` or use `-o StrictHostKeyChecking=no` |
+| Frontend Docker build fails | Ensure `frontend/Dockerfile` uses Next.js standalone output |

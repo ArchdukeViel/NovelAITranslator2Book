@@ -141,3 +141,118 @@ keeps its acceptance gate open.
 - **Acceptance gates:**
   - `docs/operations/launch-checklist.md` exists with status, owner, evidence, blocker, waiver, and decision fields.
   - All M0-M5 dependencies resolved or explicitly waived.
+
+---
+
+## Current Operational State
+
+High-level operational snapshot.
+For the technical debt register and launch blockers, see [`docs/DEBT.md`](DEBT.md).
+
+### Launch Status
+
+- **Launch readiness:** Not ready. Core managed-service implementation is
+  mature, but hosted CI confirmation, alert delivery, hosted deployment,
+  reader/admin polish, and final launch evidence remain open.
+- **Current launch blockers:** DEBT-075 through DEBT-079: managed-service
+  acceptance, clean-PostgreSQL migration compatibility, truthful CI coverage,
+  GitHub control hardening, and hosted topology acceptance.
+
+### Core Infrastructure Config
+
+- **Backend:** FastAPI monolith (default) with split deployment options under `DEPLOY_MODE=split`.
+- **Frontend:** Next.js 15 App Router.
+- **Database:** SQLAlchemy and Alembic remain authoritative; the current hosted
+  database is Supabase PostgreSQL 17. A managed database does not replace the
+  repository migration layer.
+- **Storage:** Cloudflare R2 is the current S3-compatible object store. Application
+  data and independent recovery snapshots use private, separately scoped buckets.
+- **Worker:** Background activity worker defaults to in-process (`JOB_WORKER_ENABLED=true`). Async queue support via Redis/RQ exists.
+- **Translation:** Gemini only. The approved chain is
+  `gemini-3.1-flash-lite` then `gemma-4-31b-it`, using the Gemini API. Public
+  contribution credentials remain gated and are not a current launch feature.
+- **Settings:** Configured via `pydantic-settings` in `backend/src/novelai/config/settings.py`. Canonical environment variable is `ENV` (not `APP_ENV`).
+
+### Validation Status
+
+- **Local checks:** Ruff, Pyright, focused backend tests, frontend typecheck/build,
+  Docker builds, and the router guard have previously passed for the implemented
+  M0-M3 work. They must be rerun after the next implementation phases.
+- **Latest CI:** The clean-PostgreSQL `auth.uid()` compatibility path is fixed
+  and locally verified; a new hosted Actions run is still required (DEBT-076).
+- **Build workflow:** The aggregate result now distinguishes a successful image
+  publication from a skipped publication; hosted confirmation remains
+  (DEBT-077).
+- **Hosted services:** Supabase security advisors last reported zero WARN
+  findings. On 2026-07-18 two scheduler-created R2 snapshots passed full
+  checksum verification, and a scheduler-created encrypted database backup was
+  automatically restored into a clean PostgreSQL 17 target with the current
+  Alembic head, 30 public tables, and zero invalid constraints. The opt-in
+  hosted PostgreSQL and isolated-prefix real-R2 suites also pass (3 tests) with
+  all temporary objects removed.
+
+### Known Gaps (Not Launch-Ready)
+
+- Alert cooldown and secret redaction have direct regression coverage; real
+  stale/failure SMTP delivery to the operator inbox remains unproven.
+- The hosted managed-services GitHub workflow still needs a successful run.
+- The free preview domains and the always-on production topology need acceptance.
+- No owner-only audit viewer.
+- No takedown workflow; no HTTP 451 enforcement.
+- No measured performance or accessibility gate.
+- No launch readiness evidence or go/no-go decision.
+
+### Implemented Features (Phase 2 Live Library Summary)
+
+Status legend:
+- Implemented — code shipped; contract + tests in place.
+- Locally validated — passing on local dev backend and frontend test runs.
+- CI validated — passing on GitHub Actions workflow.
+- Production verified — passing against an authenticated, owner-provisioned read-only call against the production environment.
+
+- **Live Admin Library Summary** (`GET /api/admin/library/summary`): derives per-novel counts from a single recursive R2 listing pass. Counts: total, scraped, translated, failed, pending. 30s TTL, explicit `refresh=true` bypass. Catalog-identity-aware cache (DB slugs vs storage union). [Implemented / Locally validated / CI validated / Production verified: pending]
+- **Single-flight concurrency** via per-generation `_BuildGeneration` object, condition variable, and generation counter. [Implemented / Locally validated / CI validated / Production verified: pending]
+- **Invalidation epoch** (`self._invalidation_epoch`): monotonic counter. If the epoch advances during a build, the result is not published to cache. [Implemented / Locally validated / Production verified: pending]
+- **Crawl failure history semantics**: the newest activity with `status` in (`completed`, `failed`) is authoritative. [Implemented / Locally validated / Production verified: pending]
+- **Immutable cached state** (`tuple[NovelSummaryCounts, ...]`); outward responses are fresh dicts/lists. [Implemented / Locally validated]
+- **Catalog-identity-aware caching**: cache key includes sorted unique DB slugs; identity change forces rebuild. [Implemented / Locally validated]
+- **Frontend join**: `summary.data.items` merged into novel rows via `Map(novel_id → item)`. [Implemented / Locally validated]
+- **Settled background-refetch failure detection** via `summary.isRefetchError`. [Implemented / Locally validated / Production verified: pending]
+- **Three distinct error states**: initial failure, settled background failure, explicit-refresh failure. [Implemented / Locally validated]
+- **Route uniqueness**: admin behavior is registered only under `/api/admin/*`. [Implemented / Locally validated]
+- **Invalidation**: immediate after full-crawl deletion and metadata replacement; best-effort after chapter/translation/glossary/activation saves. [Implemented / Locally validated]
+- **Tests**: 50 library-summary tests; 57 storage tests; 609 frontend tests across 52 files. [Implemented / Locally validated / CI validated: pending]
+- **Production verification**: Remains operator-pending.
+
+---
+
+## Spec Backlog
+
+21 roadmap-linked specs remain in `.agents/kiro/specs/`.
+45 archived specs moved to `docs/archive/specs/` on 2026-07-22.
+
+### Roadmap-Linked Specs (21)
+
+| Spec | Debt / Milestone |
+|---|---|
+| `admin-audit-log-viewer` | DEBT-054 (M5) |
+| `admin-user-management` | DEBT-008 (M5) |
+| `analytics-baseline` | DEBT-011 (M5) |
+| `contact-support-legal-pages` | DEBT-043 (M4) |
+| `deep-health-readiness-checks` | DEBT-001 (M2a) |
+| `deployment-production-hardening` | DEBT-055 (M3, Resolved) |
+| `frontend-error-boundary-and-empty-states` | DEBT-056 (M4) |
+| `launch-readiness-checklist` | DEBT-057 (M7) |
+| `maintenance-cron` | DEBT-042 (M2c) |
+| `metric-dashboard-baseline` | DEBT-040 (M3) |
+| `notification-system` | DEBT-009 (M5) |
+| `pdf-exporter=registration` | DEBT-007 (M2b) |
+| `public-reader-accessibility-baseline` | DEBT-058 (M4) |
+| `public-reader-graceful-degradation` | M4 |
+| `public-reader-performance-budget` | DEBT-059 (M4) |
+| `public-reader-seo-discovery-baseline` | DEBT-038 (M4) |
+| `rate-limit-and-abuse-protection-baseline` | DEBT-039 (M3, Resolved) |
+| `scheduled-backups-and-restore-drills` | DEBT-010 (M2c) |
+| `scheduled-export-freshness-check` | DEBT-033 (M5) |
+| `scheduler-runtime-state-persistence` | DEBT-036 (M2c) |
+| `terms-dmca-takedown-workflow` | DEBT-060 (M4) |

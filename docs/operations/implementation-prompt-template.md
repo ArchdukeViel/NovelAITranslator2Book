@@ -12,16 +12,15 @@ Latest commit: c855d8ab.
 
 1. `AGENTS.md` — operating rules, layer boundaries, canonical names, verification commands.
 2. `docs/architecture/architecture.md` — canonical architecture, layer rules, ownership.
-3. `docs/roadmap.md` — milestone plan M0-M7, acceptance gates.
+3. `docs/roadmap.md` — milestone plan M0-M7, acceptance gates, current operational state, spec backlog.
 4. `docs/DEBT.md` — active technical debt register, completion criteria.
-5. `docs/SPECS_COMPLETION.md` — active/archived specs inventory.
-6. `docs/storage-contract.md` — canonical ownership matrix and restore rules.
-7. `docs/operations/deployment.md` — container topology, reverse proxy routing.
-8. `docs/operations/runbook.md` — health, worker, cache invalidation procedures.
-9. `docs/operations/data-recovery.md` — backup and restore procedures.
-10. `.agents/kiro/specs/[SPEC]/design.md` — contract, data model, API shape, non-goals.
-11. `.agents/kiro/specs/[SPEC]/requirements.md` — numbered requirements (REQ-N).
-12. `.agents/kiro/specs/[SPEC]/tasks.md` — implementation checklist with REQ-N tags.
+5. `docs/storage-contract.md` — canonical ownership matrix and restore rules.
+6. `docs/operations/deployment.md` — container topology, reverse proxy routing, manual CI setup.
+7. `docs/operations/runbook.md` — health, worker, cache invalidation procedures.
+8. `docs/operations/data-recovery.md` — backup and restore procedures.
+9. `.agents/kiro/specs/[SPEC]/design.md` — contract, data model, API shape, non-goals.
+10. `.agents/kiro/specs/[SPEC]/requirements.md` — numbered requirements (REQ-N).
+11. `.agents/kiro/specs/[SPEC]/tasks.md` — implementation checklist with REQ-N tags.
 
 ## 2. Your Task
 
@@ -62,7 +61,7 @@ Implement **[MILESTONE]** from `docs/roadmap.md`.
 ## 4. Preflight (do this before coding)
 
 1. Inspect the relevant code paths referenced in the spec's `tasks.md`.
-2. Confirm the current state matches what `docs/DEBT.md` and `docs/current_state.md` claim.
+2. Confirm the current state matches what `docs/DEBT.md` and `docs/roadmap.md` (Current Operational State section) claim.
 3. Identify the smallest diff that satisfies the acceptance gates.
 4. List the files you expect to change and why.
 5. State any assumptions you are making.
@@ -133,3 +132,9 @@ Do not mark a debt item complete until implementation and validation justify it.
 9. Start the session.
 
 The agent will read the canonical docs first, then the spec's design and tasks, then implement against the acceptance gates. No re-planning needed.
+
+---
+
+## Historical One-Shot Implementation Prompts
+
+The three M1/M2/M3 implementation prompts that previously lived at `docs/operations/m{1,2,3}-*-prompt.md` have been archived to `docs/archive/operations-prompt-m{1,2,3}.md` (2026-07-22). They are historical artifacts of completed milestones and reference superseded file paths. Use this template for new milestone work instead.
