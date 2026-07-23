@@ -14,9 +14,8 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  - repo: https://github.com/GitGuardian/ggshield
-    rev: v1.52.2
-    hooks:
-      - id: ggshield
-        language_version: python3
-        stages: [pre-commit]
+# Note: GitGuardian (ggshield) is intentionally not in this pre-commit config.
+# Run it manually or via the global git hook:
+#   python -m ggshield secret scan pre-commit
+# or configure it as a GitHub Action. Adding it here caused environment
+# isolation issues with missing transitive dependencies on this machine.

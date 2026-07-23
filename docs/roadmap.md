@@ -7,6 +7,9 @@ Milestone status distinguishes code completion from operational acceptance. A
 milestone may be implemented while live evidence or a current CI regression
 keeps its acceptance gate open.
 
+<!-- Update the "Current Operational State" section below when milestone
+     status changes. It is the live snapshot, not a historical record. -->
+
 ---
 
 ## Milestone M0 — CI Confidence
