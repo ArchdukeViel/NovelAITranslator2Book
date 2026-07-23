@@ -2,6 +2,8 @@
 
 Compact project instructions for AI coding assistants. Read this file before any non-trivial investigation, plan, edit, review, or debugging task.
 
+Codex CLI users: see `.codex/rules/` for Codex-specific setup (graphify, render CLI, workflow).
+
 ## Sources of Truth
 
 Use these sources in this order:
@@ -295,100 +297,20 @@ These are behavioral contracts that future agents must preserve. Violating them 
 
 ---
 
-## Exploration and Search Policy
+## Graphify
 
-When delegation is available and permitted, use an `explore` subagent for broad repository discovery. Otherwise follow the same sequence locally.
+Knowledge graph at `graphify-out/`. Use CLI commands for codebase questions:
 
-### Delegate to `explore` when
+- `graphify query "<question>"` — search the graph
+- `graphify path "<A>" "<B>"` — find paths between concepts
+- `graphify explain "<concept>"` — explain a node
+- `graphify update .` — rebuild graph after code changes
 
-Delegate when one or more of these apply:
-
-* Relevant files or entry points are unknown.
-* The task requires architecture mapping.
-* The task requires cross-layer or cross-subsystem tracing.
-* The request asks for a thorough repository inventory.
-* The task requires impact analysis across many files.
-* The request asks to locate implementations, tests, migrations, registrations, configuration, storage, lifecycle, or dependency wiring.
-* The investigation would require repeated broad searches or many file reads.
-* The task explicitly asks to explore the codebase thoroughly.
-
-### Keep exploration in the primary agent when
-
-The primary agent may directly use Read, Grep, Glob, List, LSP, and targeted `rg` for:
-
-* reading a named target file;
-* reading files immediately before editing them;
-* verifying an exploration report;
-* finding usages of a known symbol;
-* inspecting directly affected callers;
-* reading two neighboring implementations;
-* locating focused tests;
-* examining a known error path;
-* reviewing changed files;
-* running architecture guards;
-* confirming that a change is complete.
-
-Do not delegate a small localized task when the target files are already known.
-
-### Exploration sequence
-
-For broad exploration:
-
-1. If Graphify and `graphify-out/graph.json` are available, use a scoped `query`, `path`, or `explain` for initial orientation.
-2. Use `git ls-files` as the default inventory of tracked project files.
-3. Use `rg --files` only when untracked files may matter.
-4. Use focused `rg -n` queries to locate exact symbols and relationships.
-5. Read the directly relevant implementations and tests.
-6. Verify Graphify relationships against the actual source.
-7. Produce an evidence-based report.
-
-Graphify is an orientation tool, not authoritative proof. If it is unavailable or stale, continue with `git ls-files`, targeted `rg`, and direct source reads. After code changes, refresh the graph when supported, and never commit generated Graphify output.
-
-### Default exploration exclusions
-
-Ignore these unless the task specifically concerns them:
-
-* `.agents/kiro/specs/`
-* `.hypothesis/`
-* `.opencode/`
-* `.venv/`
-* `node_modules/`
-* frontend build output
-* generated coverage output
-* runtime storage
-* downloaded novel content
-* logs
-* backups
-* caches
-* generated Graphify output
-* lockfiles, except for dependency or supply-chain tasks
-
-Do not use:
-
-* recursive `tree /F` over the repository;
-* unrestricted filesystem walks;
-* broad reads of every document;
-* recursive searches through ignored runtime or cache directories.
-
-### Exploration report format
-
-Every broad exploration report must include:
-
-1. Scope searched.
-2. Exclusions applied.
-3. Relevant files with repository-relative paths.
-4. Precise 1-based line numbers or line ranges.
-5. Execution, dependency, or data flow.
-6. Configuration and registration wiring.
-7. Persistence and lifecycle behavior.
-8. Existing tests and what behavior they actually verify.
-9. Missing implementation or coverage.
-10. Conflicts and unresolved uncertainty.
-11. A checklist covering every requested item.
-
-Do not present guesses as confirmed findings.
+The git pre-commit hook rebuilds automatically. Codex users: see `.codex/rules/01-graphify.md`.
 
 ---
+
+
 
 ## CI Gotchas
 
@@ -849,16 +771,3 @@ After implementing or reviewing work, report:
 5. Remaining risks, known failures, or unverified assumptions.
 
 Keep the final report proportional to the task. Do not claim completion when required behavior or verification remains unresolved.
-
-## graphify
-
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
-
-When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
-
-Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
