@@ -126,7 +126,7 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M1 (Glossary/Router Repair)
 - **Category:** Backend | Data Migration
 - **Priority:** Medium
-- **Status:** Ongoing
+- **Status:** Resolved
 - **Affected areas:** Global codebase
 - **Description:** Forward-only architecture now forbids old fields (`slug`,
   `provider`, `model`, `id`, `source`), mirrored payload fields, route aliases,
@@ -283,6 +283,14 @@ Deferred items are tracked but excluded from the active count.
   are removed; editor and library endpoints now pass through the canonical
   version record directly. All 11 focused editor/API-contract tests pass with
   focused Ruff/Pyright, TypeScript, and ESLint validation.
+- **Resolution:** Activity log entries use `activity_id` exclusively;
+  `queue._load_activity` rejects legacy `id`, `job_id`, `provider`, and `model`
+  fields; fixed over-indent defects in `runner.py:75` and
+  `library_summary_service.py:139`; updated router field
+  `activity_log_job_id` → `activity_log_activity_id`; canonicalized 22 files
+  across backend, frontend, and test suites. All 124 focused activity-layer
+  tests pass; `ruff`, `pyright`, `npm run typecheck`, and `npm run lint` are
+  completely clean.
 
 ### DEBT-022 — Forward-only storage schema enforcement
 - **Milestone:** Milestone 2c (Backup & Storage)

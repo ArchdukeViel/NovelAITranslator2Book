@@ -72,7 +72,7 @@ export default function ActivityPage() {
       const selectedGroups = groups.filter((group) => activityIds.includes(group.id));
       for (const group of selectedGroups) {
         for (const activityItem of group.activity) {
-          await api.deleteActivity(activityItem.id);
+          await api.deleteActivity(activityItem.activity_id);
         }
       }
     },
@@ -192,7 +192,7 @@ export default function ActivityPage() {
                         <td className="px-4 py-3">
                           <StatusBadge status={group.status} />
                           {group.activity.map((activityItem) => (
-                            <SchedulerBadges key={activityItem.id} activity={activityItem} />
+                            <SchedulerBadges key={activityItem.activity_id} activity={activityItem} />
                           ))}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">{formatDateTime(group.updatedAt)}</td>

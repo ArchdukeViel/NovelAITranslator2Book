@@ -37,7 +37,7 @@ class StubOrchestrator:
 def _patch_activity_record(activity_log: ActivityQueueService, activity_id: str, **updates: object) -> None:
     activity_items = activity_log._load_activity()
     for activity in activity_items:
-        if activity.get("id") == activity_id:
+        if activity.get("activity_id") == activity_id:
             activity.update(updates)
             activity_log._persist_activity(activity_items)
             return
@@ -66,7 +66,7 @@ async def test_run_crawl_metadata_activity(worker_env) -> None:
         metadata={"max_chapter": 2},
     )
 
-    result = await worker.run_activity(activity["id"])
+    result = await worker.run_activity(activity["activity_id"])
 
     assert result is not None
     assert result["status"] == "completed"
@@ -93,7 +93,7 @@ async def test_run_translation_activity_uses_stored_metadata_source_key(worker_e
         provider_model="gemini-2.0-flash",
     )
 
-    result = await worker.run_activity(activity["id"])
+    result = await worker.run_activity(activity["activity_id"])
 
     assert result is not None
     assert result["status"] == "completed"
@@ -116,7 +116,7 @@ async def test_run_translation_activity_uses_canonical_provider_fields(worker_en
         provider_model="canonical-model",
     )
 
-    result = await worker.run_activity(activity["id"])
+    result = await worker.run_activity(activity["activity_id"])
 
     assert result is not None
     assert result["status"] == "completed"
@@ -137,7 +137,7 @@ async def test_run_translation_activity_passes_provider_lock_metadata(worker_env
         metadata={"allow_cross_provider_fallback": False},
     )
 
-    result = await worker.run_activity(activity["id"])
+    result = await worker.run_activity(activity["activity_id"])
 
     assert result is not None
     assert result["status"] == "completed"
@@ -146,22 +146,17 @@ async def test_run_translation_activity_passes_provider_lock_metadata(worker_env
 
 
 @pytest.mark.asyncio
-async def test_run_translation_activity_ignores_legacy_provider_fields(worker_env) -> None:
-    storage, activity_log, orchestrator, worker = worker_env
+async def test_run_translation_activity_rejects_legacy_provider_fields(worker_env) -> None:
+    storage, activity_log, _orchestrator, worker = worker_env
     storage.save_metadata("novel-1", {"source_key": "kakuyomu", "chapters": [{"id": "1"}]})
     activity = activity_log.create_translation_activity(
         novel_id="novel-1",
         chapters="1",
     )
-    _patch_activity_record(activity_log, str(activity["id"]), provider="legacy-provider", model="legacy-model")
+    _patch_activity_record(activity_log, str(activity["activity_id"]), provider="legacy-provider", model="legacy-model")
 
-    result = await worker.run_activity(activity["id"])
-
-    assert result is not None
-    assert result["status"] == "completed"
-    assert orchestrator.calls[0][0] == "translate_chapters"
-    assert orchestrator.calls[0][2]["provider_key"] is None
-    assert orchestrator.calls[0][2]["provider_model"] is None
+    with pytest.raises(ValueError, match="Unsupported activity fields"):
+        await worker.run_activity(activity["activity_id"])
 
 
 @pytest.mark.asyncio
@@ -170,7 +165,7 @@ async def test_run_failed_activity_records_error(worker_env) -> None:
     failing_worker = ActivityWorkerService(activity_log, StubOrchestrator(orchestrator.storage, fail=True))  # type: ignore[arg-type]
     activity = activity_log.create_crawl_activity(novel_id="novel-1", source_key="syosetu_ncode", kind="chapters")
 
-    result = await failing_worker.run_activity(activity["id"])
+    result = await failing_worker.run_activity(activity["activity_id"])
 
     assert result is not None
     assert result["status"] == "failed"

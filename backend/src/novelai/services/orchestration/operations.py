@@ -182,7 +182,7 @@ class OperationsService:
                     "message": f"Preliminary crawl failed: {joined_errors}. Activity log: {failed_job.get('id')}",
                     "explanation": preliminary_failure_explanation(failure_code),
                     "details": {
-                        "activity_log_job_id": failed_job.get("id"),
+                        "activity_log_activity_id": failed_job.get("activity_id"),
                         "identifier": clean_identifier,
                         "requested_source_key": requested_source_key,
                         "attempted_sources": attempts,
@@ -233,7 +233,7 @@ class OperationsService:
             "metadata_translation_status": meta.get("metadata_translation_status"),
             "metadata_translation_error": meta.get("metadata_translation_error"),
             "bootstrap_candidate_count": int(meta.get("bootstrap_candidate_count") or 0),
-            "activity_log_job_id": activity_job.get("id") if activity_job else None,
+            "activity_log_activity_id": activity_job.get("activity_id") if activity_job else None,
             "detected_at": detected_at,
             "chapters": chapter_count(meta),
             "chapter_list": chapter_rows(meta),
@@ -500,7 +500,7 @@ class OperationsService:
         error_text = (
             "; ".join(errors) if errors else "Preliminary crawl failed before any source adapter returned metadata."
         )
-        failed = self.activity_log.update_activity_status(activity["id"], "failed", error=error_text)
+        failed = self.activity_log.update_activity_status(activity["activity_id"], "failed", error=error_text)
         return failed or activity
 
     def record_preliminary_crawl_success(
@@ -546,7 +546,7 @@ class OperationsService:
             },
         )
         completed = self.activity_log.update_activity_status(
-            activity["id"],
+            activity["activity_id"],
             "completed",
             metadata={
                 "result": {
@@ -597,7 +597,7 @@ class OperationsService:
                     "selected_source_key": resolved_source_key,
                 },
             )
-            activity_id = activity.get("id")
+            activity_id = activity.get("activity_id")
         except Exception:
             logger.warning("Failed to record resume activity.", exc_info=True)
 

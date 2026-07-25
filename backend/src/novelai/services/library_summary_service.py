@@ -136,7 +136,7 @@ def _newest_first_sort_key(activity: dict[str, Any]) -> tuple[str, str]:
     yields newest timestamp first, breaking ties by descending id.
     """
     timestamp = str(activity.get("finished_at") or activity.get("started_at") or activity.get("created_at") or "")
-    return (timestamp, str(activity.get("id") or ""))
+    return (timestamp, str(activity.get("activity_id") or ""))
 
 
 def _get_failed_ids(

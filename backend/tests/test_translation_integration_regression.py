@@ -846,13 +846,13 @@ class TestActivityMetadata:
             queue = ActivityQueueService(base_dir=Path(d))
             act = queue.create_translation_activity(novel_id="n20")
             queue.update_activity_status(
-                act["id"],
+                act["activity_id"],
                 "completed",
                 metadata={
                     "result": {"succeeded": 2, "failed": 0, "skipped": 0, "total": 2},
                 },
             )
-            completed = queue.get_activity(act["id"]) or {}
+            completed = queue.get_activity(act["activity_id"]) or {}
             meta = completed.get("metadata", {}) if isinstance(completed.get("metadata"), dict) else {}
             result = meta.get("result", {}) if isinstance(meta, dict) else {}
             assert result.get("succeeded") == 2
@@ -864,13 +864,13 @@ class TestActivityMetadata:
             queue = ActivityQueueService(base_dir=Path(d))
             act = queue.create_translation_activity(novel_id="n20b")
             queue.update_activity_status(
-                act["id"],
+                act["activity_id"],
                 "completed",
                 metadata={
                     "result": {"chapter_progress": {"1": {"status": "succeeded"}}},
                 },
             )
-            completed = queue.get_activity(act["id"]) or {}
+            completed = queue.get_activity(act["activity_id"]) or {}
             meta = completed.get("metadata", {}) if isinstance(completed.get("metadata"), dict) else {}
             result = meta.get("result", {}) if isinstance(meta, dict) else {}
             assert result.get("chapter_progress", {}).get("1", {}).get("status") == "succeeded"

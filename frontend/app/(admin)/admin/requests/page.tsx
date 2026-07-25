@@ -83,7 +83,7 @@ export default function RequestsPage() {
           request_title: request.title
         }
       });
-      await api.runActivity(activity.id);
+      await api.runActivity(activity.activity_id);
       return updated;
     },
     onSuccess: () => {

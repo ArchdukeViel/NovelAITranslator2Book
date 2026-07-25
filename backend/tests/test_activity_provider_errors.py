@@ -45,7 +45,7 @@ async def test_activity_worker_records_structured_provider_failure() -> None:
     )
     worker = ActivityWorkerService(queue, _ProviderFailingOrchestrator())  # type: ignore[arg-type]
 
-    failed = await worker.run_activity(str(activity["id"]))
+    failed = await worker.run_activity(str(activity["activity_id"]))
 
     assert failed is not None
     assert failed["status"] == "failed"
@@ -56,8 +56,8 @@ async def test_activity_worker_records_structured_provider_failure() -> None:
     assert metadata["retry_after_seconds"] == 13
     assert metadata["cooldown_until"] == "2026-06-04T12:00:13Z"
     provider_error = metadata["provider_error"]
-    assert provider_error["activity_id"] == activity["id"]
-    assert provider_error["job_id"] == activity["id"]
+    assert provider_error["activity_id"] == activity["activity_id"]
+    assert "job_id" not in provider_error
     assert provider_error["novel_id"] == "novel1"
     assert provider_error["chapter_id"] == "chapter_001"
     assert provider_error["chunk_id"] == "c0002"

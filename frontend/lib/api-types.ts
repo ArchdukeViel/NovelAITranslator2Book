@@ -184,9 +184,7 @@ export type JobProgress = {
 };
 
 export type ActivityRecord = {
-  id: string;
-  activity_id?: string;
-  job_id?: string;
+  activity_id: string;
   type: "crawl" | "translation";
   kind: string;
   novel_id: string;
@@ -292,7 +290,7 @@ export type PreliminaryCrawlResult = {
   metadata_translation_status?: string | null;
   metadata_translation_error?: string | null;
   bootstrap_candidate_count?: number;
-  activity_log_job_id?: string | null;
+  activity_log_activity_id?: string | null;
   detected_at?: string | null;
   chapters: number;
   chapter_list: Array<{

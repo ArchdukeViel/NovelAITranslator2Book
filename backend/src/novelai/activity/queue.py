@@ -87,7 +87,18 @@ class ActivityQueueService:
             return []
         if not isinstance(data, list):
             return []
-        return [dict(item) for item in data if isinstance(item, dict)]
+        activity_log: list[dict[str, Any]] = []
+        for item in data:
+            if not isinstance(item, dict):
+                raise ValueError("Activity log entries must be objects.")
+            unsupported_fields = {"id", "job_id", "provider", "model"}.intersection(item)
+            if unsupported_fields:
+                raise ValueError(f"Unsupported activity fields: {', '.join(sorted(unsupported_fields))}")
+            activity_id = item.get("activity_id")
+            if not isinstance(activity_id, str) or not activity_id:
+                raise ValueError("Activity log entries require activity_id.")
+            activity_log.append(dict(item))
+        return activity_log
 
     def _persist_activity(self, activity: list[dict[str, Any]]) -> None:
         atomic_write(self.activity_file, json.dumps(activity, ensure_ascii=False, indent=2))
@@ -156,9 +167,7 @@ class ActivityQueueService:
         keep_failed = max(0, int(keep_failed))
         activity_log = self._load_activity()
         completed_like = [
-            activity
-            for activity in activity_log
-            if str(activity.get("status")) == JobStatus.COMPLETED.value
+            activity for activity in activity_log if str(activity.get("status")) == JobStatus.COMPLETED.value
         ]
         failed_like = [
             activity
@@ -169,17 +178,18 @@ class ActivityQueueService:
         completed_like.sort(key=self._newest_activity_sort_key, reverse=True)
         failed_like.sort(key=self._newest_activity_sort_key, reverse=True)
         candidate_ids = {
-            str(activity.get("id"))
+            str(activity.get("activity_id"))
             for activity in [*completed_like[keep_completed:], *failed_like[keep_failed:]]
-            if activity.get("id") is not None
+            if activity.get("activity_id") is not None
         }
 
-        candidates = [activity for activity in activity_log if str(activity.get("id")) in candidate_ids]
+        candidates = [activity for activity in activity_log if str(activity.get("activity_id")) in candidate_ids]
         if not dry_run and candidate_ids:
             remaining = [
                 activity
                 for activity in activity_log
-                if str(activity.get("status")) in self.ACTIVE_STATUSES or str(activity.get("id")) not in candidate_ids
+                if str(activity.get("status")) in self.ACTIVE_STATUSES
+                or str(activity.get("activity_id")) not in candidate_ids
             ]
             self._persist_activity(remaining)
         return {
@@ -204,7 +214,7 @@ class ActivityQueueService:
             raise ValueError(f"Unsupported crawl activity kind: {kind}")
 
         activity: dict[str, Any] = {
-            "id": self._new_activity_id("crawl"),
+            "activity_id": self._new_activity_id("crawl"),
             "type": "crawl",
             "kind": activity_kind,
             "novel_id": novel_id,
@@ -240,7 +250,7 @@ class ActivityQueueService:
             raise ValueError(f"Unsupported translation activity kind: {kind}")
 
         activity: dict[str, Any] = {
-            "id": self._new_activity_id("translation"),
+            "activity_id": self._new_activity_id("translation"),
             "type": "translation",
             "kind": activity_kind,
             "novel_id": novel_id,
@@ -270,7 +280,9 @@ class ActivityQueueService:
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
         normalized_status = self._normalize_status(status)
-        normalized_type = activity_type.strip().lower() if isinstance(activity_type, str) and activity_type.strip() else None
+        normalized_type = (
+            activity_type.strip().lower() if isinstance(activity_type, str) and activity_type.strip() else None
+        )
         if normalized_type is not None and normalized_type not in self.VALID_ACTIVITY_TYPES:
             raise ValueError(f"Unsupported activity type: {activity_type}")
 
@@ -289,13 +301,13 @@ class ActivityQueueService:
 
     def get_activity(self, activity_id: str) -> dict[str, Any] | None:
         for activity in self._load_activity():
-            if activity.get("id") == activity_id:
+            if activity.get("activity_id") == activity_id:
                 return dict(activity)
         return None
 
     def delete_activity(self, activity_id: str) -> bool:
         activity_log = self._load_activity()
-        remaining = [activity for activity in activity_log if activity.get("id") != activity_id]
+        remaining = [activity for activity in activity_log if activity.get("activity_id") != activity_id]
         if len(remaining) == len(activity_log):
             return False
         self._persist_activity(remaining)
@@ -315,7 +327,7 @@ class ActivityQueueService:
 
         activity_log = self._load_activity()
         for index, activity in enumerate(activity_log):
-            if activity.get("id") != activity_id:
+            if activity.get("activity_id") != activity_id:
                 continue
 
             updated = dict(activity)
@@ -348,7 +360,7 @@ class ActivityQueueService:
         with self._lock:
             activity_log = self._load_activity()
             for _index, act in enumerate(activity_log):
-                if act.get("id") == activity_id:
+                if act.get("activity_id") == activity_id:
                     break
             else:
                 return False
@@ -379,7 +391,7 @@ class ActivityQueueService:
     def retry_activity(self, activity_id: str) -> dict[str, Any] | None:
         activity_log = self._load_activity()
         for index, activity in enumerate(activity_log):
-            if activity.get("id") != activity_id:
+            if activity.get("activity_id") != activity_id:
                 continue
 
             current_status = str(activity.get("status") or "")
@@ -487,9 +499,7 @@ class ActivityQueueService:
         return self._build_source_health_envelope(normalized_source, entry)
 
     @staticmethod
-    def _build_source_health_envelope(
-        source_key: str, legacy: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    def _build_source_health_envelope(source_key: str, legacy: dict[str, Any] | None = None) -> dict[str, Any]:
         legacy = legacy or {}
         return {
             "source_key": source_key,
@@ -544,16 +554,12 @@ class ActivityQueueService:
             if not source_key:
                 continue
             if source_key not in envelopes:
-                envelopes[source_key] = self._build_source_health_envelope(
-                    source_key, legacy_map.get(source_key)
-                )
+                envelopes[source_key] = self._build_source_health_envelope(source_key, legacy_map.get(source_key))
             self._aggregate_crawl_into(envelopes[source_key], activity)
 
         for source_key in legacy_map:
             if source_key not in envelopes:
-                envelopes[source_key] = self._build_source_health_envelope(
-                    source_key, legacy_map[source_key]
-                )
+                envelopes[source_key] = self._build_source_health_envelope(source_key, legacy_map[source_key])
 
         result = [dict(envelopes[k]) for k in sorted(envelopes)]
         self._source_health_cache["_list"] = (now, result)
@@ -571,9 +577,7 @@ class ActivityQueueService:
             return cached[1]
 
         legacy_map = self._load_source_health()
-        envelope = self._build_source_health_envelope(
-            normalized_source, legacy_map.get(normalized_source)
-        )
+        envelope = self._build_source_health_envelope(normalized_source, legacy_map.get(normalized_source))
         found_crawl = False
         for activity in self._load_activity():
             if str(activity.get("type")) != "crawl":

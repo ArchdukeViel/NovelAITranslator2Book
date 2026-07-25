@@ -86,11 +86,10 @@ class ActivityWorkerService:
 
         metadata = activity.get("metadata")
         activity_metadata = dict(metadata) if isinstance(metadata, dict) else {}
-        activity_id = str(activity.get("id") or "")
+        activity_id = str(activity.get("activity_id") or "")
         provider_payload = {
             **exc.activity_details(),
             "activity_id": activity_id,
-            "job_id": activity_id,
             "novel_id": str(activity.get("novel_id") or ""),
             "chapter_id": activity_metadata.get("chapter_id"),
             "chunk_id": exc.details.get("chunk_id"),
@@ -162,7 +161,7 @@ class ActivityWorkerService:
         metadata = self._activity_metadata(activity)
         novel_id = str(activity.get("novel_id") or "")
         source_key = str(activity.get("source_key") or "")
-        activity_id = str(activity.get("id") or "")
+        activity_id = str(activity.get("activity_id") or "")
         if not novel_id.strip():
             raise ValueError("Crawl activity is missing novel_id.")
         if not source_key.strip():
@@ -260,7 +259,7 @@ class ActivityWorkerService:
                     logger.info(
                         "Translation job %s stale: scheduled_glossary_revision=%d != current=%d. "
                         "Cancelling and rescheduling.",
-                        activity.get("id"),
+                        activity.get("activity_id"),
                         scheduled_revision,
                         current_revision,
                     )
@@ -278,18 +277,18 @@ class ActivityWorkerService:
                             **metadata,
                             "scheduled_glossary_revision": current_revision,
                             "stale_before_run": True,
-                            "previous_activity_id": str(activity.get("id") or ""),
+                            "previous_activity_id": str(activity.get("activity_id") or ""),
                         },
                     )
                     self.activity_log.update_activity_status(
-                        str(activity["id"]),
+                        str(activity["activity_id"]),
                         "cancelled",
                         error=f"Stale glossary: revision {scheduled_revision} -> {current_revision}",
                     )
                     return {
                         "chapters": activity.get("chapters") or "all",
                         "stale_before_run": True,
-                        "rescheduled_activity_id": new_activity.get("id"),
+                        "rescheduled_activity_id": new_activity.get("activity_id"),
                     }
             except Exception:
                 logger.debug("Failed to check glossary revision freshness", exc_info=True)
@@ -317,8 +316,8 @@ class ActivityWorkerService:
             chapters,
             provider_key=provider,
             provider_model=model,
-            job_id=str(activity.get("id") or ""),
-            activity_id=str(activity.get("id") or ""),
+            job_id=str(activity.get("activity_id") or ""),
+            activity_id=str(activity.get("activity_id") or ""),
             force=force,
             source_language=source_language,
             target_language=target_language,
@@ -484,7 +483,7 @@ class ActivityWorkerService:
         activity = self.activity_log.next_pending_activity(activity_type=activity_type)
         if activity is None:
             return None
-        return await self.run_activity(str(activity["id"]))
+        return await self.run_activity(str(activity["activity_id"]))
 
     async def retry_activity(self, activity_id: str) -> dict[str, Any] | None:
         return self.activity_log.retry_activity(activity_id)

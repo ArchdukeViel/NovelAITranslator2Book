@@ -84,7 +84,7 @@ export function SchedulerBadges({ activity, className }: { activity: ActivityRec
   return (
     <div className={cn("mt-2 flex flex-wrap gap-1.5", className)}>
       {badges.map((badge) => (
-        <Badge key={`${activity.id}-${badge.label}`} tone={badge.tone}>
+        <Badge key={`${activity.activity_id}-${badge.label}`} tone={badge.tone}>
           {badge.label}
         </Badge>
       ))}
@@ -210,7 +210,7 @@ export function SchedulerStatePanel({ activity }: { activity: ActivityRecord }) 
               </div>
               <ul className="space-y-1">
                 {visibleErrors.map((message, index) => (
-                  <li key={`${activity.id}-error-${index}`}>{message}</li>
+                  <li key={`${activity.activity_id}-error-${index}`}>{message}</li>
                 ))}
               </ul>
             </div>
@@ -220,7 +220,7 @@ export function SchedulerStatePanel({ activity }: { activity: ActivityRecord }) 
               <div className="mb-1 font-medium">Warnings</div>
               <ul className="space-y-1">
                 {visibleWarnings.map((message, index) => (
-                  <li key={`${activity.id}-warning-${index}`}>{message}</li>
+                  <li key={`${activity.activity_id}-warning-${index}`}>{message}</li>
                 ))}
               </ul>
             </div>

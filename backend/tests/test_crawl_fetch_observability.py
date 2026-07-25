@@ -77,9 +77,7 @@ class FakeSource(SourceAdapter):
             raise self._fetch_errors[url]
         return self._chapter_payloads.get(url, {}).get("text", f"Content for {url}")
 
-    async def fetch_chapter_payload(
-        self, url: str, *, on_retry: Any = None
-    ) -> Mapping[str, Any]:
+    async def fetch_chapter_payload(self, url: str, *, on_retry: Any = None) -> Mapping[str, Any]:
         self.fetch_count += 1
         if url in self._fetch_errors:
             raise self._fetch_errors[url]
@@ -138,12 +136,8 @@ def _stub_catalog_projection(monkeypatch: pytest.MonkeyPatch) -> None:
     ) -> bool:
         return False
 
-    monkeypatch.setattr(
-        catalog_service, "safely_refresh_catalog_projection_after_storage_write", _noop
-    )
-    monkeypatch.setattr(
-        crawler_module, "safely_refresh_catalog_projection_after_storage_write", _noop
-    )
+    monkeypatch.setattr(catalog_service, "safely_refresh_catalog_projection_after_storage_write", _noop)
+    monkeypatch.setattr(crawler_module, "safely_refresh_catalog_projection_after_storage_write", _noop)
 
 
 def _make_orchestrator(
@@ -223,9 +217,9 @@ class TestCrawlResultPersistence:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             crawl_result = loaded.get("metadata", {}).get("crawl_result")
             assert isinstance(crawl_result, dict)
@@ -240,9 +234,7 @@ class TestCrawlResultPersistence:
     @pytest.mark.asyncio
     async def test_crawl_result_includes_all_required_fields(self, storage: StorageService) -> None:
         _seed_metadata(storage, "novel-1", chapters=2)
-        source = FakeSource(
-            fetch_errors={"http://example.test/novel-1/2": SourceError("HTTP 429 Too Many Requests")}
-        )
+        source = FakeSource(fetch_errors={"http://example.test/novel-1/2": SourceError("HTTP 429 Too Many Requests")})
         orchestrator = _make_orchestrator(storage, source)  # type: ignore[arg-type]
         data_dir = _make_tmp_dir()
         try:
@@ -250,9 +242,9 @@ class TestCrawlResultPersistence:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             crawl_result = loaded["metadata"]["crawl_result"]
             for key in ("succeeded", "skipped", "failed", "failures", "image_download_failures"):
@@ -266,9 +258,7 @@ class TestCrawlResultPersistence:
     @pytest.mark.asyncio
     async def test_failure_records_preserve_existing_fields(self, storage: StorageService) -> None:
         _seed_metadata(storage, "novel-1", chapters=1)
-        source = FakeSource(
-            fetch_errors={"http://example.test/novel-1/1": SourceError("timeout")}
-        )
+        source = FakeSource(fetch_errors={"http://example.test/novel-1/1": SourceError("timeout")})
         orchestrator = _make_orchestrator(storage, source)  # type: ignore[arg-type]
         data_dir = _make_tmp_dir()
         try:
@@ -276,9 +266,9 @@ class TestCrawlResultPersistence:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             failure = loaded["metadata"]["crawl_result"]["failures"][0]
             for field in ("chapter_id", "chapter_number", "title", "source_url", "error_type", "error_message"):
@@ -303,9 +293,9 @@ class TestCrawlResultPersistence:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, _FailingOrchestrator(storage))  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             assert loaded["status"] == "failed"
             assert "crawl_result" not in loaded.get("metadata", {})
@@ -329,9 +319,9 @@ class TestCrawlResultPersistence:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, _FailingOrchestrator(storage))  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             assert loaded["error"] == "fatal crawl failure"
         finally:
@@ -353,9 +343,9 @@ class TestCrawlResultPersistence:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             metadata = loaded["metadata"]
             assert "progress" in metadata
@@ -582,10 +572,7 @@ class TestProgressMetadata:
     async def test_progress_callback_updates_activity_metadata(self, storage: StorageService) -> None:
         _seed_metadata(storage, "novel-1", chapters=3)
         source = FakeSource(
-            chapter_payloads={
-                f"http://example.test/novel-1/{i}": {"text": f"Chapter {i}"}
-                for i in range(1, 4)
-            }
+            chapter_payloads={f"http://example.test/novel-1/{i}": {"text": f"Chapter {i}"} for i in range(1, 4)}
         )
         orchestrator = _make_orchestrator(storage, source)  # type: ignore[arg-type]
         data_dir = _make_tmp_dir()
@@ -594,9 +581,9 @@ class TestProgressMetadata:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             progress = loaded["metadata"]["progress"]
             assert "completed" in progress
@@ -621,9 +608,9 @@ class TestProgressMetadata:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             metadata = loaded["metadata"]
             assert isinstance(metadata.get("progress"), dict)
@@ -635,10 +622,7 @@ class TestProgressMetadata:
     async def test_progress_increments_after_success(self, storage: StorageService) -> None:
         _seed_metadata(storage, "novel-1", chapters=3)
         source = FakeSource(
-            chapter_payloads={
-                f"http://example.test/novel-1/{i}": {"text": f"Chapter {i}"}
-                for i in range(1, 4)
-            }
+            chapter_payloads={f"http://example.test/novel-1/{i}": {"text": f"Chapter {i}"} for i in range(1, 4)}
         )
         orchestrator = _make_orchestrator(storage, source)  # type: ignore[arg-type]
         data_dir = _make_tmp_dir()
@@ -647,9 +631,9 @@ class TestProgressMetadata:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             progress = loaded["metadata"]["progress"]
             # completed is a positive integer that increases as the crawl progresses
@@ -661,9 +645,7 @@ class TestProgressMetadata:
     @pytest.mark.asyncio
     async def test_progress_increments_after_per_chapter_failure(self, storage: StorageService) -> None:
         _seed_metadata(storage, "novel-1", chapters=2)
-        source = FakeSource(
-            fetch_errors={"http://example.test/novel-1/1": SourceError("fetch failed")}
-        )
+        source = FakeSource(fetch_errors={"http://example.test/novel-1/1": SourceError("fetch failed")})
         orchestrator = _make_orchestrator(storage, source)  # type: ignore[arg-type]
         data_dir = _make_tmp_dir()
         try:
@@ -671,9 +653,9 @@ class TestProgressMetadata:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             progress = loaded["metadata"]["progress"]
             # completed is a positive integer that increases even when chapters fail
@@ -709,9 +691,9 @@ class TestImageDownloadFailures:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             crawl_result = loaded["metadata"]["crawl_result"]
             # Image fetch will fail (no real HTTP), so image_download_failures == 1
@@ -741,9 +723,9 @@ class TestImageDownloadFailures:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             crawl_result = loaded["metadata"]["crawl_result"]
             assert crawl_result["image_download_failures"] == 1
@@ -772,9 +754,9 @@ class TestImageDownloadFailures:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             crawl_result = loaded["metadata"]["crawl_result"]
             assert crawl_result["image_download_failures"] == 2
@@ -782,9 +764,7 @@ class TestImageDownloadFailures:
             shutil.rmtree(data_dir, ignore_errors=True)
 
     @pytest.mark.asyncio
-    async def test_failed_chapter_fetch_without_payload_does_not_increase_count(
-        self, storage: StorageService
-    ) -> None:
+    async def test_failed_chapter_fetch_without_payload_does_not_increase_count(self, storage: StorageService) -> None:
         _seed_metadata(storage, "novel-1", chapters=2)
         source = FakeSource(
             fetch_errors={"http://example.test/novel-1/1": SourceError("fetch failed")},
@@ -799,9 +779,9 @@ class TestImageDownloadFailures:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             crawl_result = loaded["metadata"]["crawl_result"]
             # Chapter 1 failed fetch (no payload saved), Chapter 2 succeeded with no images
@@ -822,7 +802,7 @@ class TestSourceHealthEnrichment:
         activity_log._persist_activity(
             [
                 {
-                    "id": "crawl-1",
+                    "activity_id": "crawl-1",
                     "type": "crawl",
                     "kind": "chapters",
                     "novel_id": "novel-1",
@@ -857,13 +837,11 @@ class TestSourceHealthEnrichment:
         assert health["http_status_counts"] == {"429": 2}
         assert health["last_crawl_at"] == "2026-07-01T00:01:00Z"
 
-    def test_source_health_ignores_activities_without_crawl_result(
-        self, activity_log: ActivityQueueService
-    ) -> None:
+    def test_source_health_ignores_activities_without_crawl_result(self, activity_log: ActivityQueueService) -> None:
         activity_log._persist_activity(
             [
                 {
-                    "id": "crawl-1",
+                    "activity_id": "crawl-1",
                     "type": "crawl",
                     "kind": "chapters",
                     "novel_id": "novel-1",
@@ -882,7 +860,7 @@ class TestSourceHealthEnrichment:
         activity_log._persist_activity(
             [
                 {
-                    "id": "crawl-1",
+                    "activity_id": "crawl-1",
                     "type": "crawl",
                     "source_key": "test_source",
                     "status": "completed",
@@ -898,7 +876,7 @@ class TestSourceHealthEnrichment:
         activity_log._persist_activity(
             [
                 {
-                    "id": "crawl-1",
+                    "activity_id": "crawl-1",
                     "type": "crawl",
                     "source_key": "source_a",
                     "status": "completed",
@@ -914,7 +892,7 @@ class TestSourceHealthEnrichment:
                     },
                 },
                 {
-                    "id": "crawl-2",
+                    "activity_id": "crawl-2",
                     "type": "crawl",
                     "source_key": "source_b",
                     "status": "completed",
@@ -941,13 +919,11 @@ class TestSourceHealthEnrichment:
         assert source_a["total_chapters_failed"] == 1
         assert source_a["error_category_counts"] == {"not_found": 1}
 
-    def test_list_source_health_aggregates_multiple_activities(
-        self, activity_log: ActivityQueueService
-    ) -> None:
+    def test_list_source_health_aggregates_multiple_activities(self, activity_log: ActivityQueueService) -> None:
         activity_log._persist_activity(
             [
                 {
-                    "id": "crawl-1",
+                    "activity_id": "crawl-1",
                     "type": "crawl",
                     "source_key": "test_source",
                     "status": "completed",
@@ -963,7 +939,7 @@ class TestSourceHealthEnrichment:
                     },
                 },
                 {
-                    "id": "crawl-2",
+                    "activity_id": "crawl-2",
                     "type": "crawl",
                     "source_key": "test_source",
                     "status": "completed",
@@ -996,13 +972,11 @@ class TestSourceHealthEnrichment:
 class TestSourceHealthCache:
     """Source-health cache invalidates on activity mutation."""
 
-    def test_cache_invalidates_after_update_activity_metadata(
-        self, activity_log: ActivityQueueService
-    ) -> None:
+    def test_cache_invalidates_after_update_activity_metadata(self, activity_log: ActivityQueueService) -> None:
         activity_log._persist_activity(
             [
                 {
-                    "id": "crawl-1",
+                    "activity_id": "crawl-1",
                     "type": "crawl",
                     "source_key": "test_source",
                     "status": "running",
@@ -1034,13 +1008,11 @@ class TestSourceHealthCache:
         assert health_after is not None
         assert health_after["total_chapters_succeeded"] == 1
 
-    def test_cache_invalidates_after_update_activity_status(
-        self, activity_log: ActivityQueueService
-    ) -> None:
+    def test_cache_invalidates_after_update_activity_status(self, activity_log: ActivityQueueService) -> None:
         activity_log._persist_activity(
             [
                 {
-                    "id": "crawl-1",
+                    "activity_id": "crawl-1",
                     "type": "crawl",
                     "source_key": "test_source",
                     "status": "running",
@@ -1078,7 +1050,7 @@ class TestSourceHealthCache:
         activity_log._persist_activity(
             [
                 {
-                    "id": "crawl-1",
+                    "activity_id": "crawl-1",
                     "type": "crawl",
                     "source_key": "test_source",
                     "status": "completed",
@@ -1128,9 +1100,9 @@ class TestFailureRecordEnrichmentIntegration:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             failure = loaded["metadata"]["crawl_result"]["failures"][0]
             assert failure["error_category"] == "rate_limited"
@@ -1139,9 +1111,7 @@ class TestFailureRecordEnrichmentIntegration:
             shutil.rmtree(data_dir, ignore_errors=True)
 
     @pytest.mark.asyncio
-    async def test_quality_gate_failure_records_quality_gate_category(
-        self, storage: StorageService
-    ) -> None:
+    async def test_quality_gate_failure_records_quality_gate_category(self, storage: StorageService) -> None:
         _seed_metadata(storage, "novel-1", chapters=1)
         source = FakeSource(
             fetch_errors={
@@ -1157,9 +1127,9 @@ class TestFailureRecordEnrichmentIntegration:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             failure = loaded["metadata"]["crawl_result"]["failures"][0]
             assert failure["error_category"] == "quality_gate"
@@ -1169,9 +1139,7 @@ class TestFailureRecordEnrichmentIntegration:
     @pytest.mark.asyncio
     async def test_failure_record_includes_retry_attempts(self, storage: StorageService) -> None:
         _seed_metadata(storage, "novel-1", chapters=1)
-        source = FakeSource(
-            fetch_errors={"http://example.test/novel-1/1": SourceError("fetch failed")}
-        )
+        source = FakeSource(fetch_errors={"http://example.test/novel-1/1": SourceError("fetch failed")})
         orchestrator = _make_orchestrator(storage, source)  # type: ignore[arg-type]
         data_dir = _make_tmp_dir()
         try:
@@ -1179,9 +1147,9 @@ class TestFailureRecordEnrichmentIntegration:
             activity = _make_crawl_activity(activity_log)
             worker = ActivityWorkerService(activity_log, orchestrator)  # type: ignore[arg-type]
 
-            await worker.run_activity(activity["id"])
+            await worker.run_activity(activity["activity_id"])
 
-            loaded = activity_log.get_activity(activity["id"])
+            loaded = activity_log.get_activity(activity["activity_id"])
             assert loaded is not None
             failure = loaded["metadata"]["crawl_result"]["failures"][0]
             assert "retry_attempts" in failure
