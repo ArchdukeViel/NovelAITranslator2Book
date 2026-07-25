@@ -448,6 +448,31 @@ class AppSettings(BaseSettings):
         description="TTL in days for expired scheduler runtime state records.",
     )
 
+    # --- SMTP / notification (DEBT-075, DEBT-043)
+    # pyright seems to think SMTP_PORT (etc.) are redefined from stdlib
+    # typeshed stubs.  The pydantic-settings fields are annotations, not
+    # redefinitions — they define environment-variable bindings.
+    SMTP_HOST: str | None = Field(  # type: ignore[reportConstantRedefinition]
+        default=None,
+        description="SMTP server hostname. When set, SmtpNotificationBackend is used instead of the noop logger.",
+    )
+    SMTP_PORT: int = Field(  # type: ignore[reportConstantRedefinition]
+        default=587,
+        description="SMTP server port. Default 587 (STARTTLS).",
+    )
+    SMTP_USERNAME: str | None = Field(  # type: ignore[reportConstantRedefinition]
+        default=None,
+        description="SMTP username for authentication.",
+    )
+    SMTP_PASSWORD: SecretStr | None = Field(  # type: ignore[reportConstantRedefinition]
+        default=None,
+        description="SMTP password for authentication.",
+    )
+    SMTP_FROM_ADDRESS: str = Field(
+        default="noreply@novelai.app",
+        description="From: address for outgoing notification emails.",
+    )
+
     # --- File lock (M2c, DEBT-035)
     FILE_LOCK_RETRY_COUNT: int = Field(
         default=10,

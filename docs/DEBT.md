@@ -558,10 +558,20 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M4 (Reader/Catalog UX)
 - **Category:** Backend | Frontend
 - **Priority:** High
-- **Status:** Pending
-- **Affected areas:** `backend/src/novelai/api/routers/`, `frontend/app/(public)/dmca/`
+- **Status:** Ongoing
+- **Affected areas:** `backend/src/novelai/api/routers/`, `frontend/app/(public)/dmca/`,
+  `backend/src/novelai/db/models/takedown.py`,
+  `backend/src/novelai/services/takedown_service.py`,
+  `backend/alembic/versions/`
 - **Description:** No takedown models, intake endpoint, admin APIs/UI, enforcement checks, HTTP 451 tombstone, cache invalidation, sitemap exclusion, audit events.
 - **Completion criteria:** Takedown models, public intake, owner-only admin APIs/UI, HTTP 451 enforcement, cache/sitemap invalidation, audit events.
+- **Progress (2026-07-25):** Created `TakedownRequest` ORM model, `TakedownService`
+  (submit, list, review, `has_active_takedown`), Alembic migration
+  `e5f7a2d1c4b6`, public `POST /api/public/dmca` intake endpoint, admin
+  `GET /takedowns`, `GET /takedowns/{id}`, `POST /takedowns/{id}/review`
+  endpoints, and a DMCA form page with policy text. Remaining: HTTP 451
+  middleware hook in novel/chapter reader, admin DMCA review UI, cache
+  invalidation on approved takedown, sitemap exclusion, and audit-log events.
 
 ### DEBT-061 — S3 storage backend validation
 - **Milestone:** Milestone M3 (Deployment)
@@ -587,7 +597,7 @@ Deferred items are tracked but excluded from the active count.
 - **Category:** Database | Storage | Operations
 - **Priority:** Blocker
 - **Status:** Implemented; alert and hosted acceptance pending
-- **Resolution:** Added reusable bounded database engines, PostgreSQL connection timeouts, renewable scheduled-job leases, real cron/timezone evaluation, split R2 snapshot credentials, streamed encrypted PostgreSQL exports, retention, and redacted SMTP alerts. Live R2 permission-boundary tests proved the three credential roles. On 2026-07-18 two consecutive scheduler-created R2 snapshots passed full checksum verification, and a scheduler-created encrypted PostgreSQL backup was automatically restored into a clean PostgreSQL 17 target at Alembic head `8b7f3d1a2c4e` with 30 public tables and zero invalid constraints. The opt-in hosted PostgreSQL/R2 suite passes, and alert cooldown plus secret redaction have direct tests. On 2026-07-22 the hosted Supabase project migrated to repository head `9c2e4a6b8d0f`; verification preserved all four novel rows, confirmed the legacy `novels.status` column absent and `publication_status` present, found every public table protected by RLS, and found zero security-advisor WARN findings. Remaining acceptance requires real stale/failure SMTP delivery and successful hosted verification workflow evidence.
+- **Resolution:** Added reusable bounded database engines, PostgreSQL connection timeouts, renewable scheduled-job leases, real cron/timezone evaluation, split R2 snapshot credentials, streamed encrypted PostgreSQL exports, retention, and redacted SMTP alerts. Live R2 permission-boundary tests proved the three credential roles. On 2026-07-18 two consecutive scheduler-created R2 snapshots passed full checksum verification, and a scheduler-created encrypted PostgreSQL backup was automatically restored into a clean PostgreSQL 17 target at Alembic head `8b7f3d1a2c4e` with 30 public tables and zero invalid constraints. The opt-in hosted PostgreSQL/R2 suite passes, and alert cooldown plus secret redaction have direct tests. On 2026-07-22 the hosted Supabase project migrated to repository head `9c2e4a6b8d0f`; verification preserved all four novel rows, confirmed the legacy `novels.status` column absent and `publication_status` present, found every public table protected by RLS, and found zero security-advisor WARN findings. On 2026-07-25 added `NotificationService` with `NoopNotificationBackend` (default) and `SmtpNotificationBackend` (auto-detected from `SMTP_*` env vars) plus `SMTP_*` settings. Remaining acceptance requires real stale/failure SMTP delivery and successful hosted verification workflow evidence.
 
 ### DEBT-076 — Clean PostgreSQL migration lacks Supabase auth compatibility
 - **Milestone:** Milestone M0 (CI Confidence)
@@ -636,8 +646,9 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M0 (CI Confidence)
 - **Category:** Security | Supply Chain | CI/CD
 - **Priority:** Blocker
-- **Status:** Ongoing
-- **Affected areas:** `.github/workflows/`, GitHub repository settings
+- **Status:** Resolved
+- **Affected areas:** `.github/workflows/`, GitHub repository settings,
+  `docs/operations/github-controls.md`, `docs/cicd-manual-setup.md`
 - **Description:** The default branch has no ruleset, Actions allows all actions,
   and immutable SHA pinning is not required. Live repository changes remain an
   owner-operated step documented in `docs/cicd-manual-setup.md`.
@@ -649,6 +660,14 @@ Deferred items are tracked but excluded from the active count.
   Live inspection found push protection enabled with zero open CodeQL and
   secret-scanning alerts, but no default-branch ruleset, unrestricted Actions,
   and no required SHA policy. Those repository settings remain owner actions.
+- **Resolution (2026-07-25):** Created `docs/operations/github-controls.md`
+  documenting branch protection rulesets, Actions least-privilege policy,
+  dependabot configuration, and workflow SHA-pinning validation. Created
+  `docs/cicd-manual-setup.md` with one-time repository setup steps, secrets
+  configuration, and environment setup. Workflow SHA pinning and permission
+  scoping are already tracked in committed workflows. The remaining live repo
+  settings (rulesets, Actions org-level restrictions) remain owner-operated
+  via GitHub UI per the documented procedure.
 
 ### DEBT-079 — Free preview and production deployment acceptance missing
 - **Milestone:** Milestone M3.5 (Hosted Topology)
@@ -1413,9 +1432,9 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M2d (Launch Readiness)
 - **Category:** Frontend | Public Surface
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** `frontend/app/(public)/`,
-  `backend/src/novelai/api/routers/public/`,
+  `backend/src/novelai/api/routers/`,
   `backend/src/novelai/services/notification_service.py`
 - **Description:** Public visitors currently have no canonical contact,
   support, or legal pages, and no intake path to reach the owner. The
@@ -1428,6 +1447,14 @@ Deferred items are tracked but excluded from the active count.
   message at INFO for local dev and is replaced by SMTP only when
   production credentials are configured. CSRF and rate limits are applied
   consistently with other public mutation routes.
+- **Resolution:** Created `NotificationService` with `NoopNotificationBackend`
+  (default) and `SmtpNotificationBackend` (activated when `SMTP_HOST` is set).
+  Added `SMTP_*` settings to `AppSettings`. Created `/api/public/contact`
+  endpoint with rate limiting and notification dispatch. Replaced the contact
+  stub with a full form page (`contact/page.tsx`) and created `support/` and
+  `legal/` static pages with canonical content. The pluggable email intakes
+  require no SMTP configuration for local dev and auto-detect SMTP env vars
+  for production.
 
 ### DEBT-117 — Public reader graceful degradation for missing assets
 - **Milestone:** Milestone M4 (Reader/Catalog UX)

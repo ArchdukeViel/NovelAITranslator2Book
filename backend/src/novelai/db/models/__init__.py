@@ -22,6 +22,7 @@ from novelai.db.models.novel import Novel
 from novelai.db.models.scheduler_runtime_state import SchedulerRuntimeState
 from novelai.db.models.system import AuditLog, ProviderCredential, ScheduledJobLease, SystemSetting
 from novelai.db.models.tag import Tag, novel_tags
+from novelai.db.models.takedown import TakedownRequest
 from novelai.db.models.users import (
     EmailVerificationToken,
     LibraryItem,
@@ -58,6 +59,7 @@ __all__ = [
     "SchedulerRuntimeState",
     "SystemSetting",
     "Tag",
+    "TakedownRequest",
     "TranslationJob",
     "User",
     "UserGlossaryDisplayOverride",
