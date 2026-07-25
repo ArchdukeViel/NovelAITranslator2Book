@@ -1389,3 +1389,61 @@ Deferred items are tracked but excluded from the active count.
   fail closed, removed request fields are rejected, and focused tests prove only
   stale canonical versions are scheduled while normal confidence activation
   policy remains authoritative.
+
+### DEBT-042 — Reconcile maintenance-cron state and document job execution status
+- **Milestone:** Milestone M2c (Backup & Storage)
+- **Category:** Operations | Scheduler
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** `backend/src/novelai/services/maintenance_service.py`,
+  `backend/src/novelai/services/scheduler_service.py`,
+  `docs/operations/`
+- **Description:** The migration-defined `scheduled_cron_log` table and
+  `MaintenanceService` are intended to be the durable cleanup mechanism, but the
+  operator-visible status of each registered job (last run, last result, next
+  eligible execution) is not surfaced and the on-disk state diverges from the
+  in-memory scheduler view.
+- **Completion criteria:** Operator documentation lists every registered
+  maintenance job, its schedule, last execution, and last result. Service
+  exposes a single canonical status view backed by `SchedulerRuntimeState`.
+  No job remains undocumented; no divergence between file cache and DB
+  runtime state is observed under normal operation.
+
+### DEBT-043 — Public contact, support, and legal pages with pluggable email intake
+- **Milestone:** Milestone M2d (Launch Readiness)
+- **Category:** Frontend | Public Surface
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** `frontend/app/(public)/`,
+  `backend/src/novelai/api/routers/public/`,
+  `backend/src/novelai/services/notification_service.py`
+- **Description:** Public visitors currently have no canonical contact,
+  support, or legal pages, and no intake path to reach the owner. The
+  notification service exposes only the `NoopNotificationBackend` default
+  until production SMTP credentials are provided.
+- **Completion criteria:** Public routes render `/contact`, `/support`, and
+  `/legal` (with the legal copy per `docs/glossary/` policy). A single
+  canonical `POST /api/public/contact` endpoint accepts the intake and
+  delegates to `NotificationService`. `NoopNotificationBackend` records the
+  message at INFO for local dev and is replaced by SMTP only when
+  production credentials are configured. CSRF and rate limits are applied
+  consistently with other public mutation routes.
+
+### DEBT-117 — Public reader graceful degradation for missing assets
+- **Milestone:** Milestone M4 (Reader/Catalog UX)
+- **Category:** Frontend | Public Surface
+- **Priority:** Medium
+- **Status:** Pending
+- **Affected areas:** `frontend/app/(public)/novels/`,
+  `frontend/components/reader/`
+- **Description:** Public reader pages can render broken states when
+  upstream assets (cover, glossary, novel metadata) are missing or
+  temporarily unavailable. There is no consistent placeholder and no
+  shared empty/loading boundary, and the route renders an unstyled error
+  on image fetch failure.
+- **Completion criteria:** Public reader routes render canonical
+  placeholder, loading, and error states for missing covers, missing
+  glossary annotations, and missing chapter bodies. Image elements route
+  through `next/image`. A single shared `ReaderAssetBoundary` component
+  owns the degradation contract and is reused across chapter, library,
+  and detail routes.
