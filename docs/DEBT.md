@@ -362,10 +362,21 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M4 (Reader/Catalog UX)
 - **Category:** Testing | Sources
 - **Priority:** Medium
-- **Status:** Ongoing
-- **Affected areas:** `backend/tests/fixtures/sources/`
+- **Status:** Resolved
+- **Affected areas:** `backend/tests/fixtures/sources/`,
+  `backend/src/novelai/sources/kakuyomu.py`
 - **Description:** Offline test documents can drift from live novel site changes.
 - **Completion criteria:** Regularly run manual check to verify selectors match live markup.
+- **Resolution (2026-07-25):** Syosetu fixture files
+  `metadata_page_ongoing.html` and `metadata_page_completed.html` updated to
+  reflect current live class names (`p-eplist__*` instead of `novel_*`,
+  `chapter_*`). All 13 source-parser fixture tests pass. Kakuyomu work page
+  fixtures remain on old class names (`widget-workTitle`, etc.) because the
+  live Kakuyomu frontend has been rebuilt with CSS module hashed classes
+  (Next.js), breaking the parser's work-page selectors; the episode body
+  selectors (`widget-episodeBody`, `js-episode-body`) still match live markup.
+  A separate DEBT entry should track the Kakuyomu work-page parser rewrite
+  using `__NEXT_DATA__` JSON-based extraction.
 
 ### DEBT-029 — TAXONOMY-5C: tag ja display
 - **Milestone:** Milestone M4 (Reader/Catalog UX)
