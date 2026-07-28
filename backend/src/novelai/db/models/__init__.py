@@ -7,6 +7,7 @@ to the imports and ``__all__`` below.
 
 from __future__ import annotations
 
+from novelai.db.models.analytics_event import AnalyticsEvent
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.genre import Genre, novel_genres
 from novelai.db.models.glossary import (
@@ -18,6 +19,7 @@ from novelai.db.models.glossary import (
     UserGlossaryDisplayOverride,
 )
 from novelai.db.models.jobs import CrawlJob, ProviderRequest, TranslationJob
+from novelai.db.models.notification import Notification, NotificationDelivery, NotificationPreference
 from novelai.db.models.novel import Novel
 from novelai.db.models.scheduler_runtime_state import SchedulerRuntimeState
 from novelai.db.models.system import AuditLog, ProviderCredential, ScheduledJobLease, SystemSetting
@@ -36,12 +38,16 @@ from novelai.db.models.users import (
 
 __all__ = [
     "REGISTERED_MODELS",
+    "AnalyticsEvent",
     "AuditLog",
     "Chapter",
     "CrawlJob",
     "EmailVerificationToken",
     "Genre",
     "LibraryItem",
+    "Notification",
+    "NotificationDelivery",
+    "NotificationPreference",
     "Novel",
     "NovelGlossaryAlias",
     "NovelGlossaryDecisionEvent",
@@ -68,6 +74,7 @@ __all__ = [
 ]
 
 REGISTERED_MODELS = (
+    AnalyticsEvent,
     AuditLog,
     Chapter,
     CrawlJob,
@@ -75,6 +82,9 @@ REGISTERED_MODELS = (
     Genre,
     LibraryItem,
     Novel,
+    Notification,
+    NotificationDelivery,
+    NotificationPreference,
     NovelGlossaryAlias,
     NovelGlossaryDecisionEvent,
     NovelGlossaryEntry,
