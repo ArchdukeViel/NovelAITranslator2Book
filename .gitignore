@@ -33,8 +33,9 @@ ENV/
 
 # Graphify generated knowledge graph
 graphify-out/
-graphify-out-before-rebuild-20260714-012905/
-run-graphify.ps1
+
+# CodeGraph generated local index
+.codegraph/
 
 # Frontend
 frontend/node_modules/

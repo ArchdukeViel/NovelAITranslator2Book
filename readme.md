@@ -243,5 +243,5 @@ npm run build
 - [docs/reference/python-commands.md](docs/reference/python-commands.md): backend launcher and Python API reference
 - [docs/environment.md](docs/environment.md): environment variables reference (single `.env` at repo root, `deploy/.env` for Docker)
 - [docs/cicd-manual-setup.md](docs/cicd-manual-setup.md): CI/CD pipeline setup guide (GitHub Actions)
-- [docs/current_state.md](docs/current_state.md): implementation status snapshot and test baseline
-- [docs/SPECS_COMPLETION.md](docs/SPECS_COMPLETION.md): all specs completion ledger and index
+- [docs/DEBT.md](docs/DEBT.md): active technical debt register and resolution history
+- [docs/roadmap.md](docs/roadmap.md): project roadmap, milestone status, and known gaps

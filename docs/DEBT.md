@@ -9,8 +9,8 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 26
-- **V1 launch blockers:** 4 (DEBT-075, DEBT-078, DEBT-079, DEBT-094)
+- **Total active debt entries:** 13
+- **V1 launch blockers:** 3 (DEBT-075, DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
 ---
@@ -89,19 +89,21 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M5 (Admin Operations)
 - **Category:** Backend | Feature
 - **Priority:** Medium
-- **Status:** Pending
-- **Affected areas:** `backend/src/novelai/api/routers/admin.py`
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/api/routers/admin_users.py`, `backend/src/novelai/services/auth_service.py`
 - **Description:** CRUD endpoints for listing, creating, and modifying admin users do not exist.
 - **Completion criteria:** Functional admin CRUD endpoints restricted to owner.
+- **Resolution:** Added owner-only `GET /api/admin/users` (filterable by role/is_active/search, paginated), `GET /api/admin/users/{id}`, `PATCH /api/admin/users/{id}/role`, `PATCH /api/admin/users/{id}/active`. Owner account is protected from role change and deactivation (409 Conflict). All mutating endpoints require CSRF and emit audit log entries via `AuditService`. Logic lives on `AuthService.list_users/set_role/set_active` to keep routers ORM-free. Focused tests `backend/tests/test_admin_users_api.py` (6 cases) pass.
 
 ### DEBT-009 — No notification system
 - **Milestone:** Milestone M5 (Admin Operations)
 - **Category:** Backend | Feature
 - **Priority:** Low
-- **Status:** Pending
-- **Affected areas:** New backend service
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/services/notification_service.py`
 - **Description:** Lack of email or webhook alerts for job updates.
 - **Completion criteria:** Event bus triggers SMTP alerts or webhooks.
+- **Resolution:** Added `NotificationEventBus` with explicit subscribe/unsubscribe, typed event names (`backup.succeeded/failed`, `crawl.failed`, `translation.failed`, `scheduler.stale`), swallowed subscriber errors, and a default SMTP/noop fallback so an event without subscribers still hits the configured backend. Module-level `get_event_bus()` singleton with `set_default_recipient`. Scheduler publishes `scheduler.stale` from the export-freshness tick. Focused tests `backend/tests/test_notification_event_bus.py` (6 cases) pass.
 
 ### DEBT-010 — No scheduled backups
 - **Milestone:** Milestone 2c (Backup & Storage)
@@ -117,10 +119,11 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M5 (Admin Operations)
 - **Category:** Backend | Feature
 - **Priority:** Low
-- **Status:** Pending
-- **Affected areas:** New dashboard service
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/services/analytics_service.py`, `backend/src/novelai/api/routers/admin_analytics.py`
 - **Description:** Activity counts and resource usage are not gathered.
 - **Completion criteria:** Ingest engine lists active reads, crawls, and token counts.
+- **Resolution:** Added `AnalyticsService.summary(window)` producing a single owner-readable dict with `activity.counts_by_status`, `activity.failures_by_source`, `recent_reads.count`, and `token_usage.total_tokens / total_requests / estimated_cost_usd`. All dependencies optional; missing sources produce explicit `unavailable` markers without raising. Exposed as `GET /api/admin/analytics/summary?window=...` (owner-only). Focused tests `backend/tests/test_analytics_and_export_freshness.py` (5 cases) pass.
 
 ### DEBT-021 — Remove compatibility aliases and shims
 - **Milestone:** Milestone M1 (Glossary/Router Repair)
@@ -312,22 +315,24 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M5 (Admin Operations)
 - **Category:** Frontend | Feature
 - **Priority:** Medium
-- **Status:** Pending
-- **Affected areas:** `frontend/app/(admin)/admin/settings/`, `backend/src/novelai/api/routers/admin_provider_credentials.py`
+- **Status:** Resolved
+- **Affected areas:** `frontend/app/(admin)/admin/credentials/`, `frontend/lib/api.ts`, `frontend/lib/api-types.ts`
 - **Description:** Owner-only encrypted credential CRUD/test routes exist, but
   the admin settings UI does not expose them. Environment credentials remain a
   separate operator configuration path.
 - **Completion criteria:** Admin page can list, create, update, test, and revoke
   encrypted credential rows without rendering complete secret values.
+- **Resolution:** Added `/admin/credentials` page with full list/create/update/test/delete flow (using existing backend CRU endpoints via `adminApi.listProviderCredentialRows`, `createProviderCredential`, `updateProviderCredential`, `deleteProviderCredential`, `testProviderCredential`). Row shows provider/label/model plus masked fingerprint only; reveal toggle uses frontend `maskToken`. Existing `providerCredential` summary indicator and `ProviderCredential` types preserved. Page compiles clean under `npm run typecheck` and `npm run lint`.
 
 ### DEBT-024 — SOURCE-PIPELINE-FIX-4: Novel status extraction issues
 - **Milestone:** Milestone M5 (Admin Operations)
 - **Category:** Backend | Sources
 - **Priority:** High
-- **Status:** Pending
-- **Affected areas:** `backend/src/novelai/sources/`
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/sources/generic.py`, `backend/src/novelai/sources/syosetu_ncode.py`
 - **Description:** GenericSource misses publication status. Syosetu infotop errors swallowed.
 - **Completion criteria:** Status parsed correctly; parser tests pass.
+- **Resolution:** `GenericSource._parse_metadata_html` now calls new `_extract_publication_status(soup)` helper that uses metadata `<meta>` tags, `<dl>/<dd>`, and short text containers via the canonical `publication_status_payload`. `SyosetuNcodeSource.fetch_metadata` now logs a warning and records `infotop_fetch_failed`/`infotop_fetch_url` on metadata when infotop fetch fails instead of swallowing; main-page status still returns. Focused tests (`test_generic_source.py` 49 pass; `test_syosetu_source.py` 49 pass) cover new behavior including the infotop failure surface.
 
 ### DEBT-025 — SOURCE-PIPELINE-FIX-5: Storage safety gaps
 - **Milestone:** Milestone 2c (Backup & Storage)
@@ -410,10 +415,11 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M5 (Admin Operations)
 - **Category:** Backend | Feature
 - **Priority:** Low
-- **Status:** Pending
-- **Affected areas:** Export service
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/services/export_manifest_service.py`, `backend/src/novelai/services/scheduler_service.py`, admin export APIs
 - **Description:** Freshness badge function exists but is never run on periodic tick.
 - **Completion criteria:** Stale files flagged daily and reported in admin logs.
+- **Resolution:** Export generation stores compact chapter-set, active-translation, glossary, novel-metadata, template, and profile revision/hash inputs; succeeded manifests start `fresh`. `run_export_freshness_check` uses storage-backend-safe manifest/artifact operations, bounded batches and per-run limits, `InterProcessFileLock`, per-artifact error isolation, and persisted run summaries for canonical `fresh`, `stale`, `missing`, `unknown`, and `error` states plus `skipped_locked`. `SchedulerService` registers the configured cron job behind `EXPORT_FRESHNESS_CHECK_ENABLED` and existing `ScheduledJobLeaseService`, then emits safe stale/missing alerts. Owner-only export list/latest APIs return persisted freshness, and `GET /api/admin/exports/freshness/status` returns safe scheduler/run status. Focused Ruff and Pyright pass; 19 focused tests cover metadata safety, storage abstraction, statuses, bounds, lock skip, scheduler wiring, and admin exposure.
 
 ### DEBT-034 — Pipeline events not consistently recorded
 - **Milestone:** Milestone M2c (Backup & Storage)
@@ -483,37 +489,41 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M3 (Deployment)
 - **Category:** Observability
 - **Priority:** Low
-- **Status:** Pending
-- **Affected areas:** API service
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/api/routers/metrics.py`, `backend/src/novelai/api/app.py`
 - **Description:** No metrics collector for error rates, database pools, or job lengths.
 - **Completion criteria:** `/metrics` endpoint serves standard Prometheus format payload.
+- **Resolution:** Added public-safe Prometheus text endpoint `/metrics` with process uptime, CPU count, active threads, GC object/collection gauges, activity counts by lifecycle status, and low-cardinality per-source failure counters. Activity storage failures fail closed to zero gauges; secret-shaped metadata is never emitted. Focused endpoint tests cover format, counts, labels, secret non-disclosure, and unavailable storage (6 pass). Annotation-free response uses `text/plain; version=0.0.4`.
 
 ### DEBT-052 — Scheduler state visibility
 - **Milestone:** Milestone M5 (Admin Operations)
 - **Category:** Backend | Observability
 - **Priority:** Medium
-- **Status:** Pending
-- **Affected areas:** Admin panel
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/api/routers/admin.py`, `frontend/components/admin/scheduler-health-card.tsx`, `frontend/app/(admin)/admin/dashboard/page.tsx`
 - **Description:** Persisted scheduler state not exposed in dashboard status views.
 - **Completion criteria:** Admin endpoint returns formatted scheduler priority order and cooldown status.
+- **Resolution:** Existing owner-only `/api/admin/translation/scheduler-health` endpoint already joins file scheduler policy and durable `SchedulerRuntimeStateService.get_scheduler_health_summary()`. Added dashboard `SchedulerHealthCard` polling every 30 seconds and rendering global healthy/degraded/unhealthy state, active cooldown/failure/exhausted/stale counts, plus persisted scope state, reason, next-eligible timestamp, and consecutive failures. Frontend typecheck and lint pass.
 
 ### DEBT-053 — Translation QA checks tuning
 - **Milestone:** Milestone M5 (Admin Operations)
 - **Category:** Backend | Translation
 - **Priority:** Medium
-- **Status:** Pending
-- **Affected areas:** QA services
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/translation/qa.py`, `backend/src/novelai/translation/pipeline/stages/translation_qa.py`, `backend/src/novelai/config/settings.py`
 - **Description:** Translation QA heuristics exist but LLM-based grading disabled by default.
 - **Completion criteria:** LLM checker activated on translation, triggers retry on low confidence.
+- **Resolution:** Hardened `evaluate_translation_quality_with_llm` to parse JSON wrapped in prose, validate score range, and fail open on provider/grader failure. `TranslationQAStage` now activates optional grading under `LLM_QA_ENABLED`, records `llm_qa_score`, and marks low-confidence chunks `needs_llm_retry` up to `LLM_QA_MAX_RETRY_ATTEMPTS`; exhausted retries get `llm_score_below_threshold_no_retry`. Added configurable `LLM_QA_MIN_SCORE`. Focused QA suite passes (29 tests).
 
 ### DEBT-054 — Admin audit log viewer missing
 - **Milestone:** Milestone M5 (Admin Operations)
 - **Category:** Backend | Frontend
 - **Priority:** Medium
-- **Status:** Pending
-- **Affected areas:** `backend/src/novelai/api/routers/admin.py`, `frontend/app/(admin)/admin/audit/`
+- **Status:** Resolved
+- **Affected areas:** `backend/src/novelai/services/audit_service.py`, `backend/src/novelai/api/routers/admin_audit.py`, `frontend/app/(admin)/admin/audit/page.tsx`
 - **Description:** AuditLog model exists but no writer, API, or owner-only viewer. Audit events are not generated for sensitive actions.
 - **Completion criteria:** Owner-only audit list/detail APIs, server-side redaction, frontend viewer with filters and pagination.
+- **Resolution:** Added immutable `AuditService.log`, filterable/paginated list/detail service methods, recursive server-side secret redaction, safe summaries, and owner-only `GET /api/admin/audit` plus `GET /api/admin/audit/{audit_id}`. Added frontend audit viewer with action/target filters, pagination, safe summaries, and navigation entry. User role/active changes and takedown reviews emit audit events. Focused service/API tests pass (5), frontend typecheck and lint pass.
 
 ### DEBT-055 — Deployment production hardening gaps
 - **Milestone:** Milestone M3 (Deployment)
@@ -1485,3 +1495,19 @@ Deferred items are tracked but excluded from the active count.
   through `next/image`. A single shared `ReaderAssetBoundary` component
   owns the degradation contract and is reused across chapter, library,
   and detail routes.
+
+### DEBT-118 — Email delivery domain and SMTP readiness
+- **Milestone:** Milestone M7 (Launch Readiness)
+- **Category:** Operations | Email | Security
+- **Priority:** Medium before email launch
+- **Status:** Deferred; operator-gated and nonblocking for in-app notifications
+- **Affected areas:** Email domain/DNS, SMTP provider configuration, secret management, delivery operations
+- **Description:** In-app notifications are complete. Email delivery remains intentionally disabled by default with `AUTH_EMAIL_DELIVERY_MODE=noop` until operator-owned domain, sender, provider, and delivery controls are proven. This does not reopen DEBT-009 or block in-app notifications.
+- **Completion criteria:**
+  - Select a sending domain and verify the sender address.
+  - Configure SPF, DKIM, and DMARC.
+  - Select an SMTP provider/account and store credentials only through the secret manager or environment.
+  - Enable `AUTH_EMAIL_DELIVERY_MODE=smtp` only in a tested environment and only for recipients with an active verified email.
+  - Pass a staging delivery test; verify sent/failed/skipped metrics and safe logs.
+  - Document bounce/complaint handling, rate limits, and retry policy.
+  - Confirm no email body, recipient address, or subject appears in logs.

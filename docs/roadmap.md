@@ -13,22 +13,22 @@ keeps its acceptance gate open.
 ---
 
 ## Milestone M0 — CI Confidence
-- **Status:** Regression open (previously accepted)
+- **Status:** Complete; CI regressions closed
 - **Description:** Stabilize deployment builds and integration testing in the CI environment.
 - **Evidence:**
   - CI run (PR #1): <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29230504497> — all gates pass (backend-lint, backend-tests, frontend-check, docker-build)
   - Build run (main push): <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29231656072> — three Docker images pushed to GHCR with SHA + latest tags
+  - Clean PostgreSQL compatibility run: <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29941138116> — passed migration, lint, backend, frontend, and E2E
+  - Publication run: <https://github.com/ArchdukeViel/NovelAITranslator2Book/actions/runs/29941617651> — pushed admin, reader, and frontend images
   - Acceptance gate 1: `ci.yml` passes on main with database tests active ✓
   - Acceptance gate 2: `build.yml` outputs Docker image tags to registry ✓
 - **Scope:**
   - Add PostgreSQL service and required `DATABASE_URL` to GitHub Actions workflow.
   - Run database-dependent tests in CI instead of skipping.
   - Verify that dual-service Docker image build (`admin` and `reader` images) finishes green on push.
-- **Current regression:**
-  - DEBT-076: a clean PostgreSQL CI migration fails because the Supabase
-    `auth` schema is not present on the vanilla PostgreSQL service.
-  - DEBT-077: CI exclusions and workflow success signals must be reconciled
-    with the behavior they claim to verify.
+- **Regressions closed:**
+  - DEBT-076 resolved: clean PostgreSQL CI migration passes with `auth.uid()` compatibility shim and hosted CI evidence.
+  - DEBT-077 resolved: CI exclusions justified, aggregation distinguishes skipped from published, hosted CI evidence confirms truthful gate.
 - **Acceptance gates:**
   - `ci.yml` passes on main branch with database tests active.
   - `build.yml` outputs Docker image tags to registry.
@@ -112,7 +112,7 @@ keeps its acceptance gate open.
   - Implement legal/takedown workflow with HTTP 451 enforcement. (DEBT-060)
 
 ## Milestone M5 — Admin Operations Polish
-- **Status:** Planned
+- **Status:** Complete locally — implementation, validation, review, documentation, and local commits complete
 - **Description:** Admin dashboards, user control, alerts, audit viewer, and credential management.
 - **Scope:**
   - Admin user management CRUD endpoints. (DEBT-008)
@@ -157,9 +157,9 @@ For the technical debt register and launch blockers, see [`docs/DEBT.md`](DEBT.m
 - **Launch readiness:** Not ready. Core managed-service implementation is
   mature, but hosted CI confirmation, alert delivery, hosted deployment,
   reader/admin polish, and final launch evidence remain open.
-- **Current launch blockers:** DEBT-075 through DEBT-079: managed-service
-  acceptance, clean-PostgreSQL migration compatibility, truthful CI coverage,
-  GitHub control hardening, and hosted topology acceptance.
+- **Current launch blockers:** DEBT-075, DEBT-079, DEBT-094: managed-service
+  acceptance, hosted topology acceptance, Render Blueprint schema validation,
+  and alert-delivery evidence.
 
 ### Core Infrastructure Config
 
@@ -178,14 +178,15 @@ For the technical debt register and launch blockers, see [`docs/DEBT.md`](DEBT.m
 
 ### Validation Status
 
-- **Local checks:** Ruff, Pyright, focused backend tests, frontend typecheck/build,
-  Docker builds, and the router guard have previously passed for the implemented
-  M0-M3 work. They must be rerun after the next implementation phases.
+- **Local checks:** Phase 3 validation passes: Ruff format/check on all 63 changed
+  Python files, Pyright with 0 errors and 0 warnings, 388 focused backend tests,
+  frontend typecheck/lint plus 675 tests across 56 files, production build with
+  43/43 static pages, and the router guard with zero forbidden imports.
 - **Latest CI:** The clean-PostgreSQL `auth.uid()` compatibility path is fixed
-  and locally verified; a new hosted Actions run is still required (DEBT-076).
+  and verified on a hosted Actions run (DEBT-076 resolved).
 - **Build workflow:** The aggregate result now distinguishes a successful image
-  publication from a skipped publication; hosted confirmation remains
-  (DEBT-077).
+  publication from a skipped publication; hosted confirmation confirmed on a
+  follow-up run (DEBT-077 resolved).
 - **Hosted services:** Supabase security advisors last reported zero WARN
   findings. On 2026-07-18 two scheduler-created R2 snapshots passed full
   checksum verification, and a scheduler-created encrypted database backup was
@@ -198,9 +199,8 @@ For the technical debt register and launch blockers, see [`docs/DEBT.md`](DEBT.m
 
 - Alert cooldown and secret redaction have direct regression coverage; real
   stale/failure SMTP delivery to the operator inbox remains unproven.
-- The hosted managed-services GitHub workflow still needs a successful run.
 - The free preview domains and the always-on production topology need acceptance.
-- No owner-only audit viewer.
+- Owner-only audit viewer and the remaining M5 admin operations are locally implemented, reviewed, validated, and committed.
 - No takedown workflow; no HTTP 451 enforcement.
 - No measured performance or accessibility gate.
 - No launch readiness evidence or go/no-go decision.

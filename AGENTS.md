@@ -49,6 +49,33 @@ Workflow order:
 
 The backend suite contains many test files and known unrelated failures. Run the smallest test set that proves the changed behavior.
 
+### Session and worker discipline
+
+* Resolve the Python interpreter, absolute Graphify CLI, and Node package root once per session; reuse those proven paths.
+* An implementation worker must inspect decisive files and begin editing by tool call 8. If no edit has begun, return evidence and the remaining slice.
+* Keep one worker unit to at most five decisive files unless migration/test coupling requires more. Split frontend work into API/types, hooks, UI, tests, and validation; never delegate a complete cross-layer feature, all tests, and all docs as one unit.
+* Run supplied commands exactly. Do not substitute broader suites, ignores, shell variants, or sample output. On Windows, use PowerShell only.
+* Validation evidence must include the raw command, exit code, result count, and exact paths. Reject contradictory exit/result claims.
+* Prefer existing tests or one short standard-library command over repository-wide custom validators. Put temporary scripts under `$env:TEMP`.
+* Before validating Graphify JSON, inspect its schema; canonical top-level keys are `nodes`, `links`, and `hyperedges`.
+* Git porcelain `-z` parsers must handle both XY columns, rename pairs, spaces, and parentheses.
+
+### Pre-commit workflow
+
+1. Run formatters before staging.
+2. Run lint, type checks, and focused tests.
+3. Stage exact intended paths and run `git diff --cached --check`.
+4. Attempt the commit with hooks enabled.
+5. If hooks modify files, preserve their output; compare working tree against index, prove formatter-only changes, restage exact affected paths, rerun affected validation, and retry once.
+6. Never use `--no-verify`, or reset/restore hook changes without evidence.
+
+### Provider and secret evidence
+
+* Workers must never print secret values, lengths, hashes, prefixes, suffixes, or derived fragments. Secret checks report only `present=true` or `present=false`.
+* Empty worker output proves nothing. Before one bounded retry, inspect focused Git status/diff; retry only the unfinished slice through another route when appropriate and preserve temporary artifacts until independent validation.
+* Workers use the absolute Graphify CLI. `update . --no-cluster` needs no API key and is the routine source refresh.
+* Do not run semantic extraction or labeling after ordinary edits. Milestone semantic work requires explicit approval, budget, model, RPM/TPM/RPD limits, protected temporary output, independent validation, and a safe swap. Never delete semantic output before validation.
+
 ### Router-layer guard
 
 This command must return no matches:
@@ -98,6 +125,8 @@ rg -n "^from novelai\.(db\.models|storage\.service|sources\.)" backend/src/novel
 * `.opencode/` contains local OpenCode plugins, goals, commands, and scratch state.
 * `.opencode/` is gitignored.
 * Do not commit files from `.opencode/`.
+* `.codegraph/` contains the generated local CodeGraph index.
+* Do not edit or commit `.codegraph/` contents. Initialize it only through `codegraph init`; normal file changes are synchronized automatically.
 * `.codex/` contains Codex hooks and per-project rules — now tracked in git.
 * `.codex/plans/`, `.codex/scratch/`, and `.codex/*.log` are gitignored.
 
@@ -299,16 +328,61 @@ These are behavioral contracts that future agents must preserve. Violating them 
 
 ---
 
-## Graphify
+## Code Intelligence Routing
 
-Knowledge graph at `graphify-out/`. Use CLI commands for codebase questions:
+Use CodeGraph and Graphify for different responsibilities.
 
-- `graphify query "<question>"` — search the graph
-- `graphify path "<A>" "<B>"` — find paths between concepts
-- `graphify explain "<concept>"` — explain a node
-- `graphify update .` — rebuild graph after code changes
+### CodeGraph
 
-The git pre-commit hook rebuilds automatically. Codex users: see `.codex/rules/01-graphify.md`.
+When `.codegraph/` exists, use CodeGraph before broad `Glob`, `Grep`, directory walks, or multi-file reads for current source-code questions:
+
+- `codegraph_explore` through MCP — relevant symbols, current line-numbered source, call paths, blast radius, and affected tests.
+- `codegraph explore "<question>"` through the shell — equivalent fallback when MCP is unavailable.
+
+Use CodeGraph for:
+
+- locating current source and symbols;
+- tracing callers, callees, routes, and dynamic dispatch;
+- identifying change impact and affected tests;
+- narrowing the exact files that require verification or editing.
+
+After a successful CodeGraph result, read only the decisive source locations needed for exact verification. Do not repeat the same investigation with broad file searches.
+
+If `.codegraph/` does not exist, skip CodeGraph. Do not initialize it automatically during a repository task.
+
+CodeGraph does not replace exact source verification before editing, Git diff inspection, linting, type checking, migrations, tests, builds, or runtime inspection.
+
+### Graphify
+
+The broader project knowledge graph is stored at `graphify-out/`.
+
+Use Graphify for:
+
+- architecture and dependency boundaries;
+- active specifications and debt relationships;
+- documentation, configuration, SQL, storage, and cross-artifact context;
+- subsystem-level impact and path questions;
+- pre-change structural orientation and post-change graph freshness.
+
+Useful commands:
+
+- `graphify query "<question>"` — search the graph.
+- `graphify path "<A>" "<B>"` — find paths between concepts.
+- `graphify explain "<concept>"` — explain a node.
+- `graphify check-update .` — check only for the `graphify-out/needs_update` flag indicating pending non-code semantic re-extraction.
+- `graphify update . --no-cluster` — perform the normal incremental source-code refresh after relevant source changes.
+
+`graphify check-update .` is intentionally silent when no semantic flag exists and is cron-safe. No output means only:
+
+```text
+No pending non-code semantic-update flag detected.
+```
+
+It does not prove that the source-code graph matches the working tree, and its exit status is not freshness evidence. Determine source refresh need from known implementation changes or focused Git changed-file evidence. After relevant source changes, run `graphify update . --no-cluster`.
+
+Do not call CodeGraph and Graphify for the same question unless the first tool leaves a documented gap. Do not run full clustering or community labeling after every edit; reserve it for explicit milestones.
+
+The git pre-commit hook may rebuild Graphify automatically. Codex users: see `.codex/rules/01-graphify.md`.
 
 ---
 
@@ -605,6 +679,42 @@ STORAGE_BACKEND=s3
 
 ---
 
+## Delegated Agent Quality Gate
+
+When operating as a primary or orchestration agent:
+
+* Subagents provide evidence; the primary agent decides whether the task is complete.
+* Review every handoff against the exact bounded assignment and the original user requirements.
+* Maintain a concise acceptance ledger with requirement, responsible worker, evidence, validation status, review status, and unresolved risk.
+* Reject empty output, vague completion claims, missing paths, commands without results, tests without exit status, and implementation claims unsupported by changed-file evidence.
+* Do not accept an implementation worker's report by itself. Changed behavior requires focused validation from a test worker and an independent review result.
+* Reconcile contradictions between implementation, testing, investigation, CodeGraph, Graphify, and review evidence. Treat conflicting evidence as unproven until a targeted verification resolves it.
+* Do not repeat repository-wide work already completed by a subagent. Delegate only the specific missing proof, defect, contradiction, or remediation.
+* Before declaring completion, verify that:
+  * every requirement is proven or honestly marked blocked;
+  * no blocking review finding remains;
+  * required lint, type, migration, test, frontend, or build commands passed;
+  * Graphify was refreshed after relevant source changes;
+  * the working-tree and commit state match the requested stopping point.
+* Never claim that behavior works unless actual command or runtime evidence demonstrates it.
+
+When operating as a subagent, complete only the assigned bounded outcome and return concise evidence. Do not decide overall project completion.
+
+---
+
 ## Final Report
 
 After implementing or reviewing work, report: files changed, behavior implemented or findings, commands run and results, remaining risks or unverified assumptions. Keep proportional to the task.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update . --no-cluster` to keep the graph current (AST-only, no API cost).

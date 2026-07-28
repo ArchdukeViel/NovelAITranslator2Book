@@ -437,7 +437,7 @@ Docker command missing:
 - Reopen PowerShell after installation.
 - Make sure Docker Desktop is running before Compose.
 
-## 13. Storage Location
+## 14. Storage Location
 
 Runtime files are written under:
 
@@ -450,15 +450,16 @@ Scheduler state, provider request records, chunk output records, fetch cache ent
 
 See [../reference/data-output-structure.md](../reference/data-output-structure.md) for the file-level reference.
 
-## 14. Next Reading
+## 15. Next Reading
 
 - [../architecture/architecture.md](../architecture/architecture.md)
 - [../reference/data-output-structure.md](../reference/data-output-structure.md)
 - [../reference/python-commands.md](../reference/python-commands.md)
 - [../environment.md](../environment.md)
 - [../cicd-manual-setup.md](../cicd-manual-setup.md)
-- [../SPECS_COMPLETION.md](../SPECS_COMPLETION.md)
+- [../roadmap.md](../roadmap.md) (spec backlog section)
+- [../../.agents/kiro/specs/](../../.agents/kiro/specs/) (active specifications)
 
 ---
 
-**Last updated**: 2026-07-10 — environment consolidation, 41 specs assessed (37 complete), legacy API aliases removed, dependencies bumped.
+**Last updated**: 2026-07-10 — environment consolidation, legacy API aliases removed, dependencies bumped. See [roadmap.md](../roadmap.md) for current spec scope and [DEBT.md](../DEBT.md) for active technical debt.
