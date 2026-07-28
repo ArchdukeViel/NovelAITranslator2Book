@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -40,11 +41,13 @@ _MAX_PASSWORD_LENGTH = 256
 
 class LoginRequest(BaseModel):
     """Owner bootstrap login payload."""
+
     secret: str
 
 
 class RegisterRequest(BaseModel):
     """Public email/password signup payload."""
+
     email: str
     password: str = Field(min_length=1, max_length=_MAX_PASSWORD_LENGTH)
     display_name: str | None = Field(default=None, max_length=128)
@@ -52,17 +55,20 @@ class RegisterRequest(BaseModel):
 
 class PasswordLoginRequest(BaseModel):
     """Public email/password login payload."""
+
     email: str
     password: str = Field(min_length=1, max_length=_MAX_PASSWORD_LENGTH)
 
 
 class PasswordResetRequest(BaseModel):
     """Public password reset request payload."""
+
     email: str
 
 
 class PasswordResetConfirmRequest(BaseModel):
     """Public password reset confirmation payload."""
+
     token: str = Field(min_length=1, max_length=512)
     new_password: str = Field(min_length=1, max_length=_MAX_PASSWORD_LENGTH)
 
@@ -73,11 +79,13 @@ class PasswordResetResponse(BaseModel):
 
 class EmailVerificationRequest(BaseModel):
     """Public email verification request/resend payload."""
+
     email: str
 
 
 class EmailVerificationConfirmRequest(BaseModel):
     """Public email verification confirmation payload."""
+
     token: str = Field(min_length=1, max_length=512)
 
 
@@ -87,6 +95,7 @@ class EmailVerificationResponse(BaseModel):
 
 class UserResponse(BaseModel):
     """Safe public representation of the session user."""
+
     user_id: int | None
     email: str | None
     role: str
@@ -110,9 +119,7 @@ def _user_response(user: SessionUser) -> UserResponse:
 
 def _oauth_configured() -> bool:
     return bool(
-        settings.GOOGLE_OAUTH_CLIENT_ID
-        and settings.GOOGLE_OAUTH_CLIENT_SECRET
-        and settings.GOOGLE_OAUTH_REDIRECT_URI
+        settings.GOOGLE_OAUTH_CLIENT_ID and settings.GOOGLE_OAUTH_CLIENT_SECRET and settings.GOOGLE_OAUTH_REDIRECT_URI
     )
 
 
@@ -141,6 +148,7 @@ def _set_session_user(request: Request, user_data: dict) -> None:
     request.session["user_id"] = user_data["user_id"]
     request.session["email"] = user_data["email"]
     request.session["role"] = user_data["role"]
+    request.session["issued_at"] = datetime.now(UTC).isoformat()
 
 
 def _clear_google_oauth_session(request: Request) -> None:
@@ -168,6 +176,7 @@ async def login(payload: LoginRequest, request: Request) -> UserResponse:
     request.session["user_id"] = 1
     request.session["email"] = "owner@local"
     request.session["role"] = "owner"
+    request.session["issued_at"] = datetime.now(UTC).isoformat()
     logger.info("Owner bootstrap login succeeded.")
     return _user_response(SessionUser(user_id=1, email="owner@local", role="owner"))
 
