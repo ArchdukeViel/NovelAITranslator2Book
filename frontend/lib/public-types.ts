@@ -243,3 +243,60 @@ export interface TagSearchParams {
   include_adult?: boolean;
   limit?: number;
 }
+
+// ---- Notifications (from routers/notifications.py) ----
+
+export type NotificationEventType =
+  | "translation.completed"
+  | "translation.failed"
+  | "translation.requires_review";
+
+export type NotificationSeverity = "info" | "success" | "warning" | "error";
+export type NotificationStatus = "unread" | "read" | "archived";
+export type NotificationChannel = "in_app" | "email";
+
+export interface NotificationItem {
+  id: number;
+  event_type: NotificationEventType;
+  title: string;
+  body: string;
+  severity: NotificationSeverity;
+  status: NotificationStatus;
+  action_url: string | null;
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface NotificationListResponse {
+  items: NotificationItem[];
+  page: number;
+  page_size: number;
+  total: number;
+}
+
+export interface NotificationListParams {
+  page?: number;
+  page_size?: number;
+  status?: NotificationStatus;
+  event_type?: NotificationEventType;
+}
+
+export interface NotificationUnreadCount {
+  unread_count: number;
+}
+
+export interface NotificationReadAllResponse {
+  updated: number;
+}
+
+export interface NotificationPreference {
+  event_type: NotificationEventType;
+  channel: NotificationChannel;
+  enabled: boolean;
+}
+
+export interface NotificationPreferenceUpdate {
+  event_type: NotificationEventType;
+  channel: NotificationChannel;
+  enabled: boolean;
+}

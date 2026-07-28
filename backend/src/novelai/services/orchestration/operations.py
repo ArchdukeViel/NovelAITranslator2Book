@@ -14,6 +14,7 @@ from novelai.services.export_manifest_service import (
     STATUS_FAILED,
     STATUS_SUCCEEDED,
     build_manifest,
+    compute_export_input_metadata,
     write_manifest,
 )
 from novelai.services.export_service import ExportService, UnsupportedExportFormatError
@@ -395,21 +396,21 @@ class OperationsService:
         if not chapters:
             raise OperationError(400, "No translated chapters available for export")
 
-        # Create pending manifest
+        freshness_metadata = compute_export_input_metadata(self.storage, novel_id, export_format)
+        output_path = str(self.storage.build_export_path(novel_id, export_format))
+        artifact_key = self.storage._rel(Path(output_path)).replace("\\", "/")
         manifest = build_manifest(
             novel_id=novel_id,
             export_format=export_format,
             status="pending",
+            artifact_key=artifact_key,
             source_chapter_count=len(meta.get("chapters", [])),
             chapter_count=len(chapters),
-            glossary_revision=meta.get("glossary_revision"),
-            glossary_hash=meta.get("glossary_hash"),
-            novel_updated_at=meta.get("updated_at"),
+            **freshness_metadata,
         )
         write_manifest(self.storage, novel_id, manifest)
 
         try:
-            output_path = str(self.storage.build_export_path(novel_id, export_format))
             self.export_service.export(
                 export_format,
                 novel_id=novel_id,
@@ -424,13 +425,12 @@ class OperationsService:
                 export_format=export_format,
                 status=STATUS_SUCCEEDED,
                 output_filename=output_file.name,
+                artifact_key=artifact_key,
                 source_chapter_count=len(meta.get("chapters", [])),
                 chapter_count=len(chapters),
                 file_size_bytes=output_file.stat().st_size if output_file.exists() else None,
-                glossary_revision=meta.get("glossary_revision"),
-                glossary_hash=meta.get("glossary_hash"),
-                novel_updated_at=meta.get("updated_at"),
                 previous_manifest_key=manifest["manifest_key"],
+                **freshness_metadata,
             )
             write_manifest(self.storage, novel_id, updated)
 

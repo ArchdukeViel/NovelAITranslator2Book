@@ -2,17 +2,29 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.core.errors import ProviderError
 from novelai.core.platform import CrawlJobKind, JobStatus, TranslationJobKind
-from novelai.services.export_manifest_service import check_all_exports_freshness
 from novelai.services.glossary_diagnostics import aggregate_glossary_diagnostics
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 
 logger = logging.getLogger(__name__)
+
+_COMPLETED_TITLE = "Translation completed"
+_COMPLETED_BODY = "Translation activity completed successfully."
+_COMPLETED_SEVERITY = "success"
+
+_FAILED_TITLE = "Translation failed"
+_FAILED_BODY = "Translation activity failed."
+_FAILED_SEVERITY = "error"
+
+_REQUIRES_REVIEW_TITLE = "Translation requires review"
+_REQUIRES_REVIEW_BODY = "Translation activity completed with chapters requiring review."
+_REQUIRES_REVIEW_SEVERITY = "warning"
 
 
 def _utc_now_iso() -> str:
@@ -22,9 +34,15 @@ def _utc_now_iso() -> str:
 class ActivityWorkerService:
     """Executes queued crawl and translation activity through the orchestrator."""
 
-    def __init__(self, activity_log: ActivityQueueService, orchestrator: NovelOrchestrationService) -> None:
+    def __init__(
+        self,
+        activity_log: ActivityQueueService,
+        orchestrator: NovelOrchestrationService,
+        notify_callback: Callable[[dict[str, Any]], object] | None = None,
+    ) -> None:
         self.activity_log = activity_log
         self.orchestrator = orchestrator
+        self._notify_callback = notify_callback
 
     @staticmethod
     def _activity_metadata(activity: dict[str, Any]) -> dict[str, Any]:
@@ -470,6 +488,7 @@ class ActivityWorkerService:
             )
             if failed is None:
                 raise
+            self._notify_translation_transition(activity, status=JobStatus.FAILED, result=failed_metadata)
             return failed
 
         completed = self.activity_log.update_activity_status(
@@ -477,7 +496,101 @@ class ActivityWorkerService:
             JobStatus.COMPLETED,
             metadata={**activity_metadata, "current_stage": "completed", "completed": 1, "result": result_metadata},
         )
+        self._notify_translation_transition(activity, status=JobStatus.COMPLETED, result=result_metadata)
         return completed
+
+    def _notify_translation_transition(
+        self,
+        activity: dict[str, Any],
+        status: JobStatus,
+        result: dict[str, Any],
+    ) -> None:
+        """Best-effort notification for translation lifecycle transitions.
+
+        Uses the configured notify_callback (NotificationPersistenceService.create)
+        with recipient from metadata.requesting_user_id only. Safe-skip on
+        malformed/missing metadata. Three lifecycle event types from explicit
+        status/review state. Exact {activity_id}:{event_type} dedupe key.
+        Privacy-safe constants; no raw errors/content/secrets. Internal action
+        URL only if proven authorized path. Failure isolation.
+        """
+        if activity.get("type") != "translation":
+            return
+
+        metadata = self._activity_metadata(activity)
+        requesting_user_id = metadata.get("requesting_user_id")
+        if not isinstance(requesting_user_id, int) or requesting_user_id <= 0:
+            return
+
+        activity_id = str(activity.get("activity_id") or "")
+        if not activity_id:
+            return
+
+        chapter_progress = result.get("chapter_progress") if isinstance(result.get("chapter_progress"), dict) else None
+        has_review_chapters = False
+        if chapter_progress:
+            for ch in chapter_progress.values():
+                if isinstance(ch, dict) and ch.get("status") == "requires_review":
+                    has_review_chapters = True
+                    break
+
+        if status == JobStatus.COMPLETED:
+            if has_review_chapters:
+                event_type = "translation.requires_review"
+                title = _REQUIRES_REVIEW_TITLE
+                body = _REQUIRES_REVIEW_BODY
+                severity = _REQUIRES_REVIEW_SEVERITY
+            else:
+                event_type = "translation.completed"
+                title = _COMPLETED_TITLE
+                body = _COMPLETED_BODY
+                severity = _COMPLETED_SEVERITY
+        elif status == JobStatus.FAILED:
+            event_type = "translation.failed"
+            title = _FAILED_TITLE
+            body = _FAILED_BODY
+            severity = _FAILED_SEVERITY
+        else:
+            return
+
+        dedupe_key = f"{activity_id}:{event_type}"
+        # Internal frontend owner route; backend API path differs and is not
+        # user-navigable. Proven via frontend/app/(admin)/admin/activity/[activityId]/page.tsx.
+        action_url = f"/admin/activity/{activity_id}"
+        source_type = "activity"
+        source_id = activity_id
+
+        payload = {
+            "recipient_user_id": requesting_user_id,
+            "event_type": event_type,
+            "title": title,
+            "body": body,
+            "severity": severity,
+            "dedupe_key": dedupe_key,
+            "action_url": action_url,
+            "source_type": source_type,
+            "source_id": source_id,
+        }
+        callback = self._notify_callback or self._default_notify_callback
+        try:
+            callback(payload)
+        except Exception:
+            logger.debug("Notification callback failed for activity %s", activity_id, exc_info=True)
+
+    @staticmethod
+    def _default_notify_callback(payload: dict[str, Any]) -> object:
+        """Production default: persist via existing session pattern.
+
+        Tests override ``notify_callback`` for the noop/in-memory seam. The
+        default wires ``NotificationPersistenceService.create`` so production
+        never silently drops notifications when no explicit callback is
+        supplied.
+        """
+        from novelai.db.engine import session_scope
+        from novelai.services.notification_service import NotificationService
+
+        with session_scope() as db_session:
+            return NotificationService(db_session=db_session).persistence().create(**payload)  # type: ignore[arg-type]
 
     async def run_next(self, *, activity_type: str | None = None) -> dict[str, Any] | None:
         activity = self.activity_log.next_pending_activity(activity_type=activity_type)
@@ -487,20 +600,3 @@ class ActivityWorkerService:
 
     async def retry_activity(self, activity_id: str) -> dict[str, Any] | None:
         return self.activity_log.retry_activity(activity_id)
-
-
-async def run_export_freshness_check(
-    storage,
-    *,
-    interval_seconds: int = 3600,
-    stop_event: asyncio.Event | None = None,
-) -> None:
-    """Run the export freshness check as a background task.
-
-    This can be started as a background task alongside the activity worker.
-    """
-    await check_all_exports_freshness(
-        storage,
-        interval_seconds=interval_seconds,
-        stop_event=stop_event,
-    )

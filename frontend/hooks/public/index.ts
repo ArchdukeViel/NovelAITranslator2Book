@@ -21,12 +21,27 @@ export {
   useRemoveFromLibrary,
   useUpdateProgress,
 } from "./use-reading-state";
+export {
+  useArchiveNotification,
+  useNotificationPreferences,
+  useNotifications,
+  useReadAllNotifications,
+  useReadNotification,
+  useUnreadCount,
+  useUpdateNotificationPreference,
+  channelLabel,
+  eventTypeKey,
+  eventTypeLabel,
+  formatNotificationDate,
+  isSafeInternalActionUrl,
+  severityBadgeClass,
+} from "./use-notifications";
 export { useDebounce } from "./use-debounce";
-export { useGenres } from "./use-genres";
-export { useGenreLabelMap } from "./use-genre-labels";
 export {
   useCreateRequest,
   useDeleteReview,
   useRequests,
   useUpsertReview,
 } from "./use-engagement";
+export { useGenreLabelMap } from "./use-genre-labels";
+export { useGenres } from "./use-genres";
