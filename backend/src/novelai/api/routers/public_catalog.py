@@ -10,10 +10,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import and_, true
 from sqlalchemy.orm import Session
 
+from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import (
     get_db_session,
     get_public_catalog_service,
@@ -29,6 +30,7 @@ from novelai.api.routers.public_contracts import (
     _optional_str,
     _parse_csv_filter,
 )
+from novelai.services.analytics_service import record_server_event
 from novelai.services.public_catalog_service import PublicCatalogService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -233,6 +235,7 @@ def _catalog_from_storage(
 
 @router.get("/catalog", response_model=PublicCatalogResponse)
 async def catalog(
+    request: Request,
     q: str | None = Query(default=None, description="Search title or author"),
     publication_status: str | None = Query(default=None, description="Filter by publication status"),
     sort_by: str | None = Query(default=None, description="Sort field: added_at, title, chapter_count"),
@@ -247,6 +250,7 @@ async def catalog(
     page: int = Query(default=1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(default=24, ge=1, le=100, description="Items per page"),
     service: PublicCatalogService = Depends(get_public_catalog_service),
+    user: SessionUser = Depends(get_current_user),
 ) -> PublicCatalogResponse:
     """Paginated public novel catalog with optional search, filter, and sort."""
     from novelai.sources.status import normalize_publication_status
@@ -262,6 +266,7 @@ async def catalog(
     tag_include_set = set(_parse_csv_filter(tag_include))
     tag_exclude_set = set(_parse_csv_filter(tag_exclude))
 
+    response: PublicCatalogResponse
     if service.is_db_catalog_base_request(sort_by=sort_by):
         db_response = _catalog_from_db_page(
             service=service,
@@ -280,25 +285,56 @@ async def catalog(
             order=effective_order,
         )
         if db_response is not None:
-            return db_response
-        logger.warning("DB catalog fell back to storage scan — no DB projection found")
-
-    return _catalog_from_storage(
-        service=service,
-        q=q,
-        publication_status=publication_status_filter,
-        effective_sort_by=effective_sort_by,
-        reverse=reverse,
-        min_chapters=min_chapters,
-        max_chapters=max_chapters,
-        genre_include_set=genre_include_set,
-        genre_exclude_set=genre_exclude_set,
-        tag_include_set=tag_include_set,
-        tag_exclude_set=tag_exclude_set,
-        include_adult=include_adult,
-        page=page,
-        page_size=page_size,
-    )
+            response = db_response
+        else:
+            logger.warning("DB catalog fell back to storage scan — no DB projection found")
+            response = _catalog_from_storage(
+                service=service,
+                q=q,
+                publication_status=publication_status_filter,
+                effective_sort_by=effective_sort_by,
+                reverse=reverse,
+                min_chapters=min_chapters,
+                max_chapters=max_chapters,
+                genre_include_set=genre_include_set,
+                genre_exclude_set=genre_exclude_set,
+                tag_include_set=tag_include_set,
+                tag_exclude_set=tag_exclude_set,
+                include_adult=include_adult,
+                page=page,
+                page_size=page_size,
+            )
+    else:
+        response = _catalog_from_storage(
+            service=service,
+            q=q,
+            publication_status=publication_status_filter,
+            effective_sort_by=effective_sort_by,
+            reverse=reverse,
+            min_chapters=min_chapters,
+            max_chapters=max_chapters,
+            genre_include_set=genre_include_set,
+            genre_exclude_set=genre_exclude_set,
+            tag_include_set=tag_include_set,
+            tag_exclude_set=tag_exclude_set,
+            include_adult=include_adult,
+            page=page,
+            page_size=page_size,
+        )
+    if q and q.strip():
+        record_server_event(
+            "search.performed",
+            user_id=user.user_id,
+            metadata={
+                "scope": "catalog",
+                "result_count": response.total,
+                "filter_count": len(genre_include_set)
+                + len(genre_exclude_set)
+                + len(tag_include_set)
+                + len(tag_exclude_set),
+            },
+        )
+    return response
 
 
 @router.get("/genres", response_model=list[PublicGenreResponse])

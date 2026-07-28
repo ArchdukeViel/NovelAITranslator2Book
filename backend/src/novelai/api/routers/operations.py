@@ -9,8 +9,10 @@ from pydantic import BaseModel, ConfigDict
 from novelai.activity.queue import ActivityQueueService
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
+from novelai.api.auth.session import SessionUser
 from novelai.api.routers.dependencies import _rate_limit, get_activity_log, get_orchestrator, get_storage
 from novelai.runtime.container import container
+from novelai.services.analytics_service import record_server_event
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.orchestration.operations import OperationError, OperationsService
 
@@ -253,12 +255,25 @@ async def export_novel(
     body: ExportRequest,
     request: Request,
     service: OperationsService = Depends(get_operations_service),
-    _owner=Depends(require_role("owner")),
+    owner: SessionUser = Depends(require_role("owner")),
 ) -> FileResponse:
     _rate_limit(request, "export")
+    record_server_event("export.requested", user_id=owner.user_id, novel_id=novel_id, metadata={"format": body.format})
     try:
         result = service.export_novel(novel_id=novel_id, export_format=body.format)
     except OperationError as exc:
+        record_server_event(
+            "export.failed",
+            user_id=owner.user_id,
+            novel_id=novel_id,
+            metadata={"format": body.format, "error_code": "operation_error"},
+        )
         _raise_operation_error(exc)
         raise AssertionError("unreachable") from None
+    record_server_event(
+        "export.downloaded",
+        user_id=owner.user_id,
+        novel_id=novel_id,
+        metadata={"format": body.format, "status": "succeeded"},
+    )
     return FileResponse(result.path, media_type=result.media_type, filename=result.filename)

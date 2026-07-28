@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 
+from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import (
     get_db_session,
     get_public_catalog_service,
@@ -30,6 +31,7 @@ from novelai.api.routers.public_contracts import (
     _optional_str,
 )
 from novelai.config.settings import settings
+from novelai.services.analytics_service import record_server_event
 from novelai.services.public_catalog_service import PublicCatalogService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -411,6 +413,7 @@ async def get_chapter(
     version_id: str | None = Query(default=None),
     request: Request = None,  # type: ignore[assignment]
     service: PublicCatalogService = Depends(get_public_catalog_service),
+    user: SessionUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Public translated chapter reader."""
     resolved = service._resolve_public_novel(slug)
@@ -446,6 +449,9 @@ async def get_chapter(
     else:
         translated = service.storage.load_translated_chapter(novel_id, chapter_id)
         is_active_version = True
+
+    # Best-effort analytics: record public_chapter.view
+    record_server_event("public_chapter.view", user_id=user.user_id, novel_id=novel_id, chapter_id=chapter_id)
 
     if not _has_reader_text(translated):
         policy = _resolve_unavailable_policy(meta)
@@ -535,6 +541,7 @@ async def search_tags(
     include_adult: bool = Query(default=False, description="Include adult tags"),
     limit: int = Query(default=10, ge=1, le=50, description="Max results"),
     db: Session = Depends(get_db_session),
+    user: SessionUser = Depends(get_current_user),
 ) -> list[PublicTagSearchResult]:
     """Search tags by name (case-insensitive). No tags are created."""
     from novelai.db.models.tag import Tag
@@ -554,6 +561,13 @@ async def search_tags(
         else_=1,
     )
     results = base.order_by(prefix_case, Tag.name).limit(limit).all()
+
+    # Best-effort analytics: record search.performed
+    record_server_event(
+        "search.performed",
+        user_id=user.user_id,
+        metadata={"scope": "tag", "result_count": len(results), "filter_count": 0},
+    )
 
     return [
         PublicTagSearchResult(

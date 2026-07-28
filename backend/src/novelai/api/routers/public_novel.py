@@ -7,11 +7,11 @@ Chapter reader and tags search are in ``public_chapter.py``.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import (
     get_public_catalog_service,
     metadata_chapters,
@@ -21,10 +21,10 @@ from novelai.api.routers.public_contracts import (
     PublicNovelSummary,
     _optional_str,
 )
+from novelai.services.analytics_service import record_server_event
 from novelai.services.public_catalog_service import PublicCatalogService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
-logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -37,6 +37,7 @@ async def get_novel(
     slug: str,
     include_adult: bool = Query(default=False, description="Include adult/R18 taxonomy terms"),
     service: PublicCatalogService = Depends(get_public_catalog_service),
+    user: SessionUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Public novel detail."""
     resolved = service._resolve_public_novel(slug)
@@ -44,6 +45,8 @@ async def get_novel(
         raise HTTPException(status_code=404, detail="Novel not found.")
     novel_id, meta, _public_slug = resolved
     genres, tags, _ = service._load_taxonomy_for_novel(novel_id, include_adult=include_adult)
+    # Best-effort analytics: record public_novel.view
+    record_server_event("public_novel.view", user_id=user.user_id, novel_id=novel_id)
     return service._novel_summary(novel_id, meta, genres=genres, tags=tags)
 
 
@@ -62,12 +65,14 @@ async def list_chapters(
     for idx, ch in enumerate(metadata_chapters(meta)):
         chapter_id = str(ch.get("id", ""))
         is_translated = chapter_id in translated_ids
-        result.append(PublicChapterSummary(
-            chapter_id=chapter_id,
-            title=_optional_str(ch.get("translated_title")) or _optional_str(ch.get("title")),
-            chapter_number=ch.get("num") or (idx + 1),
-            translated=is_translated,
-            availability_status="available" if is_translated else "not_translated",
-            part=_optional_str(ch.get("part")) or _optional_str(ch.get("volume")),
-        ))
+        result.append(
+            PublicChapterSummary(
+                chapter_id=chapter_id,
+                title=_optional_str(ch.get("translated_title")) or _optional_str(ch.get("title")),
+                chapter_number=ch.get("num") or (idx + 1),
+                translated=is_translated,
+                availability_status="available" if is_translated else "not_translated",
+                part=_optional_str(ch.get("part")) or _optional_str(ch.get("volume")),
+            )
+        )
     return result

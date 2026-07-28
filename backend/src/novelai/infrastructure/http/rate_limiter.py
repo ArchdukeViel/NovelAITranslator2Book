@@ -14,14 +14,12 @@ from novelai.config.settings import settings
 class RateLimiter:
     """Protocol for rate limiter implementations."""
 
-    def hit(self, client_id: str, action: str) -> bool:
+    def hit(self, client_id: str, action: str, *, key_transform: Callable[[str], str] | None = None) -> bool:
         """Record a hit for (client_id, action). Return True if allowed."""
         raise NotImplementedError()
 
 
-RateLimiterFactory = Callable[
-    [Mapping[str, int] | None, int, dict[str, list[float]] | None], RateLimiter
-]
+RateLimiterFactory = Callable[[Mapping[str, int] | None, int, dict[str, list[float]] | None], RateLimiter]
 
 
 class InMemoryRateLimiter(RateLimiter):
@@ -40,7 +38,9 @@ class InMemoryRateLimiter(RateLimiter):
         self.limits = dict(limits or {})
         self._hits: dict[str, list[float]] = hits_storage if hits_storage is not None else {}
 
-    def hit(self, client_id: str, action: str) -> bool:
+    def hit(self, client_id: str, action: str, *, key_transform: Callable[[str], str] | None = None) -> bool:
+        if key_transform is not None:
+            client_id = key_transform(client_id)
         key = f"{client_id}:{action}"
         now = time.monotonic()
         window_start = now - self.window
@@ -58,7 +58,7 @@ class InMemoryRateLimiter(RateLimiter):
 class DisabledRateLimiter(RateLimiter):
     """Limiter that allows every request."""
 
-    def hit(self, client_id: str, action: str) -> bool:
+    def hit(self, client_id: str, action: str, *, key_transform: Callable[[str], str] | None = None) -> bool:
         return True
 
 
@@ -71,18 +71,19 @@ class RedisRateLimiter(RateLimiter):
         window_seconds: int = 60,
         hits_storage: dict[str, list[float]] | None = None,
     ) -> None:
-        if redis is None:
-            raise ImportError("The 'redis' package is required for the redis rate limiter backend.")
-
         redis_url = settings.REDIS_URL
         if not redis_url:
             raise ValueError("REDIS_URL environment variable is required when WEB_RATE_LIMITER_BACKEND=redis")
+        if redis is None:
+            raise ImportError("The 'redis' package is required for the redis rate limiter backend.")
 
         self.window = int(window_seconds)
         self.limits = dict(limits or {})
         self._redis = redis.from_url(redis_url)
 
-    def hit(self, client_id: str, action: str) -> bool:
+    def hit(self, client_id: str, action: str, *, key_transform: Callable[[str], str] | None = None) -> bool:
+        if key_transform is not None:
+            client_id = key_transform(client_id)
         limit = int(self.limits.get(action, 0))
         if limit <= 0:
             return True
