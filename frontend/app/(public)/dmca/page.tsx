@@ -131,9 +131,9 @@ export default function DmcaPage() {
             Notice submitted
           </p>
           <p className="mt-2 text-sm leading-7 text-muted-foreground">
-            Your DMCA takedown notice has been received. The owner will review
-            it and take appropriate action. You will be contacted at the email
-            address you provided if more information is needed.
+            Your DMCA takedown notice has been received. The single owner/admin
+            will review it and take appropriate action. You will be contacted
+            at the email address you provided if more information is needed.
           </p>
           <Button className="mt-6" onClick={reset}>
             Submit another

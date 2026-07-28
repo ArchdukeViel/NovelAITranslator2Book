@@ -20,13 +20,13 @@ REPETITION_MIN_LINES: int = 5
 _GLOSSARY_MAX_TERMS = 20
 
 _CJK_RANGES = [
-    (0x4E00, 0x9FFF),   # CJK Unified Ideographs
-    (0x3040, 0x309F),   # Hiragana
-    (0x30A0, 0x30FF),   # Katakana
-    (0xF900, 0xFAFF),   # CJK Compatibility Ideographs
+    (0x4E00, 0x9FFF),  # CJK Unified Ideographs
+    (0x3040, 0x309F),  # Hiragana
+    (0x30A0, 0x30FF),  # Katakana
+    (0xF900, 0xFAFF),  # CJK Compatibility Ideographs
 ]
 
-_MARKER_LINE_PATTERN = re.compile(r'^\s*\[(?:CHAPTER|P\s+p\d+)', re.IGNORECASE)
+_MARKER_LINE_PATTERN = re.compile(r"^\s*\[(?:CHAPTER|P\s+p\d+)", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -415,7 +415,9 @@ def _check_placeholders(source_text: str, output_text: str, *, warnings: list[st
     source_placeholders = [
         value
         for value in _unique_matches(_TEXT_PLACEHOLDER_RE, source_text)
-        if not value.startswith("[CHAPTER ") and not value.startswith("[P ") and not _IMAGE_PLACEHOLDER_RE.fullmatch(value)
+        if not value.startswith("[CHAPTER ")
+        and not value.startswith("[P ")
+        and not _IMAGE_PLACEHOLDER_RE.fullmatch(value)
     ]
     for placeholder in source_placeholders:
         if placeholder not in output_text:
@@ -592,3 +594,67 @@ def _score(*, warnings: list[str], errors: list[str]) -> float:
 
 def _uses_multiple_provider_models(chunk: TranslationChunk | None) -> bool:
     return False
+
+
+async def evaluate_translation_quality_with_llm(
+    provider: Any,
+    source_text: str,
+    translated_text: str,
+    model: str | None = None,
+) -> float:
+    """Grade translation quality using the provider LLM (DEBT-053).
+
+    Returns a score between 0.0 and 1.0. The grader is opt-in via
+    ``settings.LLM_QA_ENABLED``. Failures (provider error, malformed JSON,
+    out-of-range number) return ``1.0`` so the deterministic QA stage
+    never fails a translation on account of grader downtime — low scores
+    are surfaced as a ``needs_llm_retry`` QA status by the stage, not
+    raised here.
+
+    ``provider`` may be ``None`` or the dummy provider, in which case the
+    grader is a no-op (score 1.0). The caller decides retry eligibility
+    by comparing the returned score against ``settings.LLM_QA_MIN_SCORE``.
+    """
+    if provider is None:
+        return 1.0
+    provider_key = getattr(provider, "key", None)
+    if provider_key == "dummy":
+        return 1.0
+
+    prompt = (
+        "Evaluate the quality of this Japanese-to-English translation. "
+        "Japanese source:\n"
+        f"{source_text}\n\n"
+        "English translation:\n"
+        f"{translated_text}\n\n"
+        'Reply with a JSON object containing a quality score: {"score": <0.0 to 1.0>}'
+    )
+    try:
+        result = await provider.translate(prompt, model=model)
+    except Exception:  # grader failure must never fail a translation job
+        return 1.0
+    res_text = str(result.get("text", "") if isinstance(result, dict) else "")
+
+    # Prefer the robust JSON extractor because LLM responses often contain
+    # extra prose around the JSON object.
+    candidate = extract_unambiguous_json_object(res_text)
+    if candidate:
+        try:
+            data = json.loads(candidate)
+            if isinstance(data, dict):
+                raw_score = float(data.get("score", 1.0))
+                if 0.0 <= raw_score <= 1.0:
+                    return raw_score
+        except (TypeError, ValueError):
+            pass
+
+    # Final fallback: regex for the score field in the raw text.
+    match = re.search(r'"score"\s*:\s*([0-9]*\.?[0-9]+)', res_text)
+    if match:
+        try:
+            raw_score = float(match.group(1))
+            if 0.0 <= raw_score <= 1.0:
+                return raw_score
+        except ValueError:
+            pass
+    return 1.0

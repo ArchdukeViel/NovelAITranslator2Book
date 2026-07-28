@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   BookOpen,
+  Bell,
   Clock,
   FileText,
   Heart,
@@ -34,6 +35,7 @@ const mainNavItems = [
 const accountNavItems = [
   { href: "/account/library", label: "Library", icon: Library },
   { href: "/account/history", label: "History", icon: History },
+  { href: "/account/notifications", label: "Notifications", icon: Bell },
   { href: "/account/requests", label: "Requests", icon: Clock },
   { href: "/account/contributions", label: "Contributions", icon: Heart },
   { href: "/account/settings", label: "Settings", icon: Settings },

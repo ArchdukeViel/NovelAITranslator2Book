@@ -405,6 +405,14 @@ async def health_errors(
     return get_error_metrics()
 
 
+@router.get("/admin/exports/freshness/status")
+async def export_freshness_status(
+    service: AdminService = Depends(get_admin_db_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    return service.export_freshness_status()
+
+
 @router.get("/admin/novels/{novel_id}/exports")
 async def list_novel_exports(
     novel_id: str,

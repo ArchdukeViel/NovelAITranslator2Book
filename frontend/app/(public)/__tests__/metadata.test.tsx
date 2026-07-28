@@ -305,7 +305,7 @@ describe("metadata — safety and honesty", () => {
     expect(sourceText).not.toContain("confirms where contact information will live");
     expect(sourceText).not.toContain("channels are pending");
     expect(sourceText).toContain("single owner/admin");
-    expect(sourceText).toContain("takedown request");
+    expect(sourceText).toMatch(/takedown\s+requests/);
   });
 
   it("dmca page copy does not sound like scaffold placeholder", () => {
@@ -314,7 +314,7 @@ describe("metadata — safety and honesty", () => {
       "utf8"
     );
     expect(sourceText).not.toContain("pending final policy copy");
-    expect(sourceText).toContain("owner/admin reviews");
+    expect(sourceText).toMatch(/single owner\/admin\s+will review/);
   });
 
   it("error page does not describe itself as documentation", () => {

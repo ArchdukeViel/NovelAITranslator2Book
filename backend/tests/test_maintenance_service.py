@@ -18,6 +18,7 @@ from novelai.services.maintenance_service import (
     TASK_ACTIVITY_LOG,
     TASK_BACKUP_RETENTION,
     TASK_FETCH_CACHE,
+    TASK_NOTIFICATIONS,
     TASK_PIPELINE_EVENTS,
     TASK_SCHEDULER_STATE,
     MaintenanceService,
@@ -81,7 +82,9 @@ class FakeStorage:
 
 
 class FakeActivityLog:
-    def prune_activity_log(self, *, keep_completed: int = 90, keep_failed: int = 180, dry_run: bool = True) -> dict[str, Any]:
+    def prune_activity_log(
+        self, *, keep_completed: int = 90, keep_failed: int = 180, dry_run: bool = True
+    ) -> dict[str, Any]:
         return {"deleted": 5 if not dry_run else 0, "dry_run": dry_run}
 
 
@@ -93,6 +96,15 @@ class FakeSchedulerStateService:
 class FakeBackupManager:
     async def apply_retention(self, **kwargs: Any) -> int:
         return 2
+
+
+class FakeNotificationCleanup:
+    def __init__(self) -> None:
+        self.calls: list[tuple[int, int]] = []
+
+    def __call__(self, retention_days: int, batch_size: int) -> int:
+        self.calls.append((retention_days, batch_size))
+        return 4
 
 
 @pytest.fixture()
@@ -159,7 +171,9 @@ class TestFetchCacheCleanup:
         # Write old fetch cache entry.
         path = storage._fetch_cache_dir / "index.json"
         old_ts = (datetime.now(UTC) - timedelta(hours=48)).isoformat().replace("+00:00", "Z")
-        records = {"syosetu:https://example.com": {"fetched_at": old_ts, "url": "https://example.com", "source_key": "syosetu"}}
+        records = {
+            "syosetu:https://example.com": {"fetched_at": old_ts, "url": "https://example.com", "source_key": "syosetu"}
+        }
         path.write_text(json.dumps(records), encoding="utf-8")
 
         result = service.run_maintenance(dry_run=False, tasks=[TASK_FETCH_CACHE])
@@ -208,6 +222,26 @@ class TestBackupRetentionDelegation:
         task = result["tasks"][0]
         assert task["status"] == "succeeded"
         assert task["items_deleted"] == 2
+
+
+class TestNotificationCleanup:
+    def test_notification_retention_uses_wired_persistence_boundary(self, storage: FakeStorage) -> None:
+        cleanup = FakeNotificationCleanup()
+        service = MaintenanceService(storage=storage, notification_cleanup=cleanup)
+
+        result = service.run_maintenance(dry_run=False, tasks=[TASK_NOTIFICATIONS])
+
+        assert result["tasks"][0]["items_deleted"] == 4
+        assert cleanup.calls
+
+    def test_notification_retention_dry_run_does_not_call_persistence(self, storage: FakeStorage) -> None:
+        cleanup = FakeNotificationCleanup()
+        service = MaintenanceService(storage=storage, notification_cleanup=cleanup)
+
+        result = service.run_maintenance(dry_run=True, tasks=[TASK_NOTIFICATIONS])
+
+        assert result["tasks"][0]["status"] == "succeeded"
+        assert cleanup.calls == []
 
 
 class TestPathSafety:

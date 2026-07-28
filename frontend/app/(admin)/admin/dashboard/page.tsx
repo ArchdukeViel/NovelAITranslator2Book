@@ -9,6 +9,7 @@ import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { ErrorBanner } from "@/components/admin/error-banner";
 import { Metric } from "@/components/admin/metric";
 import { PageHeading } from "@/components/admin/page-heading";
+import { SchedulerHealthCard } from "@/components/admin/scheduler-health-card";
 import { StatusBadge } from "@/components/admin/status-badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
@@ -71,17 +72,17 @@ export default function DashboardPage() {
                 <Play className="h-4 w-4" />
                 Start
               </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => setShowStopConfirm(true)} 
+              <Button
+                variant="outline"
+                onClick={() => setShowStopConfirm(true)}
                 disabled={stop.isPending}
               >
                 <Square className="h-4 w-4" />
                 Stop
               </Button>
-              <Button 
-                variant="secondary" 
-                onClick={() => runOnce.mutate()} 
+              <Button
+                variant="secondary"
+                onClick={() => runOnce.mutate()}
                 disabled={runOnce.isPending}
                 title="Processes one pending batch/activity without starting the continuous worker."
                 aria-label="Run worker once to process a single pending batch"
@@ -109,6 +110,8 @@ export default function DashboardPage() {
 
         <ActivityTable activity={activityRows.slice(0, 8)} />
       </div>
+
+      <SchedulerHealthCard />
 
       <ConfirmDialog
         open={showStopConfirm}

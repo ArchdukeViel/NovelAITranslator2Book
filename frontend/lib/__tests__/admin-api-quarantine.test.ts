@@ -10,13 +10,22 @@ describe("admin API quarantine", () => {
     expect(adminApi).toContain("/admin/providers/");
   });
 
+  it("exports implemented user management methods", () => {
+    const adminApi = readFileSync("lib/api.ts", "utf8");
+
+    expect(adminApi).toContain("listUsers");
+    expect(adminApi).toContain("getUser");
+    expect(adminApi).toContain("updateUserActive");
+    expect(adminApi).toContain("updateUserRole");
+    expect(adminApi).toContain("revokeUserSessions");
+  });
+
   it("does not export future admin API methods for missing contracts", () => {
     const adminApi = readFileSync("lib/api.ts", "utf8");
 
-    expect(adminApi).not.toContain("/admin/users");
+    // User management is now implemented — only quarantined futures remain
     expect(adminApi).not.toContain("/admin/controls");
     expect(adminApi).not.toContain("/admin/contributed-credentials");
-    expect(adminApi).not.toContain("updateUser");
     expect(adminApi).not.toContain("runRequest");
     expect(adminApi).not.toContain("activateProviderCredential");
     expect(adminApi).not.toContain("contributedCredentials");

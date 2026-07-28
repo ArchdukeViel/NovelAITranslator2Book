@@ -3,6 +3,7 @@
 import { Menu } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { NotificationIndicator } from "@/components/public/notification-indicator";
 import { SearchEntry } from "@/components/public/search-entry";
 import { CurrentUserIndicator } from "@/components/public/current-user-indicator";
 import { PublicBrand } from "@/components/public/public-brand";
@@ -28,6 +29,7 @@ export function PublicHeader({ onMenuClick }: { onMenuClick: () => void }) {
         </div>
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          <NotificationIndicator />
           <CurrentUserIndicator />
         </div>
       </div>

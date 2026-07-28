@@ -49,8 +49,9 @@ export default function ContactPage() {
           Contact
         </h1>
         <p className="mt-6 text-base leading-8 text-muted-foreground">
-          Send a message to the Dokushodo owner or admin. All fields are
-          required unless marked optional.
+          Send a message to the Dokushodo owner or admin. For DMCA takedown
+          requests, use the dedicated DMCA page. All fields are required
+          unless marked optional.
         </p>
       </header>
 
@@ -60,8 +61,8 @@ export default function ContactPage() {
             Message sent
           </p>
           <p className="mt-2 text-sm leading-7 text-muted-foreground">
-            Thank you. Your message has been submitted. The owner will review it
-            and respond if needed.
+            Thank you. Your message has been submitted. The single owner/admin
+            will review it and respond if needed.
           </p>
           <Button className="mt-6" onClick={() => setSuccess(false)}>
             Send another

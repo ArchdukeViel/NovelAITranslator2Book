@@ -270,11 +270,24 @@ class AppSettings(BaseSettings):
     SEMANTIC_CACHE_EMBEDDING_PROVIDER: str = "gemini"
     SEMANTIC_CACHE_EMBEDDING_MODEL: str = "text-embedding-004"
 
-    # --- LLM QA (future feature, disabled by default)
+    # --- LLM QA (DEBT-053): default-off; activates LLM-based translation grading.
+    # When enabled and a translation provider is available, the QA stage also
+    # asks the configured provider to grade each chunk that passes the
+    # deterministic checks. Chunks below LLM_QA_MIN_SCORE get a
+    # ``needs_llm_retry`` QA status so callers can re-translate.
     LLM_QA_ENABLED: bool = False
     LLM_QA_PROVIDER: str = "gemini"
     LLM_QA_MODEL: str = "gemini-3.1-flash-lite"
     LLM_QA_COST_TRACKING_ENABLED: bool = True
+    LLM_QA_MIN_SCORE: float = 0.75
+    LLM_QA_MAX_RETRY_ATTEMPTS: int = 1
+
+    # --- DEBT-033: Export freshness scheduler
+    EXPORT_FRESHNESS_CHECK_ENABLED: bool = False
+    EXPORT_FRESHNESS_CHECK_SCHEDULE_CRON: str = "30 9 * * *"
+    EXPORT_FRESHNESS_CHECK_TIMEZONE: str = "UTC"
+    EXPORT_FRESHNESS_CHECK_BATCH_SIZE: int = 100
+    EXPORT_FRESHNESS_CHECK_MAX_ARTIFACTS_PER_RUN: int = 1000
 
     # --- Public reader availability
     # Controls behavior when a public chapter has no active translation.
@@ -433,6 +446,17 @@ class AppSettings(BaseSettings):
         default=14,
         description="Retention in days for expired scheduler runtime state records.",
     )
+    NOTIFICATION_RETENTION_DAYS: int = Field(
+        default=90,
+        ge=1,
+        description="Retention in days for archived notifications.",
+    )
+    NOTIFICATION_RETENTION_BATCH_SIZE: int = Field(
+        default=500,
+        ge=1,
+        le=1_000,
+        description="Maximum archived notifications deleted per maintenance run.",
+    )
 
     # --- Scheduler runtime state (M2c, DEBT-036)
     SCHEDULER_HEARTBEAT_INTERVAL_SECONDS: int = Field(
@@ -471,6 +495,47 @@ class AppSettings(BaseSettings):
     SMTP_FROM_ADDRESS: str = Field(
         default="noreply@novelai.app",
         description="From: address for outgoing notification emails.",
+    )
+
+    # --- Analytics baseline (DEBT-009)
+    ANALYTICS_ENABLED: bool = Field(
+        default=False,
+        description="Enable analytics event recording. When disabled, ingest endpoint returns 503 and server-side recording is skipped.",
+    )
+    ANALYTICS_PUBLIC_INGESTION_ENABLED: bool = Field(
+        default=False,
+        description="Enable public analytics ingestion. Requires ANALYTICS_ENABLED.",
+    )
+    ANALYTICS_STORE_RAW_QUERY: bool = Field(
+        default=False,
+        description="Store raw search queries. Disabled by default for privacy.",
+    )
+    ANALYTICS_STORE_IP: bool = Field(
+        default=False,
+        description="Store client IP addresses. Disabled by default; analytics schema has no IP field.",
+    )
+    ANALYTICS_RETENTION_DAYS: int = Field(
+        default=365,
+        ge=1,
+        description="Retention in days for analytics events. Events older than this are eligible for cleanup.",
+    )
+    ANALYTICS_RETENTION_BATCH_SIZE: int = Field(
+        default=1_000,
+        ge=1,
+        le=10_000,
+        description="Maximum analytics event rows deleted per retention transaction.",
+    )
+    ANALYTICS_INGEST_MAX_BATCH: int = Field(
+        default=50,
+        ge=1,
+        le=100,
+        description="Maximum public analytics events accepted per request.",
+    )
+    ANALYTICS_INGEST_MAX_BODY_BYTES: int = Field(
+        default=32_768,
+        ge=1_024,
+        le=262_144,
+        description="Maximum public analytics ingestion request body size.",
     )
 
     # --- File lock (M2c, DEBT-035)

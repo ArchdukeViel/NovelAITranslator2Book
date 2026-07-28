@@ -9,12 +9,14 @@ import {
   Cpu,
   FileEdit,
   Gauge,
+  KeyRound,
   Library,
   ListPlus,
   ListChecks,
   Moon,
   Search,
   Settings,
+  Shield,
   Sun,
   Users,
   Download,
@@ -43,10 +45,13 @@ const navItems: NavItem[] = [
   { href: "/admin/activity", label: "Activity Log", icon: ListChecks },
   { href: "/admin/translation", label: "Scheduler", icon: Cpu },
   { href: "/admin/exports", label: "Exports", icon: Download },
+  { href: "/admin/analytics", label: "Analytics", icon: Activity },
   { href: "/admin/requests", label: "Requests", icon: ListPlus },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/editor", label: "Editor", icon: FileEdit },
+  { href: "/admin/credentials", label: "Credentials", icon: KeyRound },
   { href: "/admin/settings", label: "Settings", icon: Settings },
+  { href: "/admin/audit", label: "Audit Log", icon: Shield },
 ];
 
 /**

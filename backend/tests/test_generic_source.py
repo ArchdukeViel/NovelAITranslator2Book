@@ -49,7 +49,7 @@ class TestGenericSourceHelpers:
         assert body.name == "article"
 
     def test_find_body_with_main(self) -> None:
-        soup = _soup('<html><body><main>content</main></body></html>')
+        soup = _soup("<html><body><main>content</main></body></html>")
         body = GenericSource._find_body(soup)
         assert body is not None
         assert body.name == "main"
@@ -110,9 +110,7 @@ class TestGenericRubyStripping:
         assert "かんじ" not in soup.get_text()
 
     def test_preserves_paragraph_boundaries(self) -> None:
-        soup = _soup(
-            "<div><p>段落1</p><p><ruby>漢字<rt>かんじ</rt></ruby></p><p>段落3</p></div>"
-        )
+        soup = _soup("<div><p>段落1</p><p><ruby>漢字<rt>かんじ</rt></ruby></p><p>段落3</p></div>")
         GenericSource._strip_ruby_annotations(soup)
         paragraphs = soup.find_all("p")
         assert len(paragraphs) == 3
@@ -121,9 +119,7 @@ class TestGenericRubyStripping:
         assert paragraphs[2].get_text() == "段落3"
 
     def test_multiple_ruby_in_same_block(self) -> None:
-        soup = _soup(
-            "<p><ruby>東<rt>ひがし</rt></ruby>と<ruby>西<rt>にし</rt></ruby></p>"
-        )
+        soup = _soup("<p><ruby>東<rt>ひがし</rt></ruby>と<ruby>西<rt>にし</rt></ruby></p>")
         GenericSource._strip_ruby_annotations(soup)
         text = soup.get_text()
         assert "東" in text
@@ -235,3 +231,42 @@ class TestGenericConfidenceHardening:
         chapters = src._extract_chapters_from_toc(soup, "https://example.com/novel")
         result = src._score_toc_confidence(soup, "https://example.com/novel", chapters)
         assert result.passed, "Should pass with reasonable confidence"
+
+
+class TestGenericSourcePublicationStatus:
+    """DEBT-024: GenericSource must extract publication_status, not silently drop it."""
+
+    def test_extraction_from_status_meta(self) -> None:
+        soup = _soup('<html><head><meta name="status" content="completed"/></head></html>')
+        payload = GenericSource._extract_publication_status(soup)
+        assert payload["publication_status"] == "completed"
+        assert payload["status"] == "completed"
+        assert payload["source_publication_status"] == "completed"
+
+    def test_extraction_from_ongoing_marker(self) -> None:
+        soup = _soup('<html><head><meta name="status" content="連載中"/></head></html>')
+        payload = GenericSource._extract_publication_status(soup)
+        assert payload["publication_status"] == "ongoing"
+
+    def test_extraction_from_dl_definition_list(self) -> None:
+        soup = _soup(
+            "<html><body><dl><dt>Status</dt><dd>Completed</dd><dt>Author</dt><dd>Someone</dd></dl></body></html>"
+        )
+        payload = GenericSource._extract_publication_status(soup)
+        assert payload["publication_status"] == "completed"
+
+    def test_extraction_from_table_row_jp(self) -> None:
+        soup = _soup("<html><body><table><tr><th>連載状態</th><td>完結済</td></tr></table></body></html>")
+        payload = GenericSource._extract_publication_status(soup)
+        assert payload["publication_status"] == "completed"
+
+    def test_extraction_hiatus_marker(self) -> None:
+        soup = _soup("<html><body><p>Story is on hiatus</p></body></html>")
+        payload = GenericSource._extract_publication_status(soup)
+        assert payload["publication_status"] == "hiatus"
+
+    def test_extraction_unknown_default(self) -> None:
+        soup = _soup("<html><body><p>Just a story.</p></body></html>")
+        payload = GenericSource._extract_publication_status(soup)
+        assert payload["publication_status"] == "unknown"
+        assert "source_publication_status" not in payload

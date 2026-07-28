@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
+from novelai.api.auth.session import SessionUser
 from novelai.api.routers.dependencies import get_db_session
+from novelai.services.audit_service import AuditService
 from novelai.services.takedown_service import TakedownService
 
 router = APIRouter(
@@ -92,10 +94,12 @@ def get_takedown(
     }
 
 
-@router.post("/takedowns/{request_id}/review", dependencies=[Depends(require_role("owner"))])
+@router.post("/takedowns/{request_id}/review")
 def review_takedown(
     request_id: int,
     body: ReviewRequest,
+    actor: SessionUser = Depends(require_role("owner")),
+    db: Session = Depends(get_db_session),
     svc: TakedownService = Depends(_get_takedown_service),
 ) -> dict[str, str]:
     """Review a DMCA takedown request — approve, reject, etc."""
@@ -109,4 +113,18 @@ def review_takedown(
         raise HTTPException(400, str(exc)) from exc
     if not req:
         raise HTTPException(404, "Takedown request not found")
+
+    # DEBT-054: Audit log entry for every takedown review outcome.
+    audit = AuditService(db)
+    audit.log(
+        action="takedown.reviewed",
+        actor_user_id=actor.user_id,
+        target_type="takedown_request",
+        target_id=str(request_id),
+        metadata={
+            "decision": req.status,
+            "infringing_url": getattr(req, "infringing_url", None),
+        },
+    )
+    db.commit()
     return {"status": req.status}

@@ -29,6 +29,8 @@ TASK_PIPELINE_EVENTS = "pipeline_events_cleanup"
 TASK_ACTIVITY_LOG = "activity_log_cleanup"
 TASK_SCHEDULER_STATE = "scheduler_runtime_state_cleanup"
 TASK_BACKUP_RETENTION = "backup_retention_cleanup"
+TASK_ANALYTICS_EVENTS = "analytics_events_cleanup"
+TASK_NOTIFICATIONS = "notifications_cleanup"
 
 _ALL_TASKS = (
     TASK_FETCH_CACHE,
@@ -36,6 +38,8 @@ _ALL_TASKS = (
     TASK_ACTIVITY_LOG,
     TASK_SCHEDULER_STATE,
     TASK_BACKUP_RETENTION,
+    TASK_ANALYTICS_EVENTS,
+    TASK_NOTIFICATIONS,
 )
 
 
@@ -56,11 +60,15 @@ class MaintenanceService:
         activity_log: Any | None = None,
         backup_manager: Any | None = None,
         scheduler_runtime_state_service: Any | None = None,
+        analytics_service: Any | None = None,
+        notification_cleanup: Any | None = None,
     ) -> None:
         self._storage = storage
         self._activity_log = activity_log
         self._backup_manager = backup_manager
         self._scheduler_state_service = scheduler_runtime_state_service
+        self._analytics_service = analytics_service
+        self._notification_cleanup = notification_cleanup
 
     def run_maintenance(
         self,
@@ -87,11 +95,13 @@ class MaintenanceService:
 
         for task_key in enabled_tasks:
             if task_key not in _ALL_TASKS:
-                task_results.append({
-                    "task_key": task_key,
-                    "status": "skipped",
-                    "message": f"Unknown task: {task_key}",
-                })
+                task_results.append(
+                    {
+                        "task_key": task_key,
+                        "status": "skipped",
+                        "message": f"Unknown task: {task_key}",
+                    }
+                )
                 continue
 
             try:
@@ -103,12 +113,14 @@ class MaintenanceService:
                     failed += 1
             except Exception as exc:
                 logger.warning("Maintenance task %s failed: %s", task_key, exc)
-                task_results.append({
-                    "task_key": task_key,
-                    "status": "failed",
-                    "error": str(exc)[:200],
-                    "dry_run": is_dry_run,
-                })
+                task_results.append(
+                    {
+                        "task_key": task_key,
+                        "status": "failed",
+                        "error": str(exc)[:200],
+                        "dry_run": is_dry_run,
+                    }
+                )
                 failed += 1
 
         overall = "succeeded" if failed == 0 else ("partially_succeeded" if succeeded > 0 else "failed")
@@ -137,6 +149,10 @@ class MaintenanceService:
             return self._cleanup_scheduler_state(dry_run=dry_run)
         if task_key == TASK_BACKUP_RETENTION:
             return self._cleanup_backup_retention(dry_run=dry_run)
+        if task_key == TASK_ANALYTICS_EVENTS:
+            return self._cleanup_analytics_events(dry_run=dry_run)
+        if task_key == TASK_NOTIFICATIONS:
+            return self._cleanup_notifications(dry_run=dry_run)
         return {"task_key": task_key, "status": "skipped", "message": "Not implemented"}
 
     def _cleanup_fetch_cache(self, *, dry_run: bool) -> dict[str, Any]:
@@ -286,11 +302,13 @@ class MaintenanceService:
 
         for task_key in enabled_tasks:
             if task_key not in _ALL_TASKS:
-                task_results.append({
-                    "task_key": task_key,
-                    "status": "skipped",
-                    "message": f"Unknown task: {task_key}",
-                })
+                task_results.append(
+                    {
+                        "task_key": task_key,
+                        "status": "skipped",
+                        "message": f"Unknown task: {task_key}",
+                    }
+                )
                 continue
 
             try:
@@ -305,12 +323,14 @@ class MaintenanceService:
                     failed += 1
             except Exception as exc:
                 logger.warning("Maintenance task %s failed: %s", task_key, exc)
-                task_results.append({
-                    "task_key": task_key,
-                    "status": "failed",
-                    "error": str(exc)[:200],
-                    "dry_run": is_dry_run,
-                })
+                task_results.append(
+                    {
+                        "task_key": task_key,
+                        "status": "failed",
+                        "error": str(exc)[:200],
+                        "dry_run": is_dry_run,
+                    }
+                )
                 failed += 1
 
         overall = "succeeded" if failed == 0 else ("partially_succeeded" if succeeded > 0 else "failed")
@@ -326,6 +346,49 @@ class MaintenanceService:
             "tasks_failed": failed,
             "tasks": task_results,
         }
+
+    def _cleanup_analytics_events(self, *, dry_run: bool) -> dict[str, Any]:
+        """Clean up analytics events older than configured retention."""
+        if self._analytics_service is None:
+            return {
+                "task_key": TASK_ANALYTICS_EVENTS,
+                "status": "skipped",
+                "message": "Analytics service not available",
+            }
+        retention_days = settings.ANALYTICS_RETENTION_DAYS
+        if dry_run:
+            return {
+                "task_key": TASK_ANALYTICS_EVENTS,
+                "status": "succeeded",
+                "dry_run": True,
+                "message": f"Would clean analytics events older than {retention_days}d",
+            }
+        count = self._analytics_service.cleanup_old_events(ttl_days=retention_days)
+        return {
+            "task_key": TASK_ANALYTICS_EVENTS,
+            "status": "succeeded",
+            "dry_run": False,
+            "items_deleted": count,
+        }
+
+    def _cleanup_notifications(self, *, dry_run: bool) -> dict[str, Any]:
+        """Prune archived notifications through persistence boundary."""
+        if self._notification_cleanup is None:
+            return {
+                "task_key": TASK_NOTIFICATIONS,
+                "status": "skipped",
+                "message": "Notification service not available",
+            }
+        retention_days = settings.NOTIFICATION_RETENTION_DAYS
+        if dry_run:
+            return {
+                "task_key": TASK_NOTIFICATIONS,
+                "status": "succeeded",
+                "dry_run": True,
+                "message": f"Would clean archived notifications older than {retention_days}d",
+            }
+        count = self._notification_cleanup(retention_days, settings.NOTIFICATION_RETENTION_BATCH_SIZE)
+        return {"task_key": TASK_NOTIFICATIONS, "status": "succeeded", "dry_run": False, "items_deleted": count}
 
     async def _cleanup_backup_retention_async(self, *, dry_run: bool) -> dict[str, Any]:
         """Async backup retention cleanup."""

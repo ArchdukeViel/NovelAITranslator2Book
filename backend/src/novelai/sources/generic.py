@@ -27,6 +27,7 @@ from novelai.sources.quality import (
     detect_age_gate_text,
     detect_block_page_text,
 )
+from novelai.sources.status import publication_status_payload
 from novelai.utils.text_normalization import normalize_text as _shared_normalize_text
 
 # Selectors tried in order to find the main story text.
@@ -141,13 +142,9 @@ class GenericSource(SourceAdapter):
         Raises SourceError if the raw HTML matches known block/age-gate patterns.
         """
         if detect_block_page_text(html):
-            raise SourceError(
-                f"Page at {url} appears to be blocked (Cloudflare, CAPTCHA, or bot challenge)."
-            )
+            raise SourceError(f"Page at {url} appears to be blocked (Cloudflare, CAPTCHA, or bot challenge).")
         if detect_age_gate_text(html):
-            raise SourceError(
-                f"Page at {url} appears to require age verification or adult confirmation."
-            )
+            raise SourceError(f"Page at {url} appears to require age verification or adult confirmation.")
 
     @staticmethod
     def _find_body(soup: BeautifulSoup) -> Tag | None:
@@ -169,7 +166,13 @@ class GenericSource(SourceAdapter):
 
     @staticmethod
     def _extract_synopsis(soup: BeautifulSoup) -> str | None:
-        for selector in ("meta[name='description']", "meta[property='og:description']", ".synopsis", ".summary", ".description"):
+        for selector in (
+            "meta[name='description']",
+            "meta[property='og:description']",
+            ".synopsis",
+            ".summary",
+            ".description",
+        ):
             node = soup.select_one(selector)
             if not isinstance(node, Tag):
                 continue
@@ -181,9 +184,7 @@ class GenericSource(SourceAdapter):
                 return _shared_normalize_text(text)
         return None
 
-    def _extract_chapters_from_toc(
-        self, soup: BeautifulSoup, base_url: str
-    ) -> list[dict[str, str | int]]:
+    def _extract_chapters_from_toc(self, soup: BeautifulSoup, base_url: str) -> list[dict[str, str | int]]:
         """Try to discover a table-of-contents link list."""
         chapters: list[dict[str, str | int]] = []
         seen_urls: set[str] = set()
@@ -213,9 +214,7 @@ class GenericSource(SourceAdapter):
                 continue
             seen_urls.add(normalised)
             index = len(chapters) + 1
-            chapters.append(
-                {"id": str(index), "num": index, "title": text, "url": absolute}
-            )
+            chapters.append({"id": str(index), "num": index, "title": text, "url": absolute})
 
         return chapters
 
@@ -237,7 +236,9 @@ class GenericSource(SourceAdapter):
         duplicate_paths = 0
         paths: list[str] = []
         container_bonus = 0
-        if soup.select("article a[href], main a[href], [role='main'] a[href], .toc a[href], .chapter-list a[href], .episode-list a[href]"):
+        if soup.select(
+            "article a[href], main a[href], [role='main'] a[href], .toc a[href], .chapter-list a[href], .episode-list a[href]"
+        ):
             container_bonus = 1
 
         for chapter in chapters:
@@ -280,10 +281,64 @@ class GenericSource(SourceAdapter):
             warnings.append("generic_low_confidence")
         elif score < 0.75:
             warnings.append("generic_needs_review")
-        return QualityGateResult(passed=len(errors) == 0, score=score, warnings=list(dict.fromkeys(warnings)), errors=errors)
+        return QualityGateResult(
+            passed=len(errors) == 0, score=score, warnings=list(dict.fromkeys(warnings)), errors=errors
+        )
 
     @staticmethod
-    def _normalize_text(text: str) -> str:
+    def _extract_publication_status(soup: BeautifulSoup) -> dict[str, str]:
+        """Heuristically extract publication_status for generic novel pages.
+
+        Looks for common status markers in metadata tables, dl/dt/dd lists,
+        and visible text. Falls back to ``unknown`` if nothing canonical is
+        found. The result is already shaped via ``publication_status_payload``
+        so the caller can merge it into the metadata dict without renaming.
+        """
+        # 1. <meta> tags with status-like names.
+        for selector in (
+            "meta[name='status']",
+            "meta[name='publication_status']",
+            "meta[name='novel_status']",
+            "meta[property='og:novel:status']",
+        ):
+            node = soup.select_one(selector)
+            if not isinstance(node, Tag):
+                continue
+            content = node.get("content")
+            if isinstance(content, str) and content.strip():
+                return publication_status_payload(content.strip())
+
+        # 2. <dl>/<dt>+<dd> rows and <th>+<td> tables.
+        for row in soup.find_all(["dl", "tr"]):
+            if not isinstance(row, Tag):
+                continue
+            dt = row.find(["dt", "th"])
+            dd = row.find(["dd", "td"])
+            if not (isinstance(dt, Tag) and isinstance(dd, Tag)):
+                continue
+            label = dt.get_text(" ", strip=True).lower()
+            value = dd.get_text(" ", strip=True)
+            if not value:
+                continue
+            if any(marker in label for marker in ("status", "state", "連載状況", "掲載状態", "状態", "ステータス")):
+                payload = publication_status_payload(value)
+                if payload["publication_status"] != "unknown":
+                    return payload
+
+        # 3. Broad scan of short text containers for canonical markers only.
+        for container in soup.find_all(["p", "li", "span", "div"]):
+            if not isinstance(container, Tag):
+                continue
+            text = container.get_text(" ", strip=True)
+            if not text or len(text) > 120:
+                continue
+            payload = publication_status_payload(text)
+            if payload["publication_status"] != "unknown":
+                return payload
+
+        return publication_status_payload(None)
+
+    def _normalize_text(self, text: str) -> str:
         return _shared_normalize_text(text)
 
     def _render_body(self, section: Tag) -> str:
@@ -311,9 +366,7 @@ class GenericSource(SourceAdapter):
     # Public SourceAdapter interface
     # ------------------------------------------------------------------
 
-    async def fetch_metadata(
-        self, url: str, *, max_chapter: int | None = None
-    ) -> dict[str, Any]:
+    async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         html = await self._fetch_page(url, on_retry=None)
         self._preflight_check(html, url)
         soup = BeautifulSoup(html, "lxml")
@@ -322,6 +375,7 @@ class GenericSource(SourceAdapter):
         title = self._extract_title(soup)
         author = self._extract_author(soup)
         synopsis = self._extract_synopsis(soup)
+        status_payload = self._extract_publication_status(soup)
         chapters = self._extract_chapters_from_toc(soup, url)
         confidence = self._score_toc_confidence(soup, url, chapters)
 
@@ -345,6 +399,7 @@ class GenericSource(SourceAdapter):
             "genre_slug": None,
             "source_keywords": [],
             "source_tags": [],
+            **status_payload,
         }
 
     async def fetch_chapter(self, url: str) -> str:

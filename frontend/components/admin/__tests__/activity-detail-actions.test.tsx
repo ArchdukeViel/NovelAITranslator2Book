@@ -18,9 +18,9 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
   });
 }
 
-function activityRecord(id: string, status: string) {
+function activityRecord(activity_id: string, status: string) {
   return {
-    id,
+    activity_id,
     type: "crawl",
     kind: "chapters",
     novel_id: "novel-1",
