@@ -54,6 +54,8 @@ the target.
   deployment URL. It scales to zero and has the plan's request-duration limit.
 - Database: Supabase PostgreSQL (shared pool).
 - Storage: R2 application bucket scoped to a non-root preview prefix.
+- Ephemeral local cache: ``NOVEL_LIBRARY_DIR=/tmp/novelai-preview``; no durable
+  data may rely on Vercel's read-only deployment filesystem or temporary disk.
 - Redis: optional (in-memory rate limiter otherwise).
 - Migrations: an operator or CI one-shot runs ``alembic upgrade head`` before
   deploying a revision that requires new schema.
@@ -61,6 +63,9 @@ the target.
   application persistence path and remain denied on backend-internal tables.
 - Workers, scheduler, maintenance, backups, and SMTP remain disabled. Acceptable
   for bounded feature previews; not for long translations or production.
+- Vercel host validation uses ``ALLOWED_HOSTS=*.vercel.app`` because internal
+  service hostnames differ from the public alias. List-typed settings use the
+  application's comma-separated environment format, not JSON array text.
 
 ### Production (optimal — Vercel + split containers + managed PostgreSQL + R2)
 
