@@ -23,6 +23,16 @@ const FALLBACK_DESCRIPTION =
   "Read translated Japanese web novels on Dokushodo.";
 const MAX_DESCRIPTION_LENGTH = 160;
 
+function stripHtml(text: string): string {
+  let stripped = text;
+  let previous: string;
+  do {
+    previous = stripped;
+    stripped = stripped.replace(/<[^>]*>/g, "");
+  } while (stripped !== previous);
+  return stripped.replace(/<|>/g, "");
+}
+
 // ---------------------------------------------------------------------------
 // Canonical URL
 // ---------------------------------------------------------------------------
@@ -78,11 +88,7 @@ export function buildDescription(
   text: string | null | undefined,
 ): string {
   if (!text?.trim()) return FALLBACK_DESCRIPTION;
-  const stripped = text
-    .trim()
-    .replace(/<[^>]*>/g, "")
-    .replace(/[<>]/g, "")
-    .replace(/\s+/g, " ");
+  const stripped = stripHtml(text.trim()).replace(/\s+/g, " ");
   if (stripped.length <= MAX_DESCRIPTION_LENGTH) return stripped;
   return stripped.slice(0, MAX_DESCRIPTION_LENGTH - 1) + "\u2026";
 }
