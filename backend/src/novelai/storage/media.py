@@ -147,7 +147,7 @@ def save_chapter_media_state(
     chapter_id: str,
     *,
     ocr_required: bool | object = _UNSET,
-    ocr_text: str | None | object = _UNSET,
+    ocr_text: str | object | None = _UNSET,
     ocr_pages: list[dict[str, Any]] | object = _UNSET,
     ocr_status: str | object = _UNSET,
     reembed_status: str | object = _UNSET,
