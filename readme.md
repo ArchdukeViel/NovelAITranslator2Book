@@ -4,6 +4,15 @@ Web-first Japanese novel ingestion, translation, editing, and public reader.
 FastAPI owns APIs and jobs; Next.js owns public/admin UI; PostgreSQL owns
 relational state; filesystem or S3/R2 owns chapter content.
 
+## Project Status
+
+Repository implementation is locally mature, but production launch remains
+**NO-GO**. Hosted security, monitoring, real alert delivery, current restore
+evidence, manual browser/network acceptance, rollback rehearsal, and named
+operators remain unresolved. [`docs/WORK.md`](docs/WORK.md) is the only current
+unfinished-work register; local tests or free previews do not replace hosted
+acceptance evidence.
+
 ## Features
 
 - Crawl Syosetu, Novel18, Kakuyomu, and generic HTML sources.
@@ -12,6 +21,7 @@ relational state; filesystem or S3/R2 owns chapter content.
 - Translate through Gemini with durable scheduler state and bounded concurrency.
 - Review, edit, activate, and roll back chapter translation versions.
 - Manage glossary, users, requests, takedowns, credentials, health, and audit.
+- Inspect owner-only maintenance schedules, durable results, and next eligibility.
 - Serve guest catalog/reader plus authenticated library, progress, history,
   reviews, and requests.
 
@@ -114,6 +124,10 @@ Topology and release procedure: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 5. Review/edit versions and publish content.
 6. Read public chapters under `/novels/*`.
 
+Owner maintenance status is available at `/admin/maintenance`. Missing public
+covers fall back to generated bookplates; chapter and library text do not depend
+on optional cover assets.
+
 ## Commands
 
 ```powershell
@@ -143,11 +157,12 @@ known unrelated cost; do not substitute broad checks for focused evidence.
 ## Project Layout
 
 ```text
-backend/   FastAPI package, migrations, and tests
-frontend/  Next.js public/admin package
-deploy/    Compose, Caddy, Dockerfiles, scripts, env examples
-storage/   Local runtime data; ignored by Git
-docs/      Nine canonical project documents
+backend/       FastAPI package, migrations, and tests
+frontend/      Next.js public/admin package
+deploy/        Compose, Caddy, Dockerfiles, scripts, env examples
+storage/       Local runtime data; ignored by Git
+docs/          Nine canonical project documents
+.agents/kiro/  Active approved specifications only
 ```
 
 ## Documentation

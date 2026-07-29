@@ -15,8 +15,6 @@ alerting, browser/network acceptance, and rollback evidence remain incomplete.
 | DEBT-075 | Managed-service recovery and scheduling closure | Blocked on operator evidence | Real stale/failure SMTP alert; successful hosted PostgreSQL/R2 workflow. |
 | DEBT-079 | Hosted production acceptance | Ongoing | Domains, OAuth, cookies, CORS/CSRF, host validation, storage boundaries, monitoring, rollback, and reliability verified on always-on topology. |
 | DEBT-094 | Render Blueprint acceptance | Provider-account blocked | Complete account/payment gate, rerun Blueprint validation, record deployment evidence. Preview does not prove production. |
-| DEBT-042 | Maintenance runtime status | Pending | One operator status view backed by `SchedulerRuntimeState`; every job shows schedule, last result, and next eligibility. |
-| DEBT-117 | Reader missing-asset boundary | Pending reconciliation | Shared `ReaderAssetBoundary` across specified routes or direct proof current shared boundaries provide equivalent behavior. |
 
 ## Operator Acceptance
 
@@ -41,8 +39,6 @@ takedown enforcement, unrecoverable loss, or missing rollback cannot be informal
 Only genuinely unfinished specs remain under `.agents/kiro/specs/`:
 
 - `launch-readiness-checklist`: operator acceptance above.
-- `maintenance-cron`: DEBT-042.
-- `public-reader-graceful-degradation`: DEBT-117.
 
 Task boxes are planning aids, not completion evidence. Architecture, current
 code/tests, this file, and operator evidence determine status.
@@ -60,6 +56,8 @@ limits, redaction, and rollback to noop.
 Requires approved bounded spec covering evaluation fixtures, embedding/index
 backend, idempotent writes, credential isolation, structured findings,
 review-only initial behavior, cost controls, and disabled-by-default rollout.
+No backend, threshold, ranking, or rollout policy will be invented during
+implementation. Owner approval of a bounded specification is required first.
 
 ### Community and contribution features
 
@@ -67,6 +65,10 @@ Folders/lists, rankings, and contributed provider credentials remain unavailable
 until moderation, abuse controls, encrypted credential lifecycle, consent,
 revocation, validation, usage ledger/limits, provider isolation, audit, and owner
 approval exist.
+Activation also requires approved product rules for ownership/visibility,
+moderation workflow, ranking formula, manipulation resistance, consent, quotas,
+and takedown/privacy behavior. Current contribution pages remain honest
+unavailable-state surfaces, not implemented contribution infrastructure.
 
 ## Explicitly Out of Scope
 

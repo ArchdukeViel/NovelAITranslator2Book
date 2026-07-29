@@ -119,3 +119,21 @@ public URL, provider credentials, and managed-service verification credentials.
 No deployment is launch-ready until hosted auth/security, monitoring/alerts,
 recovery, accessibility, performance, SEO, legal propagation, and rollback gates
 in [`WORK.md`](WORK.md) pass without unwaived blockers.
+
+## Current Release Decision
+
+Current decision is **NO-GO**. Repository checks prove local behavior, not hosted
+operation. Production approval still requires:
+
+| Area | Required hosted evidence |
+|---|---|
+| Identity/security | Real domains, OAuth callback, cookies, CORS/CSRF, hosts, disabled-user behavior. |
+| Storage/recovery | Isolated current-head PostgreSQL restore and object snapshot restore. |
+| Monitoring | External checks, real redacted alert delivery, escalation ownership. |
+| Browser/network | Accessibility, real-network performance, SEO validators, legal propagation. |
+| Rollback | Pause worker/scheduler, purge cache, disable reader, redeploy immutable prior version, smoke. |
+| Ownership | Named launch, rollback, and monitoring operators. |
+
+Provider configuration must be verified against tracked topology. Account or
+payment blocks remain blocks; screenshots or free previews are not production
+reliability evidence.

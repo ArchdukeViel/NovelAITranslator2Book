@@ -18,6 +18,8 @@ contains full former requirements/design/task documents.
 | Admin operations | Users, audit, analytics, metrics, notifications, credentials, requests, health, and library summary implemented locally. | `ARCHITECTURE.md`, `OPERATIONS.md` |
 | Legal workflow | Contact/support/legal pages, DMCA intake, owner review, audit, HTTP 451, sitemap/cache enforcement implemented locally. | `ARCHITECTURE.md`, `DESIGN.md` |
 | Scheduler durability | Runtime state persistence, cooldown/exhaustion/heartbeat, leases, backup scheduling, and worker observability implemented. | `ARCHITECTURE.md`, `OPERATIONS.md` |
+| Maintenance runtime status (DEBT-042) | Every registered cleanup task records durable transitions; owner API/UI reports cron, timezone, last completion, redacted result, and next eligibility. | `ARCHITECTURE.md`, `OPERATIONS.md` |
+| Reader missing-asset boundary (DEBT-117) | Existing generated bookplate and asset-independent chapter/library behavior proven across routes; no redundant wrapper added. | `DESIGN.md` |
 | Error handling and storage safety | Structured safe errors, logging, atomic JSON writes, file locks, schema tests, and storage boundary consolidation implemented. | `ARCHITECTURE.md`, `STORAGE.md` |
 
 ## Cancelled
@@ -41,3 +43,21 @@ contains full former requirements/design/task documents.
 
 Detailed completed/cancelled specs and archived prompts were collapsed into this
 file because they were stale planning artifacts. Git remains the lossless record.
+
+## 2026-07-29 Validation Evidence
+
+Implementation commit: `184be8c`.
+
+| Check | Result |
+|---|---|
+| Focused backend Ruff | Passed, 9 paths. |
+| Backend Pyright | Passed, 0 errors, 0 warnings. |
+| Maintenance/scheduler/lease tests | Passed, 46 tests; one pre-existing event-loop deprecation warning. |
+| Reader and maintenance frontend tests | Passed, 98 tests across 5 files. |
+| Frontend typecheck | Passed. |
+| Frontend production build | Passed; `/admin/maintenance` generated successfully. |
+| Router dependency guard | Passed with zero matches. |
+| Graphify source refresh | Completed with 10,880 nodes and 32,345 edges. |
+
+This closes local DEBT-042 and DEBT-117 implementation only. It does not change
+launch `NO-GO` or satisfy hosted/manual gates in `WORK.md`.

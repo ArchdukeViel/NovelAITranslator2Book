@@ -135,6 +135,9 @@ controls, and owner approval exist.
 - Probe states: `healthy`, `degraded`, `unhealthy`.
 - Scheduled backup, maintenance, and database dumps use renewable PostgreSQL
   leases plus local file locks where needed.
+- Each registered maintenance task writes start/success/failure transitions to
+  `SchedulerRuntimeState`; `GET /api/admin/maintenance/status` projects schedule,
+  safe result, and next eligibility for owner UI. Missing state means `never_run`.
 - R2 CRUD, snapshot reads, and backup writes use separate credentials.
 - Backups are independently restorable copies, not lifecycle rules.
 
@@ -148,6 +151,8 @@ controls, and owner approval exist.
 - Guest-safe GETs may use short shared caching; auth/admin/errors/451 and owner
   previews use `no-store`.
 - Public glossary annotations cap at 50 and report truncation.
+- Missing covers use generated bookplates. Chapter and library content remains
+  usable without optional cover assets or duplicate landmarks.
 
 ## Forbidden Work
 

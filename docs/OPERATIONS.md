@@ -25,6 +25,27 @@ output never includes paths, hosts, credentials, or traces.
   applies backup retention. Use dry-run before changed cleanup policy.
 - Never reintroduce APScheduler.
 
+Owner maintenance status:
+
+```text
+GET /api/admin/maintenance/status
+Admin UI: /admin/maintenance
+```
+
+| Field/state | Meaning |
+|---|---|
+| `never_run` | Registered task has no durable completed attempt. This is not success. |
+| `running` | Task recorded a start and has not recorded completion. Check heartbeat/lease when stale. |
+| `idle` / `succeeded` | Latest recorded attempt completed successfully. |
+| `failed` | Latest attempt failed. UI exposes generic redacted guidance only. |
+| `disabled` | Maintenance scheduling is disabled; no next eligibility is advertised. |
+| `next_eligible_at` | Next cron occurrence in UTC from configured cron/timezone and durable completion state. |
+
+Every allowlisted task records best-effort start/success/failure transitions in
+`SchedulerRuntimeState`. Observability-write failure is logged safely and does
+not turn successful cleanup into failed cleanup. DB state is durable truth;
+absence remains explicit and no filesystem cache may manufacture success.
+
 Manual novel cache invalidation:
 
 ```text
@@ -94,6 +115,22 @@ storage failure, severe reader errors, or failed recovery without safe mitigatio
 - Rotate R2 application, snapshot-read, and backup-write tokens independently.
 - Owner bootstrap secret seeds only fresh owner state; never expose it.
 - Keep SMTP disabled (`noop`) until delivery readiness in `WORK.md` passes.
+
+## SMTP Activation Gate
+
+`AUTH_EMAIL_DELIVERY_MODE=noop` is the safe default. Before switching to `smtp`:
+
+1. Verify sending domain ownership plus SPF, DKIM, and DMARC.
+2. Store SMTP credentials only in provider secret storage.
+3. Test verification/reset delivery, bounce handling, timeout, and rate limits.
+4. Confirm application and provider logs omit tokens, credentials, message body,
+   private recipient data, host internals, and traces.
+5. Trigger one real stale/failure operator alert and verify cooldown behavior.
+6. Revert to `noop`, confirm authentication remains usable, then document rollback.
+7. Record candidate commit, UTC time, operator, provider environment, exact safe
+   action, sanitized result, and blocker/waiver status.
+
+SMTP construction tests and noop notifications are not delivery evidence.
 
 ## Reader Budgets
 

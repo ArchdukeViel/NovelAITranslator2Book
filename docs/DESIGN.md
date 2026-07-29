@@ -43,6 +43,11 @@ stale data during background-refetch failure. Never render raw API error objects
 - Chapter pages prioritize text width, line height, navigation, focus, and
   low-distraction controls.
 - Missing covers use generated bookplates. One missing asset never collapses a route.
+- Catalog remote-cover failures fall back locally to the same generated
+  bookplate contract. Novel detail uses generated bookplates directly. Chapter
+  and library routes render readable text and actions without cover assets.
+- Cover fallbacks receive public display metadata only. They never fetch storage
+  keys, reveal backend paths, add landmarks, or replace route-level text.
 - Glossary annotations are keyboard accessible and contain public-safe terms only.
 - Reader controls remain visible by keyboard and usable at 200% zoom.
 
@@ -64,6 +69,9 @@ Performance budgets:
 - Mask credentials through `frontend/lib/mask-token.ts`; raw values never render.
 - Admin mutations use `frontend/lib/api.ts` and CSRF handling.
 - Operators should see status, evidence, and failure reason without browser logs.
+- `/admin/maintenance` shows every registered task, cron/timezone, durable state,
+  last completion, safe result, and next eligibility. Raw DB error text, lock
+  holders, metadata, paths, and hosts never render.
 
 ## Auth and User Data
 
