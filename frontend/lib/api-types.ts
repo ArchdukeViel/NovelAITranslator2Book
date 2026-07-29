@@ -424,6 +424,24 @@ export type RuntimeStateItem = {
   affects_process: boolean;
 };
 
+export type MaintenanceTaskStatus = {
+  task_key: string;
+  schedule: string;
+  timezone: string;
+  enabled: boolean;
+  state: string;
+  last_started_at: string | null;
+  last_finished_at: string | null;
+  result: string | null;
+  failure_summary: string | null;
+  next_eligible_at: string | null;
+};
+
+export type MaintenanceStatusResponse = {
+  status: "healthy" | "degraded";
+  tasks: MaintenanceTaskStatus[];
+};
+
 export type CreateTranslationActivityPayload = {
   novel_id: string;
   source_key?: string;

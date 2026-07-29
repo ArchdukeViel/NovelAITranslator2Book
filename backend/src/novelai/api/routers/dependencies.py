@@ -269,6 +269,11 @@ def get_scheduler_runtime_state_service() -> SchedulerRuntimeStateService:
     return container.scheduler_runtime_state
 
 
+def get_maintenance_status_service():
+    """FastAPI dependency for owner maintenance status."""
+    return container.maintenance_status_service
+
+
 def get_health_service() -> HealthService:
     """FastAPI dependency for the health probe service."""
     return container.health_service

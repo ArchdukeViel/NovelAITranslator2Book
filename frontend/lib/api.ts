@@ -35,6 +35,7 @@ import type {
   GlossaryStatusTransitionResult,
   JobProgress,
   ModelState,
+  MaintenanceStatusResponse,
   NovelMetadata,
   NovelPublicationSummary,
   NovelProgress,
@@ -440,6 +441,7 @@ export const api = {
   workerStop: () => apiFetch<WorkerStatus>("/admin/worker/stop", { method: "POST" }),
   workerRunOnce: () => apiFetch<{ activity: ActivityRecord | null; worker: WorkerStatus }>("/admin/worker/run-once", { method: "POST" }),
   schedulerHealth: () => apiFetch<SchedulerHealthResponse>("/admin/translation/scheduler-health"),
+  maintenanceStatus: () => apiFetch<MaintenanceStatusResponse>("/admin/maintenance/status"),
   requests: () => apiFetch<{ requests: NovelRequestRecord[] }>("/admin/requests?limit=50"),
   createRequest: (payload: { title: string; source_key?: string; source_url?: string; requested_by?: string; notes?: string }) =>
     apiFetch<NovelRequestRecord>("/admin/requests", {

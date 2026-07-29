@@ -89,8 +89,20 @@ class FakeActivityLog:
 
 
 class FakeSchedulerStateService:
+    def __init__(self) -> None:
+        self.transitions: list[tuple[str, str]] = []
+
     def cleanup_expired_states(self, *, ttl_days: int = 14) -> int:
         return 3
+
+    def mark_started(self, *, scope_key: str, **_: Any) -> None:
+        self.transitions.append((scope_key, "started"))
+
+    def mark_success(self, *, scope_key: str, **_: Any) -> None:
+        self.transitions.append((scope_key, "succeeded"))
+
+    def mark_failure(self, *, scope_key: str, **_: Any) -> None:
+        self.transitions.append((scope_key, "failed"))
 
 
 class FakeBackupManager:
@@ -105,6 +117,31 @@ class FakeNotificationCleanup:
     def __call__(self, retention_days: int, batch_size: int) -> int:
         self.calls.append((retention_days, batch_size))
         return 4
+
+
+def test_run_records_durable_task_transitions(storage: FakeStorage) -> None:
+    runtime_state = FakeSchedulerStateService()
+    service = MaintenanceService(storage=storage, scheduler_runtime_state_service=runtime_state)
+
+    result = service.run_maintenance(dry_run=True, tasks=[TASK_FETCH_CACHE])
+
+    assert result["status"] == "succeeded"
+    assert runtime_state.transitions == [
+        (TASK_FETCH_CACHE, "started"),
+        (TASK_FETCH_CACHE, "succeeded"),
+    ]
+
+
+def test_runtime_state_failure_does_not_fail_cleanup(storage: FakeStorage) -> None:
+    class BrokenRuntimeState:
+        def mark_started(self, **_: Any) -> None:
+            raise RuntimeError("database unavailable")
+
+    service = MaintenanceService(storage=storage, scheduler_runtime_state_service=BrokenRuntimeState())
+
+    result = service.run_maintenance(dry_run=True, tasks=[TASK_FETCH_CACHE])
+
+    assert result["status"] == "succeeded"
 
 
 @pytest.fixture()

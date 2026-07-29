@@ -15,6 +15,7 @@ from novelai.services.email import AuthEmailService, NoopAuthEmailService, SMTPA
 from novelai.services.health_service import HealthService
 from novelai.services.library_summary_service import LibrarySummaryService
 from novelai.services.maintenance_service import MaintenanceService
+from novelai.services.maintenance_status_service import MaintenanceStatusService
 from novelai.services.notification_service import NotificationService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.operator_alert_service import OperatorAlertService
@@ -51,6 +52,7 @@ class Container:
     _scheduler_runtime_state: SchedulerRuntimeStateService | None = None
     _backup_service: BackupService | None = None
     _maintenance_service: MaintenanceService | None = None
+    _maintenance_status_service: MaintenanceStatusService | None = None
     _scheduler_service: SchedulerService | None = None
     _database_backup_service: DatabaseBackupService | None = None
     _operator_alert_service: OperatorAlertService | None = None
@@ -249,6 +251,12 @@ class Container:
                 notification_cleanup=self._cleanup_notifications,
             )
         return self._maintenance_service
+
+    @property
+    def maintenance_status_service(self) -> MaintenanceStatusService:
+        if self._maintenance_status_service is None:
+            self._maintenance_status_service = MaintenanceStatusService(self.scheduler_runtime_state)
+        return self._maintenance_status_service
 
     @staticmethod
     def _cleanup_notifications(retention_days: int, batch_size: int) -> int:

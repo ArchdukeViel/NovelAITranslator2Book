@@ -246,6 +246,14 @@ describe("Reader — error states", () => {
 // ---------------------------------------------------------------------------
 
 describe("Reader — data honesty", () => {
+  it("renders readable text without optional cover assets or duplicate main landmarks", () => {
+    const { container } = renderPage();
+
+    expect(container.querySelectorAll("main")).toHaveLength(1);
+    expect(container.querySelector("img")).toBeNull();
+    expect(document.body.textContent).toContain("The story text goes here.");
+  });
+
   it("renders real chapter title from API data", () => {
     renderPage();
     const h1 = document.querySelector("h1");
