@@ -40,7 +40,7 @@ async def test_runner_start_stop_status() -> None:
 
 @pytest.mark.asyncio
 async def test_runner_processes_pending_activity_in_background() -> None:
-    worker = StubWorker([{"id": "activity-1"}])
+    worker = StubWorker([{"activity_id": "activity-1"}])
     runner = BackgroundActivityRunner(worker, poll_seconds=0.05, activity_type="crawl")  # type: ignore[arg-type]
 
     await runner.start()

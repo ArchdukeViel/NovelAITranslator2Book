@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { publicApi } from "@/lib/public-api";
 import { getSiteUrl } from "@/lib/seo";
 
 /** Static public pages suitable for indexing. */
@@ -22,34 +23,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Try to fetch published novels for dynamic sitemap entries.
   // Falls back to static pages only if API is unreachable.
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
-    const res = await fetch(
-      `${apiUrl}/api/public/catalog?page_size=100`,
-      {
-        next: { revalidate: 900 },
-        signal: AbortSignal.timeout(5_000),
-      },
-    );
-
-    if (res.ok) {
-      const data = (await res.json()) as {
-        novels: Array<{
-          slug: string;
-          added_at?: string | null;
-          latest_chapter_updated_at?: string | null;
-        }>;
-      };
-
-      if (Array.isArray(data.novels)) {
+    const data = await publicApi.catalog({ page_size: 100 });
+    if (Array.isArray(data.novels)) {
         for (const novel of data.novels) {
           if (!novel.slug) continue;
 
           const encodedSlug = encodeURIComponent(novel.slug);
-          const detail = await fetch(`${apiUrl}/api/public/novels/${encodedSlug}`, {
-            next: { revalidate: 900 },
-            signal: AbortSignal.timeout(5_000),
-          });
-          if (detail.status === 451 || detail.status === 404) continue;
 
           const lastModified =
             novel.latest_chapter_updated_at || novel.added_at || undefined;
@@ -67,7 +46,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           // API call per novel. Add when chapter count grows enough to
           // justify the traffic cost.
         }
-      }
     }
   } catch {
     // API unreachable — return static pages only

@@ -9,13 +9,29 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from novelai.api.app import create_app
+from novelai.api.routers.dependencies import get_db_session
+from novelai.db.base import Base
+from novelai.db.model_registry import register_database_models
 
 
 @pytest.fixture()
 def app():
-    return create_app()
+    register_database_models()
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    application = create_app()
+    application.dependency_overrides[get_db_session] = lambda: session
+    return application
 
 
 @pytest.fixture()
@@ -73,9 +89,7 @@ class TestAdminHealth:
         with patch("novelai.api.auth.roles.get_current_user") as mock_get_user:
             from novelai.api.auth.session import SessionUser
 
-            mock_get_user.return_value = SessionUser(
-                user_id=1, email="owner@test.com", role="owner"
-            )
+            mock_get_user.return_value = SessionUser(user_id=1, email="owner@test.com", role="owner")
             response = client.get("/api/admin/health")
         if response.status_code == 200:
             data = response.json()

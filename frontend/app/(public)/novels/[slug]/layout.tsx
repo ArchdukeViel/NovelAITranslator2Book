@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { publicApi } from "@/lib/public-api";
 import {
   buildCanonicalUrl,
   buildNovelJsonLd,
@@ -22,22 +23,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   let novelDescription: string | null = null;
 
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
-    const res = await fetch(
-      `${apiUrl}/api/public/novels/${encodedSlug}`,
-      {
-        next: { revalidate: 300 },
-        signal: AbortSignal.timeout(5_000),
-      },
-    );
-    if (res.ok) {
-      const data = (await res.json()) as {
-        title?: string;
-        synopsis?: string | null;
-      };
-      novelTitle = data.title ?? null;
-      novelDescription = data.synopsis ?? null;
-    }
+    const data = await publicApi.novel(slug);
+    novelTitle = data.title ?? null;
+    novelDescription = data.synopsis ?? null;
   } catch {
     // Server fetch failed — use fallback metadata
   }
@@ -73,11 +61,7 @@ export default async function NovelSlugLayout({
   const encodedSlug = encodeURIComponent(slug);
   let data: { title?: string; synopsis?: string | null; author?: string | null } = {};
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/public/novels/${encodedSlug}`, {
-      next: { revalidate: 300 },
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (response.ok) data = await response.json();
+    data = await publicApi.novel(slug);
   } catch {
     // Metadata remains optional when public API is unavailable.
   }

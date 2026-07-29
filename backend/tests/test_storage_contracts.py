@@ -442,16 +442,13 @@ def test_storage_fetch_cache_adapter_uses_storage_service(storage: StorageServic
 def test_storage_contracts_are_documented() -> None:
     # Resolve repository root robustly regardless of current working directory
     repo_root = Path(__file__).resolve().parents[2]
-    doc = (repo_root / "docs" / "reference" / "data-output-structure.md").read_text(encoding="utf-8")
+    doc = (repo_root / "docs" / "STORAGE.md").read_text(encoding="utf-8")
     required_fragments = [
-        "runtime/translation/chunks.json",
-        "runtime/translation/chunk_attempts.json",
-        "runtime/translation/bundles.json",
-        "runtime/translation/outputs.json",
-        "runtime/provider_requests.json",
-        "runtime/fetch_cache/index.json",
-        "translation_cache.json",
-        "scheduler_states.json",
+        "metadata.json",
+        "metadata_backups/",
+        "chapters/<chapter_id>.json",
+        "assets/images/<chapter_id>/",
+        "runtime/ and cache families",
     ]
     for fragment in required_fragments:
         assert fragment in doc
@@ -462,15 +459,14 @@ def test_storage_contracts_are_documented() -> None:
 
 def test_storage_contract_document_exists() -> None:
     repo_root = Path(__file__).resolve().parents[2]
-    doc = (repo_root / "docs" / "storage-contract.md").read_text(encoding="utf-8")
+    doc = (repo_root / "docs" / "STORAGE.md").read_text(encoding="utf-8")
     for fragment in (
         "Novel Metadata",
-        "Metadata Backups",
-        "Raw Chapter Bundles",
-        "Chapter Image Assets",
-        "Translated Chapter Versions",
-        "Translation Edit History",
-        "PostgreSQL Projection Relationship",
+        "Chapter Bundle",
+        "Assets",
+        "PostgreSQL Projections",
+        "Forward-Only Schemas",
+        "Backup Contract",
     ):
         assert fragment in doc
 

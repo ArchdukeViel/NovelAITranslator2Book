@@ -105,6 +105,8 @@ jobs:
           --ignore=backend/tests/test_malformed_artifact_recovery.py
           --ignore=backend/tests/test_novel_lifecycle_integration.py
           --ignore=backend/tests/test_novel_orchestration_service.py
+          --ignore=backend/tests/test_notification_event_bus.py
+          --ignore=backend/tests/test_notification_persistence_service.py
           --ignore=backend/tests/test_project_layout.py
           --ignore=backend/tests/test_provider_registry.py
           --ignore=backend/tests/test_public_reader_availability.py
@@ -131,6 +133,10 @@ jobs:
           - shard: user-data
             test_files: >-
               backend/tests/test_user_data_router.py
+          - shard: notifications
+            test_files: >-
+              backend/tests/test_notification_event_bus.py
+              backend/tests/test_notification_persistence_service.py
           - shard: web-api
             test_files: >-
               backend/tests/test_web_api.py

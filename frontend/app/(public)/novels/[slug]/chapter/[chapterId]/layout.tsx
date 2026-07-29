@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { publicApi } from "@/lib/public-api";
 import {
   buildCanonicalUrl,
   buildChapterJsonLd,
@@ -27,28 +28,14 @@ export async function generateMetadata({
   let chapterDescription: string | null = null;
 
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
-    const res = await fetch(
-      `${apiUrl}/api/public/novels/${encodedSlug}/chapters/${encodedChapterId}`,
-      {
-        next: { revalidate: 300 },
-        signal: AbortSignal.timeout(5_000),
-      },
-    );
-    if (res.ok) {
-      const data = (await res.json()) as {
-        title?: string | null;
-        novel_title?: string | null;
-        text?: string;
-      };
-      chapterTitle = data.title ?? null;
-      novelTitle = data.novel_title ?? null;
-      if (data.text?.trim()) {
-        chapterDescription = data.text
-          .trim()
-          .slice(0, 200)
-          .replace(/\s+/g, " ");
-      }
+    const data = await publicApi.chapter(slug, chapterId);
+    chapterTitle = data.title ?? null;
+    novelTitle = data.novel_title ?? null;
+    if (data.text?.trim()) {
+      chapterDescription = data.text
+        .trim()
+        .slice(0, 200)
+        .replace(/\s+/g, " ");
     }
   } catch {
     // Server fetch failed — use fallback metadata
@@ -86,11 +73,7 @@ export default async function ChapterLayout({
   const encodedChapterId = encodeURIComponent(chapterId);
   let data: { title?: string | null; novel_title?: string | null; text?: string } = {};
   try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL || ""}/api/public/novels/${encodedSlug}/chapters/${encodedChapterId}`,
-      { next: { revalidate: 300 }, signal: AbortSignal.timeout(5_000) },
-    );
-    if (response.ok) data = await response.json();
+    data = await publicApi.chapter(slug, chapterId);
   } catch {
     // Metadata remains optional when public API is unavailable.
   }

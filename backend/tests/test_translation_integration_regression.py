@@ -728,13 +728,18 @@ class TestPublicReaderAvailability:
     def _client(self, storage: StorageService, as_owner: bool = False):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
         from starlette.middleware.sessions import SessionMiddleware
 
         from novelai.api.auth.session import get_current_user
-        from novelai.api.routers.dependencies import get_public_catalog_service, get_storage
+        from novelai.api.routers.dependencies import get_db_session, get_public_catalog_service, get_storage
         from novelai.api.routers.public_catalog import router as public_catalog_router
         from novelai.api.routers.public_chapter import router as public_chapter_router
         from novelai.api.routers.public_novel import router as public_novel_router
+        from novelai.db.base import Base
+        from novelai.db.model_registry import register_database_models
         from novelai.services.public_catalog_service import PublicCatalogService
 
         app = FastAPI()
@@ -748,6 +753,15 @@ class TestPublicReaderAvailability:
             db_session=None,
         )
         app.dependency_overrides[get_current_user] = lambda: self._owner_user() if as_owner else None
+        register_database_models()
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(engine)
+        session = sessionmaker(bind=engine)()
+        app.dependency_overrides[get_db_session] = lambda: session
         return TestClient(app, raise_server_exceptions=False)
 
     def test_hard_404_for_missing(self, tmp_storage: StorageService) -> None:
