@@ -100,6 +100,30 @@ def test_vercel_frontend_contract_uses_nextjs_and_backend_rewrite() -> None:
     assert 'source: "/api/:path*"' in next_config
 
 
+def test_vercel_services_contract_routes_frontend_and_monolith_backend() -> None:
+    config = json.loads((PROJECT_ROOT / "vercel.json").read_text(encoding="utf-8"))
+
+    assert config["services"]["frontend"] == {"root": "frontend/", "framework": "nextjs"}
+    backend = config["services"]["backend"]
+    assert backend["root"] == "."
+    assert backend["framework"] == "fastapi"
+    assert backend["entrypoint"] == "vercel_app:app"
+    assert backend["functions"]["vercel_app.py"]["maxDuration"] == 300
+    assert backend["installCommand"] == "pip install '.[db,s3,auth]'"
+
+    routes = {rewrite["source"]: rewrite["destination"]["service"] for rewrite in config["rewrites"]}
+    assert routes["/api/(.*)"] == "backend"
+    assert routes["/health/(.*)"] == "backend"
+    assert routes["/metrics"] == "backend"
+    assert routes["/(.*)"] == "frontend"
+
+
+def test_vercel_backend_entrypoint_exports_monolith_app() -> None:
+    source = (PROJECT_ROOT / "vercel_app.py").read_text(encoding="utf-8")
+
+    assert "from novelai.api.app import app" in source
+
+
 def test_environment_templates_keep_session_cookie_setting_in_the_same_position() -> None:
     templates = [
         PROJECT_ROOT / ".env.example",

@@ -47,18 +47,20 @@ the target.
 - Migrations: one-shot Compose ``migrate`` service must succeed before APIs.
 - Purpose: production-like local acceptance and smoke testing.
 
-### Preview (disposable — Vercel + Render monolith + Supabase + R2)
+### Preview (disposable — Vercel Services + Supabase + R2)
 
-- Frontend: Vercel (serverless, auto-deploy from git).
-- Backend: Render single monolithic web service.
+- Frontend: Vercel Next.js service.
+- Backend: Vercel FastAPI Function in monolith mode, routed through the same
+  deployment URL. It scales to zero and has the plan's request-duration limit.
 - Database: Supabase PostgreSQL (shared pool).
 - Storage: R2 application bucket scoped to a non-root preview prefix.
 - Redis: optional (in-memory rate limiter otherwise).
-- Migrations: Render start command runs ``alembic upgrade head`` before
-  app bind.
+- Migrations: an operator or CI one-shot runs ``alembic upgrade head`` before
+  deploying a revision that requires new schema.
 - Backend uses SQLAlchemy/Alembic directly; Supabase Data API roles are not an
   application persistence path and remain denied on backend-internal tables.
-- Acceptable for feature previews; not hardened for production.
+- Workers, scheduler, maintenance, backups, and SMTP remain disabled. Acceptable
+  for bounded feature previews; not for long translations or production.
 
 ### Production (optimal — Vercel + split containers + managed PostgreSQL + R2)
 
