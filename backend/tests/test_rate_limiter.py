@@ -33,6 +33,11 @@ class TestInMemoryRateLimiter:
         assert limiter.hit("client1", "test_action") is True
         assert limiter.hit("client2", "test_action") is True
 
+    def test_key_transform_avoids_raw_client_identifier_in_storage(self):
+        limiter = InMemoryRateLimiter(limits={"analytics": 1}, window_seconds=60)
+        assert limiter.hit("127.0.0.1", "analytics", key_transform=lambda _: "anonymous:digest") is True
+        assert set(limiter._hits) == {"anonymous:digest:analytics"}
+
 
 class TestDisabledRateLimiter:
     def test_always_allows(self):
@@ -46,6 +51,7 @@ class TestRedisRateLimiter:
     @pytest.fixture(autouse=True)
     def setup_redis(self, monkeypatch):
         import fakeredis
+
         # Create a fresh fake redis instance for each test
         self.fake_redis = fakeredis.FakeStrictRedis()
         monkeypatch.setattr("novelai.infrastructure.http.rate_limiter.settings.REDIS_URL", "redis://localhost:6379/0")

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Image tag to deploy (e.g. latest or sha-a1b2c3)"
+        description: "Published image tag to deploy (latest or sha-<full commit SHA>)"
         required: true
         default: "latest"
       environment:
@@ -14,10 +14,6 @@ on:
         options:
           - staging
           - production
-  push:
-    tags:
-      - 'v*'
-
 permissions: {}
 
 jobs:
@@ -33,17 +29,8 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            # Tag-trigger: use the tag name (strip leading 'v')
-            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-            echo "Triggered by tag push: ${GITHUB_REF_NAME}"
-          else
-            # Manual dispatch: use the input
-            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-            echo "Triggered by manual dispatch: ${{ inputs.version }}"
-          fi
-        env:
-          GITHUB_REF_NAME: ${{ github.ref_name }}
+          echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          echo "Manual deployment requested for image tag: ${{ inputs.version }}"
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
@@ -56,17 +43,17 @@ jobs:
             cd /opt/novelai
 
             # Write the requested version into the env file so compose picks it up
-            VERSION="${{ steps.version.outputs.value }}"
+            export VERSION="${{ steps.version.outputs.value }}"
             echo "Deploying version: $VERSION to ${{ github.event.inputs.environment || 'production' }}"
 
             # Pull the exact image tags being deployed
             docker compose pull
 
-            # Bring up with zero-downtime replacement
-            docker compose up -d --remove-orphans --pull always
-
-            # Run any pending migrations after new containers are up
+            # Migrations must succeed before application containers start.
             docker compose run --rm migrate
+
+            # Bring up the requested immutable application images.
+            docker compose up -d --remove-orphans --pull always
 
             # Prune dangling images older than 24h to reclaim disk
             docker image prune -f --filter "until=24h"

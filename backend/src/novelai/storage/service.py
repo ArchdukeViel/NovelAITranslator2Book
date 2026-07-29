@@ -30,7 +30,6 @@ from novelai.storage.chapters import (
     query_chapters,
     save_chapter,
 )
-from novelai.storage.exports import build_export_path, get_chapters_ready_for_export
 from novelai.storage.glossary import load_glossary, save_glossary
 from novelai.storage.jobs import (
     _get_checkpoints_dir,
@@ -49,7 +48,6 @@ from novelai.storage.media import (
     _guess_asset_suffix,
     _normalize_media_fields,
     clear_chapter_image_assets,
-    load_chapter_export_images,
     load_chapter_media_state,
     resolve_asset_path,
     save_chapter_image_asset,
@@ -595,7 +593,6 @@ class StorageService:
     clear_chapter_image_assets = clear_chapter_image_assets
     save_chapter_image_asset = save_chapter_image_asset
     resolve_asset_path = resolve_asset_path
-    load_chapter_export_images = load_chapter_export_images
     _normalize_media_fields = _normalize_media_fields
     load_chapter_media_state = load_chapter_media_state
     save_chapter_media_state = save_chapter_media_state
@@ -608,8 +605,6 @@ class StorageService:
     list_checkpoints = list_checkpoints
     restore_from_checkpoint = restore_from_checkpoint
     rollback_to_state = rollback_to_state
-    build_export_path = build_export_path
-    get_chapters_ready_for_export = get_chapters_ready_for_export
     save_glossary = save_glossary
     load_glossary = load_glossary
     _trace_dir = _trace_dir

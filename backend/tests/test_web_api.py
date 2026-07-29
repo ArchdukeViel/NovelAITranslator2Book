@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -39,7 +40,6 @@ from novelai.api.routers.dependencies import (
 from novelai.config.settings import settings
 from novelai.core.errors import (
     ConfigError,
-    ExportError,
     NovelAIError,
     PipelineError,
     ProviderError,
@@ -218,7 +218,19 @@ def _csrf_headers(client: TestClient) -> dict[str, str]:
 
 
 def test_admin_routes_use_only_canonical_namespace() -> None:
-    paths = set(create_app().openapi()["paths"])
+    def route_paths(routes: Sequence[object], prefix: str = "") -> set[str]:
+        paths: set[str] = set()
+        for route in routes:
+            if path := getattr(route, "path", None):
+                paths.add(f"{prefix}{path}")
+                continue
+            original_router = getattr(route, "original_router", None)
+            include_context = getattr(route, "include_context", None)
+            if original_router is not None and include_context is not None:
+                paths.update(route_paths(original_router.routes, f"{prefix}{include_context.prefix}"))
+        return paths
+
+    paths = route_paths(create_app().routes)
 
     assert any(path == "/api/admin/novels" or path.startswith("/api/admin/novels/") for path in paths)
     assert "/api/admin/activity" in paths
@@ -628,10 +640,6 @@ def test_custom_novelai_error_handlers_use_domain_codes(_session_auth_defaults: 
     async def debug_custom_storage() -> None:
         raise StorageError("library write failed")
 
-    @app.get("/debug/custom-export")
-    async def debug_custom_export() -> None:
-        raise ExportError("epub generation failed")
-
     @app.get("/debug/custom-config")
     async def debug_custom_config() -> None:
         raise ConfigError("missing provider configuration")
@@ -644,7 +652,6 @@ def test_custom_novelai_error_handlers_use_domain_codes(_session_auth_defaults: 
     expected = {
         "/debug/custom-pipeline": (502, "PIPELINE_ERROR", "translation"),
         "/debug/custom-storage": (500, "STORAGE_ERROR", "storage"),
-        "/debug/custom-export": (424, "EXPORT_ERROR", "export"),
         "/debug/custom-config": (500, "CONFIGURATION_ERROR", "config"),
         "/debug/custom-application": (500, "APPLICATION_ERROR", "application"),
     }
@@ -889,7 +896,6 @@ class TestAuth:
             ("PUT", "/api/admin/novels/test-n1/chapters/1/translated", {"text": "edited"}),
             ("POST", "/api/admin/novels/test-n1/chapters/1/translated/rollback", {"version_id": "v1"}),
             ("PATCH", "/api/admin/requests/request-1", {"status": "approved"}),
-            ("POST", "/api/admin/novels/test-n1/export", {"format": "epub"}),
         ],
     )
     def test_dangerous_routes_reject_guest_and_non_owner(
@@ -2824,16 +2830,16 @@ class TestActivity:
         assert activity_resp.status_code == 200
         activity_list = activity_resp.json()["activity"]
         assert len(activity_list) == 1
-        assert activity_list[0]["id"] == created["id"]
+        assert activity_list[0]["activity_id"] == created["activity_id"]
         canonical_activity_resp = c.get("/api/admin/activity", params={"activity_type": "crawl", "status": "pending"})
         assert canonical_activity_resp.status_code == 200
-        assert canonical_activity_resp.json()["activity"][0]["id"] == created["id"]
+        assert canonical_activity_resp.json()["activity"][0]["activity_id"] == created["activity_id"]
 
         list_resp = c.get("/api/admin/activity", params={"activity_type": "crawl", "status": "pending"})
         assert list_resp.status_code == 200
         listed = list_resp.json()["activity"]
         assert len(listed) == 1
-        assert listed[0]["id"] == created["id"]
+        assert listed[0]["activity_id"] == created["activity_id"]
 
         for removed_path in ("/novels/jobs", "/api/novels/jobs"):
             removed_route_resp = c.get(removed_path, params={"job_type": "crawl", "status": "pending"})
@@ -2857,14 +2863,14 @@ class TestActivity:
         )
         assert create_resp.status_code == 200
         created_payload = create_resp.json()
-        job_id = created_payload["id"]
+        activity_id = created_payload["activity_id"]
         assert "provider" not in created_payload
         assert "model" not in created_payload
         assert created_payload["provider_key"] == "gemini"
         assert created_payload["provider_model"] == "gemini-2.5-flash-lite"
 
         update_resp = c.patch(
-            f"/api/admin/activity/{job_id}",
+            f"/api/admin/activity/{activity_id}",
             json={"status": "failed", "error": "worker failed", "metadata": {"worker": "local"}},
             headers=_csrf_headers(c),
         )
@@ -2873,7 +2879,7 @@ class TestActivity:
         assert update_resp.json()["finished_at"] is not None
         assert update_resp.json()["error"] == "worker failed"
 
-        get_resp = c.get(f"/api/admin/activity/{job_id}")
+        get_resp = c.get(f"/api/admin/activity/{activity_id}")
         assert get_resp.status_code == 200
         assert get_resp.json()["metadata"]["worker"] == "local"
 
@@ -2907,14 +2913,14 @@ class TestActivity:
         )
         c = _make_app(storage, jobs)
 
-        get_resp = c.get(f"/api/admin/activity/{created['id']}")
+        get_resp = c.get(f"/api/admin/activity/{created['activity_id']}")
         list_resp = c.get("/api/admin/activity", params={"activity_type": "translation"})
 
         payload = get_resp.json()
         assert get_resp.status_code == 200
-        assert payload["id"] == created["id"]
-        assert payload["activity_id"] == created["id"]
-        assert payload["job_id"] == created["id"]
+        assert payload["activity_id"] == created["activity_id"]
+        assert "id" not in payload
+        assert "job_id" not in payload
         assert "provider" not in payload
         assert "model" not in payload
         assert payload["provider_key"] == "gemini"
@@ -2929,7 +2935,7 @@ class TestActivity:
         assert payload["errors"][0]["code"] == "provider_rate_limited"
         assert payload["model_states"][0]["status"] == "cooling_down"
         assert list_resp.json()["activity"][0]["current_stage"] == "TranslateStage"
-        assert list_resp.json()["jobs"][0]["job_id"] == created["id"]
+        assert "jobs" not in list_resp.json()
 
     def test_activity_routes_preserve_canonical_provider_fields(self, _session_auth_defaults: None) -> None:
         bootstrap()
@@ -2944,18 +2950,17 @@ class TestActivity:
         c = _make_app(storage, jobs)
 
         list_resp = c.get("/api/admin/activity", params={"activity_type": "translation", "status": "pending"})
-        detail_resp = c.get(f"/api/admin/activity/{created['id']}")
+        detail_resp = c.get(f"/api/admin/activity/{created['activity_id']}")
 
         assert list_resp.status_code == 200
         list_payload = list_resp.json()
         assert len(list_payload["activity"]) == 1
-        assert len(list_payload["jobs"]) == 1
-        assert list_payload["activity"][0] == list_payload["jobs"][0]
+        assert "jobs" not in list_payload
         assert detail_resp.status_code == 200
         detail_payload = detail_resp.json()
-        assert detail_payload["id"] == created["id"]
-        assert detail_payload["activity_id"] == created["id"]
-        assert detail_payload["job_id"] == created["id"]
+        assert detail_payload["activity_id"] == created["activity_id"]
+        assert "id" not in detail_payload
+        assert "job_id" not in detail_payload
         assert "provider" not in detail_payload
         assert "model" not in detail_payload
         assert detail_payload["provider_key"] == "gemini"
@@ -2982,13 +2987,13 @@ class TestActivity:
         )
         c = _make_app(storage, jobs)
 
-        resp = c.get(f"/api/admin/activity/{created['id']}")
+        resp = c.get(f"/api/admin/activity/{created['activity_id']}")
 
         assert resp.status_code == 200
         payload = resp.json()
-        assert payload["id"] == created["id"]
-        assert payload["activity_id"] == created["id"]
-        assert payload["job_id"] == created["id"]
+        assert payload["activity_id"] == created["activity_id"]
+        assert "id" not in payload
+        assert "job_id" not in payload
         assert payload["current_stage"] == "RootStage"
         assert payload["current_label"] == "Root progress"
         assert payload["completed"] == 1
@@ -3007,10 +3012,10 @@ class TestActivity:
         created = jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="metadata")
 
         headers = _csrf_headers(c)
-        delete_resp = c.delete(f"/api/admin/activity/{created['id']}", headers=headers)
+        delete_resp = c.delete(f"/api/admin/activity/{created['activity_id']}", headers=headers)
 
         assert delete_resp.status_code == 204
-        assert jobs.get_activity(str(created["id"])) is None
+        assert jobs.get_activity(str(created["activity_id"])) is None
         assert c.delete("/api/admin/activity/missing", headers=headers).status_code == 404
 
     def test_invalid_activity_kind_returns_400(self, _session_auth_defaults: None) -> None:
@@ -3076,11 +3081,11 @@ class TestActivity:
             chapters="1",
         )
 
-        resp = c.post(f"/api/admin/activity/{created['id']}/run", headers=_csrf_headers(c))
+        resp = c.post(f"/api/admin/activity/{created['activity_id']}/run", headers=_csrf_headers(c))
 
         assert resp.status_code == 200
         payload = resp.json()
-        stored = jobs.get_activity(str(created["id"]))
+        stored = jobs.get_activity(str(created["activity_id"]))
         assert stored is not None
         assert payload["status"] == "completed", payload.get("error")
         assert payload["finished_at"] == stored["finished_at"]
@@ -3093,9 +3098,9 @@ class TestActivity:
         worker = ActivityWorkerService(jobs, StubJobOrchestrator(storage))  # type: ignore[arg-type]
         c = _make_app(storage, jobs, worker)
         created = jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="chapters")
-        jobs.update_activity_status(str(created["id"]), "failed", error="source timeout")
+        jobs.update_activity_status(str(created["activity_id"]), "failed", error="source timeout")
 
-        resp = c.post(f"/api/admin/activity/{created['id']}/run", headers=_csrf_headers(c))
+        resp = c.post(f"/api/admin/activity/{created['activity_id']}/run", headers=_csrf_headers(c))
 
         assert resp.status_code == 400
         assert "cannot be run from status: failed" in resp.text
@@ -3107,10 +3112,10 @@ class TestActivity:
         worker = ActivityWorkerService(jobs, StubJobOrchestrator(storage))  # type: ignore[arg-type]
         c = _make_app(storage, jobs, worker)
         created = jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="chapters")
-        failed = jobs.update_activity_status(str(created["id"]), "failed", error="source timeout")
+        failed = jobs.update_activity_status(str(created["activity_id"]), "failed", error="source timeout")
         assert failed is not None
 
-        resp = c.post(f"/api/admin/activity/{created['id']}/retry", headers=_csrf_headers(c))
+        resp = c.post(f"/api/admin/activity/{created['activity_id']}/retry", headers=_csrf_headers(c))
 
         assert resp.status_code == 200
         payload = resp.json()
@@ -3131,9 +3136,9 @@ class TestActivity:
         c = _make_app(storage, jobs, worker)
         created = jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="chapters")
         if status != "pending":
-            jobs.update_activity_status(str(created["id"]), status)
+            jobs.update_activity_status(str(created["activity_id"]), status)
 
-        resp = c.post(f"/api/admin/activity/{created['id']}/retry", headers=_csrf_headers(c))
+        resp = c.post(f"/api/admin/activity/{created['activity_id']}/retry", headers=_csrf_headers(c))
 
         assert resp.status_code == 400
         assert f"cannot be retried from status: {status}" in resp.text
@@ -3157,11 +3162,11 @@ class TestActivity:
         owner = _make_app(storage, jobs, worker)
         user = _make_app(storage, jobs, worker, session_user=REGULAR_USER)
         created = jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="chapters")
-        jobs.update_activity_status(str(created["id"]), "failed", error="source timeout")
+        jobs.update_activity_status(str(created["activity_id"]), "failed", error="source timeout")
 
-        missing_csrf = owner.post(f"/api/admin/activity/{created['id']}/retry")
-        non_owner = user.post(f"/api/admin/activity/{created['id']}/retry", headers=_csrf_headers(user))
-        canonical = owner.post(f"/api/admin/activity/{created['id']}/retry", headers=_csrf_headers(owner))
+        missing_csrf = owner.post(f"/api/admin/activity/{created['activity_id']}/retry")
+        non_owner = user.post(f"/api/admin/activity/{created['activity_id']}/retry", headers=_csrf_headers(user))
+        canonical = owner.post(f"/api/admin/activity/{created['activity_id']}/retry", headers=_csrf_headers(owner))
 
         assert missing_csrf.status_code == 403
         assert non_owner.status_code == 403
@@ -3176,7 +3181,7 @@ class TestActivity:
         created = jobs.create_crawl_activity(novel_id="test-n1", source_key="syosetu_ncode", kind="chapters")
 
         resp = c.patch(
-            f"/api/admin/activity/{created['id']}",
+            f"/api/admin/activity/{created['activity_id']}",
             json={"status": "running"},
             headers=_csrf_headers(c),
         )
@@ -3322,7 +3327,7 @@ class TestRateLimit:
         assert logged_activity[0]["metadata"]["activity_subtype"] == "crawling"
         assert logged_activity[0]["metadata"]["activity_phase"] == "preliminary_crawl"
         assert logged_activity[0]["metadata"]["result"]["chapter_count"] == 1
-        assert resp.json()["activity_log_job_id"] == logged_activity[0]["id"]
+        assert resp.json()["activity_log_activity_id"] == logged_activity[0]["activity_id"]
         assert orchestrator.calls == [
             (
                 "scrape_metadata",

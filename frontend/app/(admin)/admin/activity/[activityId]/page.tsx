@@ -88,10 +88,10 @@ export default function ActivityDetailPage() {
   const runOrRetryActivity = useMutation({
     mutationFn: async (activityItem: ActivityRecord) => {
       if (activityItem.status === "pending") {
-        return api.runActivity(activityItem.id);
+        return api.runActivity(activityItem.activity_id);
       }
       if (activityItem.status === "failed" || activityItem.status === "cancelled") {
-        return api.retryActivity(activityItem.id);
+        return api.retryActivity(activityItem.activity_id);
       }
       throw new Error(`Activity cannot be run from status: ${activityItem.status}`);
     },
@@ -192,11 +192,11 @@ export default function ActivityDetailPage() {
                       const progress = activityProgress(activityItem);
                       const progressLabel = activityProgressLabel(activityItem);
                       return (
-                        <tr key={activityItem.id} className="border-b last:border-0">
+                        <tr key={activityItem.activity_id} className="border-b last:border-0">
                           <td className="px-3 py-3">
                             <div className="font-medium">{displayToken(activityPhase(activityItem))}</div>
                             {progressLabel ? <div className="mt-1 text-xs text-muted-foreground">{progressLabel}</div> : null}
-                            <div className="mt-1 font-mono text-xs text-muted-foreground">{activityItem.id}</div>
+                            <div className="mt-1 font-mono text-xs text-muted-foreground">{activityItem.activity_id}</div>
                           </td>
                           <td className="px-3 py-3">{activityItem.chapters || "-"}</td>
                           <td className="px-3 py-3">
@@ -242,7 +242,7 @@ export default function ActivityDetailPage() {
 
               <div className="mt-4 space-y-4">
                 {activeActivity.map((activityItem) => (
-                  <div key={`${activityItem.id}-payload`} className="rounded-md border">
+                  <div key={`${activityItem.activity_id}-payload`} className="rounded-md border">
                     <div className="border-b px-3 py-2 text-xs uppercase text-muted-foreground">{displayToken(activityPhase(activityItem))}</div>
                     {activityItem.error ? (
                       <div className="border-b border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{activityItem.error}</div>

@@ -4,7 +4,6 @@ import shutil
 from pathlib import Path
 from uuid import uuid4
 
-from novelai.storage.service import StorageService
 from tests.conftest import TESTS_TMP_ROOT, cleanup_test_artifacts
 
 
@@ -12,41 +11,6 @@ def _workspace_test_root() -> Path:
     root = TESTS_TMP_ROOT.parent / "project_layout" / uuid4().hex
     root.mkdir(parents=True, exist_ok=False)
     return root
-
-
-def test_build_export_path_defaults_to_novel_library():
-    root = _workspace_test_root()
-    try:
-        storage = StorageService(root / "novel_library")
-        storage.save_metadata("novel1", {"title": "Test Novel"})
-
-        export_path = storage.build_export_path("novel1", "epub")
-
-        expected_path = (
-            root.resolve()
-            / "novel_library"
-            / "novels"
-            / "test-novel"
-            / "full_novel.epub"
-        )
-        assert export_path == expected_path
-        assert export_path.parent.exists()
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
-
-
-def test_build_export_path_supports_custom_output_dir():
-    root = _workspace_test_root()
-    try:
-        storage = StorageService(root / "novel_library")
-        custom_output = root / "custom-output"
-
-        export_path = storage.build_export_path("novel1", "pdf", custom_output)
-
-        assert export_path == custom_output / "novel1.pdf"
-        assert custom_output.exists()
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
 
 
 def test_cleanup_test_artifacts_removes_known_directories():
@@ -80,3 +44,10 @@ def test_cleanup_test_artifacts_removes_known_directories():
         }
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_deployment_files_have_one_canonical_frontend_dockerfile() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+
+    assert (project_root / "deploy" / "frontend.Dockerfile").is_file()
+    assert not (project_root / "frontend" / "Dockerfile").exists()

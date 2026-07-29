@@ -4,7 +4,7 @@ Review, NovelRequest, AuditLog, and SystemSetting ORM models."""
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
@@ -27,6 +27,13 @@ _SQLITE = "sqlite:///:memory:"
 @pytest.fixture()
 def session():
     engine = create_engine(_SQLITE)
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_fk_pragma(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     sess = Session()
@@ -96,29 +103,84 @@ class TestUser:
         assert "test@example.com" in repr(user)
         assert "user" in repr(user)
 
+    def test_admin_management_fields_default_null(self, session) -> None:
+        """disabled_at, disabled_reason, disabled_by_user_id, session_revoked_at
+        default to None for a new user."""
+        u = User(email="admin-mgmt@example.com", role="user")
+        session.add(u)
+        session.commit()
+        assert u.disabled_at is None
+        assert u.disabled_reason is None
+        assert u.disabled_by_user_id is None
+        assert u.session_revoked_at is None
+
+    def test_admin_management_fields_persist(self, session) -> None:
+        """Setting admin user-management fields persists correctly."""
+        from datetime import UTC, datetime
+
+        admin = User(email="admin@example.com", role="owner")
+        session.add(admin)
+        session.commit()
+
+        now = datetime.now(UTC)
+        u = User(
+            email="target@example.com",
+            role="user",
+            disabled_at=now,
+            disabled_reason="Abusive behavior",
+            disabled_by_user_id=admin.id,
+            session_revoked_at=now,
+        )
+        session.add(u)
+        session.commit()
+
+        result = session.query(User).filter_by(email="target@example.com").one()
+        assert result.disabled_at is not None
+        assert result.disabled_reason == "Abusive behavior"
+        assert result.disabled_by_user_id == admin.id
+        assert result.session_revoked_at is not None
+
+    def test_disabled_by_fk_ondelete_set_null(self, session) -> None:
+        """When the admin user who disabled a user is deleted,
+        disabled_by_user_id is set to NULL."""
+        admin = User(email="admin-del@example.com", role="owner")
+        session.add(admin)
+        session.commit()
+
+        u = User(
+            email="disabled-target@example.com",
+            role="user",
+            disabled_by_user_id=admin.id,
+            disabled_reason="Testing cascade",
+        )
+        session.add(u)
+        session.commit()
+
+        session.delete(admin)
+        session.commit()
+
+        result = session.query(User).filter_by(email="disabled-target@example.com").one()
+        assert result.disabled_by_user_id is None
+        # Other fields should be preserved
+        assert result.disabled_reason == "Testing cascade"
+
 
 class TestReadingProgress:
     def test_create_progress(self, session, user, novel) -> None:
         rp = ReadingProgress(user_id=user.id, novel_id=novel.id, progress_percent=0.5)
         session.add(rp)
         session.commit()
-        result = session.query(ReadingProgress).filter_by(
-            user_id=user.id, novel_id=novel.id
-        ).one()
+        result = session.query(ReadingProgress).filter_by(user_id=user.id, novel_id=novel.id).one()
         assert result.progress_percent == pytest.approx(0.5)
 
     def test_composite_pk(self, session, user, novel) -> None:
         session.add(ReadingProgress(user_id=user.id, novel_id=novel.id, progress_percent=0.2))
         session.commit()
         # Upsert via update
-        rp = session.query(ReadingProgress).filter_by(
-            user_id=user.id, novel_id=novel.id
-        ).one()
+        rp = session.query(ReadingProgress).filter_by(user_id=user.id, novel_id=novel.id).one()
         rp.progress_percent = 0.8
         session.commit()
-        refreshed = session.query(ReadingProgress).filter_by(
-            user_id=user.id, novel_id=novel.id
-        ).one()
+        refreshed = session.query(ReadingProgress).filter_by(user_id=user.id, novel_id=novel.id).one()
         assert refreshed.progress_percent == pytest.approx(0.8)
 
 
@@ -143,9 +205,7 @@ class TestLibraryItem:
         item = LibraryItem(user_id=user.id, novel_id=novel.id)
         session.add(item)
         session.commit()
-        result = session.query(LibraryItem).filter_by(
-            user_id=user.id, novel_id=novel.id
-        ).one()
+        result = session.query(LibraryItem).filter_by(user_id=user.id, novel_id=novel.id).one()
         assert result.status == "reading"
 
     def test_composite_pk_unique(self, session, user, novel) -> None:

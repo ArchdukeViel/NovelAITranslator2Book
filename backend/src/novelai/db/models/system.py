@@ -32,6 +32,10 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     target_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     target_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    severity: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
@@ -55,8 +59,7 @@ class SystemSetting(Base):
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
     value_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(),
-        default=_utcnow, onupdate=_utcnow
+        DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow, onupdate=_utcnow
     )
     updated_by: Mapped[int | None] = mapped_column(nullable=True)
 

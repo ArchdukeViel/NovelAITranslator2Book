@@ -30,7 +30,7 @@ def test_create_and_load_crawl_activity(activity_log: ActivityQueueService) -> N
         source_url="https://ncode.syosetu.com/n1234ab/",
     )
 
-    loaded = activity_log.get_activity(activity["id"])
+    loaded = activity_log.get_activity(activity["activity_id"])
 
     assert loaded is not None
     assert loaded["type"] == "crawl"
@@ -74,8 +74,10 @@ def test_create_translation_activity_and_filter(activity_log: ActivityQueueServi
 def test_update_activity_status_records_lifecycle_fields(activity_log: ActivityQueueService) -> None:
     activity = activity_log.create_translation_activity(novel_id="novel-1")
 
-    running = activity_log.update_activity_status(activity["id"], "running")
-    failed = activity_log.update_activity_status(activity["id"], "failed", error="source timeout", metadata={"attempt": 1})
+    running = activity_log.update_activity_status(activity["activity_id"], "running")
+    failed = activity_log.update_activity_status(
+        activity["activity_id"], "failed", error="source timeout", metadata={"attempt": 1}
+    )
 
     assert running is not None
     assert running["started_at"] is not None
@@ -88,15 +90,17 @@ def test_update_activity_status_records_lifecycle_fields(activity_log: ActivityQ
 
 
 def test_retry_activity_resets_failed_activity_and_preserves_previous_error(activity_log: ActivityQueueService) -> None:
-    activity = activity_log.create_translation_activity(novel_id="novel-1", metadata={"current_stage": "TranslateStage"})
+    activity = activity_log.create_translation_activity(
+        novel_id="novel-1", metadata={"current_stage": "TranslateStage"}
+    )
     failed = activity_log.update_activity_status(
-        activity["id"],
+        activity["activity_id"],
         "failed",
         error="provider timeout",
         metadata={"failure_code": "TRANSLATION_ACTIVITY_FAILED"},
     )
 
-    retried = activity_log.retry_activity(activity["id"])
+    retried = activity_log.retry_activity(activity["activity_id"])
 
     assert failed is not None
     assert retried is not None
@@ -113,9 +117,9 @@ def test_retry_activity_resets_failed_activity_and_preserves_previous_error(acti
 
 def test_retry_activity_accepts_cancelled_activity(activity_log: ActivityQueueService) -> None:
     activity = activity_log.create_translation_activity(novel_id="novel-1")
-    cancelled = activity_log.update_activity_status(activity["id"], "cancelled", error="cancelled by owner")
+    cancelled = activity_log.update_activity_status(activity["activity_id"], "cancelled", error="cancelled by owner")
 
-    retried = activity_log.retry_activity(activity["id"])
+    retried = activity_log.retry_activity(activity["activity_id"])
 
     assert cancelled is not None
     assert retried is not None
@@ -131,7 +135,7 @@ def test_next_pending_activity_returns_oldest_pending_by_type(activity_log: Acti
     pending = activity_log.next_pending_activity(activity_type="crawl")
 
     assert pending is not None
-    assert pending["id"] == first["id"]
+    assert pending["activity_id"] == first["activity_id"]
 
 
 def test_record_source_health_tracks_success_and_failure(activity_log: ActivityQueueService) -> None:
@@ -159,19 +163,19 @@ def test_prune_activity_log_dry_run_reports_candidates_without_deleting(activity
     activity_log._persist_activity(
         [
             {
-                "id": "completed_old",
+                "activity_id": "completed_old",
                 "status": "completed",
                 "created_at": "2026-06-01T00:00:00Z",
                 "finished_at": "2026-06-01T00:01:00Z",
             },
             {
-                "id": "completed_new",
+                "activity_id": "completed_new",
                 "status": "completed",
                 "created_at": "2026-06-02T00:00:00Z",
                 "finished_at": "2026-06-02T00:01:00Z",
             },
             {
-                "id": "pending_active",
+                "activity_id": "pending_active",
                 "status": "pending",
                 "created_at": "2026-06-03T00:00:00Z",
             },
@@ -180,7 +184,7 @@ def test_prune_activity_log_dry_run_reports_candidates_without_deleting(activity
 
     result = activity_log.prune_activity_log(keep_completed=1, keep_failed=1, dry_run=True)
 
-    assert [item["id"] for item in result["candidates"]] == ["completed_old"]
+    assert [item["activity_id"] for item in result["candidates"]] == ["completed_old"]
     assert result["deleted"] == 0
     assert activity_log.get_activity("completed_old") is not None
     assert activity_log.get_activity("pending_active") is not None
@@ -192,28 +196,28 @@ def test_prune_activity_log_preserves_active_and_recent_failed_retry_metadata(
     activity_log._persist_activity(
         [
             {
-                "id": "failed_old",
+                "activity_id": "failed_old",
                 "status": "failed",
                 "created_at": "2026-06-01T00:00:00Z",
                 "finished_at": "2026-06-01T00:01:00Z",
                 "metadata": {"retry_history": [{"error": "old"}]},
             },
             {
-                "id": "failed_recent",
+                "activity_id": "failed_recent",
                 "status": "failed",
                 "created_at": "2026-06-02T00:00:00Z",
                 "finished_at": "2026-06-02T00:01:00Z",
                 "metadata": {"retry_history": [{"error": "recent"}]},
             },
             {
-                "id": "cancelled_recent",
+                "activity_id": "cancelled_recent",
                 "status": "cancelled",
                 "created_at": "2026-06-03T00:00:00Z",
                 "finished_at": "2026-06-03T00:01:00Z",
                 "metadata": {"retry_history": [{"error": "cancelled"}]},
             },
             {
-                "id": "running_active",
+                "activity_id": "running_active",
                 "status": "running",
                 "created_at": "2026-06-04T00:00:00Z",
             },
@@ -222,7 +226,7 @@ def test_prune_activity_log_preserves_active_and_recent_failed_retry_metadata(
 
     result = activity_log.prune_activity_log(keep_completed=0, keep_failed=2, dry_run=False)
 
-    assert [item["id"] for item in result["candidates"]] == ["failed_old"]
+    assert [item["activity_id"] for item in result["candidates"]] == ["failed_old"]
     assert result["deleted"] == 1
     assert activity_log.get_activity("failed_old") is None
     assert activity_log.get_activity("running_active") is not None

@@ -353,7 +353,7 @@ export default function LibraryPage() {
             metadata: { library_action: "recrawl" },
           });
 
-          completed.push(await api.runActivity(activity.id));
+          completed.push(await api.runActivity(activity.activity_id));
           continue;
         }
 
@@ -369,7 +369,7 @@ export default function LibraryPage() {
           },
         });
 
-        completed.push(await api.runActivity(activity.id));
+        completed.push(await api.runActivity(activity.activity_id));
       }
 
       return completed;
@@ -408,7 +408,7 @@ export default function LibraryPage() {
         },
       });
 
-      return api.runActivity(activity.id);
+      return api.runActivity(activity.activity_id);
     },
     onSuccess: () => {
       invalidateLibrary();

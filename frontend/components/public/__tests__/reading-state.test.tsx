@@ -50,6 +50,25 @@ afterEach(() => {
 });
 
 describe("public reading-state UI", () => {
+  it("keeps library text and actions usable without optional novel assets", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/auth/me") return Promise.resolve(jsonResponse(user));
+      if (url === "/api/user/library") {
+        return Promise.resolve(jsonResponse([{ slug: "asset-free-novel", status: "reading", added_at: "2026-07-29T00:00:00Z" }]));
+      }
+      if (url.startsWith("/api/user/history")) return Promise.resolve(jsonResponse({ items: [] }));
+      return Promise.resolve(jsonResponse({ detail: "unexpected" }, 500));
+    });
+
+    const { container } = renderWithQuery(<LibraryPage />);
+
+    expect(await screen.findByRole("link", { name: "asset-free-novel" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View" })).toBeInTheDocument();
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelectorAll("main")).toHaveLength(1);
+  });
+
   it("shows sign-in prompt for guest library/progress controls without user API calls", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

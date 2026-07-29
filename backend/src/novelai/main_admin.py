@@ -32,6 +32,7 @@ from novelai.api.routers import (
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.health import admin_router as health_admin_router
 from novelai.api.routers.library import NovelSummary, list_novels
+from novelai.api.routers.notifications import router as notifications_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.config.production_validator import assert_production_config
 from novelai.config.settings import settings
@@ -93,6 +94,7 @@ add_error_handlers(app)
 # Auth routes (login/logout/me)
 app.include_router(auth_router)
 app.include_router(user_data_router)
+app.include_router(notifications_router)
 
 # Admin orchestration routers
 app.include_router(admin.router, prefix="/api", tags=["admin-api"])

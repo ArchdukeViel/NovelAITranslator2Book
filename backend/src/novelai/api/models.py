@@ -35,11 +35,9 @@ class JobProgressPayload(BaseModel):
 
 
 class ActivityRecordResponse(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
-    id: str
     activity_id: str
-    job_id: str
     type: Literal["crawl", "translation"]
     kind: str
     novel_id: str
@@ -68,4 +66,3 @@ class ActivityRecordResponse(BaseModel):
 
 class ActivityListResponse(BaseModel):
     activity: list[ActivityRecordResponse]
-    jobs: list[ActivityRecordResponse]

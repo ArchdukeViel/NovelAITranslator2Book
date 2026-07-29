@@ -19,6 +19,12 @@ import type {
   HistoryRecordInput,
   HistoryEntry,
   LibraryItem,
+  NotificationListParams,
+  NotificationListResponse,
+  NotificationPreference,
+  NotificationPreferenceUpdate,
+  NotificationReadAllResponse,
+  NotificationUnreadCount,
   ProgressInput,
   ProgressResponse,
   PublicRequestInput,
@@ -370,6 +376,48 @@ export const userReadingApi = {
 
   recordHistory(input: HistoryRecordInput): Promise<HistoryEntry> {
     return publicPost<HistoryEntry>("/api/user/history", input);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Notification API client — /api/user/notifications only
+// ---------------------------------------------------------------------------
+
+export const userNotificationApi = {
+  list(params: NotificationListParams = {}): Promise<NotificationListResponse> {
+    const search = new URLSearchParams();
+    if (params.page !== undefined) search.set("page", String(params.page));
+    if (params.page_size !== undefined) search.set("page_size", String(params.page_size));
+    if (params.status) search.set("status", params.status);
+    if (params.event_type) search.set("event_type", params.event_type);
+    const qs = search.toString();
+    return publicGet<NotificationListResponse>(
+      `/api/user/notifications${qs ? `?${qs}` : ""}`
+    );
+  },
+
+  unreadCount(): Promise<NotificationUnreadCount> {
+    return publicGet<NotificationUnreadCount>("/api/user/notifications/unread-count");
+  },
+
+  readAll(): Promise<NotificationReadAllResponse> {
+    return publicPost<NotificationReadAllResponse>("/api/user/notifications/read-all");
+  },
+
+  archive(notificationId: number): Promise<void> {
+    return publicPost<void>(`/api/user/notifications/${notificationId}/archive`);
+  },
+
+  read(notificationId: number): Promise<void> {
+    return publicPost<void>(`/api/user/notifications/${notificationId}/read`);
+  },
+
+  getPreferences(): Promise<NotificationPreference[]> {
+    return publicGet<NotificationPreference[]>("/api/user/notifications/preferences");
+  },
+
+  updatePreference(update: NotificationPreferenceUpdate): Promise<NotificationPreference> {
+    return publicPut<NotificationPreference>("/api/user/notifications/preferences", update);
   },
 };
 

@@ -28,7 +28,6 @@ async def test_translate_novel_409_on_translation_in_progress() -> None:
         orchestrator=orchestrator,
         activity_log=MagicMock(),
         storage=MagicMock(),
-        export_service=MagicMock(),
     )
     # Guard: load_metadata returns non-None
     svc.storage.load_metadata.return_value = {"novel_id": "n1234"}  # type: ignore[attr-defined]
@@ -57,7 +56,6 @@ async def test_translate_novel_504_on_timeout() -> None:
         orchestrator=orchestrator,
         activity_log=MagicMock(),
         storage=MagicMock(),
-        export_service=MagicMock(),
     )
     svc.storage.load_metadata.return_value = {"novel_id": "n5678"}  # type: ignore[attr-defined]
 
@@ -82,7 +80,6 @@ async def test_translate_novel_404_on_missing_novel() -> None:
         orchestrator=MagicMock(),
         activity_log=MagicMock(),
         storage=MagicMock(),
-        export_service=MagicMock(),
     )
     svc.storage.load_metadata.return_value = None  # type: ignore[attr-defined]
 
@@ -106,7 +103,6 @@ def test_get_translation_status_shape() -> None:
         orchestrator=MagicMock(),
         activity_log=MagicMock(),
         storage=MagicMock(),
-        export_service=MagicMock(),
     )
     svc.storage.load_metadata.return_value = {  # type: ignore[attr-defined]
         "novel_id": "n1234",
@@ -166,7 +162,6 @@ def test_get_translation_status_404() -> None:
         orchestrator=MagicMock(),
         activity_log=MagicMock(),
         storage=MagicMock(),
-        export_service=MagicMock(),
     )
     svc.storage.load_metadata.return_value = None  # type: ignore[attr-defined]
 
@@ -308,7 +303,6 @@ async def test_force_resets_all_chapters_to_pending() -> None:
         orchestrator=orchestrator,
         activity_log=MagicMock(),
         storage=MagicMock(),
-        export_service=MagicMock(),
     )
     svc.storage.load_metadata.return_value = {"novel_id": "n1"}  # type: ignore[attr-defined]
 
@@ -343,7 +337,6 @@ async def test_skip_already_complete_chapters() -> None:
         orchestrator=orchestrator,
         activity_log=MagicMock(),
         storage=MagicMock(),
-        export_service=MagicMock(),
     )
     svc.storage.load_metadata.return_value = {"novel_id": "n1"}  # type: ignore[attr-defined]
 

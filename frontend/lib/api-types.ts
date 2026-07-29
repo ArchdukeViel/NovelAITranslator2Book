@@ -56,6 +56,87 @@ export type LibrarySummaryResponse = {
   items: LibrarySummaryItem[];
 };
 
+export type AnalyticsWindow = "5m" | "15m" | "1h" | "24h" | "7d" | "30d";
+
+export type AnalyticsTimezone =
+  | "UTC"
+  | "America/New_York"
+  | "America/Chicago"
+  | "America/Denver"
+  | "America/Los_Angeles"
+  | "Europe/London"
+  | "Europe/Berlin"
+  | "Europe/Moscow"
+  | "Asia/Tokyo"
+  | "Asia/Shanghai"
+  | "Asia/Kolkata"
+  | "Australia/Sydney"
+  | "Pacific/Auckland";
+
+export type AnalyticsEventCounts = Record<string, number>;
+
+export type AnalyticsTopNovel = {
+  novel_id: string;
+  views: number;
+};
+
+export type AnalyticsSummary = {
+  enabled: boolean;
+  window: AnalyticsWindow;
+  timezone: AnalyticsTimezone;
+  generated_at: string;
+  cutoff_at: string | null;
+  status: "ok" | "partial" | "unavailable";
+  groups: {
+    views: AnalyticsEventCounts;
+    search: AnalyticsEventCounts;
+    features: AnalyticsEventCounts;
+    top_novels: AnalyticsTopNovel[];
+  };
+  failed_groups: Array<"views" | "search" | "features">;
+};
+
+export type AuditEventSummary = {
+  id: number;
+  created_at: string | null;
+  actor_user_id: number | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  status: string | null;
+  severity: string | null;
+  request_id: string | null;
+  correlation_id: string | null;
+  summary: string;
+};
+
+export type AuditEventDetail = AuditEventSummary & {
+  metadata: Record<string, unknown>;
+  changes: { before: Record<string, unknown>; after: Record<string, unknown> } | null;
+};
+
+export type AuditEventListResponse = {
+  items: AuditEventSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type AuditEventListFilters = {
+  action?: string;
+  actor_user_id?: number;
+  target_type?: string;
+  target_id?: string;
+  status?: string;
+  severity?: string;
+  request_id?: string;
+  correlation_id?: string;
+  date_from?: string;
+  date_to?: string;
+  page?: number;
+  page_size?: number;
+};
+
 export type NovelPublicationSummary = {
   novel_id: string;
   title: string;
@@ -184,9 +265,7 @@ export type JobProgress = {
 };
 
 export type ActivityRecord = {
-  id: string;
-  activity_id?: string;
-  job_id?: string;
+  activity_id: string;
   type: "crawl" | "translation";
   kind: string;
   novel_id: string;
@@ -292,7 +371,7 @@ export type PreliminaryCrawlResult = {
   metadata_translation_status?: string | null;
   metadata_translation_error?: string | null;
   bootstrap_candidate_count?: number;
-  activity_log_job_id?: string | null;
+  activity_log_activity_id?: string | null;
   detected_at?: string | null;
   chapters: number;
   chapter_list: Array<{
@@ -343,6 +422,24 @@ export type RuntimeStateItem = {
   updated_at?: string | null;
   description: string;
   affects_process: boolean;
+};
+
+export type MaintenanceTaskStatus = {
+  task_key: string;
+  schedule: string;
+  timezone: string;
+  enabled: boolean;
+  state: string;
+  last_started_at: string | null;
+  last_finished_at: string | null;
+  result: string | null;
+  failure_summary: string | null;
+  next_eligible_at: string | null;
+};
+
+export type MaintenanceStatusResponse = {
+  status: "healthy" | "degraded";
+  tasks: MaintenanceTaskStatus[];
 };
 
 export type CreateTranslationActivityPayload = {
@@ -471,6 +568,60 @@ export type NovelTaxonomyRequest = {
   tags: string[];
 };
 
+// ===========================================
+// Admin User Management
+// ===========================================
+
+export type UserListItem = {
+  id: number;
+  email: string | null;
+  display_name: string | null;
+  role: string;
+  is_active: boolean;
+  auth_provider: string | null;
+  has_password: boolean;
+  email_verified: boolean;
+  created_at: string | null;
+  last_login_at: string | null;
+};
+
+export type UserDetail = UserListItem & {
+  auth_provider_subject: string | null;
+  disabled_at: string | null;
+  disabled_reason: string | null;
+  disabled_by_user_id: number | null;
+  session_revoked_at: string | null;
+};
+
+export type UserListResponse = {
+  items: UserListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type UserListFilters = {
+  role?: string;
+  is_active?: boolean;
+  search?: string;
+  page?: number;
+  page_size?: number;
+};
+
+export type ActiveUpdatePayload = {
+  is_active: boolean;
+  reason: string;
+};
+
+export type RoleUpdatePayload = {
+  role: string;
+  reason: string;
+};
+
+export type RevokeSessionsPayload = {
+  reason: string;
+};
+
 export type ProviderCredential = {
   id: string;
   provider: string;
@@ -481,6 +632,51 @@ export type ProviderCredential = {
   validation_message?: string | null;
   model?: string | null;
 };
+
+// DEBT-023: Admin provider credential list/CRUD shapes (DB-backed).
+export type ProviderCredentialRow = {
+  id: number;
+  provider_key: string;
+  label: string;
+  is_active: boolean;
+  validation_status: string;
+  validation_message: string | null;
+  model: string | null;
+  key_fingerprint: string;
+  last4: string;
+  created_at: string;
+  updated_at: string;
+  last_validated_at: string | null;
+  notes: string | null;
+};
+
+export type ProviderCredentialListResponse = {
+  rows: ProviderCredentialRow[];
+};
+
+export type ProviderCredentialCreatePayload = {
+  provider_key: string;
+  api_key: string;
+  label: string;
+  provider_model?: string | null;
+  is_active?: boolean;
+  notes?: string | null;
+  apply_globally?: boolean;
+};
+
+export type ProviderCredentialUpdatePayload = {
+  label?: string | null;
+  provider_model?: string | null;
+  is_active?: boolean | null;
+  notes?: string | null;
+};
+
+export type ProviderCredentialValidationResult = {
+  ok: boolean;
+  status: string;
+  message?: string | null;
+};
+
 
 export type GlossaryEntryStatus = "candidate" | "recommended" | "approved" | "rejected" | "deprecated";
 export type GlossaryReadinessStatus = "glossary_pending" | "glossary_ready" | "glossary_skipped";
@@ -808,56 +1004,21 @@ export type GlossaryProviderCandidateResult = {
   candidates: GlossaryProviderCandidateSummary[];
 };
 
-// ===========================================
-// Export Manifests
-// ===========================================
+export interface TakedownRequestSummary {
+  id: number;
+  created_at: string | null;
+  complainant_name: string;
+  complainant_email: string;
+  infringing_url: string;
+  description: string;
+  status: string;
+  reviewer_notes: string | null;
+  reviewed_at: string | null;
+}
 
-export type ExportManifestFreshness = "current" | "stale" | "unknown_legacy_manifest" | "current_state_unavailable";
-
-export type ExportManifestStatus = "pending" | "running" | "succeeded" | "failed" | "deleted" | "legacy_unknown";
-
-export type ExportManifestFailureCode =
-  | "missing_translation"
-  | "missing_asset"
-  | "render_error"
-  | "write_error"
-  | "verify_error"
-  | "storage_error"
-  | "invalid_options"
-  | "unknown";
-
-export type ExportManifest = {
-  manifest_key: string;
-  novel_id: string;
-  format: string;
-  status: ExportManifestStatus;
-  output_filename: string | null;
-  artifact_key: string | null;
-  chapter_count: number | null;
-  source_chapter_count: number | null;
-  file_size_bytes: number | null;
-  checksum: string | null;
-  glossary_revision: number | null;
-  glossary_hash: string | null;
-  translation_version_count: number | null;
-  translation_versions_hash: string | null;
-  novel_updated_at: string | null;
-  export_options: Record<string, unknown> | null;
-  failure_code: ExportManifestFailureCode | null;
-  failure_message: string | null;
-  previous_manifest_key: string | null;
-  created_at: string;
-  updated_at: string;
-  freshness?: ExportManifestFreshness;
-};
-
-export type ExportManifestListResponse = {
-  novel_id: string;
-  manifests: ExportManifest[];
-};
-
-export type LatestExportResponse = {
-  novel_id: string;
-  export_format: string;
-  manifest: ExportManifest | null;
-};
+export interface TakedownListResponse {
+  items: TakedownRequestSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+}

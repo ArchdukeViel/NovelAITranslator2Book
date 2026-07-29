@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -13,12 +14,13 @@ from novelai.config.settings import settings
 from novelai.infrastructure.http.rate_limiter import get_default_rate_limiter
 from novelai.runtime.container import container
 from novelai.services.admin_service import AdminService
-from novelai.services.auth_service import AuthService
 from novelai.services.editor_service import EditorService
 from novelai.services.glossary_workflow_service import GlossaryWorkflowService
 from novelai.services.health_service import HealthService
 from novelai.services.library_service import LibraryService
 from novelai.services.library_summary_service import LibrarySummaryService
+from novelai.services.maintenance_status_service import MaintenanceStatusService
+from novelai.services.notification_service import NotificationPersistenceService, NotificationService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.novel_request_service import NovelRequestService
 from novelai.services.preferences_service import PreferencesService
@@ -31,13 +33,18 @@ from novelai.services.usage_service import UsageService
 from novelai.services.user_library_service import UserLibraryService
 from novelai.storage.service import StorageService
 
+if TYPE_CHECKING:
+    from novelai.services.auth_service import AuthService
+
 _RATE_WINDOW = 60
 _RATE_LIMITS: dict[str, int] = {
     "scrape": 5,
     "translate": 5,
-    "export": 10,
     "edit": 20,
     "delete": 10,
+    "analytics": 60,
+    "contact": 5,
+    "dmca": 3,
 }
 
 _hits: dict[str, list[float]] = defaultdict(list)
@@ -50,13 +57,19 @@ _DEFAULT_LIMITER = get_default_rate_limiter(
 )
 
 
-def _rate_limit(request: Request, action: str) -> None:
+def _rate_limit(
+    request: Request,
+    action: str,
+    *,
+    client_id: str | None = None,
+    key_transform: Callable[[str], str] | None = None,
+) -> None:
     try:
-        client = request.client.host if request.client else "unknown"
+        client = client_id if client_id is not None else (request.client.host if request.client else "unknown")
     except Exception:
         client = "unknown"
 
-    if not _DEFAULT_LIMITER.hit(client, action):
+    if not _DEFAULT_LIMITER.hit(client, action, key_transform=key_transform):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
 
@@ -136,6 +149,8 @@ def get_db_session():
 def get_auth_service(
     db_session: Session = Depends(get_db_session),
 ) -> AuthService:
+    from novelai.services.auth_service import AuthService
+
     return AuthService(db_session=db_session, mailer=container.auth_email)
 
 
@@ -230,6 +245,12 @@ def get_review_service(
     return ReviewService(db_session=db_session)
 
 
+def get_notification_persistence_service(
+    db_session: Session = Depends(get_db_session),
+) -> NotificationPersistenceService:
+    return NotificationService(db_session=db_session).persistence()
+
+
 def get_public_catalog_service(
     storage: StorageService = Depends(get_storage),
     db_session: Session = Depends(get_db_session),
@@ -249,6 +270,11 @@ def get_glossary_workflow_service(
 def get_scheduler_runtime_state_service() -> SchedulerRuntimeStateService:
     """FastAPI dependency for the scheduler runtime state service."""
     return container.scheduler_runtime_state
+
+
+def get_maintenance_status_service() -> MaintenanceStatusService:
+    """FastAPI dependency for owner maintenance status."""
+    return container.maintenance_status_service
 
 
 def get_health_service() -> HealthService:

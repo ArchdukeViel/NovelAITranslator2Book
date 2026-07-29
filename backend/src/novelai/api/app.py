@@ -13,8 +13,12 @@ from novelai.api.middleware.security import SecurityHeadersMiddleware
 from novelai.api.routers import (
     activity,
     admin,
+    admin_analytics,
+    admin_audit,
     admin_glossary,
+    admin_takedown,
     admin_taxonomy,
+    admin_users,
     editor,
     health,
     library,
@@ -27,8 +31,12 @@ from novelai.api.routers import (
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.health import admin_router as health_admin_router
 from novelai.api.routers.library import NovelSummary, list_novels
+from novelai.api.routers.metrics import router as metrics_router
+from novelai.api.routers.notifications import router as notifications_router
 from novelai.api.routers.public_catalog import router as public_catalog_router
 from novelai.api.routers.public_chapter import router as public_chapter_router
+from novelai.api.routers.public_contact import router as public_contact_router
+from novelai.api.routers.public_dmca import router as public_dmca_router
 from novelai.api.routers.public_novel import router as public_novel_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.config.production_validator import assert_production_config
@@ -101,13 +109,21 @@ def create_app() -> FastAPI:
 
     # Public catalog routes (guest-accessible, no auth required)
     app.include_router(public_catalog_router)
+    app.include_router(public_contact_router)
+    app.include_router(public_dmca_router)
     app.include_router(public_novel_router)
     app.include_router(public_chapter_router)
 
     # User data routes (authenticated users: library, progress, history, reviews, requests)
     app.include_router(user_data_router)
+    app.include_router(notifications_router)
 
     app.include_router(admin.router, prefix="/api", tags=["admin-api"])
+    app.include_router(admin_analytics.router)
+    app.include_router(admin_analytics.ingestion_router)
+    app.include_router(admin_audit.router)
+    app.include_router(admin_users.router)
+    app.include_router(admin_takedown.router)
     app.include_router(sources.router, prefix="/api/admin", tags=["admin-api"])
     app.include_router(activity.router, prefix="/api/admin", tags=["admin-api"])
     app.include_router(requests.router, prefix="/api/admin", tags=["admin-api"])
@@ -129,6 +145,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(health_admin_router, prefix="/api", tags=["health"])
+    app.include_router(metrics_router)
 
     return app
 

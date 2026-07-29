@@ -37,7 +37,6 @@ def _operations_service(
         orchestrator=orchestrator,
         activity_log=MagicMock(),
         storage=storage,
-        export_service=MagicMock(),
     )
     return service, orchestrator, storage
 

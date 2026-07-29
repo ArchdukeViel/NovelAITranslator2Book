@@ -1,19 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.activity.runner import BackgroundActivityRunner
 from novelai.activity.worker import ActivityWorkerService
 from novelai.config.settings import settings
 from novelai.providers.registry import get_provider
+from novelai.services.analytics_service import AnalyticsService
 from novelai.services.backup_service import BackupService
 from novelai.services.database_backup_service import DatabaseBackupService
 from novelai.services.email import AuthEmailService, NoopAuthEmailService, SMTPAuthEmailService
-from novelai.services.export_service import ExportService
 from novelai.services.health_service import HealthService
 from novelai.services.library_summary_service import LibrarySummaryService
 from novelai.services.maintenance_service import MaintenanceService
+from novelai.services.maintenance_status_service import MaintenanceStatusService
+from novelai.services.notification_service import NotificationService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.operator_alert_service import OperatorAlertService
 from novelai.services.preferences_service import PreferencesService
@@ -42,7 +45,6 @@ class Container:
     _usage: UsageService | None = None
     _activity_log: ActivityQueueService | None = None
     _translation: TranslationService | None = None
-    _export: ExportService | None = None
     _orchestrator: NovelOrchestrationService | None = None
     _activity_worker: ActivityWorkerService | None = None
     _activity_runner: BackgroundActivityRunner | None = None
@@ -50,6 +52,7 @@ class Container:
     _scheduler_runtime_state: SchedulerRuntimeStateService | None = None
     _backup_service: BackupService | None = None
     _maintenance_service: MaintenanceService | None = None
+    _maintenance_status_service: MaintenanceStatusService | None = None
     _scheduler_service: SchedulerService | None = None
     _database_backup_service: DatabaseBackupService | None = None
     _operator_alert_service: OperatorAlertService | None = None
@@ -89,8 +92,17 @@ class Container:
     @property
     def activity_worker(self) -> ActivityWorkerService:
         if self._activity_worker is None:
-            self._activity_worker = ActivityWorkerService(self.activity_log, self.orchestrator)
+            self._activity_worker = ActivityWorkerService(
+                self.activity_log, self.orchestrator, self._create_notification
+            )
         return self._activity_worker
+
+    @staticmethod
+    def _create_notification(payload: dict[str, Any]) -> object:
+        from novelai.db.engine import session_scope
+
+        with session_scope() as db_session:
+            return NotificationService(db_session=db_session).persistence().create(**payload)
 
     @property
     def activity_runner(self) -> BackgroundActivityRunner:
@@ -166,12 +178,6 @@ class Container:
         return self._translation
 
     @property
-    def export(self) -> ExportService:
-        if self._export is None:
-            self._export = ExportService()
-        return self._export
-
-    @property
     def orchestrator(self) -> NovelOrchestrationService:
         if self._orchestrator is None:
             from novelai.sources.registry import get_registry
@@ -241,8 +247,27 @@ class Container:
                 storage=self.storage,
                 activity_log=self.activity_log,
                 scheduler_runtime_state_service=self.scheduler_runtime_state,
+                analytics_service=AnalyticsService(),
+                notification_cleanup=self._cleanup_notifications,
             )
         return self._maintenance_service
+
+    @property
+    def maintenance_status_service(self) -> MaintenanceStatusService:
+        if self._maintenance_status_service is None:
+            self._maintenance_status_service = MaintenanceStatusService(self.scheduler_runtime_state)
+        return self._maintenance_status_service
+
+    @staticmethod
+    def _cleanup_notifications(retention_days: int, batch_size: int) -> int:
+        from novelai.db.engine import session_scope
+
+        with session_scope() as db_session:
+            return (
+                NotificationService(db_session=db_session)
+                .persistence()
+                .cleanup_retention(older_than_days=retention_days, batch_size=batch_size)
+            )
 
     @property
     def operator_alert_service(self) -> OperatorAlertService:
@@ -283,6 +308,7 @@ class Container:
                 database_backup_service=self.database_backup_service,
                 operator_alert_service=self.operator_alert_service,
                 db_session_scope_factory=session_scope,
+                storage_service=self.storage,
             )
         return self._scheduler_service
 

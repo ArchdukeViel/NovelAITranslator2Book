@@ -170,7 +170,7 @@ export default function CrawlerPage() {
           activity_subtype: "scraping",
           activity_phase: "add_novel_chapter_scrape",
           from_preliminary_crawl: true,
-          preliminary_activity_log_job_id: addNovel.data.activity_log_job_id || null,
+          preliminary_activity_log_activity_id: addNovel.data.activity_log_activity_id || null,
           selected_chapter_count: selectedChapterCount,
           selected_chapters: selectedChapterSelection,
           source_url: addNovel.data.source_url || null,
@@ -179,9 +179,9 @@ export default function CrawlerPage() {
         }
       });
       try {
-        return await api.runActivity(activity.id);
+        return await api.runActivity(activity.activity_id);
       } catch (error) {
-        return recoverScrapeActivityAfterRunError(activity.id, error);
+        return recoverScrapeActivityAfterRunError(activity.activity_id, error);
       }
     },
     onMutate: () => {

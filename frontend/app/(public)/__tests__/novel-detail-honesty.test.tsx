@@ -131,8 +131,14 @@ function makeNovelData(overrides: Record<string, unknown> = {}) {
     chapter_count: 10,
     translated_count: 5,
     added_at: "2026-06-17T10:00:00Z",
-    genres: ["fantasy", "adventure"],
-    tags: ["magic", "isekai"],
+    genres: [
+      { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" },
+      { slug: "adventure", name_ja: "冒険", name_en: "Adventure" },
+    ],
+    tags: [
+      { name: "magic", name_ja: "魔法" },
+      { name: "isekai", name_ja: "異世界" },
+    ],
     ...overrides,
   };
 }
@@ -437,7 +443,7 @@ describe("Novel detail page — adult/R18 safety", () => {
 
   it("does not render adult/R18 taxonomy labels", () => {
     mocks.novelQuery.mockReturnValue({
-      data: makeNovelData({ genres: ["fantasy"], tags: [] }),
+      data: makeNovelData({ genres: [{ slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" }], tags: [] }),
       isPending: false,
       isError: false,
       error: null,

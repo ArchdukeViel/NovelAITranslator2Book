@@ -47,7 +47,7 @@ export function ReaderControls() {
 
       {/* Theme selector */}
       <select
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+        className="h-9 rounded-md border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         value={theme}
         onChange={(e) =>
           setTheme(e.target.value as "light" | "dark" | "sepia")
@@ -61,7 +61,7 @@ export function ReaderControls() {
 
       {/* Width selector */}
       <select
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+        className="h-9 rounded-md border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         value={width}
         onChange={(e) =>
           setWidth(e.target.value as "compact" | "comfortable" | "wide")

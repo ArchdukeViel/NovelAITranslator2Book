@@ -35,6 +35,7 @@ import type {
   GlossaryStatusTransitionResult,
   JobProgress,
   ModelState,
+  MaintenanceStatusResponse,
   NovelMetadata,
   NovelPublicationSummary,
   NovelProgress,
@@ -56,7 +57,6 @@ import type {
   TranslationEditHistory,
   TranslationVersion,
   WorkerStatus,
-  ExportManifest,
 } from "@/lib/api-types";
 
 export type * from "@/lib/api-types";
@@ -291,22 +291,6 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   return request<T>(path, { ...init, cache: init.cache ?? "no-store" });
 }
 
-async function apiDownload(path: string, body: unknown): Promise<Blob> {
-  const headers = new Headers({ "Content-Type": "application/json" });
-  headers.set(CSRF_HEADER_NAME, await getCsrfToken());
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    credentials: "include", // Send HTTP-only Session_Cookie
-    cache: "no-store"
-  });
-  if (!response.ok) {
-    throw await responseError(response);
-  }
-  return response.blob();
-}
-
 export const api = {
   inputAdapters: () => apiFetch<string[]>("/admin/input-adapters"),
   novels: () => apiFetch<NovelSummary[]>("/admin/novels"),
@@ -457,6 +441,7 @@ export const api = {
   workerStop: () => apiFetch<WorkerStatus>("/admin/worker/stop", { method: "POST" }),
   workerRunOnce: () => apiFetch<{ activity: ActivityRecord | null; worker: WorkerStatus }>("/admin/worker/run-once", { method: "POST" }),
   schedulerHealth: () => apiFetch<SchedulerHealthResponse>("/admin/translation/scheduler-health"),
+  maintenanceStatus: () => apiFetch<MaintenanceStatusResponse>("/admin/maintenance/status"),
   requests: () => apiFetch<{ requests: NovelRequestRecord[] }>("/admin/requests?limit=50"),
   createRequest: (payload: { title: string; source_key?: string; source_url?: string; requested_by?: string; notes?: string }) =>
     apiFetch<NovelRequestRecord>("/admin/requests", {
@@ -536,8 +521,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  exportNovel: (novelId: string, payload: { format: string; chapters?: string | null }) =>
-    apiDownload(`/admin/novels/${encodeURIComponent(novelId)}/export`, payload),
   getTaxonomy: (novelId: string) =>
     apiFetch<NovelTaxonomyResponse>(`/admin/novels/${encodeURIComponent(novelId)}/taxonomy`),
   setTaxonomy: (novelId: string, payload: NovelTaxonomyRequest) =>
@@ -545,10 +528,6 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(payload)
     }),
-  listExportManifests: (novelId: string) =>
-    apiFetch<{ manifests?: ExportManifest[]; exports?: ExportManifest[] }>(
-      `/admin/novels/${encodeURIComponent(novelId)}/exports`
-    ),
 };
 // ===========================================
 // Admin Auth namespace (Task 3.2)
@@ -579,6 +558,15 @@ function glossaryEntryPath(novelId: RouteId, entryId: RouteId): string {
 // Sends session cookie, never a bearer key
 // ===========================================
 type AdminApi = {
+  listTakedowns: (status?: string) => Promise<import("./api-types").TakedownListResponse>;
+  reviewTakedown: (requestId: number, payload: { status: string; reviewer_notes?: string }) => Promise<{ status: string }>;
+  // ── Admin User Management ────────────────────────────────────────────
+  listUsers: (filters?: import("./api-types").UserListFilters) => Promise<import("./api-types").UserListResponse>;
+  getUser: (userId: number) => Promise<import("./api-types").UserDetail>;
+  updateUserActive: (userId: number, payload: import("./api-types").ActiveUpdatePayload) => Promise<import("./api-types").UserDetail>;
+  updateUserRole: (userId: number, payload: import("./api-types").RoleUpdatePayload) => Promise<import("./api-types").UserDetail>;
+  revokeUserSessions: (userId: number, payload: import("./api-types").RevokeSessionsPayload) => Promise<import("./api-types").UserDetail>;
+  // ── Glossary ─────────────────────────────────────────────────────────
   listGlossaryEntries: (novelId: RouteId, filters?: GlossaryEntryListFilters) => Promise<GlossaryEntry[]>;
   createGlossaryEntry: (novelId: RouteId, payload: GlossaryEntryCreatePayload) => Promise<GlossaryEntry>;
   previewGlossaryCandidateImport: (novelId: RouteId, payload?: GlossaryCandidateImportRequest) => Promise<GlossaryCandidateImportResult>;
@@ -607,12 +595,70 @@ type AdminApi = {
   providerCredential: (provider?: string) => Promise<ProviderCredential>;
   resumeOnboarding: (novelId: string, chapters?: string) => Promise<{ novel_id: string; onboarding_status: string; activity_id: string | null }>;
   cancelOnboarding: (novelId: string) => Promise<{ novel_id: string; onboarding_status: string }>;
-  listExportManifests: (novelId: RouteId) => Promise<import("./api-types").ExportManifestListResponse>;
-  getLatestExportManifest: (novelId: RouteId, format: string) => Promise<import("./api-types").LatestExportResponse>;
   librarySummary: (params?: { refresh?: boolean }) => Promise<import("./api-types").LibrarySummaryResponse>;
+  analyticsSummary: (params: {
+    window: import("./api-types").AnalyticsWindow;
+    timezone: import("./api-types").AnalyticsTimezone;
+  }) => Promise<import("./api-types").AnalyticsSummary>;
+  listAuditEvents: (
+    filters?: import("./api-types").AuditEventListFilters,
+  ) => Promise<import("./api-types").AuditEventListResponse>;
+  getAuditEvent: (auditId: number) => Promise<import("./api-types").AuditEventDetail>;
+  listProviderCredentialRows: () => Promise<import("./api-types").ProviderCredentialListResponse>;
+  createProviderCredential: (
+    payload: import("./api-types").ProviderCredentialCreatePayload,
+  ) => Promise<import("./api-types").ProviderCredentialRow>;
+  updateProviderCredential: (
+    credentialId: string,
+    payload: import("./api-types").ProviderCredentialUpdatePayload,
+  ) => Promise<import("./api-types").ProviderCredentialRow>;
+  deleteProviderCredential: (credentialId: string) => Promise<{ deleted: boolean }>;
+  testProviderCredential: (
+    credentialId: string,
+    payload?: { api_key?: string; provider_model?: string | null },
+  ) => Promise<import("./api-types").ProviderCredentialValidationResult>;
 };
 
 export const adminApi: AdminApi = {
+  listTakedowns: (status) =>
+    request<import("./api-types").TakedownListResponse>(
+      `/admin/takedowns${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+    ),
+  reviewTakedown: (requestId, payload) =>
+    request<{ status: string }>(`/admin/takedowns/${requestId}/review`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  // ── Admin User Management ────────────────────────────────────────────
+  listUsers: (filters: import("./api-types").UserListFilters = {}) => {
+    const search = new URLSearchParams();
+    if (filters.role) search.set("role", filters.role);
+    if (typeof filters.is_active === "boolean") search.set("is_active", String(filters.is_active));
+    if (filters.search) search.set("search", filters.search);
+    if (typeof filters.page === "number") search.set("page", String(filters.page));
+    if (typeof filters.page_size === "number") search.set("page_size", String(filters.page_size));
+    return request<import("./api-types").UserListResponse>(
+      appendQuery("/admin/users", search)
+    );
+  },
+  getUser: (userId: number) =>
+    request<import("./api-types").UserDetail>(`/admin/users/${userId}`),
+  updateUserActive: (userId: number, payload: import("./api-types").ActiveUpdatePayload) =>
+    request<import("./api-types").UserDetail>(`/admin/users/${userId}/active`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  updateUserRole: (userId: number, payload: import("./api-types").RoleUpdatePayload) =>
+    request<import("./api-types").UserDetail>(`/admin/users/${userId}/role`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  revokeUserSessions: (userId: number, payload: import("./api-types").RevokeSessionsPayload) =>
+    request<import("./api-types").UserDetail>(`/admin/users/${userId}/revoke-sessions`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  // ── Glossary ─────────────────────────────────────────────────────────
   listGlossaryEntries: (novelId: RouteId, filters: GlossaryEntryListFilters = {}) => {
     const search = new URLSearchParams();
     if (filters.status) search.set("status", filters.status);
@@ -755,11 +801,6 @@ export const adminApi: AdminApi = {
       `/novels/${encodeURIComponent(novelId)}/onboarding/cancel`,
       { method: "POST", body: JSON.stringify({}) }
     ),
-  // Export manifests
-  listExportManifests: (novelId: RouteId) =>
-    request<import("./api-types").ExportManifestListResponse>(`/admin/novels/${routeId(novelId)}/exports`),
-  getLatestExportManifest: (novelId: RouteId, format: string) =>
-    request<import("./api-types").LatestExportResponse>(`/admin/novels/${routeId(novelId)}/exports/latest?format=${encodeURIComponent(format)}`),
   librarySummary: (params?: { refresh?: boolean }) => {
     const search = new URLSearchParams();
     if (params?.refresh) search.set("refresh", "true");
@@ -767,4 +808,61 @@ export const adminApi: AdminApi = {
       appendQuery("/admin/library/summary", search)
     );
   },
+  analyticsSummary: ({ window, timezone }) => {
+    const search = new URLSearchParams({ window, timezone });
+    return request<import("./api-types").AnalyticsSummary>(
+      appendQuery("/admin/analytics/summary", search)
+    );
+  },
+  // Audit log viewer (DEBT-054)
+  listAuditEvents: (filters: import("./api-types").AuditEventListFilters = {}) => {
+    const search = new URLSearchParams();
+    if (filters.action) search.set("action", filters.action);
+    if (typeof filters.actor_user_id === "number") search.set("actor_user_id", String(filters.actor_user_id));
+    if (filters.target_type) search.set("target_type", filters.target_type);
+    if (filters.target_id) search.set("target_id", filters.target_id);
+    if (filters.status) search.set("status", filters.status);
+    if (filters.severity) search.set("severity", filters.severity);
+    if (filters.request_id) search.set("request_id", filters.request_id);
+    if (filters.correlation_id) search.set("correlation_id", filters.correlation_id);
+    if (filters.date_from) search.set("date_from", filters.date_from);
+    if (filters.date_to) search.set("date_to", filters.date_to);
+    if (typeof filters.page === "number") search.set("page", String(filters.page));
+    if (typeof filters.page_size === "number") search.set("page_size", String(filters.page_size));
+    return request<import("./api-types").AuditEventListResponse>(
+      appendQuery("/admin/audit", search)
+    );
+  },
+  getAuditEvent: (auditId: number) =>
+    request<import("./api-types").AuditEventDetail>(
+      `/admin/audit/${auditId}`
+    ),
+  // DEBT-023: Provider credential CRUD (owner-only).
+  listProviderCredentialRows: () =>
+    request<import("./api-types").ProviderCredentialListResponse>(
+      "/admin/providers/credentials"
+    ),
+  createProviderCredential: (payload) =>
+    request<import("./api-types").ProviderCredentialRow>(
+      "/admin/providers/credentials",
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
+  updateProviderCredential: (credentialId, payload) =>
+    request<import("./api-types").ProviderCredentialRow>(
+      `/admin/providers/credentials/${encodeURIComponent(credentialId)}`,
+      { method: "PATCH", body: JSON.stringify(payload) }
+    ),
+  deleteProviderCredential: (credentialId) =>
+    request<{ deleted: boolean }>(
+      `/admin/providers/credentials/${encodeURIComponent(credentialId)}`,
+      { method: "DELETE" }
+    ),
+  testProviderCredential: (credentialId, payload) =>
+    request<import("./api-types").ProviderCredentialValidationResult>(
+      `/admin/providers/credentials/${encodeURIComponent(credentialId)}/test`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload ?? {})
+      }
+    ),
 };

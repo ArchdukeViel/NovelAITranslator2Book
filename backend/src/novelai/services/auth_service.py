@@ -18,6 +18,11 @@ from novelai.utils.hashing import hexdigest
 
 logger = logging.getLogger(__name__)
 
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
 _EMAIL_RE = __import__("re").compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _MIN_PASSWORD_LENGTH = 10
 _MAX_PASSWORD_LENGTH = 256
@@ -263,9 +268,7 @@ class AuthService:
 
         token_hash = self.hash_email_verification_token(token)
         verification_token = (
-            self.db_session.query(EmailVerificationToken)
-            .filter_by(token_hash=token_hash)
-            .one_or_none()
+            self.db_session.query(EmailVerificationToken).filter_by(token_hash=token_hash).one_or_none()
         )
         if (
             verification_token is None
@@ -337,6 +340,102 @@ class AuthService:
                 result.provider,
             )
 
+    # -- admin user management (DEBT-008) ----------------------------------------
+
+    @staticmethod
+    def validate_reason(reason: str | None, field: str = "reason") -> str:
+        if not reason or not reason.strip():
+            raise ValueError(f"{field} is required.")
+        trimmed = reason.strip()
+        if len(trimmed) < 1:
+            raise ValueError(f"{field} must be at least 1 character.")
+        if len(trimmed) > 500:
+            raise ValueError(f"{field} must be at most 500 characters.")
+        return trimmed
+
+    @staticmethod
+    def is_owner_user(user: User) -> bool:
+        return getattr(user, "role", None) == "owner"
+
+    def list_users(
+        self,
+        *,
+        role: str | None = None,
+        is_active: bool | None = None,
+        search: str | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> tuple[list[User], int]:
+        q = self.db_session.query(User)
+        if role:
+            q = q.filter(User.role == role)
+        if is_active is not None:
+            q = q.filter(User.is_active == is_active)
+        if search and search.strip():
+            like = f"%{search.strip().lower()}%"
+            q = q.filter(
+                func.lower(User.email).like(like) | func.lower(func.coalesce(User.display_name, "")).like(like)
+            )
+        total = q.count()
+        offset = (page - 1) * page_size
+        rows = q.order_by(User.id.asc()).offset(offset).limit(page_size).all()
+        return list(rows), total
+
+    def get_user(self, user_id: int) -> User | None:
+        return self.db_session.get(User, user_id)
+
+    def set_role(self, user_id: int, target_role: str) -> User:
+        user = self.get_user(user_id)
+        if user is None:
+            raise LookupError("user_not_found")
+        if self.is_owner_user(user):
+            raise PermissionError("owner_role_protected")
+        user.role = target_role
+        user.session_revoked_at = _utcnow()
+        return user
+
+    def disable_user(self, user_id: int, *, reason: str, by_user_id: int) -> User:
+        """Disable a user account. Persists disabled_at/reason/by, revokes sessions."""
+        user = self.get_user(user_id)
+        if user is None:
+            raise LookupError("user_not_found")
+        if self.is_owner_user(user):
+            raise PermissionError("owner_account_protected")
+        if user_id == by_user_id:
+            raise PermissionError("self_disable_protected")
+        now = _utcnow()
+        user.is_active = False
+        user.disabled_at = now
+        user.disabled_reason = reason
+        user.disabled_by_user_id = by_user_id
+        user.session_revoked_at = now
+        return user
+
+    def enable_user(self, user_id: int) -> User:
+        """Re-enable a disabled user. Clears disabled fields."""
+        user = self.get_user(user_id)
+        if user is None:
+            raise LookupError("user_not_found")
+        if self.is_owner_user(user):
+            raise PermissionError("owner_account_protected")
+        user.is_active = True
+        user.disabled_at = None
+        user.disabled_reason = None
+        user.disabled_by_user_id = None
+        return user
+
+    def revoke_sessions(self, user_id: int) -> User:
+        """Revoke all existing sessions for a user."""
+        user = self.get_user(user_id)
+        if user is None:
+            raise LookupError("user_not_found")
+        if self.is_owner_user(user):
+            raise PermissionError("owner_session_protected")
+        if user_id == 1:
+            raise PermissionError("owner_session_protected")
+        user.session_revoked_at = _utcnow()
+        return user
+
     # -- Google OAuth -----------------------------------------------------------
 
     def upsert_google_user(self, profile: GoogleOAuthProfile) -> User:
@@ -352,18 +451,13 @@ class AuthService:
             .filter_by(auth_provider="google", auth_provider_subject=profile.subject)
             .one_or_none()
         )
-        email_user = (
-            self.db_session.query(User)
-            .filter(func.lower(User.email) == email)
-            .one_or_none()
-        )
+        email_user = self.db_session.query(User).filter(func.lower(User.email) == email).one_or_none()
 
         if user is None and email_user is not None:
             if email_user.role == "owner":
                 raise ValueError("Public OAuth cannot link to the owner account.")
             if email_user.auth_provider and (
-                email_user.auth_provider != "google"
-                or email_user.auth_provider_subject != profile.subject
+                email_user.auth_provider != "google" or email_user.auth_provider_subject != profile.subject
             ):
                 raise ValueError("An account already exists for this email.")
             user = email_user

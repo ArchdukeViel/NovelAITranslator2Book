@@ -3,14 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.dependencies import _rate_limit, get_activity_log, get_orchestrator, get_storage
-from novelai.runtime.container import container
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.orchestration.operations import OperationError, OperationsService
 
@@ -52,11 +50,6 @@ class RetranslateStaleRequest(BaseModel):
     provider_model: str | None = None
 
 
-class ExportRequest(BaseModel):
-    format: str = "epub"
-    chapters: str | None = None
-
-
 class ImportRequest(BaseModel):
     adapter_key: str
     source_key: str
@@ -72,7 +65,6 @@ def get_operations_service(
         orchestrator=orchestrator,
         activity_log=activity_log,
         storage=storage,
-        export_service=container.export,
     )
 
 
@@ -245,20 +237,3 @@ async def cancel_onboarding(
     except OperationError as exc:
         _raise_operation_error(exc)
         raise AssertionError("unreachable") from None
-
-
-@router.post("/{novel_id}/export")
-async def export_novel(
-    novel_id: str,
-    body: ExportRequest,
-    request: Request,
-    service: OperationsService = Depends(get_operations_service),
-    _owner=Depends(require_role("owner")),
-) -> FileResponse:
-    _rate_limit(request, "export")
-    try:
-        result = service.export_novel(novel_id=novel_id, export_format=body.format)
-    except OperationError as exc:
-        _raise_operation_error(exc)
-        raise AssertionError("unreachable") from None
-    return FileResponse(result.path, media_type=result.media_type, filename=result.filename)

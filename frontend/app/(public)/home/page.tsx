@@ -71,7 +71,7 @@ function latestChapterHref(novel: PublicNovelSummary): string {
 }
 
 function primaryGenre(novel: PublicNovelSummary): string | null {
-  return novel.genres?.find(Boolean) ?? null;
+  return novel.genres?.[0]?.slug ?? null;
 }
 
 export default function HomePage() {
@@ -304,13 +304,13 @@ export default function HomePage() {
                   {heroSynopsis ?? "Synopsis unavailable for this novel."}
                 </p>
 
-                {featuredNovel.genres && featuredNovel.genres.length > 0 && (
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    {featuredNovel.genres.map((genre) => (
-                      <GenreChip key={genre} label={genreLabels?.get(genre) ?? genre} />
-                    ))}
-                  </div>
-                )}
+{featuredNovel.genres && featuredNovel.genres.length > 0 && (
+                   <div className="mt-5 flex flex-wrap gap-2">
+                     {featuredNovel.genres.map((genre) => (
+                       <GenreChip key={genre.slug} label={genreLabels?.get(genre.slug) ?? genre.slug} />
+                     ))}
+                   </div>
+                 )}
 
                 {!heroReadableHref && (
                   <p className="mt-6 text-sm font-medium text-foreground/70">

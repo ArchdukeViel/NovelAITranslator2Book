@@ -6,7 +6,6 @@ Extracted from operations.py to keep the service class focused on orchestration.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 from typing import Any
 
 from novelai.storage.service import StorageService
@@ -19,13 +18,6 @@ def get_novel_translation_lock(novel_id: str) -> asyncio.Lock:
     if novel_id not in _novel_translation_locks:
         _novel_translation_locks[novel_id] = asyncio.Lock()
     return _novel_translation_locks[novel_id]
-
-
-@dataclass(frozen=True)
-class ExportOperationResult:
-    path: str
-    media_type: str
-    filename: str
 
 
 class OperationError(Exception):

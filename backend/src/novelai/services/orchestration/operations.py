@@ -3,23 +3,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.config.settings import settings
 from novelai.core.errors import TranslationInProgressError
 from novelai.services.catalog_service import CatalogService
-from novelai.services.export_manifest_service import (
-    STATUS_FAILED,
-    STATUS_SUCCEEDED,
-    build_manifest,
-    write_manifest,
-)
-from novelai.services.export_service import ExportService, UnsupportedExportFormatError
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.orchestration.operations_helpers import (
-    ExportOperationResult,
     OperationError,
     get_novel_translation_lock,
     require_novel_meta,
@@ -45,12 +36,10 @@ class OperationsService:
         orchestrator: NovelOrchestrationService,
         activity_log: ActivityQueueService,
         storage: StorageService,
-        export_service: ExportService,
     ) -> None:
         self.orchestrator = orchestrator
         self.activity_log = activity_log
         self.storage = storage
-        self.export_service = export_service
 
     async def scrape_novel(
         self,
@@ -182,7 +171,7 @@ class OperationsService:
                     "message": f"Preliminary crawl failed: {joined_errors}. Activity log: {failed_job.get('id')}",
                     "explanation": preliminary_failure_explanation(failure_code),
                     "details": {
-                        "activity_log_job_id": failed_job.get("id"),
+                        "activity_log_activity_id": failed_job.get("activity_id"),
                         "identifier": clean_identifier,
                         "requested_source_key": requested_source_key,
                         "attempted_sources": attempts,
@@ -233,7 +222,7 @@ class OperationsService:
             "metadata_translation_status": meta.get("metadata_translation_status"),
             "metadata_translation_error": meta.get("metadata_translation_error"),
             "bootstrap_candidate_count": int(meta.get("bootstrap_candidate_count") or 0),
-            "activity_log_job_id": activity_job.get("id") if activity_job else None,
+            "activity_log_activity_id": activity_job.get("activity_id") if activity_job else None,
             "detected_at": detected_at,
             "chapters": chapter_count(meta),
             "chapter_list": chapter_rows(meta),
@@ -375,97 +364,6 @@ class OperationsService:
             "chapters": chapters,
         }
 
-    def export_novel(self, *, novel_id: str, export_format: str) -> ExportOperationResult:
-        meta = require_novel_meta(self.storage, novel_id)
-
-        chapters: list[dict[str, Any]] = []
-        for chapter in meta.get("chapters", []):
-            chapter_id = str(chapter.get("id"))
-            translated = self.storage.load_translated_chapter(novel_id, chapter_id)
-            if not translated:
-                continue
-            chapters.append(
-                {
-                    "title": chapter.get("title"),
-                    "text": translated.get("text"),
-                    "images": self.storage.load_chapter_export_images(novel_id, chapter_id),
-                }
-            )
-
-        if not chapters:
-            raise OperationError(400, "No translated chapters available for export")
-
-        # Create pending manifest
-        manifest = build_manifest(
-            novel_id=novel_id,
-            export_format=export_format,
-            status="pending",
-            source_chapter_count=len(meta.get("chapters", [])),
-            chapter_count=len(chapters),
-            glossary_revision=meta.get("glossary_revision"),
-            glossary_hash=meta.get("glossary_hash"),
-            novel_updated_at=meta.get("updated_at"),
-        )
-        write_manifest(self.storage, novel_id, manifest)
-
-        try:
-            output_path = str(self.storage.build_export_path(novel_id, export_format))
-            self.export_service.export(
-                export_format,
-                novel_id=novel_id,
-                chapters=chapters,
-                output_path=output_path,
-            )
-
-            # Update manifest to succeeded
-            output_file = Path(output_path)
-            updated = build_manifest(
-                novel_id=novel_id,
-                export_format=export_format,
-                status=STATUS_SUCCEEDED,
-                output_filename=output_file.name,
-                source_chapter_count=len(meta.get("chapters", [])),
-                chapter_count=len(chapters),
-                file_size_bytes=output_file.stat().st_size if output_file.exists() else None,
-                glossary_revision=meta.get("glossary_revision"),
-                glossary_hash=meta.get("glossary_hash"),
-                novel_updated_at=meta.get("updated_at"),
-                previous_manifest_key=manifest["manifest_key"],
-            )
-            write_manifest(self.storage, novel_id, updated)
-
-            return ExportOperationResult(
-                path=output_path,
-                media_type="application/epub+zip" if export_format == "epub" else "application/octet-stream",
-                filename=f"{novel_id}.{export_format}",
-            )
-        except UnsupportedExportFormatError as exc:
-            failed = build_manifest(
-                novel_id=novel_id,
-                export_format=export_format,
-                status=STATUS_FAILED,
-                failure_code=exc.error_code,
-                failure_message=exc.detail[:200],
-                source_chapter_count=len(meta.get("chapters", [])),
-                chapter_count=len(chapters),
-                previous_manifest_key=manifest["manifest_key"],
-            )
-            write_manifest(self.storage, novel_id, failed)
-            raise OperationError(400, {"error": exc.error_code, "format": exc.format, "message": exc.detail}) from exc
-        except Exception as exc:
-            failed = build_manifest(
-                novel_id=novel_id,
-                export_format=export_format,
-                status=STATUS_FAILED,
-                failure_code="render_error",
-                failure_message=str(exc)[:200],
-                source_chapter_count=len(meta.get("chapters", [])),
-                chapter_count=len(chapters),
-                previous_manifest_key=manifest["manifest_key"],
-            )
-            write_manifest(self.storage, novel_id, failed)
-            raise
-
     def record_preliminary_crawl_failure(
         self,
         *,
@@ -500,7 +398,7 @@ class OperationsService:
         error_text = (
             "; ".join(errors) if errors else "Preliminary crawl failed before any source adapter returned metadata."
         )
-        failed = self.activity_log.update_activity_status(activity["id"], "failed", error=error_text)
+        failed = self.activity_log.update_activity_status(activity["activity_id"], "failed", error=error_text)
         return failed or activity
 
     def record_preliminary_crawl_success(
@@ -546,7 +444,7 @@ class OperationsService:
             },
         )
         completed = self.activity_log.update_activity_status(
-            activity["id"],
+            activity["activity_id"],
             "completed",
             metadata={
                 "result": {
@@ -597,7 +495,7 @@ class OperationsService:
                     "selected_source_key": resolved_source_key,
                 },
             )
-            activity_id = activity.get("id")
+            activity_id = activity.get("activity_id")
         except Exception:
             logger.warning("Failed to record resume activity.", exc_info=True)
 

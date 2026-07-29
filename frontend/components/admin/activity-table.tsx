@@ -98,13 +98,13 @@ export function ActivityTable({
                 <EmptyState title={emptyText} colSpan={selectable ? 6 : 5} />
               ) : (
                 sortedActivity.map((activityItem) => (
-                  <tr className="border-b last:border-0" key={activityItem.id}>
+                  <tr className="border-b last:border-0" key={activityItem.activity_id}>
                     {selectable ? (
                       <td className="px-4 py-3">
                         <TableCheckbox
-                          checked={selectedActivityIds?.has(activityItem.id) ?? false}
-                          onChange={() => onToggleActivity?.(activityItem.id)}
-                          aria-label={`Select activity ${activityItem.id}`}
+                          checked={selectedActivityIds?.has(activityItem.activity_id) ?? false}
+                          onChange={() => onToggleActivity?.(activityItem.activity_id)}
+                          aria-label={`Select activity ${activityItem.activity_id}`}
                         />
                       </td>
                     ) : null}
@@ -119,9 +119,9 @@ export function ActivityTable({
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link
-                        href={`/admin/activity/${encodeURIComponent(activityItem.id)}`}
+                        href={`/admin/activity/${encodeURIComponent(activityItem.activity_id)}`}
                         className="inline-flex h-8 w-8 items-center justify-center rounded-md border hover:bg-muted"
-                        aria-label={`Open activity ${activityItem.id}`}
+                        aria-label={`Open activity ${activityItem.activity_id}`}
                         title="Open activity"
                       >
                         <ExternalLink className="h-4 w-4" />

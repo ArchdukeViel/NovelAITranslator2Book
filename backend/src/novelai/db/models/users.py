@@ -39,6 +39,11 @@ class User(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Admin user-management fields (see .agents/kiro/specs/admin-user-management/requirements.md)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disabled_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    disabled_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    session_revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email!r} role={self.role!r}>"
@@ -50,9 +55,7 @@ class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
@@ -72,9 +75,7 @@ class EmailVerificationToken(Base):
     __tablename__ = "email_verification_tokens"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     token_hash: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
@@ -93,19 +94,12 @@ class ReadingProgress(Base):
 
     __tablename__ = "reading_progress"
 
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
-    novel_id: Mapped[int] = mapped_column(
-        ForeignKey("novels.id", ondelete="CASCADE"), primary_key=True
-    )
-    chapter_id: Mapped[int | None] = mapped_column(
-        ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    novel_id: Mapped[int] = mapped_column(ForeignKey("novels.id", ondelete="CASCADE"), primary_key=True)
+    chapter_id: Mapped[int | None] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
     progress_percent: Mapped[float] = mapped_column(nullable=False, default=0.0)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow,
-        onupdate=_utcnow
+        DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow, onupdate=_utcnow
     )
 
     def __repr__(self) -> str:
@@ -118,15 +112,9 @@ class ReadingHistory(Base):
     __tablename__ = "reading_history"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    novel_id: Mapped[int] = mapped_column(
-        ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    chapter_id: Mapped[int | None] = mapped_column(
-        ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    novel_id: Mapped[int] = mapped_column(ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True)
+    chapter_id: Mapped[int | None] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
     read_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
     )
@@ -140,12 +128,8 @@ class LibraryItem(Base):
 
     __tablename__ = "library_items"
 
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
-    novel_id: Mapped[int] = mapped_column(
-        ForeignKey("novels.id", ondelete="CASCADE"), primary_key=True
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    novel_id: Mapped[int] = mapped_column(ForeignKey("novels.id", ondelete="CASCADE"), primary_key=True)
     status: Mapped[str] = mapped_column(String(64), nullable=False, default="reading")
     added_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
@@ -161,12 +145,8 @@ class Review(Base):
     __tablename__ = "reviews"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    novel_id: Mapped[int] = mapped_column(
-        ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    novel_id: Mapped[int] = mapped_column(ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True)
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     body: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -187,13 +167,9 @@ class NovelRequest(Base):
     __tablename__ = "novel_requests"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
-    )
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     request_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    novel_id: Mapped[int | None] = mapped_column(
-        ForeignKey("novels.id", ondelete="SET NULL"), nullable=True
-    )
+    novel_id: Mapped[int | None] = mapped_column(ForeignKey("novels.id", ondelete="SET NULL"), nullable=True)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(64), nullable=False, default="pending", index=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -208,9 +184,7 @@ class NovelRequest(Base):
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    approved_novel_id: Mapped[int | None] = mapped_column(
-        ForeignKey("novels.id", ondelete="SET NULL"), nullable=True
-    )
+    approved_novel_id: Mapped[int | None] = mapped_column(ForeignKey("novels.id", ondelete="SET NULL"), nullable=True)
 
     def __repr__(self) -> str:
         return f"<NovelRequest id={self.id} type={self.request_type!r} status={self.status!r}>"

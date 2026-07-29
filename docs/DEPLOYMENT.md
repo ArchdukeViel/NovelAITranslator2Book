@@ -1,0 +1,139 @@
+# Deployment
+
+Canonical deployment topology, release, rollback, and GitHub-control contract.
+
+## Topology
+
+`deploy/compose.yml` is canonical:
+
+| Service | Purpose |
+|---|---|
+| `caddy` | TLS, compression, security headers, ordered routing. |
+| `frontend` | Next.js public/admin UI, port 3000. |
+| `backend` | Admin/auth/user API, worker/scheduler, port 8000. |
+| `reader` | Guest public API, port 8001. |
+| `migrate` | One-shot Alembic migration before APIs. |
+| `redis` | Shared limits, queue, coordination where enabled. |
+| `restore-db` | Isolated disposable PostgreSQL 17 restore verifier. |
+
+PostgreSQL is external; Compose does not provision primary DB. Never run
+migrations inside long-running backend containers.
+
+## Routing
+
+```text
+/health/*      -> backend:8000
+/api/admin/*   -> backend:8000
+/api/auth/*    -> backend:8000
+/api/user/*    -> backend:8000
+/api/public/*  -> reader:8001
+everything else -> frontend:3000
+```
+
+`DEPLOY_MODE=monolith` serves all routers in one process. `split` uses admin and
+reader entry points and requires shared Redis for distributed behavior.
+
+## Profiles
+
+### Local
+
+Only zero-cost profile expected to run worker, scheduler, maintenance, backups,
+restore verification, and SMTP acceptance reliably.
+
+### Disposable preview
+
+Vercel Hobby frontend plus Render Free monolith, Supabase Free, and development-
+only R2 scope. Disable continuous worker/scheduler, maintenance, backup/restore,
+SMTP, and alerts. Sleep and ephemeral filesystem make preview non-production.
+
+### Production
+
+Vercel frontend, always-on container backend, Supabase/managed PostgreSQL, R2
+application and independent backup buckets, managed Redis, tested SMTP, and
+external monitoring. Must satisfy `WORK.md` operator gates.
+
+## Production Validation
+
+Startup fails closed for fatal production defects. Validate:
+
+- strong non-default session and owner bootstrap secrets;
+- HTTPS public URL and OAuth callback;
+- explicit CORS, CSRF origins, and allowed hosts;
+- Redis backend/URL for multi-instance deployment;
+- supported storage backend and complete S3/R2 credential sets;
+- independent backup bucket/prefix and split least-privilege credentials;
+- TLS DB connection and reviewed per-process connection budget;
+- backup encryption, SMTP/recipient when alerts enabled;
+- worker/scheduler settings consistent with topology.
+
+Validator output remains redacted.
+
+## Release
+
+1. Run lint, type checks, focused tests, frontend build, and router guard.
+2. Build immutable images tagged by commit SHA.
+3. Run one-shot migration against target DB.
+4. Start backend/reader/frontend; require migration success before APIs.
+5. Run `deploy/scripts/deploy-smoke.ps1`.
+6. Verify liveness/readiness, public catalog, owner auth boundary, CSRF/OAuth,
+   storage scope, and frontend.
+7. Record release commit, immutable tags, UTC time, and sanitized evidence.
+
+## Rollback
+
+- Redeploy previous immutable image/version.
+- Prefer forward-fix for migrations. Take DB snapshot and test any downgrade on
+  isolated staging before production.
+- Restore storage before DB, rebuild catalog, then run smoke checks.
+- Full incident procedure lives in [`OPERATIONS.md`](OPERATIONS.md).
+
+## GitHub Controls
+
+Owner-operated settings should match tracked workflow expectations:
+
+- Protect `main`: PR required, review, conversations resolved, required CI and
+  CodeQL checks, no force push/deletion, owner-only bypass.
+- Keep default `GITHUB_TOKEN` read-only; grant write only per job.
+- Pin third-party actions to immutable SHAs.
+- Enable dependency graph, Dependabot security updates, CodeQL, secret scanning,
+  push protection, and validity checks.
+- Keep deployment secrets in GitHub environments/provider secret stores, never files.
+- Verify actual required-check names against current `.github/workflows/`; docs
+  do not override workflows.
+
+Required deployment secret categories: target host/user/key where SSH deploy is
+used, DB URL, session/bootstrap/credential-encryption secrets, explicit origins,
+public URL, provider credentials, and managed-service verification credentials.
+
+## Provider Boundaries
+
+- Vercel hosts frontend only; same-origin `/api` rewrite targets backend URL.
+- Register exact HTTPS Google callback for each deployed environment.
+- R2 application and backup scopes remain private and separate.
+- Supabase remains PostgreSQL behind SQLAlchemy/Alembic; dashboard changes do
+  not replace repository migrations.
+- Render preview account verification is an unresolved gate, not production evidence.
+
+## Acceptance
+
+No deployment is launch-ready until hosted auth/security, monitoring/alerts,
+recovery, accessibility, performance, SEO, legal propagation, and rollback gates
+in [`WORK.md`](WORK.md) pass without unwaived blockers.
+
+## Current Release Decision
+
+Current decision is **NO-GO**. Repository checks prove local behavior, not hosted
+operation. Production approval still requires:
+
+| Area | Required hosted evidence |
+|---|---|
+| Identity/security | Real domains, OAuth callback, cookies, CORS/CSRF, hosts, disabled-user behavior. |
+| Storage/recovery | Isolated current-head PostgreSQL restore and object snapshot restore. |
+| Monitoring | External checks, real redacted alert delivery, escalation ownership. |
+| Browser/network | Accessibility, real-network performance, SEO validators, legal propagation. |
+| Rollback | Pause worker/scheduler, purge cache, disable reader, redeploy immutable prior version, smoke. |
+| Ownership | Named launch, rollback, and monitoring operators. |
+
+Provider configuration must be verified against tracked topology. Account or
+payment blocks remain blocks; screenshots or free previews are not production
+reliability evidence.

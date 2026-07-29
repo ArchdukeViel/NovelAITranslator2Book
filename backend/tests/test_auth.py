@@ -40,11 +40,23 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.fixture()
-def app():
-    """Minimal FastAPI app with SessionMiddleware + auth router."""
+def app(db_session):
+    """Minimal FastAPI app with SessionMiddleware + auth router + DB override."""
     _app = FastAPI()
     _app.add_middleware(SessionMiddleware, secret_key="test-secret-key", https_only=False)
     _app.include_router(auth_router)
+
+    def _db_override():
+        yield db_session
+
+    _app.dependency_overrides[get_db_session] = _db_override
+
+    # Create owner user (id=1) for boostrap-login session validation.
+    owner = db_session.get(User, 1)
+    if owner is None:
+        owner = User(id=1, email="owner@local", role="owner", is_active=True)
+        db_session.add(owner)
+        db_session.flush()
 
     @_app.get("/test/me")
     def _me(user: SessionUser = Depends(get_current_user)):
@@ -223,6 +235,173 @@ class TestGetCurrentUser:
         data = resp.json()
         assert data["role"] == "owner"
         assert data["auth"] is True
+
+
+# ---------------------------------------------------------------------------
+# Session revocation: DB-backed get_current_user validation
+# ---------------------------------------------------------------------------
+
+
+class TestSessionRevocation:
+    """get_current_user validates sessions against DB: disabled, revoked_at."""
+
+    def test_session_revoked_rejects_old_session(self, oauth_client, db_session):
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        # login creates a session
+        resp = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "reader@example.com", "password": "long-enough-password"},
+        )
+        assert resp.status_code == 200
+        me = oauth_client.get("/api/auth/me")
+        assert me.status_code == 200
+        assert me.json()["user_id"] == user.id
+
+        # revoke sessions in DB
+        db_session.refresh(user)
+        user.session_revoked_at = datetime.now(UTC)
+        db_session.commit()
+
+        # old session now rejected
+        me2 = oauth_client.get("/api/auth/me")
+        assert me2.status_code == 200
+        assert me2.json()["role"] == "guest"
+        assert me2.json()["is_authenticated"] is False
+
+    def test_fresh_login_after_revocation_works(self, oauth_client, db_session):
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        # login, verify
+        resp = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "reader@example.com", "password": "long-enough-password"},
+        )
+        assert resp.status_code == 200
+        me = oauth_client.get("/api/auth/me")
+        assert me.json()["user_id"] == user.id
+
+        # revoke sessions
+        db_session.refresh(user)
+        user.session_revoked_at = datetime.now(UTC)
+        db_session.commit()
+
+        # old session blocked
+        assert oauth_client.get("/api/auth/me").json()["is_authenticated"] is False
+
+        # fresh login after revocation works (requirement 7.8)
+        resp2 = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "reader@example.com", "password": "long-enough-password"},
+        )
+        assert resp2.status_code == 200
+        me2 = oauth_client.get("/api/auth/me")
+        assert me2.status_code == 200
+        assert me2.json()["user_id"] == user.id
+        assert me2.json()["is_authenticated"] is True
+
+    def test_disabled_user_session_rejected(self, oauth_client, db_session):
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "reader@example.com", "password": "long-enough-password"},
+        )
+        assert resp.status_code == 200
+        assert oauth_client.get("/api/auth/me").json()["user_id"] == user.id
+
+        # disable account in DB
+        db_session.refresh(user)
+        user.is_active = False
+        user.disabled_at = datetime.now(UTC)
+        db_session.commit()
+
+        # existing session now rejected
+        me = oauth_client.get("/api/auth/me")
+        assert me.json()["role"] == "guest"
+
+    def test_disabled_user_cannot_login(self, oauth_client, db_session):
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            is_active=False,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        resp = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "reader@example.com", "password": "long-enough-password"},
+        )
+        assert resp.status_code == 401
+
+    def test_session_revoked_at_timezone_naive_safe(self, oauth_client, db_session, monkeypatch):
+        """session_revoked_at with/without tzinfo does not crash comparison."""
+        user = User(
+            email="reader@example.com",
+            role="user",
+            auth_provider="password",
+            password_hash=hash_password("long-enough-password"),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.commit()
+        user_id = user.id
+
+        # login, get active session
+        resp = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "reader@example.com", "password": "long-enough-password"},
+        )
+        assert resp.status_code == 200
+
+        # Force session_revoked_at to a timezone-naive datetime (as some DB drivers return)
+        db_session.refresh(user)
+        user.session_revoked_at = datetime.now(UTC).replace(tzinfo=None)  # naive!
+        db_session.commit()
+
+        # Should reject the old session — no crash from tz comparison
+        me = oauth_client.get("/api/auth/me")
+        assert me.json()["role"] == "guest"
+
+        # Fresh login with revoked_at still naive should work
+        user.session_revoked_at = datetime.now(UTC).replace(tzinfo=None)
+        db_session.commit()
+
+        resp2 = oauth_client.post(
+            "/api/auth/password/login",
+            json={"email": "reader@example.com", "password": "long-enough-password"},
+        )
+        assert resp2.status_code == 200
+        me2 = oauth_client.get("/api/auth/me")
+        assert me2.status_code == 200
+        assert me2.json()["user_id"] == user_id
 
 
 # ---------------------------------------------------------------------------

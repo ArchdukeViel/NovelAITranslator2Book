@@ -37,13 +37,8 @@ def _progress_dict(metadata: dict[str, Any]) -> dict[str, Any]:
 
 def activity_record_response(item: dict[str, Any]) -> ActivityRecordResponse:
     normalized = dict(item)
-    normalized.pop("provider", None)
-    normalized.pop("model", None)
     metadata = _metadata_dict(normalized)
     progress = _progress_dict(metadata)
-    activity_id = str(normalized.get("id") or normalized.get("activity_id") or normalized.get("job_id") or "")
-    normalized["activity_id"] = str(normalized.get("activity_id") or activity_id)
-    normalized["job_id"] = str(normalized.get("job_id") or activity_id)
     normalized["provider_key"] = normalized.get("provider_key") or metadata.get("provider_key")
     normalized["provider_model"] = normalized.get("provider_model") or metadata.get("provider_model")
     normalized["metadata"] = metadata
@@ -62,4 +57,4 @@ def activity_record_response(item: dict[str, Any]) -> ActivityRecordResponse:
 
 def activity_list_response(items: list[dict[str, Any]]) -> ActivityListResponse:
     normalized = [activity_record_response(item) for item in items]
-    return ActivityListResponse(activity=normalized, jobs=normalized)
+    return ActivityListResponse(activity=normalized)

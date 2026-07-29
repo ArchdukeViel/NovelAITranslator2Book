@@ -93,14 +93,6 @@ def test_storage_rejects_asset_paths_that_escape_novel_root(workspace_tmp_path: 
         storage.resolve_asset_path("novel1", "../outside.txt")
 
 
-def test_storage_rejects_export_format_path_segments(workspace_tmp_path: Path) -> None:
-    storage = StorageService(workspace_tmp_path)
-    storage.save_metadata("novel1", {"title": "Safe"})
-
-    with pytest.raises(ValueError):
-        storage.build_export_path("novel1", "../secret")
-
-
 def _security_test_client() -> TestClient:
     app = FastAPI()
     add_error_handlers(app)
@@ -202,5 +194,14 @@ def test_gitignore_excludes_secret_backups_and_runtime_state() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     gitignore = (repo_root / ".gitignore").read_text(encoding="utf-8")
 
-    for pattern in (".env", "storage/novel_library/", "backups/", "*.bak", "*.zip", "*.tar.gz"):
+    for pattern in (
+        ".env",
+        "storage/novel_library/",
+        "backups/",
+        "*.bak",
+        "*.zip",
+        "*.tar.gz",
+        "frontend/.vercel/",
+        "frontend/*.tsbuildinfo",
+    ):
         assert pattern in gitignore

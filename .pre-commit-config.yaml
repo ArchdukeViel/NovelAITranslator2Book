@@ -3,9 +3,7 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^docs/archive/specs/
       - id: end-of-file-fixer
-        exclude: ^docs/archive/specs/
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.21
@@ -14,9 +12,8 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  - repo: https://github.com/GitGuardian/ggshield
-    rev: v1.52.2
-    hooks:
-      - id: ggshield
-        language_version: python3
-        stages: [pre-commit]
+# Note: GitGuardian (ggshield) is intentionally not in this pre-commit config.
+# Run it manually or via the global git hook:
+#   python -m ggshield secret scan pre-commit
+# or configure it as a GitHub Action. Adding it here caused environment
+# isolation issues with missing transitive dependencies on this machine.

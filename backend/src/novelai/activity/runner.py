@@ -72,7 +72,7 @@ class BackgroundActivityRunner:
             self._idle_ticks += 1
             return None
         self._activity_processed += 1
-        self._last_activity_id = str(activity.get("id")) if activity.get("id") is not None else None
+        self._last_activity_id = str(activity.get("activity_id")) if activity.get("activity_id") is not None else None
         self._last_error = str(activity.get("error")) if activity.get("error") else None
         return activity
 

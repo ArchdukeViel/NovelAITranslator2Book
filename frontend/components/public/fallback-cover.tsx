@@ -1,6 +1,7 @@
 import { BookOpen } from "lucide-react";
 import Image from "next/image";
 
+import type { PublicGenreInfo } from "@/lib/public-types";
 import { cn } from "@/lib/utils";
 
 const COVER_ASSETS = {
@@ -30,7 +31,7 @@ const PALETTES = [
 
 interface FallbackCoverProps {
   className?: string;
-  genres?: string[] | null;
+  genres?: PublicGenreInfo[] | null;
   language?: string | null;
   sourceTitle?: string | null;
   status?: string | null;
@@ -75,13 +76,13 @@ function displayMeta(language: string | null | undefined, status: string | null 
   return items.join(" / ") || "Dokushodo";
 }
 
-function chooseCoverAsset(genres: string[] | null | undefined, status: string | null | undefined): string {
+function chooseCoverAsset(genres: PublicGenreInfo[] | null | undefined, status: string | null | undefined): string {
   const statusText = status?.toLowerCase() ?? "";
   if (statusText.includes("complete")) {
     return COVER_ASSETS.completed;
   }
 
-  const genreText = genres?.join(" ").toLowerCase() ?? "";
+  const genreText = genres?.map(g => g.slug).join(" ").toLowerCase() ?? "";
   if (/(mystery|horror|supernatural|thriller|suspense)/u.test(genreText)) {
     return COVER_ASSETS.mystery;
   }
@@ -103,7 +104,7 @@ export function FallbackCover({
   const safeTitle = cleanText(title) ?? "Untitled novel";
   const safeSourceTitle = cleanText(sourceTitle);
   const subtitle = safeSourceTitle && safeSourceTitle !== safeTitle ? safeSourceTitle : null;
-  const genreSeed = genres?.filter(Boolean).join("|") ?? "";
+  const genreSeed = genres?.map(g => g.slug).filter(Boolean).join("|") ?? "";
   const palette = PALETTES[hashText(`${safeTitle}|${subtitle ?? ""}|${genreSeed}`) % PALETTES.length];
   const coverAsset = chooseCoverAsset(genres, status);
 

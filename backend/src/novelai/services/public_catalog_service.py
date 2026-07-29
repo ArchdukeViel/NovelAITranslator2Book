@@ -149,14 +149,18 @@ class PublicCatalogService:
         novel: Novel,
         *,
         include_adult: bool = True,
-    ) -> tuple[list[str], list[str]]:
-        genre_slugs = [
-            genre.slug
-            for genre in sorted(novel.genres, key=lambda item: (item.display_order, item.slug))
-            if genre.is_active and (include_adult or not genre.is_adult)
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Return (genre_info, tag_info) — rich objects for PublicNovelSummary."""
+        genre_info: list[dict[str, Any]] = [
+            {"slug": g.slug, "name_ja": g.name_ja, "name_en": g.name_en}
+            for g in sorted(novel.genres, key=lambda item: (item.display_order, item.slug))
+            if g.is_active and (include_adult or not g.is_adult)
         ]
-        tag_names = sorted({tag.name for tag in novel.tags if include_adult or not tag.is_adult})
-        return genre_slugs, tag_names
+        tag_info: list[dict[str, Any]] = sorted(
+            [{"name": t.name, "name_ja": t.name_ja} for t in novel.tags if include_adult or not t.is_adult],
+            key=lambda t: t["name"],
+        )
+        return genre_info, tag_info
 
     @staticmethod
     def db_summary_needs_storage_hydration(
@@ -187,8 +191,8 @@ class PublicCatalogService:
         novel_id: str,
         meta: dict[str, Any],
         *,
-        genres: list[str] | None = None,
-        tags: list[str] | None = None,
+        genres: list[dict[str, Any]] | None = None,
+        tags: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         translated_count = self.storage.count_translated_chapters(novel_id)
         chapter_count = len(meta.get("chapters", [])) or max(
@@ -299,13 +303,14 @@ class PublicCatalogService:
         slug: str,
         *,
         include_adult: bool = True,
-    ) -> tuple[list[str], list[str], bool]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool]:
+        """Return (genre_info, tag_info, has_adult_genre)."""
         if self.db_session is None:
             return [], [], False
         novel = self.db_session.query(Novel).filter_by(slug=slug).one_or_none()
         if novel is None:
             return [], [], False
-        genre_slugs = []
+        genre_info: list[dict[str, Any]] = []
         has_adult_genre = False
         for g in novel.genres:
             if not g.is_active:
@@ -313,15 +318,16 @@ class PublicCatalogService:
             if not include_adult and g.is_adult:
                 has_adult_genre = True
                 continue
-            genre_slugs.append(g.slug)
-        genre_slugs.sort(
-            key=lambda s: next(
-                (g.display_order for g in novel.genres if g.slug == s),
-                999,
-            )
+            genre_info.append({"slug": g.slug, "name_ja": g.name_ja, "name_en": g.name_en})
+        genre_info.sort(key=lambda d: d["slug"])  # stable secondary sort
+        # primary sort by display_order (lookup by slug)
+        display_order_map = {g.slug: g.display_order for g in novel.genres}
+        genre_info.sort(key=lambda d: (display_order_map.get(d["slug"], 999), d["slug"]))
+        tag_info: list[dict[str, Any]] = sorted(
+            [{"name": t.name, "name_ja": t.name_ja} for t in novel.tags if include_adult or not t.is_adult],
+            key=lambda t: t["name"],
         )
-        tag_names = sorted({t.name for t in novel.tags if include_adult or not t.is_adult})
-        return genre_slugs, tag_names, has_adult_genre
+        return genre_info, tag_info, has_adult_genre
 
     def _latest_translated_chapter(
         self,

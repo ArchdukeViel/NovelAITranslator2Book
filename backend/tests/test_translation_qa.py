@@ -493,3 +493,170 @@ async def test_orchestration_does_not_save_final_translation_when_qa_fails():
         assert state["current_state"] == ChapterState.QA_FAILED
     finally:
         fixture.cleanup()
+
+
+# ---------------------------------------------------------------------------
+# DEBT-053: LLM-based translation QA grading (opt-in via settings).
+# ---------------------------------------------------------------------------
+
+
+class _StubLLMGrader(TranslationProvider):
+    """Deterministic stub provider that grades prompt texts."""
+
+    @property
+    def key(self) -> str:
+        return "stub-grader"
+
+    def available_models(self) -> list[str]:
+        return ["stub-grader-1.0"]
+
+    def __init__(self, score: float = 1.0) -> None:
+        self._score = score
+        self.captured_prompts: list[str] = []
+        self.model_used: str | None = None
+
+    async def translate(
+        self,
+        prompt: str,
+        model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> Mapping[str, Any]:
+        self.captured_prompts.append(prompt)
+        self.model_used = model
+        import json
+
+        # Reuse what the grader code expects.
+        return {"text": json.dumps({"score": self._score})}
+
+
+def _stage_context_with_one_passing_chunk() -> tuple[Any, PipelineState]:
+    """Build a context whose single chunk will pass deterministic QA."""
+    chunk = _chunk()
+    context = PipelineState(chapter_url="test", novel_id="novel1", chapter_id="chapter_001")
+    context.translation_chunks = [chunk]
+    # Provide non-empty English translation that deterministic QA will accept.
+    context.translations = ["[CHAPTER chapter_001]\n[P p0001]\nSource paragraph one.\n[P p0002]\nSource paragraph two."]
+    context.chunk_states = {
+        "c0001": {
+            "chunk_id": "c0001",
+            "novel_id": "novel1",
+            "chapter_ids": ["chapter_001"],
+            "paragraph_ids": ["p0001", "p0002"],
+            "status": "translated",
+        }
+    }
+    return chunk, context
+
+
+@pytest.mark.asyncio
+async def test_llm_qa_disabled_by_default_skips_grader(monkeypatch):
+    """When LLM_QA_ENABLED=False, no grader is invoked (safe default)."""
+    from novelai.config.settings import settings
+
+    monkeypatch.setattr(settings, "LLM_QA_ENABLED", False)
+
+    _, context = _stage_context_with_one_passing_chunk()
+
+    await TranslationQAStage().run(context)
+
+    assert context.metadata["llm_qa_enabled"] is False
+    assert "llm_qa_score" not in context.chunk_states["c0001"]
+
+
+@pytest.mark.asyncio
+async def test_llm_qa_below_threshold_marks_needs_retry(monkeypatch):
+    """DEBT-053: an LLM score below the threshold marks the chunk for retry."""
+    from novelai.config.settings import settings
+
+    grader = _StubLLMGrader(score=0.40)
+    monkeypatch.setattr(settings, "LLM_QA_ENABLED", True)
+    monkeypatch.setattr(settings, "LLM_QA_PROVIDER", "gemini")
+    monkeypatch.setattr(settings, "LLM_QA_MODEL", "gemini-3.1-flash-lite")
+    monkeypatch.setattr(settings, "LLM_QA_MIN_SCORE", 0.75)
+    monkeypatch.setattr(settings, "LLM_QA_MAX_RETRY_ATTEMPTS", 1)
+    # Point the registry lookup at our stub.
+    import novelai.translation.pipeline.stages.translation_qa as stage_mod
+
+    monkeypatch.setattr(stage_mod, "get_provider", lambda key: grader)
+
+    _, context = _stage_context_with_one_passing_chunk()
+
+    await TranslationQAStage().run(context)
+
+    chunk_state = context.chunk_states["c0001"]
+    assert chunk_state["qa_status"] == "needs_llm_retry"
+    assert "llm_qa_below_threshold" in chunk_state["qa_warnings"]
+    assert chunk_state["llm_qa_score"] == 0.40
+    assert context.metadata["llm_qa_enabled"] is True
+    assert context.metadata["llm_qa_min_score"] == 0.75
+    assert context.metadata["llm_qa_retry_counts"]["c0001"] == 1
+
+
+@pytest.mark.asyncio
+async def test_llm_qa_above_threshold_keeps_passed_status(monkeypatch):
+    """An LLM score at or above the threshold keeps the deterministic pass."""
+    from novelai.config.settings import settings
+
+    grader = _StubLLMGrader(score=0.90)
+    monkeypatch.setattr(settings, "LLM_QA_ENABLED", True)
+    monkeypatch.setattr(settings, "LLM_QA_PROVIDER", "gemini")
+    monkeypatch.setattr(settings, "LLM_QA_MODEL", "gemini-3.1-flash-lite")
+    monkeypatch.setattr(settings, "LLM_QA_MIN_SCORE", 0.75)
+    monkeypatch.setattr(settings, "LLM_QA_MAX_RETRY_ATTEMPTS", 1)
+    import novelai.translation.pipeline.stages.translation_qa as stage_mod
+
+    monkeypatch.setattr(stage_mod, "get_provider", lambda key: grader)
+
+    _, context = _stage_context_with_one_passing_chunk()
+
+    await TranslationQAStage().run(context)
+
+    chunk_state = context.chunk_states["c0001"]
+    assert chunk_state["qa_status"] == "passed"
+    assert "llm_qa_below_threshold" not in chunk_state.get("qa_warnings", [])
+    assert chunk_state["llm_qa_score"] == 0.90
+
+
+@pytest.mark.asyncio
+async def test_evaluate_translation_quality_with_llm_returns_one_on_failure():
+    """The free-standing grader must fail open (1.0) on provider trouble."""
+    from novelai.translation.qa import evaluate_translation_quality_with_llm
+
+    class _ExplodingProvider(TranslationProvider):
+        @property
+        def key(self) -> str:
+            return "boom"
+
+        async def translate(self, prompt, model=None, max_tokens=None, **kwargs):
+            raise RuntimeError("simulated outage")
+
+    score = await evaluate_translation_quality_with_llm(
+        _ExplodingProvider(),
+        source_text="こんにちは",
+        translated_text="Hello",
+        model="gemini-3.1-flash-lite",
+    )
+    assert score == 1.0
+
+
+@pytest.mark.asyncio
+async def test_evaluate_translation_quality_with_llm_parses_json_in_prose():
+    """LLM responses often wrap JSON in prose; the grader must still parse it."""
+    from novelai.translation.qa import evaluate_translation_quality_with_llm
+
+    class _ProseProvider(TranslationProvider):
+        @property
+        def key(self) -> str:
+            return "prose"
+
+        async def translate(self, prompt, model=None, max_tokens=None, **kwargs):
+            return {"text": 'Sure. Here is the score: {"score": 0.83}. Done.'}
+
+    score = await evaluate_translation_quality_with_llm(
+        _ProseProvider(),
+        source_text="こんにちは",
+        translated_text="Hello",
+        model="prose-1.0",
+    )
+    assert score == pytest.approx(0.83)

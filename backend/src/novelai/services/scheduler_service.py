@@ -30,12 +30,14 @@ class SchedulerService:
         database_backup_service: Any | None = None,
         operator_alert_service: Any | None = None,
         db_session_scope_factory: Any | None = None,
+        storage_service: Any | None = None,
     ) -> None:
         self._backup_service = backup_service
         self._maintenance_service = maintenance_service
         self._database_backup_service = database_backup_service
         self._operator_alert_service = operator_alert_service
         self._session_scope_factory = db_session_scope_factory
+        self._storage_service = storage_service
         self._lease_service = (
             ScheduledJobLeaseService(db_session_scope_factory) if db_session_scope_factory is not None else None
         )
@@ -89,8 +91,7 @@ class SchedulerService:
                         self._run_database_backup,
                     ),
                     (
-                        settings.DATABASE_RESTORE_VERIFICATION_ENABLED
-                        and self._database_backup_service is not None,
+                        settings.DATABASE_RESTORE_VERIFICATION_ENABLED and self._database_backup_service is not None,
                         "database_restore_verify",
                         settings.DATABASE_RESTORE_VERIFICATION_SCHEDULE_CRON,
                         settings.DATABASE_RESTORE_VERIFICATION_TIMEZONE,

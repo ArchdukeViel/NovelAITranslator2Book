@@ -116,22 +116,6 @@ describe("admin API CSRF wiring", () => {
     expect(new Headers(fetchMock.mock.calls[0][1]?.headers).has("X-CSRF-Token")).toBe(false);
   });
 
-  it("sends X-CSRF-Token on admin downloads", async () => {
-    const fetchMock = vi.mocked(fetch);
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse({ csrf_token: "admin-csrf" }))
-      .mockResolvedValueOnce(new Response("book", { status: 200 }));
-    const { api } = await loadApi();
-
-    await api.exportNovel("test-novel", { format: "epub" });
-
-    const [, mutationInit] = fetchMock.mock.calls[1];
-    const headers = new Headers(mutationInit?.headers);
-    expect(fetchMock.mock.calls[1][0]).toBe("/api/admin/novels/test-novel/export");
-    expect(mutationInit?.method).toBe("POST");
-    expect(headers.get("X-CSRF-Token")).toBe("admin-csrf");
-  });
-
   it("keeps runActivity on the pending-only run endpoint", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock

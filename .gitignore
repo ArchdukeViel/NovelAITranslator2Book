@@ -33,20 +33,29 @@ ENV/
 
 # Graphify generated knowledge graph
 graphify-out/
-graphify-out-before-rebuild-20260714-012905/
-run-graphify.ps1
+
+# CodeGraph generated local index
+.codegraph/
 
 # Frontend
 frontend/node_modules/
 frontend/.next/
 frontend/.next-dev/
 frontend/out/
+frontend/coverage/
+frontend/.vercel/
+frontend/*.tsbuildinfo
+.vercel/
+*.tsbuildinfo
 frontend/.env.local
 frontend/.env.*.local
+.turbo/
+.eslintcache
 .cache/
 .coverage
 .coverage.*
 htmlcov/
+coverage/
 
 # Test / temp artifacts
 tests_tmp/
@@ -82,6 +91,7 @@ __MACOSX/
 .env
 .env.*
 !.env.example
+!.env.*.example
 
 # Runtime data
 novel_library/

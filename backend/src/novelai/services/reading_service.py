@@ -31,11 +31,7 @@ class ReadingService:
             chapter_db_id = int(chapter_id)
         except ValueError as exc:
             raise ValueError("Chapter not found") from exc
-        chapter = (
-            self.db_session.query(Chapter)
-            .filter_by(id=chapter_db_id, novel_id=novel_id)
-            .one_or_none()
-        )
+        chapter = self.db_session.query(Chapter).filter_by(id=chapter_db_id, novel_id=novel_id).one_or_none()
         if chapter is None:
             raise ValueError("Chapter not found")
         return chapter.id
@@ -43,9 +39,7 @@ class ReadingService:
     def _utcnow(self) -> datetime:
         return datetime.now(UTC)
 
-    def _progress_response(
-        self, slug: str, rp: ReadingProgress | None, chapter_number: int | None
-    ) -> dict[str, Any]:
+    def _progress_response(self, slug: str, rp: ReadingProgress | None, chapter_number: int | None) -> dict[str, Any]:
         if rp is None:
             return {
                 "slug": slug,
@@ -64,18 +58,10 @@ class ReadingService:
 
     def get_progress(self, user_id: int, slug: str) -> dict[str, Any]:
         novel = self._get_novel(slug)
-        rp = (
-            self.db_session.query(ReadingProgress)
-            .filter_by(user_id=user_id, novel_id=novel.id)
-            .one_or_none()
-        )
+        rp = self.db_session.query(ReadingProgress).filter_by(user_id=user_id, novel_id=novel.id).one_or_none()
         chapter_number: int | None = None
         if rp is not None and rp.chapter_id is not None:
-            ch = (
-                self.db_session.query(Chapter.chapter_number)
-                .filter_by(id=rp.chapter_id)
-                .one_or_none()
-            )
+            ch = self.db_session.query(Chapter.chapter_number).filter_by(id=rp.chapter_id).one_or_none()
             if ch:
                 chapter_number = ch[0]
         return self._progress_response(slug, rp, chapter_number)
@@ -85,11 +71,7 @@ class ReadingService:
     ) -> dict[str, Any]:
         novel = self._get_novel(slug)
         chapter_db_id = self._get_chapter(chapter_id, novel.id)
-        rp = (
-            self.db_session.query(ReadingProgress)
-            .filter_by(user_id=user_id, novel_id=novel.id)
-            .one_or_none()
-        )
+        rp = self.db_session.query(ReadingProgress).filter_by(user_id=user_id, novel_id=novel.id).one_or_none()
         if rp is None:
             rp = ReadingProgress(user_id=user_id, novel_id=novel.id)
             self.db_session.add(rp)
@@ -99,18 +81,12 @@ class ReadingService:
         self.db_session.flush()
         chapter_number: int | None = None
         if rp.chapter_id is not None:
-            ch = (
-                self.db_session.query(Chapter.chapter_number)
-                .filter_by(id=rp.chapter_id)
-                .one_or_none()
-            )
+            ch = self.db_session.query(Chapter.chapter_number).filter_by(id=rp.chapter_id).one_or_none()
             if ch:
                 chapter_number = ch[0]
         return self._progress_response(slug, rp, chapter_number)
 
-    def record_history(
-        self, user_id: int, slug: str, chapter_id: str | None
-    ) -> dict[str, Any]:
+    def record_history(self, user_id: int, slug: str, chapter_id: str | None) -> dict[str, Any]:
         novel = self._get_novel(slug)
         chapter_db_id = self._get_chapter(chapter_id, novel.id)
         entry = ReadingHistory(user_id=user_id, novel_id=novel.id, chapter_id=chapter_db_id)
@@ -118,11 +94,7 @@ class ReadingService:
         self.db_session.flush()
         chapter_number: int | None = None
         if entry.chapter_id is not None:
-            ch = (
-                self.db_session.query(Chapter.chapter_number)
-                .filter_by(id=entry.chapter_id)
-                .one_or_none()
-            )
+            ch = self.db_session.query(Chapter.chapter_number).filter_by(id=entry.chapter_id).one_or_none()
             if ch:
                 chapter_number = ch[0]
         return {
@@ -132,6 +104,11 @@ class ReadingService:
             "chapter_number": chapter_number,
             "read_at": entry.read_at,
         }
+
+    def list_recent_reads(self, limit: int = 1000) -> list[dict[str, Any]]:
+        """List recent read timestamps across users for owner analytics only."""
+        rows = self.db_session.query(ReadingHistory.read_at).order_by(ReadingHistory.read_at.desc()).limit(limit).all()
+        return [{"read_at": row[0]} for row in rows]
 
     def list_history(self, user_id: int, limit: int = 50) -> list[dict[str, Any]]:
         results = (

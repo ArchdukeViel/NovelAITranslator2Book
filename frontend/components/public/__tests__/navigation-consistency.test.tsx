@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
 import { PublicSidebar } from "@/components/public/public-sidebar";
@@ -17,6 +19,13 @@ const publicRouteRoot = join(__root, "..", "..", "..", "app", "(public)");
 /** Map a nav href like "/account/library" to the expected page.tsx path. */
 function hrefToPagePath(href: string): string {
   return join(publicRouteRoot, href, "page.tsx");
+}
+
+function renderWithQuery(ui: ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +82,7 @@ describe("Sidebar navigation consistency", () => {
   const accountNavHrefs = [
     "/account/library",
     "/account/history",
+    "/account/notifications",
     "/account/requests",
     "/account/contributions",
     "/account/settings",
@@ -173,13 +183,13 @@ describe("Sidebar navigation consistency", () => {
 describe("Header navigation consistency", () => {
   it("header does not contain Library shortcut", () => {
     setAuth(true);
-    render(<PublicHeader onMenuClick={() => {}} />);
+    renderWithQuery(<PublicHeader onMenuClick={() => {}} />);
     expect(screen.queryByRole("link", { name: /library/i })).not.toBeInTheDocument();
   });
 
   it("header has brand, menu button, and user indicator without the theme toggle", () => {
     setAuth(false);
-    render(<PublicHeader onMenuClick={() => {}} />);
+    renderWithQuery(<PublicHeader onMenuClick={() => {}} />);
     expect(screen.getByLabelText("Open navigation menu")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /sign in/i })).toHaveAttribute(
       "href",
@@ -194,8 +204,8 @@ describe("Header navigation consistency", () => {
 // ---------------------------------------------------------------------------
 
 describe("Footer navigation consistency", () => {
-  const footerReadHrefs = ["/browse-novels", "/ranking", "/request-novel", "/contribute"];
-  const footerLegalHrefs = ["/about", "/privacy", "/terms", "/dmca", "/contact", "/cookie-policy"];
+  const footerReadHrefs = ["/browse-novels", "/ranking", "/request-novel", "/contribute", "/support"];
+  const footerLegalHrefs = ["/about", "/privacy", "/terms", "/legal", "/dmca", "/contact", "/cookie-policy"];
 
   it("every footer Read section href resolves to an existing route page", () => {
     for (const href of footerReadHrefs) {
@@ -222,6 +232,7 @@ describe("Footer navigation consistency", () => {
     expect(screen.getByText("Ranking")).toBeInTheDocument();
     expect(screen.getByText("Request Novel")).toBeInTheDocument();
     expect(screen.getByText("Contribute")).toBeInTheDocument();
+    expect(screen.getByText("Support")).toBeInTheDocument();
   });
 
   it("footer contains Trust section legal links", () => {
@@ -229,6 +240,7 @@ describe("Footer navigation consistency", () => {
     expect(screen.getByText("About")).toBeInTheDocument();
     expect(screen.getByText("Privacy")).toBeInTheDocument();
     expect(screen.getByText("Terms")).toBeInTheDocument();
+    expect(screen.getByText("Legal")).toBeInTheDocument();
     expect(screen.getByText("DMCA")).toBeInTheDocument();
     expect(screen.getByText("Contact")).toBeInTheDocument();
     expect(screen.getByText("Cookie Policy")).toBeInTheDocument();
@@ -267,11 +279,14 @@ describe("Route inventory completeness", () => {
     "/about",
     "/privacy",
     "/terms",
+    "/legal",
     "/dmca",
     "/contact",
     "/cookie-policy",
+    "/support",
     "/account/library",
     "/account/history",
+    "/account/notifications",
     "/account/requests",
     "/account/contributions",
     "/account/settings",

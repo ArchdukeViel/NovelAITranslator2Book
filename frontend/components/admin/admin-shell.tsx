@@ -9,15 +9,17 @@ import {
   Cpu,
   FileEdit,
   Gauge,
+  KeyRound,
   Library,
   ListPlus,
   ListChecks,
   Moon,
+  Wrench,
   Search,
   Settings,
+  Shield,
   Sun,
   Users,
-  Download,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -42,11 +44,14 @@ const navItems: NavItem[] = [
   { href: "/admin/library", label: "Library", icon: Library },
   { href: "/admin/activity", label: "Activity Log", icon: ListChecks },
   { href: "/admin/translation", label: "Scheduler", icon: Cpu },
-  { href: "/admin/exports", label: "Exports", icon: Download },
+  { href: "/admin/maintenance", label: "Maintenance", icon: Wrench },
+  { href: "/admin/analytics", label: "Analytics", icon: Activity },
   { href: "/admin/requests", label: "Requests", icon: ListPlus },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/editor", label: "Editor", icon: FileEdit },
+  { href: "/admin/credentials", label: "Credentials", icon: KeyRound },
   { href: "/admin/settings", label: "Settings", icon: Settings },
+  { href: "/admin/audit", label: "Audit Log", icon: Shield },
 ];
 
 /**

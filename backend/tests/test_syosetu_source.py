@@ -11,10 +11,7 @@ def test_normalize_novel_id_accepts_chapter_and_infotop_urls() -> None:
 
     assert source.normalize_novel_id("https://ncode.syosetu.com/n8733gf/1/") == "n8733gf"
     assert source.normalize_novel_id("https://ncode.syosetu.com/n6656lw/") == "n6656lw"
-    assert (
-        source.normalize_novel_id("https://ncode.syosetu.com/novelview/infotop/ncode/n8733gf/")
-        == "n8733gf"
-    )
+    assert source.normalize_novel_id("https://ncode.syosetu.com/novelview/infotop/ncode/n8733gf/") == "n8733gf"
 
 
 def test_decode_page_response_uses_utf8_when_charset_is_missing() -> None:
@@ -238,8 +235,7 @@ def test_parse_chapter_html_preserves_preface_afterword_and_separator_lines() ->
     chapter_text = source._parse_chapter_html(html)
 
     assert (
-        chapter_text
-        == "Preface note.\n\nKanji line one.\nLine two.\n\nSecond paragraph.\n\n"
+        chapter_text == "Preface note.\n\nKanji line one.\nLine two.\n\nSecond paragraph.\n\n"
         "------------------------------------------------------------\n\nAfterword note."
     )
 
@@ -260,11 +256,7 @@ def test_parse_chapter_html_preserves_inline_image_placeholders() -> None:
 
     chapter_text = source._parse_chapter_html(html)
 
-    assert chapter_text == (
-        "Before the illustration.\n\n"
-        "[Image: Scene illustration]\n\n"
-        "After the illustration."
-    )
+    assert chapter_text == ("Before the illustration.\n\n[Image: Scene illustration]\n\nAfter the illustration.")
 
 
 def test_parse_chapter_payload_extracts_image_metadata() -> None:
@@ -283,11 +275,7 @@ def test_parse_chapter_payload_extracts_image_metadata() -> None:
 
     payload = source._parse_chapter_payload(html, "https://ncode.syosetu.com/n8733gf/1/")
 
-    assert payload["text"] == (
-        "Before the illustration.\n\n"
-        "[Image: Scene illustration]\n\n"
-        "After the illustration."
-    )
+    assert payload["text"] == ("Before the illustration.\n\n[Image: Scene illustration]\n\nAfter the illustration.")
     assert payload["images"] == [
         {
             "index": 0,
@@ -504,3 +492,45 @@ async def test_fetch_metadata_caps_single_page_toc_without_counting_headings() -
 
     assert [chapter["id"] for chapter in metadata["chapters"]] == ["1", "2", "3"]
     assert [chapter["part"] for chapter in metadata["chapters"]] == ["Part One", "Part One", "Part Two"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_metadata_surfaces_infotop_fetch_failure_not_swallowed() -> None:
+    """DEBT-024: infotop fetch failures must not be swallowed silently.
+
+    The main metadata is still returned, but the metadata must record
+    ``infotop_fetch_failed`` so callers know the status came from the main
+    page only.
+    """
+    from novelai.core.errors import SourceError
+
+    source = SyosetuNcodeSource()
+    root_url = "https://ncode.syosetu.com/n8733gf/"
+    infotop_url = "https://ncode.syosetu.com/novelview/infotop/ncode/n8733gf/"
+
+    async def fake_fetch_page(url: str, on_retry=None) -> str:
+        if url == infotop_url:
+            raise SourceError("infotop blocked")
+        assert url == root_url
+        return """
+        <html>
+          <body>
+            <h1 class="p-novel__title">Main Page Story</h1>
+            <div id="novel_writername">Author Name</div>
+            <table><tr><th>掲載状態</th><td>完結済</td></tr></table>
+            <a href="/n8733gf/1/">Chapter One</a>
+          </body>
+        </html>
+        """
+
+    source._fetch_page = fake_fetch_page  # type: ignore[method-assign]
+    metadata = await source.fetch_metadata(root_url)
+
+    # Main metadata is preserved
+    assert metadata["title"] == "Main Page Story"
+    assert [chapter["id"] for chapter in metadata["chapters"]] == ["1"]
+    # Failure is recorded, not swallowed
+    assert metadata["infotop_fetch_failed"] is True
+    assert metadata["infotop_fetch_url"] == infotop_url
+    # Status still falls back to main page status (completed parsed from table)
+    assert metadata["publication_status"] == "completed"

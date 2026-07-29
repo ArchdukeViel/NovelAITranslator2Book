@@ -7,8 +7,8 @@ import type { Metadata } from "next";
 vi.mock("@/app/(public)/about/page", () => ({ metadata: { title: "About", description: "Dokushodo is a public reader for translated web novels with owner-controlled ingestion and translation workflows." } }));
 vi.mock("@/app/(public)/privacy/page", () => ({ metadata: { title: "Privacy", description: "Privacy policy for Dokushodo." } }));
 vi.mock("@/app/(public)/terms/page", () => ({ metadata: { title: "Terms", description: "Terms of service for Dokushodo." } }));
-vi.mock("@/app/(public)/dmca/page", () => ({ metadata: { title: "DMCA", description: "DMCA policy for Dokushodo.", robots: { index: false, follow: false } } }));
-vi.mock("@/app/(public)/contact/page", () => ({ metadata: { title: "Contact", description: "Contact information for Dokushodo.", robots: { index: false, follow: false } } }));
+vi.mock("@/app/(public)/dmca/layout", () => ({ metadata: { title: "DMCA", description: "DMCA policy for Dokushodo.", robots: { index: false, follow: false } } }));
+vi.mock("@/app/(public)/contact/layout", () => ({ metadata: { title: "Contact", description: "Contact information for Dokushodo.", robots: { index: false, follow: false } } }));
 vi.mock("@/app/(public)/cookie-policy/page", () => ({ metadata: { title: "Cookie Policy", description: "Cookie policy for Dokushodo." } }));
 vi.mock("@/app/(public)/ranking/page", () => ({ metadata: { title: "Ranking", description: "Ranking page for Dokushodo." } }));
 vi.mock("@/app/(public)/auth/callback/page", () => ({ metadata: { title: "Signing In", description: "OAuth callback page.", robots: { index: false, follow: false } } }));
@@ -37,8 +37,8 @@ vi.mock("@/app/(public)/browse-novels/page", () => ({
 import { metadata as aboutMeta } from "@/app/(public)/about/page";
 import { metadata as privacyMeta } from "@/app/(public)/privacy/page";
 import { metadata as termsMeta } from "@/app/(public)/terms/page";
-import { metadata as dmcaMeta } from "@/app/(public)/dmca/page";
-import { metadata as contactMeta } from "@/app/(public)/contact/page";
+import { metadata as dmcaMeta } from "@/app/(public)/dmca/layout";
+import { metadata as contactMeta } from "@/app/(public)/contact/layout";
 import { metadata as cookiePolicyMeta } from "@/app/(public)/cookie-policy/page";
 import { metadata as rankingMeta } from "@/app/(public)/ranking/page";
 import { metadata as authCallbackMeta } from "@/app/(public)/auth/callback/page";
@@ -305,7 +305,7 @@ describe("metadata — safety and honesty", () => {
     expect(sourceText).not.toContain("confirms where contact information will live");
     expect(sourceText).not.toContain("channels are pending");
     expect(sourceText).toContain("single owner/admin");
-    expect(sourceText).toContain("takedown request");
+    expect(sourceText).toMatch(/takedown\s+requests/);
   });
 
   it("dmca page copy does not sound like scaffold placeholder", () => {
@@ -314,7 +314,7 @@ describe("metadata — safety and honesty", () => {
       "utf8"
     );
     expect(sourceText).not.toContain("pending final policy copy");
-    expect(sourceText).toContain("owner/admin reviews");
+    expect(sourceText).toMatch(/single owner\/admin\s+will review/);
   });
 
   it("error page does not describe itself as documentation", () => {

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -48,6 +49,24 @@ class ProviderFallbackPolicyRequest(BaseModel):
     allow_run_overrides: bool | None = None
     fallback_on_qa_failure: bool | None = None
     candidates: list[dict[str, Any]] | None = None
+
+
+class MaintenanceTaskStatusResponse(BaseModel):
+    task_key: str
+    schedule: str
+    timezone: str
+    enabled: bool
+    state: str
+    last_started_at: datetime | None
+    last_finished_at: datetime | None
+    result: str | None
+    failure_summary: str | None
+    next_eligible_at: datetime | None
+
+
+class MaintenanceStatusResponse(BaseModel):
+    status: Literal["healthy", "degraded"]
+    tasks: list[MaintenanceTaskStatusResponse]
 
 
 def provider_credential_response(status: dict[str, Any]) -> dict[str, Any]:

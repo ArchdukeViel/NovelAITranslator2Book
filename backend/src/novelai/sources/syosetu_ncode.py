@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 from typing import Any
@@ -27,6 +28,8 @@ from novelai.sources.taxonomy import (
     normalize_keywords,
 )
 from novelai.utils.text_normalization import normalize_text
+
+logger = logging.getLogger(__name__)
 
 
 class SyosetuNcodeSource(SourceAdapter):
@@ -68,9 +71,7 @@ class SyosetuNcodeSource(SourceAdapter):
         ".p-novel__text--afterword",
         ".p-novel__afterword",
     )
-    REMOVE_FROM_SECTION_SELECTORS = (
-        ".novel_bn",
-    )
+    REMOVE_FROM_SECTION_SELECTORS = (".novel_bn",)
     RUBY_REMOVE_SELECTORS = ("rt", "rp")
     SEPARATOR_LINE = "-" * 60
     PUBLICATION_STATUS_LABEL_MARKERS = (
@@ -269,7 +270,9 @@ class SyosetuNcodeSource(SourceAdapter):
         lowered = text.lower()
         if "chapter" in lowered or "part" in lowered or "arc" in lowered:
             return True
-        return bool(re.search(r"(?:^|\s)(?:第?[0-9０-９一二三四五六七八九十百]+[章部編]|[0-9０-９]+章)(?:\s|　|$)", text))
+        return bool(
+            re.search(r"(?:^|\s)(?:第?[0-9０-９一二三四五六七八九十百]+[章部編]|[0-9０-９]+章)(?:\s|　|$)", text)
+        )
 
     def _extract_source_date_from_text(self, text: str) -> str | None:
         match = self.SOURCE_DATE_PATTERN.search(text)
@@ -584,7 +587,12 @@ class SyosetuNcodeSource(SourceAdapter):
                 continue
             href = attribute_to_str(anchor.get("href")) or ""
             parsed = urlparse(href)
-            if parsed.hostname and parsed.hostname.endswith(".syosetu.com") and parsed.path and parsed.path.startswith("/genre/"):
+            if (
+                parsed.hostname
+                and parsed.hostname.endswith(".syosetu.com")
+                and parsed.path
+                and parsed.path.startswith("/genre/")
+            ):
                 text = anchor.get_text(strip=True)
                 if text:
                     slug = map_genre(text, self._genre_map)
@@ -624,7 +632,12 @@ class SyosetuNcodeSource(SourceAdapter):
                     continue
                 href = attribute_to_str(anchor.get("href")) or ""
                 parsed = urlparse(href)
-                if parsed.hostname and parsed.hostname.endswith(".syosetu.com") and parsed.path and parsed.path.startswith("/tag/"):
+                if (
+                    parsed.hostname
+                    and parsed.hostname.endswith(".syosetu.com")
+                    and parsed.path
+                    and parsed.path.startswith("/tag/")
+                ):
                     text = anchor.get_text(strip=True)
                     if text:
                         keywords.append(text)
@@ -635,11 +648,7 @@ class SyosetuNcodeSource(SourceAdapter):
         for row in soup.find_all("tr"):
             if not isinstance(row, Tag):
                 continue
-            cells = [
-                cell.get_text(" ", strip=True)
-                for cell in row.find_all(["th", "td"])
-                if isinstance(cell, Tag)
-            ]
+            cells = [cell.get_text(" ", strip=True) for cell in row.find_all(["th", "td"]) if isinstance(cell, Tag)]
             if len(cells) < 2:
                 continue
             label = cells[0]
@@ -718,12 +727,7 @@ class SyosetuNcodeSource(SourceAdapter):
         for section in sections:
             images.extend(extract_image_references(section, base_url=url, start_index=len(images)))
         text = "\n\n".join(
-            rendered
-            for rendered in (
-                self._render_story_section(section)
-                for section in sections
-            )
-            if rendered
+            rendered for rendered in (self._render_story_section(section) for section in sections) if rendered
         )
         text = re.sub(r"\n{3,}", "\n\n", text)
         source_blocks: list[dict[str, Any]] = []
@@ -747,11 +751,16 @@ class SyosetuNcodeSource(SourceAdapter):
         url = self._normalize_url(url)
         html = await self._fetch_page(url, on_retry=None)
         metadata = self._parse_metadata_html(html, url)
+        infotop_url = self._infotop_url(url)
         try:
-            infotop_url = self._infotop_url(url)
             infotop_html = await self._fetch_page(infotop_url, on_retry=None)
-        except SourceError:
-            pass
+        except SourceError as exc:
+            # Surface infotop fetch failures as metadata so callers can tell
+            # status was inferred from the main page only; never swallow them
+            # silently (DEBT-024). The main metadata is still returned.
+            logger.warning("Syosetu infotop fetch failed for %s: %s", infotop_url, exc)
+            metadata["infotop_fetch_failed"] = True
+            metadata["infotop_fetch_url"] = infotop_url
         else:
             self._merge_publication_status(
                 metadata,
@@ -773,9 +782,7 @@ class SyosetuNcodeSource(SourceAdapter):
             highest_known_chapter = max(chapters_by_number)
             if highest_known_chapter >= max_chapter:
                 metadata["chapters"] = [
-                    chapter
-                    for number, chapter in sorted(chapters_by_number.items())
-                    if number <= max_chapter
+                    chapter for number, chapter in sorted(chapters_by_number.items()) if number <= max_chapter
                 ]
                 return metadata
 
@@ -784,7 +791,9 @@ class SyosetuNcodeSource(SourceAdapter):
             page_html = await self._fetch_page(page_url, on_retry=None)
             page_soup = BeautifulSoup(page_html, "lxml")
             for chapter in self._extract_chapters(page_soup, url, metadata.get("title"), initial_part=current_part):
-                chapter_part = chapter.get("part") or chapter.get("volume") or chapter.get("arc") or chapter.get("section")
+                chapter_part = (
+                    chapter.get("part") or chapter.get("volume") or chapter.get("arc") or chapter.get("section")
+                )
                 if isinstance(chapter_part, str) and chapter_part.strip():
                     current_part = chapter_part.strip()
                 if isinstance(chapter.get("num"), int):

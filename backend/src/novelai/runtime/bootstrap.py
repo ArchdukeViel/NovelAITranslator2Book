@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-"""Explicit bootstrap for registering providers, sources, and exporters.
+"""Explicit bootstrap for registering providers, sources, and input adapters.
 
-The project uses registries for providers, sources, and exporters (rather than hard imports).
+The project uses registries for providers, sources, and input adapters (rather than hard imports).
 This module provides a single bootstrap entrypoint that must run before any
-code attempts to resolve providers/sources/exporters from registries.
+code attempts to resolve providers, sources, or input adapters from registries.
 
 This avoids import-time side-effects and makes it possible to control which
 implementations are registered in a given runtime (e.g., tests).
@@ -69,25 +69,6 @@ def bootstrap_input_adapters() -> None:
     register_input_adapter("cbz", lambda: CBZDocumentAdapter())
 
 
-def bootstrap_exporters() -> None:
-    """Register all known export formats.
-
-    PDF export is deprecated (DEBT-007), and no PDF exporter implementation is
-    shipped. ``ExportService.export("pdf", ...)`` returns a controlled
-    ``OperationError`` instead of a raw ``KeyError`` or ``NotImplementedError``.
-    Historical manifests with ``format: "pdf"`` are preserved but new PDF
-    export requests are rejected.
-    """
-    from novelai.export.epub_exporter import EPUBExporter
-    from novelai.export.html_exporter import HTMLExporter
-    from novelai.export.markdown_exporter import MarkdownExporter
-    from novelai.export.registry import register_exporter
-
-    register_exporter("epub", lambda: EPUBExporter())
-    register_exporter("html", lambda: HTMLExporter())
-    register_exporter("md", lambda: MarkdownExporter())
-
-
 def bootstrap_provider_credentials() -> list[dict[str, object]]:
     """Hydrate active encrypted DB provider credentials into runtime settings."""
     from novelai.config.settings import settings
@@ -111,7 +92,7 @@ def bootstrap_provider_credentials() -> list[dict[str, object]]:
 
 
 def bootstrap() -> None:
-    """Register all known providers, sources, and exporters (idempotent).
+    """Register all known providers, sources, and input adapters (idempotent).
 
     Safe to call multiple times; only registers once.
     """
@@ -122,6 +103,5 @@ def bootstrap() -> None:
     bootstrap_providers()
     bootstrap_sources()
     bootstrap_input_adapters()
-    bootstrap_exporters()
     bootstrap_provider_credentials()
     _BOOTSTRAPPED = True

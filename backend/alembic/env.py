@@ -26,11 +26,13 @@ if str(_BACKEND_SRC) not in sys.path:
 from novelai.db.base import Base  # noqa: E402
 
 for _model_module in (
+    "novelai.db.models.analytics_event",
     "novelai.db.models.chapter",
     "novelai.db.models.genre",
     "novelai.db.models.glossary",
     "novelai.db.models.jobs",
     "novelai.db.models.novel",
+    "novelai.db.models.notification",
     "novelai.db.models.system",
     "novelai.db.models.tag",
     "novelai.db.models.users",
@@ -55,12 +57,10 @@ def _get_url() -> str:
     if url:
         return url
     from novelai.config.settings import settings
+
     if settings.DATABASE_URL:
         return settings.DATABASE_URL
-    raise RuntimeError(
-        "DATABASE_URL is not configured. "
-        "Set DATABASE_URL in .env or as an environment variable."
-    )
+    raise RuntimeError("DATABASE_URL is not configured. Set DATABASE_URL in .env or as an environment variable.")
 
 
 def run_migrations_offline() -> None:

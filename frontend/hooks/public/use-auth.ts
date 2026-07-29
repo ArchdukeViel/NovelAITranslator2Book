@@ -60,11 +60,12 @@ export function useLogout() {
       queryClient.invalidateQueries({ queryKey: AUTH_ME_KEY });
 
       // Remove all user-scoped cached data so stale library/progress/history/
-      // reviews/requests don't persist after logout. Using removeQueries
-      // (not invalidateQueries) ensures data is fully cleared rather than
-      // refetched for a now-unauthenticated user.
+      // reviews/requests/notifications don't persist after logout. Using
+      // removeQueries (not invalidateQueries) ensures data is fully cleared
+      // rather than refetched for a now-unauthenticated user.
       queryClient.removeQueries({ queryKey: ["user-reading"] });
       queryClient.removeQueries({ queryKey: ["user-engagement"] });
+      queryClient.removeQueries({ queryKey: ["user-notifications"] });
     },
   });
 }

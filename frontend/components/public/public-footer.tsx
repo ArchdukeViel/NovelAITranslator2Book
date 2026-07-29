@@ -28,6 +28,9 @@ export function PublicFooter() {
           <Link href="/contribute" className="transition-colors hover:text-foreground">
             Contribute
           </Link>
+          <Link href="/support" className="transition-colors hover:text-foreground">
+            Support
+          </Link>
         </nav>
 
         <nav className="grid gap-2" aria-label="Legal navigation">
@@ -48,6 +51,9 @@ export function PublicFooter() {
           </Link>
           <Link href="/contact" className="transition-colors hover:text-foreground">
             Contact
+          </Link>
+          <Link href="/legal" className="transition-colors hover:text-foreground">
+            Legal
           </Link>
           <Link href="/cookie-policy" className="transition-colors hover:text-foreground">
             Cookie Policy

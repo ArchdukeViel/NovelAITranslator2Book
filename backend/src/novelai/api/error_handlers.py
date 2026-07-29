@@ -19,7 +19,6 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from novelai.core.errors import (
     ConfigError,
-    ExportError,
     NovelAIError,
     PipelineError,
     ProviderAPIError,
@@ -75,7 +74,6 @@ _EXPLANATION_BY_CODE: dict[str, str] = {
     "BAD_REQUEST": "The request payload could not be accepted. Check the input values and try again.",
     "CONFIGURATION_ERROR": "The backend configuration is incomplete or invalid.",
     "CONFLICT": "The requested change conflicts with the current stored state.",
-    "EXPORT_ERROR": "The export pipeline could not generate the requested output file.",
     "FAILED_DEPENDENCY": "This action could not complete because a required internal dependency failed.",
     "INSUFFICIENT_STORAGE": "The storage layer could not complete the operation with the current storage state.",
     "INTERNAL_ERROR": "The backend hit an unexpected condition. Check the Activity Log or server logs with the trace ID.",
@@ -86,7 +84,7 @@ _EXPLANATION_BY_CODE: dict[str, str] = {
     "METADATA_NOT_FOUND": "The novel metadata file is missing. Run metadata crawl before this operation.",
     "NOVEL_IDENTIFIER_REQUIRED": "Enter either the source URL or the source novel ID before starting preliminary crawl.",
     "OPERATION_TIMEOUT": "The action took longer than the configured web request timeout.",
-    "REGISTRY_LOOKUP_ERROR": "The backend could not find the requested source, provider, input adapter, or exporter key.",
+    "REGISTRY_LOOKUP_ERROR": "The backend could not find the requested source, provider, or input adapter key.",
     "REQUEST_QUEUE_ERROR": "The reader request queue could not process the requested update.",
     "REQUEST_QUEUE_VALIDATION_ERROR": "The reader request payload is missing required fields or contains unsupported values.",
     "RUNTIME_ERROR": "The backend stopped during an application operation.",
@@ -543,15 +541,6 @@ def _classify_unhandled_error(request: Request, exc: Exception) -> ErrorClassifi
                 details,
                 "requests",
             )
-        if operation == "export":
-            return ErrorClassification(
-                424,
-                "EXPORT_ERROR",
-                message,
-                None,
-                details,
-                "export",
-            )
         if operation == "storage":
             return ErrorClassification(
                 DEFAULT_INTERNAL_STATUS,
@@ -780,19 +769,6 @@ def add_error_handlers(app: FastAPI) -> None:
             message=message,
             details=details,
             category="storage",
-            trace_id=_request_trace_id(request),
-        )
-
-    @app.exception_handler(ExportError)
-    async def export_error_handler(request: Request, exc: ExportError):
-        """Export generation error."""
-        logger.error("Export error: %s", exc)
-        return _json_error(
-            status_code=424,
-            code="EXPORT_ERROR",
-            message="Failed to generate export. Please try again.",
-            details={"export_error": str(exc)},
-            category="export",
             trace_id=_request_trace_id(request),
         )
 

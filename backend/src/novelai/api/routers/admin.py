@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_for_unsafe_methods
 from novelai.api.routers.admin_schemas import (
+    MaintenanceStatusResponse,
     ProviderApiKeyRequest,
     ProviderApiKeyValidationRequest,
     ProviderCredentialCreateRequest,
@@ -18,12 +19,22 @@ from novelai.api.routers.admin_schemas import (
 from novelai.api.routers.dependencies import (
     get_admin_db_service,
     get_admin_service,
+    get_maintenance_status_service,
     get_scheduler_runtime_state_service,
 )
 from novelai.services.admin_service import AdminService
+from novelai.services.maintenance_status_service import MaintenanceStatusService
 from novelai.services.scheduler_runtime_state_service import SchedulerRuntimeStateService
 
 router = APIRouter(dependencies=[Depends(require_csrf_for_unsafe_methods)])
+
+
+@router.get("/admin/maintenance/status", response_model=MaintenanceStatusResponse)
+async def maintenance_status(
+    service: MaintenanceStatusService = Depends(get_maintenance_status_service),
+    _owner=Depends(require_role("owner")),
+) -> dict[str, Any]:
+    return service.status()
 
 
 def _raise_admin_error(exc: Exception) -> None:
@@ -403,28 +414,3 @@ async def health_errors(
     from novelai.api.errors import get_error_metrics
 
     return get_error_metrics()
-
-
-@router.get("/admin/novels/{novel_id}/exports")
-async def list_novel_exports(
-    novel_id: str,
-    service: AdminService = Depends(get_admin_db_service),
-    _owner=Depends(require_role("owner")),
-) -> dict[str, Any]:
-    try:
-        return service.list_novel_exports(novel_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@router.get("/admin/novels/{novel_id}/exports/latest/{export_format}")
-async def latest_novel_export(
-    novel_id: str,
-    export_format: str,
-    service: AdminService = Depends(get_admin_db_service),
-    _owner=Depends(require_role("owner")),
-) -> dict[str, Any]:
-    try:
-        return service.latest_novel_export(novel_id, export_format)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
