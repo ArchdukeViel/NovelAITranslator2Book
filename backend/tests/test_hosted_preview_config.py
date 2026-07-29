@@ -130,6 +130,14 @@ def test_vercel_upload_excludes_local_and_non_runtime_trees() -> None:
     assert {".tmp/", ".codegraph/", "backend/tests/", "frontend/node_modules/", "graphify-out/"} <= ignored
 
 
+def test_architecture_records_vercel_runtime_boundaries() -> None:
+    architecture = (PROJECT_ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+
+    assert "NOVEL_LIBRARY_DIR=/tmp/novelai-preview" in architecture
+    assert "ALLOWED_HOSTS=*.vercel.app" in architecture
+    assert "comma-separated environment format, not JSON array text" in architecture
+
+
 def test_environment_templates_keep_session_cookie_setting_in_the_same_position() -> None:
     templates = [
         PROJECT_ROOT / ".env.example",
