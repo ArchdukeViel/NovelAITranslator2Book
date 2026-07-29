@@ -124,6 +124,12 @@ def test_vercel_backend_entrypoint_exports_monolith_app() -> None:
     assert "from novelai.api.app import app" in source
 
 
+def test_vercel_upload_excludes_local_and_non_runtime_trees() -> None:
+    ignored = set((PROJECT_ROOT / ".vercelignore").read_text(encoding="utf-8").splitlines())
+
+    assert {".tmp/", ".codegraph/", "backend/tests/", "frontend/node_modules/", "graphify-out/"} <= ignored
+
+
 def test_environment_templates_keep_session_cookie_setting_in_the_same_position() -> None:
     templates = [
         PROJECT_ROOT / ".env.example",

@@ -1,0 +1,10 @@
+.tmp/
+.codegraph/
+.agents/
+.codex/
+.github/
+backend/tests/
+deploy/
+docs/
+frontend/node_modules/
+graphify-out/
