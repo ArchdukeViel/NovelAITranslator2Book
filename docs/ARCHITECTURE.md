@@ -31,6 +31,80 @@ historical generated files.
 - Scheduler loops, long translation jobs, and restore verification need
   always-on compute; backend is not a Vercel Functions workload.
 
+## Deployment Topologies
+
+Three distinct deployment modes, each with different topology and security
+properties. The architecture supports all three; the production topology is
+the target.
+
+### Local Docker acceptance (``compose.yml``)
+
+- Backend: split admin and reader containers on ports 8000 and 8001.
+- Frontend: Next.js container on port 3000, proxied through Caddy.
+- Database: external PostgreSQL; Compose does not provision the primary DB.
+- Storage: local filesystem at ``NOVEL_LIBRARY_DIR`` or configured S3/R2.
+- Redis: Compose service for split-mode rate limiting and coordination.
+- Migrations: one-shot Compose ``migrate`` service must succeed before APIs.
+- Purpose: production-like local acceptance and smoke testing.
+
+### Preview (disposable — Vercel + Render monolith + Supabase + R2)
+
+- Frontend: Vercel (serverless, auto-deploy from git).
+- Backend: Render single monolithic web service.
+- Database: Supabase PostgreSQL (shared pool).
+- Storage: R2 application bucket scoped to a non-root preview prefix.
+- Redis: optional (in-memory rate limiter otherwise).
+- Migrations: Render start command runs ``alembic upgrade head`` before
+  app bind.
+- Backend uses SQLAlchemy/Alembic directly; Supabase Data API roles are not an
+  application persistence path and remain denied on backend-internal tables.
+- Acceptable for feature previews; not hardened for production.
+
+### Production (optimal — Vercel + split containers + managed PostgreSQL + R2)
+
+- **Frontend**: Vercel with an immutable release, explicit
+  ``WEB_CORS_ORIGINS``, ``CSRF_TRUSTED_ORIGINS``, ``ALLOWED_HOSTS``, CSP,
+  and HSTS.
+- **Backend**: always-on split deployment:
+  - **Admin process** (``admin.Dockerfile``, port 8000) — owner/user
+    control plane, session-authenticated endpoints, CSRF-protected
+    mutations, scheduled jobs, health probes.
+  - **Reader process** (``reader.Dockerfile``, port 8001) — public reader
+    API, guest-safe GETs, no admin session, no mutations.
+  - A separate one-shot migration job runs ``alembic upgrade head`` before
+    either long-running API process starts.
+- **Database**: managed PostgreSQL (Supabase / RDS / Cloud SQL) with:
+  - TLS required, connection pool with transaction-level budgeting.
+  - Dedicated direct-database role (not ``anon``/``authenticated``) used by
+    backend SQLAlchemy connections. It owns application tables or has the
+    audited privileges required to operate while RLS denies Data API roles.
+  - ``anon`` and ``authenticated`` roles exist only if Data API is
+    enabled; their privileges are explicitly revoked on backend-internal
+    tables and sequences.
+- **Storage**: two separate R2 buckets with least-privilege credentials:
+  - **App bucket**: chapter content, novel assets, catalog projections.
+  - **Backup bucket**: encrypted dumps and snapshots. Backup-target
+    credentials write only there; separate snapshot-source credentials read
+    only the application bucket.
+- **Redis**: managed (Upstash / ElastiCache / Render Redis) for
+  distributed rate limiting and the job queue in split mode.
+- **Networking**: explicit HTTPS termination at the selected edge/proxy,
+  explicit CORS origins, CSRF token validation on cookie-authenticated
+  mutations, explicit allowed hosts, ``X-Forwarded-Proto`` enforcement.
+- **Observability**: health endpoints (``/health/live``, ``/health/ready``,
+  ``/api/admin/health``), structured logging, runtime error monitoring.
+- **Email**: SMTP delivery configured through ``AUTH_EMAIL_DELIVERY_MODE``
+  and canonical SMTP settings.
+- **Backup and restore**: independently restorable copies with verified
+  restore procedure; encrypted database dumps and R2 snapshots. Retention
+  uses ``BackupManager.apply_retention()`` and ``InterProcessFileLock``.
+- **Scheduled maintenance**: PostgreSQL-side cron for internal cleanup
+  (``private.cleanup_expired_scheduler_states()``); application-side
+  scheduler loop checks ``scheduled_cron_log`` for pending backup and
+  maintenance work.
+- **Image immutability**: containers built by SHA-pinned Docker images,
+  not mutable tags.
+
 ## Backend Boundaries
 
 ```text
