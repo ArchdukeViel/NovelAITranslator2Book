@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
+from novelai.config.settings import settings
 from novelai.services.maintenance_service import MAINTENANCE_TASK_KEYS
 from novelai.services.maintenance_status_service import MaintenanceStatusService
 
@@ -13,6 +16,11 @@ class StubRuntimeState:
     def list_runtime_states(self, **filters):
         assert filters == {"scheduler_key": "maintenance", "scope_type": "task"}
         return self.states
+
+
+@pytest.fixture(autouse=True)
+def enable_maintenance(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "MAINTENANCE_ENABLED", True)
 
 
 def test_status_lists_every_registered_task_as_never_run() -> None:
