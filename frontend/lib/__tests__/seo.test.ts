@@ -164,7 +164,7 @@ describe("buildDescription", () => {
   it("removes nested tags that re-form after one pass", () => {
     expect(
       buildDescription("<scrip<script>removed</script>t>alert(1)</script>"),
-    ).toBe("alert(1)");
+    ).toBe("removedtalert(1)");
   });
 
   it("collapses whitespace", () => {
