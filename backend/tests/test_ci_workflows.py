@@ -37,3 +37,18 @@ def test_build_summary_fails_unless_publication_succeeds() -> None:
     assert "BUILD_RESULT: ${{ needs.build-and-push.result }}" in source
     assert 'if [ "$BUILD_RESULT" != "success" ]; then' in source
     assert "exit 1" in source
+
+
+def test_deploy_uses_published_version_and_migrates_before_start() -> None:
+    source = _workflow("deploy.yml")
+
+    assert 'export VERSION="${{ steps.version.outputs.value }}"' in source
+    assert "push:\n    tags:" not in source
+    assert source.index("docker compose run --rm migrate") < source.index("docker compose up -d")
+
+
+def test_secret_backed_opencode_workflow_restricts_commenters() -> None:
+    source = _workflow("opencode.yml")
+
+    assert 'fromJSON(\'["OWNER", "MEMBER", "COLLABORATOR"]\')' in source
+    assert "github.event.comment.author_association" in source

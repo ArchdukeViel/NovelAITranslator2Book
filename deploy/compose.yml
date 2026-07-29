@@ -49,6 +49,7 @@ services:
     restart: unless-stopped
 
   frontend:
+    image: ${FRONTEND_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-frontend}:${VERSION:-latest}
     build:
       context: ..
       dockerfile: deploy/frontend.Dockerfile
@@ -63,6 +64,7 @@ services:
     restart: unless-stopped
 
   migrate:
+    image: ${ADMIN_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-admin}:${VERSION:-latest}
     build:
       context: ..
       dockerfile: deploy/admin.Dockerfile
@@ -88,6 +90,7 @@ services:
     restart: "no"
 
   backend:
+    image: ${ADMIN_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-admin}:${VERSION:-latest}
     networks:
       - novelai-net
     healthcheck:
@@ -213,6 +216,7 @@ services:
     restart: unless-stopped
 
   reader:
+    image: ${READER_IMAGE:-ghcr.io/archdukeviel/novelaitranslator2book/novelai-reader}:${VERSION:-latest}
     build:
       context: ..
       dockerfile: deploy/reader.Dockerfile

@@ -194,5 +194,14 @@ def test_gitignore_excludes_secret_backups_and_runtime_state() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     gitignore = (repo_root / ".gitignore").read_text(encoding="utf-8")
 
-    for pattern in (".env", "storage/novel_library/", "backups/", "*.bak", "*.zip", "*.tar.gz"):
+    for pattern in (
+        ".env",
+        "storage/novel_library/",
+        "backups/",
+        "*.bak",
+        "*.zip",
+        "*.tar.gz",
+        "frontend/.vercel/",
+        "frontend/*.tsbuildinfo",
+    ):
         assert pattern in gitignore

@@ -44,3 +44,10 @@ def test_cleanup_test_artifacts_removes_known_directories():
         }
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+def test_deployment_files_have_one_canonical_frontend_dockerfile() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+
+    assert (project_root / "deploy" / "frontend.Dockerfile").is_file()
+    assert not (project_root / "frontend" / "Dockerfile").exists()

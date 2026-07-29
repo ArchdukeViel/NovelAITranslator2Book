@@ -19,6 +19,7 @@ from novelai.services.glossary_workflow_service import GlossaryWorkflowService
 from novelai.services.health_service import HealthService
 from novelai.services.library_service import LibraryService
 from novelai.services.library_summary_service import LibrarySummaryService
+from novelai.services.maintenance_status_service import MaintenanceStatusService
 from novelai.services.notification_service import NotificationPersistenceService, NotificationService
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.novel_request_service import NovelRequestService
@@ -42,6 +43,8 @@ _RATE_LIMITS: dict[str, int] = {
     "edit": 20,
     "delete": 10,
     "analytics": 60,
+    "contact": 5,
+    "dmca": 3,
 }
 
 _hits: dict[str, list[float]] = defaultdict(list)
@@ -269,7 +272,7 @@ def get_scheduler_runtime_state_service() -> SchedulerRuntimeStateService:
     return container.scheduler_runtime_state
 
 
-def get_maintenance_status_service():
+def get_maintenance_status_service() -> MaintenanceStatusService:
     """FastAPI dependency for owner maintenance status."""
     return container.maintenance_status_service
 

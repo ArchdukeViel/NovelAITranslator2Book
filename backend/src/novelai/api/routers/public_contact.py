@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, EmailStr
 
 from novelai.api.routers.dependencies import _rate_limit
@@ -24,10 +24,14 @@ class ContactSubmission(BaseModel):
     message: str
 
 
+def _contact_rate_limit(request: Request) -> None:
+    _rate_limit(request, "contact")
+
+
 @router.post("/contact", status_code=201)
 def submit_contact(
     body: ContactSubmission,
-    rate_limit: None = Depends(_rate_limit),
+    rate_limit: None = Depends(_contact_rate_limit),
 ) -> dict[str, str]:
     """Receive a contact-message from a public visitor.
 
@@ -39,5 +43,5 @@ def submit_contact(
         subject=f"[Contact] {body.subject}",
         message=f"From: {body.name} <{body.email}>\n\n{body.message}",
     )
-    logger.info("Contact message from %s <%s>: %s", body.name, body.email, body.subject)
+    logger.info("Public contact message accepted")
     return {"status": "accepted"}

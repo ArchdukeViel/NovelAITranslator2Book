@@ -37,12 +37,16 @@ class DmcaSubmission(BaseModel):
         return v.strip()
 
 
+def _dmca_rate_limit(request: Request) -> None:
+    _rate_limit(request, "dmca")
+
+
 @router.post("/dmca", status_code=201)
 def submit_dmca(
     body: DmcaSubmission,
     request: Request,
     db: Session = Depends(get_db_session),
-    rate_limit: None = Depends(_rate_limit),
+    rate_limit: None = Depends(_dmca_rate_limit),
 ) -> dict[str, str]:
     """Submit a DMCA takedown notice.
 
@@ -62,5 +66,5 @@ def submit_dmca(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    logger.info("DMCA notice submitted for %s by %s", body.infringing_url, body.complainant_name)
+    logger.info("Public DMCA notice accepted")
     return {"status": "accepted"}

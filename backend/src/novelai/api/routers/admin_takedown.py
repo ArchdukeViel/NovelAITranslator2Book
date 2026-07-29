@@ -39,7 +39,7 @@ def list_takedowns(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     sort_by: str = Query("created_at"),
-    order: str = Query("desc", regex="^(asc|desc)$"),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
     svc: TakedownService = Depends(_get_takedown_service),
 ) -> dict[str, Any]:
     """List DMCA takedown requests (owner only)."""

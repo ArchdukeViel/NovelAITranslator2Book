@@ -1,5 +1,11 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+.gitattributes text eol=lf
+.gitignore text eol=lf
+.dockerignore text eol=lf
+.graphifyignore text eol=lf
+Dockerfile text eol=lf
+*.Dockerfile text eol=lf
 
 # Explicitly declare text files to always use LF
 *.md text eol=lf
@@ -41,7 +47,7 @@
 *.zip binary
 *.gz binary
 *.tar binary
-*.lock binary
+*.lock text eol=lf
 *.db binary
 *.sqlite binary
 *.sqlite3 binary
