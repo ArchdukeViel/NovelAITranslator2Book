@@ -26,7 +26,6 @@ const ACTION_LABELS: Record<string, string> = {
   "credential.create": "Credential created",
   "credential.update": "Credential updated",
   "credential.delete": "Credential deleted",
-  "export.run": "Export run",
   "settings.update": "Settings updated",
 };
 
@@ -34,7 +33,6 @@ const TARGET_TYPE_LABELS: Record<string, string> = {
   user: "User",
   credential: "Credential",
   takedown_request: "Takedown request",
-  export: "Export",
   settings: "Settings",
 };
 

@@ -3,24 +3,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from novelai.activity.queue import ActivityQueueService
 from novelai.config.settings import settings
 from novelai.core.errors import TranslationInProgressError
 from novelai.services.catalog_service import CatalogService
-from novelai.services.export_manifest_service import (
-    STATUS_FAILED,
-    STATUS_SUCCEEDED,
-    build_manifest,
-    compute_export_input_metadata,
-    write_manifest,
-)
-from novelai.services.export_service import ExportService, UnsupportedExportFormatError
 from novelai.services.novel_orchestration_service import NovelOrchestrationService
 from novelai.services.orchestration.operations_helpers import (
-    ExportOperationResult,
     OperationError,
     get_novel_translation_lock,
     require_novel_meta,
@@ -46,12 +36,10 @@ class OperationsService:
         orchestrator: NovelOrchestrationService,
         activity_log: ActivityQueueService,
         storage: StorageService,
-        export_service: ExportService,
     ) -> None:
         self.orchestrator = orchestrator
         self.activity_log = activity_log
         self.storage = storage
-        self.export_service = export_service
 
     async def scrape_novel(
         self,
@@ -375,96 +363,6 @@ class OperationsService:
             "overall_state": overall_state,
             "chapters": chapters,
         }
-
-    def export_novel(self, *, novel_id: str, export_format: str) -> ExportOperationResult:
-        meta = require_novel_meta(self.storage, novel_id)
-
-        chapters: list[dict[str, Any]] = []
-        for chapter in meta.get("chapters", []):
-            chapter_id = str(chapter.get("id"))
-            translated = self.storage.load_translated_chapter(novel_id, chapter_id)
-            if not translated:
-                continue
-            chapters.append(
-                {
-                    "title": chapter.get("title"),
-                    "text": translated.get("text"),
-                    "images": self.storage.load_chapter_export_images(novel_id, chapter_id),
-                }
-            )
-
-        if not chapters:
-            raise OperationError(400, "No translated chapters available for export")
-
-        freshness_metadata = compute_export_input_metadata(self.storage, novel_id, export_format)
-        output_path = str(self.storage.build_export_path(novel_id, export_format))
-        artifact_key = self.storage._rel(Path(output_path)).replace("\\", "/")
-        manifest = build_manifest(
-            novel_id=novel_id,
-            export_format=export_format,
-            status="pending",
-            artifact_key=artifact_key,
-            source_chapter_count=len(meta.get("chapters", [])),
-            chapter_count=len(chapters),
-            **freshness_metadata,
-        )
-        write_manifest(self.storage, novel_id, manifest)
-
-        try:
-            self.export_service.export(
-                export_format,
-                novel_id=novel_id,
-                chapters=chapters,
-                output_path=output_path,
-            )
-
-            # Update manifest to succeeded
-            output_file = Path(output_path)
-            updated = build_manifest(
-                novel_id=novel_id,
-                export_format=export_format,
-                status=STATUS_SUCCEEDED,
-                output_filename=output_file.name,
-                artifact_key=artifact_key,
-                source_chapter_count=len(meta.get("chapters", [])),
-                chapter_count=len(chapters),
-                file_size_bytes=output_file.stat().st_size if output_file.exists() else None,
-                previous_manifest_key=manifest["manifest_key"],
-                **freshness_metadata,
-            )
-            write_manifest(self.storage, novel_id, updated)
-
-            return ExportOperationResult(
-                path=output_path,
-                media_type="application/epub+zip" if export_format == "epub" else "application/octet-stream",
-                filename=f"{novel_id}.{export_format}",
-            )
-        except UnsupportedExportFormatError as exc:
-            failed = build_manifest(
-                novel_id=novel_id,
-                export_format=export_format,
-                status=STATUS_FAILED,
-                failure_code=exc.error_code,
-                failure_message=exc.detail[:200],
-                source_chapter_count=len(meta.get("chapters", [])),
-                chapter_count=len(chapters),
-                previous_manifest_key=manifest["manifest_key"],
-            )
-            write_manifest(self.storage, novel_id, failed)
-            raise OperationError(400, {"error": exc.error_code, "format": exc.format, "message": exc.detail}) from exc
-        except Exception as exc:
-            failed = build_manifest(
-                novel_id=novel_id,
-                export_format=export_format,
-                status=STATUS_FAILED,
-                failure_code="render_error",
-                failure_message=str(exc)[:200],
-                source_chapter_count=len(meta.get("chapters", [])),
-                chapter_count=len(chapters),
-                previous_manifest_key=manifest["manifest_key"],
-            )
-            write_manifest(self.storage, novel_id, failed)
-            raise
 
     def record_preliminary_crawl_failure(
         self,

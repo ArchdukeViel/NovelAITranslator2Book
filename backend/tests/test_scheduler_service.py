@@ -72,21 +72,3 @@ async def test_scheduler_alerts_when_scheduled_backup_fails() -> None:
     await service._run_with_lease("backup", service._run_backup)
 
     assert alerts.codes == ["scheduled_backup_failed"]
-
-
-@pytest.mark.asyncio
-async def test_scheduler_export_freshness_check_runs_with_storage(monkeypatch) -> None:
-    storage = object()
-
-    def fake_run(candidate, *, batch_size, max_artifacts):
-        assert candidate is storage
-        assert batch_size == 10
-        assert max_artifacts == 25
-        return {"status": "succeeded", "summary": {"stale": 0, "missing": 0}}
-
-    monkeypatch.setattr("novelai.services.export_manifest_service.run_export_freshness_check", fake_run)
-    monkeypatch.setattr("novelai.services.scheduler_service.settings.EXPORT_FRESHNESS_CHECK_BATCH_SIZE", 10)
-    monkeypatch.setattr("novelai.services.scheduler_service.settings.EXPORT_FRESHNESS_CHECK_MAX_ARTIFACTS_PER_RUN", 25)
-    service = SchedulerService(storage_service=storage)
-
-    assert await service._run_export_freshness_check() == "succeeded"

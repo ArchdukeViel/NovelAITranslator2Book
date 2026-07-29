@@ -69,9 +69,6 @@ def test_gemini_default_model_env_override(monkeypatch: pytest.MonkeyPatch) -> N
     assert s.PROVIDER_GEMINI_DEFAULT_MODEL == "gemini-custom-model"
 
 
-
-
-
 @pytest.fixture()
 def sqlite_session():
     engine = create_engine(
@@ -88,7 +85,9 @@ def sqlite_session():
     engine.dispose()
 
 
-def test_provider_credential_hydration_loads_active_encrypted_key(monkeypatch, sqlite_session, tmp_path, caplog) -> None:
+def test_provider_credential_hydration_loads_active_encrypted_key(
+    monkeypatch, sqlite_session, tmp_path, caplog
+) -> None:
     monkeypatch.setattr(settings, "PROVIDER_CREDENTIAL_ENCRYPTION_KEY", SecretStr("bootstrap-test-encryption-key"))
     monkeypatch.setattr(settings, "PROVIDER_GEMINI_API_KEY", None)
     preferences = PreferencesService(tmp_path / "prefs")
@@ -137,7 +136,14 @@ def test_provider_credential_hydration_skips_disabled_and_invalid(monkeypatch, s
 
     assert preferences.get_api_key("gemini") is None
     assert diagnostics == [
-        {"provider": "gemini", "credential_id": "gemini", "db_id": 1, "label": "Disabled Gemini", "hydrated": False, "reason": "disabled"},
+        {
+            "provider": "gemini",
+            "credential_id": "gemini",
+            "db_id": 1,
+            "label": "Disabled Gemini",
+            "hydrated": False,
+            "reason": "disabled",
+        },
     ]
 
 
@@ -174,7 +180,9 @@ def test_provider_credential_hydration_missing_key_fails_safely(monkeypatch, sql
         )
 
 
-def test_provider_credential_hydration_leaves_env_key_when_no_db_credential(monkeypatch, sqlite_session, tmp_path) -> None:
+def test_provider_credential_hydration_leaves_env_key_when_no_db_credential(
+    monkeypatch, sqlite_session, tmp_path
+) -> None:
     monkeypatch.setattr(settings, "PROVIDER_CREDENTIAL_ENCRYPTION_KEY", SecretStr("bootstrap-test-encryption-key"))
     monkeypatch.setattr(settings, "PROVIDER_GEMINI_API_KEY", SecretStr("env-gemini-key"))
     preferences = PreferencesService(tmp_path / "prefs")
@@ -193,7 +201,6 @@ def test_runtime_bootstrap_calls_provider_credential_hydration(monkeypatch) -> N
     monkeypatch.setattr(bootstrap_module, "bootstrap_providers", lambda: None)
     monkeypatch.setattr(bootstrap_module, "bootstrap_sources", lambda: None)
     monkeypatch.setattr(bootstrap_module, "bootstrap_input_adapters", lambda: None)
-    monkeypatch.setattr(bootstrap_module, "bootstrap_exporters", lambda: None)
     monkeypatch.setattr(bootstrap_module, "bootstrap_provider_credentials", lambda: calls.append("hydrated") or [])
 
     bootstrap_module.bootstrap()

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from novelai.core.errors import (
     ConfigError,
-    ExportError,
     NovelAIError,
     PipelineError,
     PipelineStageError,
@@ -31,7 +30,6 @@ def test_all_exceptions_inherit_from_novelai_error() -> None:
         PipelineError,
         PipelineStageError,
         StorageError,
-        ExportError,
     ):
         assert issubclass(cls, NovelAIError)
 

@@ -2650,8 +2650,7 @@ async def test_scrape_chapters_downloads_and_stores_image_assets(orchestration_e
     assert chapter["images"][0]["local_path"] == "assets/images/1/0000.jpg"
     assert "download_error" not in chapter["images"][0]
 
-    export_images = storage.load_chapter_export_images("novel-1", "1")
-    assert export_images[0]["asset_path"] is not None
+    assert storage.resolve_asset_path("novel-1", chapter["images"][0]["local_path"]) is not None
 
 
 @pytest.mark.asyncio

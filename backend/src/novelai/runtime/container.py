@@ -12,7 +12,6 @@ from novelai.services.analytics_service import AnalyticsService
 from novelai.services.backup_service import BackupService
 from novelai.services.database_backup_service import DatabaseBackupService
 from novelai.services.email import AuthEmailService, NoopAuthEmailService, SMTPAuthEmailService
-from novelai.services.export_service import ExportService
 from novelai.services.health_service import HealthService
 from novelai.services.library_summary_service import LibrarySummaryService
 from novelai.services.maintenance_service import MaintenanceService
@@ -45,7 +44,6 @@ class Container:
     _usage: UsageService | None = None
     _activity_log: ActivityQueueService | None = None
     _translation: TranslationService | None = None
-    _export: ExportService | None = None
     _orchestrator: NovelOrchestrationService | None = None
     _activity_worker: ActivityWorkerService | None = None
     _activity_runner: BackgroundActivityRunner | None = None
@@ -176,12 +174,6 @@ class Container:
             ]
             self._translation = TranslationService(pipeline=TranslationPipeline(stages=stages))
         return self._translation
-
-    @property
-    def export(self) -> ExportService:
-        if self._export is None:
-            self._export = ExportService()
-        return self._export
 
     @property
     def orchestrator(self) -> NovelOrchestrationService:

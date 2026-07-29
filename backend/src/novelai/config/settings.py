@@ -282,13 +282,6 @@ class AppSettings(BaseSettings):
     LLM_QA_MIN_SCORE: float = 0.75
     LLM_QA_MAX_RETRY_ATTEMPTS: int = 1
 
-    # --- DEBT-033: Export freshness scheduler
-    EXPORT_FRESHNESS_CHECK_ENABLED: bool = False
-    EXPORT_FRESHNESS_CHECK_SCHEDULE_CRON: str = "30 9 * * *"
-    EXPORT_FRESHNESS_CHECK_TIMEZONE: str = "UTC"
-    EXPORT_FRESHNESS_CHECK_BATCH_SIZE: int = 100
-    EXPORT_FRESHNESS_CHECK_MAX_ARTIFACTS_PER_RUN: int = 1000
-
     # --- Public reader availability
     # Controls behavior when a public chapter has no active translation.
     # Allowed values: "hard_404" (default), "chapter_shell", "latest_version".

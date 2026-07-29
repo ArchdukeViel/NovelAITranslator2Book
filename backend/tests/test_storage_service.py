@@ -102,7 +102,7 @@ def test_save_chapter_source_blocks_merge_preserves_translated_payload(storage):
     assert loaded["source_blocks"][0]["paragraph_id"] == "p0001"
 
 
-def test_save_chapter_image_asset_and_load_export_images(storage):
+def test_save_chapter_image_asset(storage):
     stored_asset = storage.save_chapter_image_asset(
         "novel1",
         "ch-images",
@@ -131,21 +131,6 @@ def test_save_chapter_image_asset_and_load_export_images(storage):
     chapter = storage.load_chapter("novel1", "ch-images")
     assert chapter is not None
     assert chapter["images"][0]["local_path"] == "assets/images/ch-images/0000.jpg"
-
-    export_images = storage.load_chapter_export_images("novel1", "ch-images")
-    assert export_images == [
-        {
-            "index": 0,
-            "placeholder": "[Image: Scene]",
-            "original_url": "https://example.com/scene.jpg",
-            "alt": "Scene",
-            "local_path": "assets/images/ch-images/0000.jpg",
-            "content_type": "image/jpeg",
-            "size_bytes": len(b"fake-image-bytes"),
-            "sha256": stored_asset["sha256"],
-            "asset_path": str(storage.base_dir / "novels" / "novel1" / "assets" / "images" / "ch-images" / "0000.jpg"),
-        }
-    ]
 
 
 def test_save_and_load_translated_chapter(storage):
@@ -543,19 +528,6 @@ def test_chapter_progress(storage):
     assert progress["exported"] == 1
 
 
-def test_get_chapters_ready_for_export(storage):
-    """Test convenience method for export-ready chapters."""
-    storage.update_chapter_state("novel1", "ch1", ChapterState.SCRAPED)
-    storage.update_chapter_state("novel1", "ch2", ChapterState.TRANSLATED)
-    storage.update_chapter_state("novel1", "ch3", ChapterState.EXPORTED)
-
-    ready = storage.get_chapters_ready_for_export("novel1")
-
-    assert len(ready) == 2
-    assert "ch1" not in ready  # Scraped, not ready
-    assert "ch2" in ready
-
-
 def test_get_chapters_with_errors(storage):
     """Test querying chapters with errors."""
     storage.update_chapter_state("novel1", "ch1", ChapterState.TRANSLATED)
@@ -731,7 +703,7 @@ def test_title_slug_storage_subpaths_resolve_under_mapped_folder(storage):
     assert (novel_dir / "assets" / "images" / "1" / "0000.png").exists()
     assert (novel_dir / "metadata_backups").exists()
     assert storage.load_translated_chapter("mapped-source", "1")["text"] == "Translated text"
-    assert storage.load_chapter_export_images("mapped-source", "1")[0]["local_path"] == stored_asset["local_path"]
+    assert storage.load_chapter("mapped-source", "1")["images"][0]["local_path"] == stored_asset["local_path"]
     assert storage.list_metadata_history("mapped-source")[0]["snapshot_id"] == "current"
 
 

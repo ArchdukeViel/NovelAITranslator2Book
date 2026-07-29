@@ -44,7 +44,6 @@ ERROR_CODES = {
     "PIPELINE_TRANSLATE_MODEL_UNAVAILABLE": "pipeline.translate.model_unavailable",
     "PIPELINE_PARSE_FAILED": "pipeline.parse.failed",
     "PIPELINE_SEGMENT_FAILED": "pipeline.segment.failed",
-    "PIPELINE_EXPORT_FAILED": "pipeline.export.failed",
     # auth.*
     "AUTH_UNAUTHORIZED": "auth.unauthorized",
     "AUTH_FORBIDDEN": "auth.forbidden",

@@ -128,9 +128,5 @@ class StorageError(NovelAIError):
     """Storage layer errors."""
 
 
-class ExportError(NovelAIError):
-    """Export generation errors."""
-
-
 class TranslationInProgressError(RuntimeError):
     """Raised when a translation is attempted for a chapter already being translated."""

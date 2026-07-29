@@ -194,7 +194,7 @@ def test_trusted_server_recording_needs_only_global_flag(db_session, monkeypatch
     monkeypatch.setattr(settings, "ANALYTICS_ENABLED", True)
     monkeypatch.setattr(settings, "ANALYTICS_PUBLIC_INGESTION_ENABLED", False)
 
-    AnalyticsService().record_event(db_session, "export.requested", novel_id="novel-1")
+    AnalyticsService().record_event(db_session, "public_novel.view", novel_id="novel-1")
 
     assert db_session.query(AnalyticsEvent).count() == 1
 

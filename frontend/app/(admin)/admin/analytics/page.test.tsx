@@ -33,7 +33,6 @@ function summary(overrides: Partial<AnalyticsSummary> = {}): AnalyticsSummary {
     status: "ok",
     groups: {
       views: { "public_novel.view": 3, "public_chapter.view": 2 },
-      exports: { "export.downloaded": 1 },
       search: { "search.performed": 4 },
       features: { "glossary_annotation.opened": 5 },
       top_novels: [],
@@ -64,7 +63,7 @@ describe("AnalyticsPage", () => {
 
   it("shows zero-data empty state", async () => {
     analyticsSummary.mockResolvedValue(summary({
-      groups: { views: {}, exports: {}, search: {}, features: {}, top_novels: [] },
+      groups: { views: {}, search: {}, features: {}, top_novels: [] },
     }));
     renderWithQuery(<AnalyticsPage />);
 
@@ -72,7 +71,7 @@ describe("AnalyticsPage", () => {
   });
 
   it("shows unavailable partial group", async () => {
-    analyticsSummary.mockResolvedValue(summary({ status: "partial", failed_groups: ["exports"] }));
+    analyticsSummary.mockResolvedValue(summary({ status: "partial", failed_groups: ["search"] }));
     renderWithQuery(<AnalyticsPage />);
 
     expect(await screen.findByText("Some groups are unavailable.")).toBeInTheDocument();

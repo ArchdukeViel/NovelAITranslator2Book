@@ -313,7 +313,6 @@ def test_create_invalid_novel_id_returns_422(owner_client, bad_id):
 def test_translate_without_novel_returns_404(storage):
     """OperationsService.translate_novel raises 404 with novel_id in detail."""
     from novelai.activity.queue import ActivityQueueService
-    from novelai.services.export_service import ExportService
     from novelai.services.novel_orchestration_service import (
         NovelOrchestrationService,
     )
@@ -322,7 +321,6 @@ def test_translate_without_novel_returns_404(storage):
         orchestrator=NovelOrchestrationService.__new__(NovelOrchestrationService),
         activity_log=ActivityQueueService.__new__(ActivityQueueService),
         storage=storage,
-        export_service=ExportService.__new__(ExportService),
     )
 
     async def _run() -> None:

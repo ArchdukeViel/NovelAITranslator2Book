@@ -10,7 +10,6 @@ from novelai.activity.runner import BackgroundActivityRunner
 from novelai.config.settings import settings
 from novelai.config.workflow_profiles import WORKFLOW_PROFILE_STEPS
 from novelai.providers.model_fallbacks import model_candidates
-from novelai.services.export_manifest_service import latest_export, list_manifests, load_export_freshness_status
 from novelai.services.preferences_service import PreferencesService
 from novelai.services.provider_credentials import ProviderCredentialService
 from novelai.services.translation_cache import TranslationCache
@@ -990,41 +989,3 @@ class AdminService:
             "job": activity,
             "worker": self.activity_runner.status(),
         }
-
-    def list_novel_exports(self, novel_id: str) -> dict[str, Any]:
-        if self.storage is None:
-            raise ValueError("storage is not configured")
-        meta = self.storage.load_metadata(novel_id)
-        if meta is None:
-            raise KeyError("Novel not found")
-        manifests = list_manifests(self.storage, novel_id)
-        for manifest in manifests:
-            manifest.setdefault("freshness_status", "unknown")
-            manifest.setdefault("freshness_checked_at", None)
-            manifest.setdefault("freshness_stale_reason", None)
-        return {"novel_id": novel_id, "manifests": manifests}
-
-    def export_freshness_status(self) -> dict[str, Any]:
-        if self.storage is None:
-            raise ValueError("storage is not configured")
-        result = load_export_freshness_status(self.storage)
-        return {
-            "enabled": settings.EXPORT_FRESHNESS_CHECK_ENABLED,
-            "schedule": settings.EXPORT_FRESHNESS_CHECK_SCHEDULE_CRON,
-            "timezone": settings.EXPORT_FRESHNESS_CHECK_TIMEZONE,
-            "last_run": result,
-        }
-
-    def latest_novel_export(self, novel_id: str, export_format: str) -> dict[str, Any]:
-        if self.storage is None:
-            raise ValueError("storage is not configured")
-        meta = self.storage.load_metadata(novel_id)
-        if meta is None:
-            raise KeyError("Novel not found")
-        latest = latest_export(self.storage, novel_id, export_format)
-        if latest is None:
-            raise KeyError("No export found for format")
-        latest.setdefault("freshness_status", "unknown")
-        latest.setdefault("freshness_checked_at", None)
-        latest.setdefault("freshness_stale_reason", None)
-        return latest

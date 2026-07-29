@@ -403,36 +403,3 @@ async def health_errors(
     from novelai.api.errors import get_error_metrics
 
     return get_error_metrics()
-
-
-@router.get("/admin/exports/freshness/status")
-async def export_freshness_status(
-    service: AdminService = Depends(get_admin_db_service),
-    _owner=Depends(require_role("owner")),
-) -> dict[str, Any]:
-    return service.export_freshness_status()
-
-
-@router.get("/admin/novels/{novel_id}/exports")
-async def list_novel_exports(
-    novel_id: str,
-    service: AdminService = Depends(get_admin_db_service),
-    _owner=Depends(require_role("owner")),
-) -> dict[str, Any]:
-    try:
-        return service.list_novel_exports(novel_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@router.get("/admin/novels/{novel_id}/exports/latest/{export_format}")
-async def latest_novel_export(
-    novel_id: str,
-    export_format: str,
-    service: AdminService = Depends(get_admin_db_service),
-    _owner=Depends(require_role("owner")),
-) -> dict[str, Any]:
-    try:
-        return service.latest_novel_export(novel_id, export_format)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc

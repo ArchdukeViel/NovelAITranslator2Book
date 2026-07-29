@@ -56,7 +56,6 @@ import type {
   TranslationEditHistory,
   TranslationVersion,
   WorkerStatus,
-  ExportManifest,
 } from "@/lib/api-types";
 
 export type * from "@/lib/api-types";
@@ -291,22 +290,6 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   return request<T>(path, { ...init, cache: init.cache ?? "no-store" });
 }
 
-async function apiDownload(path: string, body: unknown): Promise<Blob> {
-  const headers = new Headers({ "Content-Type": "application/json" });
-  headers.set(CSRF_HEADER_NAME, await getCsrfToken());
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    credentials: "include", // Send HTTP-only Session_Cookie
-    cache: "no-store"
-  });
-  if (!response.ok) {
-    throw await responseError(response);
-  }
-  return response.blob();
-}
-
 export const api = {
   inputAdapters: () => apiFetch<string[]>("/admin/input-adapters"),
   novels: () => apiFetch<NovelSummary[]>("/admin/novels"),
@@ -536,8 +519,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
-  exportNovel: (novelId: string, payload: { format: string; chapters?: string | null }) =>
-    apiDownload(`/admin/novels/${encodeURIComponent(novelId)}/export`, payload),
   getTaxonomy: (novelId: string) =>
     apiFetch<NovelTaxonomyResponse>(`/admin/novels/${encodeURIComponent(novelId)}/taxonomy`),
   setTaxonomy: (novelId: string, payload: NovelTaxonomyRequest) =>
@@ -545,10 +526,6 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(payload)
     }),
-  listExportManifests: (novelId: string) =>
-    apiFetch<{ manifests?: ExportManifest[]; exports?: ExportManifest[] }>(
-      `/admin/novels/${encodeURIComponent(novelId)}/exports`
-    ),
 };
 // ===========================================
 // Admin Auth namespace (Task 3.2)
@@ -616,8 +593,6 @@ type AdminApi = {
   providerCredential: (provider?: string) => Promise<ProviderCredential>;
   resumeOnboarding: (novelId: string, chapters?: string) => Promise<{ novel_id: string; onboarding_status: string; activity_id: string | null }>;
   cancelOnboarding: (novelId: string) => Promise<{ novel_id: string; onboarding_status: string }>;
-  listExportManifests: (novelId: RouteId) => Promise<import("./api-types").ExportManifestListResponse>;
-  getLatestExportManifest: (novelId: RouteId, format: string) => Promise<import("./api-types").LatestExportResponse>;
   librarySummary: (params?: { refresh?: boolean }) => Promise<import("./api-types").LibrarySummaryResponse>;
   analyticsSummary: (params: {
     window: import("./api-types").AnalyticsWindow;
@@ -824,11 +799,6 @@ export const adminApi: AdminApi = {
       `/novels/${encodeURIComponent(novelId)}/onboarding/cancel`,
       { method: "POST", body: JSON.stringify({}) }
     ),
-  // Export manifests
-  listExportManifests: (novelId: RouteId) =>
-    request<import("./api-types").ExportManifestListResponse>(`/admin/novels/${routeId(novelId)}/exports`),
-  getLatestExportManifest: (novelId: RouteId, format: string) =>
-    request<import("./api-types").LatestExportResponse>(`/admin/novels/${routeId(novelId)}/exports/latest?format=${encodeURIComponent(format)}`),
   librarySummary: (params?: { refresh?: boolean }) => {
     const search = new URLSearchParams();
     if (params?.refresh) search.set("refresh", "true");

@@ -39,7 +39,6 @@ _RATE_WINDOW = 60
 _RATE_LIMITS: dict[str, int] = {
     "scrape": 5,
     "translate": 5,
-    "export": 10,
     "edit": 20,
     "delete": 10,
     "analytics": 60,

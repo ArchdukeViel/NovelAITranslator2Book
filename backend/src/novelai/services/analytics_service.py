@@ -33,9 +33,6 @@ ALLOWED_EVENTS: frozenset[str] = frozenset(
         "reader.chapter_next",
         "reader.chapter_previous",
         "search.performed",
-        "export.requested",
-        "export.downloaded",
-        "export.failed",
         "glossary_annotation.opened",
         "notification.opened",
         "notification.action_clicked",
@@ -65,21 +62,6 @@ _ALLOWED_METADATA: dict[str, dict[str, int]] = {
         "scope": 64,
         "result_count": 16,
         "filter_count": 16,
-    },
-    "export.requested": {
-        "format": 32,
-        "novel_id": 255,
-        "chapter_count": 16,
-    },
-    "export.downloaded": {
-        "format": 32,
-        "novel_id": 255,
-        "status": 32,
-    },
-    "export.failed": {
-        "format": 32,
-        "novel_id": 255,
-        "error_code": 64,
     },
     "glossary_annotation.opened": {
         "match_type": 32,
@@ -266,14 +248,6 @@ class AnalyticsService:
             groups["views"] = _empty_counts(ALLOWED_EVENTS_VIEWS)
             failures.append("views")
 
-        # Exports
-        try:
-            groups["exports"] = self._count_events(db_session, ALLOWED_EVENTS_EXPORTS, cutoff)
-        except Exception as exc:
-            logger.warning("Analytics summary exports failed: %s", exc)
-            groups["exports"] = _empty_counts(ALLOWED_EVENTS_EXPORTS)
-            failures.append("exports")
-
         # Search
         try:
             groups["search"] = self._count_events(db_session, ALLOWED_EVENTS_SEARCH, cutoff)
@@ -404,11 +378,6 @@ class AnalyticsService:
 ALLOWED_EVENTS_VIEWS: tuple[str, ...] = (
     "public_novel.view",
     "public_chapter.view",
-)
-ALLOWED_EVENTS_EXPORTS: tuple[str, ...] = (
-    "export.requested",
-    "export.downloaded",
-    "export.failed",
 )
 ALLOWED_EVENTS_SEARCH: tuple[str, ...] = ("search.performed",)
 ALLOWED_EVENTS_FEATURES: tuple[str, ...] = (

@@ -71,24 +71,6 @@ def resolve_asset_path(self: Any, novel_id: str, local_path: str | None) -> Path
     return safe_child_path(self._novel_dir(novel_id), local_path)
 
 
-def load_chapter_export_images(self: Any, novel_id: str, chapter_id: str) -> list[dict[str, Any]]:
-    """Return chapter image metadata augmented with resolved local asset paths."""
-    chapter = self.load_chapter(novel_id, chapter_id) or {}
-    images_value = chapter.get("images")
-    raw_images: list[Any] = images_value if isinstance(images_value, list) else []
-    export_images: list[dict[str, Any]] = []
-
-    for image in raw_images:
-        if not isinstance(image, dict):
-            continue
-        entry = dict(image)
-        asset_path = self.resolve_asset_path(novel_id, entry.get("local_path"))
-        entry["asset_path"] = str(asset_path) if asset_path is not None and self._path_exists(asset_path) else None
-        export_images.append(entry)
-
-    return self._normalize_image_manifest(export_images)
-
-
 def _normalize_media_fields(self: Any, payload: dict[str, Any]) -> dict[str, Any]:
     ocr_required = bool(payload.get("ocr_required", False))
 

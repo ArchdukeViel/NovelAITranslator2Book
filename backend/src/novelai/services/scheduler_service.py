@@ -97,13 +97,6 @@ class SchedulerService:
                         settings.DATABASE_RESTORE_VERIFICATION_TIMEZONE,
                         self._run_database_restore_verification,
                     ),
-                    (
-                        settings.EXPORT_FRESHNESS_CHECK_ENABLED and self._storage_service is not None,
-                        "export_freshness_check",
-                        settings.EXPORT_FRESHNESS_CHECK_SCHEDULE_CRON,
-                        settings.EXPORT_FRESHNESS_CHECK_TIMEZONE,
-                        self._run_export_freshness_check,
-                    ),
                 ]
                 for enabled, job_name, expression, timezone_name, runner in jobs:
                     if enabled and await self._is_due(job_name, expression, timezone_name):
@@ -248,35 +241,6 @@ class SchedulerService:
             return "failed"
         result = await asyncio.to_thread(self._database_backup_service.verify_latest_restore)
         return "succeeded" if result.get("status") == "succeeded" else "failed"
-
-    async def _run_export_freshness_check(self) -> str:
-        """Run bounded, persisted export freshness scan (DEBT-033)."""
-        if self._storage_service is None:
-            return "failed"
-        from novelai.services.export_manifest_service import run_export_freshness_check
-
-        result = await asyncio.to_thread(
-            run_export_freshness_check,
-            self._storage_service,
-            batch_size=settings.EXPORT_FRESHNESS_CHECK_BATCH_SIZE,
-            max_artifacts=settings.EXPORT_FRESHNESS_CHECK_MAX_ARTIFACTS_PER_RUN,
-        )
-        summary = result.get("summary", {})
-        stale_count = int(summary.get("stale", 0)) + int(summary.get("missing", 0))
-        if stale_count:
-            from novelai.services.notification_service import get_event_bus
-
-            get_event_bus().publish(
-                "scheduler.stale",
-                subject=f"{stale_count} stale or missing export(s) detected",
-                message=(
-                    f"stale={int(summary.get('stale', 0))}, "
-                    f"missing={int(summary.get('missing', 0))}, "
-                    f"unknown={int(summary.get('unknown', 0))}"
-                ),
-            )
-        status = str(result.get("status") or "failed")
-        return status if status in {"succeeded", "partially_succeeded", "skipped_locked"} else "failed"
 
     async def _alert(self, code: str, message: str) -> None:
         if self._operator_alert_service is not None:

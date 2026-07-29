@@ -1,9 +1,7 @@
 """Integration tests for the full pipeline."""
 
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
-from zipfile import ZipFile
 
 import pytest
 
@@ -411,9 +409,6 @@ async def test_storage_with_pipeline(integration_fixture):
     assert progress["total"] == 5
     assert progress["success_rate"] == 100.0
 
-    ready_chapters = fixture.storage.get_chapters_ready_for_export("novel1")
-    assert len(ready_chapters) == 5
-
 
 @pytest.mark.asyncio
 async def test_state_machine_with_storage(integration_fixture):
@@ -463,13 +458,10 @@ async def test_bootstrap_and_registry(integration_fixture):
     """Test bootstrap and provider registry."""
     bootstrap()
 
-    from novelai.export.registry import available_exporters
+    from novelai.inputs.registry import available_input_adapters
 
-    # Providers and sources should be registered
-    available = available_exporters()
-    assert "epub" in available
-    # PDF exporter is deprecated (DEBT-007) and not registered.
-    assert "pdf" not in available
+    assert "epub" in available_input_adapters()
+    assert "pdf" in available_input_adapters()
 
 
 def test_logging_integration():
@@ -529,110 +521,3 @@ def test_storage_stats(integration_fixture):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-
-
-# ---------------------------------------------------------------------------
-# Full pipeline integration test: scrape → translate → export EPUB
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_full_pipeline_scrape_translate_export(integration_fixture):
-    """End-to-end: mock-scrape chapters, translate them, export to EPUB."""
-    fixture = integration_fixture
-    novel_id = "test_novel_e2e"
-
-    # 1. Simulate scraping: save metadata + raw chapters via storage.
-    chapter_texts = {
-        "1": "第一章の内容。\n\nこれは二段落目です。",
-        "2": "第二章の冒険が始まった。\n\n勇者は旅立った。",
-        "3": "最終章。\n\n物語は幕を閉じる。",
-    }
-    metadata = {
-        "novel_id": novel_id,
-        "title": "テスト小説",
-        "author": "テスト作者",
-        "source_key": "mock_source",
-        "chapters": [
-            {"id": str(i), "num": i, "title": f"第{i}章", "url": f"http://example.com/{novel_id}/{i}"}
-            for i in range(1, 4)
-        ],
-    }
-    fixture.storage.save_metadata(novel_id, metadata)
-
-    for chapter_id, text in chapter_texts.items():
-        fixture.storage.save_chapter(
-            novel_id,
-            chapter_id,
-            text,
-            source_key="mock_source",
-        )
-
-    stored_ids = fixture.storage.list_stored_chapters(novel_id)
-    assert sorted(stored_ids) == ["1", "2", "3"]
-
-    # 2. Translate each chapter through the real pipeline with mock provider.
-    for chapter_id in chapter_texts:
-        raw = fixture.storage.load_chapter(novel_id, chapter_id)
-        assert raw is not None
-        result = await fixture.translation_service.translate_chapter(
-            source_adapter=fixture.mock_source,
-            chapter_url=f"http://example.com/{novel_id}/{chapter_id}",
-            provider_key="mock",
-        )
-        assert result.final_text is not None
-        fixture.storage.save_translated_chapter(
-            novel_id,
-            chapter_id,
-            result.final_text,
-            provider_key="mock",
-            provider_model="mock-1.0",
-        )
-
-    translated_ids = fixture.storage.list_translated_chapters(novel_id)
-    assert sorted(translated_ids) == ["1", "2", "3"]
-
-    # 3. Export to EPUB.
-    from novelai.export.epub_exporter import EPUBExporter
-
-    meta = fixture.storage.load_metadata(novel_id)
-    assert meta is not None
-
-    chapters_for_export = []
-    for chap in meta.get("chapters", []):
-        chap_id = str(chap.get("id"))
-        translated = fixture.storage.load_translated_chapter(novel_id, chap_id)
-        assert translated is not None
-        chapters_for_export.append(
-            {
-                "title": chap.get("title"),
-                "text": translated.get("text"),
-                "images": fixture.storage.load_chapter_export_images(novel_id, chap_id),
-            }
-        )
-
-    output_path = str(fixture.data_dir / f"{novel_id}.epub")
-    exporter = EPUBExporter()
-    result_path = exporter.export(
-        novel_id=novel_id,
-        chapters=chapters_for_export,
-        output_path=output_path,
-    )
-
-    assert Path(result_path).exists()
-    assert Path(result_path).stat().st_size > 0
-
-    # 4. Verify EPUB contents.
-    with ZipFile(result_path) as epub:
-        names = epub.namelist()
-        assert "mimetype" in names
-        assert "META-INF/container.xml" in names
-        assert "OEBPS/content.opf" in names
-        assert "OEBPS/nav.xhtml" in names
-        # One XHTML per chapter
-        chapter_xhtml_files = [n for n in names if n.startswith("OEBPS/chapters/")]
-        assert len(chapter_xhtml_files) == 3
-
-        # Spot-check that translated text appears in a chapter file
-        first_chapter_html = epub.read(chapter_xhtml_files[0]).decode("utf-8")
-        assert "TRANSLATED" in first_chapter_html

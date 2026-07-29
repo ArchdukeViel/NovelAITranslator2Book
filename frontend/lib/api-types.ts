@@ -89,12 +89,11 @@ export type AnalyticsSummary = {
   status: "ok" | "partial" | "unavailable";
   groups: {
     views: AnalyticsEventCounts;
-    exports: AnalyticsEventCounts;
     search: AnalyticsEventCounts;
     features: AnalyticsEventCounts;
     top_novels: AnalyticsTopNovel[];
   };
-  failed_groups: Array<"views" | "exports" | "search" | "features">;
+  failed_groups: Array<"views" | "search" | "features">;
 };
 
 export type AuditEventSummary = {
@@ -987,59 +986,6 @@ export type GlossaryProviderCandidateResult = {
   candidates: GlossaryProviderCandidateSummary[];
 };
 
-// ===========================================
-// Export Manifests
-// ===========================================
-
-export type ExportManifestFreshness = "current" | "stale" | "unknown_legacy_manifest" | "current_state_unavailable";
-
-export type ExportManifestStatus = "pending" | "running" | "succeeded" | "failed" | "deleted" | "legacy_unknown";
-
-export type ExportManifestFailureCode =
-  | "missing_translation"
-  | "missing_asset"
-  | "render_error"
-  | "write_error"
-  | "verify_error"
-  | "storage_error"
-  | "invalid_options"
-  | "unknown";
-
-export type ExportManifest = {
-  manifest_key: string;
-  novel_id: string;
-  format: string;
-  status: ExportManifestStatus;
-  output_filename: string | null;
-  artifact_key: string | null;
-  chapter_count: number | null;
-  source_chapter_count: number | null;
-  file_size_bytes: number | null;
-  checksum: string | null;
-  glossary_revision: number | null;
-  glossary_hash: string | null;
-  translation_version_count: number | null;
-  translation_versions_hash: string | null;
-  novel_updated_at: string | null;
-  export_options: Record<string, unknown> | null;
-  failure_code: ExportManifestFailureCode | null;
-  failure_message: string | null;
-  previous_manifest_key: string | null;
-  created_at: string;
-  updated_at: string;
-  freshness?: ExportManifestFreshness;
-};
-
-export type ExportManifestListResponse = {
-  novel_id: string;
-  manifests: ExportManifest[];
-};
-
-export type LatestExportResponse = {
-  novel_id: string;
-  export_format: string;
-  manifest: ExportManifest | null;
-};
 export interface TakedownRequestSummary {
   id: number;
   created_at: string | null;

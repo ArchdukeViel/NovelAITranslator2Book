@@ -13,9 +13,8 @@ import type { AnalyticsEventCounts, AnalyticsWindow } from "@/lib/api-types";
 
 const WINDOWS: AnalyticsWindow[] = ["5m", "15m", "1h", "24h", "7d", "30d"];
 
-const GROUPS: Array<{ key: "views" | "exports" | "search" | "features"; title: string }> = [
+const GROUPS: Array<{ key: "views" | "search" | "features"; title: string }> = [
   { key: "views", title: "Views" },
-  { key: "exports", title: "Exports" },
   { key: "search", title: "Searches" },
   { key: "features", title: "Feature interactions" },
 ];

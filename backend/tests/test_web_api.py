@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -39,7 +40,6 @@ from novelai.api.routers.dependencies import (
 from novelai.config.settings import settings
 from novelai.core.errors import (
     ConfigError,
-    ExportError,
     NovelAIError,
     PipelineError,
     ProviderError,
@@ -218,7 +218,19 @@ def _csrf_headers(client: TestClient) -> dict[str, str]:
 
 
 def test_admin_routes_use_only_canonical_namespace() -> None:
-    paths = set(create_app().openapi()["paths"])
+    def route_paths(routes: Sequence[object], prefix: str = "") -> set[str]:
+        paths: set[str] = set()
+        for route in routes:
+            if path := getattr(route, "path", None):
+                paths.add(f"{prefix}{path}")
+                continue
+            original_router = getattr(route, "original_router", None)
+            include_context = getattr(route, "include_context", None)
+            if original_router is not None and include_context is not None:
+                paths.update(route_paths(original_router.routes, f"{prefix}{include_context.prefix}"))
+        return paths
+
+    paths = route_paths(create_app().routes)
 
     assert any(path == "/api/admin/novels" or path.startswith("/api/admin/novels/") for path in paths)
     assert "/api/admin/activity" in paths
@@ -628,10 +640,6 @@ def test_custom_novelai_error_handlers_use_domain_codes(_session_auth_defaults: 
     async def debug_custom_storage() -> None:
         raise StorageError("library write failed")
 
-    @app.get("/debug/custom-export")
-    async def debug_custom_export() -> None:
-        raise ExportError("epub generation failed")
-
     @app.get("/debug/custom-config")
     async def debug_custom_config() -> None:
         raise ConfigError("missing provider configuration")
@@ -644,7 +652,6 @@ def test_custom_novelai_error_handlers_use_domain_codes(_session_auth_defaults: 
     expected = {
         "/debug/custom-pipeline": (502, "PIPELINE_ERROR", "translation"),
         "/debug/custom-storage": (500, "STORAGE_ERROR", "storage"),
-        "/debug/custom-export": (424, "EXPORT_ERROR", "export"),
         "/debug/custom-config": (500, "CONFIGURATION_ERROR", "config"),
         "/debug/custom-application": (500, "APPLICATION_ERROR", "application"),
     }
@@ -889,7 +896,6 @@ class TestAuth:
             ("PUT", "/api/admin/novels/test-n1/chapters/1/translated", {"text": "edited"}),
             ("POST", "/api/admin/novels/test-n1/chapters/1/translated/rollback", {"version_id": "v1"}),
             ("PATCH", "/api/admin/requests/request-1", {"status": "approved"}),
-            ("POST", "/api/admin/novels/test-n1/export", {"format": "epub"}),
         ],
     )
     def test_dangerous_routes_reject_guest_and_non_owner(
