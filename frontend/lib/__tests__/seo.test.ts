@@ -155,6 +155,12 @@ describe("buildDescription", () => {
     ).toBe("Story about dragons.");
   });
 
+  it("removes unterminated tag delimiters", () => {
+    expect(buildDescription("Safe <script alert(1)")).toBe(
+      "Safe script alert(1)",
+    );
+  });
+
   it("collapses whitespace", () => {
     expect(
       buildDescription("Line1\n\n  Line2\nLine3"),

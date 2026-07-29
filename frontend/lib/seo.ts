@@ -81,6 +81,7 @@ export function buildDescription(
   const stripped = text
     .trim()
     .replace(/<[^>]*>/g, "")
+    .replace(/[<>]/g, "")
     .replace(/\s+/g, " ");
   if (stripped.length <= MAX_DESCRIPTION_LENGTH) return stripped;
   return stripped.slice(0, MAX_DESCRIPTION_LENGTH - 1) + "\u2026";
