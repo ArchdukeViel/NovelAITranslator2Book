@@ -1,8 +1,8 @@
 # Frontend Design Source of Truth
 
-Status: Canonical frontend design contract  
-Repository: `ArchdukeViel/NovelAITranslator2Book`  
-Scope: Public frontend implementation under `/frontend`, especially `frontend/app/(public)` and `frontend/components/public`  
+Status: Canonical frontend design contract
+Repository: `ArchdukeViel/NovelAITranslator2Book`
+Scope: Public frontend implementation under `/frontend`, especially `frontend/app/(public)` and `frontend/components/public`
 Last updated: 2026-07-12 (documentation reconciliation)
 
 ---
@@ -55,13 +55,13 @@ This document governs the public frontend implementation inside the Novel AI mai
 | Reviews/ratings (`/account/reviews`) | ✅ Implemented | Rate-limited, moderation-ready |
 | Novel/chapter requests (`/account/requests`) | ✅ Implemented | History table with rejection reasons |
 | Contribution (`/contribute`) | 🚫 Gated | UI exists, but credential submission remains behind the contribution readiness gate. |
-| Legal pages (About, Privacy, Terms, DMCA, Contact, Cookie Policy) | ⚠️ Partial | Static pages exist; takedown intake workflow not implemented (DEBT-060) |
-| SEO/discovery (sitemap, robots, JSON-LD, OG tags) | ❌ Not implemented | DEBT-038 |
+| Legal pages (About, Privacy, Terms, DMCA, Contact, Cookie Policy) | ✅ Implemented | Public intake, owner review, safe HTTP 451 enforcement, audit recording, and sitemap exclusion are wired. |
+| SEO/discovery (sitemap, robots, JSON-LD, OG tags) | ✅ Implemented | Framework-native robots and sitemap routes plus canonical novel/chapter metadata and escaped structured data. Hosted validator acceptance remains an M7 check. |
 | Glossary annotations in reader | ✅ Implemented | Public-visible approved terms render inline with bounded, keyboard-accessible tooltips; `PUBLIC_GLOSSARY_ANNOTATIONS_ENABLED` can disable the feature operationally. |
-| Frontend error/empty/loading states | ⚠️ Partial | Route-local states only; no shared components (DEBT-056) |
-| Public reader accessibility | ⚠️ Partial | Nested `<main>` landmarks, no skip link, no reduced-motion rules (DEBT-058) |
-| Public reader performance budget | ❌ Not implemented | No documented budgets, no cache-control headers (DEBT-059) |
-| Admin audit log viewer | ❌ Not implemented | AuditLog model exists; no writer, API, or UI (DEBT-054) |
+| Frontend error/empty/loading states | ✅ Implemented | Shared accessible states, safe API error normalization, and route-level public boundaries are wired. |
+| Public reader accessibility | ✅ Implemented | Single page landmark contract, skip link, reduced-motion rules, focus target, and keyboard-visible controls. Real-browser acceptance remains an M7 check. |
+| Public reader performance budget | ✅ Implemented | Documented budgets, bounded annotations, short guest-safe caching, no-store legal/owner responses, and build-size evidence. |
+| Admin audit log viewer | ✅ Implemented | Owner-only list/detail API and accessible UI with canonical filters and recursive redaction. |
 | Route naming (legacy vs approved) | ⚠️ Drift exists | See §8.1 |
 
 **Key:** ✅ = implemented and wired to backend; ⚠️ = partially implemented or feature-flagged; ❌ = not started; 🚫 = intentionally gated.

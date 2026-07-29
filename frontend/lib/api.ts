@@ -579,6 +579,8 @@ function glossaryEntryPath(novelId: RouteId, entryId: RouteId): string {
 // Sends session cookie, never a bearer key
 // ===========================================
 type AdminApi = {
+  listTakedowns: (status?: string) => Promise<import("./api-types").TakedownListResponse>;
+  reviewTakedown: (requestId: number, payload: { status: string; reviewer_notes?: string }) => Promise<{ status: string }>;
   // ── Admin User Management ────────────────────────────────────────────
   listUsers: (filters?: import("./api-types").UserListFilters) => Promise<import("./api-types").UserListResponse>;
   getUser: (userId: number) => Promise<import("./api-types").UserDetail>;
@@ -641,6 +643,15 @@ type AdminApi = {
 };
 
 export const adminApi: AdminApi = {
+  listTakedowns: (status) =>
+    request<import("./api-types").TakedownListResponse>(
+      `/admin/takedowns${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+    ),
+  reviewTakedown: (requestId, payload) =>
+    request<{ status: string }>(`/admin/takedowns/${requestId}/review`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   // ── Admin User Management ────────────────────────────────────────────
   listUsers: (filters: import("./api-types").UserListFilters = {}) => {
     const search = new URLSearchParams();

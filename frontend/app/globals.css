@@ -145,3 +145,50 @@ textarea {
   height: 0;
   background: hsl(var(--card));
 }
+
+/* Skip link — visible only when focused, jumps to #main-content */
+.skip-link {
+  position: absolute;
+  z-index: 100;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  white-space: nowrap;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.skip-link:focus {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0.5rem 1rem;
+  clip: auto;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  border: 2px solid hsl(var(--ring));
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  font-weight: 500;
+  outline: none;
+  text-decoration: none;
+}
+
+/* Reduced motion — disable animations/transitions for vestibular-safe reading */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

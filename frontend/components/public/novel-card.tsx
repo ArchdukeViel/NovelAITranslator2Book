@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Image, { type ImageLoaderProps } from "next/image";
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
@@ -8,10 +9,9 @@ import { FallbackCover } from "@/components/public/fallback-cover";
 import { GenreChip, TagChip } from "@/components/public/genre-chip";
 import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { SaveToLibrary } from "@/components/public/save-to-library";
-import { useGenreLabelMap } from "@/hooks/public/use-genre-labels";
 import { authorOrFallback } from "@/lib/public-format";
 import { publicNovelHref } from "@/lib/public-routes";
-import type { PublicNovelSummary } from "@/lib/public-types";
+import type { PublicGenreInfo, PublicNovelSummary } from "@/lib/public-types";
 
 type DiscoveryNovel = PublicNovelSummary & {
   cover_url?: string | null;
@@ -26,11 +26,49 @@ function directCoverLoader({ src }: ImageLoaderProps): string {
   return src;
 }
 
-function genreLabel(slug: string, labelMap: Map<string, string> | null): string {
-  if (labelMap) {
-    return labelMap.get(slug) ?? slug;
+/** Wraps a cover Image with graceful fallback on load error. */
+function CoverImage({
+  coverUrl,
+  title,
+  genres,
+  language,
+  sourceTitle,
+  status,
+}: {
+  coverUrl: string;
+  title: string;
+  genres?: PublicGenreInfo[] | null;
+  language?: string | null;
+  sourceTitle?: string | null;
+  status?: string | null;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <FallbackCover
+        className="rounded-none border-0 shadow-none"
+        genres={genres}
+        language={language}
+        sourceTitle={sourceTitle}
+        status={status}
+        title={title}
+      />
+    );
   }
-  return slug;
+
+  return (
+    <Image
+      src={coverUrl}
+      alt={`Cover for ${title}`}
+      fill
+      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+      loader={directCoverLoader}
+      unoptimized
+      onError={() => setFailed(true)}
+      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+    />
+  );
 }
 
 interface NovelCardProps {
@@ -43,7 +81,6 @@ export function NovelCard({ novel }: NovelCardProps) {
   const showSourceTitle = Boolean(sourceTitle && sourceTitle !== title);
   const genres = novel.genres ?? [];
   const tags = novel.tags ?? [];
-  const labelMap = useGenreLabelMap();
 
   return (
     <div className="group flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card/85 transition-all duration-200 hover:border-accent/30 hover:bg-card">
@@ -51,14 +88,13 @@ export function NovelCard({ novel }: NovelCardProps) {
       <Link href={publicNovelHref(novel.slug)} className="flex-1">
         <div className="relative aspect-[2/3] overflow-hidden bg-muted">
           {novel.cover_url ? (
-            <Image
-              src={novel.cover_url}
-              alt={`Cover for ${title}`}
-              fill
-              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-              loader={directCoverLoader}
-              unoptimized
-              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+            <CoverImage
+              coverUrl={novel.cover_url}
+              title={title}
+              genres={genres}
+              language={novel.language}
+              sourceTitle={sourceTitle}
+              status={novel.publication_status}
             />
           ) : (
             <FallbackCover
@@ -103,7 +139,7 @@ export function NovelCard({ novel }: NovelCardProps) {
           {(genres.length > 0 || tags.length > 0) && (
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               {genres.slice(0, MAX_VISIBLE_GENRES).map((genre) => (
-                <GenreChip key={genre} label={genreLabel(genre, labelMap)} />
+                <GenreChip key={genre.slug} label={genre.name_en ?? genre.slug} labelJa={genre.name_ja} />
               ))}
               {genres.length > MAX_VISIBLE_GENRES && (
                 <span className="text-xs text-muted-foreground">
@@ -111,7 +147,7 @@ export function NovelCard({ novel }: NovelCardProps) {
                 </span>
               )}
               {tags.slice(0, MAX_VISIBLE_TAGS).map((tag) => (
-                <TagChip key={tag} label={tag} />
+                <TagChip key={tag.name} label={tag.name} labelJa={tag.name_ja} />
               ))}
               {tags.length > MAX_VISIBLE_TAGS && (
                 <span className="text-xs text-muted-foreground">

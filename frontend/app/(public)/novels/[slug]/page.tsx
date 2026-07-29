@@ -22,6 +22,7 @@ import { SaveToLibrary } from "@/components/public/save-to-library";
 import { SectionHeader } from "@/components/public/section-header";
 import { StatusBadge } from "@/components/public/status-badge";
 import { ApiError } from "@/lib/api";
+import { ErrorState, LoadingState } from "@/components/ui/page-state";
 import {
   authorOrFallback,
   sortChaptersAscending,
@@ -86,19 +87,11 @@ function groupChaptersByVolume(chapters: PublicChapterSummary[]): VolumeGroup[] 
   return groupsArray;
 }
 
-function LoadingState() {
+function PageLoadingState() {
   return (
     <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <BackToBrowse />
-      <div className="mt-10 grid gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <div className="aspect-[2/3] animate-pulse rounded-lg bg-muted" />
-        <div className="space-y-5">
-          <div className="h-5 w-32 animate-pulse rounded bg-muted" />
-          <div className="h-12 w-3/4 animate-pulse rounded bg-muted" />
-          <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
-          <div className="h-24 w-full animate-pulse rounded bg-muted" />
-        </div>
-      </div>
+      <LoadingState label="Loading novel details..." />
     </main>
   );
 }
@@ -115,7 +108,7 @@ function BackToBrowse() {
   );
 }
 
-function ErrorState({
+function PageErrorState({
   description,
   title,
 }: {
@@ -125,13 +118,8 @@ function ErrorState({
   return (
     <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <BackToBrowse />
-      <div className="mt-12 max-w-xl">
-        <h1 className="font-literary text-3xl font-medium tracking-normal">
-          {title}
-        </h1>
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          {description}
-        </p>
+      <div className="mt-12">
+        <ErrorState title={title} description={description} />
       </div>
     </main>
   );
@@ -192,7 +180,7 @@ export default function NovelDetailPage() {
     const err = novel.error;
     if (err instanceof ApiError && err.status === 404) {
       return (
-        <ErrorState
+        <PageErrorState
           title="Novel not found"
           description="The novel you're looking for doesn't exist or has been removed."
         />
@@ -200,7 +188,7 @@ export default function NovelDetailPage() {
     }
 
     return (
-      <ErrorState
+      <PageErrorState
         title="Something went wrong"
         description="Could not load this novel. Try browsing the catalog or check back later."
       />
@@ -208,7 +196,7 @@ export default function NovelDetailPage() {
   }
 
   if (novel.isPending) {
-    return <LoadingState />;
+    return <PageLoadingState />;
   }
 
   const data = novel.data;
@@ -282,27 +270,27 @@ export default function NovelDetailPage() {
               </p>
             )}
 
-            {(data.genres?.length ?? 0) > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {(data.genres ?? []).map((genre) => (
-                  <Link
-                    key={genre}
-                    href={`/browse-novels?genre_include=${encodeURIComponent(genre)}`}
-                  >
-                    <GenreChip label={genreLabels?.get(genre) ?? genre} className="hover:bg-accent/15 transition-colors" />
-                  </Link>
-                ))}
-              </div>
-            )}
+{(data.genres?.length ?? 0) > 0 && (
+               <div className="mt-3 flex flex-wrap gap-1.5">
+                 {(data.genres ?? []).map((genre) => (
+                   <Link
+                     key={genre.slug}
+                     href={`/browse-novels?genre_include=${encodeURIComponent(genre.slug)}`}
+                   >
+                     <GenreChip label={genreLabels?.get(genre.slug) ?? genre.slug} labelJa={genre.name_ja} className="hover:bg-accent/15 transition-colors" />
+                   </Link>
+                 ))}
+               </div>
+             )}
 
             {(data.tags?.length ?? 0) > 0 && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {(data.tags ?? []).map((tag) => (
                   <Link
-                    key={tag}
-                    href={`/browse-novels?tag_include=${encodeURIComponent(tag)}`}
+                    key={tag.name}
+                    href={`/browse-novels?tag_include=${encodeURIComponent(tag.name)}`}
                   >
-                    <TagChip label={tag} className="hover:bg-accent/15 transition-colors" />
+                    <TagChip label={tag.name} labelJa={tag.name_ja} className="hover:bg-accent/15 transition-colors" />
                   </Link>
                 ))}
               </div>

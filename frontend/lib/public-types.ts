@@ -5,6 +5,17 @@
 
 // ---- Catalog / Novel / Chapter (from routers/public.py) ----
 
+export interface PublicGenreInfo {
+  slug: string;
+  name_ja: string;
+  name_en: string | null;
+}
+
+export interface PublicTagName {
+  name: string;
+  name_ja: string | null;
+}
+
 export interface PublicNovelSummary {
   novel_id: string;
   slug: string;
@@ -21,8 +32,8 @@ export interface PublicNovelSummary {
   latest_chapter_number?: number | null;
   latest_chapter_title?: string | null;
   latest_chapter_updated_at?: string | null;
-  genres?: string[];
-  tags?: string[];
+  genres?: PublicGenreInfo[];
+  tags?: PublicTagName[];
 }
 
 export interface PublicCatalogResponse {
@@ -95,6 +106,7 @@ export interface PublicChapterDetail {
   previous_chapter_unavailable?: boolean;
   next_chapter_unavailable?: boolean;
   glossary_annotations?: PublicGlossaryAnnotation[];
+  glossary_annotations_truncated?: boolean;
 }
 
 // ---- Auth (from routers/auth.py) ----

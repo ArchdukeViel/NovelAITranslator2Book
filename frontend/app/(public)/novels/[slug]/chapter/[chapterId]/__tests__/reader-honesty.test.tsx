@@ -43,7 +43,7 @@ vi.mock("@/lib/reader-prefs", () => ({
   useReaderPrefsStore: () => ({
     theme: "light",
     fontSize: 18,
-    width: "standard",
+    width: "comfortable",
   }),
 }));
 
@@ -694,6 +694,19 @@ describe("Reader — progress/history tracking", () => {
 // ---------------------------------------------------------------------------
 // Tests: Adult/R18 safety
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Tests: Accessibility — skip link and landmarks
+// ---------------------------------------------------------------------------
+
+describe("Reader — accessibility landmarks and skip link", () => {
+  it("renders a single <main> landmark (no nesting)", () => {
+    renderPage();
+    const mains = document.querySelectorAll("main");
+    expect(mains.length).toBe(1);
+  });
+
+});
 
 describe("Reader — adult/R18 safety", () => {
   it("does not render adult/R18 taxonomy labels", () => {

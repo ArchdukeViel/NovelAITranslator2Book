@@ -128,8 +128,8 @@ function makeNovel(overrides: Record<string, unknown> = {}) {
     latest_chapter_number: null as number | null,
     latest_chapter_title: null as string | null,
     latest_chapter_updated_at: null as string | null,
-    genres: ["fantasy"],
-    tags: ["magic"],
+    genres: [{ slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" }],
+    tags: [{ name: "magic", name_ja: "魔法" }],
     ...overrides,
   };
 }
@@ -523,8 +523,14 @@ describe("HomePage real data rendering", () => {
         novels: [
           makeNovel({
             title: "Genre Novel",
-            genres: ["fantasy", "isekai"],
-            tags: ["magic", "hero"],
+            genres: [
+              { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" },
+              { slug: "isekai", name_ja: "異世界", name_en: "Isekai" },
+            ],
+            tags: [
+              { name: "magic", name_ja: "魔法" },
+              { name: "hero", name_ja: "主人公" },
+            ],
           }),
         ],
         total: 1,
@@ -665,7 +671,7 @@ describe("HomePage adult safety", () => {
       data: {
         novels: [
           makeNovel({
-            genres: ["adult-romance"],
+            genres: [{ slug: "adult-romance", name_ja: "アダルトロマンス", name_en: "Adult Romance" }],
             tags: [],
           }),
         ],

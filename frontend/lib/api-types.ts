@@ -1040,3 +1040,21 @@ export type LatestExportResponse = {
   export_format: string;
   manifest: ExportManifest | null;
 };
+export interface TakedownRequestSummary {
+  id: number;
+  created_at: string | null;
+  complainant_name: string;
+  complainant_email: string;
+  infringing_url: string;
+  description: string;
+  status: string;
+  reviewer_notes: string | null;
+  reviewed_at: string | null;
+}
+
+export interface TakedownListResponse {
+  items: TakedownRequestSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+}

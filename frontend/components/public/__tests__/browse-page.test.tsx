@@ -553,8 +553,14 @@ describe("BrowsePage genre/tag pass-through", () => {
             chapter_count: 10,
             translated_count: 3,
             added_at: null,
-            genres: ["fantasy", "isekai"],
-            tags: ["magic", "hero"],
+            genres: [
+              { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" },
+              { slug: "isekai", name_ja: "異世界", name_en: "Isekai" },
+            ],
+            tags: [
+              { name: "magic", name_ja: "魔法" },
+              { name: "hero", name_ja: null },
+            ],
           },
         ],
         total: 1,
@@ -576,8 +582,8 @@ describe("BrowsePage genre/tag pass-through", () => {
       </QueryClientProvider>
     );
 
-    expect(screen.getByText("fantasy")).toBeInTheDocument();
-    expect(screen.getByText("isekai")).toBeInTheDocument();
+    expect(screen.getByText("Fantasy")).toBeInTheDocument();
+    expect(screen.getByText("Isekai")).toBeInTheDocument();
     expect(screen.getByText("magic")).toBeInTheDocument();
     expect(screen.getByText("hero")).toBeInTheDocument();
   });

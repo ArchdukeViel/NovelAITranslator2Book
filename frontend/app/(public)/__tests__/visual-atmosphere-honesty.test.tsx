@@ -82,8 +82,14 @@ beforeEach(() => {
           chapter_count: 42,
           translated_count: 15,
           added_at: "2026-06-17T08:00:00Z",
-          genres: ["fantasy", "slice-of-life"],
-          tags: ["magic", "healing"],
+          genres: [
+            { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" },
+            { slug: "slice-of-life", name_ja: "日常", name_en: "Slice of Life" },
+          ],
+          tags: [
+            { name: "magic", name_ja: "魔法" },
+            { name: "healing", name_ja: null },
+          ],
         },
         {
           novel_id: "n2",
@@ -95,7 +101,7 @@ beforeEach(() => {
           chapter_count: 120,
           translated_count: 120,
           added_at: "2026-06-16T10:00:00Z",
-          genres: ["adventure"],
+          genres: [{ slug: "adventure", name_ja: "冒険", name_en: "Adventure" }],
           tags: [],
         },
         {

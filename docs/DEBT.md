@@ -9,7 +9,7 @@ Deferred items are tracked but excluded from the active count.
 
 ## Executive Summary
 
-- **Total active debt entries:** 13
+- **Total active debt entries:** 6
 - **V1 launch blockers:** 3 (DEBT-075, DEBT-079, DEBT-094)
 - **Critical security/data integrity:** 0
 
@@ -387,19 +387,27 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M4 (Reader/Catalog UX)
 - **Category:** Frontend
 - **Priority:** Low
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** Tag badge components
 - **Description:** Japanese tag names present in database but public UI displays English only.
 - **Completion criteria:** Tag badges show Japanese rendering in tooltips.
+- **Resolution:** Public taxonomy payloads now carry canonical tag objects with
+  `name` and `name_ja`. Public cards and novel detail chips render the localized
+  Japanese label without duplicating identical text. Focused frontend taxonomy
+  and card tests pass.
 
 ### DEBT-030 — TAXONOMY-5D: genre payload decision
 - **Milestone:** Milestone M4 (Reader/Catalog UX)
 - **Category:** Frontend | API
 - **Priority:** Low
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** Catalog APIs
 - **Description:** Public catalog genre enrichment payload undetermined.
 - **Completion criteria:** Catalog API serves localized names and metadata payload.
+- **Resolution:** Public catalog and novel responses now use canonical genre
+  objects with `slug`, `name_ja`, and `name_en`; direct frontend callers and
+  contract tests were migrated forward without compatibility aliases. The 153
+  focused backend M4 tests pass with Ruff and Pyright clean.
 
 ### DEBT-032 — CI/CD manual workflow trigger
 - **Milestone:** Milestone M3 (Deployment)
@@ -470,10 +478,15 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M4 (Reader/Catalog UX)
 - **Category:** Frontend | SEO
 - **Priority:** Low
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** Public reader pages
 - **Description:** Robots, sitemaps, structured data schemas absent from public novel route.
 - **Completion criteria:** Google validator confirms sitemap and structured schema tags.
+- **Resolution:** Added framework-native `robots.txt` and sitemap generation,
+  canonical novel/chapter metadata, Open Graph/Twitter metadata, and escaped
+  Book/Chapter JSON-LD. Sitemap generation excludes 404/451 content. Local SEO
+  route tests and the production build pass; hosted search-validator evidence
+  remains an M7 operator check.
 
 ### DEBT-039 — Rate limiter Redis validation
 - **Milestone:** Milestone M3 (Deployment)
@@ -539,10 +552,13 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M4 (Reader/Catalog UX)
 - **Category:** Frontend
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** `frontend/app/`, `frontend/components/`, `frontend/lib/public-api.ts`
 - **Description:** No shared loading/empty/error/unavailable states. Public API error parsing exposes raw backend messages. No route-level error boundaries.
 - **Completion criteria:** Shared state components, API error normalizer, route-level error/loading/not-found boundaries, safe frontend logging.
+- **Resolution:** Added accessible shared state components, public route error
+  and not-found boundaries, safe API error normalization/redaction, retry and
+  navigation actions, and public-reader adoption with focused regression tests.
 
 ### DEBT-057 — Launch readiness checklist missing
 - **Milestone:** Milestone M7 (Launch Readiness)
@@ -557,29 +573,39 @@ Deferred items are tracked but excluded from the active count.
 - **Milestone:** Milestone M4 (Reader/Catalog UX)
 - **Category:** Frontend
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** `frontend/components/public/public-shell.tsx`, `frontend/app/(public)/`
 - **Description:** Nested `<main>` landmarks, no skip link, no reduced-motion
   rules, and incomplete focus management remain in the public reader. Tag
   suggestions now provide the required `aria-selected` state.
 - **Completion criteria:** Single main landmark, skip link, reduced-motion CSS, focus management, accessible reader controls.
+- **Resolution:** Public shell now provides one skip link and focusable content
+  target without nesting a second `main`; reduced-motion rules and focus-visible
+  reader controls are implemented. Focused shell and reader tests pass. Real
+  browser assistive-technology verification remains an M7 operator check.
 
 ### DEBT-059 — Public reader performance budget
 - **Milestone:** Milestone M4 (Reader/Catalog UX)
 - **Category:** Frontend | Backend
 - **Priority:** Medium
-- **Status:** Pending
+- **Status:** Resolved
 - **Affected areas:** `frontend/app/(public)/`, `backend/src/novelai/api/routers/public_*.py`
 - **Description:** No documented latency/payload budgets, no cache-control
   headers, no bundle analysis, and no request-count tests. Public cover/brand
   images still use raw `<img>` elements and produce Next.js LCP warnings.
 - **Completion criteria:** Documented budgets, cache-control headers, bundle analysis, request-count tests, annotation cap.
+- **Resolution:** Documented API, payload, request, annotation, cache, and route
+  JavaScript budgets in `docs/operations/reader-performance-budget.md`. Public
+  reader GETs use short shared caching, legal responses and owner previews use
+  `no-store`, annotations are capped at 50 with a truncation signal, and failed
+  covers degrade to generated bookplates. Production build generated 46/46
+  pages; public routes use 139-148 kB first-load JavaScript.
 
 ### DEBT-060 — Terms/DMCA takedown workflow missing
 - **Milestone:** Milestone M4 (Reader/Catalog UX)
 - **Category:** Backend | Frontend
 - **Priority:** High
-- **Status:** Ongoing
+- **Status:** Resolved
 - **Affected areas:** `backend/src/novelai/api/routers/`, `frontend/app/(public)/dmca/`,
   `backend/src/novelai/db/models/takedown.py`,
   `backend/src/novelai/services/takedown_service.py`,
@@ -593,6 +619,12 @@ Deferred items are tracked but excluded from the active count.
   endpoints, and a DMCA form page with policy text. Remaining: HTTP 451
   middleware hook in novel/chapter reader, admin DMCA review UI, cache
   invalidation on approved takedown, sitemap exclusion, and audit-log events.
+- **Resolution:** Completed owner review UI/API integration, reviewer identity
+  and audit recording, exact path-segment enforcement on novel/chapter surfaces,
+  safe HTTP 451 responses with `no-store`, and sitemap exclusion. Existing
+  public responses expire within the documented 60-second cache window; no
+  application response cache requires separate invalidation. Focused takedown,
+  public-router, and analytics tests pass.
 
 ### DEBT-061 — S3 storage backend validation
 - **Milestone:** Milestone M3 (Deployment)

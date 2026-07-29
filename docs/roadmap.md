@@ -99,7 +99,7 @@ keeps its acceptance gate open.
   OAuth, security-boundary, R2-scope, health, and rollback evidence remain.
 
 ## Milestone M4 — Reader and Catalog UX
-- **Status:** Planned
+- **Status:** Locally complete; hosted SEO, browser accessibility/performance, and CDN acceptance pending
 - **Description:** Polish discovery index, tags, SEO, accessibility, performance, error states, and legal/takedown workflow.
 - **Scope:**
   - Integrate public reader glossary highlighter. (DEBT-037)
@@ -110,6 +110,12 @@ keeps its acceptance gate open.
   - Establish public reader accessibility baseline. (DEBT-058)
   - Establish public reader performance budget and cache contract. (DEBT-059)
   - Implement legal/takedown workflow with HTTP 451 enforcement. (DEBT-060)
+- **Evidence:** 153 focused backend tests pass; focused Ruff and full Pyright
+  report zero errors. Frontend typecheck and lint pass. Production build
+  generates 46/46 pages, with public routes at 139-148 kB first-load JavaScript.
+  One valid full Vitest run reached 753 passing tests before 12 stale taxonomy
+  fixtures; exact repaired files then passed 62/62. Later launcher output was
+  invalid and is not counted as combined-suite evidence.
 
 ## Milestone M5 — Admin Operations Polish
 - **Status:** Complete locally — implementation, validation, review, documentation, and local commits complete
@@ -201,8 +207,9 @@ For the technical debt register and launch blockers, see [`docs/DEBT.md`](DEBT.m
   stale/failure SMTP delivery to the operator inbox remains unproven.
 - The free preview domains and the always-on production topology need acceptance.
 - Owner-only audit viewer and the remaining M5 admin operations are locally implemented, reviewed, validated, and committed.
-- No takedown workflow; no HTTP 451 enforcement.
-- No measured performance or accessibility gate.
+- M4 takedown enforcement, local performance budgets, and accessibility baseline
+  are implemented. Hosted SEO validation, real-browser accessibility/performance,
+  and CDN behavior remain M7 acceptance work.
 - No launch readiness evidence or go/no-go decision.
 
 ### Implemented Features (Phase 2 Live Library Summary)

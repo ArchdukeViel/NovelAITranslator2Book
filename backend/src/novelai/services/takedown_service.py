@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from urllib.parse import unquote, urlsplit
 
 from sqlalchemy import asc, desc
 from sqlalchemy.orm import Session
@@ -118,3 +119,18 @@ class TakedownService:
             .first()
             is not None
         )
+
+    def has_active_takedown_for_slug(self, slug: str) -> bool:
+        """Return whether an approved notice targets *slug* as an exact path segment."""
+        return slug.casefold() in self.active_takedown_slugs([slug])
+
+    def active_takedown_slugs(self, slugs: list[str]) -> set[str]:
+        """Return requested slugs targeted by approved notices using one query."""
+        normalized = {unquote(slug).strip("/").casefold() for slug in slugs if slug.strip("/")}
+        if not normalized:
+            return set()
+        urls = self.db.query(TakedownRequest.infringing_url).filter(TakedownRequest.status == "approved").all()
+        targeted = {
+            unquote(segment).casefold() for (url,) in urls for segment in urlsplit(url).path.split("/") if segment
+        }
+        return normalized & targeted

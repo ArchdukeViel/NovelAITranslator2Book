@@ -11,7 +11,7 @@ import logging
 import re
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 
@@ -24,6 +24,8 @@ from novelai.api.routers.dependencies import (
 )
 from novelai.api.routers.public_contracts import (
     DEFAULT_UNAVAILABLE_POLICY,
+    PUBLIC_CACHE_MAX_AGE_SECONDS,
+    PUBLIC_GLOSSARY_ANNOTATIONS_MAX,
     PUBLIC_PARAGRAPH_MARKER_RE,
     PUBLIC_PROTOCOL_MARKER_RE,
     VALID_UNAVAILABLE_POLICIES,
@@ -33,6 +35,7 @@ from novelai.api.routers.public_contracts import (
 from novelai.config.settings import settings
 from novelai.services.analytics_service import record_server_event
 from novelai.services.public_catalog_service import PublicCatalogService
+from novelai.services.takedown_service import TakedownService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 logger = logging.getLogger(__name__)
@@ -410,15 +413,25 @@ def _availability_fields(
 async def get_chapter(
     slug: str,
     chapter_id: str,
+    response_headers: Response,
     version_id: str | None = Query(default=None),
     request: Request = None,  # type: ignore[assignment]
     service: PublicCatalogService = Depends(get_public_catalog_service),
     user: SessionUser = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Public translated chapter reader."""
     resolved = service._resolve_public_novel(slug)
     if resolved is None:
         raise HTTPException(status_code=404, detail="Novel not found.")
+    # HTTP 451 — Unavailable For Legal Reasons
+    takedown = TakedownService(db)
+    if takedown.has_active_takedown_for_slug(slug):
+        raise HTTPException(
+            status_code=451,
+            detail="Unavailable For Legal Reasons",
+            headers={"Cache-Control": "no-store"},
+        )
     novel_id, meta, public_slug = resolved
 
     chapters = metadata_chapters(meta)
@@ -528,10 +541,14 @@ async def get_chapter(
                 reader_blocks=response["reader_blocks"],
             )
             if annotations:
-                response["glossary_annotations"] = annotations
+                response["glossary_annotations"] = annotations[:PUBLIC_GLOSSARY_ANNOTATIONS_MAX]
+                response["glossary_annotations_truncated"] = len(annotations) > PUBLIC_GLOSSARY_ANNOTATIONS_MAX
         except Exception as exc:
             logger.debug("Glossary annotations failed (%s).", type(exc).__name__)
 
+    response_headers.headers["Cache-Control"] = (
+        "no-store" if version_id is not None else f"public, max-age={PUBLIC_CACHE_MAX_AGE_SECONDS}"
+    )
     return response
 
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import and_, true
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from novelai.api.routers.dependencies import (
 from novelai.api.routers.public_contracts import (
     DEFAULT_ORDER,
     DEFAULT_SORT_BY,
+    PUBLIC_CACHE_MAX_AGE_SECONDS,
     VALID_ORDER_VALUES,
     VALID_SORT_FIELDS,
     PublicCatalogResponse,
@@ -32,6 +33,7 @@ from novelai.api.routers.public_contracts import (
 )
 from novelai.services.analytics_service import record_server_event
 from novelai.services.public_catalog_service import PublicCatalogService
+from novelai.services.takedown_service import TakedownService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 logger = logging.getLogger(__name__)
@@ -189,8 +191,8 @@ def _catalog_from_storage(
         genres, tags, is_adult = service._load_taxonomy_for_novel(novel_id, include_adult=include_adult)
         if not include_adult and is_adult:
             continue
-        novel_genre_set = set(genres)
-        novel_tag_set = set(tags)
+        novel_genre_set = {g["slug"] for g in genres}
+        novel_tag_set = {t["name"] for t in tags}
         if genre_include_set and not genre_include_set.issubset(novel_genre_set):
             continue
         if genre_exclude_set and novel_genre_set.intersection(genre_exclude_set):
@@ -236,6 +238,7 @@ def _catalog_from_storage(
 @router.get("/catalog", response_model=PublicCatalogResponse)
 async def catalog(
     request: Request,
+    response_headers: Response,
     q: str | None = Query(default=None, description="Search title or author"),
     publication_status: str | None = Query(default=None, description="Filter by publication status"),
     sort_by: str | None = Query(default=None, description="Sort field: added_at, title, chapter_count"),
@@ -251,6 +254,7 @@ async def catalog(
     page_size: int = Query(default=24, ge=1, le=100, description="Items per page"),
     service: PublicCatalogService = Depends(get_public_catalog_service),
     user: SessionUser = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
 ) -> PublicCatalogResponse:
     """Paginated public novel catalog with optional search, filter, and sort."""
     from novelai.sources.status import normalize_publication_status
@@ -334,6 +338,19 @@ async def catalog(
                 + len(tag_exclude_set),
             },
         )
+    blocked_slugs = TakedownService(db).active_takedown_slugs([novel.slug for novel in response.novels])
+    visible_novels = [novel for novel in response.novels if novel.slug.casefold() not in blocked_slugs]
+    if len(visible_novels) != len(response.novels):
+        response = response.model_copy(
+            update={
+                "novels": visible_novels,
+                "total": max(0, response.total - (len(response.novels) - len(visible_novels))),
+            }
+        )
+    # DEBT-059 / REQ-9: short, public-safe edge cache for guest-visible catalog
+    # page. Session user has not personalized the response (no per-user data is
+    # embedded), so a short max-age is safe. Personal routes MUST NOT use this.
+    response_headers.headers["Cache-Control"] = f"public, max-age={PUBLIC_CACHE_MAX_AGE_SECONDS}"
     return response
 
 

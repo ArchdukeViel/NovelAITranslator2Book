@@ -98,7 +98,10 @@ describe("Taxonomy contract — genre chip display labels", () => {
       ]),
     );
 
-    const novel = makeNovel({ genres: ["fantasy", "isekai-tensei"] });
+    const novel = makeNovel({ genres: [
+      { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" },
+      { slug: "isekai-tensei", name_ja: "異世界転生", name_en: "Isekai (Reincarnation)" },
+    ] });
     renderWithClient(<NovelCard novel={novel} />);
 
     expect(screen.getByText("Fantasy")).toBeInTheDocument();
@@ -108,7 +111,10 @@ describe("Taxonomy contract — genre chip display labels", () => {
   it("falls back to slug when genre label map is not loaded", () => {
     genreLabelMock.mockReturnValue(null);
 
-    const novel = makeNovel({ genres: ["fantasy", "isekai-tensei"] });
+    const novel = makeNovel({ genres: [
+      { slug: "fantasy", name_ja: "ファンタジー", name_en: null },
+      { slug: "isekai-tensei", name_ja: "異世界転生", name_en: null },
+    ] });
     renderWithClient(<NovelCard novel={novel} />);
 
     expect(screen.getByText("fantasy")).toBeInTheDocument();
@@ -120,7 +126,10 @@ describe("Taxonomy contract — genre chip display labels", () => {
       new Map([["fantasy", "Fantasy"]]),
     );
 
-    const novel = makeNovel({ genres: ["fantasy", "unknown-genre"] });
+    const novel = makeNovel({ genres: [
+      { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" },
+      { slug: "unknown-genre", name_ja: "unknown-genre", name_en: null },
+    ] });
     renderWithClient(<NovelCard novel={novel} />);
 
     expect(screen.getByText("Fantasy")).toBeInTheDocument();
@@ -149,7 +158,7 @@ describe("Taxonomy contract — adult/R18 label safety", () => {
       ]),
     );
 
-    const novel = makeNovel({ genres: ["fantasy"] });
+    const novel = makeNovel({ genres: [{ slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" }] });
     renderWithClient(<NovelCard novel={novel} />);
 
     // "fantasy" chip shows "Fantasy"
@@ -178,15 +187,15 @@ describe("Taxonomy contract — adult/R18 label safety", () => {
     // Verify genre rendering uses genreLabels fallback, not is_adult
     expect(source).not.toContain("is_adult");
     // GenreChip is rendered with label prop (not flag)
-    expect(source).toContain("genreLabels?.get(genre) ?? genre");
+    expect(source).toContain("genreLabels?.get(genre.slug) ?? genre.slug");
   });
 });
 
 describe("Taxonomy contract — TypeScript type alignment", () => {
-  it("PublicNovelSummary genres field is string array matching backend PublicNovelSummary.genres", () => {
+  it("PublicNovelSummary carries canonical localized taxonomy objects", () => {
     const source = readFileSync("lib/public-types.ts", "utf8");
-    // PublicNovelSummary.genres should remain string[] (slugs)
-    expect(source).toContain("genres?: string[]");
+    expect(source).toContain("genres?: PublicGenreInfo[]");
+    expect(source).toContain("tags?: PublicTagName[]");
   });
 
   it("PublicGenreResponse has required fields for label resolution", () => {

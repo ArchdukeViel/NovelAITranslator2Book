@@ -108,6 +108,7 @@ def review_takedown(
             request_id=request_id,
             status=body.status,
             reviewer_notes=body.reviewer_notes,
+            reviewed_by_user_id=actor.user_id,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc

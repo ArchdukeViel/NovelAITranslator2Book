@@ -276,7 +276,7 @@ library adapters.
 | Public reader | `frontend/lib/public-api.ts` calls `/api/public/*` catalog, novel, chapter list, and chapter endpoints. |
 | Public auth | Google OAuth and email/password public auth implemented: `GET /api/auth/google/start`, `GET /api/auth/google/callback`, `POST /api/auth/register`, and `POST /api/auth/password/login` create or resume `role="user"` sessions only. `POST /api/auth/login` remains admin-only owner bootstrap login. CSRF enforcement and rate limits protect auth mutations. |
 | Public user data | Backend `/api/user/*` routes are hosted by the session-enabled admin process in split mode; Caddy routes them to port 8000. Public frontend API methods/hooks are re-exported for library, progress, history, reviews, and requests. |
-| Admin future APIs | Exported future admin methods for missing endpoints are quarantined. Do not advertise `/api/admin/users`, `/api/admin/controls`, contributed credentials, or provider activation until backend routes exist. |
+| Admin operations | Owner-only user management, audit viewer, analytics, notifications, credential management, and takedown review routes are implemented. Contributed credentials remain gated. |
 
 Public/frontend-facing errors must not include raw tracebacks, API keys,
 authorization headers, cookies, provider secrets, or unsafe filesystem internals.
@@ -308,6 +308,24 @@ frontend/lib/               API clients, shared types, client utilities
   hooks are available to authenticated users.
 - Contribution credential actions must remain unavailable until the contribution
   readiness gate is satisfied.
+
+**M4 public-reader contracts**:
+
+- Catalog taxonomy uses canonical localized objects: genres carry `slug`,
+  `name_ja`, and `name_en`; tags carry `name` and `name_ja`.
+- Public routes use shared accessible loading, empty, unavailable, not-found,
+  and error states. User-facing errors never render raw backend details.
+- Public novel and chapter routes publish canonical metadata and escaped
+  structured data; framework-native robots and sitemap routes exclude 404/451
+  content.
+- Public shell owns the skip link and focusable content target. Pages own the
+  single `main` landmark. Reduced-motion preferences and visible keyboard focus
+  are preserved.
+- Guest-safe catalog and reader GET responses may use the documented short
+  shared cache. Legal responses and owner version previews use `no-store`.
+  Public chapter annotations are capped at 50 and report truncation.
+- Approved takedowns match exact decoded URL path segments and return safe HTTP
+  451 responses for novel detail, chapter list, and chapter reader surfaces.
 
 ## 10. Security Architecture
 
@@ -418,9 +436,9 @@ owner  - authenticated single owner; dangerous operations
 | Adapter plugin system | Implemented. SourceAdapter ABC, AdapterRegistry (pkgutil auto-discovery, get_by_key, list_adapters), all adapters refactored, bootstrap registration. |
 | Public contribution credential backend lifecycle | Deferred. |
 | Server-side encryption/revocation/validation/usage ledger for contributed credentials | Deferred. |
-| Admin user-management backend/UI | Deferred. |
-| Admin controls config backend | Deferred. |
-| Contributed credential oversight backend | Deferred. |
+| Admin user-management backend/UI | Implemented and locally validated. |
+| Admin controls config backend | Deferred where no approved contract exists. |
+| Contributed credential oversight backend | Deferred behind the contribution readiness gate. |
 | WTR-style community folders/lists | Deferred. |
 | Rankings/leaderboards/trending pages | Deferred. |
 | Rich finder/tags/discovery | Partially present only as basic catalog parameters; richer UX deferred. |

@@ -178,6 +178,28 @@ def _seed_public_glossary_entry(db_session, novel: Novel) -> NovelGlossaryEntry:
 
 
 class TestCatalog:
+    def test_excludes_approved_takedown(self, client: TestClient, storage: StorageService, db_session) -> None:
+        from novelai.db.models.takedown import TakedownRequest
+
+        _seed_db_catalog_novel(db_session, "blocked-novel")
+        db_session.add(
+            TakedownRequest(
+                complainant_name="Rights holder",
+                complainant_email="rights@example.test",
+                infringing_url="https://reader.example.test/novels/blocked-novel",
+                description="Copyright notice",
+                signature="Rights holder",
+                status="approved",
+            )
+        )
+        db_session.commit()
+
+        response = client.get("/api/public/catalog")
+
+        assert response.status_code == 200
+        assert response.json()["novels"] == []
+        assert response.json()["total"] == 0
+
     def test_catalog_openapi_excludes_removed_language_filter(self, client: TestClient) -> None:
         schema = client.get("/openapi.json").json()
         parameters = schema["paths"]["/api/public/catalog"]["get"]["parameters"]
@@ -566,8 +588,11 @@ class TestCatalog:
 
         novel = client.get("/api/public/catalog").json()["novels"][0]
 
-        assert novel["genres"] == ["romance", "fantasy"]
-        assert novel["tags"] == ["魔法"]
+        assert novel["genres"] == [
+            {"slug": "romance", "name_ja": "恋愛", "name_en": "romance"},
+            {"slug": "fantasy", "name_ja": "ファンタジー", "name_en": "fantasy"},
+        ]
+        assert novel["tags"] == [{"name": "魔法", "name_ja": None}]
 
     def test_catalog_publication_status_filter_uses_db_projection(
         self,
@@ -980,6 +1005,7 @@ class TestGetChapter:
         assert data["chapter_number"] == 1
         assert data["previous_chapter_unavailable"] is False
         assert data["next_chapter_unavailable"] is False
+        assert resp.headers["cache-control"] == "public, max-age=60"
 
     def test_returns_only_public_glossary_annotations(
         self,
@@ -1007,6 +1033,7 @@ class TestGetChapter:
 
         assert response.status_code == 200
         annotations = response.json()["glossary_annotations"]
+        assert response.json()["glossary_annotations_truncated"] is False
         assert annotations == [
             {
                 "term_id": entry.id,
@@ -1620,7 +1647,7 @@ class TestCatalogTaxonomy:
         resp = client.get("/api/public/catalog")
         assert resp.status_code == 200
         novel = resp.json()["novels"][0]
-        assert novel["genres"] == ["fantasy"]
+        assert novel["genres"] == [{"slug": "fantasy", "name_ja": "ファンタジー", "name_en": "fantasy"}]
         assert novel["tags"] == []
 
     def test_catalog_returns_assigned_tag_names(self, client: TestClient, storage: StorageService, db_session) -> None:
@@ -1631,9 +1658,10 @@ class TestCatalogTaxonomy:
         resp = client.get("/api/public/catalog")
         assert resp.status_code == 200
         novel = resp.json()["novels"][0]
-        assert set(novel["tags"]) == {"魔法", "勇者"}
-        # Tags should be alphabetically sorted
-        assert novel["tags"] == sorted(novel["tags"])
+        assert {t["name"] for t in novel["tags"]} == {"魔法", "勇者"}
+        assert all(t["name_ja"] is None for t in novel["tags"])
+        # Tags should be alphabetically sorted by name
+        assert novel["tags"] == sorted(novel["tags"], key=lambda t: t["name"])
 
     def test_inactive_genre_excluded_from_response(
         self, client: TestClient, storage: StorageService, db_session
@@ -1664,7 +1692,10 @@ class TestCatalogTaxonomy:
         assert resp.status_code == 200
         novel = resp.json()["novels"][0]
         # Should be ordered by display_order: isekai-tensei (1) before sf (5)
-        assert novel["genres"] == ["isekai-tensei", "sf"]
+        assert novel["genres"] == [
+            {"slug": "isekai-tensei", "name_ja": "異世界転生", "name_en": "isekai-tensei"},
+            {"slug": "sf", "name_ja": "SF", "name_en": "sf"},
+        ]
 
     def test_novel_detail_also_has_genres_and_tags(
         self, client: TestClient, storage: StorageService, db_session
@@ -1677,8 +1708,8 @@ class TestCatalogTaxonomy:
         resp = client.get("/api/public/novels/n006")
         assert resp.status_code == 200
         novel = resp.json()
-        assert novel["genres"] == ["romance"]
-        assert novel["tags"] == ["転生"]
+        assert novel["genres"] == [{"slug": "romance", "name_ja": "恋愛", "name_en": "romance"}]
+        assert novel["tags"] == [{"name": "転生", "name_ja": None}]
 
     def test_adult_genre_novel_excluded_by_default(
         self, client: TestClient, storage: StorageService, db_session
@@ -1741,7 +1772,9 @@ class TestCatalogTaxonomy:
 
         resp = client.get("/api/public/novels/adult-novel?include_adult=true")
         assert resp.status_code == 200
-        assert resp.json()["genres"] == ["adult-romance"]
+        assert resp.json()["genres"] == [
+            {"slug": "adult-romance", "name_ja": "大人向け恋愛", "name_en": "adult-romance"}
+        ]
 
 
 # ---------------------------------------------------------------------------
