@@ -92,3 +92,89 @@ def test_security_migration_removes_pg_net_and_cron_table_grants() -> None:
     assert "CREATE OR REPLACE FUNCTION private.current_user_id()" in source
     assert "CREATE OR REPLACE FUNCTION private.is_owner()" in source
     assert "DROP FUNCTION IF EXISTS public.current_user_id()" in source
+
+
+# ---------------------------------------------------------------------------
+# Migration b9e0f1a2c3d4 — secure internal tables with RLS and revoke
+# ---------------------------------------------------------------------------
+
+INTERNAL_MIGRATION = "2026-07-29_b9e0f1a2c3d4_secure_internal_tables_with_rls_revoke.py"
+
+
+def test_internal_table_migration_identity() -> None:
+    """Verify revision chain and table inventory."""
+    migration = _load_migration(INTERNAL_MIGRATION, "internal_tables")
+
+    assert migration.revision == "b9e0f1a2c3d4"
+    assert migration.down_revision == "a4d8b6c2f1e3"
+    assert migration.INTERNAL_TABLES == (
+        "analytics_events",
+        "notifications",
+        "notification_preferences",
+        "notification_deliveries",
+    )
+
+
+def test_internal_table_migration_enables_rls_and_drops_policies() -> None:
+    """Each internal table gets RLS enabled and all policies dropped."""
+    source = (MIGRATIONS_DIR / INTERNAL_MIGRATION).read_text(encoding="utf-8")
+
+    assert "ALTER TABLE IF EXISTS public.{_quote_identifier(table_name)} ENABLE ROW LEVEL SECURITY" in source
+    assert "SELECT policyname" in source
+    assert "FROM pg_policies" in source
+    assert "DROP POLICY %I ON public.%I" in source
+
+
+def test_internal_table_migration_revokes_table_from_anon_authenticated() -> None:
+    """Table-level REVOKE ALL for anon/authenticated when roles exist."""
+    source = (MIGRATIONS_DIR / INTERNAL_MIGRATION).read_text(encoding="utf-8")
+
+    assert "REVOKE ALL PRIVILEGES ON TABLE %s FROM %s" in source
+    assert "WHERE rolname IN ('anon', 'authenticated')" in source
+    assert "FROM pg_tables" in source
+
+
+def test_internal_table_migration_revokes_sequences_from_anon_authenticated() -> None:
+    """Sequence-level REVOKE ALL for anon/authenticated autoincrement sequences."""
+    source = (MIGRATIONS_DIR / INTERNAL_MIGRATION).read_text(encoding="utf-8")
+
+    assert "pg_get_serial_sequence" in source
+    assert "FROM pg_tables" in source
+    assert "REVOKE ALL PRIVILEGES ON SEQUENCE" in source
+
+
+def test_internal_table_migration_has_no_policies() -> None:
+    """Zero policies created — backend SQLAlchemy is the only access path."""
+    migration = _load_migration(INTERNAL_MIGRATION, "internal_tables_no_policies")
+
+    assert not hasattr(migration, "_policies") or "analytics_events" not in migration._policies()
+    # Verify no policy-creation helpers are called in upgrade
+    source = (MIGRATIONS_DIR / INTERNAL_MIGRATION).read_text(encoding="utf-8")
+    assert "CREATE POLICY" not in source
+
+
+def test_internal_table_migration_uses_existing_roles_pattern() -> None:
+    """Role-safe guard for vanilla PostgreSQL without Supabase roles."""
+    source = (MIGRATIONS_DIR / INTERNAL_MIGRATION).read_text(encoding="utf-8")
+
+    assert "FROM pg_roles" in source
+    assert "WHERE rolname IN ('anon', 'authenticated')" in source
+    assert "IF role_list IS NULL" in source
+
+
+def test_internal_table_migration_reasserts_scheduled_cron_log_revoke() -> None:
+    """scheduled_cron_log zero-policy/revoke contract is reasserted."""
+    source = (MIGRATIONS_DIR / INTERNAL_MIGRATION).read_text(encoding="utf-8")
+
+    assert "scheduled_cron_log" in source
+    assert '(*INTERNAL_TABLES, "scheduled_cron_log")' in source
+
+
+def test_internal_table_migration_downgrade_is_security_safe() -> None:
+    """Downgrade repeats REVOKE (idempotent) rather than GRANT."""
+    source = (MIGRATIONS_DIR / INTERNAL_MIGRATION).read_text(encoding="utf-8")
+
+    downgrade_source = source.split("def downgrade", maxsplit=1)[1]
+    assert "GRANT " not in downgrade_source
+    assert "_revoke_table_and_sequence" in downgrade_source
+    assert '(*INTERNAL_TABLES, "scheduled_cron_log")' in downgrade_source
