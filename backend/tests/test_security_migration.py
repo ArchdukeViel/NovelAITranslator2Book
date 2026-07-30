@@ -213,7 +213,8 @@ def test_runtime_role_migration_is_least_privilege() -> None:
     assert "CREATE ROLE novelai_app NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS" in source
     assert "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO novelai_app" in source
     assert "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO novelai_app" in source
-    assert "ALTER DEFAULT PRIVILEGES FOR ROLE postgres" in source
+    assert "ALTER DEFAULT PRIVILEGES IN SCHEMA public" in source
+    assert "FOR ROLE postgres" not in source
     assert "CREATE POLICY novelai_app_runtime_all" in source
     assert "GRANT ALL" not in source
     assert "DROP ROLE" not in source

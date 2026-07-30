@@ -53,13 +53,9 @@ def upgrade() -> None:
         """
     )
     op.execute(
-        "ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public "
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO novelai_app"
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO novelai_app"
     )
-    op.execute(
-        "ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public "
-        "GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO novelai_app"
-    )
+    op.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO novelai_app")
     # Supabase project owners cannot safely ALTER an existing custom role. A
     # separately provisioned LOGIN role inherits this stable privilege contract.
 
