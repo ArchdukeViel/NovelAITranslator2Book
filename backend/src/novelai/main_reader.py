@@ -13,8 +13,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from novelai.api.auth.session import GUEST, get_current_user
 from novelai.api.error_handlers import add_error_handlers
-from novelai.api.middleware.security import SecurityHeadersMiddleware
+from novelai.api.middleware.security import RequestBodyEnforcementMiddleware, SecurityHeadersMiddleware
 from novelai.api.routers.health import router as health_router
 from novelai.api.routers.public_catalog import router as public_catalog_router
 from novelai.api.routers.public_chapter import router as public_chapter_router
@@ -40,6 +41,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="NovelAI Reader", version="1.0.0", lifespan=lifespan)
+app.dependency_overrides[get_current_user] = lambda: GUEST
+
+# RequestBody enforcement registered before CORS so CORS sits outer,
+# ensuring CORS headers on 413/415 responses.
+app.add_middleware(RequestBodyEnforcementMiddleware)
 
 if settings.WEB_CORS_ORIGINS:
     app.add_middleware(

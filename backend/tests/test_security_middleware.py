@@ -5,12 +5,16 @@ Does NOT test the production config validator (see test_production_config.py).
 
 from __future__ import annotations
 
+import asyncio
+import json
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from novelai.api.app import create_app
 from novelai.api.middleware.security import (
+    RequestBodyEnforcementMiddleware,
     SecurityHeadersMiddleware,
     get_client_ip,
     is_allowed_host,
@@ -18,6 +22,7 @@ from novelai.api.middleware.security import (
 from novelai.config.settings import settings
 
 # ── helpers ──────────────────────────────────────────────────────────
+
 
 def _make_app() -> FastAPI:
     app = FastAPI()
@@ -30,7 +35,35 @@ def _make_app() -> FastAPI:
     return app
 
 
+def _make_body_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.post("/api/auth/check")
+    async def auth_check(request: Request) -> dict[str, int]:
+        return {"size": len(await request.body())}
+
+    @app.post("/api/items")
+    async def items(request: Request) -> dict[str, int]:
+        return {"size": len(await request.body())}
+
+    @app.delete("/api/items")
+    async def delete_item(request: Request) -> dict[str, int]:
+        return {"size": len(await request.body())}
+
+    @app.post("/api/public/analytics/events")
+    async def analytics(request: Request) -> dict[str, int]:
+        return {"size": len(await request.body())}
+
+    @app.post("/outside")
+    async def outside(request: Request) -> dict[str, int]:
+        return {"size": len(await request.body())}
+
+    app.add_middleware(RequestBodyEnforcementMiddleware)
+    return app
+
+
 # ── SecurityHeadersMiddleware ────────────────────────────────────────
+
 
 class TestSecurityHeadersMiddleware:
     def test_x_content_type_options(self):
@@ -104,7 +137,184 @@ class TestSecurityHeadersMiddleware:
             settings.HSTS_MAX_AGE_SECONDS = original
 
 
+class TestRequestBodyEnforcementMiddleware:
+    def test_oversize_response_keeps_security_headers(self, monkeypatch):
+        monkeypatch.setattr(settings, "WEB_MAX_JSON_BODY_BYTES", 4)
+        app = _make_body_app()
+        app.add_middleware(SecurityHeadersMiddleware)
+        secret = "do-not-echo"
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/items",
+                content=secret,
+                headers={"content-type": "application/json"},
+            )
+        assert response.status_code == 413
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
+        assert secret not in response.text
+
+    def test_limit_classes_and_body_replay(self, monkeypatch):
+        monkeypatch.setattr(settings, "WEB_MAX_AUTH_BODY_BYTES", 8)
+        monkeypatch.setattr(settings, "WEB_MAX_JSON_BODY_BYTES", 12)
+        monkeypatch.setattr(settings, "ANALYTICS_INGEST_MAX_BODY_BYTES", 10)
+        with TestClient(_make_body_app()) as client:
+            assert client.post(
+                "/api/auth/check", content=b"12345678", headers={"content-type": "application/json"}
+            ).json() == {"size": 8}
+            assert (
+                client.post(
+                    "/api/auth/check", content=b"123456789", headers={"content-type": "application/json"}
+                ).status_code
+                == 413
+            )
+            assert (
+                client.post(
+                    "/api/items", content=b"123456789012", headers={"content-type": "application/json"}
+                ).status_code
+                == 200
+            )
+            assert (
+                client.post(
+                    "/api/items", content=b"1234567890123", headers={"content-type": "application/json"}
+                ).status_code
+                == 413
+            )
+            assert (
+                client.post(
+                    "/api/public/analytics/events", content=b"12345678901", headers={"content-type": "application/json"}
+                ).status_code
+                == 413
+            )
+
+    def test_json_media_types(self):
+        with TestClient(_make_body_app()) as client:
+            for content_type in (
+                "application/json",
+                "application/json; charset=utf-8",
+                "application/problem+json",
+            ):
+                assert (
+                    client.post("/api/items", content=b"{}", headers={"content-type": content_type}).status_code == 200
+                )
+
+    def test_wrong_or_missing_content_type_rejected_without_echo(self):
+        secret = b"do-not-echo"
+        with TestClient(_make_body_app()) as client:
+            for headers in ({"content-type": "text/plain"}, {}):
+                response = client.post("/api/items", content=secret, headers=headers)
+                assert response.status_code == 415
+                assert secret.decode() not in response.text
+
+    def test_empty_body_without_content_type_is_allowed(self):
+        with TestClient(_make_body_app()) as client:
+            response = client.post("/api/items", content=b"")
+        assert response.status_code == 200
+        assert response.json() == {"size": 0}
+
+    def test_non_api_path_is_unaffected(self, monkeypatch):
+        monkeypatch.setattr(settings, "WEB_MAX_JSON_BODY_BYTES", 1)
+        with TestClient(_make_body_app()) as client:
+            response = client.post("/outside", content=b"plain text", headers={"content-type": "text/plain"})
+        assert response.status_code == 200
+        assert response.json() == {"size": 10}
+
+    def test_non_json_api_method_still_has_size_limit(self, monkeypatch):
+        monkeypatch.setattr(settings, "WEB_MAX_JSON_BODY_BYTES", 4)
+        with TestClient(_make_body_app()) as client:
+            allowed = client.request("DELETE", "/api/items", content=b"1234")
+            rejected = client.request("DELETE", "/api/items", content=b"12345")
+        assert allowed.status_code == 200
+        assert rejected.status_code == 413
+
+    def test_declared_oversize_rejected_before_receive_or_app(self, monkeypatch):
+        monkeypatch.setattr(settings, "WEB_MAX_JSON_BODY_BYTES", 4)
+        app_called = False
+        receive_called = False
+        sent: list[dict] = []
+
+        async def app(scope, receive, send):
+            nonlocal app_called
+            app_called = True
+
+        async def receive():
+            nonlocal receive_called
+            receive_called = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message):
+            sent.append(message)
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/items",
+            "headers": [(b"content-length", b"5"), (b"content-type", b"application/json")],
+        }
+        asyncio.run(RequestBodyEnforcementMiddleware(app)(scope, receive, send))
+        assert app_called is False
+        assert receive_called is False
+        assert sent[0]["status"] == 413
+
+    def test_actual_stream_size_defeats_false_content_length(self, monkeypatch):
+        monkeypatch.setattr(settings, "WEB_MAX_JSON_BODY_BYTES", 4)
+        messages = iter(
+            (
+                {"type": "http.request", "body": b"123", "more_body": True},
+                {"type": "http.request", "body": b"45", "more_body": False},
+            )
+        )
+        sent: list[dict] = []
+        app_called = False
+
+        async def app(scope, receive, send):
+            nonlocal app_called
+            app_called = True
+
+        async def receive():
+            return next(messages)
+
+        async def send(message):
+            sent.append(message)
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/items",
+            "headers": [(b"content-length", b"1"), (b"content-type", b"application/json")],
+        }
+        asyncio.run(RequestBodyEnforcementMiddleware(app)(scope, receive, send))
+        assert app_called is False
+        assert sent[0]["status"] == 413
+        assert "12345" not in json.dumps(sent, default=str)
+
+    def test_duplicate_content_type_is_rejected(self):
+        async def app(scope, receive, send):
+            raise AssertionError("duplicate content type must not reach app")
+
+        messages = iter(({"type": "http.request", "body": b"{}", "more_body": False},))
+        sent: list[dict] = []
+
+        async def receive():
+            return next(messages)
+
+        async def send(message):
+            sent.append(message)
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/items",
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-type", b"text/plain"),
+            ],
+        }
+        asyncio.run(RequestBodyEnforcementMiddleware(app)(scope, receive, send))
+        assert sent[0]["status"] == 415
+
+
 # ── get_client_ip ────────────────────────────────────────────────────
+
 
 def _make_request(client_addr: str | None = None, xff: str | None = None) -> Request:
     """Build a minimal Starlette Request with mocked ASGI scope."""
@@ -158,6 +368,7 @@ class TestGetClientIp:
 
 
 # ── is_allowed_host ──────────────────────────────────────────────────
+
 
 class TestIsAllowedHost:
     def test_empty_list_allows_all(self, monkeypatch):

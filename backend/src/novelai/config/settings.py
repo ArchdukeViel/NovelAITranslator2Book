@@ -132,6 +132,26 @@ class AppSettings(BaseSettings):
         description="HSTS max-age. Set >0 only for HTTPS production domains. 0 disables HSTS.",
     )
 
+    # --- Request body enforcement (ASGI middleware)
+    WEB_MAX_AUTH_BODY_BYTES: int = Field(
+        default=65_536,
+        ge=1_024,
+        le=1_048_576,
+        description="Max request body bytes for /api/auth/* endpoints.",
+    )
+    WEB_MAX_JSON_BODY_BYTES: int = Field(
+        default=1_048_576,
+        ge=4_096,
+        le=33_554_432,
+        description="Max request body bytes for general /api/* mutation endpoints.",
+    )
+    WEB_MAX_DOCUMENT_BODY_BYTES: int = Field(
+        default=33_554_432,
+        ge=65_536,
+        le=268_435_456,
+        description="Reserved max body bytes for future document upload (32 MiB). No current upload route.",
+    )
+
     @field_validator(
         "WEB_CORS_ORIGINS",
         "TRUSTED_PROXY_CIDRS",

@@ -1,18 +1,22 @@
-"""Security headers and trusted proxy middleware.
+"""Security headers, trusted proxy, and request-body enforcement middleware.
 
-Adds baseline security headers to all responses and handles trusted proxy
-forwarded-header validation. Never logs or exposes secrets, raw IPs, or tokens.
+Adds baseline security headers to all responses, trusted proxy
+forwarded-header validation, and pure-ASGI request-body enforcement
+(size and Content-Type) for /api/ mutation endpoints.
+Never logs or exposes secrets, raw IPs, or tokens.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import json
 import logging
 from collections.abc import Awaitable, Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from novelai.config.settings import settings
 
@@ -97,3 +101,130 @@ def is_allowed_host(host: str | None) -> bool:
         return False
     host_lower = host.split(":")[0].lower()
     return host_lower in {h.lower() for h in settings.ALLOWED_HOSTS}
+
+
+# ── Request body enforcement ──────────────────────────────────────────
+
+_MUTATION_METHODS = frozenset({"POST", "PUT", "PATCH"})
+_413_BODY = json.dumps({"detail": "Request body too large"}).encode()
+_415_BODY = json.dumps({"detail": "Unsupported media type"}).encode()
+
+
+async def _send_error(send: Send, status: int, body: bytes) -> None:
+    """Send a JSON error response without exposing body fragments."""
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})
+
+
+def _get_header(scope_headers: list[tuple[bytes, bytes]], key: bytes) -> str | None:
+    values = [value.decode("latin-1") for name, value in scope_headers if name.lower() == key]
+    return values[0] if len(values) == 1 else None
+
+
+def _declared_body_size(scope_headers: list[tuple[bytes, bytes]]) -> int | None:
+    value = _get_header(scope_headers, b"content-length")
+    if value is None:
+        return None
+    try:
+        size = int(value)
+    except ValueError:
+        return None
+    return size if size >= 0 else None
+
+
+def _content_type_valid(content_type: str | None) -> bool:
+    """Check if Content-Type is application/json or application/*+json."""
+    if content_type is None:
+        return False
+    media_type = content_type.split(";")[0].strip().lower()
+    return media_type == "application/json" or (media_type.startswith("application/") and media_type.endswith("+json"))
+
+
+class RequestBodyEnforcementMiddleware:
+    """Pure-ASGI body-size and Content-Type enforcement for /api/ mutations.
+
+    Reads the entire body before passing to the app so enforcement happens
+    before any route handler runs. Returns JSON 413 or 415 without echoing
+    body fragments.
+
+    Limits are enforced on actual byte count, not Content-Length.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        method: str = scope.get("method", "GET")
+        path: str = scope.get("path", "")
+
+        # Bound every API request body; validate media type only for JSON mutations.
+        if not path.startswith("/api/"):
+            await self.app(scope, receive, send)
+            return
+
+        # Determine body size limit
+        if path.startswith("/api/auth/"):
+            max_body = settings.WEB_MAX_AUTH_BODY_BYTES
+        elif path == "/api/public/analytics/events":
+            max_body = settings.ANALYTICS_INGEST_MAX_BODY_BYTES
+        else:
+            max_body = settings.WEB_MAX_JSON_BODY_BYTES
+
+        scope_headers: list[tuple[bytes, bytes]] = scope.get("headers", [])
+        declared_size = _declared_body_size(scope_headers)
+        if declared_size is not None and declared_size > max_body:
+            await _send_error(send, 413, _413_BODY)
+            return
+
+        # Read a bounded body and count actual bytes so streamed requests cannot bypass the limit.
+        chunks: list[bytes] = []
+        more_body = True
+        total = 0
+        while more_body:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            if message["type"] == "http.request":
+                chunk: bytes = message.get("body", b"")
+                chunks.append(chunk)
+                total += len(chunk)
+                more_body = message.get("more_body", False)
+
+                if total > max_body:
+                    await _send_error(send, 413, _413_BODY)
+                    return
+
+        body = b"".join(chunks)
+        has_body = len(body) > 0
+
+        # Content-Type enforcement for non-empty bodies
+        if has_body and method in _MUTATION_METHODS:
+            content_type = _get_header(scope_headers, b"content-type")
+            if not _content_type_valid(content_type):
+                await _send_error(send, 415, _415_BODY)
+                return
+
+        # Reconstruct receive so downstream sees the full body
+        body_sent = False
+
+        async def _receive() -> Message:
+            nonlocal body_sent
+            if body_sent:
+                return {"type": "http.request", "body": b"", "more_body": False}
+            body_sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        await self.app(scope, _receive, send)

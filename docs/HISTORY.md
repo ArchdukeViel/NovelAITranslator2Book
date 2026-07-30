@@ -80,3 +80,13 @@ production smoke enforcement, external HTTPS monitor (best-effort 5-min schedule
 GitHub secret), rollback compatibility blocking gate, transactional runtime-role
 verifier, parser/YAML/router/diff validation, security review.
 Does not change launch `NO-GO` or satisfy hosted/manual gates in `WORK.md`.
+
+## 2026-07-30 Tooling Completion
+
+| Check | Result |
+|---|---|
+| Request body limits enforced | Auth 64 KiB, JSON 1 MiB, analytics 32 KiB default, Caddy 34 MiB outer guard. 413/415 per endpoint. |
+| GitGuardian CI workflow | `.github/workflows/gitguardian.yaml`: push/same-repository-PR full-history scan, `ggshield` v1.52.2 pinned, owner-configured `GITGUARDIAN_API_KEY` secret reference, read-only token; fork PRs skip secret-backed scanning. |
+
+Closes local request-boundary enforcement and GitGuardian workflow integration.
+No hosted scan result or required-check evidence is recorded yet.

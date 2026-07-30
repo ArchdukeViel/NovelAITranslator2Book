@@ -10,8 +10,12 @@ from typing import Any
 
 import pytest
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from novelai.api.app import create_app as create_monolith_app
+from novelai.api.auth.session import GUEST, get_current_user
+from novelai.api.middleware.security import RequestBodyEnforcementMiddleware, SecurityHeadersMiddleware
 from novelai.main_admin import app as split_admin_app
 from novelai.main_reader import app as split_reader_app
 
@@ -35,6 +39,25 @@ def _sqlite_db(monkeypatch: Any) -> None:
 def _route_paths(app: FastAPI) -> set[str]:
     """Return set of registered route paths via OpenAPI schema."""
     return set(app.openapi()["paths"].keys())
+
+
+def _assert_middleware_registered(app: FastAPI, cls: type) -> None:
+    """Assert a middleware class is registered on the app."""
+    assert any(m.cls is cls for m in app.user_middleware), f"{cls.__name__} not in app.user_middleware"
+
+
+def _assert_middleware_ordering(app: FastAPI) -> None:
+    """Assert outer response middleware wraps request-body enforcement."""
+    midw = list(app.user_middleware)
+    si = next(i for i, m in enumerate(midw) if m.cls is SecurityHeadersMiddleware)
+    ri = next(i for i, m in enumerate(midw) if m.cls is RequestBodyEnforcementMiddleware)
+    assert si < ri, f"SecurityHeaders[{si}] must be outer than RequestBody[{ri}]"
+    if any(m.cls is TrustedHostMiddleware for m in midw):
+        ti = next(i for i, m in enumerate(midw) if m.cls is TrustedHostMiddleware)
+        assert ti < si, f"TrustedHost[{ti}] must be outer than SecurityHeaders[{si}]"
+    if any(m.cls is CORSMiddleware for m in midw):
+        ci = next(i for i, m in enumerate(midw) if m.cls is CORSMiddleware)
+        assert ci < ri, f"CORS[{ci}] must be outer than RequestBody[{ri}]"
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +86,11 @@ class TestMonolithMode:
         assert "/health/ready" in paths
         assert "/health" not in paths
         assert "/api/health" not in paths
+
+    def test_monolith_has_body_enforcement_middleware(self) -> None:
+        app = create_monolith_app()
+        _assert_middleware_registered(app, RequestBodyEnforcementMiddleware)
+        _assert_middleware_ordering(app)
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +139,13 @@ class TestReaderServiceEndpoints:
         paths = _route_paths(reader_app)
         assert "/api/public/catalog" in paths, "Reader missing /api/public/catalog route"
 
+    def test_reader_resolves_session_users_as_guests(self, reader_app: FastAPI) -> None:
+        assert reader_app.dependency_overrides[get_current_user]() is GUEST
+
+    def test_reader_has_body_enforcement_middleware(self, reader_app: FastAPI) -> None:
+        _assert_middleware_registered(reader_app, RequestBodyEnforcementMiddleware)
+        _assert_middleware_ordering(reader_app)
+
 
 class TestAdminServiceEndpoints:
     """Session-enabled service registers admin, auth, and public-user routes."""
@@ -136,6 +171,10 @@ class TestAdminServiceEndpoints:
         assert any(p.startswith("/api/admin/novels") for p in paths)
         assert not any(p == "/novels" or p.startswith("/novels/") for p in paths)
         assert not any(p == "/api/novels" or p.startswith("/api/novels/") for p in paths)
+
+    def test_admin_has_body_enforcement_middleware(self, admin_app: FastAPI) -> None:
+        _assert_middleware_registered(admin_app, RequestBodyEnforcementMiddleware)
+        _assert_middleware_ordering(admin_app)
 
 
 # ---------------------------------------------------------------------------

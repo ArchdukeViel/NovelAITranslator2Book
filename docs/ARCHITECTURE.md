@@ -184,6 +184,18 @@ fields, fallback readers, compatibility routes, or import shims.
 - `/health/*`: liveness/readiness through admin process.
 - `/novels/*`: frontend pages, not backend aliases.
 
+### Request Body Boundaries
+
+| Route group | Max body | Content-Type |
+|---|---|---|
+| Auth (login, register) | 64 KiB | `application/json`, `application/*+json` |
+| General JSON API | 1 MiB | `application/json`, `application/*+json` |
+| Analytics ingest | 32 KiB (default) | `application/json` |
+
+ASGI middleware bounds every API request body and emits route-class `413`/`415`
+responses. Caddy rejects bodies
+above 34 MiB before routing; direct Uvicorn remains protected by app limits.
+
 ## Identity and Security
 
 Roles are `guest`, `user`, and exactly one `owner`.

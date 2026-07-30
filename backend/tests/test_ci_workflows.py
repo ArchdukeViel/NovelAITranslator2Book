@@ -47,6 +47,26 @@ def test_deploy_uses_published_version_and_migrates_before_start() -> None:
     assert source.index("docker compose run --rm migrate") < source.index("docker compose up -d")
 
 
+def test_gitguardian_workflow_contract() -> None:
+    source = _workflow("gitguardian.yaml")
+
+    assert "pull_request_target" not in source
+    assert "push" in source
+    assert "pull_request" in source
+    assert re.search(r"(?m)^permissions:\s*$", source)
+    assert "contents: read" in source
+    assert "fetch-depth: 0" in source
+    assert "secrets.GITGUARDIAN_API_KEY" in source
+    for line in source.splitlines():
+        if "GITGUARDIAN_API_KEY:" in line:
+            assert "${{ secrets.GITGUARDIAN_API_KEY }}" in line
+    for var in ("GITHUB_PUSH_BEFORE_SHA", "GITHUB_PUSH_BASE_SHA", "GITHUB_PULL_BASE_SHA", "GITHUB_DEFAULT_BRANCH"):
+        assert var in source
+    assert "if:" in source
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in source
+    assert "github.event_name" in source
+
+
 def test_secret_backed_opencode_workflow_restricts_commenters() -> None:
     source = _workflow("opencode.yml")
 

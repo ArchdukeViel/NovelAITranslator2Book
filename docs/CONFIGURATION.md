@@ -72,6 +72,8 @@ duration and renewal; do not tune lease below realistic job duration without tes
 - `PRODUCTION_BASE_URL`: GitHub Actions secret (not a process env var) feeding the
   best-effort five-minute external HTTPS monitor. Set in GitHub secrets, never
   in `.env` files.
+- `GITGUARDIAN_API_KEY`: GitHub Actions secret (not a process env var) supplying
+  `.github/workflows/gitguardian.yaml`. Set in GitHub secrets, never in `.env` files.
 
 Use source defaults unless measured behavior justifies change.
 
@@ -92,6 +94,21 @@ alerts are enabled, and acceptance gates in `WORK.md`.
 | Local | `ENV=development`, memory limiter allowed, worker optional, noop email. |
 | Preview | HTTPS session, exact domains/OAuth, development-only R2; worker/scheduler/backups/SMTP disabled on sleeping free host. |
 | Production | `ENV=production`, always-on backend, Redis, private R2 scopes, backups, monitoring, tested alerts. |
+
+## Request Body Limits
+
+App bounds every API request body, validates JSON mutation content types, and
+emits route-specific 413/415 responses. Caddy outer guard
+(`request_body { max_size 34MiB }`) emits 413 before routing.
+
+| Setting | Group | Max | Accepts |
+|---|---|---|---|
+| `WEB_MAX_AUTH_BODY_BYTES` | Auth (login, register) | 64 KiB | `application/json`, `application/*+json` |
+| `WEB_MAX_JSON_BODY_BYTES` | General JSON API | 1 MiB | `application/json`, `application/*+json` |
+| `ANALYTICS_INGEST_MAX_BODY_BYTES` | Analytics events | 32 KiB (configurable) | `application/json` |
+| `WEB_MAX_DOCUMENT_BODY_BYTES` | Reserved doc upload | 32 MiB | – (no route) |
+
+App enforcement authoritative for direct Uvicorn access.
 
 ## Security
 

@@ -76,7 +76,7 @@ Validator output remains redacted.
 
 ## Release
 
-1. Run lint, type checks, focused tests, frontend build, and router guard.
+1. Run lint, type checks, focused tests, frontend build, GitGuardian scan, and router guard.
 2. Build immutable images tagged by commit SHA.
 3. Run one-shot migration against target DB.
 4. Start backend/reader/frontend; require migration success before APIs.
@@ -123,6 +123,11 @@ Owner-operated settings should match tracked workflow expectations:
 - Enable dependency graph, Dependabot security updates, CodeQL, secret scanning,
   push protection, and validity checks.
 - Keep deployment secrets in GitHub environments/provider secret stores, never files.
+- Run `.github/workflows/gitguardian.yaml` (ggshield v1.52.2 pinned) on push and
+  same-repository PR; `GITGUARDIAN_API_KEY` repo secret, read-only token, no
+  `pull_request_target`. Fork PRs are skipped — secrets are not exposed to
+  untrusted fork code. Fork owners should enable GitGuardian's native public-repo
+  scanning on their own fork or configure their own API key.
 - Verify actual required-check names against current `.github/workflows/`; docs
   do not override workflows.
 
