@@ -21,7 +21,7 @@ alerting, browser/network acceptance, and rollback evidence remain incomplete.
 | Gate | Status | Required evidence |
 |---|---|---|
 | Hosted smoke and auth/security boundaries | Blocked | Candidate commit, domains, UTC time, commands/URLs, sanitized results. |
-| Secret scanning | Needs hosted run (tooling complete) | Successful GitGuardian push and same-repo PR checks, protected required-check configuration, sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
+| Secret scanning | Partial (hosted scans passed) | PR #12 proved successful GitGuardian push and same-repo PR checks. Still require protected required-check configuration and sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
 | Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
 | Recovery | Needs current run (tooling complete) | Current-head database restore and object snapshot restore into isolated targets. Backup-stale alert threshold, restore-freshness max age, and runtime-role verifier implemented locally. |
 | Accessibility | Manual | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast. |
