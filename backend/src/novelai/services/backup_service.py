@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from novelai.config.settings import settings
@@ -21,6 +21,16 @@ logger = logging.getLogger(__name__)
 
 def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _is_backup_stale(timestamp_str: str, max_age_hours: int) -> bool:
+    try:
+        ts = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+        return (datetime.now(UTC) - ts) > timedelta(hours=max_age_hours)
+    except (ValueError, TypeError):
+        return True
 
 
 class BackupService:
@@ -161,6 +171,13 @@ class BackupService:
                         "status": "unhealthy",
                         "message": "No committed offsite snapshot exists",
                     }
+                if _is_backup_stale(latest.created_at, settings.OPERATOR_ALERT_STALE_BACKUP_HOURS):
+                    return {
+                        "status": "unhealthy",
+                        "message": "Latest backup exceeds freshness threshold",
+                        "last_backup_at": latest.created_at,
+                        "backup_id": latest.snapshot_id,
+                    }
                 return {
                     "status": "healthy" if latest.verified else "degraded",
                     "message": "Verified offsite snapshot exists",
@@ -182,6 +199,13 @@ class BackupService:
                 }
 
             newest = backups[0]
+            if _is_backup_stale(newest.timestamp, settings.OPERATOR_ALERT_STALE_BACKUP_HOURS):
+                return {
+                    "status": "unhealthy",
+                    "message": "Latest backup exceeds freshness threshold",
+                    "last_backup_at": newest.timestamp,
+                    "backup_id": newest.backup_id,
+                }
             return {
                 "status": "healthy",
                 "message": "Recent backup exists",

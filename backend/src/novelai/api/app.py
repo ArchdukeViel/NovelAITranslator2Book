@@ -9,7 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from novelai.api.error_handlers import add_error_handlers
-from novelai.api.middleware.security import SecurityHeadersMiddleware
+from novelai.api.middleware.security import RequestBodyEnforcementMiddleware, SecurityHeadersMiddleware
 from novelai.api.routers import (
     activity,
     admin,
@@ -86,6 +86,10 @@ def create_app() -> FastAPI:
             else settings.ENV == "production"
         ),
     )
+
+    # RequestBody enforcement must be registered before CORS so CORS sits outer,
+    # ensuring CORS headers appear on 413/415 responses.
+    app.add_middleware(RequestBodyEnforcementMiddleware)
 
     # CORS: restrict to configured origins (empty list = nothing allowed)
     if settings.WEB_CORS_ORIGINS:

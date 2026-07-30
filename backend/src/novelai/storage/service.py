@@ -343,6 +343,16 @@ class StorageService:
         """Create directory via storage backend."""
         self._backend.mkdirs(self._rel(path))
 
+    def probe(self) -> bool:
+        """Verify configured backend write/read/delete behavior."""
+        probe_path = Path(".healthcheck") / f"{uuid.uuid4().hex}.json"
+        payload = b'{"status":"ok"}'
+        try:
+            self._backend.save(probe_path, payload)
+            return self._backend.load(probe_path) == payload
+        finally:
+            self._backend.delete(probe_path)
+
     def _list_dir(self, path: Path) -> list[Path]:
         """List immediate children via storage backend."""
         return sorted(self.base_dir / key for key in self._backend.list_keys(self._rel(path)))

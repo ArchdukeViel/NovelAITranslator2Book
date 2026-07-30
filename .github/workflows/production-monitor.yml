@@ -1,0 +1,29 @@
+name: Production External Monitor
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-health-and-seo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: production-external-monitor
+      cancel-in-progress: true
+    env:
+      PRODUCTION_BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run external public smoke checks
+        shell: pwsh
+        run: |
+          if (-not $env:PRODUCTION_BASE_URL) {
+            Write-Error "PRODUCTION_BASE_URL secret not set"
+            exit 1
+          }
+          & "deploy/scripts/deploy-smoke.ps1" -BaseUrl $env:PRODUCTION_BASE_URL -ExternalMonitor

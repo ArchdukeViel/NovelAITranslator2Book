@@ -53,7 +53,7 @@ target_metadata = Base.metadata
 def _get_url() -> str:
     """Return the DATABASE_URL from settings, with env override support."""
     # Allow DATABASE_URL to be overridden via environment (e.g. in CI or Docker).
-    url = os.environ.get("DATABASE_URL")
+    url = os.environ.get("MIGRATION_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if url:
         return url
     from novelai.config.settings import settings

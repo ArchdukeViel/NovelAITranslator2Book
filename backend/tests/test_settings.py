@@ -35,6 +35,8 @@ def test_default_settings() -> None:
     assert s.SCRAPE_DELAY_SECONDS == 1.0
     assert s.TRANSLATION_TARGET_LANGUAGE == "English"
     assert s.NOVEL_LIBRARY_DIR.is_absolute() or bool(s.NOVEL_LIBRARY_DIR.anchor)
+    assert s.S3_KEY_PREFIX == "storage/novel_library"
+    assert s.MIGRATION_DATABASE_URL is None
 
 
 def test_novel_library_dir_uses_canonical_setting() -> None:

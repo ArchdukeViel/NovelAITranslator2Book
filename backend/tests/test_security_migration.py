@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 from types import ModuleType
+from unittest.mock import patch
 
 MIGRATIONS_DIR = Path(__file__).parents[1] / "alembic" / "versions"
 SQL_DIR = Path(__file__).parents[1] / "sql"
@@ -178,3 +179,42 @@ def test_internal_table_migration_downgrade_is_security_safe() -> None:
     assert "GRANT " not in downgrade_source
     assert "_revoke_table_and_sequence" in downgrade_source
     assert '(*INTERNAL_TABLES, "scheduled_cron_log")' in downgrade_source
+
+
+def test_users_disabled_by_index_migration() -> None:
+    """Self-referential moderation FK has covering index."""
+    migration = _load_migration(
+        "2026-07-30_f2a4c6e8b0d1_index_users_disabled_by_user_id.py",
+        "users_disabled_by_index",
+    )
+
+    assert migration.revision == "f2a4c6e8b0d1"
+    assert migration.down_revision == "b9e0f1a2c3d4"
+
+    with patch.object(migration.op, "create_index") as create_index:
+        migration.upgrade()
+    create_index.assert_called_once_with(
+        "ix_users_disabled_by_user_id",
+        "users",
+        ["disabled_by_user_id"],
+    )
+
+    with patch.object(migration.op, "drop_index") as drop_index:
+        migration.downgrade()
+    drop_index.assert_called_once_with(
+        "ix_users_disabled_by_user_id",
+        table_name="users",
+    )
+
+
+def test_runtime_role_migration_is_least_privilege() -> None:
+    source = (MIGRATIONS_DIR / "2026-07-30_c7d9e1f3a5b2_add_novelai_app_runtime_role.py").read_text(encoding="utf-8")
+
+    assert "CREATE ROLE novelai_app NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS" in source
+    assert "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO novelai_app" in source
+    assert "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO novelai_app" in source
+    assert "ALTER DEFAULT PRIVILEGES IN SCHEMA public" in source
+    assert "FOR ROLE postgres" not in source
+    assert "CREATE POLICY novelai_app_runtime_all" in source
+    assert "GRANT ALL" not in source
+    assert "DROP ROLE" not in source

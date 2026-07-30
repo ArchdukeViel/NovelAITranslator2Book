@@ -92,6 +92,14 @@ def _pg_environment(database_url: str, *, ssl_mode: str) -> dict[str, str]:
     return environment
 
 
+def _is_backup_stale(modified: datetime | None, max_age_hours: int) -> bool:
+    if modified is None:
+        return True
+    if modified.tzinfo is None:
+        modified = modified.replace(tzinfo=UTC)
+    return (datetime.now(UTC) - modified) > timedelta(hours=max_age_hours)
+
+
 class DatabaseBackupService:
     def __init__(self, client: Any, bucket: str) -> None:
         self._client = client
@@ -190,6 +198,12 @@ class DatabaseBackupService:
             return {"status": "unhealthy", "message": "No committed database backup exists"}
         latest = max(manifests, key=lambda item: item.get("LastModified", datetime.min.replace(tzinfo=UTC)))
         modified = latest.get("LastModified")
+        if _is_backup_stale(modified, settings.OPERATOR_ALERT_STALE_BACKUP_HOURS):
+            return {
+                "status": "unhealthy",
+                "message": "Latest backup exceeds freshness threshold",
+                "last_backup_at": modified.isoformat() if modified is not None else None,
+            }
         return {
             "status": "healthy",
             "message": "Committed encrypted database backup exists",
@@ -308,8 +322,7 @@ class DatabaseBackupService:
                         connection.exec_driver_sql(f'CREATE ROLE "{role_name}" NOLOGIN')
                 connection.exec_driver_sql("CREATE SCHEMA IF NOT EXISTS auth")
                 connection.exec_driver_sql(
-                    "CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid "
-                    "LANGUAGE sql STABLE AS 'SELECT NULL::uuid'"
+                    "CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT NULL::uuid'"
                 )
         finally:
             engine.dispose()

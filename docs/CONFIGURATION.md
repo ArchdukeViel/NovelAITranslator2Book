@@ -9,6 +9,8 @@ Configuration contract. Exact fields/defaults live in
 - Canonical environment selector: `ENV`; never introduce `APP_ENV`.
 - Pydantic settings reads root `.env`; process environment overrides it.
 - Compose reads `deploy/.env` and requires external `DATABASE_URL`.
+- `MIGRATION_DATABASE_URL` optionally gives the one-shot Alembic service a
+  separate elevated role; long-running processes continue using `DATABASE_URL`.
 - Real `.env*` files are untracked; only example templates are committed.
 - Settings are read through `novelai.config.settings.settings`; no direct
   `os.environ` outside settings module.
@@ -48,8 +50,10 @@ backup bucket, and prefixes must not collapse into one unrestricted scope.
 
 `BACKUP_ENABLED` controls object snapshots. `DATABASE_BACKUP_ENABLED` controls
 encrypted PostgreSQL dumps and requires backup encryption key, independent DB
-prefix, and PostgreSQL 17 client tools. Restore verification requires an explicit
-disposable target whose database name contains `restore`.
+prefix, and PostgreSQL 17 client tools. `DATABASE_RESTORE_VERIFICATION_MAX_AGE_DAYS`
+(default 32) sets max days since last successful restore before probe goes unhealthy.
+Restore verification requires an explicit disposable target whose database name
+contains `restore`.
 
 Schedules use cron plus IANA timezone. Cross-instance jobs use configured lease
 duration and renewal; do not tune lease below realistic job duration without tests.
@@ -64,6 +68,12 @@ duration and renewal; do not tune lease below realistic job duration without tes
 - `TRANSLATION_CACHE_*`: exact cache enablement, TTL, size.
 - `MAINTENANCE_*`: schedule and dry-run controls.
 - `HEALTH_*`: bounded probe timeout and disk thresholds.
+- `OPERATOR_ALERT_*`: alert enable, email, failure threshold, cooldown, stale backup hours.
+- `PRODUCTION_BASE_URL`: GitHub Actions secret (not a process env var) feeding the
+  best-effort five-minute external HTTPS monitor. Set in GitHub secrets, never
+  in `.env` files.
+- `GITGUARDIAN_API_KEY`: GitHub Actions secret (not a process env var) supplying
+  `.github/workflows/gitguardian.yaml`. Set in GitHub secrets, never in `.env` files.
 
 Use source defaults unless measured behavior justifies change.
 
@@ -84,6 +94,21 @@ alerts are enabled, and acceptance gates in `WORK.md`.
 | Local | `ENV=development`, memory limiter allowed, worker optional, noop email. |
 | Preview | HTTPS session, exact domains/OAuth, development-only R2; worker/scheduler/backups/SMTP disabled on sleeping free host. |
 | Production | `ENV=production`, always-on backend, Redis, private R2 scopes, backups, monitoring, tested alerts. |
+
+## Request Body Limits
+
+App bounds every API request body, validates JSON mutation content types, and
+emits route-specific 413/415 responses. Caddy outer guard
+(`request_body { max_size 34MiB }`) emits 413 before routing.
+
+| Setting | Group | Max | Accepts |
+|---|---|---|---|
+| `WEB_MAX_AUTH_BODY_BYTES` | Auth (login, register) | 64 KiB | `application/json`, `application/*+json` |
+| `WEB_MAX_JSON_BODY_BYTES` | General JSON API | 1 MiB | `application/json`, `application/*+json` |
+| `ANALYTICS_INGEST_MAX_BODY_BYTES` | Analytics events | 32 KiB (configurable) | `application/json` |
+| `WEB_MAX_DOCUMENT_BODY_BYTES` | Reserved doc upload | 32 MiB | – (no route) |
+
+App enforcement authoritative for direct Uvicorn access.
 
 ## Security
 

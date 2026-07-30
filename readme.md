@@ -59,6 +59,9 @@ AUTH_EMAIL_DELIVERY_MODE=noop
 ```
 
 Never commit real secrets. Full configuration contract: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
+Pushes and same-repository pull requests run pinned GitGuardian secret scanning;
+fork pull requests are skipped because repository secrets are never exposed to
+untrusted fork code. GitHub setup lives in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## Database
 

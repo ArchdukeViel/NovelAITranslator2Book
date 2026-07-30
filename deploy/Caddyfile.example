@@ -20,6 +20,10 @@
     Referrer-Policy "strict-origin-when-cross-origin"
   }
 
+  request_body {
+    max_size 34MiB
+  }
+
   handle /api/admin/* {
     reverse_proxy backend:8000
   }

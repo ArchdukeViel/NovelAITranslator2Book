@@ -12,8 +12,8 @@ alerting, browser/network acceptance, and rollback evidence remain incomplete.
 
 | ID | Work | Status | Completion evidence required |
 |---|---|---|---|
-| DEBT-075 | Managed-service recovery and scheduling closure | Blocked on operator evidence | Real stale/failure SMTP alert; successful hosted PostgreSQL/R2 workflow. |
-| DEBT-079 | Hosted production acceptance | Ongoing | Domains, OAuth, cookies, CORS/CSRF, host validation, storage boundaries, monitoring, rollback, and reliability verified on always-on topology. |
+| DEBT-075 | Managed-service recovery and scheduling closure | Blocked on operator evidence | Real stale/failure SMTP alert; successful hosted PostgreSQL/R2 workflow. Tooling complete: backup stale alert, restore freshness max age, runtime-role verifier, rollback gate. |
+| DEBT-079 | Hosted production acceptance | Ongoing | Domains, OAuth, cookies, CORS/CSRF, host validation, storage boundaries, monitoring, rollback, and reliability verified on always-on topology. Tooling complete: authenticated smoke, external monitor, rollback compatibility gate, parser/YAML/router/diff, security review, GitGuardian scan. |
 | DEBT-094 | Render Blueprint acceptance | Provider-account blocked | Complete account/payment gate, rerun Blueprint validation, record deployment evidence. Preview does not prove production. |
 
 ## Operator Acceptance
@@ -21,8 +21,9 @@ alerting, browser/network acceptance, and rollback evidence remain incomplete.
 | Gate | Status | Required evidence |
 |---|---|---|
 | Hosted smoke and auth/security boundaries | Blocked | Candidate commit, domains, UTC time, commands/URLs, sanitized results. |
-| Alerts and monitoring | Blocked | Real operator delivery, cooldown/redaction, dashboards, escalation path. |
-| Recovery | Needs current run | Current-head database restore and object snapshot restore into isolated targets. |
+| Secret scanning | Partial (hosted scans passed) | PR #12 proved successful GitGuardian push and same-repo PR checks. Still require protected required-check configuration and sanitized incident/false-positive triage evidence. Fork PRs are intentionally skipped (secrets not passed to untrusted code). |
+| Alerts and monitoring | Blocked (tooling complete) | Configure `PRODUCTION_BASE_URL`, prove scheduled external runs and real operator delivery, cooldown/redaction, dashboards, escalation, and ownership. |
+| Recovery | Needs current run (tooling complete) | Current-head database restore and object snapshot restore into isolated targets. Backup-stale alert threshold, restore-freshness max age, and runtime-role verifier implemented locally. |
 | Accessibility | Manual | Keyboard, screen reader, 200% zoom, reduced motion, focus, landmarks, contrast. |
 | Performance | Manual | Real-network API p95, request count, cache, long chapter, annotations, route JS. |
 | SEO | Manual | Hosted canonical, robots, sitemap, and structured-data validators. |

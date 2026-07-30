@@ -18,6 +18,12 @@ Canonical deployment topology, release, rollback, and GitHub-control contract.
 
 PostgreSQL is external; Compose does not provision primary DB. Never run
 migrations inside long-running backend containers.
+Use `MIGRATION_DATABASE_URL` for a dedicated schema-owner/migrator role and
+`DATABASE_URL` for the least-privilege long-running application role.
+Migration `c7d9e1f3a5b2` maintains `novelai_app`, a stable NOLOGIN privilege
+role with explicit application DML and RLS policies. Provision the separate
+`novelai_runtime` LOGIN member with `backend/sql/provision_novelai_runtime.sql`;
+rotate that member password without changing schema ownership or grants.
 
 ## Routing
 
@@ -70,11 +76,15 @@ Validator output remains redacted.
 
 ## Release
 
-1. Run lint, type checks, focused tests, frontend build, and router guard.
+1. Run lint, type checks, focused tests, frontend build, GitGuardian scan, and router guard.
 2. Build immutable images tagged by commit SHA.
 3. Run one-shot migration against target DB.
 4. Start backend/reader/frontend; require migration success before APIs.
-5. Run `deploy/scripts/deploy-smoke.ps1`.
+5. Run authenticated production smoke:
+   - `deploy/scripts/deploy-smoke.ps1 -Production` requires `NOVELAI_SMOKE_SESSION_COOKIE`;
+     validates recovery probes (object snapshot, DB backup, restore) all healthy.
+   - `deploy/scripts/verify-runtime-role.py` inside backend image with runtime
+     `DATABASE_URL`; 7 transactional checks (identity, DML allowed, admin DDL denied).
 6. Verify liveness/readiness, public catalog, owner auth boundary, CSRF/OAuth,
    storage scope, and frontend.
 7. Record release commit, immutable tags, UTC time, and sanitized evidence.
@@ -84,8 +94,23 @@ Validator output remains redacted.
 - Redeploy previous immutable image/version.
 - Prefer forward-fix for migrations. Take DB snapshot and test any downgrade on
   isolated staging before production.
+- **Rollback blocking gate**: Prior image must pass production smoke against
+  *current* schema before routing traffic. Smoke validates catalog (200) and
+  owner recovery health (all recovery probes healthy). A 500 from catalog or
+  unhealthy recovery probe **blocks rollback** — investigate schema/image
+  incompatibility and apply forward-fix or verified downgrade migration.
 - Restore storage before DB, rebuild catalog, then run smoke checks.
 - Full incident procedure lives in [`OPERATIONS.md`](OPERATIONS.md).
+
+## External Monitoring
+
+- GitHub Actions workflow `.github/workflows/production-monitor.yml` requests a
+  run every 5 minutes against `PRODUCTION_BASE_URL` via
+  `deploy-smoke.ps1 -ExternalMonitor`; GitHub schedule delivery is best-effort.
+- Checks: live, ready, public catalog, frontend, robots.txt, sitemap.xml,
+  privacy/terms/legal routes. No session cookie — public surface only.
+- Failure produces a failed workflow run visible in repo. Real operator
+  notification (alert delivery, escalation, dashboard) requires hosted acceptance.
 
 ## GitHub Controls
 
@@ -98,6 +123,11 @@ Owner-operated settings should match tracked workflow expectations:
 - Enable dependency graph, Dependabot security updates, CodeQL, secret scanning,
   push protection, and validity checks.
 - Keep deployment secrets in GitHub environments/provider secret stores, never files.
+- Run `.github/workflows/gitguardian.yaml` (ggshield v1.52.2 pinned) on push and
+  same-repository PR; `GITGUARDIAN_API_KEY` repo secret, read-only token, no
+  `pull_request_target`. Fork PRs are skipped — secrets are not exposed to
+  untrusted fork code. Fork owners should enable GitGuardian's native public-repo
+  scanning on their own fork or configure their own API key.
 - Verify actual required-check names against current `.github/workflows/`; docs
   do not override workflows.
 
