@@ -1,22 +1,29 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
 from novelai.config.settings import settings
 from novelai.services.backup_manager import BackupManager
 from novelai.services.backup_service import BackupService
+from novelai.services.database_backup_service import DatabaseBackupService
 from novelai.storage.snapshots import SnapshotResult
 
 
+def _recent_iso(hours: float = 0) -> str:
+    return (datetime.now(UTC) + timedelta(hours=hours)).isoformat().replace("+00:00", "Z")
+
+
 class StubSnapshotTarget:
-    def __init__(self, *, failure: Exception | None = None) -> None:
+    def __init__(self, *, created_at: str | None = None, failure: Exception | None = None) -> None:
         self.failure = failure
         self.created = 0
         self.result = SnapshotResult(
             snapshot_id="backup-20260716T000000Z-deadbeef",
-            created_at="2026-07-16T00:00:00Z",
+            created_at=created_at or _recent_iso(hours=-1),
             files_count=2,
             size_bytes=12,
             verified=True,
@@ -37,9 +44,7 @@ class StubSnapshotTarget:
 
 
 @pytest.mark.asyncio
-async def test_s3_backup_uses_committed_snapshot(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_s3_backup_uses_committed_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
     target = StubSnapshotTarget()
     service = BackupService(BackupManager(tmp_path), snapshot_target=target)
@@ -53,9 +58,7 @@ async def test_s3_backup_uses_committed_snapshot(
 
 
 @pytest.mark.asyncio
-async def test_s3_backup_fails_when_snapshot_copy_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_s3_backup_fails_when_snapshot_copy_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
     service = BackupService(
         BackupManager(tmp_path),
@@ -68,9 +71,7 @@ async def test_s3_backup_fails_when_snapshot_copy_fails(
     assert "provider unavailable" in result["error"]
 
 
-def test_offsite_backup_health_uses_committed_manifest(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_offsite_backup_health_uses_committed_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
     monkeypatch.setattr(settings, "BACKUP_ENABLED", True)
     target = StubSnapshotTarget()
@@ -80,3 +81,29 @@ def test_offsite_backup_health_uses_committed_manifest(
 
     assert health["status"] == "healthy"
     assert health["backup_id"] == target.result.snapshot_id
+
+
+@pytest.mark.parametrize(("hours", "status"), [(-1, "healthy"), (-37, "unhealthy")])
+def test_offsite_backup_health_enforces_freshness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hours: int, status: str
+) -> None:
+    monkeypatch.setattr(settings, "STORAGE_BACKEND", "s3")
+    monkeypatch.setattr(settings, "BACKUP_ENABLED", True)
+    target = StubSnapshotTarget(created_at=_recent_iso(hours=hours))
+
+    assert BackupService(BackupManager(tmp_path), snapshot_target=target).get_backup_health()["status"] == status
+
+
+@pytest.mark.parametrize(("hours", "status"), [(-1, "healthy"), (-37, "unhealthy")])
+def test_database_backup_health_enforces_freshness(hours: int, status: str) -> None:
+    client = MagicMock()
+    paginator = client.get_paginator.return_value
+    paginator.paginate.return_value = [
+        {
+            "Contents": [
+                {"Key": "database/backup/manifest.json", "LastModified": datetime.now(UTC) + timedelta(hours=hours)}
+            ]
+        }
+    ]
+
+    assert DatabaseBackupService(client, "backup-bucket").get_backup_health()["status"] == status

@@ -439,22 +439,46 @@ class HealthService:
 
             session = get_sessionmaker()()
             try:
-                status = session.execute(
+                row = session.execute(
                     text(
-                        "SELECT status FROM scheduled_cron_log "
+                        "SELECT status, started_at FROM scheduled_cron_log "
                         "WHERE job_name LIKE 'database_restore_verify-%' "
                         "ORDER BY started_at DESC LIMIT 1"
                     )
-                ).scalar_one_or_none()
+                ).one_or_none()
             finally:
                 session.close()
+
+            if row is None:
+                return {
+                    "status": STATE_UNHEALTHY,
+                    "message": "No database restore verification record found",
+                    "latency_ms": int((time.monotonic() - start) * 1000),
+                }
+            status, started_at = row
+            if status != "succeeded" or started_at is None:
+                return {
+                    "status": STATE_UNHEALTHY,
+                    "message": "No successful database restore verification exists",
+                    "latency_ms": int((time.monotonic() - start) * 1000),
+                }
+            max_age = settings.DATABASE_RESTORE_VERIFICATION_MAX_AGE_DAYS
+            cutoff = datetime.now(UTC).timestamp() - max_age * 86400
+            if isinstance(started_at, datetime):
+                started_ts = (
+                    started_at.replace(tzinfo=UTC).timestamp() if started_at.tzinfo is None else started_at.timestamp()
+                )
+            else:
+                started_ts = None
+            if started_ts is None or started_ts < cutoff:
+                return {
+                    "status": STATE_UNHEALTHY,
+                    "message": "Latest successful database restore verification is too old",
+                    "latency_ms": int((time.monotonic() - start) * 1000),
+                }
             return {
-                "status": STATE_HEALTHY if status == "succeeded" else STATE_UNHEALTHY,
-                "message": (
-                    "Latest database restore verification succeeded"
-                    if status == "succeeded"
-                    else "No successful database restore verification exists"
-                ),
+                "status": STATE_HEALTHY,
+                "message": "Latest database restore verification succeeded",
                 "latency_ms": int((time.monotonic() - start) * 1000),
             }
         except Exception as exc:

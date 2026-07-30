@@ -59,5 +59,24 @@ Implementation commit: `184be8c`.
 | Router dependency guard | Passed with zero matches. |
 | Graphify source refresh | Completed with 10,880 nodes and 32,345 edges. |
 
-This closes local DEBT-042 and DEBT-117 implementation only. It does not change
-launch `NO-GO` or satisfy hosted/manual gates in `WORK.md`.
+## 2026-07-30 Hardening Completion
+
+Implementation commit: `98b1049`.
+
+| Check | Result |
+|---|---|
+| Backend Ruff | Passed. |
+| Focused backup, health, settings, and production-config tests | 72 passed. |
+| Backend Pyright | 0 errors, 0 warnings. |
+| Local smoke | Passed all public checks; production mode rejected missing cookie, conflicting modes, and HTTP external targets. |
+| Runtime-role verifier (verify-runtime-role.py, 7 checks) | All true. |
+| Parser/YAML/router/diff validation | Passed. |
+| Security review | ACCEPT. |
+| Graphify source refresh | 10,987 nodes, 32,559 edges. |
+
+Closes local hardening: backup-freshness alert `OPERATOR_ALERT_STALE_BACKUP_HOURS`,
+restore-freshness `DATABASE_RESTORE_VERIFICATION_MAX_AGE_DAYS`, authenticated
+production smoke enforcement, external HTTPS monitor (best-effort 5-min schedule, `PRODUCTION_BASE_URL`
+GitHub secret), rollback compatibility blocking gate, transactional runtime-role
+verifier, parser/YAML/router/diff validation, security review.
+Does not change launch `NO-GO` or satisfy hosted/manual gates in `WORK.md`.

@@ -5,6 +5,7 @@ Tests probe logic, timeout behavior, redaction, and status aggregation.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -223,3 +224,83 @@ class TestRedaction:
         assert safe["db"]["message"] == "Database responsive"
         assert safe["db"]["latency_ms"] == 5
         assert "checked_at" in safe["db"]
+
+
+class TestDatabaseRestoreVerification:
+    """Tests for _probe_database_restore_verification (M2a)."""
+
+    @pytest.mark.asyncio
+    async def test_disabled_returns_degraded(self) -> None:
+        svc = HealthService()
+        with patch("novelai.config.settings.settings.DATABASE_RESTORE_VERIFICATION_ENABLED", False):
+            result = await svc._probe_database_restore_verification()
+        assert result["status"] == STATE_DEGRADED
+        assert "not enabled" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_no_row_unhealthy(self) -> None:
+        svc = HealthService()
+        with (
+            patch("novelai.config.settings.settings.DATABASE_RESTORE_VERIFICATION_ENABLED", True),
+            patch("novelai.db.engine.get_sessionmaker") as mock_sm,
+        ):
+            mock_session = MagicMock()
+            mock_sm.return_value.return_value = mock_session
+            mock_execute = MagicMock()
+            mock_session.execute = mock_execute
+            mock_execute.return_value.one_or_none.return_value = None
+            result = await svc._probe_database_restore_verification()
+        assert result["status"] == STATE_UNHEALTHY
+        assert "No database restore verification record found" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_failed_row_unhealthy(self) -> None:
+        svc = HealthService()
+        with (
+            patch("novelai.config.settings.settings.DATABASE_RESTORE_VERIFICATION_ENABLED", True),
+            patch("novelai.db.engine.get_sessionmaker") as mock_sm,
+        ):
+            mock_session = MagicMock()
+            mock_sm.return_value.return_value = mock_session
+            mock_execute = MagicMock()
+            mock_session.execute = mock_execute
+            mock_execute.return_value.one_or_none.return_value = ("failed", None)
+            result = await svc._probe_database_restore_verification()
+        assert result["status"] == STATE_UNHEALTHY
+        assert "No successful database restore verification exists" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_stale_success_unhealthy(self) -> None:
+        svc = HealthService()
+        old_time = datetime.now(UTC) - timedelta(days=60)
+        with (
+            patch("novelai.config.settings.settings.DATABASE_RESTORE_VERIFICATION_ENABLED", True),
+            patch("novelai.config.settings.settings.DATABASE_RESTORE_VERIFICATION_MAX_AGE_DAYS", 32),
+            patch("novelai.db.engine.get_sessionmaker") as mock_sm,
+        ):
+            mock_session = MagicMock()
+            mock_sm.return_value.return_value = mock_session
+            mock_execute = MagicMock()
+            mock_session.execute = mock_execute
+            mock_execute.return_value.one_or_none.return_value = ("succeeded", old_time)
+            result = await svc._probe_database_restore_verification()
+        assert result["status"] == STATE_UNHEALTHY
+        assert "too old" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_fresh_success_healthy(self) -> None:
+        svc = HealthService()
+        fresh = datetime.now(UTC)
+        with (
+            patch("novelai.config.settings.settings.DATABASE_RESTORE_VERIFICATION_ENABLED", True),
+            patch("novelai.config.settings.settings.DATABASE_RESTORE_VERIFICATION_MAX_AGE_DAYS", 32),
+            patch("novelai.db.engine.get_sessionmaker") as mock_sm,
+        ):
+            mock_session = MagicMock()
+            mock_sm.return_value.return_value = mock_session
+            mock_execute = MagicMock()
+            mock_session.execute = mock_execute
+            mock_execute.return_value.one_or_none.return_value = ("succeeded", fresh)
+            result = await svc._probe_database_restore_verification()
+        assert result["status"] == STATE_HEALTHY
+        assert "succeeded" in result["message"]

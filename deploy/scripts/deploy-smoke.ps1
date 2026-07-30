@@ -3,8 +3,10 @@
     Deploy smoke check — verifies migration gate, live/ready health, and
     public/admin route separation after deployment.
 .DESCRIPTION
-    Runs after `docker compose up -d`. Does not require production secrets.
-    Safe to run against any environment.
+    Run after `docker compose up -d`. Three mutually exclusive modes:
+    Default (local): uses http, --insecure, skips recovery if cookie absent.
+    -Production:   requires https, cookie mandatory, no --insecure, recovery must pass.
+    -ExternalMonitor: requires https, public checks only, no recovery, no cookie.
 #>
 
 param(
@@ -13,37 +15,56 @@ param(
     [int]$ReaderPort = 8001,
     [int]$FrontendPort = 3000,
     [int]$TimeoutSeconds = 60,
-    [switch]$Help
+    [switch]$Help,
+    [switch]$Production,
+    [switch]$ExternalMonitor
 )
 
 $ErrorActionPreference = "Stop"
 
+if ($Production -and $ExternalMonitor) {
+    Write-Error "-Production and -ExternalMonitor are mutually exclusive"
+    exit 1
+}
+
 if ($Help) {
     Write-Output @"
 Smoke check for NovelAI deployment.
-
-Usage: .\scripts\deploy-smoke.ps1 [[-BaseUrl] <str>] [[-AdminPort] <int>] [[-ReaderPort] <int>] [[-FrontendPort] <int>]
+Usage: .\scripts\deploy-smoke.ps1 [[-BaseUrl] <str>] [[-AdminPort] <int>] [[-ReaderPort] <int>] [[-FrontendPort] <int>] [-Production] [-ExternalMonitor]
 
 Flags:
-  -BaseUrl       Base URL (default http://localhost)
-  -AdminPort     Admin backend port (default 8000)
-  -ReaderPort    Reader backend port (default 8001)
-  -FrontendPort  Frontend port (default 3000)
-  -TimeoutSeconds Max wait in seconds (default 60)
-  -Help          Show this help
+  -BaseUrl         Base URL (default http://localhost)
+  -AdminPort       Admin backend port (default 8000)
+  -ReaderPort      Reader backend port (default 8001)
+  -FrontendPort    Frontend port (default 3000)
+  -TimeoutSeconds  Max wait in seconds (default 60)
+  -Production      Enforce HTTPS, require NOVELAI_SMOKE_SESSION_COOKIE, no TLS bypass, require owner recovery healthy.
+  -ExternalMonitor External HTTPS public checks only (live, ready, catalog, frontend/legal/SEO). No session secret.
+  -Help            Show this help
 "@
     exit 0
 }
 
-$AdminApi = "$BaseUrl`:$AdminPort"
-$ReaderApi = "$BaseUrl`:$ReaderPort"
-$Frontend = "$BaseUrl`:$FrontendPort"
+$insecureFlag = "--insecure"
+$nullDevice = if ([System.IO.Path]::DirectorySeparatorChar -eq "\") { "NUL" } else { "/dev/null" }
+if ($Production -or $ExternalMonitor) {
+    if (-not $BaseUrl.StartsWith("https://")) {
+        Write-Error "-Production/-ExternalMonitor require https:// BaseUrl"
+        exit 1
+    }
+    $insecureFlag = ""  # no TLS bypass in production/external
+}
+
+if ($Production -and -not $env:NOVELAI_SMOKE_SESSION_COOKIE) {
+    Write-Error "-Production requires NOVELAI_SMOKE_SESSION_COOKIE environment variable"
+    exit 1
+}
+
 $CaddyUrl = $BaseUrl
 
 Write-Output "=== NovelAI Deploy Smoke Check ==="
-Write-Output "Admin API: $AdminApi"
-Write-Output "Reader API: $ReaderApi"
-Write-Output "Frontend: $Frontend"
+Write-Output "Base URL: $CaddyUrl"
+Write-Output "Mode: $(if ($Production) { 'Production' } elseif ($ExternalMonitor) { 'ExternalMonitor' } else { 'Local' })"
 Write-Output "Timeout: ${TimeoutSeconds}s"
 Write-Output ""
 
@@ -53,7 +74,11 @@ function Check-Url {
     param([string]$Name, [string]$Url, [int]$ExpectedStatus = 200)
     Write-Host -NoNewline "[CHECK] $Name ... "
     try {
-        $status = & curl.exe --silent --show-error --location --insecure --output NUL --write-out "%{http_code}" --max-time 5 $Url
+        if ($insecureFlag) {
+            $status = & curl.exe --silent --show-error --location $insecureFlag --output $nullDevice --write-out "%{http_code}" --max-time $TimeoutSeconds $Url
+        } else {
+            $status = & curl.exe --silent --show-error --location --output $nullDevice --write-out "%{http_code}" --max-time $TimeoutSeconds $Url
+        }
         if ($LASTEXITCODE -eq 0 -and [int]$status -eq $ExpectedStatus) {
             Write-Output "PASS ($status)"
         } else {
@@ -73,7 +98,12 @@ function Run-Check {
 
 function Check-RecoveryHealth {
     if (-not $env:NOVELAI_SMOKE_SESSION_COOKIE) {
-        Write-Output "[SKIP] Owner recovery health (NOVELAI_SMOKE_SESSION_COOKIE not set)"
+        if ($Production) {
+            Write-Output "FAIL (NOVELAI_SMOKE_SESSION_COOKIE required in -Production mode)"
+            $script:allPassed = $false
+        } else {
+            Write-Output "[SKIP] Owner recovery health (NOVELAI_SMOKE_SESSION_COOKIE not set)"
+        }
         return
     }
     Write-Host -NoNewline "[CHECK] Owner recovery health ... "
@@ -101,7 +131,9 @@ Run-Check -Name "Admin liveness" -Url "$CaddyUrl/health/live"
 Run-Check -Name "Admin readiness (DB and R2 probe)" -Url "$CaddyUrl/health/ready"
 
 # Public catalog below proves Caddy-to-reader routing.
-Check-RecoveryHealth
+if (-not $ExternalMonitor) {
+    Check-RecoveryHealth
+}
 
 Write-Output ""
 Write-Output "--- Route Boundary Checks ---"

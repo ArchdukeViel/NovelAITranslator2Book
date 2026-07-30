@@ -392,6 +392,11 @@ class AppSettings(BaseSettings):
     DATABASE_RESTORE_VERIFICATION_ENABLED: bool = False
     DATABASE_RESTORE_VERIFICATION_SCHEDULE_CRON: str = "0 3 1 * *"
     DATABASE_RESTORE_VERIFICATION_TIMEZONE: str = "UTC"
+    DATABASE_RESTORE_VERIFICATION_MAX_AGE_DAYS: int = Field(
+        default=32,
+        ge=1,
+        description="Maximum age in days for a successful database restore verification. Exceeding this makes the probe unhealthy.",
+    )
     DATABASE_RESTORE_TARGET_URL: SecretStr | None = None
     DATABASE_RESTORE_SSL_MODE: Literal["disable", "require", "verify-ca", "verify-full"] = "require"
     PG_RESTORE_PATH: str = "pg_restore"

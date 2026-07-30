@@ -80,9 +80,11 @@ Validator output remains redacted.
 2. Build immutable images tagged by commit SHA.
 3. Run one-shot migration against target DB.
 4. Start backend/reader/frontend; require migration success before APIs.
-5. Run `deploy/scripts/deploy-smoke.ps1`.
-   Set `NOVELAI_SMOKE_SESSION_COOKIE` only in the operator process environment
-   to include owner-only object snapshot, database backup, and restore checks.
+5. Run authenticated production smoke:
+   - `deploy/scripts/deploy-smoke.ps1 -Production` requires `NOVELAI_SMOKE_SESSION_COOKIE`;
+     validates recovery probes (object snapshot, DB backup, restore) all healthy.
+   - `deploy/scripts/verify-runtime-role.py` inside backend image with runtime
+     `DATABASE_URL`; 7 transactional checks (identity, DML allowed, admin DDL denied).
 6. Verify liveness/readiness, public catalog, owner auth boundary, CSRF/OAuth,
    storage scope, and frontend.
 7. Record release commit, immutable tags, UTC time, and sanitized evidence.
@@ -92,8 +94,23 @@ Validator output remains redacted.
 - Redeploy previous immutable image/version.
 - Prefer forward-fix for migrations. Take DB snapshot and test any downgrade on
   isolated staging before production.
+- **Rollback blocking gate**: Prior image must pass production smoke against
+  *current* schema before routing traffic. Smoke validates catalog (200) and
+  owner recovery health (all recovery probes healthy). A 500 from catalog or
+  unhealthy recovery probe **blocks rollback** — investigate schema/image
+  incompatibility and apply forward-fix or verified downgrade migration.
 - Restore storage before DB, rebuild catalog, then run smoke checks.
 - Full incident procedure lives in [`OPERATIONS.md`](OPERATIONS.md).
+
+## External Monitoring
+
+- GitHub Actions workflow `.github/workflows/production-monitor.yml` requests a
+  run every 5 minutes against `PRODUCTION_BASE_URL` via
+  `deploy-smoke.ps1 -ExternalMonitor`; GitHub schedule delivery is best-effort.
+- Checks: live, ready, public catalog, frontend, robots.txt, sitemap.xml,
+  privacy/terms/legal routes. No session cookie — public surface only.
+- Failure produces a failed workflow run visible in repo. Real operator
+  notification (alert delivery, escalation, dashboard) requires hosted acceptance.
 
 ## GitHub Controls
 

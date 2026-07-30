@@ -50,8 +50,10 @@ backup bucket, and prefixes must not collapse into one unrestricted scope.
 
 `BACKUP_ENABLED` controls object snapshots. `DATABASE_BACKUP_ENABLED` controls
 encrypted PostgreSQL dumps and requires backup encryption key, independent DB
-prefix, and PostgreSQL 17 client tools. Restore verification requires an explicit
-disposable target whose database name contains `restore`.
+prefix, and PostgreSQL 17 client tools. `DATABASE_RESTORE_VERIFICATION_MAX_AGE_DAYS`
+(default 32) sets max days since last successful restore before probe goes unhealthy.
+Restore verification requires an explicit disposable target whose database name
+contains `restore`.
 
 Schedules use cron plus IANA timezone. Cross-instance jobs use configured lease
 duration and renewal; do not tune lease below realistic job duration without tests.
@@ -66,6 +68,10 @@ duration and renewal; do not tune lease below realistic job duration without tes
 - `TRANSLATION_CACHE_*`: exact cache enablement, TTL, size.
 - `MAINTENANCE_*`: schedule and dry-run controls.
 - `HEALTH_*`: bounded probe timeout and disk thresholds.
+- `OPERATOR_ALERT_*`: alert enable, email, failure threshold, cooldown, stale backup hours.
+- `PRODUCTION_BASE_URL`: GitHub Actions secret (not a process env var) feeding the
+  best-effort five-minute external HTTPS monitor. Set in GitHub secrets, never
+  in `.env` files.
 
 Use source defaults unless measured behavior justifies change.
 
