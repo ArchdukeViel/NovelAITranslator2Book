@@ -18,6 +18,12 @@ Canonical deployment topology, release, rollback, and GitHub-control contract.
 
 PostgreSQL is external; Compose does not provision primary DB. Never run
 migrations inside long-running backend containers.
+Use `MIGRATION_DATABASE_URL` for a dedicated schema-owner/migrator role and
+`DATABASE_URL` for the least-privilege long-running application role.
+Migration `c7d9e1f3a5b2` maintains `novelai_app`, a stable NOLOGIN privilege
+role with explicit application DML and RLS policies. Provision the separate
+`novelai_runtime` LOGIN member with `backend/sql/provision_novelai_runtime.sql`;
+rotate that member password without changing schema ownership or grants.
 
 ## Routing
 
@@ -75,6 +81,8 @@ Validator output remains redacted.
 3. Run one-shot migration against target DB.
 4. Start backend/reader/frontend; require migration success before APIs.
 5. Run `deploy/scripts/deploy-smoke.ps1`.
+   Set `NOVELAI_SMOKE_SESSION_COOKIE` only in the operator process environment
+   to include owner-only object snapshot, database backup, and restore checks.
 6. Verify liveness/readiness, public catalog, owner auth boundary, CSRF/OAuth,
    storage scope, and frontend.
 7. Record release commit, immutable tags, UTC time, and sanitized evidence.

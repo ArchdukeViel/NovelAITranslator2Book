@@ -9,6 +9,8 @@ Configuration contract. Exact fields/defaults live in
 - Canonical environment selector: `ENV`; never introduce `APP_ENV`.
 - Pydantic settings reads root `.env`; process environment overrides it.
 - Compose reads `deploy/.env` and requires external `DATABASE_URL`.
+- `MIGRATION_DATABASE_URL` optionally gives the one-shot Alembic service a
+  separate elevated role; long-running processes continue using `DATABASE_URL`.
 - Real `.env*` files are untracked; only example templates are committed.
 - Settings are read through `novelai.config.settings.settings`; no direct
   `os.environ` outside settings module.

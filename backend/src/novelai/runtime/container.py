@@ -319,6 +319,7 @@ class Container:
                 storage=self.storage,
                 activity_runner=self.activity_runner,
                 backup_service=self.backup_service,
+                database_backup_service=self.database_backup_service,
                 operator_alert_service=self.operator_alert_service,
             )
         return self._health_service

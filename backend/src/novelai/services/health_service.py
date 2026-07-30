@@ -46,12 +46,14 @@ class HealthService:
         activity_runner: Any | None = None,
         db_session_factory: Any | None = None,
         backup_service: Any | None = None,
+        database_backup_service: Any | None = None,
         operator_alert_service: Any | None = None,
     ) -> None:
         self._storage = storage
         self._activity_runner = activity_runner
         self._db_session_factory = db_session_factory
         self._backup_service = backup_service
+        self._database_backup_service = database_backup_service
         self._operator_alert_service = operator_alert_service
         self._cache: dict[str, Any] = {}
         self._cache_timestamp: float = 0.0
@@ -90,7 +92,7 @@ class HealthService:
         Includes probe status, latency, safe messages, and checked timestamp.
         Does not expose raw exceptions, stack traces, credentials, or paths.
         """
-        results = await self._run_probes()
+        results = await self._run_probes(include_recovery=True)
         overall = self._aggregate_status(results)
 
         return {
@@ -100,7 +102,7 @@ class HealthService:
             "checks": self._admin_safe_checks(results),
         }
 
-    async def _run_probes(self) -> dict[str, dict[str, Any]]:
+    async def _run_probes(self, *, include_recovery: bool = False) -> dict[str, dict[str, Any]]:
         """Run all probes with per-probe and total timeout bounds."""
         probe_timeout = settings.HEALTH_PROBE_TIMEOUT_MS / 1000.0
         total_timeout = settings.HEALTH_TOTAL_TIMEOUT_MS / 1000.0
@@ -112,6 +114,14 @@ class HealthService:
             "disk": self._probe_disk,
             "storage_usage": self._probe_storage_usage,
         }
+        if include_recovery:
+            probes.update(
+                {
+                    "object_snapshot": self._probe_object_snapshot,
+                    "database_backup": self._probe_database_backup,
+                    "database_restore_verification": self._probe_database_restore_verification,
+                }
+            )
 
         results: dict[str, dict[str, Any]] = {}
 
@@ -164,13 +174,16 @@ class HealthService:
             if self._db_session_factory is not None:
                 session = self._db_session_factory()
                 try:
-                    session.execute(type(session).bind.text("SELECT 1") if hasattr(type(session).bind, "text") else None)
+                    session.execute(
+                        type(session).bind.text("SELECT 1") if hasattr(type(session).bind, "text") else None
+                    )
                 finally:
                     session.close()
             else:
                 from sqlalchemy import text
 
                 from novelai.db.engine import get_sessionmaker
+
                 SM = get_sessionmaker()
                 session = SM()
                 try:
@@ -190,7 +203,11 @@ class HealthService:
         except Exception as exc:
             latency = int((time.monotonic() - start) * 1000)
             if self._operator_alert_service is not None:
-                code = "database_pool_timeout" if exc.__class__.__name__ == "TimeoutError" else "database_connectivity_failed"
+                code = (
+                    "database_pool_timeout"
+                    if exc.__class__.__name__ == "TimeoutError"
+                    else "database_connectivity_failed"
+                )
                 await asyncio.to_thread(
                     self._operator_alert_service.send,
                     code=code,
@@ -204,7 +221,7 @@ class HealthService:
             }
 
     async def _probe_storage(self) -> dict[str, Any]:
-        """Probe storage by writing and removing a temp file in a health-check path."""
+        """Probe configured storage with bounded write/read/delete."""
         start = time.monotonic()
         if self._storage is None:
             return {
@@ -213,14 +230,9 @@ class HealthService:
                 "latency_ms": 0,
             }
         try:
-            health_dir = Path(self._storage.base_dir) / ".healthcheck"
-            health_dir.mkdir(parents=True, exist_ok=True)
-            probe_file = health_dir / "probe.json"
-            probe_file.write_text('{"status":"ok"}', encoding="utf-8")
-            content = probe_file.read_text(encoding="utf-8")
-            probe_file.unlink(missing_ok=True)
+            responsive = await asyncio.to_thread(self._storage.probe)
             latency = int((time.monotonic() - start) * 1000)
-            if content == '{"status":"ok"}':
+            if responsive:
                 return {
                     "status": STATE_HEALTHY,
                     "message": "Storage responsive",
@@ -341,7 +353,7 @@ class HealthService:
             backend = _gsb()
             used_bytes = backend.total_size_bytes()
 
-            limit_bytes = int(settings.S3_STORAGE_LIMIT_GB * 1024 ** 3)
+            limit_bytes = int(settings.S3_STORAGE_LIMIT_GB * 1024**3)
             used_percent = int(used_bytes / limit_bytes * 100) if limit_bytes > 0 else 0
             free_bytes = max(0, limit_bytes - used_bytes)
             latency = int((time.monotonic() - start) * 1000)
@@ -382,6 +394,75 @@ class HealthService:
                 "message": "Storage usage probe failed",
                 "error_type": type(exc).__name__,
                 "latency_ms": latency,
+            }
+
+    async def _probe_object_snapshot(self) -> dict[str, Any]:
+        return await self._probe_backup_service(
+            self._backup_service,
+            enabled=settings.BACKUP_ENABLED,
+            disabled_message="Object snapshots are not enabled",
+        )
+
+    async def _probe_database_backup(self) -> dict[str, Any]:
+        return await self._probe_backup_service(
+            self._database_backup_service,
+            enabled=settings.DATABASE_BACKUP_ENABLED,
+            disabled_message="Database backups are not enabled",
+        )
+
+    @staticmethod
+    async def _probe_backup_service(service: Any | None, *, enabled: bool, disabled_message: str) -> dict[str, Any]:
+        start = time.monotonic()
+        if not enabled:
+            return {"status": STATE_DEGRADED, "message": disabled_message, "latency_ms": 0}
+        if service is None:
+            return {"status": STATE_UNHEALTHY, "message": "Backup service unavailable", "latency_ms": 0}
+        result = await asyncio.to_thread(service.get_backup_health)
+        return {
+            "status": result.get("status", STATE_UNHEALTHY),
+            "message": result.get("message", "Backup health unavailable"),
+            "latency_ms": int((time.monotonic() - start) * 1000),
+        }
+
+    async def _probe_database_restore_verification(self) -> dict[str, Any]:
+        start = time.monotonic()
+        if not settings.DATABASE_RESTORE_VERIFICATION_ENABLED:
+            return {
+                "status": STATE_DEGRADED,
+                "message": "Database restore verification is not enabled",
+                "latency_ms": 0,
+            }
+        try:
+            from sqlalchemy import text
+
+            from novelai.db.engine import get_sessionmaker
+
+            session = get_sessionmaker()()
+            try:
+                status = session.execute(
+                    text(
+                        "SELECT status FROM scheduled_cron_log "
+                        "WHERE job_name LIKE 'database_restore_verify-%' "
+                        "ORDER BY started_at DESC LIMIT 1"
+                    )
+                ).scalar_one_or_none()
+            finally:
+                session.close()
+            return {
+                "status": STATE_HEALTHY if status == "succeeded" else STATE_UNHEALTHY,
+                "message": (
+                    "Latest database restore verification succeeded"
+                    if status == "succeeded"
+                    else "No successful database restore verification exists"
+                ),
+                "latency_ms": int((time.monotonic() - start) * 1000),
+            }
+        except Exception as exc:
+            return {
+                "status": STATE_UNHEALTHY,
+                "message": "Database restore verification probe failed",
+                "error_type": type(exc).__name__,
+                "latency_ms": int((time.monotonic() - start) * 1000),
             }
 
     @staticmethod

@@ -72,8 +72,8 @@ class AppSettings(BaseSettings):
         description="S3 region. Default us-east-1.",
     )
     S3_KEY_PREFIX: str = Field(
-        default="",
-        description="Optional key prefix (folder) for all S3 objects.",
+        default="storage/novel_library",
+        description="Key prefix for all S3 objects. Defaults to the canonical library namespace.",
     )
     S3_ENDPOINT: str | None = Field(
         default=None,
@@ -206,6 +206,7 @@ class AppSettings(BaseSettings):
 
     # --- Database
     DATABASE_URL: str | None = None
+    MIGRATION_DATABASE_URL: str | None = None
     DB_CONNECTION_MODE: Literal["direct", "session", "transaction"] = "direct"
     DB_POOL_SIZE: int = Field(default=5, ge=1)
     DB_MAX_OVERFLOW: int = Field(default=5, ge=0)

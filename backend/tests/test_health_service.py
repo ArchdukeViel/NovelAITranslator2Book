@@ -19,6 +19,14 @@ class FakeStorage:
     def __init__(self, base_dir: Path) -> None:
         self.base_dir = base_dir
 
+    def probe(self) -> bool:
+        probe_file = self.base_dir / ".healthcheck.json"
+        try:
+            probe_file.write_bytes(b'{"status":"ok"}')
+            return probe_file.read_bytes() == b'{"status":"ok"}'
+        finally:
+            probe_file.unlink(missing_ok=True)
+
 
 class FakeRunner:
     def status(self) -> dict[str, Any]:
@@ -62,8 +70,10 @@ class TestLiveness:
 class TestReadiness:
     @pytest.mark.asyncio
     async def test_readiness_healthy(self, service: HealthService) -> None:
-        with patch("novelai.config.settings.settings.DATABASE_URL", "sqlite://"), \
-             patch("novelai.db.engine.get_sessionmaker") as mock_sm:
+        with (
+            patch("novelai.config.settings.settings.DATABASE_URL", "sqlite://"),
+            patch("novelai.db.engine.get_sessionmaker") as mock_sm,
+        ):
             mock_session = MagicMock()
             mock_sm.return_value = mock_session
             mock_session.return_value.__enter__ = MagicMock(return_value=MagicMock())
@@ -79,6 +89,15 @@ class TestReadiness:
         checks = result["checks"]
         assert "storage" in checks
         assert checks["storage"]["status"] == STATE_HEALTHY
+
+    @pytest.mark.asyncio
+    async def test_readiness_storage_uses_backend_probe(self, storage: FakeStorage) -> None:
+        storage.probe = MagicMock(return_value=True)  # type: ignore[method-assign]
+
+        result = await HealthService(storage=storage)._probe_storage()
+
+        assert result["status"] == STATE_HEALTHY
+        storage.probe.assert_called_once_with()
 
     @pytest.mark.asyncio
     async def test_readiness_worker_not_enabled(self, storage: FakeStorage) -> None:
@@ -137,6 +156,25 @@ class TestAdminHealth:
         checks_str = str(result["checks"])
         assert "Traceback" not in checks_str
         assert "stack" not in checks_str.lower()
+
+    @pytest.mark.asyncio
+    async def test_admin_health_includes_recovery_checks(self, storage: FakeStorage) -> None:
+        backup = MagicMock()
+        backup.get_backup_health.return_value = {"status": "healthy", "message": "Verified backup exists"}
+        with (
+            patch("novelai.config.settings.settings.BACKUP_ENABLED", True),
+            patch("novelai.config.settings.settings.DATABASE_BACKUP_ENABLED", True),
+            patch("novelai.config.settings.settings.DATABASE_RESTORE_VERIFICATION_ENABLED", False),
+        ):
+            result = await HealthService(
+                storage=storage,
+                backup_service=backup,
+                database_backup_service=backup,
+            ).admin_health()
+
+        assert result["checks"]["object_snapshot"]["status"] == STATE_HEALTHY
+        assert result["checks"]["database_backup"]["status"] == STATE_HEALTHY
+        assert result["checks"]["database_restore_verification"]["status"] == STATE_DEGRADED
 
 
 class TestProbeIsolation:

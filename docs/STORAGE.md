@@ -19,6 +19,10 @@ Storage backend is filesystem by default or S3-compatible when
 abstractions and never inspect boto3 clients, buckets, roots, or `Path` state for
 object-store data.
 
+S3/R2 uses `S3_KEY_PREFIX=storage/novel_library` by default. Canonical object
+keys therefore begin with `storage/novel_library/novels/`, matching the local
+library namespace without writing application objects at bucket root.
+
 ## Layout
 
 ```text

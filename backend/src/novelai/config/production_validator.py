@@ -161,10 +161,7 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
             "SESSION_SECRET_KEY is missing, default, or too weak for production.",
         )
 
-    if not is_reader and (
-        not settings.OWNER_BOOTSTRAP_SECRET
-        or settings.OWNER_BOOTSTRAP_SECRET.strip() == ""
-    ):
+    if not is_reader and (not settings.OWNER_BOOTSTRAP_SECRET or settings.OWNER_BOOTSTRAP_SECRET.strip() == ""):
         result.add(
             Severity.FATAL,
             "owner",
@@ -253,13 +250,17 @@ def validate_production_config(settings: AppSettings) -> ValidationResult:
                 "S3_BUCKET is required when STORAGE_BACKEND=s3.",
             )
         # R2 and other S3-compatible targets without IAM require explicit credentials
-        if settings.S3_ENDPOINT and not (
-            settings.S3_ACCESS_KEY_ID and settings.S3_SECRET_ACCESS_KEY
-        ):
+        if settings.S3_ENDPOINT and not (settings.S3_ACCESS_KEY_ID and settings.S3_SECRET_ACCESS_KEY):
             result.add(
                 Severity.FATAL,
                 "storage",
                 "S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY are required when S3_ENDPOINT is set (e.g. Cloudflare R2).",
+            )
+        if settings.S3_KEY_PREFIX.strip().strip("/") != "storage/novel_library":
+            result.add(
+                Severity.FATAL,
+                "storage",
+                "S3_KEY_PREFIX must be storage/novel_library in production.",
             )
     elif settings.STORAGE_BACKEND not in ("filesystem", "s3"):
         result.add(
@@ -424,7 +425,4 @@ def assert_production_config(settings: AppSettings) -> None:
     result = validate_production_config(settings)
     if result.has_fatal:
         messages = [str(i) for i in result.fatals]
-        raise RuntimeError(
-            "Production configuration validation failed with fatal issues:\n"
-            + "\n".join(messages)
-        )
+        raise RuntimeError("Production configuration validation failed with fatal issues:\n" + "\n".join(messages))

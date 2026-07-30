@@ -27,6 +27,7 @@ def _make_prod_settings(**overrides: Any) -> AppSettings:
         STORAGE_BACKEND="filesystem",
         DATABASE_URL="postgresql+psycopg://example.invalid/postgres",
         DB_SSL_MODE="require",
+        DATABASE_RESTORE_VERIFICATION_ENABLED=False,
     )
     defaults.update(overrides)
     return AppSettings(**defaults)
@@ -58,72 +59,66 @@ class TestProductionConfigValidator:
         assert any("SESSION_SECRET_KEY" in i.message for i in result.fatals)
 
     def test_short_session_secret_fatal(self):
-        result = validate_production_config(
-            _make_prod_settings(SESSION_SECRET_KEY="short")
-        )
+        result = validate_production_config(_make_prod_settings(SESSION_SECRET_KEY="short"))
         assert result.has_fatal
         assert any("SESSION_SECRET_KEY" in i.message for i in result.fatals)
 
     def test_missing_owner_bootstrap_fatal(self):
-        result = validate_production_config(
-            _make_prod_settings(OWNER_BOOTSTRAP_SECRET="")
-        )
+        result = validate_production_config(_make_prod_settings(OWNER_BOOTSTRAP_SECRET=""))
         assert result.has_fatal
         assert any("OWNER_BOOTSTRAP_SECRET" in i.message for i in result.fatals)
 
     def test_weak_owner_bootstrap_fatal(self):
-        result = validate_production_config(
-            _make_prod_settings(OWNER_BOOTSTRAP_SECRET="placeholder")
-        )
+        result = validate_production_config(_make_prod_settings(OWNER_BOOTSTRAP_SECRET="placeholder"))
         assert result.has_fatal
         assert any("OWNER_BOOTSTRAP_SECRET" in i.message for i in result.fatals)
 
     def test_missing_public_url_fatal(self):
-        result = validate_production_config(
-            _make_prod_settings(PUBLIC_FRONTEND_URL=None)
-        )
+        result = validate_production_config(_make_prod_settings(PUBLIC_FRONTEND_URL=None))
         assert result.has_fatal
         assert any("PUBLIC_FRONTEND_URL" in i.message for i in result.fatals)
 
     def test_non_https_public_url_fatal(self):
-        result = validate_production_config(
-            _make_prod_settings(PUBLIC_FRONTEND_URL="http://example.com")
-        )
+        result = validate_production_config(_make_prod_settings(PUBLIC_FRONTEND_URL="http://example.com"))
         assert result.has_fatal
         assert any("HTTPS" in i.message for i in result.fatals)
 
     def test_wildcard_cors_fatal(self):
-        result = validate_production_config(
-            _make_prod_settings(WEB_CORS_ORIGINS=["*"])
-        )
+        result = validate_production_config(_make_prod_settings(WEB_CORS_ORIGINS=["*"]))
         assert result.has_fatal
         assert any("'*'" in i.message or "wildcard" in i.message.lower() for i in result.fatals)
 
     def test_memory_rate_limiter_fatal(self):
-        result = validate_production_config(
-            _make_prod_settings(WEB_RATE_LIMITER_BACKEND="memory")
-        )
+        result = validate_production_config(_make_prod_settings(WEB_RATE_LIMITER_BACKEND="memory"))
         assert result.has_fatal
         assert any("redis" in i.message.lower() for i in result.fatals)
 
     def test_redis_limiter_no_url_fatal(self):
-        result = validate_production_config(
-            _make_prod_settings(WEB_RATE_LIMITER_BACKEND="redis", REDIS_URL=None)
-        )
+        result = validate_production_config(_make_prod_settings(WEB_RATE_LIMITER_BACKEND="redis", REDIS_URL=None))
         assert result.has_fatal
         assert any("REDIS_URL" in i.message for i in result.fatals)
 
     def test_missing_s3_bucket_fatal(self):
-        result = validate_production_config(
-            _make_prod_settings(STORAGE_BACKEND="s3", S3_BUCKET=None)
-        )
+        result = validate_production_config(_make_prod_settings(STORAGE_BACKEND="s3", S3_BUCKET=None))
         assert result.has_fatal
         assert any("S3_BUCKET" in i.message for i in result.fatals)
 
-    def test_unknown_storage_backend_fatal(self):
+    @pytest.mark.parametrize("prefix", ["", "/", ".", "novels", "runtime", "local"])
+    def test_s3_production_rejects_unsafe_prefix(self, prefix: str):
         result = validate_production_config(
-            _make_prod_settings(STORAGE_BACKEND="invalid")
+            _make_prod_settings(
+                STORAGE_BACKEND="s3",
+                S3_BUCKET="production",
+                S3_KEY_PREFIX=prefix,
+                S3_ENDPOINT="https://example.invalid",
+                S3_ACCESS_KEY_ID="source-key",
+                S3_SECRET_ACCESS_KEY="source-secret",
+            )
         )
+        assert any("S3_KEY_PREFIX" in issue.message for issue in result.fatals)
+
+    def test_unknown_storage_backend_fatal(self):
+        result = validate_production_config(_make_prod_settings(STORAGE_BACKEND="invalid"))
         assert result.has_fatal
         assert any("STORAGE_BACKEND" in i.message.upper() or "Unknown" in i.message for i in result.fatals)
 
@@ -229,7 +224,5 @@ class TestProductionConfigValidator:
         assert "changeme" not in summary_str
 
     def test_empty_cors_warning(self):
-        result = validate_production_config(
-            _make_prod_settings(WEB_CORS_ORIGINS=[])
-        )
+        result = validate_production_config(_make_prod_settings(WEB_CORS_ORIGINS=[]))
         assert any("WEB_CORS_ORIGINS" in i.message for i in result.issues)
