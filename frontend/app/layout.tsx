@@ -25,17 +25,17 @@ const dmMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: { default: "Novel AI", template: "%s | Novel AI" },
+  title: { default: "Dokushodo", template: "%s | Dokushodo" },
   description: "Web novel translation, reading, and management platform.",
   openGraph: {
     type: "website",
-    siteName: "Novel AI",
-    title: "Novel AI",
+    siteName: "Dokushodo",
+    title: "Dokushodo",
     description: "Web novel translation, reading, and management platform.",
   },
   twitter: {
     card: "summary",
-    title: "Novel AI",
+    title: "Dokushodo",
     description: "Web novel translation, reading, and management platform.",
   },
 };

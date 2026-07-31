@@ -93,7 +93,7 @@ the target.
   - **Backup bucket**: encrypted dumps and snapshots. Backup-target
     credentials write only there; separate snapshot-source credentials read
     only the application bucket.
-- **Redis**: managed (Upstash / ElastiCache / Render Redis) for
+- **Redis**: managed (Upstash / ElastiCache / managed Redis) for
   distributed rate limiting and the job queue in split mode.
 - **Networking**: explicit HTTPS termination at the selected edge/proxy,
   explicit CORS origins, CSRF token validation on cookie-authenticated

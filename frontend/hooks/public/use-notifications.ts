@@ -173,12 +173,12 @@ export function severityBadgeClass(severity: NotificationItem["severity"]): stri
     case "error":
       return `${base} bg-destructive/10 text-destructive border border-destructive/20`;
     case "warning":
-      return `${base} bg-yellow/10 text-yellow-700 dark:text-yellow-300 border border-yellow/20`;
+      return `${base} bg-warning/10 text-warning-foreground dark:text-warning border border-warning/20`;
     case "success":
-      return `${base} bg-green/10 text-green-700 dark:text-green-300 border border-green/20`;
+      return `${base} bg-success/10 text-success-foreground dark:text-success border border-success/20`;
     case "info":
     default:
-      return `${base} bg-blue/10 text-blue-700 dark:text-blue-300 border border-blue/20`;
+      return `${base} bg-info/10 text-info-foreground dark:text-info border border-info/20`;
   }
 }
 

@@ -2,15 +2,24 @@
 
 Runtime files live here during local development and production-style deployments.
 
-- `novel_library/`: private backend runtime data: novel metadata, chapter JSON, images, preferences, translation/fetch cache, usage logs, activity logs, scheduler state, provider request records, runtime traceability, and exports.
-- `novel_library/novel/{storage_slug}/`: canonical title-slug layout for new novel saves.
-- `novel_library/novels/`: legacy source-ID folders plus `index.json`, which maps logical novel IDs/source IDs to actual folder names.
-- `output/`, `input/`, `logs/`: optional runtime folders for future deployment workflows.
+- `novel_library/`: private backend runtime data: novel metadata, chapter JSON,
+  assets, runtime caches, activity logs, scheduler state, and traceability.
+  Layout, ownership, and restore contract live in
+  [`../docs/STORAGE.md`](../docs/STORAGE.md).
+- `novel_library/novels/`: canonical novel folders, one per novel by
+  storage slug. Each contains `metadata.json`, bounded `metadata_backups/`,
+  `chapters/<chapter_id>.json`, and chapter-scoped asset directories.
+  `novels/index.json` maps logical novel IDs and source IDs to those folders.
+- Source-derived caches, fetch and translation caches, activity logs, and
+  scheduler state live under dedicated runtime roots inside `novel_library/`.
+  They are disposable/prunable per [`../docs/OPERATIONS.md`](../docs/OPERATIONS.md)
+  and never become canonical content.
 
-These runtime subfolders are ignored by git. Configure `NOVEL_LIBRARY_DIR` when production should mount a different disk or volume.
+These runtime subfolders are ignored by git. Configure `NOVEL_LIBRARY_DIR`
+when production should mount a different disk or volume.
 
-Do not commit runtime data from this folder unless it has been intentionally sanitized and documented as a fixture or example. `storage/novel_library` is private backend runtime data and should not be served directly by the frontend or static file hosting.
-
-See `docs/STORAGE.md` for the canonical layout,
-deletion-safety table, backup/restore guidance, and notes about translated
-metadata and public `/novels/{slug}` routes.
+Do not commit runtime data from this folder unless it has been intentionally
+sanitized and documented as a fixture or example. `storage/novel_library` is
+private backend runtime data and must not be served directly by the frontend
+or static file hosting. Generated translated-novel downloads are out of scope;
+see [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) for the product boundary.

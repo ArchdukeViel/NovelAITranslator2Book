@@ -18,10 +18,10 @@ export default function AccountContributionsPage() {
 
       <AuthGate>
         <div className="space-y-6">
-          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-4">
+          <div className="rounded-md border border-warning/30 bg-warning/10 p-4">
             <div className="flex items-start gap-3">
-              <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
-              <div className="space-y-1 text-sm text-amber-800 dark:text-amber-200">
+              <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-warning-foreground dark:text-warning" />
+              <div className="space-y-1 text-sm text-warning-foreground dark:text-warning">
                 <p className="font-medium">Not available yet</p>
                 <p>Key management is not available yet.</p>
               </div>

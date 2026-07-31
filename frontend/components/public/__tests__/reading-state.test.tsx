@@ -185,6 +185,29 @@ describe("public reading-state UI", () => {
     expect(link).toHaveAttribute("href", "/novels/demo/chapter/1");
   });
 
+  it("renders nothing when hasHeroCta is true and there is no saved progress", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/auth/me") {
+        return Promise.resolve(jsonResponse(user));
+      }
+      if (url === "/api/user/progress/demo") {
+        return Promise.resolve(
+          jsonResponse({ detail: "Progress not found." }, 404)
+        );
+      }
+      return Promise.resolve(jsonResponse({ detail: "unexpected" }, 500));
+    });
+
+    const { container } = renderWithQuery(
+      <ContinueReading slug="demo" firstChapterId="1" hasHeroCta />
+    );
+
+    await waitFor(() => {
+      expect(container).toBeEmptyDOMElement();
+    });
+  });
+
   it("shows 'Chapter' fallback when chapter_number is null/undefined in progress", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url = String(input);

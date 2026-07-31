@@ -104,7 +104,7 @@ export function RatingReview({ slug }: RatingReviewProps) {
         {[1, 2, 3, 4, 5].map((star) => (
           <button
             aria-label={`Rate ${star} star${star === 1 ? "" : "s"}`}
-            className="text-muted-foreground transition-colors hover:text-amber-500 disabled:opacity-60"
+            className="text-muted-foreground transition-colors hover:text-accent disabled:opacity-60"
             disabled={isBusy}
             key={star}
             onClick={() => {
@@ -114,7 +114,7 @@ export function RatingReview({ slug }: RatingReviewProps) {
             type="button"
           >
             <Star
-              className={`h-6 w-6 ${rating >= star ? "fill-amber-400 text-amber-500" : ""}`}
+              className={`h-6 w-6 ${rating >= star ? "fill-accent text-accent-foreground" : ""}`}
             />
           </button>
         ))}
@@ -152,7 +152,7 @@ export function RatingReview({ slug }: RatingReviewProps) {
 
       {/* Success confirmation */}
       {justSaved && savedReview && (
-        <p className="text-sm text-green-600 dark:text-green-400">
+        <p className="text-sm text-success-foreground">
           ✓ Review submitted{savedReview.status === "pending" ? " (pending review)" : ""}.
         </p>
       )}

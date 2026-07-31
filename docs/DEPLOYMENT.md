@@ -48,9 +48,10 @@ restore verification, and SMTP acceptance reliably.
 
 ### Disposable preview
 
-Vercel Hobby frontend plus Render Free monolith, Supabase Free, and development-
-only R2 scope. Disable continuous worker/scheduler, maintenance, backup/restore,
-SMTP, and alerts. Sleep and ephemeral filesystem make preview non-production.
+Vercel Services frontend plus Vercel FastAPI Function in monolith mode, Supabase
+Free, and development-only R2 scope. Disable continuous worker/scheduler,
+maintenance, backup/restore, SMTP, and alerts. Sleep and ephemeral filesystem
+make preview non-production.
 
 ### Production
 
@@ -142,7 +143,6 @@ public URL, provider credentials, and managed-service verification credentials.
 - R2 application and backup scopes remain private and separate.
 - Supabase remains PostgreSQL behind SQLAlchemy/Alembic; dashboard changes do
   not replace repository migrations.
-- Render preview account verification is an unresolved gate, not production evidence.
 
 ## Acceptance
 
