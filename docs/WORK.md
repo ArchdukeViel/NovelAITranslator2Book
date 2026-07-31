@@ -80,8 +80,15 @@ Resolved 2026-07-31T17:17:41Z: `PUT
 `GitGuardian scan` to required status checks (verified via `gh api` GET —
 contexts: `docker-build`, `e2e-tests`, `Analyze (actions)`,
 `Analyze (javascript-typescript)`, `Analyze (python)`, `GitGuardian scan`).
-Remaining: sanitized incident/false-positive triage exercise and real GitGuardian
-pass on a PR against the new required check.
+
+Verified 2026-07-31T17:35:35Z on PR #15 (`feat/yokocho-phase1-docs`, base
+`main`): `GitGuardian scan` passed for both push and pull_request runs;
+`docker-build`, `e2e-tests`, `Analyze (actions)`,
+`Analyze (javascript-typescript)`, `Analyze (python)`, CodeQL, backend
+lint/tests, and frontend-check all passed; Vercel preview deployment
+completed. PR merge state: `MERGEABLE`, `BLOCKED` — required review
+(1 approval) pending, operator must approve. Remaining: sanitized
+incident/false-positive triage exercise (operator).
 
 ## Active Work
 

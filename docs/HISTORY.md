@@ -90,8 +90,9 @@ Does not change launch `NO-GO` or satisfy hosted/manual gates in `WORK.md`.
 | GitGuardian CI workflow | `.github/workflows/gitguardian.yaml`: push/same-repository-PR full-history scan, `ggshield` v1.52.2 pinned, owner-configured `GITGUARDIAN_API_KEY` secret reference, read-only token; fork PRs skip secret-backed scanning. |
 
 Closes local request-boundary enforcement and GitGuardian workflow integration.
-PR #12 proved successful secret-backed push and same-repository PR scans; required-
-check protection and incident/false-positive handling remain operator evidence.
+PR #12 proved successful secret-backed push and same-repository PR scans.
+Required-check protection was configured and proven later (GH-001, PR #15 —
+see below); sanitized incident/false-positive triage remains operator evidence.
 
 ## 2026-07-31 Frontend Design Phase 1 (DEBT-FE-01)
 
@@ -117,3 +118,12 @@ intentionally unchanged.
 | Graphify source refresh | 11,035 nodes, 32,658 edges. |
 
 Does not change launch `NO-GO` or satisfy hosted/manual gates in `WORK.md`.
+
+PR #15 (`feat/yokocho-phase1-docs`, base `main`) opened 2026-07-31: all
+required checks passed — `GitGuardian scan` (push + pull_request),
+`docker-build`, `e2e-tests`, `Analyze (actions|javascript-typescript|python)`,
+CodeQL, backend lint/tests, and frontend-check; Vercel preview deployed.
+Merge remains `BLOCKED` on required review (1 approval). This proved the
+GH-001 required-check configuration (review count 1, `GitGuardian scan`
+required) against a real same-repository PR. Sanitized incident/false-positive
+triage remains operator evidence.
