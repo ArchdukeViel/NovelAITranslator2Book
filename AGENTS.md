@@ -1,171 +1,98 @@
 # AGENTS.md
 
-Compact project instructions for AI coding assistants. Read this file before any non-trivial investigation, plan, edit, review, or debugging task.
-
-Codex CLI users: see `.codex/rules/` for Codex-specific setup (graphify, render CLI, workflow).
+Project-specific instructions for coding assistants. Primaries follow configured delegation and acceptance policy; this file defines repository facts, contracts, and verification.
 
 ## Sources of Truth
 
-Use these sources in this order:
+Use sources in this order:
 
-1. `docs/ARCHITECTURE.md` — architecture, contracts, security boundaries, and dependency direction.
-2. The active specification under `.agents/kiro/specs/<spec-name>/`.
+1. `docs/ARCHITECTURE.md` — architecture, contracts, security boundaries, dependency direction.
+2. Active specification under `.agents/kiro/specs/<spec-name>/`.
 3. Existing production code and tests.
 4. `docs/WORK.md` — active, blocked, deferred, and operator-acceptance work.
 
-When two sources disagree:
+Architecture wins over other documentation. An active approved specification wins over archived specifications. Report conflicts before implementation; never silently choose one interpretation.
 
-* Architecture wins over other documentation.
-* An active approved specification wins over archived specifications.
-* Report the conflict before implementing.
-* Do not silently choose one interpretation.
+Do not preload every document. Load canonical detail only when relevant:
 
-Do not pre-load every document. Read only the references relevant to the current task.
+| Need | Canonical source |
+| --- | --- |
+| Architecture or security | `docs/ARCHITECTURE.md` |
+| Configuration | `docs/CONFIGURATION.md` |
+| CI, deployment, or operator procedure | `docs/DEPLOYMENT.md` |
+| Unfinished work | `docs/WORK.md` |
+| Completed evidence | `docs/HISTORY.md` |
 
----
+## Verification
 
-## Verification Commands
+Run smallest check proving changed behavior, from repository root unless command explicitly changes directory. Order: focused lint or architecture guard, type checking, focused tests, then broader checks only when justified.
 
-Run commands from the repository root unless the command changes directory explicitly.
+| Command | Purpose |
+| --- | --- |
+| `python -m ruff check .` | Backend lint; do not fix unrelated pre-existing errors. |
+| `python -m pyright` | Backend type checking for `backend/src` and `backend/tests`. |
+| `python -m pytest backend/tests/test_<name>.py` | Focused backend test file. |
+| `python -m pytest backend/tests/e2e/` | Backend E2E tests; slower and fixture-dependent. |
+| `cd frontend; npm run typecheck` | Frontend TypeScript check. |
+| `cd frontend; npm run test` | Frontend Vitest suite. |
+| `cd frontend; npm run build` | Production frontend build. |
+| `cd backend; alembic -c alembic.ini upgrade head` | Apply migrations; requires `DATABASE_URL`. |
 
-Workflow order:
-
-1. Focused lint or architecture guards.
-2. Type checking.
-3. Focused tests.
-4. Broader checks only when justified by the change.
-
-| Command                                           | Purpose                                                                                          |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `python -m ruff check .`                          | Backend lint. Pre-existing unrelated errors may exist; do not fix them unless they are in scope. |
-| `python -m pyright`                               | Backend type checking using `pyrightconfig.json`; covers `backend/src` and `backend/tests`.      |
-| `python -m pytest backend/tests/test_<name>.py`   | Focused backend test file. Prefer this over the complete suite.                                  |
-| `python -m pytest backend/tests/e2e/`             | Backend end-to-end tests; slower and dependent on e2e fixtures.                                  |
-| `cd frontend; npm run typecheck`                  | Frontend TypeScript checking.                                                                    |
-| `cd frontend; npm run test`                       | Frontend Vitest suite.                                                                           |
-| `cd frontend; npm run build`                      | Production frontend build.                                                                       |
-| `cd backend; alembic -c alembic.ini upgrade head` | Apply migrations; requires `DATABASE_URL`.                                                       |
-
-The backend suite contains many test files and known unrelated failures. Run the smallest test set that proves the changed behavior.
-
-### Session and worker discipline
-
-* Resolve the Python interpreter, absolute Graphify CLI, and Node package root once per session; reuse those proven paths.
-* An implementation worker must inspect decisive files and begin editing by tool call 8. If no edit has begun, return evidence and the remaining slice.
-* Keep one worker unit to at most five decisive files unless migration/test coupling requires more. Split frontend work into API/types, hooks, UI, tests, and validation; never delegate a complete cross-layer feature, all tests, and all docs as one unit.
-* Run supplied commands exactly. Do not substitute broader suites, ignores, shell variants, or sample output. On Windows, use PowerShell only.
-* Validation evidence must include the raw command, exit code, result count, and exact paths. Reject contradictory exit/result claims.
-* Prefer existing tests or one short standard-library command over repository-wide custom validators. Put temporary scripts under `$env:TEMP`.
-* Before validating Graphify JSON, inspect its schema; canonical top-level keys are `nodes`, `links`, and `hyperedges`.
-* Git porcelain `-z` parsers must handle both XY columns, rename pairs, spaces, and parentheses.
-
-### Pre-commit workflow
-
-1. Run formatters before staging.
-2. Run lint, type checks, and focused tests.
-3. Stage exact intended paths and run `git diff --cached --check`.
-4. Attempt the commit with hooks enabled.
-5. If hooks modify files, preserve their output; compare working tree against index, prove formatter-only changes, restage exact affected paths, rerun affected validation, and retry once.
-6. Never use `--no-verify`, or reset/restore hook changes without evidence.
-
-### Provider and secret evidence
-
-* Workers must never print secret values, lengths, hashes, prefixes, suffixes, or derived fragments. Secret checks report only `present=true` or `present=false`.
-* Empty worker output proves nothing. Before one bounded retry, inspect focused Git status/diff; retry only the unfinished slice through another route when appropriate and preserve temporary artifacts until independent validation.
-* Workers use the absolute Graphify CLI. `update . --no-cluster` needs no API key and is the routine source refresh.
-* Do not run semantic extraction or labeling after ordinary edits. Semantic work requires explicit approval, budget, model, RPM/TPM/RPD limits, protected temporary output, independent validation, and a safe swap. Never delete semantic output before validation.
-
-### Router-layer guard
-
-This command must return no matches:
+Router-layer guard must return no matches:
 
 ```powershell
 rg -n "^from novelai\.(db\.models|storage\.service|sources\.)" backend/src/novelai/api/routers/ --glob "!dependencies.py"
 ```
 
----
+### Commit workflow
 
-## Project Structure
+1. Run formatters before staging.
+2. Run affected lint, type checks, and focused tests.
+3. Stage exact intended paths; run `git diff --cached --check`.
+4. Commit with hooks enabled. Never use `--no-verify`.
+5. If hooks modify files, preserve output, compare working tree with index, prove changes expected, restage exact paths, rerun affected checks, and retry once.
+
+After every edit, including documentation edits, run:
+
+```powershell
+graphify update . --no-cluster
+```
+
+Record raw validation command, timeout when relevant, exit code, result count, and exact paths. Never claim a check passed unless run successfully.
+
+## Repository Layout and Entry Points
 
 ### Backend
 
-* Root: `backend/src/novelai/`
-* Frameworks: FastAPI, SQLAlchemy, Pydantic.
-* Python package root: `backend/src`.
-* Tests: `backend/tests/`.
-* Database migrations: `backend/alembic/versions/`.
-* Explicit database-policy SQL: `backend/sql/`.
+- Package: `backend/src/novelai/`
+- Tests: `backend/tests/`
+- Migrations: `backend/alembic/versions/`
+- Explicit database-policy SQL: `backend/sql/`
+- Default app: `novelai.api.app:app`
+- Admin/control plane: `novelai.main_admin:app`, port 8000
+- Public reader: `novelai.main_reader:app`, port 8001
+- CLI: `novelaibook` (`web`, `worker`, `doctor`, `create-user`, `adminweb`, `publicweb`)
+
+`DEPLOY_MODE=split` runs admin and reader separately. Admin supports sessions; cookie-authenticated admin and public-user mutations require CSRF protection. Reader has no admin session.
 
 ### Frontend
 
-* Root: `frontend/`
-* Framework: Next.js App Router. Read the current version from `frontend/package.json`.
-* Frontend is an independent Node package.
+- Package: `frontend/`; read framework version from `frontend/package.json`.
+- Admin routes: `frontend/app/(admin)/admin/*`.
+- Public routes: `frontend/app/(public)/*`.
+- Admin API access: `frontend/lib/api.ts`.
+- Public API access: `frontend/lib/public-api.ts`.
+
+Do not move behavior across route-group boundaries without an explicit architecture change. Components must not call `fetch()` directly.
 
 ### Deployment
 
-* Root: `deploy/`
-* Canonical Compose file: `compose.yml`
-* Development overlay: `compose.dev.yml`
-* Containers:
+- Canonical Compose: `deploy/compose.yml`.
+- Development overlay: `deploy/compose.dev.yml`.
+- Images: `deploy/admin.Dockerfile`, `deploy/reader.Dockerfile`, `deploy/frontend.Dockerfile`.
+- Reverse proxy: Caddy.
 
-  * `admin.Dockerfile` — admin API on port 8000.
-  * `reader.Dockerfile` — public reader API on port 8001.
-  * `frontend.Dockerfile` — frontend.
-* Reverse proxy: Caddy.
-
-### Specifications
-
-* Active specifications: `.agents/kiro/specs/`
-* Do not edit anything under `.agents/` without owner approval.
-
-### Local agent files
-
-* `.opencode/` contains local OpenCode plugins, goals, commands, and scratch state.
-* `.opencode/` is gitignored.
-* Do not commit files from `.opencode/`.
-* `.codegraph/` contains the generated local CodeGraph index.
-* Do not edit or commit `.codegraph/` contents. Initialize it only through `codegraph init`; normal file changes are synchronized automatically.
-* `.codex/` contains Codex hooks and per-project rules — now tracked in git.
-* `.codex/plans/`, `.codex/scratch/`, and `.codex/*.log` are gitignored.
-
----
-
-## Backend Entry Points
-
-* `novelai.api.app:app` — default monolithic application.
-* `novelai.main_admin:app` — session-enabled control-plane application on port 8000; admin and public-user mutations are CSRF protected.
-* `novelai.main_reader:app` — public reader on port 8001; no admin session.
-* `DEPLOY_MODE=split` runs the admin and reader processes separately.
-* CLI executable: `novelaibook`.
-
-CLI subcommands include:
-
-* `web`
-* `worker`
-* `doctor`
-* `create-user`
-* `adminweb`
-* `publicweb`
-
----
-
-## Frontend Route Boundaries
-
-* `frontend/app/(admin)/admin/*` — owner/admin interface.
-* `frontend/app/(public)/*` — guest and authenticated public-user interface.
-* Do not move behavior across these route-group boundaries without an explicit architecture change.
-
-API access must go through:
-
-* `frontend/lib/api.ts` for admin API calls.
-* `frontend/lib/public-api.ts` for public API calls.
-
-Do not issue direct `fetch()` calls from components.
-
----
-
-## Architecture and Layer Rules
+## Architecture Boundaries
 
 Dependency direction:
 
@@ -176,544 +103,167 @@ api
 → storage / db / providers / sources
 ```
 
-Rules:
+- Keep routers thin; use `services/` or `services/orchestration/` for use cases.
+- Put source parsing in `sources/`.
+- Put outbound HTTP, SSRF protection, retries, and fetch caching in `infrastructure/http/`.
+- Put provider integration in `providers/`, prompts in `prompts/`, persistence in `storage/` and `db/`.
+- Keep scheduler policy in backend translation, service, or job layers, never React.
+- Lower layers must not import API routers or frontend concepts.
+- Routers must not directly import `novelai.db.models.*`, `novelai.storage.service.*`, or `novelai.sources.*`; only `api/routers/dependencies.py` may construct those dependencies.
 
-* API routers stay thin.
-* Put use-case behavior in `services/` or `services/orchestration/`.
-* Put source parsing in `sources/`.
-* Put outbound HTTP, SSRF protection, retries, and fetch caching in `infrastructure/http/`.
-* Put provider API integration in `providers/`.
-* Put translation prompts and prompt assembly in `prompts/`.
-* Put persistence behind `storage/` and `db/`.
-* Put scheduler policy in backend translation, service, or job layers—not React.
-* Do not let lower layers import API routers or frontend concepts.
-
-Routers must not directly import:
-
-* `novelai.db.models.*`
-* `novelai.storage.service.*`
-* `novelai.sources.*`
-
-The exception is `api/routers/dependencies.py`, which contains dependency-injection factories.
-
----
-
-## Canonical Names
-
-Use these names. Do not invent aliases:
+Canonical identifiers:
 
 ```text
-source_key
-source_novel_id
-source_url
-novel_id
-chapter_id
-paragraph_id
-chunk_id
-bundle_id
-provider_key
-provider_model
-activity_id
-job_id
-request_id
-credential_id
-requesting_user_id
-credential_owner_user_id
-prompt_version
-glossary_hash
+source_key, source_novel_id, source_url, novel_id, chapter_id, paragraph_id,
+chunk_id, bundle_id, provider_key, provider_model, activity_id, job_id,
+request_id, credential_id, requesting_user_id, credential_owner_user_id,
+prompt_version, glossary_hash
 ```
 
-When code being changed still uses ambiguous legacy aliases such as:
+When directly changed code uses an ambiguous legacy alias, replace it with the applicable canonical name and update affected callers, types, tests, and docs. Do not perform unrelated repository-wide renames.
 
-```text
-id
-source
-provider
-model
-slug
-```
+## Backend Rules
 
-replace the alias with the correct canonical name and update directly affected callers, types, tests, and documentation in the same change.
+- Use SQLAlchemy for application persistence.
+- Raw SQL is allowed only in Alembic migrations and explicit policy scripts under `backend/sql/`; never in routers, services, orchestration, or domain code.
+- Read settings through `novelai.config.settings.settings`; do not read `os.environ` elsewhere.
+- Configure logging through `novelai.logging_config.configure_logging()`; do not scatter `logging.basicConfig()`.
+- Schema changes require a new migration. Never edit an already committed migration.
+- Use `httpx` for outbound HTTP and preserve SSRF protections.
+- Keep provider-specific behavior behind provider interfaces and storage differences behind storage abstractions.
+- Use `asyncio.Semaphore` for bounded async concurrency. For independent fan-out where partial failure is intended, use `asyncio.gather(..., return_exceptions=True)`.
+- Validate API inputs with Pydantic; never pass unvalidated request dictionaries into use-case code.
 
-Do not perform unrelated repository-wide renames.
+## Frontend Rules
 
----
-
-## Backend Conventions
-
-* Application persistence uses SQLAlchemy.
-* Do not add raw SQL to routers, services, orchestration, or domain code.
-* Alembic migrations and explicit database-policy scripts under `backend/sql/` are the only raw-SQL exceptions.
-* Read settings through `novelai.config.settings.settings`.
-* Do not read `os.environ` outside the settings module.
-* Configure logging through `novelai.logging_config.configure_logging()`.
-* Do not scatter `logging.basicConfig()` calls.
-* A schema change requires a new migration under `backend/alembic/versions/`.
-* Never edit an already committed migration.
-* Use `httpx` for outbound HTTP.
-* Use `asyncio.Semaphore` for bounded asynchronous concurrency.
-* For independent fan-out work, use `asyncio.gather(..., return_exceptions=True)` when partial failure is part of the intended behavior.
-* Validate API inputs with Pydantic models.
-* Do not pass unvalidated request dictionaries into use-case code.
-* Keep provider-specific behavior behind provider interfaces.
-* Keep storage-backend differences behind storage abstractions.
-
----
+- Use `@tanstack/react-query` for server state and `zustand` for client-only state; do not add Redux.
+- Use Tailwind CSS and `cn()` from `frontend/lib/utils.ts`; do not add CSS modules or styled-components.
+- Keep business and data-flow logic in hooks, not components.
+- Shared components belong in `frontend/components/`; route-local components stay under their route.
+- Mask credentials through `frontend/lib/mask-token.ts`; never render complete credentials or secrets.
 
 ## Operational Contracts
 
-These are behavioral contracts that future agents must preserve. Violating them breaks existing functionality.
+Full architecture and operator detail belongs in canonical docs. Preserve these easy-to-break invariants:
 
-### Health endpoints
+### Health
 
-* `GET /health/live` — process-only liveness, unauthenticated, no DB/storage/worker calls. Always returns 200.
-* `GET /health/ready` — public-safe readiness, probes DB, storage, worker, disk. Returns 503 if any probe is unhealthy. Never exposes credentials, paths, hostnames, or stack traces.
-* `GET /api/admin/health` — owner-only detailed diagnostics (`require_role("owner")`). Still redacted.
-* Probe states: `healthy`, `degraded`, `unhealthy`. Each probe is bounded by `HEALTH_PROBE_TIMEOUT_MS`; total request by `HEALTH_TOTAL_TIMEOUT_MS`.
-* Implementation: `backend/src/novelai/services/health_service.py` and `backend/src/novelai/api/routers/health.py`.
+- `GET /health/live`: unauthenticated process-only liveness, no DB/storage/worker calls, always 200.
+- `GET /health/ready`: public-safe DB/storage/worker/disk readiness, 503 when unhealthy, no paths, hosts, credentials, or traces.
+- `GET /api/admin/health`: owner-only detailed diagnostics via `require_role("owner")`, still redacted.
+- Probe states are `healthy`, `degraded`, `unhealthy`; honor `HEALTH_PROBE_TIMEOUT_MS` and `HEALTH_TOTAL_TIMEOUT_MS`.
+- Implementations live in `backend/src/novelai/services/health_service.py` and `backend/src/novelai/api/routers/health.py`.
 
-### Translated-novel file generation
+### Storage and scheduling
 
-* Generated reader downloads are outside current product scope. Do not add PDF,
-  EPUB, HTML, Markdown, manifest, download, or freshness features without a new
-  approved specification.
-* EPUB and PDF input adapters remain supported for importing source documents.
-* Database dumps and object-storage snapshots remain recovery mechanisms.
-* Preserve historical generated artifacts; do not delete user data during code cleanup.
+- `novelai.storage.file_lock.InterProcessFileLock` is canonical cross-platform process lock. It uses atomic `O_CREAT | O_EXCL`, bounded retries, Windows PID liveness checks, and stale-lock reclamation. Use it for conflicting writes or cleanup.
+- `SchedulerRuntimeState` plus `SchedulerRuntimeStateService` is durable cross-restart scheduler state. `scheduler_states.json` remains an in-process per-job model cache; transitions write both. Never rely on memory alone.
+- `BackupManager.apply_retention()` preserves newest successful backup and `BACKUP_MIN_SUCCESSFUL_TO_KEEP`, under `InterProcessFileLock`.
+- `MaintenanceService` runs allowlisted cleanup with dry-run and path-safety checks; reject blank, root, project-root, and symlink-escape paths.
+- `SchedulerService` uses a lightweight asyncio loop and `scheduled_cron_log`; do not reintroduce APScheduler. Migration-defined cleanup is active only after applied migrations and live scheduler state are verified.
+- Preserve raw scraped chapters and historical generated artifacts. Generated reader downloads remain out of scope; EPUB/PDF source imports remain supported.
 
-### Multi-process file lock (DEBT-035)
+### Deployment and object storage
 
-* `novelai.storage.file_lock.InterProcessFileLock` is the canonical cross-platform locking primitive.
-* Uses `O_CREAT | O_EXCL` for atomic lockfile creation (works on Windows and POSIX).
-* Windows PID liveness check uses `ctypes.windll.kernel32.OpenProcess`.
-* Bounded retries with configurable backoff (`FILE_LOCK_RETRY_COUNT`, `FILE_LOCK_RETRY_DELAY_SECONDS`).
-* Stale lock detection reclaims locks from crashed processes.
-* Use this for any write/cleanup that must not conflict across processes.
-
-### Scheduler runtime state (DEBT-036)
-
-* `SchedulerRuntimeState` DB table + `SchedulerRuntimeStateService` is the durable cross-restart store for cooldown, failure, exhausted, heartbeat, and next-eligible state.
-* The file-based `scheduler_states.json` (in `storage/traceability.py`) remains as an in-process cache for per-job model state. Both are written on transitions.
-* State survives process restarts. Do not rely on in-memory scheduler state alone.
-* Canonical identifiers: `job_id`, `source_key`, `provider_key`, `activity_id` in metadata where applicable. No aliases.
-
-### Backup and maintenance scheduling
-
-* `BackupManager.apply_retention()` preserves the newest successful backup and `BACKUP_MIN_SUCCESSFUL_TO_KEEP` minimum. Uses `InterProcessFileLock` to prevent concurrent retention runs.
-* `MaintenanceService` runs allowlisted cleanup tasks with dry-run support and path safety. Rejects blank, root, project-root, and symlink-escape paths.
-* `SchedulerService` uses a lightweight asyncio loop (not APScheduler) to check `scheduled_cron_log` for pending backup/maintenance work.
-* The migration-defined database cleanup schedule is the intended durable cleanup mechanism. Verify applied migrations and live scheduler state before reporting it as active.
-* Do not reintroduce APScheduler. The dependency has been removed.
-
-### Docker health check
-
-* `compose.yml` healthcheck uses `python -c "import urllib.request; ..."` because the image does not include `curl` by default.
-* `admin.Dockerfile` and `reader.Dockerfile` now install `curl` for future use, but the healthcheck still uses `python -c` for portability.
-
----
-
-## Frontend Conventions
-
-* Use `@tanstack/react-query` for server state.
-* Use `zustand` for client-only state.
-* Do not introduce Redux.
-* Use Tailwind CSS for styling.
-* Use `clsx` and `tailwind-merge` through `frontend/lib/utils.ts` and its `cn()` helper.
-* Do not introduce CSS modules or styled-components.
-* Put business and data-flow logic in hooks rather than components.
-* Shared components belong in `frontend/components/`.
-* Route-local components belong under their route in `frontend/app/`.
-* Mask credentials through `frontend/lib/mask-token.ts`.
-* Never render raw API keys, access tokens, secrets, or complete credential values.
-
----
-
-## Code Intelligence Routing
-
-Use CodeGraph and Graphify for different responsibilities.
-
-### CodeGraph
-
-When `.codegraph/` exists, use CodeGraph before broad `Glob`, `Grep`, directory walks, or multi-file reads for current source-code questions:
-
-- `codegraph_explore` through MCP — relevant symbols, current line-numbered source, call paths, blast radius, and affected tests.
-- `codegraph explore "<question>"` through the shell — equivalent fallback when MCP is unavailable.
-
-Use CodeGraph for:
-
-- locating current source and symbols;
-- tracing callers, callees, routes, and dynamic dispatch;
-- identifying change impact and affected tests;
-- narrowing the exact files that require verification or editing.
-
-After a successful CodeGraph result, read only the decisive source locations needed for exact verification. Do not repeat the same investigation with broad file searches.
-
-If `.codegraph/` does not exist, skip CodeGraph. Do not initialize it automatically during a repository task.
-
-CodeGraph does not replace exact source verification before editing, Git diff inspection, linting, type checking, migrations, tests, builds, or runtime inspection.
-
-### Graphify
-
-The broader project knowledge graph is stored at `graphify-out/`.
-
-Use Graphify for:
-
-- architecture and dependency boundaries;
-- active specifications and debt relationships;
-- documentation, configuration, SQL, storage, and cross-artifact context;
-- subsystem-level impact and path questions;
-- pre-change structural orientation and post-change graph freshness.
-
-Useful commands:
-
-- `graphify query "<question>"` — search the graph.
-- `graphify path "<A>" "<B>"` — find paths between concepts.
-- `graphify explain "<concept>"` — explain a node.
-- `graphify check-update .` — check only for the `graphify-out/needs_update` flag indicating pending non-code semantic re-extraction.
-- `graphify update . --no-cluster` — perform the normal incremental source-code refresh after relevant source changes.
-
-`graphify check-update .` is intentionally silent when no semantic flag exists and is cron-safe. No output means only:
-
-```text
-No pending non-code semantic-update flag detected.
-```
-
-It does not prove that the source-code graph matches the working tree, and its exit status is not freshness evidence. Determine source refresh need from known implementation changes or focused Git changed-file evidence. After relevant source changes, run `graphify update . --no-cluster`.
-
-Do not call CodeGraph and Graphify for the same question unless the first tool leaves a documented gap. Do not run full clustering or community labeling after every edit; reserve it for an explicit semantic-work request.
-
-The git pre-commit hook may rebuild Graphify automatically. Codex users: see `.codex/rules/01-graphify.md`.
-
----
-
-## CI Gotchas
-
-* The `backend-tests` job in `.github/workflows/ci.yml` includes PostgreSQL 16 as a service.
-* `DATABASE_URL` is scoped to the Alembic step rather than the complete job.
-* Unit tests use SQLite in memory.
-* Job-level `ENV: test` prevents bootstrap credential hydration against CI PostgreSQL.
-* Alembic needs `backend` as its working directory because `script_location` in `backend/alembic.ini` is relative.
-* CI dependency installation needs the relevant extras, including:
-
-  * `documents`
-  * `gemini`
-  * `dev`
-  * `test`
-  * `s3`
-  * `auth`
-* YAML folded blocks using `>` join lines with spaces. Do not use shell `\` continuation inside them.
-* Known pre-existing failures are excluded by CI. Do not use them to hide newly introduced failures.
-* If a pre-existing test failure is NOT excluded by CI, fix it as part of the current work or add it to the CI ignore list with justification.
-* When changing CI behavior, compare local commands with the exact workflow commands.
-
-For manual GitHub configuration and CI verification, read:
-
-```text
-docs/DEPLOYMENT.md
-```
-
-Load that document only for CI, GitHub Actions, package publishing, or deployment tasks.
-
----
+- Migrations run in one-shot Compose `migrate` service before backend startup, never inside long-running backend containers.
+- Caddy routes `/api/admin/*`, `/api/auth/*`, `/api/user/*`, and `/health/*` to admin on 8000; `/api/public/*` to reader on 8001; remaining routes to frontend on 3000.
+- Compose healthcheck uses `python -c "import urllib.request; ..."` for image portability.
+- `DATABASE_URL` uses `postgresql+psycopg://`, not `postgresql://`.
+- `STORAGE_BACKEND` is `filesystem` or `s3`. S3/R2 directories are virtual prefixes: use backend listing/prefix operations such as `has_keys()`, never `Path.exists()`, `Path.is_dir()`, or host-filesystem assumptions.
+- Object-store lifecycle rules are not backups. Claim backup coverage only with an independently restorable copy and verified restore procedure.
+- Split or multi-instance mode requires Redis for shared rate limits and distributed jobs. Canonical environment variable is `ENV`, not `APP_ENV`.
 
 ## Testing
 
-* Shared fixtures live in `backend/tests/conftest.py`.
-* `TestFixture` provides isolated storage, mock providers, mock sources, and a wired dependency container.
-* Database-backed unit tests use SQLite in memory through local `db_session` fixtures.
-* Unit tests do not require PostgreSQL unless the test explicitly says otherwise.
-* End-to-end fixtures live in `backend/tests/e2e/conftest.py`.
-* Scratch fixture root:
+- Shared fixtures: `backend/tests/conftest.py`.
+- `TestFixture` supplies isolated storage, mock providers, mock sources, and dependency container.
+- Unit DB tests use SQLite in memory unless explicitly marked otherwise.
+- E2E fixtures: `backend/tests/e2e/conftest.py`.
+- Scratch fixture root: `backend/tests/.tmp/fixtures`.
+- Scratch runtime root: `backend/tests/.tmp/runtime`.
+- Register ORM models through `register_database_models()` in `novelai/db/model_registry.py`; do not import individual ORM modules for side effects.
+- Source tests use offline fixtures and never access live novel websites.
+- Pytest configuration supplies `backend/src` and `backend` python paths, disables cache provider, and defines `e2e`.
+- Add or update tests directly proving changed behavior. Run closest focused test first, then affected language type checking. Run broader checks only for cross-subsystem changes.
+- One-line changes still require one runnable verification command.
 
-  * `backend/tests/.tmp/fixtures`
-* Scratch runtime root:
+## Dependencies and Lockfiles
 
-  * `backend/tests/.tmp/runtime`
-* Both scratch roots are gitignored.
-* ORM models are registered through the session-scoped autouse fixture calling `register_database_models()` from `novelai/db/model_registry.py`.
-* Do not import individual ORM modules merely for registration side effects.
-* Source tests must use offline fixtures.
-* Do not access live novel websites in tests.
-* Pytest configuration includes:
+- `pyproject.toml` is authoritative; there is intentionally no `requirements.txt`.
+- Standard editable development install: `pip install -e ".[dev]"`.
+- Available extras include `auth`, `db`, `dev`, `documents`, `gemini`, `openai`, `s3`, `test`, `worker`.
+- Lockfiles: `requirements.lock`, `requirements-dev.lock`, `uv.lock`.
+- After dependency changes run `deploy/update-lockfiles.ps1`; never edit generated lockfiles manually.
+- Do not add a dependency when standard library or an installed dependency adequately solves the need.
 
-  * `pythonpath = ["backend/src", "backend"]`
-  * `addopts = "-p no:cacheprovider"`
-  * marker: `e2e`
-* Pyright configuration includes:
+## Security and Secrets
 
-  * `pythonPlatform: "Windows"`
-  * `typeCheckingMode: "standard"`
-* Ruff configuration includes:
+- Never read, print, log, paste, commit, or return secrets, connection strings, credential fragments, `.env`, `deploy/.env`, or `deploy/.env.production` contents.
+- Never expose raw paths, internal DB keys, storage keys, complete credential values, hostnames, or stack traces in public API responses.
+- Mask backend credentials with existing masking code and frontend values through `frontend/lib/mask-token.ts`.
+- `SESSION_SECRET_KEY` fails closed at its default. `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is required before storing provider API keys. `OWNER_BOOTSTRAP_SECRET` is sole owner-seeding mechanism and must never be exposed.
+- Public Google OAuth and email/password registration create `role="user"` only. Public auth must never create or promote an owner.
+- Cookie-authenticated state-changing endpoints require CSRF protection. Never bypass auth or CSRF for tests.
+- Derive identity from authenticated session; never accept client-supplied `user_id` as authenticated identity.
+- `storage/novel_library` must never be served directly as static files. Do not delete raw chapters; they are audit data.
+- Production `WEB_CORS_ORIGINS` must be explicit, never `*`.
+- Do not implement public contribution credentials before readiness gate in `docs/ARCHITECTURE.md`.
+- Do not mutate production secrets, schema, data, functions, storage, or deployment without explicit target/action authorization.
 
-  * `target-version = "py313"`
-  * `line-length = 120`
+## Code Intelligence
 
-### Test selection
+### CodeGraph
 
-For a behavior change:
-
-1. Run the closest focused test file.
-2. Add or update tests that directly prove the new behavior.
-3. Run type checking for the affected language.
-4. Run broader checks only when the change crosses several subsystems.
-
-A one-line change still requires at least one runnable verification command.
-
-Never claim a test passed unless it was actually run successfully.
-
----
-
-## Dependencies
-
-* `pyproject.toml` is authoritative.
-* There is intentionally no `requirements.txt`.
-* Standard editable development install:
+When `.codegraph/` exists, use CodeGraph before broad file searches for current source questions. It locates symbols, current source, callers/callees, dynamic dispatch, blast radius, and affected tests:
 
 ```powershell
-pip install -e ".[dev]"
+codegraph explore "<symbol names or question>"
 ```
 
-Available extras include:
+After results, read only decisive source locations. CodeGraph does not replace source verification, diff inspection, lint, type checks, migrations, tests, builds, or runtime checks. Do not initialize or edit `.codegraph/` during ordinary tasks.
 
-```text
-auth
-db
-dev
-documents
-gemini
-openai
-s3
-test
-worker
-```
+### Graphify
 
-Lockfiles:
-
-* `requirements.lock`
-* `requirements-dev.lock`
-* `uv.lock`
-
-After changing dependencies, regenerate lockfiles through:
+Graphify covers architecture, docs, config, SQL, storage, specifications, and cross-artifact context. Prefer scoped commands:
 
 ```powershell
-deploy/update-lockfiles.ps1
+graphify query "<question>"
+graphify path "<A>" "<B>"
+graphify explain "<concept>"
 ```
 
-Do not edit generated lockfiles manually.
+Use `graphify-out/wiki/index.md` for broad navigation when present. Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review or when scoped queries are insufficient. Do not use CodeGraph and Graphify for the same question unless first leaves a documented gap.
 
-Do not add a dependency when the standard library or an existing dependency adequately solves the problem.
+`graphify check-update .` checks only pending non-code semantic extraction; silence does not prove source freshness. Run `graphify update . --no-cluster` after every edit, including docs. Never run semantic extraction, clustering, or labeling without explicit approval and budget controls. Do not edit generated `.codegraph/` contents.
 
----
+## Windows and GitHub
 
-## Deployment
-
-* `compose.yml` is canonical.
-* `compose.dev.yml` overlays development configuration.
-* Migrations run as the one-shot `migrate` service before backend startup.
-* Do not run migrations from inside the long-running backend container.
-* Caddy routing:
-
-  * `/api/admin/*` → admin backend on port 8000.
-  * `/api/auth/*` → admin backend on port 8000.
-  * `/api/user/*` → admin backend on port 8000 (session-authenticated public-user data).
-  * `/api/public/*` → reader backend on port 8001.
-  * `/health/*` → admin backend on port 8000 (liveness, readiness, admin health).
-  * all remaining routes, including public `/novels/*` pages → frontend on port 3000.
-* Local environment file: `.env`
-* Compose environment file: `deploy/.env`
-* Production environment file: `deploy/.env.production`
-* Development overlay: `deploy/compose.dev.yml` (used via `deploy/docker-compose-dev.ps1`).
-* `DATABASE_URL` must use the `postgresql+psycopg://` scheme (psycopg v3), not `postgresql://` (which defaults to psycopg2 and is not installed).
-* A managed PostgreSQL host does not replace the repository's SQLAlchemy/Alembic persistence layer.
-* S3-compatible object storage is configured through `STORAGE_BACKEND=s3` and the canonical `S3_*` settings.
-* R2 directories are virtual prefixes. Use backend prefix/listing operations such as `has_keys()`; never use `Path.exists()`, `Path.is_dir()`, or host-filesystem assumptions for object-store data.
-* Object-store lifecycle rules are not backups. Never claim backup coverage without an independently restorable copy and a verified restore procedure.
-
-Required production settings include:
-
-```text
-SESSION_SECRET_KEY
-OWNER_BOOTSTRAP_SECRET
-PUBLIC_FRONTEND_URL
-DATABASE_URL
-```
-
-Do not edit deployment secrets or production data unless explicitly requested.
-
----
-
-## Security
-
-* Never log or return secrets.
-* Mask backend credential values using the existing backend masking pattern.
-* Mask frontend credential values through `frontend/lib/mask-token.ts`.
-* `SESSION_SECRET_KEY` must fail closed when left at its default.
-* `PROVIDER_CREDENTIAL_ENCRYPTION_KEY` is required before storing provider API keys in the database.
-* `OWNER_BOOTSTRAP_SECRET` is the only owner-seeding mechanism.
-* Never expose the owner bootstrap secret through logs, errors, API responses, or UI.
-* Never read, print, paste, or return database connection strings, provider service-role keys, object-store credentials, or hosting-platform environment secrets.
-* The application uses a single owner-admin model.
-* Public Google OAuth and email/password registration create `role="user"` only.
-* Public authentication must never create or promote an owner.
-* Cookie-authenticated state-changing endpoints require CSRF protection.
-* Do not bypass authorization or CSRF checks to make tests pass.
-* Never accept a client-supplied `user_id` as the authenticated identity.
-* Derive user identity from the authenticated session.
-* API responses must not expose:
-
-  * raw filesystem paths;
-  * internal database keys;
-  * storage keys;
-  * secrets;
-  * complete credential values.
-* `storage/novel_library` must never be served directly as static files.
-* Do not delete raw scraped chapters after translation; they are audit data.
-* Production `WEB_CORS_ORIGINS` must be explicit and must not use `*`.
-* Do not implement public contribution credentials until the readiness gate in `docs/ARCHITECTURE.md` is satisfied.
-* Do not read, print, commit, or paste the contents of `.env` or production environment files.
-
----
-
-## Environment
-
-Canonical environment variable:
-
-```text
-ENV
-```
-
-Do not introduce `APP_ENV`.
-
-Supported deployment modes:
-
-```text
-DEPLOY_MODE=monolith
-DEPLOY_MODE=split
-```
-
-Split mode requires Redis for shared rate limiting and the distributed job queue.
-
-Rate limiter backends:
-
-```text
-WEB_RATE_LIMITER_BACKEND=memory
-WEB_RATE_LIMITER_BACKEND=redis
-```
-
-Use Redis for multi-instance deployment.
-
-Worker behavior:
-
-```text
-JOB_WORKER_ENABLED=true
-```
-
-This enables the in-process activity worker.
-
-Email delivery defaults to:
-
-```text
-AUTH_EMAIL_DELIVERY_MODE=noop
-```
-
-Use SMTP only after the SMTP configuration has been tested.
-
-Storage backends:
-
-```text
-STORAGE_BACKEND=filesystem
-STORAGE_BACKEND=s3
-```
-
-`NOVEL_LIBRARY_DIR` is the local filesystem base path.
-
----
-
-## Tooling on Windows
-
-* Use PowerShell-compatible commands.
-* Chain commands with:
-  ```powershell
-  first-command; if ($?) { second-command }
-  ```
-* Do not use `&&`.
-* Run Python tools using `python -m <tool>`.
-* Do not assume Python console scripts are on `PATH`.
-* The Unix `grep` executable is not available — use `rg` instead.
-* Quote paths containing spaces.
-* Do not run interactive or TTY-dependent commands unless supported.
-
----
-
-## Managed Services and Tooling
-
-* Discover available MCP servers, skills, and tool names at task time. Do not encode live state in this file.
-* Require explicit user request before schema, data, function, secret, or deployment mutations.
-* For Supabase-hosted PostgreSQL, Alembic migrations are the source of truth — do not replace with dashboard-only changes.
-* Determine hosting provider from tracked configuration, not from frontend framework inference.
-
----
-
-## GitHub CLI on Windows
-
-* `gh pr merge --squash` may report local failure even after GitHub completes the merge. Verify with:
-  ```powershell
-  gh pr view --json state
-  ```
-* Complex `gh --jq` filters break in PowerShell. Pipe JSON to `ConvertFrom-Json` instead.
-* Do not create, merge, close, or modify pull requests unless explicitly requested.
-
----
+- Use PowerShell-compatible commands.
+- Chain dependent commands with `first-command; if ($?) { second-command }`; Windows PowerShell 5.1 does not support `&&`.
+- Run Python tools as `python -m <tool>` and do not assume console scripts are on `PATH`.
+- Use `rg`, not Unix `grep`.
+- Quote paths containing spaces; avoid interactive or TTY-dependent commands.
+- `gh pr merge --squash` can report local failure after a successful merge. Verify with `gh pr view --json state`.
+- Complex `gh --jq` filters can break in PowerShell; pipe JSON to `ConvertFrom-Json`.
+- Never create, modify, close, or merge a PR without explicit authorization.
 
 ## Documentation and Specifications
 
-* `docs/ARCHITECTURE.md` is authoritative.
-* `docs/WORK.md` is the single unfinished-work register.
-* Move completed work to `docs/HISTORY.md` in the same change that resolves it.
-* Specs under `.agents/` are tracked in Git.
-* Do not edit specifications without owner approval.
-* Do not treat an archived specification as an active requirement.
-* Update documentation when behavior, configuration, contracts, deployment, or operator procedures change.
-* Do not create duplicate documentation when an existing canonical document can be updated.
+- `docs/ARCHITECTURE.md` remains authoritative.
+- `docs/WORK.md` is single unfinished-work register. Move completed work to `docs/HISTORY.md` in same change.
+- Update canonical docs when behavior, configuration, contracts, deployment, security, or operator procedure changes; do not create duplicates.
+- Do not edit anything under `.agents/` without owner approval. Never treat archived specifications as active requirements.
+- `.opencode/` is local and gitignored; never commit it. Do not commit `.codegraph/`, `.vscode/`, secrets, session exports, test scratch data, or unrelated working-tree changes.
 
----
+## Final Evidence
 
-## Delegated Agent Quality Gate
+Before completion, reconcile requirements, focused diff, validation, independent review, Graphify refresh, documentation, and Git state. Report:
 
-When operating as a primary or orchestration agent:
+- files changed and behavior or documentation outcome;
+- exact commands, timeouts, exit codes, result counts, and paths;
+- review findings and resolutions;
+- Graphify result;
+- Git/PR/CI state requested by task;
+- remaining risks, unverified assumptions, or concrete blockers.
 
-* Subagents provide evidence; the primary agent decides whether the task is complete.
-* Review every handoff against the exact bounded assignment and the original user requirements.
-* Maintain a concise acceptance ledger with requirement, responsible worker, evidence, validation status, review status, and unresolved risk.
-* Reject empty output, vague completion claims, missing paths, commands without results, tests without exit status, and implementation claims unsupported by changed-file evidence.
-* Do not accept an implementation worker's report by itself. Changed behavior requires focused validation from a test worker and an independent review result.
-* Reconcile contradictions between implementation, testing, investigation, CodeGraph, Graphify, and review evidence. Treat conflicting evidence as unproven until a targeted verification resolves it.
-* Do not repeat repository-wide work already completed by a subagent. Delegate only the specific missing proof, defect, contradiction, or remediation.
-* Before declaring completion, verify that:
-  * every requirement is proven or honestly marked blocked;
-  * no blocking review finding remains;
-  * required lint, type, migration, test, frontend, or build commands passed;
-  * Graphify was refreshed after relevant source changes;
-  * the working-tree and commit state match the requested stopping point.
-* Never claim that behavior works unless actual command or runtime evidence demonstrates it.
-
-When operating as a subagent, complete only the assigned bounded outcome and return concise evidence. Do not decide overall project completion.
-
----
-
-## Final Report
-
-After implementing or reviewing work, report: files changed, behavior implemented or findings, commands run and results, remaining risks or unverified assumptions. Keep proportional to the task.
-
-## graphify
-
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
-
-When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
-
-Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update . --no-cluster` to keep the graph current (AST-only, no API cost).
+Never claim completion from worker prose, an unverified diff, or a local commit when requested stopping point is remote merge.
