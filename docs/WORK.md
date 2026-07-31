@@ -45,16 +45,16 @@ exists and is recorded in `HISTORY.md`.
 
 ## Candidate Freeze (REL-001)
 
-Recorded 2026-07-31T17:13:13Z.
+Recorded 2026-07-31T17:13:13Z; candidate frozen 2026-07-31T17:17:41Z.
 
 | Field | Value |
 |---|---|
-| Baseline HEAD (`main`) | `9bdd82be1a556e753d1efe4d116360d8ac220e08` (`9bdd82b`) |
-| Working tree | 22 uncommitted files (Phase 1 frontend + docs reconciliation) — must be committed; candidate = post-commit SHA |
+| Candidate commit (`main`) | `6afd4a2153619766ed4e876288a3b8bcc2135f2d` (`6afd4a2`) |
+| Working tree | Clean (22-file Phase 1 + docs batch committed) |
 | Image tag convention | `sha-<full commit SHA>` (`deploy.yml`) |
 | Environment | Production: always-on Docker Compose — Caddy, admin 8000, reader 8001, frontend 3000, PostgreSQL (Supabase), Redis, R2, SMTP (`DEPLOYMENT.md`) |
 | Domains | PENDING — operator records hosted domain; `PRODUCTION_BASE_URL` GitHub secret |
-| Candidate status | BLOCKED on commit of pending working tree |
+| Candidate status | FROZEN; deploy (`DEBT-079A`) blocked on domains |
 
 ## GitHub Controls Audit (GH-001)
 
@@ -74,6 +74,14 @@ Gaps:
   PR.
 - Fork PRs intentionally skipped (secrets not passed to untrusted code);
   native GitGuardian scan on forks is a fork-owner action.
+
+Resolved 2026-07-31T17:17:41Z: `PUT
+/branches/main/protection` set `required_approving_review_count = 1` and added
+`GitGuardian scan` to required status checks (verified via `gh api` GET —
+contexts: `docker-build`, `e2e-tests`, `Analyze (actions)`,
+`Analyze (javascript-typescript)`, `Analyze (python)`, `GitGuardian scan`).
+Remaining: sanitized incident/false-positive triage exercise and real GitGuardian
+pass on a PR against the new required check.
 
 ## Active Work
 
