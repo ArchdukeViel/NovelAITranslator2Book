@@ -11,7 +11,7 @@ const STORAGE_KEY = "dokushodo-theme";
 
 function getInitialTheme(): PublicTheme {
   if (typeof window === "undefined") {
-    return "light";
+    return "dark";
   }
 
   const stored = window.localStorage?.getItem(STORAGE_KEY);
@@ -20,9 +20,9 @@ function getInitialTheme(): PublicTheme {
   }
 
   return typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+    window.matchMedia("(prefers-color-scheme: light)").matches
+    ? "light"
+    : "dark";
 }
 
 function applyTheme(theme: PublicTheme) {
@@ -31,7 +31,7 @@ function applyTheme(theme: PublicTheme) {
 }
 
 export function PublicThemeToggle() {
-  const [theme, setTheme] = useState<PublicTheme>("light");
+  const [theme, setTheme] = useState<PublicTheme>("dark");
 
   useEffect(() => {
     const initialTheme = getInitialTheme();

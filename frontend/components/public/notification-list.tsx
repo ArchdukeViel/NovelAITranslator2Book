@@ -19,15 +19,15 @@ interface NotificationListProps {
 }
 
 const statusStyles: Record<NotificationStatus, string> = {
-  unread: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+  unread: "bg-info/10 text-info-foreground dark:text-info border-info/20",
   read: "bg-muted text-muted-foreground border-border/50",
   archived: "bg-destructive/10 text-destructive border-destructive/20",
 };
 
 const severityStyles: Record<NotificationItem["severity"], string> = {
-  info: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
-  success: "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20",
-  warning: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20",
+  info: "bg-info/10 text-info-foreground dark:text-info border-info/20",
+  success: "bg-success/10 text-success-foreground dark:text-success border-success/20",
+  warning: "bg-warning/10 text-warning-foreground dark:text-warning border-warning/20",
   error: "bg-destructive/10 text-destructive border-destructive/20",
 };
 
@@ -123,7 +123,7 @@ export function NotificationList({
             key={notification.id}
             className={cn(
               "relative flex gap-3 rounded-lg border p-4 transition-colors",
-              isUnread ? "bg-card ring-1 ring-blue-500/20" : "bg-card/50",
+              isUnread ? "bg-card ring-1 ring-info/20" : "bg-card/50",
               statusStyles[notification.status]
             )}
             role="listitem"

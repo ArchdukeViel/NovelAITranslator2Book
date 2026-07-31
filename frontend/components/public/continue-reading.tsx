@@ -13,9 +13,11 @@ interface ContinueReadingProps {
   slug: string;
   /** First available chapter ID to offer "Start reading" when no saved progress. */
   firstChapterId?: string | null;
+  /** Page already renders its own primary Start/Continue CTA; suppress the duplicate when there is no saved progress. */
+  hasHeroCta?: boolean;
 }
 
-export function ContinueReading({ slug, firstChapterId }: ContinueReadingProps) {
+export function ContinueReading({ slug, firstChapterId, hasHeroCta = false }: ContinueReadingProps) {
   const { isAuthenticated, isPending: authPending } = usePublicAuth();
   const progress = useProgress(slug);
 
@@ -75,6 +77,9 @@ export function ContinueReading({ slug, firstChapterId }: ContinueReadingProps) 
 
   // No saved progress but chapters exist → Start Reading
   if (firstChapterId) {
+    if (hasHeroCta) {
+      return null;
+    }
     const href = publicChapterHref(slug, firstChapterId);
     return (
       <Link
@@ -88,6 +93,9 @@ export function ContinueReading({ slug, firstChapterId }: ContinueReadingProps) 
   }
 
   // No progress and no chapters available
+  if (hasHeroCta) {
+    return null;
+  }
   return (
     <p className="text-sm text-muted-foreground">
       No chapters available to read yet.

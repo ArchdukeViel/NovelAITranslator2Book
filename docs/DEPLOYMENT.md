@@ -48,9 +48,10 @@ restore verification, and SMTP acceptance reliably.
 
 ### Disposable preview
 
-Vercel Hobby frontend plus Render Free monolith, Supabase Free, and development-
-only R2 scope. Disable continuous worker/scheduler, maintenance, backup/restore,
-SMTP, and alerts. Sleep and ephemeral filesystem make preview non-production.
+Vercel Services frontend plus Vercel FastAPI Function in monolith mode, Supabase
+Free, and development-only R2 scope. Disable continuous worker/scheduler,
+maintenance, backup/restore, SMTP, and alerts. Sleep and ephemeral filesystem
+make preview non-production.
 
 ### Production
 
@@ -116,8 +117,12 @@ Validator output remains redacted.
 
 Owner-operated settings should match tracked workflow expectations:
 
-- Protect `main`: PR required, review, conversations resolved, required CI and
-  CodeQL checks, no force push/deletion, owner-only bypass.
+- Protect `main`: PR required, conversations resolved, required CI, CodeQL, and
+  GitGuardian checks, no force push/deletion, owner-only bypass. No approving-
+  review requirement: this is a single-operator repository and GitHub forbids
+  PR authors from approving their own pull request, so a review gate would
+  block every merge. Re-enable review requirements if a second write-access
+  reviewer is added.
 - Keep default `GITHUB_TOKEN` read-only; grant write only per job.
 - Pin third-party actions to immutable SHAs.
 - Enable dependency graph, Dependabot security updates, CodeQL, secret scanning,
@@ -142,7 +147,6 @@ public URL, provider credentials, and managed-service verification credentials.
 - R2 application and backup scopes remain private and separate.
 - Supabase remains PostgreSQL behind SQLAlchemy/Alembic; dashboard changes do
   not replace repository migrations.
-- Render preview account verification is an unresolved gate, not production evidence.
 
 ## Acceptance
 

@@ -14,7 +14,7 @@ contains full former requirements/design/task documents.
 | Translation chunking and resume | Deterministic paragraphs/chunks, bounded chapter parallelism, checkpoints, delta/resume hardening implemented. | `ARCHITECTURE.md`, `TRANSLATION.md` |
 | Translation cache and QA | Exact cache identity, glossary invalidation, deterministic QA, prompt hardening, and advisory LLM-QA baseline implemented. | `TRANSLATION.md` |
 | Glossary system | Suggestions, approval, sync, diagnostics, onboarding, revision invalidation, editor QA, and public annotations implemented. | `TRANSLATION.md` |
-| Public reader | Catalog/detail/chapter routes, availability, SEO, accessibility baseline, performance budget, taxonomy, and annotations implemented locally. | `DESIGN.md` |
+| Public reader (baseline) | Catalog/detail/chapter routes, availability, SEO, accessibility baseline, performance budget, taxonomy, and annotations implemented locally. The Yokocho Lantern + Layout Rework replacement target is documented in `DESIGN.md` and tracked as `DEBT-FE-01` in `WORK.md`; Phase 1 (tokens, brand metadata, duplicate-CTA removal, dark default) shipped 2026-07-31 — see Frontend Design Phase 1 below. Layout/route rework remains pending. | `DESIGN.md` |
 | Admin operations | Users, audit, analytics, metrics, notifications, credentials, requests, health, and library summary implemented locally. | `ARCHITECTURE.md`, `OPERATIONS.md` |
 | Legal workflow | Contact/support/legal pages, DMCA intake, owner review, audit, HTTP 451, sitemap/cache enforcement implemented locally. | `ARCHITECTURE.md`, `DESIGN.md` |
 | Scheduler durability | Runtime state persistence, cooldown/exhaustion/heartbeat, leases, backup scheduling, and worker observability implemented. | `ARCHITECTURE.md`, `OPERATIONS.md` |
@@ -29,6 +29,7 @@ contains full former requirements/design/task documents.
 | PDF/EPUB/HTML/Markdown translated-novel generation | Reader downloads removed from product scope. Input adapters remain. |
 | Generated-file manifest UI and freshness scheduler | No generated reader artifacts remain to observe. |
 | Historical one-shot operation prompts | Replaced by canonical docs, `AGENTS.md`, and bounded active specs. |
+| Render preview provider (DEBT-094) | Preview topology aligned with `ARCHITECTURE.md`: Vercel frontend plus Vercel FastAPI Function in monolith mode. Render monorepo/Blueprint paths and account verification removed; preview acceptance now flows through the Vercel disposable preview described in `ARCHITECTURE.md` and `DEPLOYMENT.md`. |
 
 ## Deferred Ideas
 
@@ -89,5 +90,42 @@ Does not change launch `NO-GO` or satisfy hosted/manual gates in `WORK.md`.
 | GitGuardian CI workflow | `.github/workflows/gitguardian.yaml`: push/same-repository-PR full-history scan, `ggshield` v1.52.2 pinned, owner-configured `GITGUARDIAN_API_KEY` secret reference, read-only token; fork PRs skip secret-backed scanning. |
 
 Closes local request-boundary enforcement and GitGuardian workflow integration.
-PR #12 proved successful secret-backed push and same-repository PR scans; required-
-check protection and incident/false-positive handling remain operator evidence.
+PR #12 proved successful secret-backed push and same-repository PR scans.
+Required-check protection was configured and proven later (GH-001, PR #15 —
+see below); sanitized incident/false-positive triage remains operator evidence.
+
+## 2026-07-31 Frontend Design Phase 1 (DEBT-FE-01)
+
+Shipped the bounded Phase 1 slice of the Yokocho Lantern + Layout Rework target
+(`docs/DESIGN.md`): token swap in `globals.css` (light + dark), semantic
+`success`/`warning`/`info` + `--focus-ring` tokens wired to Tailwind, public
+surfaces consume tokens (badge, rating stars, notification list, request/review
+success states, contributions banner), root metadata brand "Dokushodo",
+novel-detail duplicate Start Reading CTA suppressed (`ContinueReading
+hasHeroCta`), public theme default dark (respects explicit
+`prefers-color-scheme: light`). Layout Rework routes/nav/search and the asset
+system remain pending in `WORK.md` as `DEBT-FE-01` Phase 2+; admin surfaces
+intentionally unchanged.
+
+| Check | Result |
+|---|---|
+| Frontend Vitest | 63 files, 770 tests passed. |
+| Frontend typecheck | Passed. |
+| Frontend production build | Passed. |
+| Backend hosted-preview contract tests | 6 passed. |
+| Backend Ruff | Passed. |
+| Markdown local-link audit | 0 broken links. |
+| Graphify source refresh | 11,035 nodes, 32,658 edges. |
+
+Does not change launch `NO-GO` or satisfy hosted/manual gates in `WORK.md`.
+
+PR #15 (`feat/yokocho-phase1-docs`, base `main`) opened and merged 2026-07-31
+(squash): all required checks passed — `GitGuardian scan` (push +
+pull_request), `docker-build`, `e2e-tests`,
+`Analyze (actions|javascript-typescript|python)`, CodeQL, backend lint/tests,
+and frontend-check; Vercel preview deployed. This proved the GH-001
+required-check configuration (`GitGuardian scan` required) against a real
+same-repository PR. The approving-review requirement was set to `0` because
+GitHub forbids PR authors from approving their own pull request and this is a
+single-operator repository (see `DEPLOYMENT.md` GitHub Controls). Sanitized
+incident/false-positive triage remains operator evidence.

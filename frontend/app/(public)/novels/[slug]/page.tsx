@@ -327,7 +327,7 @@ export default function NovelDetailPage() {
               {!authPending && isAuthenticated && (
                 <>
                   <SaveToLibrary slug={publicSlug} />
-                  <ContinueReading slug={publicSlug} firstChapterId={firstChapterId} />
+                  <ContinueReading slug={publicSlug} firstChapterId={firstChapterId} hasHeroCta={!!firstTranslatedChapter} />
                 </>
               )}
               {!authPending && !isAuthenticated && <SaveToLibrary slug={publicSlug} />}
