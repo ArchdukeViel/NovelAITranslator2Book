@@ -117,8 +117,12 @@ Validator output remains redacted.
 
 Owner-operated settings should match tracked workflow expectations:
 
-- Protect `main`: PR required, review, conversations resolved, required CI and
-  CodeQL checks, no force push/deletion, owner-only bypass.
+- Protect `main`: PR required, conversations resolved, required CI, CodeQL, and
+  GitGuardian checks, no force push/deletion, owner-only bypass. No approving-
+  review requirement: this is a single-operator repository and GitHub forbids
+  PR authors from approving their own pull request, so a review gate would
+  block every merge. Re-enable review requirements if a second write-access
+  reviewer is added.
 - Keep default `GITHUB_TOKEN` read-only; grant write only per job.
 - Pin third-party actions to immutable SHAs.
 - Enable dependency graph, Dependabot security updates, CodeQL, secret scanning,

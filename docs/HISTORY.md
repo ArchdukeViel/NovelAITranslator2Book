@@ -119,11 +119,13 @@ intentionally unchanged.
 
 Does not change launch `NO-GO` or satisfy hosted/manual gates in `WORK.md`.
 
-PR #15 (`feat/yokocho-phase1-docs`, base `main`) opened 2026-07-31: all
-required checks passed — `GitGuardian scan` (push + pull_request),
-`docker-build`, `e2e-tests`, `Analyze (actions|javascript-typescript|python)`,
-CodeQL, backend lint/tests, and frontend-check; Vercel preview deployed.
-Merge remains `BLOCKED` on required review (1 approval). This proved the
-GH-001 required-check configuration (review count 1, `GitGuardian scan`
-required) against a real same-repository PR. Sanitized incident/false-positive
-triage remains operator evidence.
+PR #15 (`feat/yokocho-phase1-docs`, base `main`) opened and merged 2026-07-31
+(squash): all required checks passed — `GitGuardian scan` (push +
+pull_request), `docker-build`, `e2e-tests`,
+`Analyze (actions|javascript-typescript|python)`, CodeQL, backend lint/tests,
+and frontend-check; Vercel preview deployed. This proved the GH-001
+required-check configuration (`GitGuardian scan` required) against a real
+same-repository PR. The approving-review requirement was set to `0` because
+GitHub forbids PR authors from approving their own pull request and this is a
+single-operator repository (see `DEPLOYMENT.md` GitHub Controls). Sanitized
+incident/false-positive triage remains operator evidence.
