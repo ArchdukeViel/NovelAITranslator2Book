@@ -171,14 +171,14 @@ export function severityBadgeClass(severity: NotificationItem["severity"]): stri
   const base = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium";
   switch (severity) {
     case "error":
-      return `${base} bg-destructive/10 text-destructive border border-destructive/20`;
+      return `${base} bg-destructive/10 text-destructive-text border border-destructive/20`;
     case "warning":
-      return `${base} bg-warning/10 text-warning-foreground dark:text-warning border border-warning/20`;
+      return `${base} bg-warning/10 text-warning-text border border-warning/20`;
     case "success":
-      return `${base} bg-success/10 text-success-foreground dark:text-success border border-success/20`;
+      return `${base} bg-success/10 text-success-text border border-success/20`;
     case "info":
     default:
-      return `${base} bg-info/10 text-info-foreground dark:text-info border border-info/20`;
+      return `${base} bg-info/10 text-info-text border border-info/20`;
   }
 }
 

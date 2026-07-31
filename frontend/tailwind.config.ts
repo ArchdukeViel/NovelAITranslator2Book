@@ -18,7 +18,8 @@ const config: Config = {
         foreground: "hsl(var(--foreground))",
         primary: {
           DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))"
+          foreground: "hsl(var(--primary-foreground))",
+          text: "hsl(var(--primary-text))"
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -34,7 +35,8 @@ const config: Config = {
         },
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))"
+          foreground: "hsl(var(--destructive-foreground))",
+          text: "hsl(var(--destructive-text))"
         },
         card: {
           DEFAULT: "hsl(var(--card))",
@@ -50,15 +52,18 @@ const config: Config = {
         },
         success: {
           DEFAULT: "hsl(var(--success))",
-          foreground: "hsl(var(--success-foreground))"
+          foreground: "hsl(var(--success-foreground))",
+          text: "hsl(var(--success-text))"
         },
         warning: {
           DEFAULT: "hsl(var(--warning))",
-          foreground: "hsl(var(--warning-foreground))"
+          foreground: "hsl(var(--warning-foreground))",
+          text: "hsl(var(--warning-text))"
         },
         info: {
           DEFAULT: "hsl(var(--info))",
-          foreground: "hsl(var(--info-foreground))"
+          foreground: "hsl(var(--info-foreground))",
+          text: "hsl(var(--info-text))"
         },
       },
       fontFamily: {
