@@ -45,16 +45,17 @@ exists and is recorded in `HISTORY.md`.
 
 ## Candidate Freeze (REL-001)
 
-Recorded 2026-07-31T17:13:13Z; candidate frozen 2026-07-31T17:17:41Z.
+Recorded 2026-07-31T17:13:13Z; re-frozen 2026-07-31T17:52:47Z on merged
+`main` (PR #15 squash).
 
 | Field | Value |
 |---|---|
-| Candidate commit (`main`) | `6afd4a2153619766ed4e876288a3b8bcc2135f2d` (`6afd4a2`) |
-| Working tree | Clean (22-file Phase 1 + docs batch committed) |
-| Image tag convention | `sha-<full commit SHA>` (`deploy.yml`) |
+| Candidate commit (`main`) | `d4a4e8bf98ce4ed54555ffb637475206412f314e` (`d4a4e8b`) — PR #15 squash merge |
+| Working tree | Clean |
+| Image tag convention | `sha-<full commit SHA>` (`deploy.yml`) — this candidate: `sha-d4a4e8b…` |
 | Environment | Production: always-on Docker Compose — Caddy, admin 8000, reader 8001, frontend 3000, PostgreSQL (Supabase), Redis, R2, SMTP (`DEPLOYMENT.md`) |
 | Domains | PENDING — operator records hosted domain; `PRODUCTION_BASE_URL` GitHub secret |
-| Candidate status | FROZEN; deploy (`DEBT-079A`) blocked on domains |
+| Candidate status | FROZEN (merged to `main`); `DEBT-079A` deploy blocked on domains |
 
 ## GitHub Controls Audit (GH-001)
 
