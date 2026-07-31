@@ -706,13 +706,13 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
                       >
                         <span className="truncate">{genre.name_en ?? genre.slug}</span>
                         {state === "include" && (
-                          <span className="inline-flex shrink-0 items-center gap-1 rounded bg-primary/20 px-1.5 py-0.5 font-metadata text-[10px] uppercase tracking-[0.08em] text-primary">
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded bg-primary/20 px-1.5 py-0.5 font-metadata text-[10px] uppercase tracking-[0.08em] text-primary-text">
                             <PlusCircle className="h-3 w-3" aria-hidden="true" />
                             In
                           </span>
                         )}
                         {state === "exclude" && (
-                          <span className="inline-flex shrink-0 items-center gap-1 rounded bg-destructive/15 px-1.5 py-0.5 font-metadata text-[10px] uppercase tracking-[0.08em] text-destructive">
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded bg-destructive/15 px-1.5 py-0.5 font-metadata text-[10px] uppercase tracking-[0.08em] text-destructive-text">
                             <MinusCircle className="h-3 w-3" aria-hidden="true" />
                             Out
                           </span>

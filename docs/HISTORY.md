@@ -129,3 +129,23 @@ same-repository PR. The approving-review requirement was set to `0` because
 GitHub forbids PR authors from approving their own pull request and this is a
 single-operator repository (see `DEPLOYMENT.md` GitHub Controls). Sanitized
 incident/false-positive triage remains operator evidence.
+
+## 2026-07-31 Frontend Phase 2 — FE-02 accessibility (DEBT-FE-01)
+
+Token contrast verified programmatically against WCAG AA (4.5:1) for solid
+fills, tinted chips, cards, and page backgrounds in both modes — 34 checks,
+0 failures. Failures found and fixed during tuning: primary text on lantern
+orange (2.23:1 dark), info text (2.94:1 dark), light accent text (3.39:1).
+Added context tokens `--{success,warning,info,destructive,primary}-text`
+(tinted-chip/inline text, per-mode shade) distinct from `-foreground`
+(solid-fill text); destructive-foreground dark on red (4.63:1); light accent
+fill rebalanced (340 55% 40%) with near-white accent-foreground (6.4:1).
+Primary buttons gained the two-layer focus treatment
+(`.bg-primary:focus-visible`: neutral inner ring + `--focus-ring` outer
+offset). Components updated to `-text` tokens: badge, notification list,
+use-notifications severity badges, contributions banner, rating-review and
+request-control success messages, browse filter chips. Admin surfaces
+intentionally unchanged per `DESIGN.md`. Validation: typecheck, 770 Vitest
+tests, production build all pass. Remaining FE-02 items are manual browser
+checks (keyboard, screen reader, 200% zoom, reduced motion) — operator
+evidence.

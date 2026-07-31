@@ -152,7 +152,7 @@ export function RatingReview({ slug }: RatingReviewProps) {
 
       {/* Success confirmation */}
       {justSaved && savedReview && (
-        <p className="text-sm text-success-foreground">
+        <p className="text-sm text-success-text">
           ✓ Review submitted{savedReview.status === "pending" ? " (pending review)" : ""}.
         </p>
       )}

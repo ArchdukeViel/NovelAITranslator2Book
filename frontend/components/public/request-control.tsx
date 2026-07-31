@@ -213,7 +213,7 @@ export function RequestControl({ slug, chapterId }: RequestControlProps) {
 
       {/* Success confirmation */}
       {justSubmitted && createdRequest && (
-        <p className="text-sm text-success-foreground">
+        <p className="text-sm text-success-text">
           ✓ Request submitted — {statusLabel(createdRequest.status)}.
         </p>
       )}

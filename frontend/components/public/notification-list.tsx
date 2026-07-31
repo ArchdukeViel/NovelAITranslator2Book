@@ -19,16 +19,16 @@ interface NotificationListProps {
 }
 
 const statusStyles: Record<NotificationStatus, string> = {
-  unread: "bg-info/10 text-info-foreground dark:text-info border-info/20",
+  unread: "bg-info/10 text-info-text border-info/20",
   read: "bg-muted text-muted-foreground border-border/50",
-  archived: "bg-destructive/10 text-destructive border-destructive/20",
+  archived: "bg-destructive/10 text-destructive-text border-destructive/20",
 };
 
 const severityStyles: Record<NotificationItem["severity"], string> = {
-  info: "bg-info/10 text-info-foreground dark:text-info border-info/20",
-  success: "bg-success/10 text-success-foreground dark:text-success border-success/20",
-  warning: "bg-warning/10 text-warning-foreground dark:text-warning border-warning/20",
-  error: "bg-destructive/10 text-destructive border-destructive/20",
+  info: "bg-info/10 text-info-text border-info/20",
+  success: "bg-success/10 text-success-text border-success/20",
+  warning: "bg-warning/10 text-warning-text border-warning/20",
+  error: "bg-destructive/10 text-destructive-text border-destructive/20",
 };
 
 const eventTypeLabels: Record<NotificationItem["event_type"], string> = {
