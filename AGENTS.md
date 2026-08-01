@@ -35,6 +35,8 @@ Run smallest check proving changed behavior, from repository root unless command
 | `python -m pytest backend/tests/e2e/` | Backend E2E tests; slower and fixture-dependent. |
 | `cd frontend; npm run typecheck` | Frontend TypeScript check. |
 | `cd frontend; npm run test` | Frontend Vitest suite. |
+| `cd frontend; npm run lint` | Frontend ESLint. |
+| `cd frontend; npx vitest run <file>` | Focused frontend test file(s). |
 | `cd frontend; npm run build` | Production frontend build. |
 | `cd backend; alembic -c alembic.ini upgrade head` | Apply migrations; requires `DATABASE_URL`. |
 
