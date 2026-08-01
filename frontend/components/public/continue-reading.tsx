@@ -15,9 +15,12 @@ interface ContinueReadingProps {
   firstChapterId?: string | null;
   /** Page already renders its own primary Start/Continue CTA; suppress the duplicate when there is no saved progress. */
   hasHeroCta?: boolean;
+  /** Novel detail's sole primary CTA allows guests to start reading directly. */
+  allowGuestStart?: boolean;
+  primary?: boolean;
 }
 
-export function ContinueReading({ slug, firstChapterId, hasHeroCta = false }: ContinueReadingProps) {
+export function ContinueReading({ slug, firstChapterId, hasHeroCta = false, allowGuestStart = false, primary = false }: ContinueReadingProps) {
   const { isAuthenticated, isPending: authPending } = usePublicAuth();
   const progress = useProgress(slug);
 
@@ -31,6 +34,17 @@ export function ContinueReading({ slug, firstChapterId, hasHeroCta = false }: Co
   }
 
   if (!isAuthenticated) {
+    if (allowGuestStart && firstChapterId) {
+      return (
+        <Link
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          href={publicChapterHref(slug, firstChapterId)}
+        >
+          <BookOpen className="h-4 w-4" />
+          Start Reading
+        </Link>
+      );
+    }
     return <LoginPrompt />;
   }
 
@@ -66,7 +80,7 @@ export function ContinueReading({ slug, firstChapterId, hasHeroCta = false }: Co
     const href = publicChapterHref(slug, chapterId);
     return (
       <Link
-        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
+        className={primary ? "inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90" : "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"}
         href={href}
       >
         <BookOpen className="h-4 w-4" />
@@ -83,7 +97,7 @@ export function ContinueReading({ slug, firstChapterId, hasHeroCta = false }: Co
     const href = publicChapterHref(slug, firstChapterId);
     return (
       <Link
-        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
+        className={primary ? "inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90" : "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"}
         href={href}
       >
         <BookOpen className="h-4 w-4" />

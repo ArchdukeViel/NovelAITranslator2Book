@@ -261,3 +261,24 @@ straight to novel detail, and falls back to `/browse-novels?notice=empty`
 when no novel is available. Validation: frontend typecheck, 769 Vitest tests
 across 67 files, production build (48 routes), backend public-router 125
 tests, focused Ruff, and router dependency guard all pass.
+
+## 2026-08-02 Frontend Phase 2 — FE-07 novel detail (DEBT-FE-01)
+
+Novel detail now uses a sticky desktop left panel for the bookplate, title,
+status, metadata, Save control, and exactly one adaptive Start/Continue CTA.
+On mobile, the same action becomes a slim fixed bottom bar and `PublicShell`
+suppresses the global mobile tab bar on detail routes, preventing stacked
+fixed controls.
+
+Overview, Chapters, and Reviews are URL-backed (`?tab=chapters`) segmented
+views. Overview owns synopsis and canonical tag/genre links. Chapters adds
+search, ascending/descending order, volume collapse/expand-all, first-unread
+and latest anchors, read/last-read markers from account progress, explicit
+untranslated rows, and progressive 100-row rendering for long lists. Reviews
+contains the existing honest rating/review form; no fake recommendation or
+other-reader data was added.
+
+Public chapter summaries still lack added-at and explicit translation-failure
+fields, and no public other-reader review-list endpoint/pagination contract
+exists. New/Failed markers and review lists remain registered in `WORK.md`
+across 67 files, and production build (48 routes) all pass.
