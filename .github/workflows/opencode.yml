@@ -29,6 +29,6 @@ jobs:
       - name: Run opencode
         uses: anomalyco/opencode/github@77fc88c8ade8e5a620ebbe1197f3a572d29ae91a # v1.2.19
         env:
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         with:
-          model: nvidia/minimaxai/minimax-m3
+          model: opencode/deepseek-v4-flash-free
