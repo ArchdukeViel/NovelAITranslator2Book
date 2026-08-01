@@ -268,6 +268,7 @@ describe("Route inventory completeness", () => {
     "/home",
     "/browse-novels",
     "/ranking",
+    "/random",
     "/request-novel",
     "/contribute",
     "/about",

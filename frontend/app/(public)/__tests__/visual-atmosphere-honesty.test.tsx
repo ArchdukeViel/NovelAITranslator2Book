@@ -148,19 +148,15 @@ function renderHome() {
 describe("Home page visual honesty", () => {
   it("renders without crashing", () => {
     renderHome();
-    expect(screen.getByText("Latest Releases")).toBeInTheDocument();
-    expect(screen.getByText("Recent Updates")).toBeInTheDocument();
+    expect(screen.getByText("New Releases")).toBeInTheDocument();
+    expect(screen.getByText("Recently Updated")).toBeInTheDocument();
   });
 
-  it("shows grouped dates in the Recent Updates section", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
-
+  it("uses labeled rails instead of the old grouped date stack", () => {
     renderHome();
-
-    expect(screen.getByText("Today")).toBeInTheDocument();
-    expect(screen.getByText("Yesterday")).toBeInTheDocument();
-    expect(screen.getByText("1 week ago")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "New releases" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Recently updated" })).toBeInTheDocument();
+    expect(screen.queryByText("Today")).not.toBeInTheDocument();
   });
 
   it("does not display a Preview Feature badge", () => {
@@ -190,15 +186,13 @@ describe("Home page visual honesty", () => {
     expect(screen.queryByText("Ranking Preview")).not.toBeInTheDocument();
   });
 
-  it("shows honest catalog CTA instead of ranking placeholder", () => {
+  it("shows honest Surprise Me entry instead of ranking placeholder", () => {
     renderHome();
     // The old "Ranking data is not live yet" placeholder is removed.
     expect(
       screen.queryByText(/ranking data is not live/i)
     ).not.toBeInTheDocument();
-    // Replaced by "Browse the catalog" CTA
-    const browseLinks = screen.getAllByText("Browse the catalog");
-    expect(browseLinks.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("link", { name: /surprise me/i })).toHaveAttribute("href", "/random");
   });
 
   it("does not display a fake library stats label", () => {
@@ -206,15 +200,15 @@ describe("Home page visual honesty", () => {
     expect(screen.queryByText(/library stats/i)).not.toBeInTheDocument();
   });
 
-  it("displays Featured eyebrow on hero section", () => {
+  it("never makes an unsupported Featured claim", () => {
     renderHome();
-    expect(screen.getByText("Featured")).toBeInTheDocument();
+    expect(screen.queryByText("Featured")).not.toBeInTheDocument();
   });
 
-  it("renders Latest Releases and Recent Updates sections", () => {
+  it("renders New Releases and Recently Updated sections", () => {
     renderHome();
-    expect(screen.getByText("Latest Releases")).toBeInTheDocument();
-    expect(screen.getByText("Recent Updates")).toBeInTheDocument();
+    expect(screen.getByText("New Releases")).toBeInTheDocument();
+    expect(screen.getByText("Recently Updated")).toBeInTheDocument();
     expect(screen.queryByText("Recently Added")).not.toBeInTheDocument();
     expect(screen.queryByText("Latest Updates")).not.toBeInTheDocument();
   });

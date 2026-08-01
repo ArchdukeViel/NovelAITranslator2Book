@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-VALID_SORT_FIELDS = {"added_at", "title", "chapter_count"}
+VALID_SORT_FIELDS = {"added_at", "updated_at", "title", "chapter_count"}
 VALID_ORDER_VALUES = {"asc", "desc"}
 DEFAULT_SORT_BY = "added_at"
 DEFAULT_ORDER = "desc"

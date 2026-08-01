@@ -11,7 +11,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from sqlalchemy import and_, true
+from sqlalchemy import and_, func, true
 from sqlalchemy.orm import Session
 
 from novelai.api.auth.session import SessionUser, get_current_user
@@ -150,6 +150,8 @@ def _catalog_from_db_page(
 
     if effective_sort_by == "title":
         order_field = Novel.title
+    elif effective_sort_by == "updated_at":
+        order_field = func.coalesce(Novel.latest_chapter_updated_at, Novel.updated_at)
     elif effective_sort_by == "chapter_count":
         order_field = Novel.chapter_count
     else:
@@ -219,6 +221,8 @@ def _catalog_from_storage(
     def _sort_key(novel: dict[str, Any]) -> str | int:
         if effective_sort_by == "title":
             return (novel.get("title") or "").lower()
+        if effective_sort_by == "updated_at":
+            return novel.get("latest_chapter_updated_at") or novel.get("added_at") or ""
         if effective_sort_by == "chapter_count":
             return novel.get("chapter_count", 0)
         if novel.get("added_at"):
@@ -250,7 +254,7 @@ async def catalog(
     q: str | None = Query(default=None, description="Search title or author"),
     publication_status: str | None = Query(default=None, description="Filter by publication status"),
     source_key: str | None = Query(default=None, description="Filter by canonical source identifier"),
-    sort_by: str | None = Query(default=None, description="Sort field: added_at, title, chapter_count"),
+    sort_by: str | None = Query(default=None, description="Sort field: added_at, updated_at, title, chapter_count"),
     order: str | None = Query(default=None, description="Sort order: asc or desc"),
     min_chapters: int | None = Query(default=None, ge=0, description="Minimum chapter count"),
     max_chapters: int | None = Query(default=None, ge=0, description="Maximum chapter count"),

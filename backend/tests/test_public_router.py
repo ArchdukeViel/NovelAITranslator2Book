@@ -268,6 +268,24 @@ class TestCatalog:
         assert data["total"] == 1
         assert [novel["novel_id"] for novel in data["novels"]] == ["novel-001"]
 
+    def test_catalog_storage_sorts_by_latest_chapter_updated_at(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        _seed_novel(
+            storage,
+            "older",
+            chapters=[{"id": "ch1", "num": 1, "updated_at": "2024-03-01T00:00:00Z"}],
+        )
+        _seed_novel(
+            storage,
+            "newer",
+            chapters=[{"id": "ch1", "num": 1, "updated_at": "2024-06-01T00:00:00Z"}],
+        )
+
+        data = client.get("/api/public/catalog?sort_by=updated_at&order=desc").json()
+
+        assert [novel["novel_id"] for novel in data["novels"]] == ["newer", "older"]
+
     def test_catalog_filter_by_publication_status(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001", publication_status="ongoing")
         _seed_novel(storage, "novel-002", publication_status="completed")
@@ -587,6 +605,24 @@ class TestCatalog:
 
         assert [novel["novel_id"] for novel in data["novels"]] == ["first", "second"]
         assert {novel["added_at"] for novel in data["novels"]} == {"2024-03-01T00:00:00"}
+
+    def test_catalog_db_sorts_by_updated_at(self, client: TestClient, db_session) -> None:
+        _seed_db_catalog_novel(
+            db_session,
+            "older",
+            updated_at=datetime(2024, 7, 1, tzinfo=UTC),
+            latest_chapter_updated_at=datetime(2024, 3, 1, tzinfo=UTC),
+        )
+        _seed_db_catalog_novel(
+            db_session,
+            "newer",
+            updated_at=datetime(2024, 4, 1, tzinfo=UTC),
+            latest_chapter_updated_at=datetime(2024, 6, 1, tzinfo=UTC),
+        )
+
+        data = client.get("/api/public/catalog?sort_by=updated_at&order=desc").json()
+
+        assert [novel["novel_id"] for novel in data["novels"]] == ["newer", "older"]
 
     def test_catalog_db_path_excludes_unpublished_rows(
         self,

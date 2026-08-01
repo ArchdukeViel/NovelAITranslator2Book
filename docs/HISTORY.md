@@ -237,3 +237,27 @@ build (47 routes, including all three new dynamic routes), backend public
 router 123 tests, and focused Ruff all pass. Pyright reached one pre-existing
 optional-dependency error (`pypdf` unavailable in untouched
 `backend/src/novelai/inputs/pdf.py`).
+
+## 2026-08-01 Frontend Phase 2 — FE-06 homepage rails (DEBT-FE-01)
+
+Homepage long stack, Reading Paths box, utility grid, and duplicate catalog
+CTA were removed. Accessible horizontal rails now cover Continue Reading,
+New Releases, Recently Updated, and the one or two genres with the most
+translated catalog novels. Rails are labeled regions, keyboard-scroll with
+arrow keys, expose visible previous/next controls for pointer and keyboard
+focus, honor reduced motion, and retain real See-all links. Guests receive a
+quiet sign-in continuation tile; signed-in readers reuse existing history.
+
+The hero now has one Start Reading CTA. Because no admin featured-selection
+persistence/API contract exists, it does not falsely label the newest novel
+"Featured": it uses a neutral Spotlight label only for an eligible novel
+with synopsis and a readable chapter. Manual admin-curated rotation remains
+registered in `WORK.md` as the bounded backend dependency.
+
+Catalog sorting gained real `updated_at` support (latest chapter timestamp,
+falling back to row/catalog update time) in DB and storage paths. `/random`
+uses a count plus one-item random page for uniform selection, redirects
+straight to novel detail, and falls back to `/browse-novels?notice=empty`
+when no novel is available. Validation: frontend typecheck, 769 Vitest tests
+across 67 files, production build (48 routes), backend public-router 125
+tests, focused Ruff, and router dependency guard all pass.
