@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { PublicHeader } from "@/components/public/public-header";
 import { PublicFooter } from "@/components/public/public-footer";
 import { MobileTabBar } from "@/components/public/mobile-tab-bar";
+import { SearchOverlay } from "@/components/public/search-overlay";
 
 export function PublicShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -41,6 +42,10 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {!isChapterRoute && <PublicFooter />}
+
+      {/* Shared search overlay — mounted outside the chrome-suppression block
+          so the `/` shortcut and overlay work on reader pages too. */}
+      <SearchOverlay />
     </div>
   );
 }

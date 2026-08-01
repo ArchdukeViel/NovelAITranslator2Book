@@ -160,8 +160,8 @@ async function getCsrfToken(): Promise<string> {
 // Internal typed helpers
 // ---------------------------------------------------------------------------
 
-async function publicGet<T>(path: string): Promise<T> {
-  const response = await publicFetch(path);
+async function publicGet<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await publicFetch(path, signal ? { signal } : undefined);
   if (response.status === 204) {
     return undefined as T;
   }
@@ -227,7 +227,7 @@ export function googleOAuthStartUrl(returnTo?: string): string {
 // ---------------------------------------------------------------------------
 
 export const publicApi = {
-  catalog(params: CatalogParams): Promise<PublicCatalogResponse> {
+  catalog(params: CatalogParams, signal?: AbortSignal): Promise<PublicCatalogResponse> {
     const search = new URLSearchParams();
     if (params.q) search.set("q", params.q);
     if (params.publication_status) search.set("publication_status", params.publication_status);
@@ -246,7 +246,8 @@ export const publicApi = {
       search.set("page_size", String(params.page_size));
     const qs = search.toString();
     return publicGet<PublicCatalogResponse>(
-      `/api/public/catalog${qs ? `?${qs}` : ""}`
+      `/api/public/catalog${qs ? `?${qs}` : ""}`,
+      signal
     );
   },
 
@@ -278,7 +279,7 @@ export const publicApi = {
     );
   },
 
-  searchTags(params: TagSearchParams): Promise<PublicTagSearchResult[]> {
+  searchTags(params: TagSearchParams, signal?: AbortSignal): Promise<PublicTagSearchResult[]> {
     const search = new URLSearchParams();
     search.set("q", params.q);
     if (params.include_adult !== undefined)
@@ -286,7 +287,8 @@ export const publicApi = {
     if (params.limit !== undefined)
       search.set("limit", String(params.limit));
     return publicGet<PublicTagSearchResult[]>(
-      `/api/public/tags/search?${search.toString()}`
+      `/api/public/tags/search?${search.toString()}`,
+      signal
     );
   },
 };

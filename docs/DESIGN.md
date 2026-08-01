@@ -15,9 +15,11 @@ below are the agreed direction, not one option among several.
 system, tokens, fonts, brand assets) shipped; FE-02 accessibility (token
 contrast at WCAG AA + primary focus treatment) shipped; FE-03 navigation
 (desktop inline header nav, mobile bottom tab bar, Account/More hub, reader
-chrome suppression) shipped. Remaining Layout Rework slices are pending.
-**Last implementation verification:** FE-03 — typecheck, 766 Vitest tests,
-production build all pass (2026-07-31).
+chrome suppression) shipped; FE-04 shared search overlay shipped. Remaining
+Layout Rework slices are pending.
+**Last implementation verification:** FE-04 — typecheck, 781 Vitest tests,
+production build, and backend catalog suites (156 tests) all pass
+(2026-08-01).
 
 This distinction matters because this doc's own predecessor was the cautionary
 tale: it described "indigo accents" that were never actually in the CSS, and
@@ -41,9 +43,18 @@ Implemented:
   guest routing (Library/Account → sign-in preserving `next`); Account/More
   hub at /account; header/tab bar/footer suppressed on chapter routes;
   /browse-novels?focus=search focuses the catalog search
+- FE-04: one shared search overlay (desktop header field, mobile Search tab,
+  and `/` shortcut all open it; Enter navigates highlighted rows or falls
+  back to full results; ArrowUp/Down cycle groups; Escape/backdrop close and
+  restore focus); grouped results Novels/Authors/Genres & Tags with fuzzy
+  title and exact tag matching; in-flight requests cancelled on new
+  keystrokes with stale results kept until fresh response (no flicker);
+  honest error state; local-only recent searches (8 max, min 2 chars) shown
+  on empty query with genre shortcuts; catalog search now also matches the
+  original Japanese title in both DB and storage-fallback paths
 
 Pending:
-- FE-04 shared search overlay; FE-05 browse/catalog layout; FE-06 homepage
+- FE-05 browse/catalog layout; FE-06 homepage
   rails; FE-07 novel-detail sticky layout; FE-08 reader Aa panel + progress
   bar + resume position; FE-09 library board/list + account shell; FE-10
   /faq, /news, /random, account overview/reviews

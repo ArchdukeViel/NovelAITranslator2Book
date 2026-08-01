@@ -241,6 +241,19 @@ class TestCatalog:
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
 
+    def test_catalog_search_matches_original_title_in_storage(
+        self, client: TestClient, storage: StorageService
+    ) -> None:
+        """Storage fallback search matches the original (Japanese) title even
+        when a translated title exists (DESIGN.md — Search contract)."""
+        _seed_novel(storage, "novel-001", title="ドラゴン王", translated_title="Dragon King")
+        _seed_novel(storage, "novel-002", title="スライム", translated_title="Slime World")
+        resp = client.get("/api/public/catalog?q=ドラゴン")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["novels"][0]["novel_id"] == "novel-001"
+
     def test_catalog_filter_by_publication_status(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001", publication_status="ongoing")
         _seed_novel(storage, "novel-002", publication_status="completed")
@@ -712,6 +725,29 @@ class TestCatalog:
 
         assert data["total"] == 2
         assert [novel["novel_id"] for novel in data["novels"]] == ["dragon-title", "author-match"]
+
+    def test_catalog_search_matches_db_original_title(
+        self,
+        client: TestClient,
+        storage: StorageService,
+        db_session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A search for the original (Japanese) title surfaces the novel
+        (DESIGN.md — Search contract, title normalization)."""
+        _seed_db_catalog_novel(db_session, "eng", title="Dragon King", author="Tanaka")
+        _seed_db_catalog_novel(db_session, "jpn", title="Quiet Novel", source_title="ドラゴン王", author="Tanaka")
+        _seed_db_catalog_novel(db_session, "miss", title="Slime World", source_title="スライム", author="Yamamoto")
+        monkeypatch.setattr(
+            storage,
+            "list_novels",
+            lambda: (_ for _ in ()).throw(AssertionError("storage scan should not run")),
+        )
+
+        data = client.get("/api/public/catalog?q=ドラゴン&sort_by=title&order=asc").json()
+
+        assert data["total"] == 1
+        assert [novel["novel_id"] for novel in data["novels"]] == ["jpn"]
 
     def test_catalog_title_sort_uses_db_path(
         self,

@@ -12,6 +12,9 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/components/public/public-header", () => ({ PublicHeader: () => <header /> }));
 vi.mock("@/components/public/mobile-tab-bar", () => ({ MobileTabBar: () => <nav /> }));
 vi.mock("@/components/public/public-footer", () => ({ PublicFooter: () => <footer /> }));
+// SearchOverlay needs its own router/query mocks; it is covered by its own
+// test file, so stub it here to keep this suite focused on shell chrome.
+vi.mock("@/components/public/search-overlay", () => ({ SearchOverlay: () => <aside aria-label="Search overlay stub" /> }));
 
 afterEach(() => {
   cleanup();

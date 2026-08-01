@@ -1,46 +1,29 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { useSearchOverlay } from "@/lib/search-overlay";
 
+/**
+ * Desktop header search field. Per DESIGN.md — Search contract, the header
+ * search field opens the one shared search overlay instead of submitting a
+ * separate search box. The overlay is mounted once in PublicShell.
+ */
 export function SearchEntry() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [query, setQuery] = useState(searchParams.get("q") ?? "");
-
-  // Sync internal state when URL q changes (e.g. browse page search)
-  useEffect(() => {
-    const urlQ = searchParams.get("q") ?? "";
-    setQuery((prev) => (prev !== urlQ ? urlQ : prev));
-  }, [searchParams]);
-
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = query.trim();
-    if (trimmed) {
-      router.push(`/browse-novels?q=${encodeURIComponent(trimmed)}`);
-    } else {
-      router.push("/browse-novels");
-    }
-  }
+  const open = useSearchOverlay((state) => state.open);
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full items-center gap-2 md:max-w-md">
-      <Input
-        type="search"
-        placeholder="Search novels…"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        className="min-w-0 flex-1 bg-muted/70"
-        aria-label="Search novels"
-      />
-      <Button type="submit" variant="ghost" size="icon" aria-label="Submit search">
-        <Search className="h-4 w-4" />
-      </Button>
-    </form>
+    <button
+      type="button"
+      onClick={open}
+      className="flex h-9 w-full items-center gap-2 rounded-md border border-border/70 bg-card/70 px-3 text-left text-sm text-muted-foreground transition-colors hover:border-border hover:bg-card md:max-w-md"
+      aria-label="Search novels"
+    >
+      <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <span className="flex-1 truncate">Search novels…</span>
+      <kbd className="hidden rounded border border-border/70 bg-muted/50 px-1.5 py-0.5 text-[0.65rem] font-medium text-muted-foreground sm:inline-block">
+        /
+      </kbd>
+    </button>
   );
 }
