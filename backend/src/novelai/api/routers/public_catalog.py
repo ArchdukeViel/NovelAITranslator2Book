@@ -66,6 +66,7 @@ def _catalog_from_db_page(
     service: PublicCatalogService,
     q: str | None,
     publication_status: str | None,
+    source_key: str | None,
     effective_sort_by: str,
     min_chapters: int | None,
     max_chapters: int | None,
@@ -98,6 +99,8 @@ def _catalog_from_db_page(
         )
     if publication_status:
         query = query.filter(Novel.publication_status == publication_status)
+    if source_key:
+        query = query.filter(Novel.source_site == source_key)
     if min_chapters is not None:
         query = query.filter(Novel.chapter_count >= min_chapters)
     if max_chapters is not None:
@@ -169,6 +172,7 @@ def _catalog_from_storage(
     service: PublicCatalogService,
     q: str | None,
     publication_status: str | None,
+    source_key: str | None,
     effective_sort_by: str,
     reverse: bool,
     min_chapters: int | None,
@@ -189,6 +193,8 @@ def _catalog_from_storage(
         if q and not service.novel_matches_search(meta, q):
             continue
         if publication_status and service.publication_status_from_metadata(meta) != publication_status:
+            continue
+        if source_key and _optional_str(meta.get("source_key")) != source_key:
             continue
         genres, tags, is_adult = service._load_taxonomy_for_novel(novel_id, include_adult=include_adult)
         if not include_adult and is_adult:
@@ -243,6 +249,7 @@ async def catalog(
     response_headers: Response,
     q: str | None = Query(default=None, description="Search title or author"),
     publication_status: str | None = Query(default=None, description="Filter by publication status"),
+    source_key: str | None = Query(default=None, description="Filter by canonical source identifier"),
     sort_by: str | None = Query(default=None, description="Sort field: added_at, title, chapter_count"),
     order: str | None = Query(default=None, description="Sort order: asc or desc"),
     min_chapters: int | None = Query(default=None, ge=0, description="Minimum chapter count"),
@@ -273,11 +280,13 @@ async def catalog(
     tag_exclude_set = set(_parse_csv_filter(tag_exclude))
 
     response: PublicCatalogResponse
+    source_key_filter = _optional_str(source_key)
     if service.is_db_catalog_base_request(sort_by=sort_by):
         db_response = _catalog_from_db_page(
             service=service,
             q=q,
             publication_status=publication_status_filter,
+            source_key=source_key_filter,
             effective_sort_by=effective_sort_by,
             min_chapters=min_chapters,
             max_chapters=max_chapters,
@@ -298,6 +307,7 @@ async def catalog(
                 service=service,
                 q=q,
                 publication_status=publication_status_filter,
+                source_key=source_key_filter,
                 effective_sort_by=effective_sort_by,
                 reverse=reverse,
                 min_chapters=min_chapters,
@@ -315,6 +325,7 @@ async def catalog(
             service=service,
             q=q,
             publication_status=publication_status_filter,
+            source_key=source_key_filter,
             effective_sort_by=effective_sort_by,
             reverse=reverse,
             min_chapters=min_chapters,

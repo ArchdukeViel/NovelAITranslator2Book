@@ -255,7 +255,7 @@ PR/change, each with exact tests:
 | FE-02 | Phase 1 accessibility: token contrast verified programmatically (34 checks, both modes, 0 failures at WCAG AA 4.5:1) + two-layer primary-button focus treatment shipped; manual browser checks (keyboard, screen reader, zoom, reduced motion) pending operator | Current Phase 1 |
 | FE-03 | Desktop header inline nav, mobile bottom tab bar, Account/More hub, reader chrome suppression — shipped (typecheck, 766 tests, build pass) | FE-02 |
 | FE-04 | Shared search overlay, keyboard behavior, request cancellation, local recent searches — shipped (typecheck, 781 tests, build, backend 156 tests pass); original-title search added to catalog DB + storage fallback | FE-03 |
-| FE-05 | Browse/catalog layout, URL filter state, taxonomy/source canonical routes | FE-04 |
+| FE-05 | Browse/catalog layout, URL filter state, taxonomy/source canonical routes — shipped (typecheck, 789 tests, build, backend public-router 123 tests pass); authors route remains deferred pending stable identity/alias contract | FE-04 |
 | FE-06 | Homepage rails and honest featured-novel selection | FE-05 |
 | FE-07 | Novel-detail sticky layout, URL tabs, chapter controls, single CTA | FE-03 |
 | FE-08 | Reader Aa panel, progress bar, resume position, quiet chrome | FE-03 |

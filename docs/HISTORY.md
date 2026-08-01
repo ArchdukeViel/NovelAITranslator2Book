@@ -208,3 +208,32 @@ storage-fallback `novel_matches_search`, covered by new tests in
 cancellation, no-flicker, error/partial failure, keyboard navigation,
 recent-search storage; updated search-entry, tab-bar, and shell suites),
 production build, and backend catalog suites (156 tests) all pass.
+
+## 2026-08-01 Frontend Phase 2 — FE-05 browse/catalog (DEBT-FE-01)
+
+Browse filters moved from the results-dominating top panel to a desktop left
+sidebar. Only its heading and Clear-all action are sticky; filter content
+uses normal page scrolling, avoiding adjacent scroll containers. Mobile uses
+a bottom-sheet dialog with Escape/backdrop close, an applied-filter count on
+the trigger, and pinned Apply/Clear controls. The results header now owns the
+count, compact sort control, URL-backed grid/list toggle, and an honest
+"Surprise me" action limited to currently loaded novels. Active filters sit
+below as individually removable chips; pagination remains explicit and
+catalog scroll position restores across detail-page history navigation.
+
+Canonical `/tags/[tag]`, `/genres/[genre]`, and
+`/sources/[source-key]` routes reuse the catalog with URL/shareable presets;
+search and genre/tag shortcuts now point to those routes. Arbitrary utility
+filters on `/browse-novels` are `noindex, follow`, sort/view variants
+canonicalize away, and paginated filtered views remain self-canonical.
+Source metadata fails closed for indexing unless a non-empty source catalog
+can be proven. Backend catalog gained exact canonical `source_key` filtering
+in both SQLAlchemy DB and storage-fallback paths. `/authors/[author-slug]`
+remains intentionally absent until the stable identity/alias contract in
+`WORK.md` is approved.
+
+Validation: frontend typecheck, 789 Vitest tests across 65 files, production
+build (47 routes, including all three new dynamic routes), backend public
+router 123 tests, and focused Ruff all pass. Pyright reached one pre-existing
+optional-dependency error (`pypdf` unavailable in untouched
+`backend/src/novelai/inputs/pdf.py`).

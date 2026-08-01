@@ -231,6 +231,7 @@ export const publicApi = {
     const search = new URLSearchParams();
     if (params.q) search.set("q", params.q);
     if (params.publication_status) search.set("publication_status", params.publication_status);
+    if (params.source_key) search.set("source_key", params.source_key);
     if (params.sort_by) search.set("sort_by", params.sort_by);
     if (params.order) search.set("order", params.order);
     if (params.min_chapters !== undefined)
