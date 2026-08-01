@@ -29,10 +29,13 @@ const mocks = vi.hoisted(() => ({
   recordHistoryMutate: vi.fn(),
   usePublicAuthMock: vi.fn(),
   useChapterMock: vi.fn(),
+  useProgressMock: vi.fn(),
+  pushMock: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ slug: "demo", chapterId: "7" }),
+  useRouter: () => ({ push: mocks.pushMock }),
 }));
 
 vi.mock("@/components/public/reader-controls", () => ({
@@ -58,6 +61,7 @@ vi.mock("lucide-react", () => ({
 
 vi.mock("@/hooks/public", () => ({
   useChapter: () => mocks.useChapterMock(),
+  useProgress: () => mocks.useProgressMock(),
   usePublicAuth: () => mocks.usePublicAuthMock(),
   useRecordHistory: () => ({ mutate: mocks.recordHistoryMutate }),
   useUpdateProgress: () => ({ mutate: mocks.updateProgressMutate }),
@@ -98,6 +102,7 @@ beforeEach(() => {
     isError: false,
     error: null,
   });
+  mocks.useProgressMock.mockReturnValue({ data: undefined, isPending: false, isError: false, error: null });
 });
 
 afterEach(() => {
