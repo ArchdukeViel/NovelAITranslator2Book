@@ -149,3 +149,29 @@ intentionally unchanged per `DESIGN.md`. Validation: typecheck, 770 Vitest
 tests, production build all pass. Remaining FE-02 items are manual browser
 checks (keyboard, screen reader, 200% zoom, reduced motion) — operator
 evidence.
+
+## 2026-07-31 Frontend Phase 2 — FE-03 navigation (DEBT-FE-01)
+
+The public hamburger drawer is gone. Desktop (`md:`+) header now shows
+inline primary nav — Home, Browse, Request, Library — plus catalog search,
+theme toggle, notification bell, and account indicator; no hamburger exists
+at any width (DESIGN.md F1/F2). Mobile header shrinks to brand + bell, and
+primary navigation moves to a fixed bottom tab bar (Home, Browse, Search,
+Library, Account) with `env(safe-area-inset-bottom)` padding. Guest behavior:
+Library and Account tabs route to sign-in, preserving the intended
+destination via `next` (login page now honors a safe in-app `next` and
+returns there on success/close); notification bell is hidden for guests
+(never shown disabled/empty). The Account tab doubles as a hub: new `/account`
+page for authenticated readers with library shortcuts (Library, History,
+Notifications, Requests, Contributions, Settings), a More list (Ranking,
+Request Novel, Contribute, About, Support, Legal — only existing routes, per
+the honesty principle; FAQ/News join when they ship), theme toggle, and sign
+out; guests are redirected to sign-in. Reader quiet-chrome: on `/novels/…/chapter/…`
+routes the header, tab bar, and footer are suppressed entirely, leaving only
+the reading surface. `/browse-novels?focus=search` (the mobile Search tab)
+focuses the catalog search input and strips the param for a clean URL.
+`PublicSidebar` and its drawer were deleted. Validation: typecheck, 766 Vitest
+tests (new: chrome suppression + shell route coverage, tab-bar guest/auth
+hrefs, header nav), production build all pass. Remaining per DESIGN.md:
+Search overlay is FE-04 (tab currently lands on browse search); novel-detail
+sticky action bar replacing the tab bar is FE-07.

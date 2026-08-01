@@ -11,9 +11,13 @@ and which didn't yet reflect what this product actually is.
 
 **Design status:** Approved target — Yokocho Lantern and the Layout Rework
 below are the agreed direction, not one option among several.
-**Implementation status:** Not started. Nothing in this document is shipped
-yet.
-**Last implementation verification:** not yet performed.
+**Implementation status:** In progress — Phase 1 (Yokocho Lantern visual
+system, tokens, fonts, brand assets) shipped; FE-02 accessibility (token
+contrast at WCAG AA + primary focus treatment) shipped; FE-03 navigation
+(desktop inline header nav, mobile bottom tab bar, Account/More hub, reader
+chrome suppression) shipped. Remaining Layout Rework slices are pending.
+**Last implementation verification:** FE-03 — typecheck, 766 Vitest tests,
+production build all pass (2026-07-31).
 
 This distinction matters because this doc's own predecessor was the cautionary
 tale: it described "indigo accents" that were never actually in the CSS, and
@@ -24,11 +28,25 @@ real" without diffing against the codebase themselves:
 
 ```
 Implemented:
-- (nothing yet)
+- Phase 1: Yokocho Lantern visual system, design tokens in globals.css
+  (light/dark), DM Sans / Noto Serif JP / DM Mono font stack, brand mark +
+  og:image, semantic status-color layer (--success/--warning/--info + -text
+  tokens), two-layer primary-button focus treatment
+- FE-02: token contrast verified programmatically (34 checks, both modes,
+  WCAG AA 4.5:1, 0 failures); -text context tokens on badge, notifications,
+  contributions banner, rating/request success text, browse filter chips
+- FE-03: hamburger drawer removed; desktop header inline nav (Home, Browse,
+  Request, Library) + search + theme toggle + bell + account; mobile bottom
+  tab bar (Home/Browse/Search/Library/Account) with safe-area padding and
+  guest routing (Library/Account → sign-in preserving `next`); Account/More
+  hub at /account; header/tab bar/footer suppressed on chapter routes;
+  /browse-novels?focus=search focuses the catalog search
 
 Pending:
-- Everything in Visual System, Design Tokens, Brand and Illustration Asset System,
-  and Layout Rework
+- FE-04 shared search overlay; FE-05 browse/catalog layout; FE-06 homepage
+  rails; FE-07 novel-detail sticky layout; FE-08 reader Aa panel + progress
+  bar + resume position; FE-09 library board/list + account shell; FE-10
+  /faq, /news, /random, account overview/reviews
 
 Deferred:
 - Public profile pages (Guiding Principle 4)

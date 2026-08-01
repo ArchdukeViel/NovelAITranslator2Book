@@ -5,8 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, within } from "@testing-library/react";
-import { PublicSidebar } from "@/components/public/public-sidebar";
+
 import { PublicHeader } from "@/components/public/public-header";
+import { MobileTabBar } from "@/components/public/mobile-tab-bar";
 import { PublicFooter } from "@/components/public/public-footer";
 
 // ---------------------------------------------------------------------------
@@ -52,7 +53,10 @@ function setAuth(authenticated: boolean) {
     isPublicUser: authenticated,
     isOwner: false,
     authState: authenticated
-      ? { status: "authenticated", user: { id: 1, email: "a@b.c", role: "user" as const, is_authenticated: true } }
+      ? {
+          status: "authenticated",
+          user: { id: 1, email: "a@b.c", role: "user" as const, is_authenticated: true },
+        }
       : null,
     user: authenticated
       ? { id: 1, email: "a@b.c", role: "user" as const, is_authenticated: true }
@@ -67,140 +71,128 @@ function setAuth(authenticated: boolean) {
 }
 
 // ---------------------------------------------------------------------------
-// Sidebar navigation consistency
-// ---------------------------------------------------------------------------
-
-describe("Sidebar navigation consistency", () => {
-  const publicNavHrefs = [
-    "/home",
-    "/browse-novels",
-    "/ranking",
-    "/request-novel",
-    "/contribute",
-  ];
-
-  const accountNavHrefs = [
-    "/account/library",
-    "/account/history",
-    "/account/notifications",
-    "/account/requests",
-    "/account/contributions",
-    "/account/settings",
-  ];
-
-  it("every public sidebar href resolves to an existing route page", () => {
-    for (const href of publicNavHrefs) {
-      const pagePath = hrefToPagePath(href);
-      expect(existsSync(pagePath), `Missing page for sidebar href ${href}: ${pagePath}`).toBe(true);
-    }
-  });
-
-  it("every account sidebar href resolves to an existing route page", () => {
-    for (const href of accountNavHrefs) {
-      const pagePath = hrefToPagePath(href);
-      expect(existsSync(pagePath), `Missing page for account href ${href}: ${pagePath}`).toBe(true);
-    }
-  });
-
-  it("renders all public nav items when sidebar is open (unauthenticated)", () => {
-    setAuth(false);
-    render(<PublicSidebar isOpen onClose={() => {}} />);
-    expect(screen.getByText("Home")).toBeInTheDocument();
-    expect(screen.getByText("Browse Novels")).toBeInTheDocument();
-    expect(screen.getByText("Ranking")).toBeInTheDocument();
-    expect(screen.getByText("Request Novel")).toBeInTheDocument();
-    expect(screen.getByText("Contribute")).toBeInTheDocument();
-    // Account section should NOT appear
-    expect(screen.queryByText("Library")).not.toBeInTheDocument();
-    expect(screen.queryByText("History")).not.toBeInTheDocument();
-    expect(screen.queryByText("Requests")).not.toBeInTheDocument();
-  });
-
-  it("links guest sign-in to the login route without rendering the auth form in the sidebar", () => {
-    setAuth(false);
-    render(<PublicSidebar isOpen onClose={() => {}} />);
-
-    const sidebar = screen.getByRole("dialog", { name: "Public navigation" });
-    expect(within(sidebar).getByRole("link", { name: /sign in/i })).toHaveAttribute(
-      "href",
-      "/login?mode=signin"
-    );
-    expect(within(sidebar).queryByText("Continue with Google")).not.toBeInTheDocument();
-    expect(within(sidebar).queryByLabelText("Email")).not.toBeInTheDocument();
-    expect(within(sidebar).queryByLabelText("Password")).not.toBeInTheDocument();
-  });
-
-  it("renders the public theme control in the sidebar utility area", () => {
-    setAuth(false);
-    render(<PublicSidebar isOpen onClose={() => {}} />);
-
-    expect(screen.getByText("Theme")).toBeInTheDocument();
-    expect(screen.getByLabelText(/switch to (dark|light) theme/i)).toBeInTheDocument();
-  });
-
-  it("renders account nav items when authenticated", () => {
-    setAuth(true);
-    render(<PublicSidebar isOpen onClose={() => {}} />);
-    // Account section appears
-    expect(screen.getByText("Library")).toBeInTheDocument();
-    expect(screen.getByText("History")).toBeInTheDocument();
-    expect(screen.getByText("Requests")).toBeInTheDocument();
-    expect(screen.getByText("Contributions")).toBeInTheDocument();
-    expect(screen.getByText("Settings")).toBeInTheDocument();
-  });
-
-  it("/account/history appears in authenticated account navigation", () => {
-    setAuth(true);
-    render(<PublicSidebar isOpen onClose={() => {}} />);
-    const historyLink = screen.getByText("History").closest("a");
-    expect(historyLink).toHaveAttribute("href", "/account/history");
-  });
-
-  it("unauthenticated users do not see account-only links", () => {
-    setAuth(false);
-    render(<PublicSidebar isOpen onClose={() => {}} />);
-    expect(screen.queryByText("Account")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /library/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /history/i })).not.toBeInTheDocument();
-  });
-
-  it("renders no nav from footer legal section in sidebar", () => {
-    setAuth(true);
-    render(<PublicSidebar isOpen onClose={() => {}} />);
-    expect(screen.queryByText("About")).not.toBeInTheDocument();
-    expect(screen.queryByText("Privacy")).not.toBeInTheDocument();
-    expect(screen.queryByText("Terms")).not.toBeInTheDocument();
-    expect(screen.queryByText("DMCA")).not.toBeInTheDocument();
-    expect(screen.queryByText("Contact")).not.toBeInTheDocument();
-    expect(screen.queryByText("Cookie Policy")).not.toBeInTheDocument();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Header navigation consistency
+// Header navigation consistency (desktop)
 // ---------------------------------------------------------------------------
 
 describe("Header navigation consistency", () => {
-  it("header does not contain Library shortcut", () => {
-    setAuth(true);
-    renderWithQuery(<PublicHeader onMenuClick={() => {}} />);
-    expect(screen.queryByRole("link", { name: /library/i })).not.toBeInTheDocument();
+  const headerNavHrefs = [
+    "/home",
+    "/browse-novels",
+    "/request-novel",
+    "/account/library",
+  ];
+
+  it("every header href resolves to an existing route page", () => {
+    for (const href of headerNavHrefs) {
+      const pagePath = hrefToPagePath(href);
+      expect(existsSync(pagePath), `Missing page for header href ${href}: ${pagePath}`).toBe(true);
+    }
   });
 
-  it("header has brand, menu button, and user indicator without the theme toggle", () => {
+  it("renders desktop header nav items when authenticated", () => {
+    setAuth(true);
+    renderWithQuery(<PublicHeader />);
+
+    expect(screen.getByRole("link", { name: /^home$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^browse$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^request$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^library$/i })).toBeInTheDocument();
+
+    // Search field (not a link but present)
+    expect(screen.getByPlaceholderText(/search novels/i)).toBeInTheDocument();
+
+    // Theme toggle present
+    expect(screen.getByLabelText(/switch to (dark|light) theme/i)).toBeInTheDocument();
+
+    // Notification bell present
+    expect(screen.getByLabelText(/notifications/i)).toBeInTheDocument();
+
+    // Account indicator (signed-in user email + sign out)
+    expect(screen.getByText("a@b.c")).toBeInTheDocument();
+    expect(screen.getByLabelText(/sign out/i)).toBeInTheDocument();
+
+    // No hamburger menu button
+    expect(screen.queryByLabelText(/open navigation menu/i)).not.toBeInTheDocument();
+  });
+
+  it("renders desktop header nav items when guest", () => {
     setAuth(false);
-    renderWithQuery(<PublicHeader onMenuClick={() => {}} />);
-    expect(screen.getByLabelText("Open navigation menu")).toBeInTheDocument();
+    renderWithQuery(<PublicHeader />);
+
+    expect(screen.getByRole("link", { name: /^home$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^browse$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^request$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^library$/i })).toBeInTheDocument();
+
+    expect(screen.getByPlaceholderText(/search novels/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/switch to (dark|light) theme/i)).toBeInTheDocument();
+
+    // Notification bell is hidden for guests (DESIGN.md guest behavior)
+    expect(screen.queryByLabelText(/notifications/i)).not.toBeInTheDocument();
+
+    // Sign-in link
     expect(screen.getByRole("link", { name: /sign in/i })).toHaveAttribute(
       "href",
       "/login?mode=signin"
     );
-    expect(screen.queryByLabelText(/switch to (dark|light) theme/i)).not.toBeInTheDocument();
+
+    // No sign-out
+    expect(screen.queryByLabelText(/sign out/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/signing out/i)).not.toBeInTheDocument();
+
+    // No hamburger menu button
+    expect(screen.queryByLabelText(/open navigation menu/i)).not.toBeInTheDocument();
   });
 });
 
 // ---------------------------------------------------------------------------
-// Footer navigation consistency
+// Mobile tab bar consistency
+// ---------------------------------------------------------------------------
+
+describe("Mobile tab bar consistency", () => {
+  const tabBarHrefs = [
+    "/home",
+    "/browse-novels",
+    "/account/library",
+    "/account",
+  ];
+
+  it("every tab bar href resolves to an existing route page", () => {
+    for (const href of tabBarHrefs) {
+      const pagePath = hrefToPagePath(href);
+      expect(existsSync(pagePath), `Missing page for tab bar href ${href}: ${pagePath}`).toBe(true);
+    }
+  });
+
+  it("renders tab bar items and respects guest/auth state", () => {
+    // Guest: account + library tabs should route to sign-in
+    setAuth(false);
+    render(<MobileTabBar />);
+
+    expect(screen.getByRole("link", { name: /^home$/i })).toHaveAttribute("href", "/home");
+    expect(screen.getByRole("link", { name: /^browse$/i })).toHaveAttribute("href", "/browse-novels");
+    expect(screen.getByRole("link", { name: /^search$/i })).toHaveAttribute("href", "/browse-novels?focus=search");
+    expect(screen.getByRole("link", { name: /^library$/i })).toHaveAttribute(
+      "href",
+      "/login?mode=signin&next=%2Faccount%2Flibrary"
+    );
+    expect(screen.getByRole("link", { name: /^account$/i })).toHaveAttribute(
+      "href",
+      "/login?mode=signin"
+    );
+
+    // Authenticated: library and account tabs point to their real destinations
+    cleanup();
+    setAuth(true);
+    render(<MobileTabBar />);
+
+    expect(screen.getByRole("link", { name: /^library$/i })).toHaveAttribute("href", "/account/library");
+    expect(screen.getByRole("link", { name: /^account$/i })).toHaveAttribute("href", "/account");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Footer navigation consistency (unchanged)
 // ---------------------------------------------------------------------------
 
 describe("Footer navigation consistency", () => {
@@ -228,27 +220,27 @@ describe("Footer navigation consistency", () => {
 
   it("footer contains Read section links", () => {
     render(<PublicFooter />);
-    expect(screen.getByText("Browse Novels")).toBeInTheDocument();
-    expect(screen.getByText("Ranking")).toBeInTheDocument();
-    expect(screen.getByText("Request Novel")).toBeInTheDocument();
-    expect(screen.getByText("Contribute")).toBeInTheDocument();
-    expect(screen.getByText("Support")).toBeInTheDocument();
+    expect(screen.getByText(/browse novels/i)).toBeInTheDocument();
+    expect(screen.getByText(/ranking/i)).toBeInTheDocument();
+    expect(screen.getByText(/request novel/i)).toBeInTheDocument();
+    expect(screen.getByText(/contribute/i)).toBeInTheDocument();
+    expect(screen.getByText(/support/i)).toBeInTheDocument();
   });
 
   it("footer contains Trust section legal links", () => {
     render(<PublicFooter />);
-    expect(screen.getByText("About")).toBeInTheDocument();
-    expect(screen.getByText("Privacy")).toBeInTheDocument();
-    expect(screen.getByText("Terms")).toBeInTheDocument();
-    expect(screen.getByText("Legal")).toBeInTheDocument();
-    expect(screen.getByText("DMCA")).toBeInTheDocument();
-    expect(screen.getByText("Contact")).toBeInTheDocument();
-    expect(screen.getByText("Cookie Policy")).toBeInTheDocument();
+    expect(screen.getByText(/about/i)).toBeInTheDocument();
+    expect(screen.getByText(/privacy/i)).toBeInTheDocument();
+    expect(screen.getByText(/terms/i)).toBeInTheDocument();
+    expect(screen.getByText(/legal/i)).toBeInTheDocument();
+    expect(screen.getByText(/dmca/i)).toBeInTheDocument();
+    expect(screen.getByText(/contact/i)).toBeInTheDocument();
+    expect(screen.getByText(/cookie policy/i)).toBeInTheDocument();
   });
 });
 
 // ---------------------------------------------------------------------------
-// Route inventory completeness
+// Route inventory completeness (unchanged)
 // ---------------------------------------------------------------------------
 
 describe("Route inventory completeness", () => {
@@ -284,6 +276,7 @@ describe("Route inventory completeness", () => {
     "/contact",
     "/cookie-policy",
     "/support",
+    "/account",
     "/account/library",
     "/account/history",
     "/account/notifications",
