@@ -27,8 +27,7 @@ jobs:
           persist-credentials: false
 
       - name: Run opencode
-        uses: anomalyco/opencode/github@77fc88c8ade8e5a620ebbe1197f3a572d29ae91a # v1.2.19
+        run: npx --yes opencode-ai@1.18.11 github run
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-        with:
-          model: opencode/deepseek-v4-flash-free
+          MODEL: opencode/deepseek-v4-flash-free
