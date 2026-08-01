@@ -245,6 +245,7 @@ Use `graphify-out/wiki/index.md` for broad navigation when present. Read `graphi
 - Quote paths containing spaces; avoid interactive or TTY-dependent commands.
 - `gh pr merge --squash` can report local failure after a successful merge. Verify with `gh pr view --json state`.
 - Complex `gh --jq` filters can break in PowerShell; pipe JSON to `ConvertFrom-Json`.
+- GitHub Actions log archives may not exist while a job is active. Inspect `gh run view <id> --json status,conclusion,jobs`; fetch logs only after completion.
 - Never create, modify, close, or merge a PR without explicit authorization.
 - After task-branch work, return this workspace to clean local `main` tracking `origin/main` unless the user explicitly asks to remain on another branch. Preserve task branches and uncommitted changes; never discard work merely to switch branches.
 

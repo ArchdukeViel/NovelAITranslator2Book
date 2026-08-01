@@ -72,5 +72,6 @@ def test_secret_backed_opencode_workflow_restricts_commenters() -> None:
 
     assert 'fromJSON(\'["OWNER", "MEMBER", "COLLABORATOR"]\')' in source
     assert "github.event.comment.author_association" in source
+    assert "timeout-minutes: 15" in source
     assert "npx --yes opencode-ai@1.18.11 github run" in source
     assert "anomalyco/opencode/github@" not in source
