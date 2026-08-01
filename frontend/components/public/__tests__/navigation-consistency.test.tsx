@@ -98,8 +98,8 @@ describe("Header navigation consistency", () => {
     expect(screen.getByRole("link", { name: /^request$/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^library$/i })).toBeInTheDocument();
 
-    // Search field (not a link but present)
-    expect(screen.getByPlaceholderText(/search novels/i)).toBeInTheDocument();
+    // Search field — now a button opening the shared overlay (DESIGN.md — Search contract)
+    expect(screen.getByRole("button", { name: /search novels/i })).toBeInTheDocument();
 
     // Theme toggle present
     expect(screen.getByLabelText(/switch to (dark|light) theme/i)).toBeInTheDocument();
@@ -124,7 +124,7 @@ describe("Header navigation consistency", () => {
     expect(screen.getByRole("link", { name: /^request$/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^library$/i })).toBeInTheDocument();
 
-    expect(screen.getByPlaceholderText(/search novels/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /search novels/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/switch to (dark|light) theme/i)).toBeInTheDocument();
 
     // Notification bell is hidden for guests (DESIGN.md guest behavior)
@@ -171,7 +171,9 @@ describe("Mobile tab bar consistency", () => {
 
     expect(screen.getByRole("link", { name: /^home$/i })).toHaveAttribute("href", "/home");
     expect(screen.getByRole("link", { name: /^browse$/i })).toHaveAttribute("href", "/browse-novels");
-    expect(screen.getByRole("link", { name: /^search$/i })).toHaveAttribute("href", "/browse-novels?focus=search");
+    // Search tab is a button that opens the shared overlay, not a link
+    expect(screen.getByRole("button", { name: /^search$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^search$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^library$/i })).toHaveAttribute(
       "href",
       "/login?mode=signin&next=%2Faccount%2Flibrary"

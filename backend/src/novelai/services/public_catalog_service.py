@@ -105,9 +105,13 @@ class PublicCatalogService:
     @staticmethod
     def novel_matches_search(meta: dict[str, Any], query: str) -> bool:
         q = query.lower()
-        title = (_optional_str(meta.get("translated_title")) or _optional_str(meta.get("title")) or "").lower()
+        # Match the translated title and the original (Japanese) title
+        # independently — a search for either should surface the novel
+        # (DESIGN.md — Search contract, title normalization).
+        translated_title = (_optional_str(meta.get("translated_title")) or "").lower()
+        original_title = (_optional_str(meta.get("title")) or "").lower()
         author = (_optional_str(meta.get("translated_author")) or _optional_str(meta.get("author")) or "").lower()
-        return q in title or q in author
+        return q in translated_title or q in original_title or q in author
 
     @staticmethod
     def novel_added_at(meta: dict[str, Any]) -> str | None:

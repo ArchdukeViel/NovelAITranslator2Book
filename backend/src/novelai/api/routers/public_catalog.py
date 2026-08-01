@@ -93,7 +93,9 @@ def _catalog_from_db_page(
     search_text = _optional_str(q)
     if search_text:
         pattern = f"%{search_text}%"
-        query = query.filter(Novel.title.ilike(pattern) | Novel.author.ilike(pattern))
+        query = query.filter(
+            Novel.title.ilike(pattern) | Novel.original_title.ilike(pattern) | Novel.author.ilike(pattern)
+        )
     if publication_status:
         query = query.filter(Novel.publication_status == publication_status)
     if min_chapters is not None:

@@ -175,3 +175,36 @@ tests (new: chrome suppression + shell route coverage, tab-bar guest/auth
 hrefs, header nav), production build all pass. Remaining per DESIGN.md:
 Search overlay is FE-04 (tab currently lands on browse search); novel-detail
 sticky action bar replacing the tab bar is FE-07.
+
+## 2026-08-01 Frontend Phase 2 — FE-04 shared search overlay (DEBT-FE-01)
+
+One shared search overlay replaces the separate header search form and the
+mobile Search tab's redirect to the catalog page. It is mounted once in
+`PublicShell` (outside the reader chrome-suppression block, so `/` and the
+overlay work on chapter pages too). Desktop header search field, mobile
+Search tab, and the global `/` shortcut all open it; Escape, backdrop click,
+or an explicit close restore focus to the opener.
+
+Behavior per DESIGN.md — Search contract: results grouped as Novels, Authors,
+Genres & Tags with fuzzy matching on translated and original Japanese titles
+plus exact tag matching; debounced 225 ms; a new keystroke aborts the
+in-flight request (AbortController) while stale results stay visible until
+the fresh response lands, so there is no loading flicker; "no matches"
+renders only after a real response; full request failure shows an honest
+error state and partial failure keeps whichever groups succeeded
+(`Promise.allSettled`). ArrowDown/ArrowUp cycle rows (novels, authors, tags,
+genres, always-last "See all results"), Enter opens the highlighted result
+(novel detail, author query, tag/genre filter, or full results), and Enter
+with nothing highlighted opens `/browse-novels?q=…`. An empty query shows
+local-only recent searches (localStorage, max 8, case-insensitive dedupe,
+min 2 chars, clearable) plus genre shortcuts.
+
+Backend gap closed for the Japanese-title contract: the public catalog now
+matches `original_title` in both the DB path
+(`Novel.title | Novel.original_title | Novel.author`) and the
+storage-fallback `novel_matches_search`, covered by new tests in
+`test_public_router.py`. Validation: typecheck, 781 Vitest tests (new:
+22-test overlay suite covering open/close, focus return, debounce,
+cancellation, no-flicker, error/partial failure, keyboard navigation,
+recent-search storage; updated search-entry, tab-bar, and shell suites),
+production build, and backend catalog suites (156 tests) all pass.
