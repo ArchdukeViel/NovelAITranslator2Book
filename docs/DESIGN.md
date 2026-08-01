@@ -18,10 +18,11 @@ contrast at WCAG AA + primary focus treatment) shipped; FE-03 navigation
 chrome suppression) shipped; FE-04 shared search overlay shipped; FE-05
 browse/catalog layout and canonical taxonomy/source routes shipped; FE-06
 homepage rails and honest eligible Spotlight fallback shipped. Remaining
-Layout Rework slices are pending.
-**Last implementation verification:** FE-06 — typecheck, 769 Vitest tests,
-production build, and backend public-router suite (125 tests) all pass
-(2026-08-01).
+Layout Rework slices are pending; FE-07 supported novel-detail layout and
+chapter controls shipped.
+**Last implementation verification:** FE-07 — typecheck, 776 Vitest tests,
+and production build (48 routes) all pass
+(2026-08-02).
 
 This distinction matters because this doc's own predecessor was the cautionary
 tale: it described "indigo accents" that were never actually in the CSS, and
@@ -71,9 +72,17 @@ Implemented:
   gated Spotlight label instead of falsely claiming admin curation. Manual
   admin-selected featured rotation remains pending its persistence/API
   contract.
+- FE-07: novel detail uses a desktop sticky cover/title/status/action panel
+  and a mobile sticky reading bar that replaces the global tab bar; one
+  adaptive Start/Continue CTA; URL-backed Overview/Chapters/Reviews tabs;
+  canonical taxonomy links; chapter search, ascending/descending order,
+  collapse/expand-all, first-unread/latest anchors, read and last-read state,
+  explicit untranslated rows, and progressive 100-row rendering. New/failure
+  chapter markers and other-reader review lists remain pending public API
+  fields/endpoints; no fake states are rendered meanwhile.
 
 Pending:
-- FE-07 novel-detail sticky layout; FE-08 reader Aa panel + progress
+- FE-08 reader Aa panel + progress
   bar + resume position; FE-09 library board/list + account shell; FE-10
   /faq, /news, /random, account overview/reviews
 

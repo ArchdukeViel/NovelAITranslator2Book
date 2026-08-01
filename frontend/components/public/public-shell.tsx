@@ -15,6 +15,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   // reading"). Derived inline so the first render matches the final render
   // (no flash of chrome on a chapter page).
   const isChapterRoute = pathname.includes("/chapter/");
+  const isNovelDetailRoute = /^\/novels\/[^/]+\/?$/.test(pathname);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -31,9 +32,11 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
           <Suspense fallback={null}>
             <PublicHeader />
           </Suspense>
-          <Suspense fallback={null}>
-            <MobileTabBar />
-          </Suspense>
+          {!isNovelDetailRoute && (
+            <Suspense fallback={null}>
+              <MobileTabBar />
+            </Suspense>
+          )}
         </>
       )}
 

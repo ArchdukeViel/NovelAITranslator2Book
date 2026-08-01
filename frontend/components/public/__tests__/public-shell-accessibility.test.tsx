@@ -50,3 +50,12 @@ it("shows header, tab bar, and footer on normal browsing routes", () => {
   expect(document.querySelector("nav")).toBeInTheDocument();
   expect(document.querySelector("footer")).toBeInTheDocument();
 });
+
+it("suppresses the mobile tab bar on novel detail for the sticky reading action", () => {
+  pathnameMock.mockReturnValue("/novels/some-novel");
+  render(<PublicShell><main>Detail</main></PublicShell>);
+
+  expect(document.querySelector("header")).toBeInTheDocument();
+  expect(document.querySelector("nav")).not.toBeInTheDocument();
+  expect(document.querySelector("footer")).toBeInTheDocument();
+});

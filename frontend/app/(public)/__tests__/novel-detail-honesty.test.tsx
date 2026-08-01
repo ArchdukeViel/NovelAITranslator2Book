@@ -16,7 +16,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import NovelDetailPage from "@/app/(public)/novels/[slug]/page";
@@ -36,6 +36,8 @@ const mocks = vi.hoisted(() => ({
   useAddToLibraryMock: vi.fn(),
   useRemoveFromLibraryMock: vi.fn(),
   useProgressMock: vi.fn(),
+  pushMock: vi.fn(),
+  searchParamsMock: vi.fn(),
 }));
 
 vi.mock("next/link", () => ({
@@ -49,6 +51,8 @@ vi.mock("next/link", () => ({
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ slug: "test-slug" }),
+  useRouter: () => ({ push: mocks.pushMock }),
+  useSearchParams: () => mocks.searchParamsMock(),
 }));
 
 vi.mock("@/hooks/public", async () => {
@@ -81,6 +85,7 @@ beforeEach(() => {
     defaultOptions: { queries: { retry: false } },
   });
   vi.clearAllMocks();
+  mocks.searchParamsMock.mockReturnValue(new URLSearchParams());
 
   // Default: unauthenticated guest
   mocks.usePublicAuthMock.mockReturnValue({
@@ -242,16 +247,16 @@ describe("Novel detail page — genre and tag chips", () => {
     expect(screen.getByText("adventure")).toBeInTheDocument();
   });
 
-  it("genre chips link to browse-novels with genre_include param", () => {
+  it("genre chips link to the canonical genre route", () => {
     renderPage();
     const fantasyLink = screen.getByText("fantasy").closest("a");
-    expect(fantasyLink).toHaveAttribute("href", "/browse-novels?genre_include=fantasy");
+    expect(fantasyLink).toHaveAttribute("href", "/genres/fantasy");
   });
 
-  it("tag chips link to browse-novels with tag_include param", () => {
+  it("tag chips link to the canonical tag route", () => {
     renderPage();
     const magicLink = screen.getByText("magic").closest("a");
-    expect(magicLink).toHaveAttribute("href", "/browse-novels?tag_include=magic");
+    expect(magicLink).toHaveAttribute("href", "/tags/magic");
   });
 
   it("hides genre section when no genres", () => {
@@ -335,9 +340,11 @@ describe("Novel detail page — report action", () => {
 });
 
 describe("Novel detail page — chapter list", () => {
+  beforeEach(() => mocks.searchParamsMock.mockReturnValue(new URLSearchParams("tab=chapters")));
+
   it("renders chapter list with correct count", () => {
     renderPage();
-    expect(screen.getByText("Chapter List (3)")).toBeInTheDocument();
+    expect(screen.getByText("3 total")).toBeInTheDocument();
   });
 
   it("renders translated chapter links", () => {
@@ -354,6 +361,57 @@ describe("Novel detail page — chapter list", () => {
   it("renders chapter titles when available", () => {
     renderPage();
     expect(screen.getByText("Chapter One")).toBeInTheDocument();
+  });
+});
+
+describe("Novel detail page — FE-07 tabs and controls", () => {
+  it("writes tab selection to a shareable URL", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /^chapters$/i }));
+    expect(mocks.pushMock).toHaveBeenCalledWith("/novels/test-slug?tab=chapters", { scroll: false });
+  });
+
+  it("renders exactly one primary reading CTA", () => {
+    renderPage();
+    expect(screen.getAllByRole("link", { name: "Start Reading" })).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "Latest Chapter" })).not.toBeInTheDocument();
+  });
+
+  it("replaces Start Reading with one Continue CTA when progress exists", () => {
+    mocks.usePublicAuthMock.mockReturnValue({ isAuthenticated: true, isPending: false, isPublicUser: true, isOwner: false, user: { user_id: 1 } });
+    mocks.useProgressMock.mockReturnValue({ data: { chapter_id: "2", chapter_number: 2 }, isPending: false, isError: false, error: null });
+    renderPage();
+    expect(screen.queryByRole("link", { name: "Start Reading" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Continue from Ch. 2" })).toHaveLength(1);
+  });
+
+  it("filters chapters and reverses their order", () => {
+    mocks.searchParamsMock.mockReturnValue(new URLSearchParams("tab=chapters"));
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText("Search chapters"), { target: { value: "One" } });
+    expect(screen.getByText("Chapter One")).toBeInTheDocument();
+    expect(screen.queryByText("Chapter 2")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("Search chapters"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ascending" }));
+    const readLinks = screen.getAllByRole("link", { name: "Read" });
+    expect(readLinks[0]).toHaveAttribute("href", "/novels/test-slug/chapter/2");
+  });
+
+  it("marks read and last-read chapters from progress", () => {
+    mocks.searchParamsMock.mockReturnValue(new URLSearchParams("tab=chapters"));
+    mocks.usePublicAuthMock.mockReturnValue({ isAuthenticated: true, isPending: false, isPublicUser: true, isOwner: false, user: { user_id: 1 } });
+    mocks.useProgressMock.mockReturnValue({ data: { chapter_id: "2", chapter_number: 2 }, isPending: false, isError: false, error: null });
+    mocks.chaptersQuery.mockReturnValue({ data: makeChaptersData([{}, {}, { translated: true }]), isPending: false, isError: false, error: null });
+    renderPage();
+    const lastRead = (screen.getByText("Last read").closest("div[id]") ?? screen.getByText("Last read").parentElement!) as HTMLElement;
+    expect(within(lastRead).getAllByText("Read").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("link", { name: "First unread" })).toHaveAttribute("href", "#chapter-3");
+  });
+
+  it("keeps unavailable chapters visible", () => {
+    mocks.searchParamsMock.mockReturnValue(new URLSearchParams("tab=chapters"));
+    renderPage();
+    expect(screen.getByText("Not translated")).toBeInTheDocument();
   });
 });
 
@@ -426,6 +484,7 @@ describe("Novel detail page — loading and error states", () => {
       isError: true,
       error: err,
     });
+    mocks.searchParamsMock.mockReturnValue(new URLSearchParams("tab=chapters"));
     renderPage();
     expect(screen.getByText("Could not load chapters.")).toBeInTheDocument();
     expect(screen.queryByText(/Raw chapter fetch failure/)).not.toBeInTheDocument();
