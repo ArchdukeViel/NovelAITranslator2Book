@@ -291,7 +291,9 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
   const [excludeTagQuery, setExcludeTagQuery] = useState("");
 
   // Mobile Search tab: focus the catalog search input when arriving via
-  // /browse-novels?focus=search, then strip the param for a clean URL.
+  // ?focus=search, then strip the param for a clean URL. basePath keeps the
+  // cleanup on the current catalog page (home or browse) rather than
+  // hard-coding a route.
   useEffect(() => {
     if (searchParams.get("focus") !== "search") return;
     const input = document.getElementById("catalog-search");
@@ -299,10 +301,10 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
     const sp = new URLSearchParams(searchParams.toString());
     sp.delete("focus");
     const query = sp.toString();
-    router.replace(query ? `/browse-novels?${query}` : "/browse-novels", {
+    router.replace(query ? `${basePath}?${query}` : basePath, {
       scroll: false,
     });
-  }, [searchParams, router]);
+  }, [searchParams, router, basePath]);
 
   // Fetch genres for the filter UI
   const { data: genresData, isPending: genresPending, isError: genresError } = useGenres();

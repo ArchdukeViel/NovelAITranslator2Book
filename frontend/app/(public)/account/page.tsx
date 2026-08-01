@@ -47,7 +47,7 @@ export default function AccountHubPage() {
 
   useEffect(() => {
     if (!isPending && !isAuthenticated) {
-      router.replace("/login?mode=signin");
+      router.replace("/login?mode=signin&next=%2Faccount");
     }
   }, [isPending, isAuthenticated, router]);
 

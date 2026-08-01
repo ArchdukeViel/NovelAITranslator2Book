@@ -25,7 +25,7 @@ export function MobileTabBar() {
         return "/login?mode=signin&next=%2Faccount%2Flibrary";
       }
       if (href === "/account") {
-        return "/login?mode=signin";
+        return "/login?mode=signin&next=%2Faccount";
       }
     }
     return href;

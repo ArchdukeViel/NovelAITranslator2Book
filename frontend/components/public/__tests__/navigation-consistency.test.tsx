@@ -178,7 +178,7 @@ describe("Mobile tab bar consistency", () => {
     );
     expect(screen.getByRole("link", { name: /^account$/i })).toHaveAttribute(
       "href",
-      "/login?mode=signin"
+      "/login?mode=signin&next=%2Faccount"
     );
 
     // Authenticated: library and account tabs point to their real destinations

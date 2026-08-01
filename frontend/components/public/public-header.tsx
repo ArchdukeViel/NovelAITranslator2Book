@@ -11,9 +11,10 @@ import { PublicBrand } from "@/components/public/public-brand";
 import { PublicThemeToggle } from "@/components/public/public-theme-toggle";
 import { cn } from "@/lib/utils";
 
-// ponytail: Ranking/Contribute excluded from primary nav per DESIGN.md honesty
-// principle — no real data yet. They live in the Account/More hub (mobile) and
-// footer (desktop). Add them here when they ship real data or a real action.
+// Ranking and Contribute are excluded from the primary header nav per the
+// DESIGN.md honesty principle — they have no live data yet. They remain
+// reachable from the Account/More hub (mobile) and the footer (desktop).
+// Add them to the header when they ship real data or a real action.
 const desktopNavItems = [
   { href: "/home", label: "Home", icon: Home },
   { href: "/browse-novels", label: "Browse", icon: BookOpen },

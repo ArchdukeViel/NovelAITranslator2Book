@@ -1,20 +1,19 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 
 import { PublicHeader } from "@/components/public/public-header";
 import { PublicFooter } from "@/components/public/public-footer";
 import { MobileTabBar } from "@/components/public/mobile-tab-bar";
-import { cn } from "@/lib/utils";
 
 export function PublicShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [isChapterRoute, setIsChapterRoute] = useState(false);
-
-  useEffect(() => {
-    setIsChapterRoute(pathname.includes("/chapter/"));
-  }, [pathname]);
+  // Quiet chrome while reading: header, tab bar, and footer are suppressed
+  // on chapter reader routes (DESIGN.md — Reader, "both go quiet while
+  // reading"). Derived inline so the first render matches the final render
+  // (no flash of chrome on a chapter page).
+  const isChapterRoute = pathname.includes("/chapter/");
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
