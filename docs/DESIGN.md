@@ -16,10 +16,11 @@ system, tokens, fonts, brand assets) shipped; FE-02 accessibility (token
 contrast at WCAG AA + primary focus treatment) shipped; FE-03 navigation
 (desktop inline header nav, mobile bottom tab bar, Account/More hub, reader
 chrome suppression) shipped; FE-04 shared search overlay shipped; FE-05
-browse/catalog layout and canonical taxonomy/source routes shipped. Remaining
+browse/catalog layout and canonical taxonomy/source routes shipped; FE-06
+homepage rails and honest eligible Spotlight fallback shipped. Remaining
 Layout Rework slices are pending.
-**Last implementation verification:** FE-05 — typecheck, 790 Vitest tests,
-production build, and backend public-router suite (123 tests) all pass
+**Last implementation verification:** FE-06 — typecheck, 769 Vitest tests,
+production build, and backend public-router suite (125 tests) all pass
 (2026-08-01).
 
 This distinction matters because this doc's own predecessor was the cautionary
@@ -61,9 +62,18 @@ Implemented:
   `/genres/[genre]`, and `/sources/[source-key]` canonical browse routes;
   utility-filter SEO noindex/follow and sort-only canonicalization; exact
   `source_key` catalog filtering in DB and storage-fallback paths
+- FE-06: homepage long stacks and duplicate browse boxes replaced by
+  keyboard-scrollable, labeled New Releases, Recently Updated, Continue
+  Reading, and catalog-derived genre rails with real See-all links; guests
+  get a quiet sign-in continuation tile; reduced motion disables smooth rail
+  scrolling; `/random` redirects uniformly across the catalog with an honest
+  empty fallback; hero uses one Start Reading CTA and a neutral, eligibility-
+  gated Spotlight label instead of falsely claiming admin curation. Manual
+  admin-selected featured rotation remains pending its persistence/API
+  contract.
 
 Pending:
-- FE-06 homepage rails; FE-07 novel-detail sticky layout; FE-08 reader Aa panel + progress
+- FE-07 novel-detail sticky layout; FE-08 reader Aa panel + progress
   bar + resume position; FE-09 library board/list + account shell; FE-10
   /faq, /news, /random, account overview/reviews
 

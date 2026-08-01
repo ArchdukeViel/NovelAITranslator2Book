@@ -2,44 +2,18 @@
 
 import Link from "next/link";
 import {
-  ArrowRight,
   BookOpen,
-  Bookmark,
   Compass,
-  FileText,
-  Library,
-  LifeBuoy,
-  Search,
+  Shuffle,
 } from "lucide-react";
 
 import { FallbackCover } from "@/components/public/fallback-cover";
 import { GenreChip } from "@/components/public/genre-chip";
-import { LatestUpdateRow } from "@/components/public/latest-update-row";
+import { NovelRail } from "@/components/public/novel-rail";
 import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
-import { SectionHeader } from "@/components/public/section-header";
-import { groupDateLabel } from "@/lib/date-group";
-import { useCatalog, useGenreLabelMap, usePublicAuth } from "@/hooks/public";
+import { useCatalog, useGenreLabelMap, useHistory, usePublicAuth } from "@/hooks/public";
 import { publicChapterHref, publicNovelHref } from "@/lib/public-routes";
 import type { PublicNovelSummary } from "@/lib/public-types";
-
-const LATEST_UPDATE_GROUP_ORDER = [
-  "Today",
-  "Yesterday",
-  "1 week ago",
-  "2 weeks ago",
-  "3 weeks ago",
-  "1 month ago",
-  "2 months ago",
-  "3 months ago",
-  "Earlier",
-] as const;
-
-function latestUpdateGroupRank(label: string): number {
-  const index = LATEST_UPDATE_GROUP_ORDER.indexOf(
-    label as (typeof LATEST_UPDATE_GROUP_ORDER)[number]
-  );
-  return index === -1 ? LATEST_UPDATE_GROUP_ORDER.length : index;
-}
 
 function usefulSourceTitle(sourceTitle: string | null | undefined, title: string): string | null {
   const trimmed = sourceTitle?.trim();
@@ -66,59 +40,71 @@ function readableChapterHref(novel: PublicNovelSummary): string | null {
   return null;
 }
 
-function latestChapterHref(novel: PublicNovelSummary): string {
-  return readableChapterHref(novel) ?? publicNovelHref(novel.slug);
-}
-
-function primaryGenre(novel: PublicNovelSummary): string | null {
-  return novel.genres?.[0]?.slug ?? null;
+function RailCard({ novel }: { novel: PublicNovelSummary }) {
+  return (
+    <article role="listitem" className="w-44 shrink-0 snap-start">
+      <Link href={publicNovelHref(novel.slug)} className="group block">
+        <FallbackCover
+          title={novel.title}
+          sourceTitle={novel.source_title}
+          language={novel.language}
+          status={novel.publication_status}
+          genres={novel.genres}
+          className="rounded-md"
+        />
+        <h3 className="mt-3 line-clamp-2 font-literary text-sm font-semibold group-hover:text-accent">
+          {novel.title}
+        </h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {novel.translated_count > 0 ? `${novel.translated_count} translated` : "Translation pending"}
+        </p>
+      </Link>
+    </article>
+  );
 }
 
 export default function HomePage() {
   const { data, isPending, isError, refetch } = useCatalog({
     sort_by: "added_at",
     order: "desc",
-    page_size: 8,
+    // ponytail: one public catalog page supports up to 100 summaries. Add a
+    // bulk-by-slug/history endpoint when libraries routinely exceed this.
+    page_size: 100,
   });
 
   const novels = data?.novels ?? [];
-  const featuredNovel = novels[0];
+  const spotlightNovel = novels.find(
+    (novel) => Boolean(synopsisPreview(novel.synopsis) && readableChapterHref(novel))
+  );
   const genreLabels = useGenreLabelMap();
   const { isAuthenticated } = usePublicAuth();
-  const heroSourceTitle = featuredNovel
-    ? usefulSourceTitle(featuredNovel.source_title, featuredNovel.title)
+  const heroSourceTitle = spotlightNovel
+    ? usefulSourceTitle(spotlightNovel.source_title, spotlightNovel.title)
     : null;
-  const heroSynopsis = synopsisPreview(featuredNovel?.synopsis);
-  const heroDetailHref = featuredNovel ? publicNovelHref(featuredNovel.slug) : null;
-  const heroReadableHref = featuredNovel ? readableChapterHref(featuredNovel) : null;
-  const utilityItems = [
-    {
-      href: "/request-novel",
-      icon: FileText,
-      label: "Request Novel",
-    },
-    {
-      href: "/browse-novels",
-      icon: Search,
-      label: "Browse Library",
-    },
-    {
-      href: "/contact",
-      icon: LifeBuoy,
-      label: "Contact",
-    },
-    isAuthenticated
-      ? {
-          href: "/account/library",
-          icon: Library,
-          label: "Library",
-        }
-      : {
-          href: "/login?mode=signin",
-          icon: Bookmark,
-          label: "Save Reading",
-        },
-  ];
+  const heroSynopsis = synopsisPreview(spotlightNovel?.synopsis);
+  const heroReadableHref = spotlightNovel ? readableChapterHref(spotlightNovel) : null;
+  const history = useHistory({ limit: 12 });
+  const continueNovels = isAuthenticated
+    ? [...new Set((history.data?.items ?? []).map((item) => item.slug))]
+        .map((slug) => novels.find((novel) => novel.slug === slug))
+        .filter((novel): novel is PublicNovelSummary => Boolean(novel))
+    : [];
+  const recentlyUpdated = [...novels].sort((left, right) =>
+    String(latestActivityAt(right) ?? "").localeCompare(String(latestActivityAt(left) ?? ""))
+  );
+  const genreCounts = new Map<string, { count: number; label: string }>();
+  for (const novel of novels.filter((item) => item.translated_count > 0)) {
+    for (const genre of novel.genres ?? []) {
+      const current = genreCounts.get(genre.slug);
+      genreCounts.set(genre.slug, {
+        count: (current?.count ?? 0) + 1,
+        label: genre.name_en ?? genre.name_ja ?? genre.slug,
+      });
+    }
+  }
+  const topGenres = [...genreCounts.entries()]
+    .sort((left, right) => right[1].count - left[1].count || left[0].localeCompare(right[0]))
+    .slice(0, 2);
 
   // ── Loading ──
   if (isPending) {
@@ -245,11 +231,11 @@ export default function HomePage() {
   return (
     <main className="bg-background">
       {/* ── Hero ── */}
-      <section
-        className="relative isolate min-h-[85vh] overflow-hidden border-b border-border/80"
-        aria-label="Featured Dokushodo novel"
-      >
-        {featuredNovel && (
+      {spotlightNovel && (
+        <section
+          className="relative isolate min-h-[85vh] overflow-hidden border-b border-border/80"
+          aria-label="Dokushodo spotlight novel"
+        >
           <>
             <div
               className="absolute inset-0 -z-30 bg-cover bg-center opacity-55 dark:opacity-45"
@@ -279,11 +265,11 @@ export default function HomePage() {
             <div className="mx-auto flex min-h-[85vh] max-w-7xl items-end px-4 pb-14 pt-24 sm:px-6 lg:px-8 lg:pb-20">
               <div className="max-w-3xl">
                 <span className="font-metadata text-xs uppercase tracking-[0.2em] text-accent drop-shadow">
-                  Featured
+                  Spotlight
                 </span>
 
                 <h1 className="mt-5 max-w-2xl font-literary text-4xl font-semibold leading-tight tracking-normal text-foreground drop-shadow md:text-6xl">
-                  {featuredNovel.title}
+                  {spotlightNovel.title}
                 </h1>
 
                 {heroSourceTitle && (
@@ -294,19 +280,19 @@ export default function HomePage() {
 
                 <NovelMetadataRow
                   className="mt-5"
-                  chapterCount={featuredNovel.chapter_count}
-                  translatedCount={featuredNovel.translated_count}
-                  source={featuredNovel.language}
-                  status={featuredNovel.publication_status}
+                  chapterCount={spotlightNovel.chapter_count}
+                  translatedCount={spotlightNovel.translated_count}
+                  source={spotlightNovel.language}
+                  status={spotlightNovel.publication_status}
                 />
 
                 <p className="mt-5 max-w-2xl line-clamp-3 text-sm leading-6 text-foreground/80 drop-shadow md:text-base md:leading-7">
                   {heroSynopsis ?? "Synopsis unavailable for this novel."}
                 </p>
 
-{featuredNovel.genres && featuredNovel.genres.length > 0 && (
+{spotlightNovel.genres && spotlightNovel.genres.length > 0 && (
                    <div className="mt-5 flex flex-wrap gap-2">
-                     {featuredNovel.genres.map((genre) => (
+                     {spotlightNovel.genres.map((genre) => (
                        <GenreChip key={genre.slug} label={genreLabels?.get(genre.slug) ?? genre.slug} />
                      ))}
                    </div>
@@ -328,19 +314,6 @@ export default function HomePage() {
                       Start Reading
                     </Link>
                   )}
-                  {heroDetailHref && (
-                    <Link
-                      href={heroDetailHref}
-                      className={
-                        heroReadableHref
-                          ? "inline-flex h-11 items-center justify-center gap-2 rounded-sm border border-accent/40 bg-background/70 px-5 font-metadata text-xs font-medium uppercase tracking-wide text-accent backdrop-blur transition-colors hover:bg-accent/10"
-                          : "inline-flex h-11 items-center justify-center gap-2 rounded-sm bg-primary px-5 font-metadata text-xs font-medium uppercase tracking-wide text-primary-foreground transition-colors hover:bg-primary/90"
-                      }
-                    >
-                      View Details
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
-                  )}
                 </div>
               </div>
 
@@ -352,182 +325,45 @@ export default function HomePage() {
               </div>
             </div>
           </>
+        </section>
+      )}
+
+      <div className="mx-auto max-w-7xl space-y-14 px-4 py-14 sm:px-6 lg:px-8">
+        {isAuthenticated ? (
+          continueNovels.length > 0 && (
+            <NovelRail title="Continue Reading" ariaLabel="Continue reading" seeAllHref="/account/history">
+              {continueNovels.map((novel) => <RailCard key={novel.novel_id} novel={novel} />)}
+            </NovelRail>
+          )
+        ) : (
+          <section aria-label="Continue reading" className="rounded-lg border border-border bg-card/60 p-6">
+            <h2 className="font-literary text-xl font-semibold">Continue Reading</h2>
+            <p className="mt-2 text-sm text-muted-foreground">Sign in to pick up where you left off.</p>
+            <Link href="/login?mode=signin" className="mt-4 inline-flex text-sm font-medium text-primary">Sign in</Link>
+          </section>
         )}
-      </section>
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* ── Reader utility links ── */}
-        <section className="grid gap-3 border-b border-border/70 py-8 sm:grid-cols-2 lg:grid-cols-4">
-          {utilityItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.label}
-                href={item.href}
-                className="group flex min-h-24 flex-col items-center justify-center gap-3 rounded-sm border border-border/80 bg-card/55 px-4 py-5 text-center transition-colors hover:border-primary/40 hover:bg-card"
-              >
-                <Icon className="h-5 w-5 text-foreground/70 transition-colors group-hover:text-primary" />
-                <span className="font-literary text-sm font-semibold text-foreground">
-                  {item.label}
-                </span>
-              </Link>
-            );
-          })}
-        </section>
+        <NovelRail title="New Releases" ariaLabel="New releases" seeAllHref="/browse-novels?sort_by=added_at&order=desc">
+          {novels.slice(0, 12).map((novel) => <RailCard key={novel.novel_id} novel={novel} />)}
+        </NovelRail>
 
-        <section className="grid gap-8 py-14 lg:grid-cols-[minmax(0,1fr)_18rem]">
-          <div>
-            <SectionHeader
-              title="Latest Releases"
-              description="Newest catalog entries, shown with generated reading plates until safe cover metadata exists."
-              actionHref="/browse-novels"
-              actionLabel="View all"
-            />
-            <div className="mt-6 grid gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
-              {novels.slice(0, 6).map((novel) => {
-                const genre = primaryGenre(novel);
-                return (
-                  <Link
-                    key={novel.novel_id}
-                    href={publicNovelHref(novel.slug)}
-                    className="group block"
-                  >
-                    <div className="overflow-hidden rounded-sm border border-border/80 bg-card/60">
-                      <FallbackCover
-                        title={novel.title}
-                        sourceTitle={novel.source_title}
-                        language={novel.language}
-                        status={novel.publication_status}
-                        genres={novel.genres}
-                        className="rounded-none border-0 shadow-none"
-                      />
-                    </div>
-                    <div className="mt-3">
-                      <p className="line-clamp-2 font-literary text-base font-semibold leading-snug text-foreground group-hover:text-accent">
-                        {novel.title}
-                      </p>
-                      <p className="mt-1 font-metadata text-xs uppercase tracking-wide text-muted-foreground">
-                        {novel.translated_count > 0
-                          ? `${novel.translated_count} translated`
-                          : "No translated chapters yet"}
-                        {genre ? ` / ${genreLabels?.get(genre) ?? genre}` : ""}
-                      </p>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
+        <NovelRail title="Recently Updated" ariaLabel="Recently updated" seeAllHref="/browse-novels?sort_by=updated_at&order=desc">
+          {recentlyUpdated.slice(0, 12).map((novel) => <RailCard key={novel.novel_id} novel={novel} />)}
+        </NovelRail>
 
-          <aside className="space-y-5">
-            <div className="rounded-sm border border-border/80 bg-card/55 p-5">
-              <h2 className="border-l-2 border-primary pl-3 font-literary text-xl font-semibold">
-                Reading Paths
-              </h2>
-              <div className="mt-5 space-y-2">
-                <Link
-                  href="/browse-novels"
-                  className="flex items-center justify-between border-b border-border/60 py-3 text-sm text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  Browse by genre
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-                <Link
-                  href="/request-novel"
-                  className="flex items-center justify-between border-b border-border/60 py-3 text-sm text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  Request a source URL
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-                <Link
-                  href={isAuthenticated ? "/account/library" : "/login?mode=signin"}
-                  className="flex items-center justify-between py-3 text-sm text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {isAuthenticated ? "Open library" : "Save reading state"}
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
-            </div>
+        {topGenres.map(([slug, genre]) => (
+          <NovelRail key={slug} title={genre.label} ariaLabel={`${genre.label} novels`} seeAllHref={`/genres/${encodeURIComponent(slug)}`}>
+            {novels.filter((novel) => novel.genres?.some((item) => item.slug === slug)).slice(0, 12).map((novel) => (
+              <RailCard key={novel.novel_id} novel={novel} />
+            ))}
+          </NovelRail>
+        ))}
 
-            <div className="rounded-sm border border-border/80 bg-card/55 p-5">
-              <h2 className="border-l-2 border-primary pl-3 font-literary text-xl font-semibold">
-                Catalog Notes
-              </h2>
-              <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                Covers here are generated placeholders. Public source cover metadata is still gated until it can be handled safely.
-              </p>
-            </div>
-          </aside>
-        </section>
-
-        {/* ── Recently Added (compact rows) ── */}
-        <section className="pb-16">
-          <SectionHeader
-            title="Recent Updates"
-            description="Latest readable chapter activity and catalog additions."
-            actionHref="/browse-novels"
-            actionLabel="View all"
-          />
-          {(() => {
-            // Group novels by their date label (Today, Yesterday, etc.)
-            const grouped = new Map<string, typeof novels>();
-            const groupOrder: string[] = [];
-
-            for (const novel of novels.slice(0, 8)) {
-              const label = groupDateLabel(latestActivityAt(novel)) ?? "Earlier";
-              if (!grouped.has(label)) {
-                grouped.set(label, []);
-                groupOrder.push(label);
-              }
-              grouped.get(label)!.push(novel);
-            }
-
-            return groupOrder
-              .sort((left, right) => latestUpdateGroupRank(left) - latestUpdateGroupRank(right))
-              .map((label) => (
-                <div key={label} className="mt-6 first:mt-4">
-                  <h3 className="font-metadata text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {label}
-                  </h3>
-                  <div className="mt-2 divide-y divide-border/60 overflow-hidden rounded-sm border border-border/80 bg-card/45">
-                    {grouped.get(label)!.map((novel) => (
-                      <LatestUpdateRow
-                        key={novel.novel_id}
-                        href={latestChapterHref(novel)}
-                        title={novel.title}
-                        chapterLabel={
-                          novel.translated_count > 0
-                            ? `Chapter ${novel.translated_count} translated`
-                            : undefined
-                        }
-                        latestChapterNumber={novel.latest_chapter_number}
-                        latestChapterTitle={novel.latest_chapter_title}
-                        updatedAt={latestActivityAt(novel)}
-                        sourceTitle={novel.source_title ?? undefined}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ));
-          })()}
-        </section>
-
-        {/* ── Browse the catalog CTA ── */}
-        <section className="mb-16">
-          <div className="flex flex-col items-center justify-center rounded-lg bg-card/70 px-4 py-14 text-center ring-1 ring-border">
-            <Compass className="mb-4 h-10 w-10 text-muted-foreground/50" />
-            <p className="max-w-md text-sm leading-6 text-muted-foreground">
-              Browse the full catalog of translated novels.
-            </p>
-            <Link
-              href="/browse-novels"
-              className="mt-5 inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-            >
-              <Compass className="h-4 w-4" />
-              Browse the catalog
-            </Link>
-          </div>
-        </section>
+        <Link href="/random" className="flex w-44 flex-col items-center justify-center rounded-lg border border-border bg-card/60 px-5 py-10 text-center hover:border-primary/40">
+          <Shuffle className="h-8 w-8 text-primary" />
+          <span className="mt-4 font-literary font-semibold">Surprise Me</span>
+          <span className="mt-1 text-xs text-muted-foreground">Open a random novel</span>
+        </Link>
       </div>
     </main>
   );

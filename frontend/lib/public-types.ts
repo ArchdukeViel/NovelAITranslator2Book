@@ -43,7 +43,7 @@ export interface PublicCatalogResponse {
   page_size: number;
 }
 
-export type CatalogSortField = "added_at" | "title" | "chapter_count";
+export type CatalogSortField = "added_at" | "updated_at" | "title" | "chapter_count";
 export type CatalogOrder = "asc" | "desc";
 
 export interface CatalogParams {

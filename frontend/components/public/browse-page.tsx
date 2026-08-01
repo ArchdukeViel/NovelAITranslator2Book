@@ -39,6 +39,7 @@ const STATUS_FILTERS = [
 
 const SORT_OPTIONS: { value: CatalogSortField; label: string }[] = [
   { value: "added_at", label: "Recently added" },
+  { value: "updated_at", label: "Recently updated" },
   { value: "title", label: "Title" },
   { value: "chapter_count", label: "Chapter count" },
 ];

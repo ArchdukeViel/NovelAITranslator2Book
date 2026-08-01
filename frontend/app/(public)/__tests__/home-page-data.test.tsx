@@ -1,1194 +1,167 @@
-/**
- * Homepage data-honesty and state tests.
- *
- * Confirms homepage uses real catalog data, handles loading/error/empty states
- * with polished UI, does not use static/placeholder novel data, does not pass
- * adult opt-in, and does not duplicate sections from the same data.
- *
- * Feature: PUBLIC-HOME-DATA-1, PUBLIC-HOME-DATA-2
- */
-
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import HomePage from "@/app/(public)/home/page";
 
-// ---------------------------------------------------------------------------
-// Mocks
-// ---------------------------------------------------------------------------
-
 const mocks = vi.hoisted(() => ({
   catalogQuery: vi.fn(),
-  authState: {
-    isAuthenticated: false,
-    user: null as { email?: string | null } | null,
-  },
+  historyQuery: vi.fn(),
+  catalogParams: vi.fn(),
+  isAuthenticated: false,
 }));
 
 vi.mock("@/hooks/public", async () => {
-  const actual = await vi.importActual<typeof import("@/hooks/public")>(
-    "@/hooks/public"
-  );
+  const actual = await vi.importActual<typeof import("@/hooks/public")>("@/hooks/public");
   return {
     ...actual,
+    useCatalog: (params: unknown) => {
+      mocks.catalogParams(params);
+      return mocks.catalogQuery();
+    },
+    useGenreLabelMap: () => new Map<string, string>(),
+    useHistory: () => mocks.historyQuery(),
     usePublicAuth: () => ({
-      isAuthenticated: mocks.authState.isAuthenticated,
+      isAuthenticated: mocks.isAuthenticated,
       isPending: false,
-      isPublicUser: mocks.authState.isAuthenticated,
+      isPublicUser: mocks.isAuthenticated,
       isOwner: false,
-      authState: mocks.authState.isAuthenticated
-        ? {
-            status: "authenticated",
-            user: {
-              user_id: 1,
-              email: mocks.authState.user?.email ?? "reader@example.com",
-              role: "user",
-              is_authenticated: true,
-              is_owner: false,
-            },
-          }
-        : null,
-      user: mocks.authState.isAuthenticated
-        ? {
-            user_id: 1,
-            email: mocks.authState.user?.email ?? "reader@example.com",
-            role: "user",
-            is_authenticated: true,
-            is_owner: false,
-          }
-        : null,
+      user: mocks.isAuthenticated ? { user_id: 1, email: "reader@example.com" } : null,
     }),
-    useLibraryItem: () => ({ data: undefined, isPending: false }),
-    useAddToLibrary: () => ({ mutate: vi.fn(), isPending: false }),
-    useRemoveFromLibrary: () => ({ mutate: vi.fn(), isPending: false }),
-    useLogout: () => vi.fn(),
-    useCatalog: () => mocks.catalogQuery(),
   };
 });
 
 vi.mock("next/link", () => ({
-  default: ({
-    children,
-    ...props
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children: React.ReactNode }) => (
-    <a {...props}>{children}</a>
-  ),
+  default: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...props}>{children}</a>,
 }));
 
-vi.mock("next/navigation", () => ({
-  usePathname: () => "/home",
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(""),
-}));
-
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
-
-let queryClient: QueryClient;
-
-beforeEach(() => {
-  queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  vi.clearAllMocks();
-  mocks.authState.isAuthenticated = false;
-  mocks.authState.user = null;
-});
-
-afterEach(() => {
-  cleanup();
-});
-
-function renderHome() {
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <HomePage />
-    </QueryClientProvider>
-  );
-}
-
-// Sample novel factory
-function makeNovel(overrides: Record<string, unknown> = {}) {
+function novel(overrides: Record<string, unknown> = {}) {
   return {
     novel_id: "n1",
-    slug: "test-novel",
-    title: "Test Novel",
-    source_title: null as string | null,
-    author: "Test Author",
+    slug: "dragon",
+    title: "Dragon Road",
+    source_title: "竜の道",
+    author: "Author",
     language: "ja",
-    synopsis: null as string | null,
-    status: "Ongoing",
+    synopsis: "A complete synopsis.",
+    publication_status: "ongoing",
     chapter_count: 10,
     translated_count: 5,
-    added_at: "2026-06-17T08:00:00Z",
-    latest_chapter_id: null as string | null,
-    latest_chapter_number: null as number | null,
-    latest_chapter_title: null as string | null,
-    latest_chapter_updated_at: null as string | null,
+    added_at: "2026-07-01T00:00:00Z",
+    latest_chapter_id: "chapter-5",
+    latest_chapter_updated_at: "2026-07-10T00:00:00Z",
     genres: [{ slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" }],
-    tags: [{ name: "magic", name_ja: "魔法" }],
+    tags: [],
     ...overrides,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Loading state
-// ---------------------------------------------------------------------------
+let queryClient: QueryClient;
 
-describe("HomePage loading state", () => {
-  it("shows skeleton layout resembling final structure", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: undefined,
-      isPending: true,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    // Loading region is present
-    expect(
-      screen.getByLabelText("Loading featured novel")
-    ).toBeInTheDocument();
-    // Screen-reader status text
-    expect(screen.getByText("Loading catalog…")).toBeInTheDocument();
-    // Should not render section headers during loading
-    expect(screen.queryByText("Latest Releases")).not.toBeInTheDocument();
-    expect(screen.queryByText("Recent Updates")).not.toBeInTheDocument();
-    expect(screen.queryByText("Featured")).not.toBeInTheDocument();
+beforeEach(() => {
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  vi.clearAllMocks();
+  mocks.isAuthenticated = false;
+  mocks.historyQuery.mockReturnValue({ data: undefined, isPending: false, isError: false });
+  mocks.catalogQuery.mockReturnValue({
+    data: { novels: [novel()], total: 1, page: 1, page_size: 8 },
+    isPending: false,
+    isError: false,
+    refetch: vi.fn(),
   });
 });
 
-// ---------------------------------------------------------------------------
-// Error state
-// ---------------------------------------------------------------------------
+afterEach(cleanup);
 
-describe("HomePage error state", () => {
-  it("shows error message with Try again and Browse catalog", () => {
-    const mockRefetch = vi.fn();
-    mocks.catalogQuery.mockReturnValue({
-      data: undefined,
-      isPending: false,
-      isError: true,
-      error: new Error("Network error"),
-      refetch: mockRefetch,
-    });
+function renderHome() {
+  return render(<QueryClientProvider client={queryClient}><HomePage /></QueryClientProvider>);
+}
+
+describe("HomePage states", () => {
+  it("renders catalog-shaped loading state", () => {
+    mocks.catalogQuery.mockReturnValue({ data: undefined, isPending: true, isError: false, refetch: vi.fn() });
     renderHome();
-
-    expect(
-      screen.getByText("Could not load the catalog")
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Something went wrong fetching novels/)
-    ).toBeInTheDocument();
-
-    // Two recovery paths: retry and browse
-    expect(screen.getByText("Try again")).toBeInTheDocument();
-    expect(screen.getByText("Browse the catalog")).toBeInTheDocument();
+    expect(screen.getByLabelText("Loading featured novel")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading catalog");
   });
 
-  it("calls refetch when Try again is clicked", async () => {
-    const mockRefetch = vi.fn();
-    mocks.catalogQuery.mockReturnValue({
-      data: undefined,
-      isPending: false,
-      isError: true,
-      error: new Error("Timeout"),
-      refetch: mockRefetch,
-    });
+  it("renders retryable error state", () => {
+    const refetch = vi.fn();
+    mocks.catalogQuery.mockReturnValue({ data: undefined, isPending: false, isError: true, refetch });
     renderHome();
-
-    const user = userEvent.setup();
-    await user.click(screen.getByText("Try again"));
-
-    expect(mockRefetch).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("link", { name: /browse the catalog/i })).toHaveAttribute("href", "/browse-novels");
   });
 
-  it("does not render real content in error state", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: undefined,
-      isPending: false,
-      isError: true,
-      error: new Error("Boom"),
-      refetch: vi.fn(),
-    });
+  it("renders honest empty state", () => {
+    mocks.catalogQuery.mockReturnValue({ data: { novels: [], total: 0, page: 1, page_size: 8 }, isPending: false, isError: false, refetch: vi.fn() });
     renderHome();
-
-    expect(screen.queryByText("Latest Releases")).not.toBeInTheDocument();
-    expect(screen.queryByText("Recent Updates")).not.toBeInTheDocument();
-    expect(screen.queryByText("Featured")).not.toBeInTheDocument();
-    expect(screen.queryByText("Start Reading")).not.toBeInTheDocument();
+    expect(screen.getByText("No novels in the catalog yet")).toBeInTheDocument();
   });
 });
 
-// ---------------------------------------------------------------------------
-// Empty state
-// ---------------------------------------------------------------------------
-
-describe("HomePage empty state", () => {
-  it("shows empty message with request and browse CTAs", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: { novels: [], total: 0, page: 1, page_size: 8 },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
+describe("HomePage honest spotlight", () => {
+  it("shows one Start Reading CTA for an eligible spotlight", () => {
     renderHome();
-
-    expect(
-      screen.getByText("No novels in the catalog yet")
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/New translations are added regularly/)
-    ).toBeInTheDocument();
-    expect(screen.getByText("Request a novel")).toBeInTheDocument();
-    expect(screen.getByText("Browse the catalog")).toBeInTheDocument();
+    const hero = screen.getByLabelText("Dokushodo spotlight novel");
+    expect(within(hero).getByText("Spotlight")).toBeInTheDocument();
+    expect(within(hero).getByRole("link", { name: /start reading/i })).toHaveAttribute("href", "/novels/dragon/chapter/chapter-5");
+    expect(within(hero).queryByText("Featured")).not.toBeInTheDocument();
+    expect(within(hero).queryByRole("link", { name: /view details/i })).not.toBeInTheDocument();
   });
 
-  it("does not render real content when catalog is empty", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: { novels: [], total: 0, page: 1, page_size: 8 },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
+  it("does not claim a spotlight when eligibility is missing", () => {
+    mocks.catalogQuery.mockReturnValue({ data: { novels: [novel({ synopsis: null, latest_chapter_id: null })], total: 1, page: 1, page_size: 8 }, isPending: false, isError: false, refetch: vi.fn() });
     renderHome();
-
-    expect(screen.queryByText("Recently Added")).not.toBeInTheDocument();
-    expect(screen.queryByText("Featured")).not.toBeInTheDocument();
-    expect(screen.queryByText("Start Reading")).not.toBeInTheDocument();
+    expect(screen.queryByText("Spotlight")).not.toBeInTheDocument();
   });
 });
 
-// ---------------------------------------------------------------------------
-// Real data rendering (PUBLIC-HOME-DATA-1 regression)
-// ---------------------------------------------------------------------------
-
-describe("HomePage real data rendering", () => {
-  it("renders hero section with first catalog novel", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({
-            title: "Hero Novel",
-            slug: "hero-novel",
-            latest_chapter_id: "ch001",
-          }),
-          makeNovel({ novel_id: "n2", slug: "second-novel", title: "Second Novel" }),
-        ],
-        total: 2,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
+describe("HomePage rails", () => {
+  it("renders labeled New Releases and Recently Updated rails with real See all links", () => {
     renderHome();
-
-    const heroTitles = screen.getAllByText("Hero Novel");
-    expect(heroTitles.length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Featured")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /start reading/i })).toHaveAttribute(
-      "href",
-      "/novels/hero-novel/chapter/ch001"
-    );
-    expect(screen.getByRole("link", { name: /view details/i })).toHaveAttribute(
-      "href",
-      "/novels/hero-novel"
-    );
+    expect(screen.getByRole("region", { name: "New releases" })).toBeInTheDocument();
+    const updated = screen.getByRole("region", { name: "Recently updated" });
+    expect(within(updated).getByRole("link", { name: "See all" })).toHaveAttribute("href", "/browse-novels?sort_by=updated_at&order=desc");
   });
 
-  it("does not show Start Reading in the hero when no readable chapter exists", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({
-            title: "Unreadable Hero",
-            slug: "unreadable-hero",
-            latest_chapter_id: null,
-          }),
-        ],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
+  it("shows a quiet sign-in continuation tile to guests", () => {
     renderHome();
-
-    const hero = screen.getByLabelText("Featured Dokushodo novel");
-    expect(within(hero).queryByRole("link", { name: /start reading/i })).not.toBeInTheDocument();
-    expect(within(hero).getByText("No translated chapters yet.")).toBeInTheDocument();
-    expect(within(hero).getByRole("link", { name: /view details/i })).toHaveAttribute(
-      "href",
-      "/novels/unreadable-hero"
-    );
+    const continuation = screen.getByRole("region", { name: "Continue reading" });
+    expect(within(continuation).getByText(/sign in to pick up/i)).toBeInTheDocument();
+    expect(within(continuation).getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login?mode=signin");
   });
 
-  it("renders distinct source_title in the hero", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({
-            title: "Translated Hero",
-            source_title: "原作タイトル",
-          }),
-        ],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
+  it("uses existing history for signed-in Continue Reading", () => {
+    mocks.isAuthenticated = true;
+    mocks.historyQuery.mockReturnValue({ data: { items: [{ id: 1, slug: "dragon", chapter_id: "chapter-5", chapter_number: 5, read_at: "2026-07-10" }], next_cursor: null }, isPending: false, isError: false });
     renderHome();
-
-    const hero = screen.getByLabelText("Featured Dokushodo novel");
-    expect(within(hero).getByRole("heading", { level: 1, name: "Translated Hero" })).toBeInTheDocument();
-    expect(within(hero).getByText("原作タイトル")).toBeInTheDocument();
+    const continuation = screen.getByRole("region", { name: "Continue reading" });
+    expect(within(continuation).getByRole("link", { name: "See all" })).toHaveAttribute("href", "/account/history");
   });
 
-  it("hides source_title in the hero when missing or same as title", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({
-            title: "Same Title",
-            source_title: "Same Title",
-          }),
-        ],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
+  it("derives genre rails from translated catalog composition", () => {
+    mocks.catalogQuery.mockReturnValue({ data: { novels: [novel(), novel({ novel_id: "n2", slug: "magic", title: "Magic", genres: [{ slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" }] }), novel({ novel_id: "n3", slug: "love", title: "Love", genres: [{ slug: "romance", name_ja: "恋愛", name_en: "Romance" }] })], total: 3, page: 1, page_size: 8 }, isPending: false, isError: false, refetch: vi.fn() });
     renderHome();
-
-    const hero = screen.getByLabelText("Featured Dokushodo novel");
-    expect(within(hero).getAllByText("Same Title")).toHaveLength(1);
-    expect(screen.queryByText("Original Japanese Title")).not.toBeInTheDocument();
+    const fantasy = screen.getByRole("region", { name: "Fantasy novels" });
+    expect(within(fantasy).getByRole("link", { name: "See all" })).toHaveAttribute("href", "/genres/fantasy");
   });
 
-  it("renders synopsis snippet in the hero when present", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({
-            synopsis: "  A quiet source synopsis from the catalog summary.  ",
-          }),
-        ],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
+  it("links Surprise Me to the real random route", () => {
     renderHome();
-
-    expect(screen.getByText("A quiet source synopsis from the catalog summary.")).toBeInTheDocument();
-    expect(screen.queryByText("Synopsis unavailable for this novel.")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /surprise me/i })).toHaveAttribute("href", "/random");
   });
 
-  it("shows hero synopsis fallback only when synopsis is missing or blank", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel({ synopsis: "   ", latest_chapter_id: null })],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
+  it("removes Reading Paths and duplicate browse utility boxes", () => {
     renderHome();
-
-    expect(screen.getByText("Synopsis unavailable for this novel.")).toBeInTheDocument();
-    expect(screen.getByText("No translated chapters yet.")).toBeInTheDocument();
+    expect(screen.queryByText("Reading Paths")).not.toBeInTheDocument();
+    expect(screen.queryByText("Browse Library")).not.toBeInTheDocument();
+    expect(screen.queryByText("Catalog Notes")).not.toBeInTheDocument();
   });
 
-  it("renders Latest Releases and Recent Updates sections with catalog novels", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({ title: "First Novel", slug: "first", added_at: "2026-06-17T08:00:00Z" }),
-          makeNovel({ novel_id: "n2", slug: "second", title: "Second Novel", added_at: "2026-06-16T08:00:00Z" }),
-          makeNovel({ novel_id: "n3", slug: "third", title: "Third Novel", added_at: "2026-06-15T08:00:00Z" }),
-        ],
-        total: 3,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
+  it("never opts into adult catalog content", () => {
     renderHome();
-
-    expect(screen.getByText("Latest Releases")).toBeInTheDocument();
-    expect(screen.getByText("Recent Updates")).toBeInTheDocument();
-    expect(screen.getAllByText("First Novel").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Second Novel").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Third Novel").length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("links latest update rows to latest readable chapter when available", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({
-            title: "Latest Novel",
-            slug: "latest-novel",
-            latest_chapter_id: "ch015",
-            latest_chapter_number: 15,
-            latest_chapter_title: "The Quiet Return",
-            latest_chapter_updated_at: "2026-06-17T09:30:00Z",
-          }),
-        ],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.getByText("Chapter 15: The Quiet Return")).toBeInTheDocument();
-    expect(screen.queryByText("Chapter 5 translated")).not.toBeInTheDocument();
-    const latestNovelLinks = screen.getAllByRole("link", { name: /latest novel/i });
-    expect(
-      latestNovelLinks.some(
-        (link) => link.getAttribute("href") === "/novels/latest-novel/chapter/ch015"
-      )
-    ).toBe(true);
-  });
-
-  it("falls back to novel detail link and translated count when latest chapter metadata is missing", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({
-            title: "Fallback Novel",
-            slug: "fallback-novel",
-            translated_count: 4,
-          }),
-        ],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.getByText("Chapter 4 translated")).toBeInTheDocument();
-    const fallbackNovelLinks = screen.getAllByRole("link", { name: /fallback novel/i });
-    expect(
-      fallbackNovelLinks.some(
-        (link) => link.getAttribute("href") === "/novels/fallback-novel"
-      )
-    ).toBe(true);
-  });
-
-  it("passes genres and tags through to rendered chips", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({
-            title: "Genre Novel",
-            genres: [
-              { slug: "fantasy", name_ja: "ファンタジー", name_en: "Fantasy" },
-              { slug: "isekai", name_ja: "異世界", name_en: "Isekai" },
-            ],
-            tags: [
-              { name: "magic", name_ja: "魔法" },
-              { name: "hero", name_ja: "主人公" },
-            ],
-          }),
-        ],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    const fantasyChips = screen.getAllByText("fantasy");
-    expect(fantasyChips.length).toBeGreaterThanOrEqual(1);
-    const isekaiChips = screen.getAllByText("isekai");
-    expect(isekaiChips.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("renders catalog CTA section", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel()],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(
-      screen.getByText(/Browse the full catalog/i)
-    ).toBeInTheDocument();
-    expect(screen.getByText("Browse the catalog")).toBeInTheDocument();
-  });
-
-  it("renders normal-state request CTA", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel()],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    const requestLink = screen.getByRole("link", { name: /request novel/i });
-    expect(requestLink).toHaveAttribute("href", "/request-novel");
-  });
-
-  it("renders signed-out account prompt", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel()],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    const saveReadingLinks = screen.getAllByRole("link", { name: /save reading/i });
-    expect(
-      saveReadingLinks.some((link) => link.getAttribute("href") === "/login?mode=signin")
-    ).toBe(true);
-    expect(screen.getByText("Save reading state")).toBeInTheDocument();
-  });
-
-  it("renders signed-in account links", () => {
-    mocks.authState.isAuthenticated = true;
-    mocks.authState.user = { email: "reader@example.com" };
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel()],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.getByRole("link", { name: /^library$/i })).toHaveAttribute("href", "/account/library");
-    expect(screen.getByText("Open library")).toBeInTheDocument();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// No section duplication
-// ---------------------------------------------------------------------------
-
-describe("HomePage section duplication", () => {
-  it("does not render a Latest Novels section duplicating Recently Added data", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel(), makeNovel({ novel_id: "n2", slug: "n2" })],
-        total: 2,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    // Latest Releases exists
-    expect(screen.getByText("Latest Releases")).toBeInTheDocument();
-    // Latest Novels card grid does NOT exist
-    expect(screen.queryByText("Latest Novels")).not.toBeInTheDocument();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Adult/R18 safety
-// ---------------------------------------------------------------------------
-
-describe("HomePage adult safety", () => {
-  it("does not pass include_adult=true in catalog query", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({
-            genres: [{ slug: "adult-romance", name_ja: "アダルトロマンス", name_en: "Adult Romance" }],
-            tags: [],
-          }),
-        ],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-
-    renderHome();
-
-    const adultChips = screen.getAllByText("adult-romance");
-    expect(adultChips.length).toBeGreaterThanOrEqual(1);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// No static placeholder data
-// ---------------------------------------------------------------------------
-
-describe("HomePage data honesty — no static placeholders", () => {
-  it("does not render preview/static novel data", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel({ title: "Real Novel" })],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.queryByText("The Reincarnated Sage's Quiet Life")).not.toBeInTheDocument();
-    expect(screen.queryByText("Dungeon Core: Building a Sanctuary")).not.toBeInTheDocument();
-    expect(screen.queryByText("Chronicles of the Azure Sky")).not.toBeInTheDocument();
-  });
-
-  it("does not render 'Preview' as section header", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel()],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.queryByText("Preview")).not.toBeInTheDocument();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Copy polish — no scaffold wording
-// ---------------------------------------------------------------------------
-
-describe("HomePage copy polish", () => {
-  it("does not use selection/curation language implying hand-picking", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel()],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    // No "selection" wording — catalog is auto-sorted, not curated
-    expect(screen.queryByText(/selection/i)).not.toBeInTheDocument();
-  });
-
-  it("does not render old ranking-data-not-live placeholder", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel()],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.queryByText(/ranking data is not live/i)).not.toBeInTheDocument();
-  });
-
-  it("does not render fake metric or community language", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel()],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.queryByText(/\d+\s*views/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/\d+\s*readers/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/trending/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/leaderboard/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/community/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/official cover|cover image|cover_url/i)).not.toBeInTheDocument();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Source title rendering
-// ---------------------------------------------------------------------------
-
-describe("HomePage source_title rendering", () => {
-  it("renders source_title in Recently Added rows when present", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({
-            title: "Translated Title",
-            source_title: "Original Japanese Title",
-          }),
-        ],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    // Display title appears in hero h1 + rows
-    const heroTitles = screen.getAllByText("Translated Title");
-    expect(heroTitles.length).toBeGreaterThanOrEqual(1);
-    // source_title appears in the hero and the LatestUpdateRow
-    expect(screen.getAllByText("Original Japanese Title").length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("does not render source_title when it is null", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({
-            title: "Only Title",
-            source_title: null,
-          }),
-        ],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    // Only Title visible but source_title not rendered as a separate element
-    const titles = screen.getAllByText("Only Title");
-    expect(titles.length).toBeGreaterThanOrEqual(1);
-    // No duplicate "Only Title" in sourceTitle position
-  });
-});
-// ---------------------------------------------------------------------------
-// PUBLIC-LATEST-1: Time grouping tests
-// ---------------------------------------------------------------------------
-
-describe("Homepage time grouping", () => {
-  it("renders 'Today' group header when a novel was added today", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
-
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel({ added_at: "2026-06-17T08:00:00Z" })],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.getByText("Today")).toBeInTheDocument();
-    vi.useRealTimers();
-  });
-
-  it("renders 'Yesterday' group header for yesterday's novel", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
-
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel({ added_at: "2026-06-16T10:00:00Z" })],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.getByText("Yesterday")).toBeInTheDocument();
-    vi.useRealTimers();
-  });
-
-  it("renders '1 week ago' group header for 5-day-old novel", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
-
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel({ added_at: "2026-06-12T10:00:00Z" })],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.getByText("1 week ago")).toBeInTheDocument();
-    vi.useRealTimers();
-  });
-
-  it("renders '2 weeks ago' group header for 10-day-old novel", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
-
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel({ added_at: "2026-06-07T10:00:00Z" })],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.getByText("2 weeks ago")).toBeInTheDocument();
-    vi.useRealTimers();
-  });
-
-  it("renders '3 weeks ago' group header for 18-day-old novel", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
-
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel({ added_at: "2026-05-30T10:00:00Z" })],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.getByText("3 weeks ago")).toBeInTheDocument();
-    vi.useRealTimers();
-  });
-
-  it("renders '1 month ago' group header for 25-day-old novel", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
-
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel({ added_at: "2026-05-23T10:00:00Z" })],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.getByText("1 month ago")).toBeInTheDocument();
-    vi.useRealTimers();
-  });
-
-  it("renders 'Earlier' group header when novel has no added_at", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel({ added_at: null })],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.getByText("Earlier")).toBeInTheDocument();
-  });
-
-  it("orders group headers chronologically (Today before Yesterday)", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
-
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({ novel_id: "n1", added_at: "2026-06-17T08:00:00Z" }),
-          makeNovel({ novel_id: "n2", added_at: "2026-06-16T10:00:00Z" }),
-        ],
-        total: 2,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    const allH3 = screen.getAllByRole("heading", { level: 3 });
-    const headerTexts = allH3.map((el) => el.textContent);
-    const todayIdx = headerTexts.indexOf("Today");
-    const yesterdayIdx = headerTexts.indexOf("Yesterday");
-    expect(todayIdx).toBeLessThan(yesterdayIdx);
-    vi.useRealTimers();
-  });
-
-  it("renders latest update groups newest-first even when catalog data is not grouped that way", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
-
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({ novel_id: "n-earlier", added_at: null }),
-          makeNovel({ novel_id: "n-month-2", added_at: "2026-04-18T10:00:00Z" }),
-          makeNovel({ novel_id: "n-month-1", added_at: "2026-05-23T10:00:00Z" }),
-          makeNovel({ novel_id: "n-week-3", added_at: "2026-05-30T10:00:00Z" }),
-          makeNovel({ novel_id: "n-week-2", added_at: "2026-06-07T10:00:00Z" }),
-          makeNovel({ novel_id: "n-week-1", added_at: "2026-06-12T10:00:00Z" }),
-          makeNovel({ novel_id: "n-yesterday", added_at: "2026-06-16T10:00:00Z" }),
-          makeNovel({ novel_id: "n-today", added_at: "2026-06-17T08:00:00Z" }),
-        ],
-        total: 8,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    const expectedOrder = [
-      "Today",
-      "Yesterday",
-      "1 week ago",
-      "2 weeks ago",
-      "3 weeks ago",
-      "1 month ago",
-      "2 months ago",
-      "Earlier",
-    ];
-    const headerTexts = screen
-      .getAllByRole("heading", { level: 3 })
-      .map((el) => el.textContent)
-      .filter((text): text is string => expectedOrder.includes(text ?? ""));
-
-    expect(headerTexts).toEqual(expectedOrder);
-    vi.useRealTimers();
-  });
-
-  it("uses latest chapter update time for grouping when available", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
-
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [
-          makeNovel({
-            title: "Updated Today",
-            added_at: "2026-05-23T10:00:00Z",
-            latest_chapter_id: "ch010",
-            latest_chapter_number: 10,
-            latest_chapter_updated_at: "2026-06-17T08:00:00Z",
-          }),
-        ],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    expect(screen.getByText("Today")).toBeInTheDocument();
-    expect(screen.queryByText("1 month ago")).not.toBeInTheDocument();
-    vi.useRealTimers();
-  });
-
-  it("does not show exact hour for older-than-24h items", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
-
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel({ added_at: "2026-06-16T08:30:00Z" })],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    // Should NOT render exact time strings like "08:30" in the row
-    expect(screen.queryByText(/08:30/)).not.toBeInTheDocument();
-    vi.useRealTimers();
-  });
-
-  it("does not render clock icon in row", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-17T12:00:00Z"));
-
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel({ added_at: "2026-06-17T08:00:00Z" })],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    // No clock SVG in the component (only BookOpen icon)
-    const clockSvgs = document.querySelectorAll(
-      'svg.lucide-clock, svg[class*="clock"]'
-    );
-    expect(clockSvgs.length).toBe(0);
-    vi.useRealTimers();
-  });
-
-  it("does not pass include_adult=true in catalog query", () => {
-    mocks.catalogQuery.mockReturnValue({
-      data: {
-        novels: [makeNovel()],
-        total: 1,
-        page: 1,
-        page_size: 8,
-      },
-      isPending: false,
-      isError: false,
-      error: null,
-      refetch: vi.fn(),
-    });
-    renderHome();
-
-    // useCatalog is called with sort_by, order, page_size — no include_adult
-    const call = mocks.catalogQuery.mock.calls[0] ?? [];
-    // catalogQuery is a fn that returns the mock value, no args inspected
-    // but the useCatalog call in the component passes no include_adult
-    expect(mocks.catalogQuery).toHaveBeenCalled();
+    expect(mocks.catalogParams).toHaveBeenCalledWith(expect.not.objectContaining({ include_adult: true }));
   });
 });

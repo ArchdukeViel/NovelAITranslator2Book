@@ -17,7 +17,7 @@ from novelai.storage.service import StorageService
 
 logger = logging.getLogger(__name__)
 
-VALID_SORT_FIELDS = {"added_at", "title", "chapter_count"}
+VALID_SORT_FIELDS = {"added_at", "updated_at", "title", "chapter_count"}
 PUBLIC_SLUG_MAX_LENGTH = 160
 PUBLIC_PROTOCOL_MARKER_RE = re.compile(
     r"^\s*(?:\[CHAPTER[^\]]*\]|\[P\s+p\d{4}\])\s*",
