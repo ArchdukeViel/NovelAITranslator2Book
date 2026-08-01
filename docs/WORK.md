@@ -258,7 +258,7 @@ PR/change, each with exact tests:
 | FE-05 | Browse/catalog layout, URL filter state, taxonomy/source canonical routes — shipped (typecheck, 790 tests, build, backend public-router 123 tests pass); authors route remains deferred pending stable identity/alias contract | FE-04 |
 | FE-06 | Homepage rails and honest featured-novel selection — rails, Continue Reading/guest state, catalog-derived genres, `/random`, real `updated_at` sort, single-CTA eligible Spotlight shipped (typecheck, 769 tests, build, backend public-router 125 tests pass); manual admin-curated rotation still needs an approved persistence/API contract | FE-05 |
 | FE-07 | Novel-detail sticky layout, URL tabs, chapter controls, single CTA — supported UI shipped (typecheck, 776 tests, 48-route build); pending backend contracts: chapter added/failure metadata for New/Failed markers and public review-list pagination | FE-03 |
-| FE-08 | Reader Aa panel, progress bar, resume position, quiet chrome | FE-03 |
+| FE-08 | Reader Aa panel, progress bar, resume position, quiet chrome — shipped (typecheck, 785 tests across 68 files, 48-route build); account progress + guest local-only persistence, keyboard navigation, strong end CTA | FE-03 |
 | FE-09 | Library board/list and account shell | FE-03 |
 | FE-10 | `/faq`, `/news`, `/random`, account overview/reviews | Required backend contracts |
 

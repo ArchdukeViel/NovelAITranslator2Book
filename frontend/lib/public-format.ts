@@ -10,11 +10,14 @@ import type {
 import { ApiError } from "@/lib/api";
 
 /**
- * Clamps and rounds a font size to an integer within [15, 24].
+ * Normalizes font size to the reader's supported choices.
  * Requirement 6.2
  */
 export function clampReaderFontSize(size: number): number {
-  return Math.min(24, Math.max(15, Math.round(size)));
+  const choices = [16, 18, 20, 22];
+  return choices.reduce((nearest, choice) =>
+    Math.abs(choice - size) < Math.abs(nearest - size) ? choice : nearest
+  );
 }
 
 /**
@@ -101,11 +104,11 @@ export function toReaderError(error: unknown): string {
 export function widthClass(width: "compact" | "comfortable" | "wide"): string {
   switch (width) {
     case "compact":
-      return "max-w-xl";
+      return "max-w-[560px]";
     case "comfortable":
-      return "max-w-2xl";
+      return "max-w-[680px]";
     case "wide":
-      return "max-w-4xl";
+      return "max-w-[800px]";
   }
 }
 

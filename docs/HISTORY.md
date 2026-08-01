@@ -282,3 +282,25 @@ Public chapter summaries still lack added-at and explicit translation-failure
 fields, and no public other-reader review-list endpoint/pagination contract
 exists. New/Failed markers and review lists remain registered in `WORK.md`
 across 67 files, and production build (48 routes) all pass.
+
+## 2026-08-02 Frontend Phase 2 — FE-08 chapter reader (DEBT-FE-01)
+
+Reader typography/theme/width controls moved from inline chrome into one
+thumb-reachable floating Aa button above the safe area. Its sheet provides
+the exact supported sizes (16/18/20/22px), widths (Narrow 560px, Standard
+680px, Wide 800px), light/dark/sepia themes, and reset-to-18px/Standard while
+preserving the saved reader theme. The sheet documents `←`, `→`, and `.`
+shortcuts and tells guests that position remains local to this device.
+
+A fixed 3px progress bar tracks real document scroll. Signed-in readers
+restore and debounce-save account progress, with immediate pagehide flush;
+guests restore/save the same percentage in localStorage. Resume waits for
+layout paint and performs a one-shot resize correction, while font/width
+changes recalculate percentage against the new layout. Arrow keys navigate
+chapters outside editable controls. Top and bottom navigation remain, with
+the bottom row explicitly reading Previous chapter · Back to novel · Next
+chapter and promoting Next as the strongest end-of-chapter action.
+
+Validation: frontend typecheck, 785 Vitest tests across 68 files (including
+Aa choices/shortcut/reset/disclosure, account and guest resume, live progress,
+keyboard navigation), and production build (48 routes) all pass.

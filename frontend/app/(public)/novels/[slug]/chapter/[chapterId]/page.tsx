@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, BookOpen, Flag } from "lucide-react";
 
 import { ReaderControls } from "@/components/public/reader-controls";
@@ -10,6 +10,7 @@ import { GlossaryAnnotationHighlighter } from "@/components/public/glossary-anno
 import {
   useChapter,
   usePublicAuth,
+  useProgress,
   useRecordHistory,
   useUpdateProgress,
 } from "@/hooks/public";
@@ -200,6 +201,7 @@ function ChapterNav({
   previousChapterUnavailable = false,
   nextChapterUnavailable = false,
   novelHref,
+  emphasizeNext = false,
 }: {
   slug: string;
   previousChapterId: string | null;
@@ -207,6 +209,7 @@ function ChapterNav({
   previousChapterUnavailable?: boolean;
   nextChapterUnavailable?: boolean;
   novelHref: string;
+  emphasizeNext?: boolean;
 }) {
   return (
     <nav
@@ -219,7 +222,7 @@ function ChapterNav({
             className="reader-nav-link"
             href={publicChapterHref(slug, previousChapterId)}
           >
-            ← Previous
+            ← Previous chapter
           </Link>
         ) : previousChapterUnavailable ? (
           <span className="reader-nav-disabled">Previous unavailable</span>
@@ -228,15 +231,15 @@ function ChapterNav({
         )}
         <Link className="reader-nav-link" href={novelHref}>
           <BookOpen className="h-3.5 w-3.5" />
-          All chapters
+          Back to novel
         </Link>
       </div>
       {nextChapterId ? (
         <Link
-          className="reader-nav-link reader-nav-link-strong"
+          className={`reader-nav-link ${emphasizeNext ? "reader-nav-link-strong" : ""}`}
           href={publicChapterHref(slug, nextChapterId)}
         >
-          Next →
+          Next chapter →
         </Link>
       ) : nextChapterUnavailable ? (
         <span className="reader-nav-disabled">Next unavailable</span>
@@ -285,15 +288,20 @@ function ReaderMessage({
 
 export default function ChapterPage() {
   const params = useParams<{ slug: string; chapterId: string }>();
+  const router = useRouter();
   const slug = decodeURIComponent(params.slug);
   const chapterId = decodeURIComponent(params.chapterId);
   const novelHref = publicNovelHref(slug);
 
   const { data, isPending, isError, error } = useChapter(slug, chapterId);
   const { isAuthenticated } = usePublicAuth();
+  const savedProgress = useProgress(slug);
   const updateProgress = useUpdateProgress(slug);
   const recordHistory = useRecordHistory();
   const trackedChapterRef = useRef<string | null>(null);
+  const restoredChapterRef = useRef<string | null>(null);
+  const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [scrollProgress, setScrollProgress] = useState(0);
   const { theme, fontSize, width } = useReaderPrefsStore();
 
   useEffect(() => {
@@ -301,15 +309,81 @@ export default function ChapterPage() {
       return;
     }
     trackedChapterRef.current = chapterId;
-    updateProgress.mutate({
-      chapter_id: chapterId,
-      progress_percent: 0,
-    });
     recordHistory.mutate({
       slug,
       chapter_id: chapterId,
     });
-  }, [chapterId, data, isAuthenticated, recordHistory, slug, updateProgress]);
+  }, [chapterId, data, isAuthenticated, recordHistory, slug]);
+
+  useEffect(() => {
+    if (!data || restoredChapterRef.current === chapterId) return;
+    const localKey = `reader-position:${slug}:${chapterId}`;
+    const percent = isAuthenticated && savedProgress.data?.chapter_id === chapterId
+      ? savedProgress.data.progress_percent
+      : Number(localStorage.getItem(localKey) ?? 0);
+    restoredChapterRef.current = chapterId;
+    if (percent > 0) {
+      const restore = () => {
+        const maximum = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        window.scrollTo(0, maximum * Math.min(100, percent) / 100);
+      };
+      requestAnimationFrame(() => requestAnimationFrame(restore));
+      const article = document.querySelector(".reader-article");
+      let observer: ResizeObserver | null = null;
+      if (article && typeof ResizeObserver !== "undefined") {
+        observer = new ResizeObserver(() => {
+          restore();
+          observer?.disconnect();
+        });
+      }
+      if (article) observer?.observe(article);
+      return () => observer?.disconnect();
+    }
+  }, [chapterId, data, isAuthenticated, savedProgress.data, slug]);
+
+  useEffect(() => {
+    if (!data) return;
+    const localKey = `reader-position:${slug}:${chapterId}`;
+    function update() {
+      const maximum = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+      const percent = Math.min(100, Math.max(0, window.scrollY / maximum * 100));
+      setScrollProgress(percent);
+      if (!isAuthenticated) localStorage.setItem(localKey, String(percent));
+      else {
+        if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
+        progressTimerRef.current = setTimeout(() => updateProgress.mutate({ chapter_id: chapterId, progress_percent: percent }), 500);
+      }
+    }
+    function flush() {
+      const maximum = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+      const percent = Math.min(100, Math.max(0, window.scrollY / maximum * 100));
+      if (isAuthenticated) updateProgress.mutate({ chapter_id: chapterId, progress_percent: percent });
+      else localStorage.setItem(localKey, String(percent));
+    }
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("pagehide", flush);
+    requestAnimationFrame(update);
+    return () => {
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("pagehide", flush);
+      if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
+    };
+  }, [chapterId, data, fontSize, isAuthenticated, slug, updateProgress, width]);
+
+  useEffect(() => {
+    const chapter = data;
+    if (!chapter) return;
+    const previousChapterId = chapter.previous_chapter_id;
+    const nextChapterId = chapter.next_chapter_id;
+    const publicSlug = chapter.slug?.trim() || slug;
+    function navigate(event: KeyboardEvent) {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      if (event.key === "ArrowLeft" && previousChapterId) router.push(publicChapterHref(publicSlug, previousChapterId));
+      if (event.key === "ArrowRight" && nextChapterId) router.push(publicChapterHref(publicSlug, nextChapterId));
+    }
+    window.addEventListener("keydown", navigate);
+    return () => window.removeEventListener("keydown", navigate);
+  }, [data, router, slug]);
 
   if (isError && error instanceof ApiError && error.status === 404) {
     return (
@@ -357,6 +431,9 @@ export default function ChapterPage() {
 
   return (
     <div data-reader-theme={theme} className="reader-container">
+      <div role="progressbar" aria-label="Reading progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(scrollProgress)} className="fixed inset-x-0 top-0 z-50 h-[3px] bg-muted">
+        <div className="h-full bg-primary transition-[width] duration-100" style={{ width: `${scrollProgress}%` }} />
+      </div>
       <main className={`reader-shell ${widthClass(width)}`}>
         <header className="reader-chrome">
           <div className="min-w-0">
@@ -431,6 +508,7 @@ export default function ChapterPage() {
             previousChapterUnavailable={data.previous_chapter_unavailable}
             nextChapterUnavailable={data.next_chapter_unavailable}
             novelHref={publicNovelHrefValue}
+            emphasizeNext
           />
         </div>
       </main>

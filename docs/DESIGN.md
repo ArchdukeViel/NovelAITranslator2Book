@@ -19,8 +19,8 @@ chrome suppression) shipped; FE-04 shared search overlay shipped; FE-05
 browse/catalog layout and canonical taxonomy/source routes shipped; FE-06
 homepage rails and honest eligible Spotlight fallback shipped. Remaining
 Layout Rework slices are pending; FE-07 supported novel-detail layout and
-chapter controls shipped.
-**Last implementation verification:** FE-07 — typecheck, 776 Vitest tests,
+chapter controls shipped; FE-08 reader controls/progress/resume shipped.
+**Last implementation verification:** FE-08 — typecheck, 785 Vitest tests,
 and production build (48 routes) all pass
 (2026-08-02).
 
@@ -80,10 +80,16 @@ Implemented:
   explicit untranslated rows, and progressive 100-row rendering. New/failure
   chapter markers and other-reader review lists remain pending public API
   fields/endpoints; no fake states are rendered meanwhile.
+- FE-08: floating safe-area Aa button opens a reader settings sheet with
+  exact 16/18/20/22px font choices, 560/680/800px text widths, light/dark/
+  sepia themes, and reset preserving the saved theme; fixed 3px live reading
+  progress; signed account-position and guest local-only restore/update with
+  pagehide flush; layout-aware resume correction; keyboard previous/next and
+  `.` settings shortcuts; explicit Previous chapter · Back to novel · Next
+  chapter footer with strongest bottom Next action.
 
 Pending:
-- FE-08 reader Aa panel + progress
-  bar + resume position; FE-09 library board/list + account shell; FE-10
+- FE-09 library board/list + account shell; FE-10
   /faq, /news, /random, account overview/reviews
 
 Deferred:
