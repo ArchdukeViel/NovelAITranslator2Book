@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent, Suspense, useMemo } from "react";
+import { useEffect, useState, FormEvent, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -289,6 +289,22 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
   // Tag search query state
   const [includeTagQuery, setIncludeTagQuery] = useState("");
   const [excludeTagQuery, setExcludeTagQuery] = useState("");
+
+  // Mobile Search tab: focus the catalog search input when arriving via
+  // ?focus=search, then strip the param for a clean URL. basePath keeps the
+  // cleanup on the current catalog page (home or browse) rather than
+  // hard-coding a route.
+  useEffect(() => {
+    if (searchParams.get("focus") !== "search") return;
+    const input = document.getElementById("catalog-search");
+    input?.focus();
+    const sp = new URLSearchParams(searchParams.toString());
+    sp.delete("focus");
+    const query = sp.toString();
+    router.replace(query ? `${basePath}?${query}` : basePath, {
+      scroll: false,
+    });
+  }, [searchParams, router, basePath]);
 
   // Fetch genres for the filter UI
   const { data: genresData, isPending: genresPending, isError: genresError } = useGenres();

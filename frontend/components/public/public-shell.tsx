@@ -1,13 +1,19 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
+import { usePathname } from "next/navigation";
 
 import { PublicHeader } from "@/components/public/public-header";
-import { PublicSidebar } from "@/components/public/public-sidebar";
 import { PublicFooter } from "@/components/public/public-footer";
+import { MobileTabBar } from "@/components/public/mobile-tab-bar";
 
 export function PublicShell({ children }: { children: React.ReactNode }) {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
+  // Quiet chrome while reading: header, tab bar, and footer are suppressed
+  // on chapter reader routes (DESIGN.md — Reader, "both go quiet while
+  // reading"). Derived inline so the first render matches the final render
+  // (no flash of chrome on a chapter page).
+  const isChapterRoute = pathname.includes("/chapter/");
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -19,19 +25,22 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
         Skip to main content
       </a>
 
-      <Suspense fallback={null}>
-        <PublicSidebar
-          isOpen={mobileMenuOpen}
-          onClose={() => setMobileMenuOpen(false)}
-        />
-      </Suspense>
-      <Suspense fallback={null}>
-        <PublicHeader onMenuClick={() => setMobileMenuOpen(true)} />
-      </Suspense>
+      {!isChapterRoute && (
+        <>
+          <Suspense fallback={null}>
+            <PublicHeader />
+          </Suspense>
+          <Suspense fallback={null}>
+            <MobileTabBar />
+          </Suspense>
+        </>
+      )}
+
       <div id="main-content" className="flex-1" tabIndex={-1}>
         {children}
       </div>
-      <PublicFooter />
+
+      {!isChapterRoute && <PublicFooter />}
     </div>
   );
 }

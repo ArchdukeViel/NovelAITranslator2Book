@@ -253,7 +253,7 @@ PR/change, each with exact tests:
 | ID | Slice | Dependency |
 |---|---|---|
 | FE-02 | Phase 1 accessibility: token contrast verified programmatically (34 checks, both modes, 0 failures at WCAG AA 4.5:1) + two-layer primary-button focus treatment shipped; manual browser checks (keyboard, screen reader, zoom, reduced motion) pending operator | Current Phase 1 |
-| FE-03 | Desktop header, mobile bottom navigation, account/more hub, route-specific chrome suppression | FE-02 |
+| FE-03 | Desktop header inline nav, mobile bottom tab bar, Account/More hub, reader chrome suppression — shipped (typecheck, 766 tests, build pass) | FE-02 |
 | FE-04 | Shared search overlay, keyboard behavior, request cancellation, local recent searches | FE-03 |
 | FE-05 | Browse/catalog layout, URL filter state, taxonomy/source canonical routes | FE-04 |
 | FE-06 | Homepage rails and honest featured-novel selection | FE-05 |
