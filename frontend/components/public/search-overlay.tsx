@@ -67,8 +67,10 @@ export function SearchOverlay() {
   const debouncedTrimmed = debouncedQuery.trim();
   const shouldSearchDebounced = debouncedTrimmed.length >= MIN_QUERY_LENGTH;
 
-  // Global `/` shortcut + Escape-close are mounted at shell level, so the
-  // overlay works everywhere including reader (quiet chrome) pages.
+  // Global `/` shortcut is mounted here so the overlay opens everywhere,
+  // including reader (quiet chrome) pages. Escape-close lives in a separate
+  // window-level listener below so it works regardless of which element has
+  // focus inside the dialog.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
@@ -85,6 +87,20 @@ export function SearchOverlay() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // Escape closes the dialog from anywhere inside it (input, clear button,
+  // result buttons, backdrop), matching dialog expectations.
+  useEffect(() => {
+    if (!isOpen) return;
+    function onWindowKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close();
+      }
+    }
+    window.addEventListener("keydown", onWindowKeyDown);
+    return () => window.removeEventListener("keydown", onWindowKeyDown);
+  }, [isOpen, close]);
 
   // Focus input on open; return focus to the opener on close. The input
   // mounts inside the same commit as `isOpen` flipping true, so the ref is
@@ -184,37 +200,35 @@ export function SearchOverlay() {
     return list;
   }, [shouldSearch, trimmedQuery, results, loading, error]);
 
-  function activateRow(row: SearchRow | null) {
-    if (!row) return;
-    recordRecentSearch(trimmedQuery);
-    close();
-    setRecents(loadRecentSearches());
-    switch (row.kind) {
-      case "novel":
-        router.push(`/novels/${row.novel.slug}`);
-        return;
-      case "author":
-        router.push(`/browse-novels?q=${encodeURIComponent(row.name)}`);
-        return;
-      case "tag":
-        router.push(`/browse-novels?tag_include=${encodeURIComponent(row.tag.name)}`);
-        return;
-      case "genre":
-        router.push(`/browse-novels?genre_include=${row.genre.slug}`);
-        return;
-      case "see-all":
-        router.push(`/browse-novels?q=${encodeURIComponent(row.query)}`);
-        return;
-    }
-  }
+  const activateRow = useCallback(
+    (row: SearchRow | null) => {
+      if (!row) return;
+      recordRecentSearch(trimmedQuery);
+      close();
+      setRecents(loadRecentSearches());
+      switch (row.kind) {
+        case "novel":
+          router.push(`/novels/${row.novel.slug}`);
+          return;
+        case "author":
+          router.push(`/browse-novels?q=${encodeURIComponent(row.name)}`);
+          return;
+        case "tag":
+          router.push(`/browse-novels?tag_include=${encodeURIComponent(row.tag.name)}`);
+          return;
+        case "genre":
+          router.push(`/browse-novels?genre_include=${row.genre.slug}`);
+          return;
+        case "see-all":
+          router.push(`/browse-novels?q=${encodeURIComponent(row.query)}`);
+          return;
+      }
+    },
+    [trimmedQuery, close, router]
+  );
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        close();
-        return;
-      }
       if (e.key === "ArrowDown") {
         e.preventDefault();
         if (rows.length === 0) return;
@@ -240,8 +254,7 @@ export function SearchOverlay() {
         }
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, activeIndex, trimmedQuery, close, router]
+    [rows, activeIndex, trimmedQuery, close, router, activateRow]
   );
 
   function runRecent(term: string) {
@@ -303,10 +316,6 @@ export function SearchOverlay() {
             onKeyDown={onKeyDown}
             placeholder="Search novels, authors, tags…"
             aria-label="Search"
-            role="combobox"
-            aria-expanded={rows.length > 0}
-            aria-controls="search-overlay-results"
-            aria-activedescendant={activeIndex >= 0 ? `search-row-${activeIndex}` : undefined}
             className="h-12 w-full bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground/60"
           />
           {query && (
@@ -330,8 +339,8 @@ export function SearchOverlay() {
         {/* Results */}
         <div
           id="search-overlay-results"
+          aria-label="Search results"
           className="flex-1 overflow-y-auto px-1.5 py-1.5 md:min-h-0"
-          role="listbox"
         >
           {/* Empty query: recent searches + genre shortcuts */}
           {!shouldSearch && (
@@ -421,7 +430,6 @@ export function SearchOverlay() {
                     <li key={novel.novel_id}>
                       <button
                         type="button"
-                        id={`search-row-${i}`}
                         onClick={() => activateRow(rows[i] ?? null)}
                         onMouseEnter={() => setActiveIndex(i)}
                         className={rowClass(activeIndex === i)}
@@ -452,7 +460,6 @@ export function SearchOverlay() {
                       <li key={name}>
                         <button
                           type="button"
-                          id={`search-row-${rowIndex}`}
                           onClick={() => activateRow(rows[rowIndex] ?? null)}
                           onMouseEnter={() => setActiveIndex(rowIndex)}
                           className={rowClass(activeIndex === rowIndex)}
@@ -474,7 +481,6 @@ export function SearchOverlay() {
                       <li key={`tag-${tag.name}`}>
                         <button
                           type="button"
-                          id={`search-row-${rowIndex}`}
                           onClick={() => activateRow(rows[rowIndex] ?? null)}
                           onMouseEnter={() => setActiveIndex(rowIndex)}
                           className={rowClass(activeIndex === rowIndex)}
@@ -494,7 +500,6 @@ export function SearchOverlay() {
                       <li key={`genre-${genre.slug}`}>
                         <button
                           type="button"
-                          id={`search-row-${rowIndex}`}
                           onClick={() => activateRow(rows[rowIndex] ?? null)}
                           onMouseEnter={() => setActiveIndex(rowIndex)}
                           className={rowClass(activeIndex === rowIndex)}
@@ -518,7 +523,6 @@ export function SearchOverlay() {
                 <div className="border-t border-border/60 pt-1">
                   <button
                     type="button"
-                    id={`search-row-${rows.length - 1}`}
                     onClick={() => activateRow(rows[rows.length - 1] ?? null)}
                     onMouseEnter={() => setActiveIndex(rows.length - 1)}
                     className={rowClass(activeIndex === rows.length - 1)}

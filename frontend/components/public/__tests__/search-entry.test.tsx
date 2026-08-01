@@ -11,7 +11,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 
 import { SearchEntry } from "@/components/public/search-entry";
-import { useSearchOverlay } from "@/lib/search-overlay";
 
 // ---------------------------------------------------------------------------
 // Mocks

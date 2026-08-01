@@ -10,7 +10,7 @@
  *
  * Feature: PUBLIC-SEARCH-2
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act, within } from "@testing-library/react";
 
 import { SearchOverlay } from "@/components/public/search-overlay";
@@ -93,7 +93,7 @@ function openOverlay() {
 }
 
 async function typeQuery(text: string) {
-  const input = screen.getByRole("combobox", { name: /search/i }) as HTMLInputElement;
+  const input = screen.getByRole("searchbox", { name: /search/i }) as HTMLInputElement;
   await act(async () => {
     fireEvent.change(input, { target: { value: text } });
   });
@@ -120,7 +120,7 @@ describe("SearchOverlay open/close", () => {
     render(<SearchOverlay />);
     openOverlay();
     expect(screen.getByRole("dialog", { name: /search/i })).toBeInTheDocument();
-    const input = screen.getByRole("combobox", { name: /search/i });
+    const input = screen.getByRole("searchbox", { name: /search/i });
     expect(input).toHaveFocus();
   });
 
@@ -132,10 +132,10 @@ describe("SearchOverlay open/close", () => {
 
     render(<SearchOverlay />);
     openOverlay();
-    expect(screen.getByRole("combobox", { name: /search/i })).toHaveFocus();
+    expect(screen.getByRole("searchbox", { name: /search/i })).toHaveFocus();
 
     // Escape closes the overlay
-    fireEvent.keyDown(screen.getByRole("combobox", { name: /search/i }), { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("searchbox", { name: /search/i }), { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: /search/i })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
     trigger.remove();
@@ -188,7 +188,7 @@ describe("SearchOverlay empty query state", () => {
     openOverlay();
 
     fireEvent.click(screen.getByText("dragon"));
-    const input = screen.getByRole("combobox", { name: /search/i }) as HTMLInputElement;
+    const input = screen.getByRole("searchbox", { name: /search/i }) as HTMLInputElement;
     expect(input.value).toBe("dragon");
   });
 
@@ -330,7 +330,7 @@ describe("SearchOverlay keyboard behavior", () => {
     await typeQuery("dragon");
     await waitFor(() => expect(screen.getByText("Dragon King")).toBeInTheDocument());
 
-    const input = screen.getByRole("combobox", { name: /search/i });
+    const input = screen.getByRole("searchbox", { name: /search/i });
     fireEvent.keyDown(input, { key: "ArrowDown" }); // highlight first novel
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -343,7 +343,7 @@ describe("SearchOverlay keyboard behavior", () => {
     await typeQuery("dragon");
     await waitFor(() => expect(screen.getByText("Dragon King")).toBeInTheDocument());
 
-    fireEvent.keyDown(screen.getByRole("combobox", { name: /search/i }), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("searchbox", { name: /search/i }), { key: "Enter" });
     expect(mocks.pushFn).toHaveBeenCalledWith("/browse-novels?q=dragon");
   });
 
@@ -353,7 +353,7 @@ describe("SearchOverlay keyboard behavior", () => {
     await typeQuery("dragon");
     await waitFor(() => expect(screen.getByText("Dragon King")).toBeInTheDocument());
 
-    const input = screen.getByRole("combobox", { name: /search/i });
+    const input = screen.getByRole("searchbox", { name: /search/i });
     // rows: Dragon King (novel), Quiet Novel (novel), Dragon Writer (author), #adventure (tag), see-all
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "ArrowDown" });
@@ -374,7 +374,7 @@ describe("SearchOverlay keyboard behavior", () => {
     });
     expect(authorsGroup).toBeInTheDocument();
 
-    const input = screen.getByRole("combobox", { name: /search/i });
+    const input = screen.getByRole("searchbox", { name: /search/i });
     // novels(2) then author — index 2 is "Dragon Writer"
     for (let i = 0; i < 3; i++) fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -387,7 +387,7 @@ describe("SearchOverlay keyboard behavior", () => {
     await typeQuery("dragon");
     await waitFor(() => expect(screen.getByText("Dragon King")).toBeInTheDocument());
 
-    const input = screen.getByRole("combobox", { name: /search/i });
+    const input = screen.getByRole("searchbox", { name: /search/i });
     const rows = 5; // 2 novels + 1 author + 1 tag + see-all
     for (let i = 0; i < rows; i++) fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -410,7 +410,7 @@ describe("SearchOverlay recent searches are local-only", () => {
     await typeQuery("dragon");
     await waitFor(() => expect(screen.getByText("Dragon King")).toBeInTheDocument());
 
-    const input = screen.getByRole("combobox", { name: /search/i });
+    const input = screen.getByRole("searchbox", { name: /search/i });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
 
