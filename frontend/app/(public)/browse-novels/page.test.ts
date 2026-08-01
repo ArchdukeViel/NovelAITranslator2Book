@@ -23,6 +23,15 @@ describe("catalog metadata", () => {
     expect(metadata.alternates).toEqual({ canonical: "/browse-novels" });
   });
 
+  it("sorts canonical filter keys and ignores empty utility filters", async () => {
+    const metadata = await browseMetadata({
+      searchParams: Promise.resolve({ page: "2", q: "", genre_include: "fantasy" }),
+    });
+
+    expect(metadata.robots).toEqual({ index: false, follow: true });
+    expect(metadata.alternates).toEqual({ canonical: "/browse-novels?genre_include=fantasy&page=2" });
+  });
+
   it("indexes source pages only when at least one novel is proven", async () => {
     vi.spyOn(publicApi, "catalog").mockResolvedValueOnce({ novels: [], total: 1, page: 1, page_size: 1 });
     const populated = await sourceMetadata({ params: Promise.resolve({ sourceKey: "syosetu" }) });

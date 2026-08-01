@@ -232,7 +232,7 @@ in both SQLAlchemy DB and storage-fallback paths. `/authors/[author-slug]`
 remains intentionally absent until the stable identity/alias contract in
 `WORK.md` is approved.
 
-Validation: frontend typecheck, 789 Vitest tests across 65 files, production
+Validation: frontend typecheck, 790 Vitest tests across 65 files, production
 build (47 routes, including all three new dynamic routes), backend public
 router 123 tests, and focused Ruff all pass. Pyright reached one pre-existing
 optional-dependency error (`pypdf` unavailable in untouched

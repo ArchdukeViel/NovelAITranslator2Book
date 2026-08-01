@@ -8,9 +8,15 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q.trim() : "";
-  const utilityFilters = Object.keys(params).filter((key) => !["sort_by", "order", "page", "view"].includes(key));
+  const entries = Object.entries(params).sort(([left], [right]) => left.localeCompare(right));
+  const utilityFilters = entries.filter(
+    ([key, value]) =>
+      !["sort_by", "order", "page", "view"].includes(key) &&
+      typeof value === "string" &&
+      value.length > 0,
+  );
   const canonicalParams = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
+  for (const [key, value] of entries) {
     if (["sort_by", "order", "view"].includes(key) || typeof value !== "string" || !value) continue;
     canonicalParams.set(key, value);
   }

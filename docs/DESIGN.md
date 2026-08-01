@@ -18,7 +18,7 @@ contrast at WCAG AA + primary focus treatment) shipped; FE-03 navigation
 chrome suppression) shipped; FE-04 shared search overlay shipped; FE-05
 browse/catalog layout and canonical taxonomy/source routes shipped. Remaining
 Layout Rework slices are pending.
-**Last implementation verification:** FE-05 — typecheck, 789 Vitest tests,
+**Last implementation verification:** FE-05 — typecheck, 790 Vitest tests,
 production build, and backend public-router suite (123 tests) all pass
 (2026-08-01).
 
