@@ -214,10 +214,10 @@ export function SearchOverlay() {
           router.push(`/browse-novels?q=${encodeURIComponent(row.name)}`);
           return;
         case "tag":
-          router.push(`/browse-novels?tag_include=${encodeURIComponent(row.tag.name)}`);
+          router.push(`/tags/${encodeURIComponent(row.tag.name)}`);
           return;
         case "genre":
-          router.push(`/browse-novels?genre_include=${row.genre.slug}`);
+          router.push(`/genres/${encodeURIComponent(row.genre.slug)}`);
           return;
         case "see-all":
           router.push(`/browse-novels?q=${encodeURIComponent(row.query)}`);
@@ -389,7 +389,7 @@ export function SearchOverlay() {
                           type="button"
                           onClick={() => {
                             close();
-                            router.push(`/browse-novels?genre_include=${genre.slug}`);
+                            router.push(`/genres/${encodeURIComponent(genre.slug)}`);
                           }}
                           className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm hover:bg-accent/40"
                         >

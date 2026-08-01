@@ -15,10 +15,11 @@ below are the agreed direction, not one option among several.
 system, tokens, fonts, brand assets) shipped; FE-02 accessibility (token
 contrast at WCAG AA + primary focus treatment) shipped; FE-03 navigation
 (desktop inline header nav, mobile bottom tab bar, Account/More hub, reader
-chrome suppression) shipped; FE-04 shared search overlay shipped. Remaining
+chrome suppression) shipped; FE-04 shared search overlay shipped; FE-05
+browse/catalog layout and canonical taxonomy/source routes shipped. Remaining
 Layout Rework slices are pending.
-**Last implementation verification:** FE-04 — typecheck, 781 Vitest tests,
-production build, and backend catalog suites (156 tests) all pass
+**Last implementation verification:** FE-05 — typecheck, 790 Vitest tests,
+production build, and backend public-router suite (123 tests) all pass
 (2026-08-01).
 
 This distinction matters because this doc's own predecessor was the cautionary
@@ -52,10 +53,17 @@ Implemented:
   honest error state; local-only recent searches (8 max, min 2 chars) shown
   on empty query with genre shortcuts; catalog search now also matches the
   original Japanese title in both DB and storage-fallback paths
+- FE-05: desktop left filter sidebar (only heading/actions sticky; page owns
+  scrolling), mobile bottom-sheet filters with applied-count badge and pinned
+  Apply/Clear, results count + compact sort + URL-backed grid/list toggle +
+  loaded-results Surprise me, individually removable active-filter chips,
+  pagination and catalog scroll restoration; `/tags/[tag]`,
+  `/genres/[genre]`, and `/sources/[source-key]` canonical browse routes;
+  utility-filter SEO noindex/follow and sort-only canonicalization; exact
+  `source_key` catalog filtering in DB and storage-fallback paths
 
 Pending:
-- FE-05 browse/catalog layout; FE-06 homepage
-  rails; FE-07 novel-detail sticky layout; FE-08 reader Aa panel + progress
+- FE-06 homepage rails; FE-07 novel-detail sticky layout; FE-08 reader Aa panel + progress
   bar + resume position; FE-09 library board/list + account shell; FE-10
   /faq, /news, /random, account overview/reviews
 

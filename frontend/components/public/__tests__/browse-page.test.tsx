@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup, act, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, act, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowsePage } from "@/components/public/browse-page";
 
@@ -99,6 +99,56 @@ async function typeTagQuery(index: 0 | 1, text: string) {
 // ---------------------------------------------------------------------------
 
 describe("BrowsePage visual honesty", () => {
+  it("renders desktop filter sidebar and mobile filter trigger", () => {
+    renderPage();
+    expect(screen.getByRole("region", { name: "Browse filters" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^filters$/i })).toBeInTheDocument();
+  });
+
+  it("shows active-filter count and opens/closes the mobile sheet", () => {
+    searchParamsMock.mockReturnValue(new URLSearchParams("q=dragon&genre_include=fantasy"));
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Filters (2)" }));
+    expect(screen.getByRole("dialog", { name: "Browse filters" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Browse filters" })).not.toBeInTheDocument();
+  });
+
+  it("keeps list view in the URL", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "List view" }));
+    expect(mocks.pushFn).toHaveBeenCalledWith("/browse-novels?view=list");
+  });
+
+  it("removing a canonical genre preset exits to the general catalog", () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BrowsePage
+          basePath="/genres/fantasy"
+          title="Fantasy novels"
+          description="Fantasy"
+          preset={{ genre_include: "fantasy" }}
+        />
+      </QueryClientProvider>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove included genre fantasy" }));
+    expect(mocks.pushFn).toHaveBeenCalledWith("/browse-novels");
+  });
+
+  it("opens a loaded novel from Surprise me", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    mocks.catalogQuery.mockReturnValue({
+      data: { novels: [{ novel_id: "n1", slug: "dragon", title: "Dragon", author: null, language: "ja", publication_status: "ongoing", chapter_count: 1, translated_count: 1 }], total: 1, page: 1, page_size: 20 },
+      isPending: false,
+      isError: false,
+      error: null,
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /surprise me/i }));
+    expect(mocks.pushFn).toHaveBeenCalledWith("/novels/dragon");
+  });
+
   it("does not render fake metric labels", () => {
     renderPage();
     expect(screen.queryByText(/^popular$/i)).not.toBeInTheDocument();
@@ -289,7 +339,7 @@ describe("BrowsePage genre filter UI", () => {
   it("genre filter indicator shows in results header", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("genre_include=fantasy"));
     renderPage();
-    expect(screen.getByText(/1 genre incl\./)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove included genre fantasy" })).toBeInTheDocument();
   });
 
   it("opens advanced search automatically when genre filters in URL", () => {
@@ -510,13 +560,13 @@ describe("BrowsePage tag filter UI", () => {
   it("tag filter indicator shows in results header for included tags", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("tag_include=isekai"));
     renderPage();
-    expect(screen.getByText(/1 tag incl\./)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove included tag isekai" })).toBeInTheDocument();
   });
 
   it("tag filter indicator shows in results header for excluded tags", () => {
     searchParamsMock.mockReturnValue(new URLSearchParams("tag_exclude=action"));
     renderPage();
-    expect(screen.getByText(/1 tag excl\./)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove excluded tag action" })).toBeInTheDocument();
   });
 
   it("removing a tag chip updates URL params", () => {
@@ -582,10 +632,11 @@ describe("BrowsePage genre/tag pass-through", () => {
       </QueryClientProvider>
     );
 
-    expect(screen.getByText("Fantasy")).toBeInTheDocument();
-    expect(screen.getByText("Isekai")).toBeInTheDocument();
-    expect(screen.getByText("magic")).toBeInTheDocument();
-    expect(screen.getByText("hero")).toBeInTheDocument();
+    const results = within(screen.getByRole("region", { name: "Catalog results" }));
+    expect(results.getByText("Fantasy")).toBeInTheDocument();
+    expect(results.getByText("Isekai")).toBeInTheDocument();
+    expect(results.getByText("magic")).toBeInTheDocument();
+    expect(results.getByText("hero")).toBeInTheDocument();
   });
 
   it("renders no genre/tag chips when API returns empty arrays", () => {
@@ -705,8 +756,9 @@ describe("BrowsePage genre/tag pass-through", () => {
       </QueryClientProvider>
     );
 
-    expect(screen.queryByText("Fantasy")).not.toBeInTheDocument();
-    expect(screen.queryByText("Isekai")).not.toBeInTheDocument();
+    const results = within(screen.getByRole("region", { name: "Catalog results" }));
+    expect(results.queryByText("Fantasy")).not.toBeInTheDocument();
+    expect(results.queryByText("Isekai")).not.toBeInTheDocument();
     expect(screen.queryByText("Popular")).not.toBeInTheDocument();
     expect(screen.queryByText("Trending")).not.toBeInTheDocument();
     expect(screen.queryByText("Romance")).not.toBeInTheDocument();
@@ -755,7 +807,7 @@ describe("BrowsePage catalog search", () => {
 
     const input = screen.getByPlaceholderText("Search by title or author");
     fireEvent.change(input, { target: { value: "novel" } });
-    fireEvent.click(screen.getByRole("button", { name: /search/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^search$/i }));
 
     const lastCall = mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0] as string;
     expect(lastCall).toContain("q=novel");
@@ -769,7 +821,7 @@ describe("BrowsePage catalog search", () => {
 
     const input = screen.getByPlaceholderText("Search by title or author");
     fireEvent.change(input, { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: /search/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^search$/i }));
 
     const lastCall = mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0] as string;
     expect(lastCall).not.toContain("q=");
@@ -816,7 +868,7 @@ describe("BrowsePage catalog search", () => {
 
     const input = screen.getByPlaceholderText("Search by title or author");
     fireEvent.change(input, { target: { value: "test" } });
-    fireEvent.click(screen.getByRole("button", { name: /search/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^search$/i }));
 
     const lastCall = mocks.pushFn.mock.calls[mocks.pushFn.mock.calls.length - 1][0] as string;
     expect(lastCall).not.toContain("include_adult");

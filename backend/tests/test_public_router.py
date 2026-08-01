@@ -84,6 +84,7 @@ def _seed_novel(storage: StorageService, novel_id: str, **kwargs) -> None:
         "title": kwargs.get("title", f"Title {novel_id}"),
         "translated_title": kwargs.get("translated_title"),
         "author": kwargs.get("author", "Test Author"),
+        "source_key": kwargs.get("source_key"),
         "language": kwargs.get("language", "ja"),
         "publication_status": kwargs.get("publication_status", "ongoing"),
         "scraped_at": kwargs.get("scraped_at"),
@@ -112,6 +113,7 @@ def _seed_db_catalog_novel(
     title: str | None = None,
     source_title: str | None = None,
     author: str | None = None,
+    source_key: str | None = None,
     language: str = "ja",
     publication_status: str = "ongoing",
     synopsis: str | None = None,
@@ -130,6 +132,7 @@ def _seed_db_catalog_novel(
         title=title or f"Title {slug}",
         original_title=source_title,
         author=author,
+        source_site=source_key,
         language=language,
         publication_status=publication_status,
         synopsis=synopsis,
@@ -253,6 +256,17 @@ class TestCatalog:
         data = resp.json()
         assert data["total"] == 1
         assert data["novels"][0]["novel_id"] == "novel-001"
+
+    def test_catalog_filters_storage_by_source_key(self, client: TestClient, storage: StorageService) -> None:
+        _seed_novel(storage, "novel-001", source_key="syosetu")
+        _seed_novel(storage, "novel-002", source_key="kakuyomu")
+
+        response = client.get("/api/public/catalog?source_key=syosetu")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert [novel["novel_id"] for novel in data["novels"]] == ["novel-001"]
 
     def test_catalog_filter_by_publication_status(self, client: TestClient, storage: StorageService) -> None:
         _seed_novel(storage, "novel-001", publication_status="ongoing")
@@ -586,6 +600,21 @@ class TestCatalog:
 
         assert data["total"] == 1
         assert [novel["novel_id"] for novel in data["novels"]] == ["published"]
+
+    def test_catalog_filters_db_by_source_key(
+        self,
+        client: TestClient,
+        db_session,
+    ) -> None:
+        _seed_db_catalog_novel(db_session, "syosetu-novel", source_key="syosetu")
+        _seed_db_catalog_novel(db_session, "kakuyomu-novel", source_key="kakuyomu")
+
+        response = client.get("/api/public/catalog?source_key=syosetu")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert [novel["novel_id"] for novel in data["novels"]] == ["syosetu-novel"]
 
     def test_catalog_db_path_includes_taxonomy_for_returned_page(
         self,

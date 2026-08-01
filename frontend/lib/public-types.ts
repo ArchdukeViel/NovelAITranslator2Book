@@ -49,6 +49,7 @@ export type CatalogOrder = "asc" | "desc";
 export interface CatalogParams {
   q?: string;
   publication_status?: string;
+  source_key?: string;
   sort_by?: CatalogSortField;
   order?: CatalogOrder;
   min_chapters?: number;

@@ -7,11 +7,13 @@ import {
   ArrowDownAZ,
   ArrowUpAZ,
   BookOpen,
-  ChevronDown,
   Filter,
+  LayoutGrid,
+  List,
   MinusCircle,
   PlusCircle,
   Search,
+  Shuffle,
   X,
 } from "lucide-react";
 
@@ -20,6 +22,7 @@ import { StatusBadge } from "@/components/public/status-badge";
 import { useCatalog, useDebounce, useGenres } from "@/hooks/public";
 import { publicApi } from "@/lib/public-api";
 import { hasNextPage } from "@/lib/public-format";
+import { publicNovelHref } from "@/lib/public-routes";
 import type {
   CatalogOrder,
   CatalogParams,
@@ -46,9 +49,10 @@ const ORDER_OPTIONS: { value: CatalogOrder; label: string }[] = [
 ];
 
 interface BrowsePageProps {
-  basePath: "/home" | "/browse-novels";
+  basePath: string;
   title: string;
   description: string;
+  preset?: Pick<CatalogParams, "genre_include" | "tag_include" | "source_key">;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,6 +71,10 @@ function parseCsvParam(raw: string | null): Set<string> {
 function serializeSet(set: Set<string>): string | undefined {
   if (set.size === 0) return undefined;
   return Array.from(set).sort().join(",");
+}
+
+function parseCsvWithPreset(raw: string | null, preset?: string): Set<string> {
+  return new Set([...parseCsvParam(raw), ...parseCsvParam(preset ?? null)]);
 }
 
 // ---------------------------------------------------------------------------
@@ -257,7 +265,7 @@ function LoadingState() {
 // BrowseContent
 // ---------------------------------------------------------------------------
 
-function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) {
+function BrowseContent({ basePath, preset }: Pick<BrowsePageProps, "basePath" | "preset">) {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -272,9 +280,9 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
   const page = Number(searchParams.get("page") ?? "1") || 1;
   const pageSize = 20;
 
-  const genreIncludeSet = useMemo(() => parseCsvParam(searchParams.get("genre_include")), [searchParams]);
+  const genreIncludeSet = useMemo(() => parseCsvWithPreset(searchParams.get("genre_include"), preset?.genre_include), [searchParams, preset?.genre_include]);
   const genreExcludeSet = useMemo(() => parseCsvParam(searchParams.get("genre_exclude")), [searchParams]);
-  const tagIncludeSet = useMemo(() => parseCsvParam(searchParams.get("tag_include")), [searchParams]);
+  const tagIncludeSet = useMemo(() => parseCsvWithPreset(searchParams.get("tag_include"), preset?.tag_include), [searchParams, preset?.tag_include]);
   const tagExcludeSet = useMemo(() => parseCsvParam(searchParams.get("tag_exclude")), [searchParams]);
 
   const allTagSet = useMemo(() => new Set([...tagIncludeSet, ...tagExcludeSet]), [tagIncludeSet, tagExcludeSet]);
@@ -282,9 +290,8 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
   const hasGenreFilters = genreIncludeSet.size > 0 || genreExcludeSet.size > 0;
   const hasTagFilters = tagIncludeSet.size > 0 || tagExcludeSet.size > 0;
 
-  const [advancedOpen, setAdvancedOpen] = useState(
-    Boolean(min_chapters !== undefined || max_chapters !== undefined || hasGenreFilters || hasTagFilters)
-  );
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const view = searchParams.get("view") === "list" ? "list" : "grid";
 
   // Tag search query state
   const [includeTagQuery, setIncludeTagQuery] = useState("");
@@ -312,6 +319,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
   const params: CatalogParams = {
     q,
     publication_status: publicationStatus,
+    source_key: preset?.source_key,
     sort_by: sort_by ?? "added_at",
     order: order ?? "desc",
     min_chapters,
@@ -330,6 +338,35 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
     min_chapters !== undefined || max_chapters !== undefined ||
     hasGenreFilters || hasTagFilters
   );
+  const activeFilterCount =
+    Number(Boolean(q)) +
+    Number(Boolean(publicationStatus)) +
+    Number(min_chapters !== undefined || max_chapters !== undefined) +
+    genreIncludeSet.size +
+    genreExcludeSet.size +
+    tagIncludeSet.size +
+    tagExcludeSet.size;
+
+  useEffect(() => {
+    if (!filtersOpen) return;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setFiltersOpen(false);
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [filtersOpen]);
+
+  // Preserve catalog position across a detail-page round trip. Browser/Next
+  // restoration remains primary; this covers mobile history entries that
+  // lose their scroll offset after client navigation.
+  useEffect(() => {
+    const key = `catalog-scroll:${basePath}?${searchParams}`;
+    const saved = sessionStorage.getItem(key);
+    if (saved) requestAnimationFrame(() => window.scrollTo(0, Number(saved) || 0));
+    const save = () => sessionStorage.setItem(key, String(window.scrollY));
+    window.addEventListener("pagehide", save);
+    return () => window.removeEventListener("pagehide", save);
+  }, [basePath, searchParams]);
 
   function pushParams(next: CatalogParams) {
     const sp = new URLSearchParams();
@@ -339,10 +376,21 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
     if (next.order && next.order !== "desc") sp.set("order", next.order);
     if (next.min_chapters !== undefined) sp.set("min_chapters", String(next.min_chapters));
     if (next.max_chapters !== undefined) sp.set("max_chapters", String(next.max_chapters));
-    if (next.genre_include) sp.set("genre_include", next.genre_include);
+    if (next.genre_include) {
+      const values = parseCsvParam(next.genre_include);
+      for (const presetValue of parseCsvParam(preset?.genre_include ?? null)) values.delete(presetValue);
+      const serialized = serializeSet(values);
+      if (serialized) sp.set("genre_include", serialized);
+    }
     if (next.genre_exclude) sp.set("genre_exclude", next.genre_exclude);
-    if (next.tag_include) sp.set("tag_include", next.tag_include);
+    if (next.tag_include) {
+      const values = parseCsvParam(next.tag_include);
+      for (const presetValue of parseCsvParam(preset?.tag_include ?? null)) values.delete(presetValue);
+      const serialized = serializeSet(values);
+      if (serialized) sp.set("tag_include", serialized);
+    }
     if (next.tag_exclude) sp.set("tag_exclude", next.tag_exclude);
+    if (view === "list") sp.set("view", "list");
     if (next.page && next.page > 1) sp.set("page", String(next.page));
     const query = sp.toString();
     router.push(`${basePath}${query ? `?${query}` : ""}`);
@@ -473,17 +521,56 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
     pushParams({ sort_by: params.sort_by, order: params.order, page: 1 });
   }
 
+  function handleViewChange(nextView: "grid" | "list") {
+    const sp = new URLSearchParams(searchParams.toString());
+    if (nextView === "list") sp.set("view", "list");
+    else sp.delete("view");
+    router.push(`${basePath}${sp.toString() ? `?${sp}` : ""}`);
+  }
+
+  function removeParam(name: string, value?: string) {
+    const sp = new URLSearchParams(searchParams.toString());
+    let destination = basePath;
+    if (value) {
+      const presetValue = preset?.[name as "genre_include" | "tag_include"] as string | undefined;
+      const values = parseCsvWithPreset(sp.get(name), presetValue);
+      values.delete(value);
+      if (parseCsvParam(presetValue ?? null).has(value)) destination = "/browse-novels";
+      if (values.size) sp.set(name, serializeSet(values)!);
+      else sp.delete(name);
+    } else {
+      sp.delete(name);
+    }
+    sp.delete("page");
+    router.push(`${destination}${sp.toString() ? `?${sp}` : ""}`);
+  }
+
   const novels = data?.novels ?? [];
   const total = data?.total ?? 0;
   const effectiveSort = sort_by ?? "added_at";
   const effectiveOrder = order ?? "desc";
 
   return (
-    <div className="space-y-10">
+    <div className="grid gap-8 lg:grid-cols-[18rem_minmax(0,1fr)] lg:items-start">
+      {filtersOpen && (
+        <button
+          type="button"
+          aria-label="Close filters"
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={() => setFiltersOpen(false)}
+        />
+      )}
       <section
         aria-label="Browse filters"
-        className="rounded-lg bg-card/60 p-4 shadow-sm ring-1 ring-border/60 sm:p-5"
+        role={filtersOpen ? "dialog" : undefined}
+        aria-modal={filtersOpen ? "true" : undefined}
+        className={`${filtersOpen ? "fixed" : "hidden"} inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-xl bg-card p-4 shadow-xl ring-1 ring-border lg:static lg:block lg:max-h-none lg:overflow-visible lg:rounded-lg lg:bg-card/60 lg:p-0 lg:shadow-sm`}
       >
+        <div className="sticky top-0 z-10 mb-4 flex items-center justify-between gap-3 border-b border-border bg-card px-1 pb-3 pt-1 lg:rounded-t-lg lg:px-4 lg:pt-4">
+          <h2 className="flex items-center gap-2 font-medium"><Filter className="h-4 w-4 text-accent" /> Filters</h2>
+          {hasActiveFilters && <button type="button" onClick={handleClearFilters} className="text-xs text-primary">Clear all</button>}
+        </div>
+        <div className="space-y-5 lg:px-4 lg:pb-4">
         <form onSubmit={handleSearchSubmit}>
           <label
             htmlFor="catalog-search"
@@ -537,28 +624,8 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
           </div>
         </div>
 
-        {/* Sort and order controls */}
+        {/* Sort direction stays with filters; sort field lives in the results header. */}
         <div className="mt-5 flex flex-wrap items-end gap-4">
-          <div>
-            <label
-              htmlFor="sort-select"
-              className="mb-1.5 block font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground"
-            >
-              Sort by
-            </label>
-            <select
-              id="sort-select"
-              value={effectiveSort}
-              onChange={(e) => handleSortChange(e.target.value as CatalogSortField)}
-              className="h-9 rounded-md border border-border bg-muted px-3 text-sm text-foreground outline-none transition-colors focus:border-accent focus:bg-card"
-            >
-              {SORT_OPTIONS.map(({ value, label }) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
           <div>
             <label
               htmlFor="order-select"
@@ -579,21 +646,10 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
               ))}
             </select>
           </div>
-          <button
-            type="button"
-            onClick={() => setAdvancedOpen((prev) => !prev)}
-            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-secondary px-3 text-xs font-medium text-secondary-foreground transition-colors hover:bg-muted"
-          >
-            Filters
-            <ChevronDown
-              className={`h-3.5 w-3.5 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
-            />
-          </button>
         </div>
 
         {/* Advanced search: chapter count + genre + tag filters */}
-        {advancedOpen && (
-          <form onSubmit={handleAdvancedSubmit} className="mt-4 space-y-5 border-t border-border/50 pt-4">
+          <form id="catalog-filters-form" onSubmit={handleAdvancedSubmit} className="mt-4 space-y-5 border-t border-border/50 pt-4">
             <div>
               <div className="mb-3 flex items-center justify-between gap-3">
                 <p className="font-metadata text-xs uppercase tracking-[0.14em] text-muted-foreground">
@@ -778,53 +834,59 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
               </div>
             </div>
           </form>
-        )}
+        </div>
+        <div className="sticky bottom-0 -mx-4 mt-4 flex gap-3 border-t border-border bg-card p-4 lg:hidden">
+          <button type="button" onClick={handleClearFilters} className="h-10 flex-1 rounded-md border border-border">Clear</button>
+          <button type="submit" form="catalog-filters-form" onClick={() => setFiltersOpen(false)} className="h-10 flex-1 rounded-md bg-primary text-primary-foreground">Apply</button>
+        </div>
       </section>
 
       <section aria-label="Catalog results">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <span className="font-metadata">
               {isPending ? "Loading" : total} novel
               {!isPending && total === 1 ? "" : "s"}
             </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setFiltersOpen(true)} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-xs lg:hidden">
+              <Filter className="h-3.5 w-3.5" /> Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}
+            </button>
+            <label htmlFor="sort-select" className="sr-only">Sort by</label>
+            <select id="sort-select" value={effectiveSort} onChange={(e) => handleSortChange(e.target.value as CatalogSortField)} className="h-9 rounded-md border border-border bg-card px-2 text-xs">
+              {SORT_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <div role="group" aria-label="Catalog view" className="flex rounded-md border border-border">
+              <button type="button" aria-label="Grid view" aria-pressed={view === "grid"} onClick={() => handleViewChange("grid")} className="p-2"><LayoutGrid className="h-4 w-4" /></button>
+              <button type="button" aria-label="List view" aria-pressed={view === "list"} onClick={() => handleViewChange("list")} className="p-2"><List className="h-4 w-4" /></button>
+            </div>
+            <button type="button" disabled={novels.length === 0} onClick={() => novels.length && router.push(publicNovelHref(novels[Math.floor(Math.random() * novels.length)].slug))} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-xs disabled:opacity-50">
+              <Shuffle className="h-3.5 w-3.5" /> Surprise me
+            </button>
+          </div>
+        </div>
+
+        <div className="mb-5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             {q && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1">
+              <button type="button" aria-label="Remove search filter" onClick={() => removeParam("q")} className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1">
                 <Search className="h-3.5 w-3.5" />
                 &ldquo;{q}&rdquo;
-              </span>
+                <X className="h-3 w-3" />
+              </button>
             )}
-            {publicationStatus && <StatusBadge status={publicationStatus} />}
+            {publicationStatus && <button type="button" aria-label="Remove status filter" onClick={() => removeParam("publication_status")}><StatusBadge status={publicationStatus} /></button>}
             {(min_chapters !== undefined || max_chapters !== undefined) && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs">
+              <button type="button" aria-label="Remove chapter count filter" onClick={() => { const sp = new URLSearchParams(searchParams.toString()); sp.delete("min_chapters"); sp.delete("max_chapters"); router.push(`${basePath}${sp.toString() ? `?${sp}` : ""}`); }} className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs">
                 <BookOpen className="h-3.5 w-3.5" />
                 {min_chapters ?? 0}–{max_chapters ?? "∞"} ch.
-              </span>
+                <X className="h-3 w-3" />
+              </button>
             )}
-            {genreIncludeSet.size > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs">
-                <PlusCircle className="h-3.5 w-3.5" />
-                {genreIncludeSet.size} genre{genreIncludeSet.size > 1 ? "s" : ""} incl.
-              </span>
-            )}
-            {genreExcludeSet.size > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs">
-                <MinusCircle className="h-3.5 w-3.5" />
-                {genreExcludeSet.size} genre{genreExcludeSet.size > 1 ? "s" : ""} excl.
-              </span>
-            )}
-            {tagIncludeSet.size > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs">
-                <PlusCircle className="h-3.5 w-3.5" />
-                {tagIncludeSet.size} tag{tagIncludeSet.size > 1 ? "s" : ""} incl.
-              </span>
-            )}
-            {tagExcludeSet.size > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-metadata text-xs">
-                <MinusCircle className="h-3.5 w-3.5" />
-                {tagExcludeSet.size} tag{tagExcludeSet.size > 1 ? "s" : ""} excl.
-              </span>
-            )}
+            {Array.from(genreIncludeSet).map((slug) => <button key={`gi-${slug}`} type="button" aria-label={`Remove included genre ${slug}`} onClick={() => removeParam("genre_include", slug)} className="text-xs text-primary">× {slug}</button>)}
+            {Array.from(genreExcludeSet).map((slug) => <button key={`ge-${slug}`} type="button" aria-label={`Remove excluded genre ${slug}`} onClick={() => removeParam("genre_exclude", slug)} className="text-xs text-primary">× {slug}</button>)}
+            {Array.from(tagIncludeSet).map((tag) => <button key={`ti-${tag}`} type="button" aria-label={`Remove included tag ${tag}`} onClick={() => removeParam("tag_include", tag)} className="text-xs text-primary">× {tag}</button>)}
+            {Array.from(tagExcludeSet).map((tag) => <button key={`te-${tag}`} type="button" aria-label={`Remove excluded tag ${tag}`} onClick={() => removeParam("tag_exclude", tag)} className="text-xs text-primary">× {tag}</button>)}
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/70">
               {effectiveOrder === "asc" ? (
                 <ArrowDownAZ className="h-3.5 w-3.5" />
@@ -833,7 +895,6 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
               )}
               {SORT_OPTIONS.find((o) => o.value === effectiveSort)?.label}
             </span>
-          </div>
           {hasActiveFilters && (
             <button
               className="inline-flex items-center gap-1.5 text-sm text-primary transition-colors hover:text-accent"
@@ -890,7 +951,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
 
         {!isPending && !isError && novels.length > 0 && (
           <>
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className={view === "list" ? "grid gap-5" : "grid gap-5 sm:grid-cols-2 xl:grid-cols-3"}>
               {novels.map((novel) => (
                 <NovelCard key={novel.novel_id} novel={novel} />
               ))}
@@ -918,7 +979,7 @@ function BrowseContent({ basePath }: { basePath: BrowsePageProps["basePath"] }) 
 // Public export
 // ---------------------------------------------------------------------------
 
-export function BrowsePage({ basePath, description, title }: BrowsePageProps) {
+export function BrowsePage({ basePath, description, title, preset }: BrowsePageProps) {
   return (
     <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <header className="mb-10 max-w-4xl">
@@ -937,7 +998,7 @@ export function BrowsePage({ basePath, description, title }: BrowsePageProps) {
 
       <div className="mt-6">
         <Suspense fallback={<LoadingState />}>
-          <BrowseContent basePath={basePath} />
+          <BrowseContent basePath={basePath} preset={preset} />
         </Suspense>
       </div>
     </main>
