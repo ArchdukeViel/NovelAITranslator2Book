@@ -331,8 +331,9 @@ library payload, the UI groups by existing status only and exposes no fake
 controls, counts, or badges. These stay registered in `WORK.md` as bounded
 backend contracts.
 
-Validation: frontend typecheck passed; focused Vitest 26 tests across 2 files
-(library-board.test.tsx and account-desktop-shell.test.tsx covering group
-routing, search, sort, view toggle and media default, empty state, remove
-mutation, sidebar navigation/active state, landing summary counts) all pass.
-No build or commit claimed.
+Final branch validation at `8759969`: frontend Vitest 809 tests across 70 files,
+lint, typecheck, and 47-page production build all pass. Focused coverage includes
+library-board.test.tsx and account-desktop-shell.test.tsx for group routing,
+search, sort, view toggle and media default, empty state, remove mutation,
+sidebar navigation/active state, and landing summary counts. GitHub CI and
+GitGuardian also pass at that HEAD. Branch remains unmerged.
