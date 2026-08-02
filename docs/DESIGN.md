@@ -77,7 +77,7 @@ Subordinate design files MUST NOT duplicate technical architecture, backend sche
 | Novel Detail | Approved | Implemented | — | `docs/design/public/reading/novel-detail.md` |
 | Chapter Reader | Approved | Implemented | — | `docs/design/public/reading/chapter-reader.md` |
 | Library & Account | Approved | Implemented | — | `docs/design/public/account/library.md` |
-| Request Novel | Approved target | Drifted | `DEBT-FE-01` | `docs/design/public/participation/request-novel.md` |
+| Request Novel | Approved | Implemented | — | `docs/design/public/participation/request-novel.md` |
 | Review Moderation | Approved | Implemented | — | `docs/design/admin/moderation/reviews.md` |
 | Admin Operations | Approved | Implemented | — | `docs/design/admin/design-system.md` |
 
