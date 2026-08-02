@@ -18,6 +18,10 @@ Do not preload every document. Load canonical detail only when relevant:
 | Need | Canonical source |
 | --- | --- |
 | Architecture or security | `docs/ARCHITECTURE.md` |
+| Global frontend design index | `docs/DESIGN.md` |
+| Public page design | `docs/design/public/...` |
+| Admin page design | `docs/design/admin/...` |
+| Shared design & accessibility rules | `docs/design/shared/...` |
 | Configuration | `docs/CONFIGURATION.md` |
 | CI, deployment, or operator procedure | `docs/DEPLOYMENT.md` |
 | Unfinished work | `docs/WORK.md` |

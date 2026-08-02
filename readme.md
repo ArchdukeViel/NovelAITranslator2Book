@@ -171,7 +171,7 @@ docs/          Nine canonical project documents
 ## Documentation
 
 - [`ARCHITECTURE.md`](docs/ARCHITECTURE.md): system boundaries and non-negotiable contracts
-- [`DESIGN.md`](docs/DESIGN.md): frontend UX, accessibility, SEO, and budgets
+- [`DESIGN.md`](docs/DESIGN.md): frontend design index and subordinate authority map (`docs/design/`)
 - [`WORK.md`](docs/WORK.md): only unfinished/deferred/operator work
 - [`OPERATIONS.md`](docs/OPERATIONS.md): health, backup, restore, incident, rollback
 - [`DEPLOYMENT.md`](docs/DEPLOYMENT.md): topology, release, providers, GitHub controls
