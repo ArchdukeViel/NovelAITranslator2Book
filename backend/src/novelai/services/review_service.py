@@ -36,15 +36,9 @@ class ReviewService:
             "updated_at": review.created_at,
         }
 
-    def upsert_review(
-        self, user_id: int, slug: str, rating: int, review_text: str | None
-    ) -> dict[str, Any]:
+    def upsert_review(self, user_id: int, slug: str, rating: int, review_text: str | None) -> dict[str, Any]:
         novel = self._get_novel(slug)
-        review = (
-            self.db_session.query(Review)
-            .filter_by(user_id=user_id, novel_id=novel.id)
-            .one_or_none()
-        )
+        review = self.db_session.query(Review).filter_by(user_id=user_id, novel_id=novel.id).one_or_none()
         if review is None:
             review = Review(user_id=user_id, novel_id=novel.id)
             self.db_session.add(review)
@@ -55,11 +49,7 @@ class ReviewService:
 
     def get_review(self, user_id: int, slug: str) -> dict[str, Any] | None:
         novel = self._get_novel(slug)
-        review = (
-            self.db_session.query(Review)
-            .filter_by(user_id=user_id, novel_id=novel.id)
-            .one_or_none()
-        )
+        review = self.db_session.query(Review).filter_by(user_id=user_id, novel_id=novel.id).one_or_none()
         if review is None:
             return None
         return self._review_response(review, slug)
@@ -69,12 +59,31 @@ class ReviewService:
         reviews = self.db_session.query(Review).filter_by(novel_id=novel.id).all()
         return [self._review_response(review, slug) for review in reviews]
 
+    def list_user_reviews(self, user_id: int, limit: int = 100) -> list[dict[str, Any]]:
+        """List reviews authored by one user, newest first, with novel metadata."""
+        rows = (
+            self.db_session.query(Review, Novel.slug, Novel.title)
+            .join(Novel, Review.novel_id == Novel.id)
+            .filter(Review.user_id == user_id)
+            .order_by(Review.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "slug": slug,
+                "title": title,
+                "rating": review.rating,
+                "body": review.body,
+                "status": "pending",
+                "created_at": review.created_at,
+                "updated_at": review.created_at,
+            }
+            for review, slug, title in rows
+        ]
+
     def delete_review(self, user_id: int, slug: str) -> None:
         novel = self._get_novel(slug)
-        review = (
-            self.db_session.query(Review)
-            .filter_by(user_id=user_id, novel_id=novel.id)
-            .one_or_none()
-        )
+        review = self.db_session.query(Review).filter_by(user_id=user_id, novel_id=novel.id).one_or_none()
         if review is not None:
             self.db_session.delete(review)

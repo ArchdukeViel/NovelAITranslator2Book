@@ -198,6 +198,16 @@ export interface ReviewResponse {
   updated_at: string;
 }
 
+export interface UserReviewItem {
+  slug: string;
+  title: string;
+  rating: number | null;
+  body: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PublicRequestInput {
   request_type: "novel" | "chapter";
   source_url?: string | null;

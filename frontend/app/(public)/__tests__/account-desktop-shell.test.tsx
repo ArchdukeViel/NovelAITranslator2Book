@@ -83,6 +83,7 @@ vi.mock("lucide-react", () => {
     Clock: Svg,
     FileText: Svg,
     Heart: Svg,
+    HelpCircle: Svg,
     History: Svg,
     Info: Svg,
     Library: Svg,
@@ -90,6 +91,7 @@ vi.mock("lucide-react", () => {
     Loader2: Svg,
     Lock: Svg,
     LogOut: Svg,
+    Newspaper: Svg,
     Scale: Svg,
     Settings: Svg,
     Star: Svg,
@@ -171,6 +173,7 @@ describe("Account desktop shell", () => {
       "/account/history",
       "/account/notifications",
       "/account/requests",
+      "/account/reviews",
       "/account/contributions",
       "/account/settings",
     ];
@@ -182,13 +185,11 @@ describe("Account desktop shell", () => {
     }
 
     // Unavailable items render as plain text, not links
-    expect(within(nav).queryByRole("link", { name: /reviews/i })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: /support/i })).not.toBeInTheDocument();
-    expect(within(nav).getByText(/reviews/i)).toBeInTheDocument();
     expect(within(nav).getByText(/support/i)).toBeInTheDocument();
   });
 
-  it("labels unavailable routes (Reviews, Support) as Unavailable (non-links)", async () => {
+  it("labels unavailable routes (Support) as Unavailable (non-links)", async () => {
     const { default: Layout } = await import("../account/layout");
     const { default: Page } = await import("../account/page");
 
@@ -200,17 +201,14 @@ describe("Account desktop shell", () => {
 
     const desktopNav = screen.getByRole("navigation", { name: "Account navigation" });
 
-    const reviewsText = within(desktopNav).getByText(/reviews/i);
     const supportText = within(desktopNav).getByText(/support/i);
 
     // Should be plain text containers, not links
-    expect(reviewsText).not.toHaveAttribute("href");
     expect(supportText).not.toHaveAttribute("href");
-    expect(reviewsText.closest("a")).not.toBeInTheDocument();
     expect(supportText.closest("a")).not.toBeInTheDocument();
 
-    // Both should show "Unavailable" label
-    expect(within(desktopNav).getAllByText("Unavailable")).toHaveLength(2);
+    // Only Support should show "Unavailable" label
+    expect(within(desktopNav).getAllByText("Unavailable")).toHaveLength(1);
   });
 
   it("highlights active route in sidebar", async () => {

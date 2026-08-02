@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Clock, Bell, Loader2, Library, History, Trophy, FileText, Heart, Info, LifeBuoy, Scale, Settings, LogOut } from "lucide-react";
+import { BookOpen, Clock, Bell, Loader2, Library, History, Trophy, FileText, Heart, Info, LifeBuoy, Scale, Settings, LogOut, HelpCircle, Newspaper } from "lucide-react";
 
 import { PublicThemeToggle } from "@/components/public/public-theme-toggle";
 import { useLogout, usePublicAuth } from "@/hooks/public/use-auth";
@@ -22,7 +22,10 @@ const mobileMoreLinks = [
   { href: "/ranking", label: "Ranking", icon: Trophy },
   { href: "/request-novel", label: "Request Novel", icon: FileText },
   { href: "/contribute", label: "Contribute", icon: Heart },
+  { href: "/faq", label: "FAQ", icon: HelpCircle },
+  { href: "/news", label: "News", icon: Newspaper },
   { href: "/about", label: "About", icon: Info },
+  { href: "/support", label: "Support", icon: LifeBuoy },
   { href: "/legal", label: "Legal", icon: Scale },
 ];
 

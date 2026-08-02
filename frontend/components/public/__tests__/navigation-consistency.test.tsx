@@ -198,7 +198,7 @@ describe("Mobile tab bar consistency", () => {
 // ---------------------------------------------------------------------------
 
 describe("Footer navigation consistency", () => {
-  const footerReadHrefs = ["/browse-novels", "/ranking", "/request-novel", "/contribute", "/support"];
+  const footerReadHrefs = ["/browse-novels", "/ranking", "/request-novel", "/contribute", "/support", "/faq", "/news"];
   const footerLegalHrefs = ["/about", "/privacy", "/terms", "/legal", "/dmca", "/contact", "/cookie-policy"];
 
   it("every footer Read section href resolves to an existing route page", () => {
@@ -227,6 +227,8 @@ describe("Footer navigation consistency", () => {
     expect(screen.getByText(/request novel/i)).toBeInTheDocument();
     expect(screen.getByText(/contribute/i)).toBeInTheDocument();
     expect(screen.getByText(/support/i)).toBeInTheDocument();
+    expect(screen.getByText(/faq/i)).toBeInTheDocument();
+    expect(screen.getByText(/news/i)).toBeInTheDocument();
   });
 
   it("footer contains Trust section legal links", () => {
@@ -282,10 +284,13 @@ describe("Route inventory completeness", () => {
     "/account",
     "/account/library",
     "/account/history",
+    "/account/reviews",
     "/account/notifications",
     "/account/requests",
     "/account/contributions",
     "/account/settings",
+    "/faq",
+    "/news",
     // dynamic routes are covered by card/row components, not nav links
   ]);
 

@@ -12,7 +12,7 @@ alerting, browser/network acceptance, and rollback evidence remain incomplete.
 
 - Launch blockers: `DEBT-075`, `DEBT-079`, ownership, recovery, alerts,
   monitoring, accessibility, performance, SEO, legal propagation, rollback.
-- `DEBT-FE-01` Phase 2+ is non-launch-blocking unless a changed slice touches
+- `DEBT-FE-01` FE-02+ is non-launch-blocking unless a changed slice touches
   the launch candidate.
 - Deferred work stays disabled until its activation gate passes; no frontend
   surface is swapped before backend contract evidence exists.
@@ -38,7 +38,7 @@ exists and is recorded in `HISTORY.md`.
 | 8 | DEBT-118 | Activate and verify SMTP | DEBT-079A | Domain/SPF/DKIM/DMARC, auth mail, bounce/error handling, redaction, limits, `noop` rollback proven |
 | 9 | DEBT-075C | Real operator alert | DEBT-118 | Stale/failure alert delivered; threshold, cooldown, redaction, escalation proven |
 | 10 | DEBT-079C | External monitoring | DEBT-079A, OWN-001 | Scheduled runs, dashboard, operator delivery, escalation ownership proven |
-| 11 | DEBT-FE-01A | Phase 1 manual acceptance | DEBT-079A | Keyboard, screen reader, 200% zoom, reduced motion, focus, contrast verified on shipped tokens |
+| 11 | DEBT-FE-01A | FE-01 manual acceptance | DEBT-079A | Keyboard, screen reader, 200% zoom, reduced motion, focus, contrast verified on shipped tokens |
 | 12 | DEBT-079D | Performance/SEO/legal acceptance | DEBT-079A | Budgets, canonical/robots/sitemap/structured data, HTTP 451 and CDN propagation pass |
 | 13 | DEBT-079E | Rollback rehearsal | DEBT-075B, DEBT-079B | Worker/scheduler paused, reader disabled, cache purged, prior image compatibility checked, redeployed, smoke rerun |
 | 14 | GO-001 | Final launch decision | All above | Zero unwaived blockers; launch/rollback/monitoring owners named |
@@ -106,7 +106,7 @@ reviewer exists. Remaining: sanitized incident/false-positive triage exercise
 |---|---|---|---|
 | DEBT-075 | Managed-service recovery and scheduling closure | Blocked on operator evidence | Real stale/failure SMTP alert; successful hosted PostgreSQL/R2 workflow. Tooling complete: backup stale alert, restore freshness max age, runtime-role verifier, rollback gate. |
 | DEBT-079 | Hosted production acceptance | Ongoing | Domains, OAuth, cookies, CORS/CSRF, host validation, storage boundaries, monitoring, rollback, and reliability verified on always-on topology. Tooling complete: authenticated smoke, external monitor, rollback compatibility gate, parser/YAML/router/diff, security review, GitGuardian scan. |
-| DEBT-FE-01 | Frontend design rework (Yokocho Lantern + Layout Rework) | FE-01 through FE-09 shipped locally; operator/backend-gated remainder open | Local slices through library board/list and account shell shipped; exact evidence lives in `HISTORY.md`. Remaining: manual keyboard, screen-reader, zoom, reduced-motion, focus, and browser contrast acceptance; approved asset inventory; admin-curated featured rotation; chapter added/failure metadata; public review listing; stable author identity; expanded library status/progress/update contracts. No gated surface is faked. |
+| DEBT-FE-01 | Frontend design rework (Yokocho Lantern + Layout Rework) | FE-01 through FE-10 shipped locally; operator/backend-gated remainder open | Local slices through `/faq`, `/news`, and account reviews shipped; exact evidence lives in `HISTORY.md`. Remaining: manual keyboard, screen-reader, zoom, reduced-motion, focus, and browser contrast acceptance; approved asset inventory; admin-curated featured rotation; chapter added/failure metadata; public review listing; stable author identity; expanded library status/progress/update contracts. No gated surface is faked. |
 
 ## Active Work Plans
 
@@ -252,7 +252,7 @@ PR/change, each with exact tests:
 
 | ID | Slice | Dependency |
 |---|---|---|
-| FE-02 | Phase 1 accessibility: persistent token regression test covers 34 checks across both modes at WCAG AA 4.5:1 + two-layer primary-button focus treatment shipped; manual browser checks (keyboard, screen reader, zoom, reduced motion) pending operator | Current Phase 1 |
+| FE-02 | FE-01 accessibility: persistent token regression test covers 34 checks across both modes at WCAG AA 4.5:1 + two-layer primary-button focus treatment shipped; manual browser checks (keyboard, screen reader, zoom, reduced motion) pending operator | FE-01 |
 | FE-03 | Desktop header inline nav, mobile bottom tab bar, Account/More hub, reader chrome suppression — shipped (typecheck, 766 tests, build pass) | FE-02 |
 | FE-04 | Shared search overlay, keyboard behavior, request cancellation, local recent searches — shipped (typecheck, 781 tests, build, backend 156 tests pass); original-title search added to catalog DB + storage fallback | FE-03 |
 | FE-05 | Browse/catalog layout, URL filter state, taxonomy/source canonical routes — shipped (typecheck, 790 tests, build, backend public-router 123 tests pass); authors route remains deferred pending stable identity/alias contract | FE-04 |
@@ -260,7 +260,7 @@ PR/change, each with exact tests:
 | FE-07 | Novel-detail sticky layout, URL tabs, chapter controls, single CTA — supported UI shipped (typecheck, 776 tests, 48-route build); pending backend contracts: chapter added/failure metadata for New/Failed markers and public review-list pagination | FE-03 |
 | FE-08 | Reader Aa panel, progress bar, resume position, quiet chrome — shipped (typecheck, 785 tests across 68 files, 48-route build); account progress + guest local-only persistence, keyboard navigation, strong end CTA | FE-03 |
 | FE-09 | Library board/list and account shell — shipped (lint, typecheck, 813 tests across 71 files, 47-page build; prior branch CI); pending backend contracts: plan-to-read/dropped status mutation, bulk status update, progress/title/recent-update fields/filter/badge | FE-03 |
-| FE-10 | `/faq`, `/news`, account reviews; `/random` and account overview already shipped | Review route requires approved visibility/moderation/read contract; static routes need approved content |
+| FE-10 | `/faq`, `/news`, account reviews; `/random` and account overview already shipped — shipped (typecheck, lint, Vitest suite, 47+ page build, backend user-data router tests pass); `GET /api/user/reviews` added for the session user's own reviews; public review-list pagination remains pending a visibility/moderation/read contract | FE-03 |
 
 Rules:
 
@@ -432,7 +432,7 @@ Do not reuse owner/admin credential flows directly.
 5. `DEBT-118` + `DEBT-075C` — SMTP activation and real operator alert.
 6. `DEBT-079C` + `DEBT-079D` + `DEBT-079E` — monitoring, manual acceptance,
    rollback rehearsal.
-7. `FE-02` — Phase 1 manual accessibility/contrast acceptance.
+7. `FE-02` — FE-01 manual accessibility/contrast acceptance.
 8. Remaining `DEBT-FE-01` slices.
 9. Deferred specs (`DEBT-SC-01`, `DEBT-QA-01`, `DEBT-REV-01`, `DEBT-COM-01`,
    `DEBT-RANK-01`, `DEBT-CONTRIB-01`) only after launch blockers close.

@@ -11,6 +11,8 @@ vi.mock("@/app/(public)/dmca/layout", () => ({ metadata: { title: "DMCA", descri
 vi.mock("@/app/(public)/contact/layout", () => ({ metadata: { title: "Contact", description: "Contact information for Dokushodo.", robots: { index: false, follow: false } } }));
 vi.mock("@/app/(public)/cookie-policy/page", () => ({ metadata: { title: "Cookie Policy", description: "Cookie policy for Dokushodo." } }));
 vi.mock("@/app/(public)/ranking/page", () => ({ metadata: { title: "Ranking", description: "Ranking page for Dokushodo." } }));
+vi.mock("@/app/(public)/faq/page", () => ({ metadata: { title: "FAQ", description: "Frequently asked questions about Dokushodo." } }));
+vi.mock("@/app/(public)/news/page", () => ({ metadata: { title: "News", description: "Updates and announcements for Dokushodo." } }));
 vi.mock("@/app/(public)/auth/callback/page", () => ({ metadata: { title: "Signing In", description: "OAuth callback page.", robots: { index: false, follow: false } } }));
 vi.mock("@/app/(public)/error/page", () => ({ metadata: { title: "Error", description: "Error page.", robots: { index: false, follow: false } } }));
 vi.mock("@/app/(public)/maintenance/page", () => ({ metadata: { title: "Maintenance", description: "Maintenance page.", robots: { index: false, follow: false } } }));
@@ -41,6 +43,8 @@ import { metadata as dmcaMeta } from "@/app/(public)/dmca/layout";
 import { metadata as contactMeta } from "@/app/(public)/contact/layout";
 import { metadata as cookiePolicyMeta } from "@/app/(public)/cookie-policy/page";
 import { metadata as rankingMeta } from "@/app/(public)/ranking/page";
+import { metadata as faqMeta } from "@/app/(public)/faq/page";
+import { metadata as newsMeta } from "@/app/(public)/news/page";
 import { metadata as authCallbackMeta } from "@/app/(public)/auth/callback/page";
 import { metadata as errorMeta } from "@/app/(public)/error/page";
 import { metadata as maintenanceMeta } from "@/app/(public)/maintenance/page";
@@ -128,6 +132,8 @@ describe("metadata — page titles use correct patterns", () => {
     { label: "contact", meta: contactMeta, expectedTitle: "Contact" },
     { label: "cookie-policy", meta: cookiePolicyMeta, expectedTitle: "Cookie Policy" },
     { label: "ranking", meta: rankingMeta, expectedTitle: "Ranking" },
+    { label: "faq", meta: faqMeta, expectedTitle: "FAQ" },
+    { label: "news", meta: newsMeta, expectedTitle: "News" },
     { label: "auth/callback", meta: authCallbackMeta, expectedTitle: "Signing In" },
     { label: "error", meta: errorMeta, expectedTitle: "Error" },
     { label: "maintenance", meta: maintenanceMeta, expectedTitle: "Maintenance" },
@@ -154,6 +160,8 @@ describe("metadata — page titles use correct patterns", () => {
       { label: "contact", meta: contactMeta },
       { label: "cookie-policy", meta: cookiePolicyMeta },
       { label: "ranking", meta: rankingMeta },
+      { label: "faq", meta: faqMeta },
+      { label: "news", meta: newsMeta },
       { label: "auth/callback", meta: authCallbackMeta },
       { label: "maintenance", meta: maintenanceMeta },
     ];

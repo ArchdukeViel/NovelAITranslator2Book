@@ -41,6 +41,7 @@ import type {
   ReviewInput,
   ReviewResponse,
   TagSearchParams,
+  UserReviewItem,
 } from "@/lib/public-types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
@@ -429,6 +430,10 @@ export const userNotificationApi = {
 // ---------------------------------------------------------------------------
 
 export const userEngagementApi = {
+  listMyReviews(): Promise<UserReviewItem[]> {
+    return publicGet<UserReviewItem[]>("/api/user/reviews");
+  },
+
   putReview(slug: string, input: ReviewInput): Promise<ReviewResponse> {
     return publicPut<ReviewResponse>(
       `/api/user/reviews/${encodeURIComponent(slug)}`,

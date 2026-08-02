@@ -11,7 +11,7 @@ and which didn't yet reflect what this product actually is.
 
 **Design status:** Approved target — Yokocho Lantern and the Layout Rework
 below are the agreed direction, not one option among several.
-**Implementation status:** In progress — Phase 1 (Yokocho Lantern visual
+**Implementation status:** In progress — FE-01 (Yokocho Lantern visual
 system, tokens, fonts, brand assets) shipped; FE-02 accessibility (token
 contrast at WCAG AA + primary focus treatment) shipped; FE-03 navigation
 (desktop inline header nav, mobile bottom tab bar, Account/More hub, reader
@@ -20,10 +20,12 @@ browse/catalog layout and canonical taxonomy/source routes shipped; FE-06
 homepage rails and honest eligible Spotlight fallback shipped; FE-07 supported
 novel-detail layout and chapter controls shipped; FE-08 reader controls,
 progress, and resume shipped; FE-09 library board/list and account shell
-shipped. Remaining work is operator/backend/asset-contract gated.
-**Last implementation verification:** FE-09 follow-up — lint, typecheck, 813 Vitest
-tests across 71 files, and production build (47 pages) all pass
-(2026-08-02).
+shipped; FE-10 `/faq` and `/news` static pages joined to the footer and the
+mobile More hub, and `/account/reviews` listing the signed-in reader's own
+reviews shipped. Remaining work is operator/backend/asset-contract gated.
+**Last implementation verification:** FE-10 — lint, typecheck, 820 Vitest
+tests across 72 files, and production build (50 pages) all pass; backend
+`test_user_data_router.py` 45 tests pass (2026-08-02).
 
 This distinction matters because this doc's own predecessor was the cautionary
 tale: it described "indigo accents" that were never actually in the CSS, and
@@ -34,7 +36,7 @@ real" without diffing against the codebase themselves:
 
 ```
 Implemented:
-- Phase 1: Yokocho Lantern visual system, design tokens in globals.css
+- FE-01: Yokocho Lantern visual system, design tokens in globals.css
   (light/dark), DM Sans / Noto Serif JP / DM Mono font stack, brand mark +
   og:image, semantic status-color layer (--success/--warning/--info + -text
   tokens), two-layer primary-button focus treatment
@@ -92,11 +94,15 @@ Implemented:
   library board/list with status grouping, slug search, supported sorts,
   per-item removal, and empty state. Unsupported status mutation, bulk action,
   progress, title, and update fields remain absent pending backend contracts.
+- FE-10: `/faq` (flat categorized Q&A) and `/news` (flat dated list) static
+  pages, no auth, linked from the footer and the mobile Account More hub;
+  `/account/reviews` lists the signed-in reader's own reviews (rating, body,
+  novel link, edit link to the novel's reviews tab, removal) backed by a new
+  `GET /api/user/reviews` endpoint scoped to the session user; account
+  overview and `/random` already shipped in FE-06/FE-09.
 
 Pending:
 - Approved brand/empty/404/maintenance asset inventory
-- FE-10 `/faq`, `/news`, and account reviews; `/random` and account overview
-  already shipped in FE-06 and FE-09 respectively
 
 Deferred:
 - Public profile pages (Guiding Principle 4)
