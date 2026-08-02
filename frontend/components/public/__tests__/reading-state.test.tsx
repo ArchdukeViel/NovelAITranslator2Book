@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -337,15 +337,17 @@ describe("public reading-state UI", () => {
     expect(novelLink).toHaveAttribute("href", "/novels/demo");
 
     // Status badge
-    expect(screen.getByText("Reading")).toBeInTheDocument();
+    expect(
+      within(novelLink.closest("div") as HTMLElement).getByText("Reading")
+    ).toBeInTheDocument();
 
     // Remove button exists
     expect(screen.getByRole("button", { name: /remove/i })).toBeInTheDocument();
 
-    expect(screen.getByRole("heading", { name: /currently reading/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /reading history/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /plan to read/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /completed/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /dropped/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /updates/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /unknown/i })).toBeInTheDocument();
   });
 
   it("shows saved state with view-library link for an already-saved novel", async () => {

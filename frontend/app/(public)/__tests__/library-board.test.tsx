@@ -19,7 +19,7 @@
  * - Remove action calls useRemoveFromLibrary mutate
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { LibraryItem } from "@/lib/public-types";
@@ -98,6 +98,12 @@ beforeEach(() => {
   });
   mocks.usePublicAuthMock.mockReturnValue({ isAuthenticated: true, isPending: false });
   mocks.useLibraryMock.mockReturnValue({ data: defaultLibraryData, isPending: false, isError: false });
+});
+
+// Restore jsdom baseline (matchMedia is undefined in jsdom) so the mock
+// does not leak into other test files under singleFork.
+afterAll(() => {
+  delete (window as unknown as { matchMedia?: unknown }).matchMedia;
 });
 
 async function renderPage() {
