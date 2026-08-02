@@ -41,9 +41,9 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isPending && !isAuthenticated) {
-      router.replace("/login?mode=signin&next=%2Faccount");
+      router.replace(`/login?mode=signin&next=${encodeURIComponent(pathname)}`);
     }
-  }, [isPending, isAuthenticated, router]);
+  }, [isPending, isAuthenticated, pathname, router]);
 
   if (isPending) {
     return (
@@ -125,12 +125,12 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
         </div>
       </nav>
 
-      <main className="flex-1 lg:pl-64">
+      <div className="flex-1 lg:pl-64">
         <header className="hidden lg:block h-16 border-b border-border" />
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           {children}
         </div>
-      </main>
+      </div>
     </div>
   );
 }

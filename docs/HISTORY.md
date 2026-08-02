@@ -337,3 +337,13 @@ library-board.test.tsx and account-desktop-shell.test.tsx for group routing,
 search, sort, view toggle and media default, empty state, remove mutation,
 sidebar navigation/active state, and landing summary counts. GitHub CI and
 GitGuardian also pass at that HEAD. Branch remains unmerged.
+
+Follow-up audit added a persistent FE-02 token regression test for all 34
+documented WCAG AA pairs, then fixed two account-shell defects: unauthenticated deep account
+routes now preserve their exact pathname through sign-in, and the shell no
+longer nests a `main` landmark around child pages that own their own `main`.
+Focused tests cover both regressions. `WORK.md` and `DESIGN.md` status blocks
+were also reconciled with shipped FE-09 evidence; gated backend, operator, and
+asset work remains active rather than being represented by fake UI. Final
+follow-up validation: frontend lint and typecheck passed, 813 Vitest tests
+across 71 files passed, and production build generated 47 pages.

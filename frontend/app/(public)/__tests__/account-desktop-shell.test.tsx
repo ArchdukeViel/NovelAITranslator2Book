@@ -76,6 +76,8 @@ vi.mock("lucide-react", () => {
     <span className={className}>{children}</span>
   );
   return {
+    AlertTriangle: Svg,
+    ArrowRight: Svg,
     Bell: Svg,
     BookOpen: Svg,
     Clock: Svg,
@@ -86,11 +88,13 @@ vi.mock("lucide-react", () => {
     Library: Svg,
     LifeBuoy: Svg,
     Loader2: Svg,
+    Lock: Svg,
     LogOut: Svg,
     Scale: Svg,
     Settings: Svg,
     Star: Svg,
     Trophy: Svg,
+    User: Svg,
     Wrench: Svg,
   };
 });
@@ -424,5 +428,51 @@ describe("Loading and auth states", () => {
     );
 
     expect(replaceMock).toHaveBeenCalledWith("/login?mode=signin&next=%2Faccount");
+  });
+
+  it("redirects to login preserving deep account pathname", async () => {
+    const replaceMock = vi.fn();
+    mocks.usePathnameMock.mockReturnValue("/account/settings");
+    mocks.useRouterMock.mockReturnValue({ replace: replaceMock });
+
+    mocks.usePublicAuthMock.mockReturnValue({
+      data: { is_authenticated: false, role: "guest" },
+      isPending: false,
+      isError: false,
+      isLoading: false,
+      isFetching: false,
+      refetch: vi.fn(),
+      authState: { status: "guest", user: { is_authenticated: false, role: "guest" } },
+      user: { is_authenticated: false, role: "guest" },
+      isAuthenticated: false,
+      isPublicUser: false,
+      isOwner: false,
+    });
+
+    const { default: Layout } = await import("../account/layout");
+
+    renderWithProviders(
+      <Layout>
+        <div />
+      </Layout>
+    );
+
+    expect(replaceMock).toHaveBeenCalledWith("/login?mode=signin&next=%2Faccount%2Fsettings");
+  });
+});
+
+describe("Main landmark", () => {
+  it("renders only one main landmark when child page renders its own main", async () => {
+    const { default: Layout } = await import("../account/layout");
+    const { default: Page } = await import("../account/settings/page");
+
+    renderWithProviders(
+      <Layout>
+        <Page />
+      </Layout>
+    );
+
+    // Shell content wrapper is a non-landmark div; the child page owns the single main landmark
+    expect(screen.getAllByRole("main")).toHaveLength(1);
   });
 });

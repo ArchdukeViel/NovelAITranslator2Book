@@ -106,7 +106,7 @@ reviewer exists. Remaining: sanitized incident/false-positive triage exercise
 |---|---|---|---|
 | DEBT-075 | Managed-service recovery and scheduling closure | Blocked on operator evidence | Real stale/failure SMTP alert; successful hosted PostgreSQL/R2 workflow. Tooling complete: backup stale alert, restore freshness max age, runtime-role verifier, rollback gate. |
 | DEBT-079 | Hosted production acceptance | Ongoing | Domains, OAuth, cookies, CORS/CSRF, host validation, storage boundaries, monitoring, rollback, and reliability verified on always-on topology. Tooling complete: authenticated smoke, external monitor, rollback compatibility gate, parser/YAML/router/diff, security review, GitGuardian scan. |
-| DEBT-FE-01 | Frontend design rework (Yokocho Lantern + Layout Rework) | Phase 1 shipped 2026-07-31; Phase 2+ not started | Phase 1 evidence: token swap in `globals.css` (both modes), semantic success/warning/info + focus-ring tokens wired to Tailwind, public components consume tokens (badge, rating stars, notification list, request/review success, contributions banner), root metadata brand "Dokushodo", duplicate novel-detail CTA suppressed, public theme default dark. Verified: 770 Vitest tests, typecheck, and production build pass. Remaining: manual contrast/keyboard acceptance on shipped tokens; Layout Rework routes/nav/search/asset system only as separate approved items per `docs/DESIGN.md`. |
+| DEBT-FE-01 | Frontend design rework (Yokocho Lantern + Layout Rework) | FE-01 through FE-09 shipped locally; operator/backend-gated remainder open | Local slices through library board/list and account shell shipped; exact evidence lives in `HISTORY.md`. Remaining: manual keyboard, screen-reader, zoom, reduced-motion, focus, and browser contrast acceptance; approved asset inventory; admin-curated featured rotation; chapter added/failure metadata; public review listing; stable author identity; expanded library status/progress/update contracts. No gated surface is faked. |
 
 ## Active Work Plans
 
@@ -252,15 +252,15 @@ PR/change, each with exact tests:
 
 | ID | Slice | Dependency |
 |---|---|---|
-| FE-02 | Phase 1 accessibility: token contrast verified programmatically (34 checks, both modes, 0 failures at WCAG AA 4.5:1) + two-layer primary-button focus treatment shipped; manual browser checks (keyboard, screen reader, zoom, reduced motion) pending operator | Current Phase 1 |
+| FE-02 | Phase 1 accessibility: persistent token regression test covers 34 checks across both modes at WCAG AA 4.5:1 + two-layer primary-button focus treatment shipped; manual browser checks (keyboard, screen reader, zoom, reduced motion) pending operator | Current Phase 1 |
 | FE-03 | Desktop header inline nav, mobile bottom tab bar, Account/More hub, reader chrome suppression — shipped (typecheck, 766 tests, build pass) | FE-02 |
 | FE-04 | Shared search overlay, keyboard behavior, request cancellation, local recent searches — shipped (typecheck, 781 tests, build, backend 156 tests pass); original-title search added to catalog DB + storage fallback | FE-03 |
 | FE-05 | Browse/catalog layout, URL filter state, taxonomy/source canonical routes — shipped (typecheck, 790 tests, build, backend public-router 123 tests pass); authors route remains deferred pending stable identity/alias contract | FE-04 |
 | FE-06 | Homepage rails and honest featured-novel selection — rails, Continue Reading/guest state, catalog-derived genres, `/random`, real `updated_at` sort, single-CTA eligible Spotlight shipped (typecheck, 769 tests, build, backend public-router 125 tests pass); manual admin-curated rotation still needs an approved persistence/API contract | FE-05 |
 | FE-07 | Novel-detail sticky layout, URL tabs, chapter controls, single CTA — supported UI shipped (typecheck, 776 tests, 48-route build); pending backend contracts: chapter added/failure metadata for New/Failed markers and public review-list pagination | FE-03 |
 | FE-08 | Reader Aa panel, progress bar, resume position, quiet chrome — shipped (typecheck, 785 tests across 68 files, 48-route build); account progress + guest local-only persistence, keyboard navigation, strong end CTA | FE-03 |
-| FE-09 | Library board/list and account shell — shipped (lint, typecheck, 809 tests across 70 files, 47-page build, CI); pending backend contracts: plan-to-read/dropped status mutation, bulk status update, progress/title/recent-update fields/filter/badge | FE-03 |
-| FE-10 | `/faq`, `/news`, `/random`, account overview/reviews | Required backend contracts |
+| FE-09 | Library board/list and account shell — shipped (lint, typecheck, 813 tests across 71 files, 47-page build; prior branch CI); pending backend contracts: plan-to-read/dropped status mutation, bulk status update, progress/title/recent-update fields/filter/badge | FE-03 |
+| FE-10 | `/faq`, `/news`, account reviews; `/random` and account overview already shipped | Review route requires approved visibility/moderation/read contract; static routes need approved content |
 
 Rules:
 
