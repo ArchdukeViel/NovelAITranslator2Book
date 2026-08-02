@@ -72,7 +72,22 @@ function contrast(left: Rgb, right: Rgb): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-describe("Yokocho Lantern token contrast", () => {
+describe("Yokocho Lantern token contrast and structure", () => {
+  const rootTokens = tokenBlock(":root");
+  const darkTokens = tokenBlock(".dark");
+
+  it(":root and .dark define identical token sets", () => {
+    const rootKeys = Array.from(rootTokens.keys()).sort();
+    const darkKeys = Array.from(darkTokens.keys()).sort();
+    expect(rootKeys).toEqual(darkKeys);
+  });
+
+  it("globals.css contains required accessibility infrastructure", () => {
+    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(css).toContain(".bg-primary:focus-visible");
+    expect(css).toContain(".skip-link");
+  });
+
   for (const selector of [":root", ".dark"] as const) {
     const tokens = tokenBlock(selector);
 
