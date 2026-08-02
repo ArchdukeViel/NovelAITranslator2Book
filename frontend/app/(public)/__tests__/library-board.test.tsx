@@ -19,7 +19,7 @@
  * - Remove action calls useRemoveFromLibrary mutate
  */
 
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { LibraryItem } from "@/lib/public-types";
@@ -82,10 +82,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.removeMutations.clear();
   mocks.desktop.matches = false;
-  Object.defineProperty(window, "matchMedia", {
-    writable: true,
-    configurable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => ({
       get matches() {
         return mocks.desktop.matches;
       },
@@ -94,16 +93,16 @@ beforeEach(() => {
       addEventListener: (_type: string, callback: () => void) => mocks.changeListeners.add(callback),
       removeEventListener: (_type: string, callback: () => void) => mocks.changeListeners.delete(callback),
       dispatchEvent: vi.fn(),
-    })),
-  });
+    }))
+  );
   mocks.usePublicAuthMock.mockReturnValue({ isAuthenticated: true, isPending: false });
   mocks.useLibraryMock.mockReturnValue({ data: defaultLibraryData, isPending: false, isError: false });
 });
 
-// Restore jsdom baseline (matchMedia is undefined in jsdom) so the mock
-// does not leak into other test files under singleFork.
-afterAll(() => {
-  delete (window as unknown as { matchMedia?: unknown }).matchMedia;
+// Restore the original jsdom matchMedia so the mock does not leak into
+// other test files under singleFork.
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 async function renderPage() {
