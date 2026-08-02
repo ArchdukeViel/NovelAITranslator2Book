@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 
-import { AuthGate } from "@/components/public/auth-gate";
+import { RequestControl } from "@/components/public/request-control";
 import { Panel, PanelBody, PanelHeader, PanelTitle } from "@/components/ui/panel";
-import { useRequests } from "@/hooks/public";
+import { usePublicAuth, useRequests } from "@/hooks/public";
 import { publicNovelHref } from "@/lib/public-routes";
 
 const SUPPORTED_SOURCES = ["Kakuyomu", "Syosetu", "Syosetu18"];
@@ -24,19 +24,22 @@ function sourceFromUrl(value: string | null): string {
 }
 
 export default function RequestNovelPage() {
+  const { isAuthenticated } = usePublicAuth();
+
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <header className="mb-8">
         <h1 className="text-3xl font-semibold tracking-normal font-literary">Request Novel</h1>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Sign in to request a novel from a supported source. Requests are reviewed before they enter the catalog queue.
+          Request a novel or chapter from a supported source. Requests are reviewed before entering the translation queue.
         </p>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <AuthGate>
-          <RequestHistory />
-        </AuthGate>
+        <div className="space-y-6">
+          <RequestControl />
+          {isAuthenticated && <RequestHistory />}
+        </div>
 
         <aside className="space-y-4">
           <Panel>
@@ -49,27 +52,6 @@ export default function RequestNovelPage() {
                   <li key={source} className="font-metadata">{source}</li>
                 ))}
               </ul>
-            </PanelBody>
-          </Panel>
-
-          <Panel>
-            <PanelHeader>
-              <PanelTitle className="font-literary">Request URL</PanelTitle>
-            </PanelHeader>
-            <PanelBody className="space-y-3">
-              <label className="block text-xs font-medium text-muted-foreground">
-                Supported source URL
-              </label>
-              <input
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm disabled:opacity-50"
-                disabled
-                placeholder="https://kakuyomu.jp/..."
-                type="url"
-                aria-label="Supported source URL (disabled)"
-              />
-              <p className="text-xs text-muted-foreground">
-                URL submission is not open yet.
-              </p>
             </PanelBody>
           </Panel>
         </aside>
