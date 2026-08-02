@@ -8,11 +8,16 @@ import type {
   RequestListParams,
   ReviewInput,
   ReviewResponse,
+  UserReviewItem,
 } from "@/lib/public-types";
 import { usePublicAuth } from "./use-auth";
 
 const reviewKeys = {
   item: (slug: string) => ["user-engagement", "review", slug] as const,
+};
+
+const myReviewsKeys = {
+  all: ["user-engagement", "my-reviews"] as const,
 };
 
 const requestKeys = {
@@ -55,7 +60,17 @@ export function useDeleteReview(slug: string) {
     },
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: reviewKeys.item(slug) });
+      queryClient.invalidateQueries({ queryKey: myReviewsKeys.all });
     },
+  });
+}
+
+export function useMyReviews() {
+  const { canUseEngagement } = useCanUseEngagement();
+  return useQuery<UserReviewItem[]>({
+    queryKey: myReviewsKeys.all,
+    queryFn: () => userEngagementApi.listMyReviews(),
+    enabled: canUseEngagement,
   });
 }
 

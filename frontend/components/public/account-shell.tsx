@@ -24,12 +24,12 @@ const sidebarLinks = [
   { href: "/account/history", label: "History", icon: History },
   { href: "/account/notifications", label: "Notifications", icon: Bell },
   { href: "/account/requests", label: "Requests", icon: Clock },
+  { href: "/account/reviews", label: "Reviews", icon: Star },
   { href: "/account/contributions", label: "Contributions", icon: Heart },
   { href: "/account/settings", label: "Settings", icon: Settings },
 ];
 
 const unavailableLinks = [
-  { label: "Reviews", icon: Star },
   { label: "Support", icon: LifeBuoy },
 ];
 

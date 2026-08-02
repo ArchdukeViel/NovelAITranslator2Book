@@ -218,6 +218,24 @@ class ReviewResponse(BaseModel):
     updated_at: datetime
 
 
+class UserReviewListResponse(BaseModel):
+    slug: str
+    title: str
+    rating: int | None
+    body: str | None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+@router.get("/reviews", response_model=list[UserReviewListResponse])
+def list_my_reviews(
+    user: SessionUser = Depends(require_role("user")),
+    service: ReviewService = Depends(get_review_service),
+) -> list[UserReviewListResponse]:
+    return [UserReviewListResponse(**item) for item in service.list_user_reviews(_uid(user))]
+
+
 @router.put(
     "/reviews/{slug}",
     response_model=ReviewResponse,

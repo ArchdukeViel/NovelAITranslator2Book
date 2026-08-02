@@ -14,7 +14,7 @@ contains full former requirements/design/task documents.
 | Translation chunking and resume | Deterministic paragraphs/chunks, bounded chapter parallelism, checkpoints, delta/resume hardening implemented. | `ARCHITECTURE.md`, `TRANSLATION.md` |
 | Translation cache and QA | Exact cache identity, glossary invalidation, deterministic QA, prompt hardening, and advisory LLM-QA baseline implemented. | `TRANSLATION.md` |
 | Glossary system | Suggestions, approval, sync, diagnostics, onboarding, revision invalidation, editor QA, and public annotations implemented. | `TRANSLATION.md` |
-| Public reader (baseline) | Catalog/detail/chapter routes, availability, SEO, accessibility baseline, performance budget, taxonomy, and annotations implemented locally. The Yokocho Lantern + Layout Rework replacement target is documented in `DESIGN.md` and tracked as `DEBT-FE-01` in `WORK.md`; Phase 1 (tokens, brand metadata, duplicate-CTA removal, dark default) shipped 2026-07-31 — see Frontend Design Phase 1 below. Layout/route rework remains pending. | `DESIGN.md` |
+| Public reader (baseline) | Catalog/detail/chapter routes, availability, SEO, accessibility baseline, performance budget, taxonomy, and annotations implemented locally. The Yokocho Lantern + Layout Rework replacement target is documented in `DESIGN.md` and tracked as `DEBT-FE-01` in `WORK.md`; FE-01 (tokens, brand metadata, duplicate-CTA removal, dark default) shipped 2026-07-31 — see Frontend FE-01 below. Layout/route rework remains pending. | `DESIGN.md` |
 | Admin operations | Users, audit, analytics, metrics, notifications, credentials, requests, health, and library summary implemented locally. | `ARCHITECTURE.md`, `OPERATIONS.md` |
 | Legal workflow | Contact/support/legal pages, DMCA intake, owner review, audit, HTTP 451, sitemap/cache enforcement implemented locally. | `ARCHITECTURE.md`, `DESIGN.md` |
 | Scheduler durability | Runtime state persistence, cooldown/exhaustion/heartbeat, leases, backup scheduling, and worker observability implemented. | `ARCHITECTURE.md`, `OPERATIONS.md` |
@@ -94,9 +94,9 @@ PR #12 proved successful secret-backed push and same-repository PR scans.
 Required-check protection was configured and proven later (GH-001, PR #15 —
 see below); sanitized incident/false-positive triage remains operator evidence.
 
-## 2026-07-31 Frontend Design Phase 1 (DEBT-FE-01)
+## 2026-07-31 Frontend FE-01 (DEBT-FE-01)
 
-Shipped the bounded Phase 1 slice of the Yokocho Lantern + Layout Rework target
+Shipped the bounded FE-01 slice of the Yokocho Lantern + Layout Rework target
 (`docs/DESIGN.md`): token swap in `globals.css` (light + dark), semantic
 `success`/`warning`/`info` + `--focus-ring` tokens wired to Tailwind, public
 surfaces consume tokens (badge, rating stars, notification list, request/review
@@ -104,7 +104,7 @@ success states, contributions banner), root metadata brand "Dokushodo",
 novel-detail duplicate Start Reading CTA suppressed (`ContinueReading
 hasHeroCta`), public theme default dark (respects explicit
 `prefers-color-scheme: light`). Layout Rework routes/nav/search and the asset
-system remain pending in `WORK.md` as `DEBT-FE-01` Phase 2+; admin surfaces
+system remain pending in `WORK.md` as `DEBT-FE-01` FE-02+; admin surfaces
 intentionally unchanged.
 
 | Check | Result |
@@ -130,7 +130,7 @@ GitHub forbids PR authors from approving their own pull request and this is a
 single-operator repository (see `DEPLOYMENT.md` GitHub Controls). Sanitized
 incident/false-positive triage remains operator evidence.
 
-## 2026-07-31 Frontend Phase 2 — FE-02 accessibility (DEBT-FE-01)
+## 2026-07-31 Frontend FE-02 accessibility (DEBT-FE-01)
 
 Token contrast verified programmatically against WCAG AA (4.5:1) for solid
 fills, tinted chips, cards, and page backgrounds in both modes — 34 checks,
@@ -150,7 +150,7 @@ tests, production build all pass. Remaining FE-02 items are manual browser
 checks (keyboard, screen reader, 200% zoom, reduced motion) — operator
 evidence.
 
-## 2026-07-31 Frontend Phase 2 — FE-03 navigation (DEBT-FE-01)
+## 2026-07-31 Frontend FE-03 navigation (DEBT-FE-01)
 
 The public hamburger drawer is gone. Desktop (`md:`+) header now shows
 inline primary nav — Home, Browse, Request, Library — plus catalog search,
@@ -176,7 +176,7 @@ hrefs, header nav), production build all pass. Remaining per DESIGN.md:
 Search overlay is FE-04 (tab currently lands on browse search); novel-detail
 sticky action bar replacing the tab bar is FE-07.
 
-## 2026-08-01 Frontend Phase 2 — FE-04 shared search overlay (DEBT-FE-01)
+## 2026-08-01 Frontend FE-04 shared search overlay (DEBT-FE-01)
 
 One shared search overlay replaces the separate header search form and the
 mobile Search tab's redirect to the catalog page. It is mounted once in
@@ -209,7 +209,7 @@ cancellation, no-flicker, error/partial failure, keyboard navigation,
 recent-search storage; updated search-entry, tab-bar, and shell suites),
 production build, and backend catalog suites (156 tests) all pass.
 
-## 2026-08-01 Frontend Phase 2 — FE-05 browse/catalog (DEBT-FE-01)
+## 2026-08-01 Frontend FE-05 browse/catalog (DEBT-FE-01)
 
 Browse filters moved from the results-dominating top panel to a desktop left
 sidebar. Only its heading and Clear-all action are sticky; filter content
@@ -238,7 +238,7 @@ router 123 tests, and focused Ruff all pass. Pyright reached one pre-existing
 optional-dependency error (`pypdf` unavailable in untouched
 `backend/src/novelai/inputs/pdf.py`).
 
-## 2026-08-01 Frontend Phase 2 — FE-06 homepage rails (DEBT-FE-01)
+## 2026-08-01 Frontend FE-06 homepage rails (DEBT-FE-01)
 
 Homepage long stack, Reading Paths box, utility grid, and duplicate catalog
 CTA were removed. Accessible horizontal rails now cover Continue Reading,
@@ -262,7 +262,7 @@ when no novel is available. Validation: frontend typecheck, 769 Vitest tests
 across 67 files, production build (48 routes), backend public-router 125
 tests, focused Ruff, and router dependency guard all pass.
 
-## 2026-08-02 Frontend Phase 2 — FE-07 novel detail (DEBT-FE-01)
+## 2026-08-02 Frontend FE-07 novel detail (DEBT-FE-01)
 
 Novel detail now uses a sticky desktop left panel for the bookplate, title,
 status, metadata, Save control, and exactly one adaptive Start/Continue CTA.
@@ -283,7 +283,7 @@ fields, and no public other-reader review-list endpoint/pagination contract
 exists. New/Failed markers and review lists remain registered in `WORK.md`
 across 67 files, and production build (48 routes) all pass.
 
-## 2026-08-02 Frontend Phase 2 — FE-08 chapter reader (DEBT-FE-01)
+## 2026-08-02 Frontend FE-08 chapter reader (DEBT-FE-01)
 
 Reader typography/theme/width controls moved from inline chrome into one
 thumb-reachable floating Aa button above the safe area. Its sheet provides
@@ -305,7 +305,7 @@ Validation: frontend typecheck, 785 Vitest tests across 68 files (including
 Aa choices/shortcut/reset/disclosure, account and guest resume, live progress,
 keyboard navigation), and production build (48 routes) all pass.
 
-## 2026-08-02 Frontend Phase 2 — FE-09 library board/list and account shell (DEBT-FE-01)
+## 2026-08-02 Frontend FE-09 library board/list and account shell (DEBT-FE-01)
 
 The account area gained a desktop sidebar (Library, History, Notifications,
 Requests, Contributions, Settings) with active-route highlighting. Reviews and
@@ -347,3 +347,41 @@ were also reconciled with shipped FE-09 evidence; gated backend, operator, and
 asset work remains active rather than being represented by fake UI. Final
 follow-up validation: frontend lint and typecheck passed, 813 Vitest tests
 across 71 files passed, and production build generated 47 pages.
+
+## 2026-08-02 Frontend FE-10 — FAQ, news, and account reviews (DEBT-FE-01)
+
+Renamed the "Phase 1" slice label to `FE-01` throughout the docs to match the
+FE-02..FE-09 slice naming already in use (DESIGN.md, WORK.md, HISTORY.md).
+
+Shipped the remaining FE-10 routes from `docs/DESIGN.md`:
+
+- `/faq` — flat categorized Q&A, no auth, built on the shared `StaticPage`;
+  linked from the footer and the mobile Account More hub.
+- `/news` — flat dated list, no auth, built on `StaticPage`; linked from the
+  footer and the mobile Account More hub.
+- `/account/reviews` — lists the signed-in reader's own reviews with novel
+  title links, star rating, review body, an "Edit review" link to the novel's
+  reviews tab (`/novels/[slug]?tab=reviews`), and removal through the existing
+  delete-review mutation. Auth-gated like the other account pages; honest
+  loading/error/empty states.
+- Backend `GET /api/user/reviews` — new session-scoped endpoint returning the
+  current user's reviews with novel slug/title, newest first
+  (`ReviewService.list_user_reviews`). `useDeleteReview` now also invalidates
+  the my-reviews query.
+- Desktop account sidebar: Reviews moved from the "Unavailable" list to a real
+  link (Support remains the only unavailable row). Mobile More hub now lists
+  Ranking, Request Novel, Contribute, FAQ, News, About, Support, and Legal per
+  DESIGN.md's hub contract; footer Read column gained FAQ and News.
+
+Validation: backend `test_user_data_router.py` 45 tests pass (added guard entry
+for the new GET route plus a contract test proving per-user scoping and novel
+metadata); frontend typecheck, lint, and focused Vitest suites pass (account
+reviews page, account shell, navigation consistency, metadata); full Vitest
+suite (820 tests / 72 files) and production build (50 pages) pass. The GET
+endpoint carries no rate limit, matching sibling user-data GETs
+(`/library`, `/history`, `/requests`), and its `status`/`updated_at` fields
+keep the existing hardcoded `pending`/`created_at` contract shared with
+`PUT /api/user/reviews/{slug}` — a real review-status column awaits the
+approved visibility/moderation contract. Remaining gated items
+(public review-list pagination, visibility/moderation contract) stay open in
+`WORK.md`; no surface is faked.

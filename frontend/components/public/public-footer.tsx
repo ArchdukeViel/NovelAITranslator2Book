@@ -31,6 +31,12 @@ export function PublicFooter() {
           <Link href="/support" className="transition-colors hover:text-foreground">
             Support
           </Link>
+          <Link href="/faq" className="transition-colors hover:text-foreground">
+            FAQ
+          </Link>
+          <Link href="/news" className="transition-colors hover:text-foreground">
+            News
+          </Link>
         </nav>
 
         <nav className="grid gap-2" aria-label="Legal navigation">

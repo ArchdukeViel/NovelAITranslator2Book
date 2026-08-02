@@ -114,6 +114,7 @@ class TestAuthGuard:
             ("post", "/api/user/history", {"slug": "test-novel"}),
             ("put", "/api/user/reviews/test-novel", {"rating": 5}),
             ("delete", "/api/user/reviews/test-novel", None),
+            ("get", "/api/user/reviews", None),
             ("get", "/api/user/requests", None),
             ("post", "/api/user/requests", {"request_type": "novel", "source_url": "https://example.com/novel"}),
         ],
@@ -364,6 +365,43 @@ class TestReviewContract:
         ]
         assert statuses[:20] == [200] * 20
         assert statuses[-1] == 429
+
+    def test_get_my_reviews_lists_only_current_users_reviews_with_novel_metadata(
+        self, app, client, seeded_catalog
+    ) -> None:
+        headers = csrf_headers(client)
+
+        set_user(app, 1)
+        assert (
+            client.put("/api/user/reviews/test-novel", json={"rating": 5, "body": "Great"}, headers=headers).status_code
+            == 200
+        )
+        assert client.put("/api/user/reviews/other-novel", json={"rating": 3}, headers=headers).status_code == 200
+
+        set_user(app, 2)
+        assert client.put("/api/user/reviews/test-novel", json={"rating": 2}, headers=headers).status_code == 200
+
+        set_user(app, 1)
+        mine = client.get("/api/user/reviews")
+        assert mine.status_code == 200
+        items = mine.json()
+        assert len(items) == 2
+        assert_keys(items[0], {"slug", "title", "rating", "body", "status", "created_at", "updated_at"})
+        by_slug = {item["slug"]: item for item in items}
+        assert by_slug["test-novel"]["title"] == "Test Novel"
+        assert by_slug["test-novel"]["rating"] == 5
+        assert by_slug["test-novel"]["body"] == "Great"
+        assert by_slug["other-novel"]["title"] == "Other Novel"
+        assert by_slug["other-novel"]["rating"] == 3
+
+        set_user(app, 2)
+        theirs = client.get("/api/user/reviews")
+        assert theirs.status_code == 200
+        assert len(theirs.json()) == 1
+        assert theirs.json()[0]["rating"] == 2
+
+        set_user(app, 3)
+        assert client.get("/api/user/reviews").json() == []
 
 
 class TestRequestContract:
