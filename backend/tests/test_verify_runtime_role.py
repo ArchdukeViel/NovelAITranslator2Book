@@ -102,6 +102,8 @@ class _FakeConnection:
     def execute(self, statement: Any, params: dict[str, Any] | None = None) -> _FakeResult:
         sql_text = str(statement)
         self.executed.append(sql_text)
+        if sql_text.startswith("WITH RECURSIVE settable_roles"):
+            return _FakeResult(value=self._behaviors.get("_set_role_attributes_safe", True))
         behavior = self._behaviors.get(sql_text)
         if behavior is None:
             # Default: succeed with a generic scalar/result unless scripted.
@@ -344,7 +346,9 @@ def test_dangerous_role_attribute_fails(monkeypatch: pytest.MonkeyPatch) -> None
     assert exit_code == 1
 
 
-def test_parent_role_attributes_safe_when_no_parents(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_set_role_attributes_safe_when_no_dangerous_role_is_reachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = _load_verifier()
 
     class _Role:
@@ -362,8 +366,8 @@ def test_parent_role_attributes_safe_when_no_parents(monkeypatch: pytest.MonkeyP
         "SELECT rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls, rolinherit, rolcanlogin FROM pg_roles WHERE rolname = 'novelai_runtime'": {
             "row": _Role()
         },
-        # parent-role query returns empty list → all([]) is True
-        "SELECT r.rolsuper, r.rolcreatedb, r.rolcreaterole, r.rolreplication, r.rolbypassrls FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.roleid WHERE m.member = 'novelai_runtime'::regrole": [],
+        "_set_role_attributes_safe": True,
+        "SELECT has_table_privilege(current_user, 'public.system_settings', 'SELECT WITH GRANT OPTION')": False,
         "SELECT count(*) FROM public.alembic_version": 1,
         "SELECT value_json FROM public.system_settings WHERE key = :k": _Sequence(None, "v"),
         "SELECT count(*) FROM public.system_settings WHERE key = :k": 0,
@@ -382,11 +386,14 @@ def test_parent_role_attributes_safe_when_no_parents(monkeypatch: pytest.MonkeyP
     conn = _FakeConnection(behaviors)
     engine = _FakeEngine(conn)
     exit_code, outputs = _capture_main(module, monkeypatch, engine)
-    assert "parent_role_attributes_safe=true" in outputs
+    assert "set_role_attributes_safe=true" in outputs
+    assert not any("BYPASSRLS')" in sql or sql.startswith(("CREATE DATABASE", "GRANT SELECT")) for sql in conn.executed)
     assert exit_code == 0
 
 
-def test_parent_role_attributes_unsafe_when_parent_superuser(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_set_role_attributes_unsafe_when_transitive_superuser_is_reachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = _load_verifier()
 
     class _Role:
@@ -398,27 +405,19 @@ def test_parent_role_attributes_unsafe_when_parent_superuser(monkeypatch: pytest
         rolinherit = True
         rolcanlogin = True
 
-    class _ParentRole:
-        rolsuper = True
-        rolcreatedb = False
-        rolcreaterole = False
-        rolreplication = False
-        rolbypassrls = False
-
     behaviors: dict[str, Any] = {
         "SELECT current_user": "novelai_runtime",
         "SELECT pg_has_role(current_user, 'novelai_app', 'MEMBER')": True,
         "SELECT rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls, rolinherit, rolcanlogin FROM pg_roles WHERE rolname = 'novelai_runtime'": {
             "row": _Role()
         },
-        "SELECT r.rolsuper, r.rolcreatedb, r.rolcreaterole, r.rolreplication, r.rolbypassrls FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.roleid WHERE m.member = 'novelai_runtime'::regrole": [
-            _ParentRole()
-        ],
+        "_set_role_attributes_safe": False,
     }
     conn = _FakeConnection(behaviors)
     engine = _FakeEngine(conn)
     exit_code, outputs = _capture_main(module, monkeypatch, engine)
-    assert "parent_role_attributes_safe=false" in outputs
+    assert "set_role_attributes_safe=false" in outputs
+    assert any("WITH RECURSIVE settable_roles" in sql and "m.set_option" in sql for sql in conn.executed)
     assert exit_code == 1
 
 

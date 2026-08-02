@@ -85,7 +85,8 @@ Validator output remains redacted.
    - `deploy/scripts/deploy-smoke.ps1 -Production` requires `NOVELAI_SMOKE_SESSION_COOKIE`;
      validates recovery probes (object snapshot, DB backup, restore) all healthy.
    - `deploy/scripts/verify-runtime-role.py` inside backend image with runtime
-     `DATABASE_URL`; 7 transactional checks (identity, DML allowed, admin DDL denied).
+     `DATABASE_URL`; transactional checks cover identity, DML, role reachability,
+     schema scope, and denied admin DDL.
 6. Verify liveness/readiness, public catalog, owner auth boundary, CSRF/OAuth,
    storage scope, and frontend.
 7. Record release commit, immutable tags, UTC time, and sanitized evidence.

@@ -38,14 +38,20 @@ _SECURE_ROLE_FLAGS: dict[str, bool] = {
     "rolcanlogin": True,
 }
 
-# Parent-role attributes that must never be held by any role the runtime
-# role inherits privileges from.
-_DANGEROUS_PARENT_FLAGS: tuple[str, ...] = (
-    "rolsuper",
-    "rolcreatedb",
-    "rolcreaterole",
-    "rolreplication",
-    "rolbypassrls",  # inherited BYPASSRLS lets runtime skip RLS on all tables
+# PostgreSQL role attributes are not inherited as ordinary privileges, but a
+# runtime role can activate them through a transitive SET ROLE membership.
+_SET_ROLE_SAFETY_SQL = (
+    "WITH RECURSIVE settable_roles(oid) AS ("
+    " SELECT m.roleid FROM pg_auth_members m"
+    " WHERE m.member = 'novelai_runtime'::regrole AND m.set_option"
+    " UNION"
+    " SELECT m.roleid FROM pg_auth_members m"
+    " JOIN settable_roles s ON m.member = s.oid WHERE m.set_option"
+    ") SELECT NOT EXISTS ("
+    " SELECT 1 FROM settable_roles s JOIN pg_roles r ON r.oid = s.oid"
+    " WHERE r.rolsuper OR r.rolcreatedb OR r.rolcreaterole"
+    " OR r.rolreplication OR r.rolbypassrls"
+    ")"
 )
 
 # DDL operations that must be denied to the runtime role.
@@ -56,7 +62,6 @@ _DENIED_DDL: dict[str, str] = {
         "ALTER TABLE public.system_settings ADD COLUMN novelai_runtime_acceptance integer"
     ),
     "drop_application_table_denied": "DROP TABLE public.system_settings",
-    "create_database_denied": "CREATE DATABASE novelai_runtime_acceptance",
 }
 
 
@@ -123,17 +128,7 @@ def main() -> int:
                 bool(getattr(role_row, name)) is expected for name, expected in _SECURE_ROLE_FLAGS.items()
             )
 
-            parent_rows = connection.execute(
-                text(
-                    "SELECT r.rolsuper, r.rolcreatedb, r.rolcreaterole,"
-                    " r.rolreplication, r.rolbypassrls"
-                    " FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.roleid"
-                    " WHERE m.member = 'novelai_runtime'::regrole"
-                )
-            ).all()
-            checks["parent_role_attributes_safe"] = all(
-                all(not bool(getattr(row, flag)) for flag in _DANGEROUS_PARENT_FLAGS) for row in parent_rows
-            )
+            checks["set_role_attributes_safe"] = bool(connection.execute(text(_SET_ROLE_SAFETY_SQL)).scalar_one())
 
             checks["application_read"] = (
                 connection.execute(text("SELECT count(*) FROM public.alembic_version")).scalar_one() == 1
@@ -173,22 +168,17 @@ def main() -> int:
             ).scalar_one()
             checks["application_delete"] = remaining == 0
 
-            checks["no_bypass_rls"] = bool(
-                connection.execute(
-                    text("SELECT NOT pg_has_role(current_user, 'novelai_runtime', 'BYPASSRLS') AS not_bypass")
-                ).scalar_one()
-            )
-
             # Explicit denials. Each probe runs in its own savepoint and counts
             # only on SQLSTATE 42501; other failures fail rather than pass.
             for label, statement in _DENIED_DDL.items():
                 checks[label] = _denied(connection, statement)
 
-            # The runtime role must not hold CREATEROLE: ensure it cannot
-            # GRANT privileges it should not be able to delegate.
-            checks["grant_application_table_denied"] = _denied(
-                connection,
-                "GRANT SELECT ON public.system_settings TO novelai_runtime",
+            checks["no_application_table_grant_option"] = not bool(
+                connection.execute(
+                    text(
+                        "SELECT has_table_privilege(current_user, 'public.system_settings', 'SELECT WITH GRANT OPTION')"
+                    )
+                ).scalar_one()
             )
             checks["grant_role_denied"] = _denied(connection, "GRANT novelai_app TO novelai_runtime")
 
