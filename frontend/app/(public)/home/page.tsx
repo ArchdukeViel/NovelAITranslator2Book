@@ -238,22 +238,6 @@ export default function HomePage() {
         >
           <>
             <div
-              className="absolute inset-0 -z-30 bg-cover bg-center opacity-55 dark:opacity-45"
-              style={{
-                backgroundImage:
-                  "url('/assets/dokushodo/home/hero-torii-forest.png')",
-              }}
-              aria-hidden="true"
-            />
-            <div
-              className="absolute inset-0 -z-[25] bg-cover bg-center opacity-[0.08] mix-blend-screen"
-              style={{
-                backgroundImage:
-                  "url('/assets/dokushodo/texture/charcoal-washi.png')",
-              }}
-              aria-hidden="true"
-            />
-            <div
               className="absolute inset-0 -z-20 bg-gradient-to-t from-background via-background/80 to-background/20"
               aria-hidden="true"
             />

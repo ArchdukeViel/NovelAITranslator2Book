@@ -1,15 +1,7 @@
 import { BookOpen } from "lucide-react";
-import Image from "next/image";
 
 import type { PublicGenreInfo } from "@/lib/public-types";
 import { cn } from "@/lib/utils";
-
-const COVER_ASSETS = {
-  archive: "/assets/dokushodo/covers/cover-archive.png",
-  completed: "/assets/dokushodo/covers/cover-completed.png",
-  fantasy: "/assets/dokushodo/covers/cover-fantasy.png",
-  mystery: "/assets/dokushodo/covers/cover-mystery.png",
-} as const;
 
 const PALETTES = [
   {
@@ -69,28 +61,8 @@ function cleanText(value: string | null | undefined): string | null {
 }
 
 function displayMeta(language: string | null | undefined, status: string | null | undefined): string {
-  const items = [
-    cleanText(language)?.toUpperCase(),
-    cleanText(status),
-  ].filter(Boolean);
+  const items = [cleanText(language)?.toUpperCase(), cleanText(status)].filter(Boolean);
   return items.join(" / ") || "Dokushodo";
-}
-
-function chooseCoverAsset(genres: PublicGenreInfo[] | null | undefined, status: string | null | undefined): string {
-  const statusText = status?.toLowerCase() ?? "";
-  if (statusText.includes("complete")) {
-    return COVER_ASSETS.completed;
-  }
-
-  const genreText = genres?.map(g => g.slug).join(" ").toLowerCase() ?? "";
-  if (/(mystery|horror|supernatural|thriller|suspense)/u.test(genreText)) {
-    return COVER_ASSETS.mystery;
-  }
-  if (/(fantasy|isekai|adventure|magic)/u.test(genreText)) {
-    return COVER_ASSETS.fantasy;
-  }
-
-  return COVER_ASSETS.archive;
 }
 
 export function FallbackCover({
@@ -106,7 +78,6 @@ export function FallbackCover({
   const subtitle = safeSourceTitle && safeSourceTitle !== safeTitle ? safeSourceTitle : null;
   const genreSeed = genres?.map(g => g.slug).filter(Boolean).join("|") ?? "";
   const palette = PALETTES[hashText(`${safeTitle}|${subtitle ?? ""}|${genreSeed}`) % PALETTES.length];
-  const coverAsset = chooseCoverAsset(genres, status);
 
   return (
     <div
@@ -118,14 +89,6 @@ export function FallbackCover({
         className
       )}
     >
-      <Image
-        src={coverAsset}
-        alt=""
-        aria-hidden="true"
-        fill
-        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-        className="absolute inset-0 h-full w-full object-cover"
-      />
       <div
         className="absolute inset-0 bg-gradient-to-b from-background/20 via-background/45 to-background/90"
         aria-hidden="true"
