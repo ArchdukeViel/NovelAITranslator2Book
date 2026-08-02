@@ -8,6 +8,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: true },
 };
 
+// /random is a runtime redirect — picking a random novel must happen per
+// request, not at build time. Static prerendering would run redirect() during
+// export and fail the build.
+export const dynamic = "force-dynamic";
+
 export default async function RandomNovelPage() {
   try {
     const summary = await publicApi.catalog({ page_size: 1 });
