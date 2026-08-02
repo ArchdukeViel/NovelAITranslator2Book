@@ -12,7 +12,7 @@
 
 - [`discovery/`](discovery/README.md) — Home, Browse, Search, Taxonomy.
 - [`reading/`](reading/README.md) — Novel Detail, Chapter Reader.
-- [`account/`](account/README.md) — Library Board, History, Requests, Reviews, Settings.
+- [`account/`](account/README.md) — Overview, Library Board, History, Authored Reviews, Notifications, Requests, Contributions, Settings.
 - [`participation/`](participation/README.md) — Request Novel, Contribute.
 - [`authentication/`](authentication/README.md) — Login modal, OAuth callback, Session flows.
 - [`trust/`](trust/README.md) — Informational pages, DMCA legal workflow.

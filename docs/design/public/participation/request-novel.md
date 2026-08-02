@@ -8,8 +8,8 @@
 | Domain | participation |
 | Routes | `/request-novel` |
 | Design status | approved target |
-| Implementation status | drifted (UI partial: URL input disabled on landing, auth gate wraps table) |
-| Active work | `DEBT-FE-01` (`WORK.md`) |
+| Implementation status | implemented |
+| Active work | none |
 | Implementation | `frontend/app/(public)/request-novel/page.tsx`, `frontend/components/public/request-control.tsx`, `frontend/app/(public)/account/requests/page.tsx` |
 
 ## Purpose
@@ -30,18 +30,13 @@ Submit a link to an unindexed web novel from Kakuyomu or Syosetu so operators ca
 ### Approved Target Contract
 1. Guest may view and fill the request form on `/request-novel`.
 2. Form submission requires authentication; unauthenticated submission triggers a sign-in detour (`/login?next=/request-novel`).
-3. Entered form data (source URL, optional details) survives authentication detour in local session storage as a draft.
+3. Form data survives authentication detour in local session storage as a draft.
 4. Returning to the form after successful sign-in restores the draft automatically.
 5. Restored draft is **not** silently auto-submitted; the user must explicitly confirm final submission.
 6. Supported sources: Kakuyomu, Syosetu, Syosetu18.
 
-### Actual Current Implementation Verification
-1. `frontend/app/(public)/request-novel/page.tsx` renders a hardcoded `<input disabled placeholder="https://kakuyomu.jp/..." />` with the caption "URL submission is not open yet."
-2. Request history table on `/request-novel/page.tsx` is wrapped inside `<AuthGate>`, hiding the entire content area for guest visitors.
-3. Functional request submission and request history exist separately inside `frontend/components/public/request-control.tsx` and `frontend/app/(public)/account/requests/page.tsx` for authenticated users.
-
-### Drift Summary
-`/request-novel/page.tsx` landing surface has drifted into a disabled placeholder, while active request capability lives on `/account/requests`. Tracked as `DEBT-FE-01` in `WORK.md`.
+### Implementation Verification
+The `/request-novel` page directly renders `<RequestControl />`, granting guest visitors access to view form instructions and fill requests. When authenticated, the past request history table renders directly below the form. All requirements are fully implemented.
 
 ## Required Page States
 
