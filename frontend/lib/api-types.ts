@@ -303,6 +303,21 @@ export type SourceHealth = {
   last_error?: string | null;
 };
 
+export type AdminReviewRecord = {
+  id: number;
+  user_id: number;
+  slug: string;
+  title: string;
+  rating: number | null;
+  body: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  moderated_at: string | null;
+  reviewer_notes: string | null;
+  reviewed_by_user_id: number | null;
+};
+
 export type NovelRequestRecord = {
   id: string;
   request_id?: string;
@@ -326,7 +341,6 @@ export type NovelRequestRecord = {
     }
   >;
 };
-
 export type ReaderNovel = {
   novel_id: string;
   title?: string | null;

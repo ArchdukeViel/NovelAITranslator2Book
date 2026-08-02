@@ -110,7 +110,7 @@ describe("Account reviews page", () => {
     expect(screen.getByTestId("login-prompt")).toBeInTheDocument();
   });
 
-  it("lists the reader's own reviews with novel links, ratings, and delete buttons", async () => {
+  it("lists the reader's own reviews with novel links, ratings, status badges, and delete buttons", async () => {
     await renderPage();
 
     const novelLink = screen.getByRole("link", { name: /Novel A/i });
@@ -119,6 +119,7 @@ describe("Account reviews page", () => {
     expect(screen.getByText("Novel B")).toBeInTheDocument();
     expect(screen.getByText("Loved it.")).toBeInTheDocument();
     expect(screen.getByText(/No written review — rating only\./i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Pending review/i).length).toBeGreaterThanOrEqual(2);
     expect(screen.getByLabelText(/Delete review for Novel A/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Delete review for Novel B/i)).toBeInTheDocument();
   });

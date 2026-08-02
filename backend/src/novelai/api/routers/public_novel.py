@@ -16,15 +16,19 @@ from novelai.api.auth.session import SessionUser, get_current_user
 from novelai.api.routers.dependencies import (
     get_db_session,
     get_public_catalog_service,
+    get_review_service,
     metadata_chapters,
 )
 from novelai.api.routers.public_contracts import (
     PublicChapterSummary,
     PublicNovelSummary,
+    PublicReviewItem,
+    PublicReviewListResponse,
     _optional_str,
 )
 from novelai.services.analytics_service import record_server_event
 from novelai.services.public_catalog_service import PublicCatalogService
+from novelai.services.review_service import ReviewService
 from novelai.services.takedown_service import TakedownService
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -99,3 +103,31 @@ async def list_chapters(
         )
     response.headers["Cache-Control"] = "public, max-age=60"
     return result
+
+
+@router.get("/novels/{slug}/reviews", response_model=PublicReviewListResponse)
+async def list_novel_reviews(
+    slug: str,
+    response: Response,
+    limit: int = Query(default=20, ge=1, le=50),
+    cursor: str | None = Query(default=None),
+    service: PublicCatalogService = Depends(get_public_catalog_service),
+    review_service: ReviewService = Depends(get_review_service),
+    db: Session = Depends(get_db_session),
+) -> PublicReviewListResponse:
+    """Public published reviews for a novel (guest-accessible)."""
+    resolved = service._resolve_public_novel(slug)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="Novel not found.")
+    if TakedownService(db).has_active_takedown_for_slug(slug):
+        raise HTTPException(
+            status_code=451,
+            detail="Unavailable For Legal Reasons",
+            headers={"Cache-Control": "no-store"},
+        )
+    items, next_cursor = review_service.list_published_reviews(slug, limit=limit, cursor=cursor)
+    response.headers["Cache-Control"] = "public, max-age=60"
+    return PublicReviewListResponse(
+        items=[PublicReviewItem(**item) for item in items],
+        next_cursor=next_cursor,
+    )

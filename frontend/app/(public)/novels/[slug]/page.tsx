@@ -20,6 +20,7 @@ import { NovelMetadataRow } from "@/components/public/novel-metadata-row";
 import { RatingReview } from "@/components/public/rating-review";
 import { RequestControl } from "@/components/public/request-control";
 import { SaveToLibrary } from "@/components/public/save-to-library";
+import { CommunityReviews } from "@/components/public/community-reviews";
 import { StatusBadge } from "@/components/public/status-badge";
 import { ApiError } from "@/lib/api";
 import { ErrorState, LoadingState } from "@/components/ui/page-state";
@@ -322,7 +323,12 @@ export default function NovelDetailPage() {
             </section>
           )}
 
-          {activeTab === "reviews" && <div className="space-y-5 py-8"><RatingReview slug={publicSlug} /></div>}
+          {activeTab === "reviews" && (
+            <div className="space-y-8 py-8">
+              <RatingReview slug={publicSlug} />
+              <CommunityReviews slug={publicSlug} />
+            </div>
+          )}
         </div>
       </div>
     </main>

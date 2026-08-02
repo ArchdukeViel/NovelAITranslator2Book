@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { userEngagementApi } from "@/lib/public-api";
+import { publicApi, userEngagementApi } from "@/lib/public-api";
 import type {
   PublicRequestInput,
   RequestListParams,
@@ -18,6 +18,10 @@ const reviewKeys = {
 
 const myReviewsKeys = {
   all: ["user-engagement", "my-reviews"] as const,
+};
+
+const novelReviewsKeys = {
+  novel: (slug: string) => ["public", "novel-reviews", slug] as const,
 };
 
 const requestKeys = {
@@ -44,6 +48,7 @@ export function useUpsertReview(slug: string) {
     },
     onSuccess: (review) => {
       queryClient.setQueryData<ReviewResponse>(reviewKeys.item(slug), review);
+      queryClient.invalidateQueries({ queryKey: novelReviewsKeys.novel(slug) });
     },
   });
 }
@@ -61,7 +66,16 @@ export function useDeleteReview(slug: string) {
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: reviewKeys.item(slug) });
       queryClient.invalidateQueries({ queryKey: myReviewsKeys.all });
+      queryClient.invalidateQueries({ queryKey: novelReviewsKeys.novel(slug) });
     },
+  });
+}
+
+export function useNovelReviews(slug: string, cursor?: string | null, limit = 20) {
+  return useQuery({
+    queryKey: [...novelReviewsKeys.novel(slug), { cursor, limit }],
+    queryFn: () => publicApi.novelReviews(slug, { limit, cursor: cursor ?? undefined }),
+    enabled: !!slug,
   });
 }
 

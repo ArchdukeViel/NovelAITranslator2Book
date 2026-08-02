@@ -11,21 +11,17 @@ and which didn't yet reflect what this product actually is.
 
 **Design status:** Approved target — Yokocho Lantern and the Layout Rework
 below are the agreed direction, not one option among several.
-**Implementation status:** In progress — FE-01 (Yokocho Lantern visual
-system, tokens, fonts, brand assets) shipped; FE-02 accessibility (token
-contrast at WCAG AA + primary focus treatment) shipped; FE-03 navigation
-(desktop inline header nav, mobile bottom tab bar, Account/More hub, reader
-chrome suppression) shipped; FE-04 shared search overlay shipped; FE-05
-browse/catalog layout and canonical taxonomy/source routes shipped; FE-06
-homepage rails and honest eligible Spotlight fallback shipped; FE-07 supported
-novel-detail layout and chapter controls shipped; FE-08 reader controls,
-progress, and resume shipped; FE-09 library board/list and account shell
-shipped; FE-10 `/faq` and `/news` static pages joined to the footer and the
-mobile More hub, and `/account/reviews` listing the signed-in reader's own
-reviews shipped. Remaining work is operator/backend/asset-contract gated.
-**Last implementation verification:** FE-10 — lint, typecheck, 820 Vitest
-tests across 72 files, and production build (50 pages) all pass; backend
-`test_user_data_router.py` 45 tests pass (2026-08-02).
+**Implementation status:** FE-01 through FE-10 shipped including moderation
+contract for reviews (status lifecycle: pending → published | rejected via
+admin /api/admin/reviews). Public review listing with cursor pagination
+(GET /api/public/novels/{slug}/reviews, published only). Review audits
+emitted on write/delete/moderate. Remaining: operator accessibility
+acceptance (DEBT-FE-01A), curated featured rotation, chapter/failure
+metadata contracts. No gated surface is faked.
+**Last implementation verification:** FE-10 + review moderation — backend
+74 tests pass, ruff clean, pyright unchanged (1 pre-existing), guard clean;
+frontend 828 Vitest/74 files, typecheck/lint clean, production build 50
+pages (2026-08-02).
 
 This distinction matters because this doc's own predecessor was the cautionary
 tale: it described "indigo accents" that were never actually in the CSS, and
@@ -80,9 +76,8 @@ Implemented:
   adaptive Start/Continue CTA; URL-backed Overview/Chapters/Reviews tabs;
   canonical taxonomy links; chapter search, ascending/descending order,
   collapse/expand-all, first-unread/latest anchors, read and last-read state,
-  explicit untranslated rows, and progressive 100-row rendering. New/failure
-  chapter markers and other-reader review lists remain pending public API
-  fields/endpoints; no fake states are rendered meanwhile.
+  explicit not-translated rows and community reviews with cursor pagination
+  (published only, guest-visible, no author identity). No fake states rendered.
 - FE-08: floating safe-area Aa button opens a reader settings sheet with
   exact 16/18/20/22px font choices, 560/680/800px text widths, light/dark/
   sepia themes, and reset preserving the saved theme; fixed 3px live reading
@@ -98,8 +93,17 @@ Implemented:
   pages, no auth, linked from the footer and the mobile Account More hub;
   `/account/reviews` lists the signed-in reader's own reviews (rating, body,
   novel link, edit link to the novel's reviews tab, removal) backed by a new
-  `GET /api/user/reviews` endpoint scoped to the session user; account
-  overview and `/random` already shipped in FE-06/FE-09.
+  `GET /api/user/reviews` endpoint scoped to the session user; review
+  moderation contract (status lifecycle: pending → published/rejected via
+  admin, published reviews visible publicly on novel detail with cursor
+  pagination); audit events written/rejected/moderated; account overview
+  and `/random` already shipped in FE-06/FE-09.
+- Review moderation: new `status` (pending|published|rejected), `updated_at`,
+  `moderated_at`, `reviewer_notes`, `reviewed_by_user_id` columns on reviews;
+  `GET /api/public/novels/{slug}/reviews` (guest, published only, cursor
+  pagination); `GET/POST /api/admin/reviews` (owner moderation with audit);
+  user write/delete emit audit; admin Reviews page in dashboard sidebar;
+  status badges on `/account/reviews`.
 
 Pending:
 - Approved brand/empty/404/maintenance asset inventory

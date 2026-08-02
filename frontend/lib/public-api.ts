@@ -34,6 +34,7 @@ import type {
   PublicChapterSummary,
   PublicGenreResponse,
   PublicNovelSummary,
+  PublicReviewListResponse,
   PublicTagSearchResult,
   RegisterAuthInput,
   RequestListParams,
@@ -291,6 +292,16 @@ export const publicApi = {
     return publicGet<PublicTagSearchResult[]>(
       `/api/public/tags/search?${search.toString()}`,
       signal
+    );
+  },
+
+  novelReviews(slug: string, params?: { limit?: number; cursor?: string | null }): Promise<PublicReviewListResponse> {
+    const search = new URLSearchParams();
+    if (params?.limit !== undefined) search.set("limit", String(params.limit));
+    if (params?.cursor) search.set("cursor", params.cursor);
+    const qs = search.toString();
+    return publicGet<PublicReviewListResponse>(
+      `/api/public/novels/${encodeURIComponent(slug)}/reviews${qs ? `?${qs}` : ""}`
     );
   },
 };
