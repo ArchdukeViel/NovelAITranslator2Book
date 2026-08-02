@@ -38,7 +38,7 @@ exists and is recorded in `HISTORY.md`.
 | 8 | DEBT-118 | Activate and verify SMTP | DEBT-079A | Domain/SPF/DKIM/DMARC, auth mail, bounce/error handling, redaction, limits, `noop` rollback proven |
 | 9 | DEBT-075C | Real operator alert | DEBT-118 | Stale/failure alert delivered; threshold, cooldown, redaction, escalation proven |
 | 10 | DEBT-079C | External monitoring | DEBT-079A, OWN-001 | Scheduled runs, dashboard, operator delivery, escalation ownership proven |
-| 11 | DEBT-FE-01A | FE-01 manual acceptance | DEBT-079A | Keyboard, screen reader, 200% zoom, reduced motion, focus, contrast verified on shipped tokens |
+| 11 | DEBT-FE-01A | FE-01 manual acceptance | DEBT-079A | Keyboard, screen reader, 200% zoom, reduced motion, focus, contrast verified on shipped tokens; see manual acceptance checklist below |
 | 12 | DEBT-079D | Performance/SEO/legal acceptance | DEBT-079A | Budgets, canonical/robots/sitemap/structured data, HTTP 451 and CDN propagation pass |
 | 13 | DEBT-079E | Rollback rehearsal | DEBT-075B, DEBT-079B | Worker/scheduler paused, reader disabled, cache purged, prior image compatibility checked, redeployed, smoke rerun |
 | 14 | GO-001 | Final launch decision | All above | Zero unwaived blockers; launch/rollback/monitoring owners named |
@@ -260,7 +260,7 @@ PR/change, each with exact tests:
 | FE-07 | Novel-detail sticky layout, URL tabs, chapter controls, single CTA — supported UI shipped (typecheck, 776 tests, 48-route build); pending backend contracts: chapter added/failure metadata for New/Failed markers and public review-list pagination | FE-03 |
 | FE-08 | Reader Aa panel, progress bar, resume position, quiet chrome — shipped (typecheck, 785 tests across 68 files, 48-route build); account progress + guest local-only persistence, keyboard navigation, strong end CTA | FE-03 |
 | FE-09 | Library board/list and account shell — shipped (lint, typecheck, 813 tests across 71 files, 47-page build; prior branch CI); pending backend contracts: plan-to-read/dropped status mutation, bulk status update, progress/title/recent-update fields/filter/badge | FE-03 |
-| FE-10 | `/faq`, `/news`, account reviews; `/random` and account overview already shipped — shipped (typecheck, lint, Vitest suite, 47+ page build, backend user-data router tests pass); `GET /api/user/reviews` added for the session user's own reviews; public review-list pagination remains pending a visibility/moderation/read contract | FE-03 |
+| FE-10 | `/faq`, `/news`, account reviews; `/random` and account overview already shipped — shipped (typecheck, lint, Vitest suite, 47+ page build, backend user-data router tests pass); `GET /api/user/reviews` added for the session user's own reviews; review moderation contract (status lifecycle, public listing, admin moderation, audit) implemented and merged | FE-03 |
 
 Rules:
 
@@ -269,6 +269,29 @@ Rules:
   contract is approved.
 - No fake rankings, recommendations, community metrics, or contribution UI.
 - Preserve `docs/DESIGN.md`; update its status only with owner direction.
+
+#### DEBT-FE-01A manual acceptance checklist (operator-evidence only)
+
+This is **manual operator evidence** — cannot be closed by automated tests.
+Verify each item in a real browser against the candidate commit on the
+`live`/`deployed` URL. Record findings (pass/fail, screenshot reference,
+viewport used). All shipped FE-01..FE-10 slices are in scope, including the
+new community review list `/novels/[slug]?tab=reviews`,
+`/account/reviews`, and `/admin/reviews`.
+
+| # | Item | Viewport / env |
+|---|---|---|
+| 1 | Keyboard-only: Tab reaches every interactive element (nav links, buttons, star rating, "Load more", delete button, admin Publish/Reject) in DOM order; no keyboard traps. | Desktop 1536×900, Chrome |
+| 2 | Screen reader (NVDA/VoiceOver): all interactive elements have accessible names/labels; review rating stars described ("5 stars"); status badges read as their label. | macOS VoiceOver, Safari |
+| 3 | 200% zoom: layout, tables, review cards, and forms remain usable; no horizontal scroll that breaks content. | Chrome zoom 200% |
+| 4 | 320px width (mobile): tab bar, More hub, and review surfaces reflow; no clipped content. | iOS Simulator 320px |
+| 5 | Reduced motion (`prefers-reduced-motion: reduce`): no auto-animation or layout shift; focus indicator transitions disabled. | Chrome devtools |
+| 6 | Visible focus indicator: primary-button two-layer focus ring (offset + theme color) visible on all interactive elements. | Dark + light mode |
+| 7 | Color contrast: all status badges, text, buttons, and focus rings meet WCAG AA 4.5:1 in light and dark modes — including new "Published"/"Pending"/"Not published" badge colors and star ratings. | axe or manual check |
+| 8 | Community review cards: rating star pattern, body text, and date are readable and labeled; "Load more" button announces loading state. | Desktop + mobile |
+| 9 | New `/admin/reviews` table: sortable headers, checkbox selection, Publish/Reject buttons, confirm dialog — all keyboard/mouse operable; audit-notice acknowledged. | Desktop |
+
+Close DEBT-FE-01A only after a pass is recorded for every row above.
 
 Per-slice validation:
 

@@ -17,6 +17,22 @@ Next.js from `/assets/dokushodo/...`.
 | Horizontal Dokushodo wordmark, transparent PNG preferred | `brand/` | `dokushodo-wordmark.png` | `/assets/dokushodo/brand/dokushodo-wordmark.png` |
 | Open Graph preview image, 1200x630 | `brand/` | `open-graph.png` | `/assets/dokushodo/brand/open-graph.png` |
 
+### Asset inventory — required but not yet shipped (DESIGN.md §Brand and Illustration Asset System)
+
+The following assets are required by the design contract but are **pending**: the
+generated artwork has not yet been placed. They must NOT be referenced in code
+until they exist. Track placement here.
+
+| Asset | Target location | Target basename | Public URL (when placed) |
+|---|---|---|---|
+| Favicon (SVG + 16px/32px PNG fallbacks) | `brand/` | `favicon.svg`, `favicon-16.png`, `favicon-32.png` | `/assets/dokushodo/brand/favicon*` |
+| PWA “any” icon (square, brand mark only) | `brand/` | `app-icon.png` (512px) | `/assets/dokushodo/brand/app-icon.png` |
+| Maskable icon on solid plum bg | `brand/` | `app-icon-maskable.png` | `/assets/dokushodo/brand/app-icon-maskable.png` |
+| Apple touch icon | `brand/` | `apple-touch-icon.png` (180px) | `/assets/dokushodo/brand/apple-touch-icon.png` |
+| Empty-state illustration | `illustrations/` | `empty.png` | `/assets/dokushodo/illustrations/empty.png` |
+| 404 illustration | `illustrations/` | `404.png` | `/assets/dokushodo/illustrations/404.png` |
+| Maintenance illustration | `illustrations/` | `maintenance.png` | `/assets/dokushodo/illustrations/maintenance.png` |
+
 ## Notes
 
 - Do not use source-site cover images here unless they are approved and cached
