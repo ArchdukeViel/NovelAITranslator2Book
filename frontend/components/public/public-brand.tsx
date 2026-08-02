@@ -28,7 +28,7 @@ export function PublicBrand({
         aria-hidden="true"
       >
         <Image
-          src="/assets/dokushodo/brand/dokushodo-mark.png"
+          src="/assets/dokushodo/brand/brand-mark.png"
           alt=""
           width={32}
           height={32}

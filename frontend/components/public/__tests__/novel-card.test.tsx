@@ -78,15 +78,12 @@ const novel = makeNovel({
     ).not.toBeInTheDocument();
   });
 
-  it("does not render a remote image when no cover_url exists", () => {
+  it("renders a CSS-only bookplate (no image) when no cover_url exists", () => {
     const novel = makeNovel();
     renderWithClient(<NovelCard novel={novel} />);
 
     const image = document.querySelector("img");
-    expect(image?.getAttribute("src")).toContain("/_next/image?");
-    expect(image?.getAttribute("src")).toContain(
-      encodeURIComponent("/assets/dokushodo/covers/cover-archive.png")
-    );
+    expect(image).toBeNull();
     expect(screen.queryByText(/cover_url/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/https?:\/\//i)).not.toBeInTheDocument();
   });
