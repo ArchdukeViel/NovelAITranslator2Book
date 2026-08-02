@@ -16,6 +16,7 @@ from novelai.api.routers import (
     admin_analytics,
     admin_audit,
     admin_glossary,
+    admin_reviews,
     admin_takedown,
     admin_taxonomy,
     admin_users,
@@ -128,6 +129,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_audit.router)
     app.include_router(admin_users.router)
     app.include_router(admin_takedown.router)
+    app.include_router(admin_reviews.router)
     app.include_router(sources.router, prefix="/api/admin", tags=["admin-api"])
     app.include_router(activity.router, prefix="/api/admin", tags=["admin-api"])
     app.include_router(requests.router, prefix="/api/admin", tags=["admin-api"])

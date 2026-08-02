@@ -102,6 +102,7 @@ export default function MyReviewsPage() {
                 key={review.slug}
                 onDeleteSlug={review.slug}
                 rating={review.rating}
+                status={review.status}
                 title={review.title}
                 updatedAt={review.updated_at}
               />
@@ -118,6 +119,7 @@ function ReviewRow({
   editHref,
   onDeleteSlug,
   rating,
+  status,
   title,
   updatedAt,
 }: {
@@ -125,6 +127,7 @@ function ReviewRow({
   editHref: string;
   onDeleteSlug: string;
   rating: number | null;
+  status: string;
   title: string;
   updatedAt: string;
 }) {
@@ -140,6 +143,17 @@ function ReviewRow({
           {title}
         </Link>
         <div className="flex shrink-0 items-center gap-2">
+          <span
+            className={`rounded px-2 py-0.5 text-xs font-medium ${
+              status === "published"
+                ? "bg-success-bg text-success-text"
+                : status === "rejected"
+                  ? "bg-destructive/10 text-destructive"
+                  : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {status === "published" ? "Published" : status === "rejected" ? "Not published" : "Pending review"}
+          </span>
           <RatingStars rating={rating} />
           <Button
             aria-label={`Delete review for ${title}`}

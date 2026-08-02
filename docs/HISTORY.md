@@ -363,7 +363,8 @@ Shipped the remaining FE-10 routes from `docs/DESIGN.md`:
   title links, star rating, review body, an "Edit review" link to the novel's
   reviews tab (`/novels/[slug]?tab=reviews`), and removal through the existing
   delete-review mutation. Auth-gated like the other account pages; honest
-  loading/error/empty states.
+  loading/error/empty states. New: status badge shows each review's moderation
+  state (Pending / Published / Not published).
 - Backend `GET /api/user/reviews` — new session-scoped endpoint returning the
   current user's reviews with novel slug/title, newest first
   (`ReviewService.list_user_reviews`). `useDeleteReview` now also invalidates
@@ -385,3 +386,46 @@ keep the existing hardcoded `pending`/`created_at` contract shared with
 approved visibility/moderation contract. Remaining gated items
 (public review-list pagination, visibility/moderation contract) stay open in
 `WORK.md`; no surface is faked.
+
+## 2026-08-02 Review moderation contract (solve the risks)
+
+Closed the remaining FE-10 risks from WORK.md DEBT-FE-01 / DEBT-REV-01.
+
+- DB migration `c3a7e9f5b1d2_add_review_moderation_fields`: `reviews.status`
+  (pending|published|rejected, default pending), `updated_at` (real,
+  backfilled from created_at), `moderated_at`, `reviewer_notes`,
+  `reviewed_by_user_id`; indexes on status and (novel_id, status). Backfill:
+  status defaults to pending for existing rows.
+- `Review` ORM model updated to match.
+- `ReviewService`: `upsert_review` resets status → pending + clears moderation
+  fields + sets real updated_at on every edit; `_review_response`/`list_user_reviews`
+  expose real status/updated_at; new `list_published_reviews` (keyset cursor
+  pagination, published only, no user_id or status in public items — per
+  DEBT-REV-01 rule 4); new `list_all_reviews` (owner admin list with novel
+  metadata + pagination, mirrors `TakedownService.list_requests`); new
+  `moderate_review` (validates {published,rejected}, sets moderated_at/notes).
+- Public route `GET /api/public/novels/{slug}/reviews`: guest-accessible,
+  404 on unknown novel, 451 on active takedown, Cache-Control public max-age=60,
+  `{items, next_cursor}` shape with limit 1-50.
+- Admin router `admin_reviews.py`: `GET /api/admin/reviews` (owner-only list +
+  filters) and `POST /api/admin/reviews/{review_id}/review` (status/reviewer_notes,
+  400 invalid, 404 missing), mirrors `admin_takedown.py` structure including CSRF
+  dependency and audit via `AuditService.log("review.moderated", ...)`.
+- `user_data.py` PUT/DELETE /reviews/{slug}: emit `AuditService.log` with
+  action `"review.written"` / `"review.deleted"`, actor = session user,
+  target_type="review", metadata {"slug": ...}.
+- Admin dashboard sidebar: Reviews link added.
+- Frontend: novel-detail Reviews tab now shows community reviews (published only;
+  "Load more" cursor pagination; honest empty state; no author identity).
+  Account reviews page shows status badges. Admin Reviews page for moderation.
+  `publicApi.novelReviews()` + `useNovelReviews` hook with upsert/delete cache
+  invalidation.
+
+Existing reviews backfill to `pending` — honest for pre-moderation rows that
+were never shown publicly (no public listing existed). `updated_at` is real;
+`created_at` never changes. No gated surface or moderation state is faked.
+
+Validation: backend 74 tests pass (test_review_moderation, test_public_reviews,
+test_admin_reviews, test_user_data_router 45 — zero regressions); ruff clean;
+pyright unchanged (1 pre-existing pypdf error only); router-layer guard clean.
+Frontend 828 Vitest/74 files pass (13 new), typecheck clean, lint clean.

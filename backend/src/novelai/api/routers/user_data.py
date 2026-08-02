@@ -10,16 +10,19 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy.orm import Session
 
 from novelai.api.auth.roles import require_role
 from novelai.api.auth.security import require_csrf_token, require_public_rate_limit
 from novelai.api.auth.session import SessionUser
 from novelai.api.routers.dependencies import (
+    get_db_session,
     get_novel_request_service,
     get_reading_service,
     get_review_service,
     get_user_library_service,
 )
+from novelai.services.audit_service import AuditService
 from novelai.services.novel_request_service import NovelRequestService
 from novelai.services.reading_service import ReadingService
 from novelai.services.review_service import ReviewService
@@ -247,12 +250,20 @@ def put_review(
     request: Request,
     user: SessionUser = Depends(require_role("user")),
     service: ReviewService = Depends(get_review_service),
+    db: Session = Depends(get_db_session),
 ) -> ReviewResponse:
     require_public_rate_limit(request, "review_mutation", user_id=_uid(user))
     try:
         review = service.upsert_review(_uid(user), slug, payload.rating or 0, payload.body)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    AuditService(db).log(
+        action="review.written",
+        actor_user_id=_uid(user),
+        target_type="review",
+        target_id=str(review["id"]),
+        metadata={"slug": slug},
+    )
     return ReviewResponse(**review)
 
 
@@ -266,12 +277,21 @@ def delete_review(
     request: Request,
     user: SessionUser = Depends(require_role("user")),
     service: ReviewService = Depends(get_review_service),
+    db: Session = Depends(get_db_session),
 ) -> None:
     require_public_rate_limit(request, "review_mutation", user_id=_uid(user))
     try:
-        service.delete_review(_uid(user), slug)
+        review_id = service.delete_review(_uid(user), slug)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if review_id is not None:
+        AuditService(db).log(
+            action="review.deleted",
+            actor_user_id=_uid(user),
+            target_type="review",
+            target_id=str(review_id),
+            metadata={"slug": slug},
+        )
 
 
 # -- Requests -----------------------------------------------------------------

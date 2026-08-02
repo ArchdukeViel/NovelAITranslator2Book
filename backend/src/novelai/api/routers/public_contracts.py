@@ -134,6 +134,18 @@ class PublicTagSearchResult(BaseModel):
     name_ja: str | None = None
 
 
+class PublicReviewItem(BaseModel):
+    id: int
+    rating: int | None
+    body: str | None
+    created_at: datetime
+
+
+class PublicReviewListResponse(BaseModel):
+    items: list[PublicReviewItem]
+    next_cursor: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Cross-router helpers
 # ---------------------------------------------------------------------------

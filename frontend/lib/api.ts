@@ -33,6 +33,7 @@ import type {
   GlossaryBatchApproveResult,
   GlossaryStatusTransitionPayload,
   GlossaryStatusTransitionResult,
+  AdminReviewRecord,
   JobProgress,
   ModelState,
   MaintenanceStatusResponse,
@@ -443,6 +444,21 @@ export const api = {
   schedulerHealth: () => apiFetch<SchedulerHealthResponse>("/admin/translation/scheduler-health"),
   maintenanceStatus: () => apiFetch<MaintenanceStatusResponse>("/admin/maintenance/status"),
   requests: () => apiFetch<{ requests: NovelRequestRecord[] }>("/admin/requests?limit=50"),
+  adminReviews: (params?: { status?: string; page?: number; page_size?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.status) search.set("status", params.status);
+    if (params?.page !== undefined) search.set("page", String(params.page));
+    if (params?.page_size !== undefined) search.set("page_size", String(params.page_size));
+    const qs = search.toString();
+    return apiFetch<{ items: AdminReviewRecord[]; total: number; page: number; page_size: number }>(
+      `/admin/reviews${qs ? `?${qs}` : ""}`
+    );
+  },
+  moderateReview: (reviewId: number, payload: { status: string; reviewer_notes?: string }) =>
+    apiFetch<{ status: string }>(`/admin/reviews/${reviewId}/review`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   createRequest: (payload: { title: string; source_key?: string; source_url?: string; requested_by?: string; notes?: string }) =>
     apiFetch<NovelRequestRecord>("/admin/requests", {
       method: "POST",

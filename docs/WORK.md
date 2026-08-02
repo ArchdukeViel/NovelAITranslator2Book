@@ -106,7 +106,7 @@ reviewer exists. Remaining: sanitized incident/false-positive triage exercise
 |---|---|---|---|
 | DEBT-075 | Managed-service recovery and scheduling closure | Blocked on operator evidence | Real stale/failure SMTP alert; successful hosted PostgreSQL/R2 workflow. Tooling complete: backup stale alert, restore freshness max age, runtime-role verifier, rollback gate. |
 | DEBT-079 | Hosted production acceptance | Ongoing | Domains, OAuth, cookies, CORS/CSRF, host validation, storage boundaries, monitoring, rollback, and reliability verified on always-on topology. Tooling complete: authenticated smoke, external monitor, rollback compatibility gate, parser/YAML/router/diff, security review, GitGuardian scan. |
-| DEBT-FE-01 | Frontend design rework (Yokocho Lantern + Layout Rework) | FE-01 through FE-10 shipped locally; operator/backend-gated remainder open | Local slices through `/faq`, `/news`, and account reviews shipped; exact evidence lives in `HISTORY.md`. Remaining: manual keyboard, screen-reader, zoom, reduced-motion, focus, and browser contrast acceptance; approved asset inventory; admin-curated featured rotation; chapter added/failure metadata; public review listing; stable author identity; expanded library status/progress/update contracts. No gated surface is faked. |
+| DEBT-FE-01 | Frontend design rework (Yokocho Lantern + Layout Rework) | FE-01 through FE-10 + review moderation contract shipped; operator-gated remainder open | Review visibility/moderation contract shipped (status pending/published/rejected, admin moderation, public listing, audit); `/account/reviews`, novel-detail community reviews, admin Reviews page all active. Remaining: manual accessibility acceptance (DEBT-FE-01A); approved asset inventory; admin-curated featured rotation; chapter added/failure metadata; stable author identity; expanded library status/progress/update contracts. No gated surface is faked. |
 
 ## Active Work Plans
 
@@ -369,18 +369,12 @@ Current fact: default-off baseline exists
 
 ### DEBT-REV-01 — Public/account reviews
 
-Current baseline: `ReviewService` supports upsert/get/list/delete; `user_data.py`
-exposes authenticated PUT/DELETE only. Public listing, authored-review page,
-moderation, and privacy policy remain incomplete.
-
-1. Approve review visibility, pseudonymity, moderation, deletion, and
-   takedown rules.
-2. Add a session-scoped "my reviews" read endpoint.
-3. Add a moderated public novel-review listing only after moderation states
-   exist.
-4. Never expose email, internal user ID, or private review state.
-5. Add pagination, abuse rate limits, owner moderation, audit, and tests.
-6. Then implement `/account/reviews` and the novel-detail Reviews tab.
+Current baseline: moderation contract shipped. `ReviewService` supports
+upsert/get/list/delete/list_user/list_published/list_all/moderate;
+`public_novel.py` exposes published-only guest-visible reviews with cursor
+pagination; `admin_reviews.py` handles owner moderation with audit; review
+write/delete/moderate emit audit events. Remaining: privacy policy sign-off,
+pseudonymity controls (currently no author identity is exposed publicly).
 
 ### DEBT-COM-01 — Community folders/lists
 

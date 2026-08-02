@@ -235,6 +235,20 @@ export interface RequestListResponse {
   next_cursor: string | null;
 }
 
+// ---- Public review listing (guest-visible, published only) ----
+
+export interface PublicReviewItem {
+  id: number;
+  rating: number | null;
+  body: string | null;
+  created_at: string;
+}
+
+export interface PublicReviewListResponse {
+  items: PublicReviewItem[];
+  next_cursor: string | null;
+}
+
 // ---- Contribution (frontend-designed; backend dependency) ----
 
 export type ContributionStatus = "Unchecked" | "Checking" | "Working" | "Failed";

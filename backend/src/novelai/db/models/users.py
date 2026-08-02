@@ -140,7 +140,11 @@ class LibraryItem(Base):
 
 
 class Review(Base):
-    """A user rating/review for a novel."""
+    """A user rating/review for a novel.
+
+    Status lifecycle: pending → published | rejected.
+    Content edits reset status to pending (re-moderation).
+    """
 
     __tablename__ = "reviews"
 
@@ -149,12 +153,19 @@ class Review(Base):
     novel_id: Mapped[int] = mapped_column(ForeignKey("novels.id", ondelete="CASCADE"), nullable=False, index=True)
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending", default="pending")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), default=_utcnow
+    )
+    moderated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewer_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     def __repr__(self) -> str:
-        return f"<Review id={self.id} user={self.user_id} novel={self.novel_id} rating={self.rating}>"
+        return f"<Review id={self.id} user={self.user_id} novel={self.novel_id} rating={self.rating} status={self.status!r}>"
 
 
 class NovelRequest(Base):
