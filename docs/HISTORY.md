@@ -304,3 +304,46 @@ chapter and promoting Next as the strongest end-of-chapter action.
 Validation: frontend typecheck, 785 Vitest tests across 68 files (including
 Aa choices/shortcut/reset/disclosure, account and guest resume, live progress,
 keyboard navigation), and production build (48 routes) all pass.
+
+## 2026-08-02 Frontend Phase 2 — FE-09 library board/list and account shell (DEBT-FE-01)
+
+The account area gained a desktop sidebar (Library, History, Notifications,
+Requests, Contributions, Settings) with active-route highlighting. Reviews and
+Support render as honest non-link "Unavailable" rows because no public
+contract exists for them.
+
+The account landing page shows an honest summary sourced only from existing
+APIs: currently-reading and total-library counts from `useLibrary`, reading
+history and most-recent activity from `useHistory`, unread notifications from
+`useUnreadCount`. No counts or fields were invented.
+
+The library page is a board/list of the user's saved novels: five named
+groups (Reading, Plan to read, Completed, Dropped, Unknown) derived from
+existing library status values, client-side slug search, client sort (title
+asc/desc, added asc/desc), board presentation on desktop (md+) and list on
+mobile with an explicit Board/List toggle, per-item Remove through the
+existing remove-from-library mutation, and an empty-state CTA back to
+`/browse-novels`.
+
+Because the backend lacks plan-to-read/dropped status mutation, bulk status
+update, and progress/title/recent-update fields/filter/badge on the public
+library payload, the UI groups by existing status only and exposes no fake
+controls, counts, or badges. These stay registered in `WORK.md` as bounded
+backend contracts.
+
+Final branch validation at `8759969`: frontend Vitest 809 tests across 70 files,
+lint, typecheck, and 47-page production build all pass. Focused coverage includes
+library-board.test.tsx and account-desktop-shell.test.tsx for group routing,
+search, sort, view toggle and media default, empty state, remove mutation,
+sidebar navigation/active state, and landing summary counts. GitHub CI and
+GitGuardian also pass at that HEAD. Branch remains unmerged.
+
+Follow-up audit added a persistent FE-02 token regression test for all 34
+documented WCAG AA pairs, then fixed two account-shell defects: unauthenticated deep account
+routes now preserve their exact pathname through sign-in, and the shell no
+longer nests a `main` landmark around child pages that own their own `main`.
+Focused tests cover both regressions. `WORK.md` and `DESIGN.md` status blocks
+were also reconciled with shipped FE-09 evidence; gated backend, operator, and
+asset work remains active rather than being represented by fake UI. Final
+follow-up validation: frontend lint and typecheck passed, 813 Vitest tests
+across 71 files passed, and production build generated 47 pages.

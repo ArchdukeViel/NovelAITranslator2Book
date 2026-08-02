@@ -87,6 +87,8 @@ vi.mock("lucide-react", () => {
     ArrowRight: Svg,
     BookOpen: Svg,
     Bookmark: Svg,
+    LayoutGrid: Svg,
+    List: Svg,
     Loader2: Svg,
     LogIn: Svg,
     MessageSquare: Svg,
@@ -358,20 +360,12 @@ describe("Account pages — real route references", () => {
 // ---------------------------------------------------------------------------
 
 describe("Account library — empty states", () => {
-  it("shows 'No currently reading novels' when empty", async () => {
+  it("shows 'Your library is empty.' when empty", async () => {
     mocks.isAuthenticated = true;
     const { default: Page } = await import("../account/library/page");
     renderWithProviders(<Page />);
     const body = document.body.textContent ?? "";
-    expect(body).toContain("No currently reading novels");
-  });
-
-  it("shows 'No reading history' when history empty", async () => {
-    mocks.isAuthenticated = true;
-    const { default: Page } = await import("../account/library/page");
-    renderWithProviders(<Page />);
-    const body = document.body.textContent ?? "";
-    expect(body).toContain("No reading history yet");
+    expect(body).toContain("Your library is empty.");
   });
 });
 
@@ -595,38 +589,5 @@ describe("Account history — chapter number display", () => {
     renderWithProviders(<Page />);
     const body = document.body.textContent ?? "";
     expect(body).not.toContain("include_adult=true");
-  });
-
-  it("library history section uses chapter_number instead of raw chapter_id", async () => {
-    mocks.isAuthenticated = true;
-    mocks.useLibraryMock.mockReturnValue({
-      data: [
-        { slug: "lib-novel", status: "reading", added_at: "2025-01-01T00:00:00Z" },
-        { slug: "lib-novel", status: "paused", added_at: "2025-01-01T00:00:00Z" },
-      ],
-      isPending: false,
-      isError: false,
-    });
-    mocks.useHistoryMock.mockReturnValue({
-      data: {
-        items: [
-          {
-            id: 6,
-            slug: "lib-novel",
-            chapter_id: "88",
-            chapter_number: 4,
-            read_at: "2025-06-06T00:00:00Z",
-          },
-        ],
-        next_cursor: null,
-      },
-      isPending: false,
-      isError: false,
-    });
-    const { default: Page } = await import("../account/library/page");
-    renderWithProviders(<Page />);
-    const body = document.body.textContent ?? "";
-    expect(body).toContain("Ch. 4");
-    expect(body).not.toContain("Ch. 88");
   });
 });

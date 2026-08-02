@@ -17,11 +17,12 @@ contrast at WCAG AA + primary focus treatment) shipped; FE-03 navigation
 (desktop inline header nav, mobile bottom tab bar, Account/More hub, reader
 chrome suppression) shipped; FE-04 shared search overlay shipped; FE-05
 browse/catalog layout and canonical taxonomy/source routes shipped; FE-06
-homepage rails and honest eligible Spotlight fallback shipped. Remaining
-Layout Rework slices are pending; FE-07 supported novel-detail layout and
-chapter controls shipped; FE-08 reader controls/progress/resume shipped.
-**Last implementation verification:** FE-08 — typecheck, 785 Vitest tests,
-and production build (48 routes) all pass
+homepage rails and honest eligible Spotlight fallback shipped; FE-07 supported
+novel-detail layout and chapter controls shipped; FE-08 reader controls,
+progress, and resume shipped; FE-09 library board/list and account shell
+shipped. Remaining work is operator/backend/asset-contract gated.
+**Last implementation verification:** FE-09 follow-up — lint, typecheck, 813 Vitest
+tests across 71 files, and production build (47 pages) all pass
 (2026-08-02).
 
 This distinction matters because this doc's own predecessor was the cautionary
@@ -37,7 +38,7 @@ Implemented:
   (light/dark), DM Sans / Noto Serif JP / DM Mono font stack, brand mark +
   og:image, semantic status-color layer (--success/--warning/--info + -text
   tokens), two-layer primary-button focus treatment
-- FE-02: token contrast verified programmatically (34 checks, both modes,
+- FE-02: token contrast enforced by a persistent regression test (34 checks, both modes,
   WCAG AA 4.5:1, 0 failures); -text context tokens on badge, notifications,
   contributions banner, rating/request success text, browse filter chips
 - FE-03: hamburger drawer removed; desktop header inline nav (Home, Browse,
@@ -87,10 +88,15 @@ Implemented:
   pagehide flush; layout-aware resume correction; keyboard previous/next and
   `.` settings shortcuts; explicit Previous chapter · Back to novel · Next
   chapter footer with strongest bottom Next action.
+- FE-09: desktop account sidebar and honest account summary; responsive
+  library board/list with status grouping, slug search, supported sorts,
+  per-item removal, and empty state. Unsupported status mutation, bulk action,
+  progress, title, and update fields remain absent pending backend contracts.
 
 Pending:
-- FE-09 library board/list + account shell; FE-10
-  /faq, /news, /random, account overview/reviews
+- Approved brand/empty/404/maintenance asset inventory
+- FE-10 `/faq`, `/news`, and account reviews; `/random` and account overview
+  already shipped in FE-06 and FE-09 respectively
 
 Deferred:
 - Public profile pages (Guiding Principle 4)

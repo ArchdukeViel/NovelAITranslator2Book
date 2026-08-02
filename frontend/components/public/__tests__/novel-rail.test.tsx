@@ -1,19 +1,25 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { NovelRail } from "@/components/public/novel-rail";
 
 beforeEach(() => {
-  Object.defineProperty(window, "matchMedia", {
-    writable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => ({
       matches: false,
       media: query,
       onchange: null,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
-    })),
-  });
+    }))
+  );
+});
+
+// Restore the original jsdom matchMedia so the mock does not leak into
+// other test files under singleFork.
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 function DummyCard({ n }: { n: number }) {
