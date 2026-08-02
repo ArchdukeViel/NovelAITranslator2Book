@@ -290,6 +290,8 @@ new community review list `/novels/[slug]?tab=reviews`,
 | 7 | Color contrast: all status badges, text, buttons, and focus rings meet WCAG AA 4.5:1 in light and dark modes — including new "Published"/"Pending"/"Not published" badge colors and star ratings. | axe or manual check |
 | 8 | Community review cards: rating star pattern, body text, and date are readable and labeled; "Load more" button announces loading state. | Desktop + mobile |
 | 9 | New `/admin/reviews` table: sortable headers, checkbox selection, Publish/Reject buttons, confirm dialog — all keyboard/mouse operable; audit-notice acknowledged. | Desktop |
+| 10 | Forced colors mode (Windows High Contrast): borders, focus rings, status badges, and input boundaries remain visible. | Windows High Contrast |
+| 11 | Real-device mobile testing: tab bar, bottom sheets, gesture-bar safe areas, and reader controls functional on actual iOS/Android browsers. | Physical phone / tablet |
 
 Close DEBT-FE-01A only after a pass is recorded for every row above.
 
