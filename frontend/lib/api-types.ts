@@ -223,13 +223,6 @@ export type TranslationEditHistory = Record<string, unknown> & {
   note?: string | null;
 };
 
-export type NovelProgress = {
-  novel_id: string;
-  total: number;
-  scraped: number;
-  translated: number;
-};
-
 export type ModelState = {
   provider_key: string;
   provider_model: string;
@@ -341,37 +334,6 @@ export type NovelRequestRecord = {
     }
   >;
 };
-export type ReaderNovel = {
-  novel_id: string;
-  title?: string | null;
-  source_title?: string | null;
-  author?: string | null;
-  source?: string | null;
-  source_url?: string | null;
-  chapter_count: number;
-  translated_count: number;
-  chapters: Array<{
-    id: string;
-    num?: number | null;
-    title?: string | null;
-    source_title?: string | null;
-    translated: boolean;
-  }>;
-};
-
-export type ReaderChapter = {
-  novel_id: string;
-  chapter_id: string;
-  novel_title?: string | null;
-  title?: string | null;
-  source_title?: string | null;
-  text: string;
-  version_id?: string | null;
-  version_kind?: string | null;
-  previous_chapter_id?: string | null;
-  next_chapter_id?: string | null;
-};
-
 export type PreliminaryCrawlResult = {
   novel_id: string;
   source_key: string;
