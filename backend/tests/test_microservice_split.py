@@ -41,6 +41,21 @@ def _route_paths(app: FastAPI) -> set[str]:
     return set(app.openapi()["paths"].keys())
 
 
+def _route_methods_paths(app: FastAPI) -> set[tuple[str, str]]:
+    """Return set of (METHOD, path) tuples via OpenAPI schema.
+
+    Excludes HEAD (implicit on GET) so the combined/split parity comparison is
+    not polluted by Starlette auto-HEAD generation.
+    """
+    out: set[tuple[str, str]] = set()
+    for path, item in app.openapi()["paths"].items():
+        for method in item:
+            if method.upper() == "HEAD":
+                continue
+            out.add((method.upper(), path))
+    return out
+
+
 def _assert_middleware_registered(app: FastAPI, cls: type) -> None:
     """Assert a middleware class is registered on the app."""
     assert any(m.cls is cls for m in app.user_middleware), f"{cls.__name__} not in app.user_middleware"
@@ -175,6 +190,57 @@ class TestAdminServiceEndpoints:
     def test_admin_has_body_enforcement_middleware(self, admin_app: FastAPI) -> None:
         _assert_middleware_registered(admin_app, RequestBodyEnforcementMiddleware)
         _assert_middleware_ordering(admin_app)
+
+
+# ---------------------------------------------------------------------------
+# Split-mode regression: critical frontend-consumed public write routes
+# (Caddy routes /api/public/* solely to the reader service in deploy/compose.yml)
+# ---------------------------------------------------------------------------
+
+
+class TestCriticalPublicWriteRouteOwnership:
+    """Contact, DMCA, and analytics ingestion MUST live only in the reader service.
+
+    These are frontend-consumed public writes that the combined app previously
+    served but the split reader service did not, leaving the frontend forms
+    hitting 404 through the Caddy proxy in DEPLOY_MODE=split.
+    """
+
+    REQUIRED_READER_ROUTES = {
+        ("POST", "/api/public/contact"),
+        ("POST", "/api/public/dmca"),
+        ("POST", "/api/public/analytics/events"),
+    }
+
+    def test_reader_serves_critical_public_writes(self, reader_app: FastAPI) -> None:
+        methods_paths = _route_methods_paths(reader_app)
+        missing = self.REQUIRED_READER_ROUTES - methods_paths
+        assert not missing, f"Reader missing critical public write routes: {missing}"
+
+    def test_admin_does_not_serve_critical_public_writes(self, admin_app: FastAPI) -> None:
+        methods_paths = _route_methods_paths(admin_app)
+        leaked = self.REQUIRED_READER_ROUTES & methods_paths
+        assert not leaked, f"Admin must not serve public reader write routes: {leaked}"
+
+
+# ---------------------------------------------------------------------------
+# Combined-app compatibility: every endpoint reaches at least one split service
+# ---------------------------------------------------------------------------
+
+
+class TestCombinedAppSplitParity:
+    """Every combined-app endpoint MUST be reachable via admin OR reader in split mode.
+
+    Guards against drift where a router is added only to app.py and silently
+    disappears from production DEPLOY_MODE=split topology.
+    """
+
+    def test_no_combined_only_routes(self) -> None:
+        combined = _route_methods_paths(create_monolith_app())
+        admin = _route_methods_paths(split_admin_app)
+        reader = _route_methods_paths(split_reader_app)
+        stranded = combined - (admin | reader)
+        assert not stranded, f"Combined-app-only routes unreachable in DEPLOY_MODE=split: {sorted(stranded)}"
 
 
 # ---------------------------------------------------------------------------
