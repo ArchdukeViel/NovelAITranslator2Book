@@ -97,8 +97,8 @@ export default function HistoryPage() {
                     {chapterHref ? (
                       <Link href={chapterHref} className="hover:underline">
                         {entry.chapter_number != null
-                          ? `${entry.slug} — Ch. ${entry.chapter_number}`
-                          : `${entry.slug} — Chapter`}
+                          ? `${entry.slug} - Ch. ${entry.chapter_number}`
+                          : `${entry.slug} - Chapter`}
                       </Link>
                     ) : (
                       <Link href={novelHref} className="hover:underline">

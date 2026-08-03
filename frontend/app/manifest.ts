@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Read translated Japanese web novels with clean navigation, progress tracking, and source-aware metadata.",
     start_url: "/",
     display: "standalone",
-    background_color: "#140f17",
-    theme_color: "#140f17",
+    background_color: "#131822",
+    theme_color: "#131822",
     icons: [
       {
         src: "/assets/dokushodo/brand/icon.svg",

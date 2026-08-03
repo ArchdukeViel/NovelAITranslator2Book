@@ -47,7 +47,7 @@
 
 /* Reader container base styles */
 .reader-container {
-  min-height: 100vh;
+  min-height: 100dvh;
   padding: 1.25rem;
   transition: background-color 0.2s, color 0.2s;
 }

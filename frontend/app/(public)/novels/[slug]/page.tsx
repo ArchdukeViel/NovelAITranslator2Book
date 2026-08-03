@@ -266,7 +266,7 @@ export default function NovelDetailPage() {
           {showSourceTitle && <p className="mt-2 font-literary text-sm text-accent"><span className="mr-1 font-metadata text-xs uppercase text-muted-foreground">Source title</span>{sourceTitle}</p>}
           <div className="mt-4"><StatusBadge status={data.publication_status} /></div>
           <NovelMetadataRow className="mt-4" chapterCount={data.chapter_count} translatedCount={data.translated_count} source={data.language} />
-          <div className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t border-border bg-background/95 p-3 shadow-lg backdrop-blur lg:static lg:mt-5 lg:block lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+          <div className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t border-border bg-background p-3 shadow-lg lg:static lg:mt-5 lg:block lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
             <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded bg-muted font-literary text-sm lg:hidden">{title.charAt(0)}</div>
             <span className="min-w-0 flex-1 truncate text-sm font-medium lg:hidden">{title}</span>
             <ContinueReading slug={publicSlug} firstChapterId={firstChapterId} allowGuestStart primary />

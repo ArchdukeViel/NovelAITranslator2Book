@@ -118,7 +118,7 @@ describe("Account reviews page", () => {
 
     expect(screen.getByText("Novel B")).toBeInTheDocument();
     expect(screen.getByText("Loved it.")).toBeInTheDocument();
-    expect(screen.getByText(/No written review — rating only\./i)).toBeInTheDocument();
+    expect(screen.getByText(/No written review: rating only\./i)).toBeInTheDocument();
     expect(screen.getAllByText(/Pending review/i).length).toBeGreaterThanOrEqual(2);
     expect(screen.getByLabelText(/Delete review for Novel A/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Delete review for Novel B/i)).toBeInTheDocument();

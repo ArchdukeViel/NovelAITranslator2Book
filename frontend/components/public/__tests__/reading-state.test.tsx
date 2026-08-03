@@ -296,7 +296,7 @@ describe("public reading-state UI", () => {
     renderWithQuery(<HistoryPage />);
 
     // History entry shows slug + chapter reference as a link
-    const entryLink = await screen.findByRole("link", { name: /demo — ch\. 7/i });
+    const entryLink = await screen.findByRole("link", { name: /demo - ch\. 7/i });
     expect(entryLink).toHaveAttribute("href", "/novels/demo/chapter/7");
 
     // "Open" action link to the chapter

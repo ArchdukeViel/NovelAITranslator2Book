@@ -5,6 +5,11 @@ import {
   BookOpen,
   Compass,
   Shuffle,
+  Sparkles,
+  ArrowRight,
+  Bookmark,
+  Clock,
+  ChevronRight,
 } from "lucide-react";
 
 import { FallbackCover } from "@/components/public/fallback-cover";
@@ -44,18 +49,21 @@ function RailCard({ novel }: { novel: PublicNovelSummary }) {
   return (
     <article role="listitem" className="w-44 shrink-0 snap-start">
       <Link href={publicNovelHref(novel.slug)} className="group block">
-        <FallbackCover
-          title={novel.title}
-          sourceTitle={novel.source_title}
-          language={novel.language}
-          status={novel.publication_status}
-          genres={novel.genres}
-          className="rounded-md"
-        />
-        <h3 className="mt-3 line-clamp-2 font-literary text-sm font-semibold group-hover:text-accent">
+        <div className="relative overflow-hidden rounded-lg transition-transform duration-300 ease-out group-hover:-translate-y-1 group-hover:shadow-md">
+          <FallbackCover
+            title={novel.title}
+            sourceTitle={novel.source_title}
+            language={novel.language}
+            status={novel.publication_status}
+            genres={novel.genres}
+            className="rounded-lg"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+        </div>
+        <h3 className="mt-3 line-clamp-2 font-literary text-sm font-semibold leading-snug transition-colors group-hover:text-accent">
           {novel.title}
         </h3>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-1 font-metadata text-xs text-muted-foreground">
           {novel.translated_count > 0 ? `${novel.translated_count} translated` : "Translation pending"}
         </p>
       </Link>
@@ -111,32 +119,31 @@ export default function HomePage() {
     return (
       <main>
         <section
-          className="relative isolate min-h-[85vh] overflow-hidden border-b border-border/80"
+          className="relative isolate min-h-[80vh] overflow-hidden border-b border-border/80 bg-card/30"
           aria-label="Loading featured novel"
         >
-          <div className="mx-auto flex min-h-[85vh] max-w-7xl items-end px-4 pb-14 pt-24 sm:px-6 lg:px-8 lg:pb-20">
-            <div className="max-w-3xl">
-              <div className="h-8 w-48 animate-pulse rounded bg-muted" />
-              <div className="mt-5 h-14 w-3/4 animate-pulse rounded bg-muted" />
-              <div className="mt-5 h-5 w-64 animate-pulse rounded bg-muted" />
-              <div className="mt-8 flex gap-3">
-                <div className="h-11 w-36 animate-pulse rounded-md bg-muted" />
-                <div className="h-11 w-36 animate-pulse rounded-md bg-muted" />
+          <div className="mx-auto flex min-h-[80vh] max-w-7xl items-end px-4 pb-14 pt-20 sm:px-6 lg:px-8 lg:pb-20">
+            <div className="max-w-3xl space-y-4">
+              <div className="h-6 w-32 animate-pulse rounded bg-muted" />
+              <div className="h-12 w-3/4 animate-pulse rounded-lg bg-muted" />
+              <div className="h-5 w-64 animate-pulse rounded bg-muted" />
+              <div className="pt-4 flex gap-3">
+                <div className="h-11 w-40 animate-pulse rounded-md bg-muted" />
               </div>
             </div>
           </div>
         </section>
 
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <section className="py-14">
+        <div className="mx-auto max-w-7xl space-y-12 px-4 py-14 sm:px-6 lg:px-8">
+          <section className="py-6">
             <div className="h-6 w-40 animate-pulse rounded bg-muted" />
-            <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-3 rounded-lg bg-muted/60 p-3"
+                  className="flex items-center gap-3.5 rounded-lg border border-border/60 bg-card/60 p-4"
                 >
-                  <div className="h-10 w-10 shrink-0 animate-pulse rounded bg-muted" />
+                  <div className="h-12 w-12 shrink-0 animate-pulse rounded bg-muted" />
                   <div className="flex-1 space-y-2">
                     <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
                     <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
@@ -147,7 +154,7 @@ export default function HomePage() {
           </section>
 
           <section className="mb-16">
-            <div className="flex flex-col items-center justify-center rounded-lg bg-card/70 px-4 py-14 text-center ring-1 ring-border">
+            <div className="flex flex-col items-center justify-center rounded-lg border border-border/80 bg-card/70 px-4 py-14 text-center">
               <div className="h-10 w-10 animate-pulse rounded-full bg-muted" />
               <div className="mt-4 h-4 w-64 animate-pulse rounded bg-muted" />
               <div className="mt-5 h-10 w-40 animate-pulse rounded-md bg-muted" />
@@ -168,7 +175,7 @@ export default function HomePage() {
       <main>
         <div className="mx-auto max-w-7xl px-4 py-24 text-center sm:px-6 lg:px-8">
           <BookOpen className="mx-auto h-10 w-10 text-muted-foreground/50" />
-          <p className="mt-4 text-sm font-medium text-foreground">
+          <p className="mt-4 text-base font-semibold text-foreground">
             Could not load the catalog
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -178,7 +185,7 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() => refetch()}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none"
             >
               Try again
             </button>
@@ -201,7 +208,7 @@ export default function HomePage() {
       <main>
         <div className="mx-auto max-w-7xl px-4 py-24 text-center sm:px-6 lg:px-8">
           <BookOpen className="mx-auto h-10 w-10 text-muted-foreground/50" />
-          <p className="mt-4 text-sm font-medium text-foreground">
+          <p className="mt-4 text-base font-semibold text-foreground">
             No novels in the catalog yet
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -230,89 +237,99 @@ export default function HomePage() {
 
   return (
     <main className="bg-background">
-      {/* ── Hero ── */}
+      {/* ── Asymmetric Literary Hero ── */}
       {spotlightNovel && (
         <section
-          className="relative isolate min-h-[85vh] overflow-hidden border-b border-border/80"
+          className="relative isolate overflow-hidden border-b border-border/80 bg-card/40 py-12 sm:py-16 lg:py-20"
           aria-label="Dokushodo spotlight novel"
         >
-          <>
-            <div
-              className="absolute inset-0 -z-20 bg-gradient-to-t from-background via-background/80 to-background/20"
-              aria-hidden="true"
-            />
-            <div
-              className="absolute inset-0 -z-10 bg-gradient-to-r from-background via-background/75 to-transparent"
-              aria-hidden="true"
-            />
+          <div className="mx-auto grid max-w-7xl grid-cols-1 items-end px-4 sm:px-6 lg:grid-cols-12 lg:gap-12 lg:px-8">
+            <div className="lg:col-span-8">
+              <span className="font-metadata text-xs font-semibold uppercase text-accent">
+                Spotlight
+              </span>
 
-            <div className="mx-auto flex min-h-[85vh] max-w-7xl items-end px-4 pb-14 pt-24 sm:px-6 lg:px-8 lg:pb-20">
-              <div className="max-w-3xl">
-                <span className="font-metadata text-xs uppercase tracking-[0.2em] text-accent drop-shadow">
-                  Spotlight
-                </span>
+              <h1 className="mt-2 font-literary text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-5xl lg:text-6xl">
+                {spotlightNovel.title}
+              </h1>
 
-                <h1 className="mt-5 max-w-2xl font-literary text-4xl font-semibold leading-tight tracking-normal text-foreground drop-shadow md:text-6xl">
-                  {spotlightNovel.title}
-                </h1>
-
-                {heroSourceTitle && (
-                  <p className="mt-3 max-w-2xl font-literary text-base text-accent drop-shadow">
-                    {heroSourceTitle}
-                  </p>
-                )}
-
-                <NovelMetadataRow
-                  className="mt-5"
-                  chapterCount={spotlightNovel.chapter_count}
-                  translatedCount={spotlightNovel.translated_count}
-                  source={spotlightNovel.language}
-                  status={spotlightNovel.publication_status}
-                />
-
-                <p className="mt-5 max-w-2xl line-clamp-3 text-sm leading-6 text-foreground/80 drop-shadow md:text-base md:leading-7">
-                  {heroSynopsis ?? "Synopsis unavailable for this novel."}
+              {heroSourceTitle && (
+                <p className="mt-2 font-literary text-base text-accent">
+                  {heroSourceTitle}
                 </p>
+              )}
 
-{spotlightNovel.genres && spotlightNovel.genres.length > 0 && (
-                   <div className="mt-5 flex flex-wrap gap-2">
-                     {spotlightNovel.genres.map((genre) => (
-                       <GenreChip key={genre.slug} label={genreLabels?.get(genre.slug) ?? genre.slug} />
-                     ))}
-                   </div>
-                 )}
+              <NovelMetadataRow
+                className="mt-4"
+                chapterCount={spotlightNovel.chapter_count}
+                translatedCount={spotlightNovel.translated_count}
+                source={spotlightNovel.language}
+                status={spotlightNovel.publication_status}
+              />
 
-                {!heroReadableHref && (
-                  <p className="mt-6 text-sm font-medium text-foreground/70">
-                    No translated chapters yet.
-                  </p>
-                )}
+              <p className="mt-4 max-w-2xl line-clamp-3 text-sm leading-relaxed text-muted-foreground md:text-base">
+                {heroSynopsis ?? "Synopsis unavailable for this novel."}
+              </p>
 
-                <div className="mt-8 flex flex-wrap gap-3">
-                  {heroReadableHref && (
-                    <Link
-                      href={heroReadableHref}
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-sm bg-primary px-5 font-metadata text-xs font-medium uppercase tracking-wide text-primary-foreground transition-colors hover:bg-primary/90"
-                    >
-                      <BookOpen className="h-4 w-4" />
-                      Start Reading
-                    </Link>
-                  )}
+              {spotlightNovel.genres && spotlightNovel.genres.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {spotlightNovel.genres.map((genre) => (
+                    <GenreChip key={genre.slug} label={genreLabels?.get(genre.slug) ?? genre.slug} />
+                  ))}
                 </div>
-              </div>
+              )}
 
-              <div
-                className="pointer-events-none absolute right-12 top-1/2 hidden -translate-y-1/2 border-l border-border/60 pl-8 font-literary text-4xl leading-loose text-accent/45 [writing-mode:vertical-rl] xl:block"
-                aria-hidden="true"
-              >
-                異世界の物語
+              {!heroReadableHref && (
+                <p className="mt-5 text-sm font-medium text-muted-foreground">
+                  No translated chapters yet.
+                </p>
+              )}
+
+              <div className="mt-7 flex flex-wrap items-center gap-4">
+                {heroReadableHref && (
+                  <Link
+                    href={heroReadableHref}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                  >
+                    <BookOpen className="h-4 w-4" />
+                    Start Reading
+                  </Link>
+                )}
+                <Link
+                  href={publicNovelHref(spotlightNovel.slug)}
+                  className="inline-flex h-11 items-center justify-center gap-1.5 rounded-md border border-border bg-card px-5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                >
+                  Novel details
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </Link>
               </div>
             </div>
-          </>
+
+            {/* Asymmetric Spotlight Cover Card */}
+            <div className="hidden lg:col-span-4 lg:flex lg:justify-end">
+              <div className="group relative w-64 overflow-hidden rounded-lg border border-border/80 bg-card p-3 shadow-md transition-transform duration-300 hover:-translate-y-1">
+                <FallbackCover
+                  title={spotlightNovel.title}
+                  sourceTitle={spotlightNovel.source_title}
+                  language={spotlightNovel.language}
+                  status={spotlightNovel.publication_status}
+                  genres={spotlightNovel.genres}
+                  className="rounded-md shadow-sm"
+                />
+                <div className="mt-3 space-y-1 px-1">
+                  <p className="line-clamp-1 font-literary text-xs font-semibold text-foreground">
+                    {spotlightNovel.title}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
       )}
 
-      <div className="mx-auto max-w-7xl space-y-14 px-4 py-14 sm:px-6 lg:px-8">
+      {/* ── Catalog Sections & Bento Layout ── */}
+      <div className="mx-auto max-w-7xl space-y-16 px-4 py-14 sm:px-6 lg:px-8">
+        {/* Continue Reading Section */}
         {isAuthenticated ? (
           continueNovels.length > 0 && (
             <NovelRail title="Continue Reading" ariaLabel="Continue reading" seeAllHref="/account/history">
@@ -320,21 +337,41 @@ export default function HomePage() {
             </NovelRail>
           )
         ) : (
-          <section aria-label="Continue reading" className="rounded-lg border border-border bg-card/60 p-6">
-            <h2 className="font-literary text-xl font-semibold">Continue Reading</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Sign in to pick up where you left off.</p>
-            <Link href="/login?mode=signin" className="mt-4 inline-flex text-sm font-medium text-primary">Sign in</Link>
+          <section aria-label="Continue reading" className="rounded-lg border border-border/80 bg-card p-6 shadow-sm sm:p-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Bookmark className="h-4 w-4 text-primary" />
+                  <h2 className="font-literary text-xl font-semibold text-foreground">Continue Reading</h2>
+                </div>
+                <p className="text-sm text-muted-foreground">Sign in to pick up where you left off across all your devices.</p>
+              </div>
+              <Link
+                href="/login?mode=signin"
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+              >
+                Sign in
+              </Link>
+            </div>
           </section>
         )}
 
-        <NovelRail title="New Releases" ariaLabel="New releases" seeAllHref="/browse-novels?sort_by=added_at&order=desc">
-          {novels.slice(0, 12).map((novel) => <RailCard key={novel.novel_id} novel={novel} />)}
-        </NovelRail>
+        {/* Bento Grid Spotlight + Rails */}
+        <section aria-label="Catalog highlights" className="grid gap-6 md:grid-cols-12">
+          {/* Main Rail Span */}
+          <div className="md:col-span-12">
+            <NovelRail title="New Releases" ariaLabel="New releases" seeAllHref="/browse-novels?sort_by=added_at&order=desc">
+              {novels.slice(0, 12).map((novel) => <RailCard key={novel.novel_id} novel={novel} />)}
+            </NovelRail>
+          </div>
+        </section>
 
+        {/* Recently Updated Rail */}
         <NovelRail title="Recently Updated" ariaLabel="Recently updated" seeAllHref="/browse-novels?sort_by=updated_at&order=desc">
           {recentlyUpdated.slice(0, 12).map((novel) => <RailCard key={novel.novel_id} novel={novel} />)}
         </NovelRail>
 
+        {/* Genre Curations */}
         {topGenres.map(([slug, genre]) => (
           <NovelRail key={slug} title={genre.label} ariaLabel={`${genre.label} novels`} seeAllHref={`/genres/${encodeURIComponent(slug)}`}>
             {novels.filter((novel) => novel.genres?.some((item) => item.slug === slug)).slice(0, 12).map((novel) => (
@@ -343,11 +380,29 @@ export default function HomePage() {
           </NovelRail>
         ))}
 
-        <Link href="/random" className="flex w-44 flex-col items-center justify-center rounded-lg border border-border bg-card/60 px-5 py-10 text-center hover:border-primary/40">
-          <Shuffle className="h-8 w-8 text-primary" />
-          <span className="mt-4 font-literary font-semibold">Surprise Me</span>
-          <span className="mt-1 text-xs text-muted-foreground">Open a random novel</span>
-        </Link>
+        {/* Asymmetric Surprise Me Callout */}
+        <section aria-label="Discovery" className="rounded-xl border border-border/80 bg-card p-6 shadow-sm sm:p-8">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-1.5 text-xs font-medium text-accent">
+                <Clock className="h-3.5 w-3.5" />
+                <span className="font-metadata uppercase tracking-wider">Unplanned Journey</span>
+              </div>
+              <h2 className="font-literary text-2xl font-semibold text-foreground">Looking for something unexpected?</h2>
+              <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
+                Let chance decide your next story. Jump directly into a random novel from our translated library.
+              </p>
+            </div>
+            <Link
+              href="/random"
+              className="inline-flex h-11 shrink-0 items-center justify-center gap-2.5 rounded-md border border-primary/30 bg-primary/10 px-6 font-medium text-primary shadow-sm transition-all hover:bg-primary hover:text-primary-foreground"
+            >
+              <Shuffle className="h-4 w-4" />
+              <span>Surprise Me</span>
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </section>
       </div>
     </main>
   );

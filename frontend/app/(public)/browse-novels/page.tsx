@@ -32,7 +32,7 @@ export async function generateMetadata({
   }
   return {
     title: "Browse Novels",
-    description: "Browse the translated novel library on Dokushodo — search by title or author, narrow by status, genre, or chapter count.",
+    description: "Browse the translated novel library on Dokushodo: search by title or author, narrow by status, genre, or chapter count.",
     robots: utilityFilters.length ? { index: false, follow: true } : undefined,
     alternates: { canonical },
   };
