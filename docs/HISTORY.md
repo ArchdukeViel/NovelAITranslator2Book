@@ -467,3 +467,14 @@ Root-caused and eliminated the 42 pre-existing full-suite order-dependent failur
 Validation: full suite `python -m pytest backend/tests -q --tb=no -rf -p no:cacheprovider` → **2806 passed / 26 skipped / 0 failed, exit 0, 401.78s** (was 2764/42/26). Exact-polluter reproductions now green: catalog + the 5 previously-failing files 119 passed (was 9 failed); e2e + `test_security_middleware` + `test_advanced_caching` mixed session 55 passed (was 15 failed); `test_ci_workflows.py` 6 passed; `python -m ruff check backend/alembic/env.py backend/tests/conftest.py` clean.
 
 WORK.md re-audit: all remaining open items (`DEBT-075`, `DEBT-079` — excluded per operator instruction; `DEBT-118` SMTP activation, `DEBT-FE-01A` manual acceptance, `DEBT-SC-01`/`DEBT-COM-01`/`DEBT-RANK-01` spec-approval gates, `DEBT-QA-01` owner-evidence gate, `DEBT-CONTRIB-01` readiness-gated by architecture) require owner approval, operator evidence, or external hosted acceptance — no unilaterally engineering-solvable remainder.
+
+## 2026-08-03 Option 1 Visual Theme Refinement & Brand Asset Infrastructure
+
+Refined public visual design tokens to **Option 1 (Shuji Vermillion & Washi Paper)** and established brand asset & PWA infrastructure:
+
+- **Shuji Vermillion Palette Refinement**: Primary accent updated from orange (`hsl(28 78% 50%)`) to rich Shuji Vermillion (`hsl(14 80% 50%)` in `:root`, `hsl(14 85% 55%)` in `.dark`). Background updated to Washi Warm Paper (`hsl(38 25% 96%)`) in light mode and Midnight Slate (`hsl(222 25% 10%)`) in dark mode. Focus rings (`--ring`/`--focus-ring`) updated to match Vermillion brand tone.
+- **Brand & Favicon Assets**: Created scalable SVG brand mark (`frontend/public/assets/dokushodo/brand/icon.svg`), `favicon.ico`, `apple-touch-icon.png` (180×180), `icon-192.png`, and `icon-512.png`.
+- **PWA Web Manifest**: Added Next.js metadata route `frontend/app/manifest.ts` providing standalone web manifest configuration (`manifest.webmanifest`), and updated `frontend/app/layout.tsx` metadata with `icons` and `manifest`.
+- **Documentation**: Updated `docs/design/public/design-system.md` token tables and `docs/design/public/assets.md` status.
+
+Validation: `token-contrast.test.ts` 4 passed (17 WCAG AA token pairs); `reader-contrast.test.ts` 6 passed (light/dark/sepia themes); `npm run typecheck`, `npm run lint`, `npm run build` static generation (52/52 pages) success.

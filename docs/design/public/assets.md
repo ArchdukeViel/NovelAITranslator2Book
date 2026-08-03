@@ -20,15 +20,19 @@ Specification for brand assets, illustrations, and image handling.
 
 ### Favicon
 
-- **Status**: Not yet implemented
-- **Required**: SVG favicon (primary), 16px PNG, 32px PNG, `apple-touch-icon.png` (180×180px)
-- **Tracked in**: `docs/WORK.md` as part of approved asset inventory work
+- **Status**: Implemented
+- **Files**:
+  - `frontend/public/assets/dokushodo/brand/icon.svg` (primary scalable vector)
+  - `frontend/public/favicon.ico` (fallback multi-resolution)
+  - `frontend/public/apple-touch-icon.png` (180×180px)
 
-### PWA Icons
+### PWA Icons & Web Manifest
 
-- **Status**: Not yet implemented
-- **Required**: `any` purpose icon (192×192, 512×512), `maskable` icon on plum background (`#1B141F`)
-- **Safe zone**: Maskable icons MUST keep meaningful content within the inner 80% circle
+- **Status**: Implemented
+- **Files**:
+  - `frontend/app/manifest.ts` (App Router metadata route for `manifest.webmanifest`)
+  - `frontend/public/icon-192.png` (`any` purpose icon, 192×192)
+  - `frontend/public/icon-512.png` (`maskable` purpose icon, 512×512)
 
 ## Illustration System
 
