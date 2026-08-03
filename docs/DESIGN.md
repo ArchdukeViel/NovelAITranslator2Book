@@ -68,18 +68,19 @@ Subordinate design files MUST NOT duplicate technical architecture, backend sche
 
 ## Design & Implementation Status Index
 
-| Area | Design Status | Implementation Status | Active Work | Canonical Contract |
-|---|---|---|---|---|
-| Public Foundation | Approved | Implemented | — | `docs/design/public/design-system.md` |
-| Navigation Shell | Approved | Implemented | — | `docs/design/public/shell.md` |
-| Shared Search | Approved | Implemented | — | `docs/design/public/discovery/search.md` |
-| Browse & Taxonomy | Approved | Implemented | — | `docs/design/public/discovery/browse.md` |
-| Novel Detail | Approved | Implemented | — | `docs/design/public/reading/novel-detail.md` |
-| Chapter Reader | Approved | Implemented | — | `docs/design/public/reading/chapter-reader.md` |
-| Library & Account | Approved | Implemented | — | `docs/design/public/account/library.md` |
-| Request Novel | Approved | Implemented | — | `docs/design/public/participation/request-novel.md` |
-| Review Moderation | Approved | Implemented | — | `docs/design/admin/moderation/reviews.md` |
-| Admin Operations | Approved | Implemented | — | `docs/design/admin/design-system.md` |
+| Area | Contract Status | Implementation Status | Automated Verification | Manual Acceptance | Active Work | Canonical Contract | Owner |
+|---|---|---|---|---|---|---|---|
+| Public Tokens | Approved | Implemented | `token-contrast.test.ts` (34 checks), `typecheck`, `build` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/design-system.md` | Frontend lead |
+| Navigation Shell | Approved | Implemented | `chrome-suppression.test.tsx`, `mobile-tab-bar.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/shell.md` | Frontend lead |
+| Shared Search | Approved | Implemented | `search-overlay.test.tsx` (22 tests), `public-router.py` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/discovery/search.md` | Frontend lead |
+| Browse & Taxonomy | Approved | Implemented | `browse-page.test.tsx`, `taxonomy-contract.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/discovery/browse.md` | Frontend lead |
+| Novel Detail | Approved | Implemented | `novel-detail-honesty.test.tsx`, `novel-detail-tabs.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/reading/novel-detail.md` | Frontend lead |
+| Chapter Reader | Approved | Implemented | `reader-contrast.test.ts` (6 tests), `reader-controls.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/reading/chapter-reader.md` | Frontend lead |
+| Library & Account | Approved | Implemented | `library-board.test.tsx`, `account-desktop-shell.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/account/library.md` | Frontend lead |
+| Request Novel | Approved | Implemented | `request-novel.test.tsx`, `public_requests.py` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/participation/request-novel.md` | Frontend lead |
+| Review Moderation | Approved | Implemented | `test_review_moderation.py` (74 tests), `reviews.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/admin/moderation/reviews.md` | Product lead |
+| Admin Operations | Approved | Implemented | `admin-shell.test.tsx`, `maintenance.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/admin/design-system.md` | Ops lead |
+| Component Primitives | Approved | Implemented | `button.test.tsx`, `badge.test.tsx`, `input.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/components/README.md` | Frontend lead |
 
 ## Non-Negotiable Review Gates
 

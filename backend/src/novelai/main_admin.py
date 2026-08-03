@@ -18,8 +18,13 @@ from novelai.api.middleware.security import RequestBodyEnforcementMiddleware, Se
 from novelai.api.routers import (
     activity,
     admin,
+    admin_analytics,
+    admin_audit,
     admin_glossary,
+    admin_reviews,
+    admin_takedown,
     admin_taxonomy,
+    admin_users,
     editor,
     health,
     library,
@@ -32,6 +37,7 @@ from novelai.api.routers import (
 from novelai.api.routers.auth import router as auth_router
 from novelai.api.routers.health import admin_router as health_admin_router
 from novelai.api.routers.library import NovelSummary, list_novels
+from novelai.api.routers.metrics import router as metrics_router
 from novelai.api.routers.notifications import router as notifications_router
 from novelai.api.routers.user_data import router as user_data_router
 from novelai.config.production_validator import assert_production_config
@@ -102,6 +108,11 @@ app.include_router(notifications_router)
 
 # Admin orchestration routers
 app.include_router(admin.router, prefix="/api", tags=["admin-api"])
+app.include_router(admin_analytics.router)
+app.include_router(admin_audit.router)
+app.include_router(admin_users.router)
+app.include_router(admin_takedown.router)
+app.include_router(admin_reviews.router)
 app.include_router(sources.router, prefix="/api/admin", tags=["admin-api"])
 app.include_router(activity.router, prefix="/api/admin", tags=["admin-api"])
 app.include_router(requests.router, prefix="/api/admin", tags=["admin-api"])
@@ -123,3 +134,4 @@ app.add_api_route(
 
 app.include_router(health.router)
 app.include_router(health_admin_router, prefix="/api", tags=["health"])
+app.include_router(metrics_router)

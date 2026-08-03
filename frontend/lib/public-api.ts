@@ -311,10 +311,6 @@ export const publicApi = {
 // ---------------------------------------------------------------------------
 
 export const authApi = {
-  csrf(): Promise<{ csrf_token: string }> {
-    return publicGet<{ csrf_token: string }>("/api/auth/csrf");
-  },
-
   me(): Promise<AuthUser> {
     return publicGet<AuthUser>("/api/auth/me");
   },

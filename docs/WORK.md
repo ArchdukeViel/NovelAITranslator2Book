@@ -107,6 +107,7 @@ reviewer exists. Remaining: sanitized incident/false-positive triage exercise
 | DEBT-075 | Managed-service recovery and scheduling closure | Blocked on operator evidence | Real stale/failure SMTP alert; successful hosted PostgreSQL/R2 workflow. Tooling complete: backup stale alert, restore freshness max age, runtime-role verifier, rollback gate. |
 | DEBT-079 | Hosted production acceptance | Ongoing | Domains, OAuth, cookies, CORS/CSRF, host validation, storage boundaries, monitoring, rollback, and reliability verified on always-on topology. Tooling complete: authenticated smoke, external monitor, rollback compatibility gate, parser/YAML/router/diff, security review, GitGuardian scan. |
 | DEBT-FE-01 | Frontend design rework (Yokocho Lantern + Layout Rework) | FE-01 through FE-10 + review moderation contract shipped; operator-gated remainder open | Review visibility/moderation contract shipped (status pending/published/rejected, admin moderation, public listing, audit); `/account/reviews`, novel-detail community reviews, admin Reviews page all active. Remaining: manual accessibility acceptance (DEBT-FE-01A); approved asset inventory; admin-curated featured rotation; chapter added/failure metadata; stable author identity; expanded library status/progress/update contracts. No gated surface is faked. |
+| DEBT-120 | Unconnected backend API endpoints and missing UI controls audit | Split-service route parity and verified dead client code closed; remainder is operator/CLI endpoints with no UI surface by design | Production route ownership locked: public contact/DMCA/analytics ingestion in reader (`main_reader.py`), admin analytics/audit/takedown/reviews/users + metrics in admin (`main_admin.py`), 0 stranded endpoints on the combined app, strict ownership regression tests. Verified-dead client code removed (12 legacy `api` methods, `authApi.csrf`, 3 unused types). Audit's "14 unused client functions" and "16 unused hooks" claims were stale — 54 live UI callers verified. |
 
 ## Active Work Plans
 
@@ -290,6 +291,8 @@ new community review list `/novels/[slug]?tab=reviews`,
 | 7 | Color contrast: all status badges, text, buttons, and focus rings meet WCAG AA 4.5:1 in light and dark modes — including new "Published"/"Pending"/"Not published" badge colors and star ratings. | axe or manual check |
 | 8 | Community review cards: rating star pattern, body text, and date are readable and labeled; "Load more" button announces loading state. | Desktop + mobile |
 | 9 | New `/admin/reviews` table: sortable headers, checkbox selection, Publish/Reject buttons, confirm dialog — all keyboard/mouse operable; audit-notice acknowledged. | Desktop |
+| 10 | Forced colors mode (Windows High Contrast): borders, focus rings, status badges, and input boundaries remain visible. | Windows High Contrast |
+| 11 | Real-device mobile testing: tab bar, bottom sheets, gesture-bar safe areas, and reader controls functional on actual iOS/Android browsers. | Physical phone / tablet |
 
 Close DEBT-FE-01A only after a pass is recorded for every row above.
 
@@ -422,6 +425,21 @@ Keep the honest placeholder until a data contract exists.
 4. Define update cadence and stale-data display.
 5. Validate against fixtures and abuse cases.
 6. Only then replace the static `/ranking` placeholder.
+
+### DEBT-120 — Unconnected Backend API Endpoints & Unconsumed Frontend Client Code
+
+Full-stack audit finding (2026-08-03), remediation (2026-08-03):
+
+1. **Split-Service vs Combined App Topology (RESOLVED)**: Production Compose (`deploy/Caddyfile`) routes `/api/public/*` to port 8001 (`main_reader.py`) and `/api/admin/*`, `/api/auth/*`, `/api/user/*` to port 8000 (`main_admin.py`). Public contact (`/api/public/contact/contact`), DMCA (`/api/public/dmca/dmca`), and analytics ingestion (`/api/public/analytics/*`) were registered in `app.py` but missing from `main_reader.py`; admin analytics/audit/takedown/reviews/users/metrics routers were missing from `main_admin.py`. All are now registered in their owning app. Analytics event ingestion is a public, anonymous, CSRF-free write and lives ONLY in the reader; a duplicate registration previously (and incorrectly) added to `main_admin.py` was removed.
+2. **Route ownership regression protection (RESOLVED)**: `backend/tests/test_microservice_split.py` now asserts strict ownership — the reader must serve public contact/DMCA/analytics-events, the admin must reject `/api/public/*`, the admin must serve all 26 admin/auth/user-client paths, and the combined app minus (admin ∪ reader) is empty (0 stranded endpoints). Verified: 185 combined endpoints = 175 admin + 12 reader, no `/api/public` in admin, no `/api/admin` in reader; all 26 public/user/auth and 77 admin client paths match deployed topology.
+3. **Dead client code (RESOLVED)**: Removed from `frontend/lib/api.ts` the 12 legacy `api` methods with zero callers in app/components/hooks and no test/docs references (`progress`, `readerNovel`, `readerChapter`, `runNextActivity`, `updateActivityStatus`, `sourceHealthDetail`, `validateProviderApiKey`, `clearProviderApiKey`, `refreshRuntimeState`, `createRequest`, `scrapeNow`, `translateNow`); removed `authApi.csrf` from `frontend/lib/public-api.ts` (internal CSRF path, not the exported method); removed now-unused `ReaderNovel`, `ReaderChapter`, `NovelProgress` from `frontend/lib/api-types.ts` (`ModelState` kept — it is used).
+4. **Audit claims corrected as stale**: The original audit listed `adminApi.analyticsSummary`, `adminApi.updateUserActive`, `adminApi.updateUserRole`, `adminApi.revokeUserSessions`, `userReadingApi.listHistory`, `userReadingApi.recordHistory`, `userReadingApi.listMyReviews`, and hooks `useAuthMe`, `usePublicAuthState`, `useMyReviews`, `useRequests`, `useNotifications`, `useReadAllNotifications`, `useArchiveNotification`, `useReadNotification`, `useUpdateProgress`, `useHistory`, `useRecordHistory`, `useUnreadCount` as unused. Verified current state: all have live UI callers (54 call sites across account/history, account/notifications, account/reviews, account/requests, chapter reader, request-novel, home, admin analytics, admin users pages and shared components). Those entries are not debt.
+
+Completion criteria:
+- ~~Register public contact, DMCA, and analytics endpoints in `main_reader.py`~~ — done, regression-locked.
+- ~~Register admin analytics/audit/takedown/reviews/users/metrics routers in `main_admin.py`~~ — done, regression-locked.
+- ~~Remove or connect orphaned API wrappers and hooks~~ — verified-orphan wrappers removed; claimed orphans re-verified as consumed.
+- Remaining (not UI debt): 57 admin orchestration backend-only endpoints, 3 admin takedown moderation endpoints, 3 operator/monitoring endpoints, and 58 other backend/CLI/test endpoints have no frontend caller by design — they are invoked by workers, CLI, tests, or operator tooling.
 
 ### DEBT-CONTRIB-01 — Contribution credentials
 

@@ -94,10 +94,53 @@ Not applicable.
 - End of chapter CTA: "Next Chapter →"
 - Back link: "← Back to novel"
 
+## Reader Theme Token System
+
+The reader uses an **independent token system** defined in `frontend/app/(public)/reader.css`, controlled by `data-reader-theme` attribute on the reader container. This system **MUST NOT** toggle `html.dark` or modify the global theme.
+
+### Theme Tokens
+
+| Theme | Background | Foreground | Secondary | Border | Nav Background |
+|---|---|---|---|---|---|
+| Light | `#ffffff` | `#1a1a1a` | `#6b7280` | `rgba(0,0,0,0.1)` | `rgba(255,255,255,0.95)` |
+| Dark | `#0e0c12` | `#e4ddd0` | `#8a8298` | `rgba(228,221,208,0.08)` | `rgba(14,12,18,0.95)` |
+| Sepia | `#f8f1e4` | `#3c2a1a` | `#816353` | `rgba(60,42,26,0.12)` | `rgba(248,241,228,0.95)` |
+
+### Token Architecture
+
+- `background` and `color` set directly on `[data-reader-theme]` selector (raw hex)
+- `--reader-secondary`: muted text for back links, navigation disabled states, metadata
+- `--reader-border`: theme-appropriate border color with alpha
+- `--reader-nav-background`: semi-transparent nav background for blur-through effect
+- Reader container overrides global Tailwind classes: `.text-muted-foreground`, `.border-border`, `.bg-background`
+
+### Contrast Requirements
+
+All reader themes MUST maintain WCAG AA (4.5:1) text contrast:
+
+| Pair | Light | Dark | Sepia |
+|---|---|---|---|
+| Foreground on background | ✓ Required | ✓ Required | ✓ Required |
+| Secondary on background | ✓ Required | ✓ Required | ✓ Required |
+
+Automated coverage: `reader-contrast.test.ts` (if present).
+
+### Normative Rules
+
+- Reader theme MUST be selectable via Aa panel (light, dark, sepia)
+- Reader theme MUST persist across page loads (localStorage or account settings)
+- Reader theme changes MUST NOT leak to global surfaces (header, tab bar, other pages)
+- Reader theme transition: `background-color 0.2s, color 0.2s`
+- Reduced motion: transitions become instant
+
 ## Accessibility
-- Full keyboard shortcuts: `←`/`→` for prev/next chapter, `.` opens "Aa" settings panel.
-- Contrast compliant across all three reader themes (Light, Dark, Sepia).
-- `content-visibility: auto` used for section performance without breaking find-in-page or screen readers.
+- Full keyboard shortcuts: `←`/`→` for prev/next chapter, `.` opens "Aa" settings panel
+- Shortcuts MUST NOT fire when focus is inside editable controls (input, textarea, contenteditable)
+- Contrast compliant across all three reader themes (Light, Dark, Sepia)
+- `content-visibility: auto` used for section performance without breaking find-in-page or screen readers
+- Progress bar: `role="progressbar"` with `aria-valuemin`, `aria-valuemax`, `aria-valuenow`
+- Aa button: `aria-label` present, sheet has `role="dialog"` and `aria-modal="true"`
+- Font size and width changes MUST recalculate scroll position to preserve reading location
 
 ## Responsive Behavior
 - Reader column width adjusts safely between 320px mobile viewports and wide desktop displays.

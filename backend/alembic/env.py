@@ -42,9 +42,12 @@ for _model_module in (
 # Alembic Config object for .ini values.
 config = context.config
 
-# Set up logging from the ini file.
+# Set up logging from the ini file.  ``disable_existing_loggers=False`` is
+# deliberate: the default ``True`` permanently disables every pre-existing
+# logger (including all ``novelai.*`` loggers) whenever migrations run
+# in-process, e.g. from pytest, silently breaking log capture afterwards.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Target metadata for autogenerate.
 target_metadata = Base.metadata

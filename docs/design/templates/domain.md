@@ -7,6 +7,17 @@
 | Domain | <domain-name> |
 | Surface | public or admin |
 | Routes | list of routes |
+| Owner | role or team owner |
+| Last reviewed | YYYY-MM-DD |
+| Design status | approved, draft, or deferred |
+| Implementation status | implemented, partial, drifted, or unavailable |
+| Active work | work ID or none |
+| Design-system dependencies | tokens, components, assets required |
+| Accessibility assumptions | WCAG target, specific screen-reader or keyboard rules |
+| Localization | supported languages, CJK wrapping, timezone rules |
+| Performance | domain-specific performance budgets |
+| Verification evidence | test files, build checks, manual acceptance records |
+| Cross-domain risks | dependencies on other domains or backend APIs |
 | Authority | `docs/DESIGN.md` -> `docs/design/<surface>/<domain>/README.md` |
 
 ## Domain Purpose
