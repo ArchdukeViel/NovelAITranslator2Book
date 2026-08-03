@@ -14,7 +14,7 @@ contains full former requirements/design/task documents.
 | Translation chunking and resume | Deterministic paragraphs/chunks, bounded chapter parallelism, checkpoints, delta/resume hardening implemented. | `ARCHITECTURE.md`, `TRANSLATION.md` |
 | Translation cache and QA | Exact cache identity, glossary invalidation, deterministic QA, prompt hardening, and advisory LLM-QA baseline implemented. | `TRANSLATION.md` |
 | Glossary system | Suggestions, approval, sync, diagnostics, onboarding, revision invalidation, editor QA, and public annotations implemented. | `TRANSLATION.md` |
-| Public reader (baseline) | Catalog/detail/chapter routes, availability, SEO, accessibility baseline, performance budget, taxonomy, and annotations implemented locally. The Yokocho Lantern + Layout Rework replacement target is documented in `DESIGN.md` and tracked as `DEBT-FE-01` in `WORK.md`; FE-01 (tokens, brand metadata, duplicate-CTA removal, dark default) shipped 2026-07-31 — see Frontend FE-01 below. Layout/route rework remains pending. | `DESIGN.md` |
+| Public reader (baseline) | Catalog/detail/chapter routes, availability, SEO, accessibility baseline, performance budget, taxonomy, and annotations implemented locally. The Shuji Vermillion + Layout Rework replacement target is documented in `DESIGN.md` and tracked as `DEBT-FE-01` in `WORK.md`; FE-01 (tokens, brand metadata, duplicate-CTA removal, dark default) shipped 2026-07-31 — see Frontend FE-01 below. Layout/route rework remains pending. | `DESIGN.md` |
 | Admin operations | Users, audit, analytics, metrics, notifications, credentials, requests, health, and library summary implemented locally. | `ARCHITECTURE.md`, `OPERATIONS.md` |
 | Legal workflow | Contact/support/legal pages, DMCA intake, owner review, audit, HTTP 451, sitemap/cache enforcement implemented locally. | `ARCHITECTURE.md`, `DESIGN.md` |
 | Scheduler durability | Runtime state persistence, cooldown/exhaustion/heartbeat, leases, backup scheduling, and worker observability implemented. | `ARCHITECTURE.md`, `OPERATIONS.md` |
@@ -468,9 +468,13 @@ Validation: full suite `python -m pytest backend/tests -q --tb=no -rf -p no:cach
 
 WORK.md re-audit: all remaining open items (`DEBT-075`, `DEBT-079` — excluded per operator instruction; `DEBT-118` SMTP activation, `DEBT-FE-01A` manual acceptance, `DEBT-SC-01`/`DEBT-COM-01`/`DEBT-RANK-01` spec-approval gates, `DEBT-QA-01` owner-evidence gate, `DEBT-CONTRIB-01` readiness-gated by architecture) require owner approval, operator evidence, or external hosted acceptance — no unilaterally engineering-solvable remainder.
 
-## 2026-08-03 Option 1 Visual Theme Refinement & Brand Asset Infrastructure
+## 2026-08-03 Frontend V2 Reconstruction Handoff
 
-Refined public visual design tokens to **Option 1 (Shuji Vermillion & Washi Paper)** and established brand asset & PWA infrastructure:
+Reconciled the legacy v1 frontend implementation against the frozen Prompt 1 design contracts. Verified frontend integration code, 841 tests, and Shuji Vermillion token infrastructure. Finalized Prompt 2 engineering acceptance and closed the loop with clean working tree.
+
+Validation: `npm run typecheck` passed, `npm run test` 841 passed across 76 files, `git diff --check` clean, `graphify update . --no-cluster` success.
+
+## 2026-08-03 Option 1 Visual Theme Refinement & Brand Asset Infrastructure
 
 - **Shuji Vermillion Palette Refinement**: Primary accent updated from orange (`hsl(28 78% 50%)`) to rich Shuji Vermillion (`hsl(14 80% 50%)` in `:root`, `hsl(14 85% 55%)` in `.dark`). Background updated to Washi Warm Paper (`hsl(38 25% 96%)`) in light mode and Midnight Slate (`hsl(222 25% 10%)`) in dark mode. Focus rings (`--ring`/`--focus-ring`) updated to match Vermillion brand tone.
 - **Brand & Favicon Assets**: Created scalable SVG brand mark (`frontend/public/assets/dokushodo/brand/icon.svg`), `favicon.ico`, `apple-touch-icon.png` (180×180), `icon-192.png`, and `icon-512.png` under `frontend/public/assets/dokushodo/brand/`.
