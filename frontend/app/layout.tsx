@@ -27,6 +27,14 @@ const dmMono = localFont({
 export const metadata: Metadata = {
   title: { default: "Dokushodo", template: "%s | Dokushodo" },
   description: "Web novel translation, reading, and management platform.",
+  icons: {
+    icon: [
+      { url: "/assets/dokushodo/brand/icon.svg", type: "image/svg+xml" },
+      { url: "/assets/dokushodo/brand/favicon.ico", sizes: "any" },
+    ],
+    apple: "/assets/dokushodo/brand/apple-touch-icon.png",
+  },
+  manifest: "/manifest.webmanifest",
   openGraph: {
     type: "website",
     siteName: "Dokushodo",

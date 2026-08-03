@@ -48,28 +48,28 @@ All tokens are CSS custom properties defined on `:root` (light) and `.dark` (dar
 
 | Token | Value | Purpose |
 |-------|-------|---------|
-| `--background` | `35 35% 96%` | Page background |
-| `--foreground` | `280 18% 14%` | Default body text |
+| `--background` | `38 25% 96%` | Warm Washi Paper page background |
+| `--foreground` | `222 20% 14%` | Default body text |
 | `--card` | `0 0% 100%` | Card, popover, modal surfaces |
-| `--card-foreground` | `280 18% 14%` | Text on card surfaces |
+| `--card-foreground` | `222 20% 14%` | Text on card surfaces |
 | `--popover` | `0 0% 100%` | Popover/dropdown surfaces |
-| `--popover-foreground` | `280 18% 14%` | Text on popover surfaces |
-| `--primary` | `28 78% 50%` | Lantern orange — primary CTAs, active states |
-| `--primary-foreground` | `28 20% 4%` | Text on primary fill (buttons) |
-| `--primary-text` | `28 65% 30%` | Primary-colored text on neutral background |
-| `--secondary` | `190 30% 85%` | Deep teal — structural chips, dividers |
-| `--secondary-foreground` | `280 18% 14%` | Text on secondary fill |
-| `--muted` | `30 20% 90%` | Muted backgrounds (secondary content areas) |
-| `--muted-foreground` | `280 18% 14%` | Text on muted backgrounds — **see limitation note** |
+| `--popover-foreground` | `222 20% 14%` | Text on popover surfaces |
+| `--primary` | `14 80% 50%` | Shuji Vermillion — primary CTAs, active states |
+| `--primary-foreground` | `14 20% 4%` | Text on primary fill (buttons) |
+| `--primary-text` | `14 75% 32%` | Primary-colored text on neutral background |
+| `--secondary` | `195 25% 88%` | Soft teal — structural chips, dividers |
+| `--secondary-foreground` | `222 20% 14%` | Text on secondary fill |
+| `--muted` | `38 18% 90%` | Muted backgrounds (secondary content areas) |
+| `--muted-foreground` | `222 20% 14%` | Text on muted backgrounds — **see limitation note** |
 | `--accent` | `340 55% 40%` | Sakura pink — favorites, ratings, save-to-library **only** |
 | `--accent-foreground` | `340 25% 96%` | Text on accent fill |
 | `--destructive` | `1 75% 55%` | Error, failed, deleted, blocked states |
 | `--destructive-foreground` | `1 20% 4%` | Text on destructive fill |
 | `--destructive-text` | `1 20% 22%` | Destructive-colored text on neutral background |
-| `--border` | `280 18% 14% / 0.09` | Default border color (cards, inputs, dividers) |
-| `--input` | `37 29% 90%` | Input field background |
-| `--ring` | `28 78% 45%` | Default focus ring color |
-| `--focus-ring` | `28 78% 45%` | Primary button outer focus ring |
+| `--border` | `222 20% 14% / 0.09` | Default border color (cards, inputs, dividers) |
+| `--input` | `38 20% 90%` | Input field background |
+| `--ring` | `14 80% 45%` | Default focus ring color |
+| `--focus-ring` | `14 80% 45%` | Primary button outer focus ring |
 | `--success` | `150 45% 32%` | Completed, published, healthy, active |
 | `--success-foreground` | `150 70% 88%` | Text on success fill |
 | `--success-text` | `150 20% 18%` | Success-colored text on neutral background |
@@ -79,36 +79,36 @@ All tokens are CSS custom properties defined on `:root` (light) and `.dark` (dar
 | `--info` | `205 70% 45%` | Running, scheduled, informational |
 | `--info-foreground` | `205 20% 4%` | Text on info fill |
 | `--info-text` | `205 20% 20%` | Info-colored text on neutral background |
-| `--sidebar` | `37 29% 90%` | Sidebar background |
-| `--sidebar-accent` | `37 25% 87%` | Sidebar hover/active accent |
+| `--sidebar` | `38 20% 90%` | Sidebar background |
+| `--sidebar-accent` | `38 18% 87%` | Sidebar hover/active accent |
 | `--radius` | `0.375rem` | Base border radius (6px) |
 
 ### 3.2 Dark Mode (`.dark`)
 
 | Token | Value | Purpose |
 |-------|-------|---------|
-| `--background` | `280 20% 10%` | Page background |
-| `--foreground` | `35 30% 90%` | Default body text |
-| `--card` | `275 16% 14%` | Card, popover, modal surfaces |
-| `--card-foreground` | `35 30% 90%` | Text on card surfaces |
-| `--popover` | `275 16% 14%` | Popover/dropdown surfaces |
-| `--popover-foreground` | `35 30% 90%` | Text on popover surfaces |
-| `--primary` | `28 85% 55%` | Lantern orange — primary CTAs, active states |
-| `--primary-foreground` | `28 20% 4%` | Text on primary fill (buttons) |
-| `--primary-text` | `28 60% 75%` | Primary-colored text on neutral background |
-| `--secondary` | `190 30% 22%` | Deep teal — structural chips, dividers |
-| `--secondary-foreground` | `39 33% 85%` | Text on secondary fill |
-| `--muted` | `275 12% 20%` | Muted backgrounds |
-| `--muted-foreground` | `35 30% 90%` | Text on muted backgrounds — **see limitation note** |
+| `--background` | `222 25% 10%` | Midnight Slate page background |
+| `--foreground` | `38 20% 90%` | Default body text |
+| `--card` | `222 20% 14%` | Card, popover, modal surfaces |
+| `--card-foreground` | `38 20% 90%` | Text on card surfaces |
+| `--popover` | `222 20% 14%` | Popover/dropdown surfaces |
+| `--popover-foreground` | `38 20% 90%` | Text on popover surfaces |
+| `--primary` | `14 85% 55%` | Vibrant Vermillion — primary CTAs, active states |
+| `--primary-foreground` | `14 20% 4%` | Text on primary fill (buttons) |
+| `--primary-text` | `14 70% 75%` | Primary-colored text on neutral background |
+| `--secondary` | `195 25% 22%` | Soft teal — structural chips, dividers |
+| `--secondary-foreground` | `38 25% 85%` | Text on secondary fill |
+| `--muted` | `222 16% 20%` | Muted backgrounds |
+| `--muted-foreground` | `38 20% 90%` | Text on muted backgrounds — **see limitation note** |
 | `--accent` | `340 62% 66%` | Sakura pink — favorites, ratings, save-to-library **only** |
-| `--accent-foreground` | `39 29% 7%` | Text on accent fill |
+| `--accent-foreground` | `38 25% 7%` | Text on accent fill |
 | `--destructive` | `1 75% 55%` | Error, failed, deleted, blocked states |
 | `--destructive-foreground` | `1 20% 4%` | Text on destructive fill |
 | `--destructive-text` | `1 20% 62%` | Destructive-colored text on neutral background |
-| `--border` | `38 33% 87% / 0.1` | Default border color |
-| `--input` | `42 17% 16%` | Input field background |
-| `--ring` | `28 85% 65%` | Default focus ring color |
-| `--focus-ring` | `28 85% 65%` | Primary button outer focus ring |
+| `--border` | `38 20% 87% / 0.1` | Default border color |
+| `--input` | `222 16% 16%` | Input field background |
+| `--ring` | `14 85% 60%` | Default focus ring color |
+| `--focus-ring` | `14 85% 60%` | Primary button outer focus ring |
 | `--success` | `150 45% 38%` | Completed, published, healthy, active |
 | `--success-foreground` | `150 20% 4%` | Text on success fill |
 | `--success-text` | `150 20% 58%` | Success-colored text on neutral background |
@@ -118,8 +118,8 @@ All tokens are CSS custom properties defined on `:root` (light) and `.dark` (dar
 | `--info` | `205 70% 55%` | Running, scheduled, informational |
 | `--info-foreground` | `205 20% 4%` | Text on info fill |
 | `--info-text` | `205 20% 58%` | Info-colored text on neutral background |
-| `--sidebar` | `39 29% 7%` | Sidebar background |
-| `--sidebar-accent` | `42 17% 16%` | Sidebar hover/active accent |
+| `--sidebar` | `222 25% 8%` | Sidebar background |
+| `--sidebar-accent` | `222 16% 16%` | Sidebar hover/active accent |
 | `--radius` | `0.375rem` | Base border radius (6px) |
 
 ---
