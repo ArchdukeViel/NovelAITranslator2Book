@@ -4,7 +4,7 @@ Tone, terminology, formatting, and localization standards.
 
 ## Tone
 
-- **Public surface:** Warm, welcoming, Bunko-bon shelf / Yokocho Lantern atmosphere. Clear, concise, respectful of the reading experience.
+- **Public surface:** Warm, welcoming Modern Japanese Literary / Shuji Vermillion & Washi atmosphere. Clear, concise, respectful of the reading experience.
 - **Admin surface:** Operational, precise, high-density, action-oriented. No decorative language.
 
 ## Locale and Time Zone

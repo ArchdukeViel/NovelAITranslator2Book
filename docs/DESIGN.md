@@ -22,21 +22,23 @@ Subordinate design files MUST NOT duplicate technical architecture, backend sche
 
 ## Surface Definitions
 
-- **Public Surface (`frontend/app/(public)/*`):** Reader-facing experience (Yokocho Lantern palette, Bunko-bon shelf visual identity, quiet reader chrome, mobile tab bar).
-- **Admin Surface (`frontend/app/(admin)/admin/*`):** Operator-facing administrative control plane (high-density, information-dense, security-masked, no Yokocho motifs).
+- **Public Surface (`frontend/app/(public)/*`):** Reader-facing experience (Shuji Vermillion & Washi Warm Paper palette, Bunko-bon shelf visual identity, quiet reader chrome, mobile tab bar).
+- **Admin Surface (`frontend/app/(admin)/admin/*`):** Operator-facing administrative control plane (high-density, information-dense, security-masked, no Shuji/Yokocho decorative motifs).
 
 ## Design Authority Map
 
 ### Shared Design Contracts
 - [`docs/design/shared/principles.md`](design/shared/principles.md) — Product UX principles.
 - [`docs/design/shared/interaction.md`](design/shared/interaction.md) — Control states, keyboard rules, forms, dialogs.
-- [`docs/design/shared/accessibility.md`](design/shared/accessibility.md) — WCAG AA compliance, ARIA, focus, contrast.
+- [`docs/design/shared/accessibility.md`](design/shared/accessibility.md) — WCAG 2.2 AA compliance, ARIA, focus, contrast.
 - [`docs/design/shared/responsive.md`](design/shared/responsive.md) — Breakpoints, safe areas, layout adaptation.
 - [`docs/design/shared/states.md`](design/shared/states.md) — Standard data states (loading, empty, error, settled, unavailable).
 - [`docs/design/shared/content-and-copy.md`](design/shared/content-and-copy.md) — Tone, terminology, CJK wrapping, safe copy.
+- [`docs/design/shared/anti-slop.md`](design/shared/anti-slop.md) — Prohibited generic SaaS patterns & restrained motif rules.
+- [`docs/design/shared/motion-and-graphics.md`](design/shared/motion-and-graphics.md) — Motion tier ladder (Level 0–5) and reduced-motion rules.
 
 ### Public Design Specifications
-- [`docs/design/public/design-system.md`](design/public/design-system.md) — Yokocho Lantern palette, typography, status badges.
+- [`docs/design/public/design-system.md`](design/public/design-system.md) — Shuji Vermillion palette, typography, status badges.
 - [`docs/design/public/assets.md`](design/public/assets.md) — Brand mark, favicons, OG image, empty state illustrations.
 - [`docs/design/public/shell.md`](design/public/shell.md) — Desktop header, mobile bottom tab bar, chrome suppression.
 - [`docs/design/public/discovery/`](design/public/discovery/README.md) — Home, Browse, Search overlay, Taxonomy & Source pages.
@@ -59,35 +61,40 @@ Subordinate design files MUST NOT duplicate technical architecture, backend sche
 ### Component Primitives
 - [`docs/design/components/`](design/components/README.md) — Cards (compact vs rich), Forms, Navigation, Dialogs & Sheets, Feedback.
 
+### Architecture & Handoff
+- [`docs/design/frontend-v2-implementation-handoff.md`](design/frontend-v2-implementation-handoff.md) — Frontend V2 rendering, state management, and route implementation contract.
+- [`docs/design/verification-contract.md`](design/verification-contract.md) — Testing, visual snapshot matrix, and manual acceptance gates.
+
 ### Contract Templates
 - [`docs/design/templates/domain.md`](design/templates/domain.md) — Standard domain contract structure.
 - [`docs/design/templates/page.md`](design/templates/page.md) — Standard page contract structure.
 
 ### Audits & History
+- [`docs/design/audits/2026-08-03-frontend-v2-preflight.md`](design/audits/2026-08-03-frontend-v2-preflight.md) — Frontend V2 preflight audit and decision reconciliation.
 - [`docs/design/audits/2026-08-02-public-ui.md`](design/audits/2026-08-02-public-ui.md) — Historical UI/UX flaw audit catalog (F1–F20).
 
 ## Design & Implementation Status Index
 
-| Area | Contract Status | Implementation Status | Automated Verification | Manual Acceptance | Active Work | Canonical Contract | Owner |
-|---|---|---|---|---|---|---|---|
-| Public Tokens | Approved | Implemented | `token-contrast.test.ts` (34 checks), `typecheck`, `build` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/design-system.md` | Frontend lead |
-| Navigation Shell | Approved | Implemented | `chrome-suppression.test.tsx`, `mobile-tab-bar.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/shell.md` | Frontend lead |
-| Shared Search | Approved | Implemented | `search-overlay.test.tsx` (22 tests), `public-router.py` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/discovery/search.md` | Frontend lead |
-| Browse & Taxonomy | Approved | Implemented | `browse-page.test.tsx`, `taxonomy-contract.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/discovery/browse.md` | Frontend lead |
-| Novel Detail | Approved | Implemented | `novel-detail-honesty.test.tsx`, `novel-detail-tabs.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/reading/novel-detail.md` | Frontend lead |
-| Chapter Reader | Approved | Implemented | `reader-contrast.test.ts` (6 tests), `reader-controls.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/reading/chapter-reader.md` | Frontend lead |
-| Library & Account | Approved | Implemented | `library-board.test.tsx`, `account-desktop-shell.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/account/library.md` | Frontend lead |
-| Request Novel | Approved | Implemented | `request-novel.test.tsx`, `public_requests.py` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/public/participation/request-novel.md` | Frontend lead |
-| Review Moderation | Approved | Implemented | `test_review_moderation.py` (74 tests), `reviews.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/admin/moderation/reviews.md` | Product lead |
-| Admin Operations | Approved | Implemented | `admin-shell.test.tsx`, `maintenance.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/admin/design-system.md` | Ops lead |
-| Component Primitives | Approved | Implemented | `button.test.tsx`, `badge.test.tsx`, `input.test.tsx` | DEBT-FE-01A (Open) | DEBT-FE-01 | `docs/design/components/README.md` | Frontend lead |
+| Area | Contract Status | Legacy Implementation Status | Frontend-V2 Target Status | Automated Verification | Manual Acceptance | Handoff Readiness | Canonical Contract | Owner |
+|---|---|---|---|---|---|---|---|---|
+| Public Tokens | Approved | Implemented (v1) | Planned | `app/(public)/__tests__/token-contrast.test.ts` (34 checks), `typecheck`, `build` | Visual regression, forced colors | Ready | `docs/design/public/design-system.md` | Frontend lead |
+| Navigation Shell | Approved | Implemented (v1) | Planned | `navigation-consistency.test.tsx`, `public-shell-accessibility.test.tsx` | Keyboard nav, mobile tab bar | Ready | `docs/design/public/shell.md` | Frontend lead |
+| Shared Search | Approved | Implemented (v1) | Planned | `search-overlay.test.tsx`, `search-entry.test.tsx` | Escape key, overlay trap | Ready | `docs/design/public/discovery/search.md` | Frontend lead |
+| Browse & Taxonomy | Approved | Implemented (v1) | Planned | `browse-page.test.tsx`, `taxonomy-contract.test.tsx` | Filter focus, URL sync | Ready | `docs/design/public/discovery/browse.md` | Frontend lead |
+| Novel Detail | Approved | Implemented (v1) | Planned | `novel-detail-honesty.test.tsx`, `novel-rail.test.tsx` | Tab panels, sticky panel | Ready | `docs/design/public/reading/novel-detail.md` | Frontend lead |
+| Chapter Reader | Approved | Implemented (v1) | Planned | `reader-contrast.test.ts`, `reader-controls.test.tsx` | Theme switch, chrome hiding | Ready | `docs/design/public/reading/chapter-reader.md` | Frontend lead |
+| Library & Account | Approved | Implemented (v1) | Planned | `library-board.test.tsx`, `account-desktop-shell.test.tsx` | Unread badges, list filter | Ready | `docs/design/public/account/library.md` | Frontend lead |
+| Request Novel | Approved | Implemented (v1) | Planned | `contribution-gate.test.tsx`, `public_requests.py` | Form validation, submit gate | Ready | `docs/design/public/participation/request-novel.md` | Frontend lead |
+| Review Moderation | Approved | Implemented (v1) | Planned | `community-reviews.test.tsx`, `page.test.tsx` (admin) | Status transitions | Ready | `docs/design/admin/moderation/reviews.md` | Product lead |
+| Admin Operations | Approved | Implemented (v1) | Planned | `dashboard-safety.test.tsx`, `maintenance.test.tsx` | High density, credential mask | Ready | `docs/design/admin/design-system.md` | Ops lead |
+| Component Primitives | Approved | Implemented (v1) | Planned | `page-state.test.tsx`, `novel-card.test.tsx` | Focus rings, ARIA roles | Ready | `docs/design/components/README.md` | Frontend lead |
 
 ## Non-Negotiable Review Gates
 
-1. **Accessibility (WCAG 2.1 AA):** All interactive elements operable by keyboard, visible focus (two-layer on primary buttons), 4.5:1 text contrast, screen-reader labels.
+1. **Accessibility (WCAG 2.2 AA):** All interactive elements operable by keyboard, visible focus (two-layer on primary buttons), 4.5:1 text contrast, screen-reader labels.
 2. **Security & Redaction:** Credentials masked (`mask-token.ts`), no raw backend errors or stack traces exposed on public surfaces.
 3. **No Unbacked Claims:** Never present simulated numbers or fake reviews; state unavailable features explicitly.
 4. **Chrome Suppression:** Reader routes must suppress header navigation, bottom tab bar, and footers.
 5. **No Nested Controls:** Card surfaces must not nest `<a>` inside `<a>` or buttons inside links.
 
-For active implementation tasks, see [`docs/WORK.md`](WORK.md). For completed evidence, see [`docs/HISTORY.md`](HISTORY.md).
+For active backend/infra work, see [`docs/WORK.md`](WORK.md). For completed evidence, see [`docs/HISTORY.md`](HISTORY.md).

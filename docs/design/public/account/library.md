@@ -13,7 +13,7 @@
 | Implementation | `frontend/app/(public)/account/library/page.tsx`, `frontend/components/public/library-board.tsx` |
 
 ## Purpose
-Personal saved novel shelf ("Your Yokocho") organized by status columns or list rows.
+Personal saved novel shelf ("Library Shelf") organized by status columns or list rows.
 
 ## User Goal
 Manage saved web novels, track unread chapter updates, filter by status, and jump directly to reading.

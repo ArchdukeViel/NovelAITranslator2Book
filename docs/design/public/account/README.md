@@ -41,7 +41,7 @@ Authenticated reader dashboard, personal saved library board, reading history lo
 
 ## Shared Terminology
 
-- `Your Yokocho`: Categorized library board status groups (Reading, Plan to Read, Completed, Dropped).
+- `Library Shelf`: Categorized library board status groups (Reading, Plan to Read, Completed, Dropped).
 - `Reading Log`: Reverse-chronological history of read chapters.
 
 ## Page Index
@@ -49,7 +49,7 @@ Authenticated reader dashboard, personal saved library board, reading history lo
 | Page | Document | Purpose |
 |---|---|---|
 | Overview | `overview.md` | Account summary dashboard and mobile nav hub |
-| Library Board | `library.md` | Personal saved novel shelf ("Your Yokocho") |
+| Library Board | `library.md` | Personal saved novel shelf ("Library Shelf") |
 | Reading History | `history.md` | Reverse-chronological chapter reading log |
 | Authored Reviews | `reviews.md` | Management page for reviews written by user |
 | Notifications | `notifications.md` | System and release alert center |

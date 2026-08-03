@@ -80,7 +80,7 @@ Manual acceptance tracked in `docs/WORK.md` as DEBT-FE-01A.
 
 | Check | Automated | Manual |
 |---|---|---|
-| Color contrast (token pairs) | ✓ `token-contrast.test.ts` | — |
+| Color contrast (token pairs) | ✓ `app/(public)/__tests__/token-contrast.test.ts` | — |
 | Focus ring presence | ✓ CSS inspection | — |
 | Reduced motion | ✓ CSS media query | ✓ Browser behavior |
 | Keyboard navigation | — | ✓ DEBT-FE-01A |
