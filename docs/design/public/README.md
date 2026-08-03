@@ -4,7 +4,7 @@
 
 ## Global Public Contracts
 
-- [`design-system.md`](design-system.md) — Yokocho Lantern palette, typography, status mapping, motifs.
+- [`design-system.md`](design-system.md) — Shuji Vermillion & Washi palette, typography, status mapping, motifs.
 - [`assets.md`](assets.md) — Brand mark, favicons, OG image, empty state illustrations.
 - [`shell.md`](shell.md) — Desktop header, mobile bottom tab bar, chrome suppression, safe areas.
 

@@ -8,7 +8,7 @@ This document defines design rules for administrative surfaces. It is subordinat
 
 - **Scope**: All routes under `/admin/*`
 - **Inheritance**: Inherits global CSS tokens (`--background`, `--foreground`, `--card`, `--primary`, `--border`, `--success`, `--warning`, `--destructive`, `--info`) from `frontend/app/globals.css`
-- **Overrides**: Overrides public visual identity — **MUST NOT** display Yokocho Lantern decorations, lantern badges, sakura pink accents (`--accent`), or Noren curtain dividers
+- **Overrides**: Overrides public visual identity — **MUST NOT** display public brand motifs, lantern badges, sakura pink accents (`--accent`), or Noren curtain dividers
 - **Public vs Admin boundary**: Admin routes are served by the admin process (port 8000), require cookie authentication + CSRF protection, and require `role="owner"` for detailed diagnostics/actions
 
 ## Visual Direction

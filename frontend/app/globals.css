@@ -142,8 +142,8 @@ textarea {
   outline-offset: 2px;
 }
 
-/* Primary-colored buttons use a two-layer focus treatment: a lantern-orange
-   ring around a lantern-orange fill does not separate by color alone, so the
+/* Primary-colored buttons use a two-layer focus treatment: a Shuji Vermillion
+   ring around a vermillion fill does not separate by color alone, so the
    inner ring is a high-contrast neutral (--primary-foreground) and the outer
    offset ring is --focus-ring. Every other control keeps the single ring. */
 .bg-primary:focus-visible {

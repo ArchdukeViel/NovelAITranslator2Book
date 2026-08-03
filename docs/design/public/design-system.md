@@ -1,14 +1,21 @@
-# Public Design System — Yokocho Lantern
+# Public Design System — Shuji Vermillion & Washi
 
 Visual identity and token specification for public surfaces.
 
 ## 1. Scope and Ownership
 
-This document defines the **canonical visual-token contract** for all public-facing surfaces (route group `(public)`). It is the single source of truth for color, spacing, radius, elevation, z-index, typography, motion, and accessibility requirements.
+This document defines the **canonical visual-token contract** for all public-facing surfaces (route group `(public)`). It is the single source of truth for color, spacing, radius, elevation, z-index, typography, motion, visual identity hierarchy, brand asset taxonomy, gradient boundaries, and accessibility requirements.
+
+### 1.1 Visual Identity Hierarchy
+
+- **Product Name**: Dokushodo (読書道)
+- **Public Design Direction**: Modern Japanese Literary
+- **Primary Theme**: Shuji Vermillion & Washi Warm Paper (light mode) / Midnight Slate (dark mode)
+- **Supporting Motifs**: Restrained lantern geometry, yokocho alley warmth, bunko-bon bookplate framing
 
 - **Owner**: Frontend lead
 - **Review cadence**: Every release that touches `frontend/app/globals.css`, `frontend/tailwind.config.ts`, or public route components
-- **Automated verification**: `npm run lint`, `npm run typecheck`, `npm run build` (fails on invalid token references)
+- **Automated verification**: `npx vitest run "app/(public)/__tests__/token-contrast.test.ts"`, `npm run lint`, `npm run typecheck`, `npm run build`
 - **Manual acceptance**: Visual regression review for token changes; contrast audit for color changes
 - **Admin surfaces**: Inherit global tokens but maintain their own override document at `docs/design/admin/design-system.md`
 
@@ -28,7 +35,7 @@ All tokens are CSS custom properties defined on `:root` (light) and `.dark` (dar
 
 ### 2.2 Naming Rules
 
-- All tokens use **HSL values** (space-separated `H S% L%`) except `--border` and `--input` which include alpha: `H S% L% / A`
+- All tokens use **HSL values** (space-separated `H S% L%`) except `--border` which includes alpha: `H S% L% / A`. `--input` is space-separated HSL (`38 20% 90%` in root, `222 16% 16%` in dark).
 - `--radius` is a **length** (`0.375rem`), not a color
 - No raw hex/rgb in globals.css — all color tokens are HSL
 - Semantic tokens map 1:1 to Tailwind config extensions (see Section 3)
@@ -61,7 +68,7 @@ All tokens are CSS custom properties defined on `:root` (light) and `.dark` (dar
 | `--secondary-foreground` | `222 20% 14%` | Text on secondary fill |
 | `--muted` | `38 18% 90%` | Muted backgrounds (secondary content areas) |
 | `--muted-foreground` | `222 20% 14%` | Text on muted backgrounds — **see limitation note** |
-| `--accent` | `340 55% 40%` | Sakura pink — favorites, ratings, save-to-library **only** |
+| `--accent` | `340 55% 40%` | Sakura pink — favorites, ratings, save-to-library, and novel progress indicators |
 | `--accent-foreground` | `340 25% 96%` | Text on accent fill |
 | `--destructive` | `1 75% 55%` | Error, failed, deleted, blocked states |
 | `--destructive-foreground` | `1 20% 4%` | Text on destructive fill |
@@ -136,11 +143,11 @@ All tokens are CSS custom properties defined on `:root` (light) and `.dark` (dar
 | `destructive` | Failed, rejected, deleted, blocked | "Failed", "Rejected", delete confirmation, blocked content | Recoverable warnings |
 | `muted` | Inactive, dropped, unavailable | "Dropped", "Unavailable", disabled states | Actionable states |
 
-### 4.2 Color Usage Rules (Normative)
+### 4.2 Color & Accent Usage Rules (Normative)
 
-- **MUST** use `--accent` (sakura pink) **only** for: favorites (heart), ratings (stars), save-to-library actions
-- **MUST** use `--primary` (lantern orange) for **all** primary CTAs: "Start Reading", "Sign In", "Continue", primary form submits
-- **MUST** use `--secondary` (deep teal) for structural chips, section dividers, supporting emphasis
+- **MUST** use `--accent` (sakura pink) for: favorites (heart), user ratings (stars), save-to-library actions, and active novel reading progress indicators
+- **MUST** use `--primary` (Shuji Vermillion) for **all** primary CTAs: "Start Reading", "Sign In", "Continue", primary form submits
+- **MUST** use `--secondary` (soft teal) for structural chips, section dividers, supporting emphasis
 - **MUST NOT** use `--accent` for primary buttons, focus rings, or generic highlights
 - **MUST NOT** use `--primary` for decorative accents or non-actionable highlights
 - **SHOULD** use `-text` tokens for inline status text on neutral backgrounds; **MUST** use `-foreground` tokens for text on matching semantic fills
@@ -252,13 +259,13 @@ Named layers. Currently hardcoded in components — not yet CSS custom propertie
 
 ### 11.1 Shared Baseline
 
-See `docs/design/shared/accessibility.md` for cross-surface requirements (WCAG 2.1 AA, focus management, landmarks, ARIA).
+See `docs/design/shared/accessibility.md` for cross-surface requirements (WCAG 2.2 AA target, focus management, landmarks, ARIA).
 
 ### 11.2 Public-Specific Requirements
 
 | Requirement | Specification | Verification |
 |-------------|---------------|--------------|
-| **Contrast** | All text/foreground tokens **MUST** meet 4.5:1 (normal) / 3:1 (large) against their semantic backgrounds in both modes | Automated: `token-contrast.test.ts` (17 pairs × 2 modes); Manual: contrast audit on token changes |
+| **Contrast** | All text/foreground tokens **MUST** meet 4.5:1 (normal) / 3:1 (large) against their semantic backgrounds in both modes | Automated: `app/(public)/__tests__/token-contrast.test.ts` (17 pairs × 2 modes = 34 pair checks); Manual: contrast audit on token changes |
 | **Focus Ring** | Default: `2px solid hsl(var(--ring))` offset `2px`; Primary buttons: two-layer — `2px solid hsl(var(--foreground))` inner + `4px` box-shadow `hsl(var(--focus-ring))` outer offset | Visual regression; keyboard navigation test |
 | **Two-Layer Focus** | Primary buttons **MUST** use dual-ring pattern; all other interactive elements use single ring | Code review; automated lint for `focus-visible` |
 | **Color Independence** | Status **MUST NOT** rely on color alone — pair with icon, label, or pattern (e.g., badge text + icon) | Manual acceptance; design review |
