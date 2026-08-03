@@ -62,6 +62,23 @@ def pytest_configure() -> None:
     settings.DATABASE_URL = None
 
 
+def pytest_collection_modifyitems(items) -> None:
+    """Run the e2e suite last in any mixed local session.
+
+    ``backend/tests/e2e/conftest.py`` patches module-level ``novelai.*``
+    globals (session_scope, settings, container internals, registries) at
+    session scope to keep the e2e suite fast; those patches are only undone
+    at session end.  If e2e ran first, every later test in the same session
+    executed against the patched world (previously ~33 order-dependent
+    failures).  CI already runs e2e in a separate process; this hook makes
+    local full-suite runs deterministic without slowing e2e down.
+    """
+    e2e_items = [item for item in items if "tests/e2e/" in item.nodeid]
+    if e2e_items and len(e2e_items) < len(items):
+        rest = [item for item in items if "tests/e2e/" not in item.nodeid]
+        items[:] = rest + e2e_items
+
+
 def _force_remove_tree(path: Path) -> None:
     """Remove a directory tree even when Windows leaves read-only temp paths behind.
 
