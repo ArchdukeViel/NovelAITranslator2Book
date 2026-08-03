@@ -24,7 +24,7 @@ export default function TakedownsPage() {
   return (
     <main className="space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-semibold">DMCA takedown requests</h1>
+        <h1 className="text-3xl font-semibold">DMCA takedown requests</h1>
         <p className="mt-1 text-sm text-muted-foreground">Review notices before approving legal removal.</p>
       </div>
       <label className="block max-w-xs text-sm font-medium">

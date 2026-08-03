@@ -13,7 +13,7 @@ export function PublicFooter() {
         </div>
 
         <nav className="grid gap-2" aria-label="Footer navigation">
-          <p className="font-metadata text-xs uppercase tracking-wide text-foreground">
+          <p className="font-metadata text-xs font-semibold uppercase text-foreground">
             Read
           </p>
           <Link href="/browse-novels" className="transition-colors hover:text-foreground">
@@ -40,7 +40,7 @@ export function PublicFooter() {
         </nav>
 
         <nav className="grid gap-2" aria-label="Legal navigation">
-          <p className="font-metadata text-xs uppercase tracking-wide text-foreground">
+          <p className="font-metadata text-xs font-semibold uppercase text-foreground">
             Trust
           </p>
           <Link href="/about" className="transition-colors hover:text-foreground">

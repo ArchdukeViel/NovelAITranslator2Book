@@ -127,6 +127,30 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex-1 lg:pl-64">
         <header className="hidden lg:block h-16 border-b border-border" />
+        <nav
+          aria-label="Account sub-navigation"
+          className="flex overflow-x-auto border-b border-border bg-card p-2 gap-1 lg:hidden"
+        >
+          {sidebarLinks.map((link) => {
+            const Icon = link.icon;
+            const isActive = pathname === link.href;
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                aria-current={isActive ? "page" : undefined}
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                {link.label}
+              </Link>
+            );
+          })}
+        </nav>
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           {children}
         </div>

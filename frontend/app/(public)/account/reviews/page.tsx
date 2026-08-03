@@ -175,7 +175,7 @@ function ReviewRow({
       {body ? (
         <p className="mt-2 text-sm leading-6 text-muted-foreground">{body}</p>
       ) : (
-        <p className="mt-2 text-xs italic text-muted-foreground">No written review — rating only.</p>
+        <p className="mt-2 text-xs italic text-muted-foreground">No written review: rating only.</p>
       )}
       <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
         <Link href={editHref} className="font-medium text-primary hover:underline">
