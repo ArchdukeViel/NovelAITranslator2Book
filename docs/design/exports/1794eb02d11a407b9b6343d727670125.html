@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en" style=""><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Dokushodo - The Way of Reading</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&amp;family=Hanken+Grotesk:ital,wght@0,100..900;1,100..900&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary-fixed-dim": "#c3c7cc",
+                        "secondary": "#5b5f63",
+                        "surface-container-lowest": "#ffffff",
+                        "sumi-ink": "#1A1A1A",
+                        "on-tertiary": "#ffffff",
+                        "on-surface": "#1c1c18",
+                        "secondary-fixed": "#e0e3e8",
+                        "error-container": "#ffdad6",
+                        "tertiary": "#005975",
+                        "inverse-primary": "#ffb4a7",
+                        "outline": "#8c716c",
+                        "on-error": "#ffffff",
+                        "muted-obsidian": "#212529",
+                        "primary-fixed-dim": "#ffb4a7",
+                        "inverse-on-surface": "#f3f0ea",
+                        "on-surface-variant": "#59413d",
+                        "tertiary-fixed": "#bfe8ff",
+                        "surface-bright": "#fcf9f3",
+                        "surface-container-low": "#f6f3ed",
+                        "on-error-container": "#93000a",
+                        "tertiary-container": "#007396",
+                        "background": "#fcf9f3",
+                        "on-background": "#1c1c18",
+                        "on-secondary-container": "#5f6368",
+                        "primary": "#9b2617",
+                        "surface-tint": "#ad3222",
+                        "surface-container-high": "#ebe8e2",
+                        "error": "#ba1a1a",
+                        "shuji-vermillion": "#BD3E2C",
+                        "primary-container": "#bd3e2c",
+                        "inverse-surface": "#31312d",
+                        "on-tertiary-fixed": "#001f2b",
+                        "on-tertiary-container": "#d5f0ff",
+                        "on-secondary": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "surface-container-highest": "#e5e2dc",
+                        "surface-variant": "#e5e2dc",
+                        "on-primary-container": "#ffe6e2",
+                        "discord-blurple": "#5865F2",
+                        "primary-fixed": "#ffdad4",
+                        "tertiary-fixed-dim": "#7fd1f7",
+                        "on-secondary-fixed": "#181c20",
+                        "surface-dim": "#dcdad4",
+                        "aged-parchment": "#F2EFE7",
+                        "on-tertiary-fixed-variant": "#004d65",
+                        "washi-paper": "#F9F6F0",
+                        "surface": "#fcf9f3",
+                        "outline-variant": "#e0bfb9",
+                        "on-primary-fixed-variant": "#8b1a0c",
+                        "secondary-container": "#dde0e5",
+                        "surface-container": "#f0eee8",
+                        "on-secondary-fixed-variant": "#43474c",
+                        "on-primary-fixed": "#400200"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "margin-mobile": "20px",
+                        "max-width-reading": "720px",
+                        "unit": "4px",
+                        "gutter": "24px",
+                        "margin-desktop": "64px"
+                    },
+                    "fontFamily": {
+                        "body-lg": [
+                            "Hanken Grotesk"
+                        ],
+                        "title-md": [
+                            "EB Garamond"
+                        ],
+                        "caption": [
+                            "Hanken Grotesk"
+                        ],
+                        "headline-lg-mobile": [
+                            "EB Garamond"
+                        ],
+                        "headline-lg": [
+                            "EB Garamond"
+                        ],
+                        "display-lg": [
+                            "EB Garamond"
+                        ],
+                        "body-md": [
+                            "Hanken Grotesk"
+                        ],
+                        "label-md": [
+                            "Hanken Grotesk"
+                        ]
+                    },
+                    "fontSize": {
+                        "body-lg": [
+                            "18px",
+                            {
+                                "lineHeight": "32px",
+                                "fontWeight": "400"
+                            }
+                        ],
+                        "title-md": [
+                            "22px",
+                            {
+                                "lineHeight": "28px",
+                                "fontWeight": "500"
+                            }
+                        ],
+                        "caption": [
+                            "12px",
+                            {
+                                "lineHeight": "16px",
+                                "fontWeight": "400"
+                            }
+                        ],
+                        "headline-lg-mobile": [
+                            "28px",
+                            {
+                                "lineHeight": "36px",
+                                "fontWeight": "500"
+                            }
+                        ],
+                        "headline-lg": [
+                            "32px",
+                            {
+                                "lineHeight": "40px",
+                                "fontWeight": "500"
+                            }
+                        ],
+                        "display-lg": [
+                            "48px",
+                            {
+                                "lineHeight": "56px",
+                                "letterSpacing": "-0.02em",
+                                "fontWeight": "500"
+                            }
+                        ],
+                        "body-md": [
+                            "16px",
+                            {
+                                "lineHeight": "26px",
+                                "fontWeight": "400"
+                            }
+                        ],
+                        "label-md": [
+                            "14px",
+                            {
+                                "lineHeight": "20px",
+                                "letterSpacing": "0.05em",
+                                "fontWeight": "600"
+                            }
+                        ]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            background-color: theme('colors.sumi-ink');
+            color: theme('colors.washi-paper');
+        }
+
+        .bunko-card-hover {
+            transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .bunko-card-hover:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 20px -10px rgba(0,0,0,0.5);
+        }
+
+        .shuji-hover {
+            transition: color 0.2s ease;
+        }
+        .shuji-hover:hover {
+            color: theme('colors.shuji-vermillion');
+        }
+    </style>
+<script>
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const backdrop = document.getElementById('sidebar-backdrop');
+
+            sidebar.classList.toggle('-translate-x-full');
+
+            if (sidebar.classList.contains('-translate-x-full')) {
+                backdrop.classList.remove('opacity-100', 'pointer-events-auto');
+                backdrop.classList.add('opacity-0', 'pointer-events-none');
+            } else {
+                backdrop.classList.remove('opacity-0', 'pointer-events-none');
+                backdrop.classList.add('opacity-100', 'pointer-events-auto');
+            }
+        }
+    </script>
+</head>
+<body class="antialiased min-h-screen flex flex-col bg-sumi-ink text-surface-bright overflow-x-hidden">
+<!-- Top Navigation -->
+<nav class="bg-surface dark:bg-sumi-ink fixed top-0 w-full z-[60] border-b border-muted-obsidian/10 dark:border-white/5 flat no shadows">
+<div class="flex justify-between items-center h-16 px-4 md:px-margin-desktop w-full">
+<div class="flex items-center gap-6 flex-shrink-0">
+<button class="text-secondary dark:text-secondary-fixed-dim hover:text-shuji-vermillion transition-colors" onclick="toggleSidebar()">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<a class="flex items-center gap-3 font-title-md text-title-md text-shuji-vermillion dark:text-shuji-vermillion flex-shrink-0" href="#">
+<img alt="Dokushodo Logo" class="h-8 w-auto object-contain rounded-sm" src="https://lh3.googleusercontent.com/aida/AP1WRLtchEsI7qWIy48iusmGqqCqfUx6yZSUCAo57IKkDyoAQ7bvqMuouEGESKdKe0ZJKqGtQbl6PFkfHUYE-Jn5T75lEax_2aogsWSmcMOAF296TXNQDgAwg4UYbQrHeg7MNywPhadUAQEh7HqP2bcbCxgDb5dw6MPNDHKHq4_qqB7dwH8J8Ck4UwFrxke802WZBCEFkMqqtQt5WmNLjyJGJca4JUJM1MTvGwcu5fhRpK352cCt_ORtsoxPJBXH"/>
+<span class="hidden sm:inline">Dokushodo</span>
+</a>
+<!-- Center Nav Links -->
+<div class="hidden lg:flex items-center gap-6 ml-8">
+<a class="font-body-md text-body-md text-secondary dark:text-secondary-fixed-dim hover:text-shuji-vermillion transition-colors flex items-center gap-2" href="#">
+<span class="material-symbols-outlined text-[20px]">local_library</span> Library
+                </a>
+<a class="font-body-md text-body-md text-secondary dark:text-secondary-fixed-dim hover:text-shuji-vermillion transition-colors flex items-center gap-2" href="#">
+<span class="material-symbols-outlined text-[20px]">leaderboard</span> Ranking
+                </a>
+<a class="font-body-md text-body-md text-secondary dark:text-secondary-fixed-dim hover:text-shuji-vermillion transition-colors flex items-center gap-2" href="#">
+<span class="material-symbols-outlined text-[20px]">trending_up</span> Trending
+                </a>
+</div>
+</div>
+<!-- Search Bar -->
+<div class="hidden md:flex flex-1 max-w-xl mx-8">
+<div class="relative w-full">
+<span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-secondary">
+<span class="material-symbols-outlined text-[20px]">search</span>
+</span>
+<input class="w-full bg-surface-variant/30 dark:bg-muted-obsidian/50 border border-muted-obsidian/10 dark:border-white/10 rounded-full py-2 pl-10 pr-4 font-body-md text-body-md text-on-surface dark:text-surface-bright focus:outline-none focus:border-shuji-vermillion focus:ring-1 focus:ring-shuji-vermillion placeholder-secondary dark:placeholder-secondary-fixed-dim transition-all" placeholder="Search novels, authors, or genres..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4 text-secondary dark:text-secondary-fixed-dim flex-shrink-0 justify-end">
+<button class="md:hidden hover:text-shuji-vermillion transition-colors duration-200">
+<span class="material-symbols-outlined">search</span>
+</button>
+<button class="hover:text-shuji-vermillion transition-colors duration-200 flex items-center gap-2 bg-surface-variant/20 dark:bg-muted-obsidian/30 px-3 py-1.5 rounded-full border border-white/5">
+<span class="material-symbols-outlined">account_circle</span>
+<span class="hidden sm:inline font-label-md text-label-md">Sign In</span>
+</button>
+</div>
+</div>
+</nav>
+<!-- Sidebar Backdrop -->
+<div class="fixed inset-0 bg-sumi-ink/60 z-50 transition-opacity duration-300 opacity-0 pointer-events-none mt-16" id="sidebar-backdrop" onclick="toggleSidebar()"></div>
+<!-- Sidebar Navigation -->
+<aside class="fixed left-0 top-0 h-full w-[240px] bg-surface dark:bg-sumi-ink border-r border-muted-obsidian/10 dark:border-white/5 flex flex-col py-6 overflow-y-auto transform transition-transform duration-300 mt-16 z-50 -translate-x-full" id="sidebar">
+<div class="flex flex-col gap-2 px-4">
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg bg-surface-variant/50 dark:bg-muted-obsidian text-shuji-vermillion dark:text-shuji-vermillion transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">home</span>
+<span class="font-body-md text-body-md font-medium">Home</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-secondary dark:text-secondary-fixed-dim hover:text-shuji-vermillion dark:hover:text-shuji-vermillion hover:bg-surface-variant/30 dark:hover:bg-muted-obsidian/50 transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">local_library</span>
+<span class="font-body-md text-body-md font-medium">Library</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-secondary dark:text-secondary-fixed-dim hover:text-shuji-vermillion dark:hover:text-shuji-vermillion hover:bg-surface-variant/30 dark:hover:bg-muted-obsidian/50 transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">menu_book</span>
+<span class="font-body-md text-body-md font-medium">Browse Novels</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-secondary dark:text-secondary-fixed-dim hover:text-shuji-vermillion dark:hover:text-shuji-vermillion hover:bg-surface-variant/30 dark:hover:bg-muted-obsidian/50 transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">leaderboard</span>
+<span class="font-body-md text-body-md font-medium">Ranking</span>
+</a>
+<div class="h-px bg-white/5 my-2 mx-4"></div>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-secondary dark:text-secondary-fixed-dim hover:text-shuji-vermillion dark:hover:text-shuji-vermillion hover:bg-surface-variant/30 dark:hover:bg-muted-obsidian/50 transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">shuffle</span>
+<span class="font-body-md text-body-md font-medium">Random Novels</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-secondary dark:text-secondary-fixed-dim hover:text-shuji-vermillion dark:hover:text-shuji-vermillion hover:bg-surface-variant/30 dark:hover:bg-muted-obsidian/50 transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">post_add</span>
+<span class="font-body-md text-body-md font-medium">Request Novels</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 rounded-lg text-secondary dark:text-secondary-fixed-dim hover:text-shuji-vermillion dark:hover:text-shuji-vermillion hover:bg-surface-variant/30 dark:hover:bg-muted-obsidian/50 transition-colors duration-200" href="#">
+<span class="material-symbols-outlined">handshake</span>
+<span class="font-body-md text-body-md font-medium">Contributions</span>
+</a>
+</div>
+<div class="flex flex-col gap-3 px-4 mt-2">
+<button class="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-surface-variant/20 dark:bg-muted-obsidian/30 border border-white/5 text-secondary dark:text-secondary-fixed-dim hover:text-shuji-vermillion dark:hover:text-shuji-vermillion hover:border-shuji-vermillion/50 transition-all duration-200">
+<span class="material-symbols-outlined text-[18px]">language</span>
+<span class="font-label-md text-label-md">Language: EN</span>
+</button>
+<button class="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-surface-variant/20 dark:bg-muted-obsidian/30 border border-white/5 text-secondary dark:text-secondary-fixed-dim hover:text-shuji-vermillion dark:hover:text-shuji-vermillion hover:border-shuji-vermillion/50 transition-all duration-200">
+<span class="material-symbols-outlined text-[18px]">dark_mode</span>
+<span class="font-label-md text-label-md">Theme</span>
+</button>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-grow pt-[88px] px-4 md:px-8 pb-24 transition-all duration-300 w-full" id="main-content">
+<div class="max-w-[1600px] mx-auto grid grid-cols-1 xl:grid-cols-12 gap-8">
+<!-- Left Column (Main Feed) -->
+<div class="xl:col-span-8 2xl:col-span-9 flex flex-col gap-12 w-full">
+<!-- Spotlight Hero -->
+<section class="relative w-full h-[500px] min-h-[400px] max-h-[600px] rounded-xl overflow-hidden group cursor-pointer border border-white/5 shadow-lg">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105" data-alt="A sweeping, moody illustration of a fallen noble warrior overlooking a misty, politically tense medieval-fantasy capital. The scene is rendered in a highly detailed, muted watercolor and ink style, reminiscent of traditional Japanese art mixed with dark fantasy. Strong contrast, deep shadows, and subtle highlights of crimson red to match the Shuji Vermillion brand color. The atmosphere is tense, quiet, and deeply atmospheric." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCoC1H5ZEjFitMdv2RsbuuE8b04GlDXBpdDDoG8O9CF05D_b0CDMqR1nLna_AJx7Zw3RQ4E-_SJ56PdS5NfCUH0XrLrh_IStvi1kxyaOVmCK85M29l6djpNSkd_y7drjOaImoGFS0rCC9PTKJ1YXTbXDT0OYVMUuJ_-j2h-wlt56xU-HbsS8mW5f-e3aNlOH8GcupJtniv6gscuZ5npeYtRhi4wE4JHJmO8506_fr92yx11tnGMfszljg')"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-sumi-ink via-sumi-ink/80 to-transparent"></div>
+<div class="absolute inset-0 p-8 flex flex-col justify-end">
+<span class="font-label-md text-label-md text-shuji-vermillion tracking-wider uppercase mb-2">Featured Series</span>
+<h1 class="font-display-lg text-display-lg text-surface-bright mb-4">The Blade of Whispers</h1>
+<p class="font-body-lg text-body-lg text-surface-dim max-w-2xl mb-8">
+                            A fallen noble seeks redemption in a world of political intrigue and hidden magic.
+                        </p>
+<button class="self-start px-6 py-3 bg-surface-bright text-sumi-ink font-label-md text-label-md rounded-DEFAULT hover:bg-shuji-vermillion hover:text-surface-bright transition-colors duration-300">
+                            Start Reading
+                        </button>
+</div>
+</section>
+<!-- Banners -->
+<section class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<a class="relative h-32 rounded-lg overflow-hidden group cursor-pointer border border-white/5" href="#">
+<div class="absolute inset-0 bg-muted-obsidian transition-transform duration-500 group-hover:scale-105 opacity-80" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAIWNRxBF1O6GrZs1I5CuqvN9dly_He1Wa7JoA_Cz7CShe5V4wnc47h36uJIiVfehJkhvBq5b_TjlbU-Rll6k0vRppaamMsi0cP_wU48ygD6Mpvt9ZvXBrxXYrQVZr3rQDaON27kkXvAS5TOGuh4YE49solylND0qZ1VdpvG_tZbPj3VkWVqSiqeoYyeJDSOivc-vJYKyO9l4by4WHdfQnZgYxB9KJ8YKOPNCg5II1jABpxVkcgRmFrXg'); background-size: cover; background-position: center;"></div>
+<div class="absolute inset-0 bg-gradient-to-r from-sumi-ink/90 to-sumi-ink/50"></div>
+<div class="absolute inset-0 flex items-center justify-center flex-col gap-2 p-6 text-center">
+<span class="material-symbols-outlined text-shuji-vermillion text-3xl">shuffle</span>
+<h3 class="font-title-md text-title-md text-surface-bright">Random Novels</h3>
+</div>
+</a>
+<a class="relative h-32 rounded-lg overflow-hidden group cursor-pointer border border-white/5" href="#">
+<div class="absolute inset-0 bg-muted-obsidian transition-transform duration-500 group-hover:scale-105 opacity-80" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCoC1H5ZEjFitMdv2RsbuuE8b04GlDXBpdDDoG8O9CF05D_b0CDMqR1nLna_AJx7Zw3RQ4E-_SJ56PdS5NfCUH0XrLrh_IStvi1kxyaOVmCK85M29l6djpNSkd_y7drjOaImoGFS0rCC9PTKJ1YXTbXDT0OYVMUuJ_-j2h-wlt56xU-HbsS8mW5f-e3aNlOH8GcupJtniv6gscuZ5npeYtRhi4wE4JHJmO8506_fr92yx11tnGMfszljg'); background-size: cover; background-position: center;"></div>
+<div class="absolute inset-0 bg-gradient-to-r from-sumi-ink/90 to-sumi-ink/50"></div>
+<div class="absolute inset-0 flex items-center justify-center flex-col gap-2 p-6 text-center">
+<span class="material-symbols-outlined text-shuji-vermillion text-3xl">post_add</span>
+<h3 class="font-title-md text-title-md text-surface-bright">Request Novel</h3>
+</div>
+</a>
+</section>
+<!-- Novel Rail: New Releases -->
+<section class="flex flex-col gap-6">
+<div class="flex justify-between items-end border-b border-white/5 pb-2">
+<h2 class="font-headline-lg text-headline-lg text-surface-bright">New Novels</h2>
+<a class="font-label-md text-label-md text-secondary border border-white/10 px-3 py-1 rounded-sm hover:text-shuji-vermillion hover:border-shuji-vermillion/50 transition-colors" href="#">See More</a>
+</div>
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+<!-- Card 1 -->
+<article class="flex flex-col gap-2 group cursor-pointer bunko-card-hover bg-muted-obsidian/20 p-2 rounded-lg border border-white/5">
+<div class="aspect-[2/3] w-full rounded-sm overflow-hidden bg-muted-obsidian relative">
+<img class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" data-alt="Cover art" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0eN-EZB-o_SLnE6gkAyHzAa81O3I-bc0JLvn8pt3I01dC_iRUWGLW3Abh7dkiJc5d0L_trFTSD_3N0CNsRoAGkN2chtwpFT01sS2Xqe-mhM0IAp1u_yiDU6vxGAGFDehDlEFJBVckK1hA0aQooXjX7aBEre_glnKmipr_yNZ1kSVqr3ODhYNxaRK5B5WHprAWhYAmlWPHpcPdhHLnr5urh-Ml2L29DKNgnrecfCghaa6iNyou9bH6pQ"/>
+</div>
+<div class="mt-1">
+<h3 class="font-label-md text-label-md text-surface-bright line-clamp-2 leading-snug">Echoes of the Lotus</h3>
+<div class="flex justify-between items-center mt-2">
+<span class="font-caption text-[10px] text-secondary border border-white/10 px-1.5 py-0.5 rounded-sm">Action</span>
+<span class="font-caption text-[10px] text-secondary">283 Ch</span>
+</div>
+<p class="font-caption text-[10px] text-secondary mt-1">Added 2 mins ago</p>
+</div>
+</article>
+<!-- Card 2 -->
+<article class="flex flex-col gap-2 group cursor-pointer bunko-card-hover bg-muted-obsidian/20 p-2 rounded-lg border border-white/5">
+<div class="aspect-[2/3] w-full rounded-sm overflow-hidden bg-muted-obsidian relative">
+<img class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" data-alt="Cover art" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCcvNLZ9leAP8M1sfBu97mwhPz8XqiL-p_YSBK8tTDa-rx89A8ZEaA0sTuLYPcJH-QKJEQ-xb-NofJKML8DoFLVeNTpCnujk0Fsritj43_bAQrre7SyPuIn9RvEwAQGYF_lCqmaLI8Mk0ipqfarR6UajW52zHUCK_SU0ZyXcDct9wAP_lKIuM5Wzf1gyhCNRyl9XKZ0lBcuJQhmGyVgthdCny3BN3WiW3ySOcnQxK7123B9c-p7MyQEKA"/>
+</div>
+<div class="mt-1">
+<h3 class="font-label-md text-label-md text-surface-bright line-clamp-2 leading-snug">Neon &amp; Dust</h3>
+<div class="flex justify-between items-center mt-2">
+<span class="font-caption text-[10px] text-secondary border border-white/10 px-1.5 py-0.5 rounded-sm">Sci-Fi</span>
+<span class="font-caption text-[10px] text-secondary">236 Ch</span>
+</div>
+<p class="font-caption text-[10px] text-secondary mt-1">Added 3 mins ago</p>
+</div>
+</article>
+<!-- Card 3 -->
+<article class="flex flex-col gap-2 group cursor-pointer bunko-card-hover bg-muted-obsidian/20 p-2 rounded-lg border border-white/5">
+<div class="aspect-[2/3] w-full rounded-sm overflow-hidden bg-muted-obsidian relative">
+<img class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" data-alt="Cover art" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAIWNRxBF1O6GrZs1I5CuqvN9dly_He1Wa7JoA_Cz7CShe5V4wnc47h36uJIiVfehJkhvBq5b_TjlbU-Rll6k0vRppaamMsi0cP_wU48ygD6Mpvt9ZvXBrxXYrQVZr3rQDaON27kkXvAS5TOGuh4YE49solylND0qZ1VdpvG_tZbPj3VkWVqSiqeoYyeJDSOivc-vJYKyO9l4by4WHdfQnZgYxB9KJ8YKOPNCg5II1jABpxVkcgRmFrXg"/>
+</div>
+<div class="mt-1">
+<h3 class="font-label-md text-label-md text-surface-bright line-clamp-2 leading-snug">The Silent Summit</h3>
+<div class="flex justify-between items-center mt-2">
+<span class="font-caption text-[10px] text-secondary border border-white/10 px-1.5 py-0.5 rounded-sm">Historical</span>
+<span class="font-caption text-[10px] text-secondary">431 Ch</span>
+</div>
+<p class="font-caption text-[10px] text-secondary mt-1">Added 9 mins ago</p>
+</div>
+</article>
+<!-- Card 4 -->
+<article class="flex flex-col gap-2 group cursor-pointer bunko-card-hover bg-muted-obsidian/20 p-2 rounded-lg border border-white/5 hidden sm:flex">
+<div class="aspect-[2/3] w-full rounded-sm overflow-hidden bg-muted-obsidian relative">
+<img class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" data-alt="Cover art" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCoC1H5ZEjFitMdv2RsbuuE8b04GlDXBpdDDoG8O9CF05D_b0CDMqR1nLna_AJx7Zw3RQ4E-_SJ56PdS5NfCUH0XrLrh_IStvi1kxyaOVmCK85M29l6djpNSkd_y7drjOaImoGFS0rCC9PTKJ1YXTbXDT0OYVMUuJ_-j2h-wlt56xU-HbsS8mW5f-e3aNlOH8GcupJtniv6gscuZ5npeYtRhi4wE4JHJmO8506_fr92yx11tnGMfszljg"/>
+</div>
+<div class="mt-1">
+<h3 class="font-label-md text-label-md text-surface-bright line-clamp-2 leading-snug">The Blade of Whispers</h3>
+<div class="flex justify-between items-center mt-2">
+<span class="font-caption text-[10px] text-secondary border border-white/10 px-1.5 py-0.5 rounded-sm">Action</span>
+<span class="font-caption text-[10px] text-secondary">53 Ch</span>
+</div>
+<p class="font-caption text-[10px] text-secondary mt-1">Added 16 mins ago</p>
+</div>
+</article>
+<!-- Card 5 -->
+<article class="flex flex-col gap-2 group cursor-pointer bunko-card-hover bg-muted-obsidian/20 p-2 rounded-lg border border-white/5 hidden md:flex">
+<div class="aspect-[2/3] w-full rounded-sm overflow-hidden bg-muted-obsidian relative">
+<img class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" data-alt="Cover art" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0eN-EZB-o_SLnE6gkAyHzAa81O3I-bc0JLvn8pt3I01dC_iRUWGLW3Abh7dkiJc5d0L_trFTSD_3N0CNsRoAGkN2chtwpFT01sS2Xqe-mhM0IAp1u_yiDU6vxGAGFDehDlEFJBVckK1hA0aQooXjX7aBEre_glnKmipr_yNZ1kSVqr3ODhYNxaRK5B5WHprAWhYAmlWPHpcPdhHLnr5urh-Ml2L29DKNgnrecfCghaa6iNyou9bH6pQ"/>
+</div>
+<div class="mt-1">
+<h3 class="font-label-md text-label-md text-surface-bright line-clamp-2 leading-snug">Crimson Sky</h3>
+<div class="flex justify-between items-center mt-2">
+<span class="font-caption text-[10px] text-secondary border border-white/10 px-1.5 py-0.5 rounded-sm">Fantasy</span>
+<span class="font-caption text-[10px] text-secondary">112 Ch</span>
+</div>
+<p class="font-caption text-[10px] text-secondary mt-1">Added 22 mins ago</p>
+</div>
+</article>
+</div>
+</section>
+<!-- Recent Updates List -->
+<section class="flex flex-col gap-4">
+<div class="flex justify-between items-end border-b border-white/5 pb-2">
+<h2 class="font-headline-lg text-headline-lg text-surface-bright">Recent Updates</h2>
+</div>
+<div class="bg-muted-obsidian/30 rounded-lg border border-white/5 flex flex-col">
+<!-- Update Item 1 -->
+<div class="flex items-start gap-4 p-4 border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
+<div class="w-12 h-16 flex-shrink-0 rounded overflow-hidden">
+<img class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0eN-EZB-o_SLnE6gkAyHzAa81O3I-bc0JLvn8pt3I01dC_iRUWGLW3Abh7dkiJc5d0L_trFTSD_3N0CNsRoAGkN2chtwpFT01sS2Xqe-mhM0IAp1u_yiDU6vxGAGFDehDlEFJBVckK1hA0aQooXjX7aBEre_glnKmipr_yNZ1kSVqr3ODhYNxaRK5B5WHprAWhYAmlWPHpcPdhHLnr5urh-Ml2L29DKNgnrecfCghaa6iNyou9bH6pQ"/>
+</div>
+<div class="flex-grow min-w-0">
+<div class="flex items-center gap-2 mb-1">
+<span class="font-caption text-caption text-secondary">6 minutes ago</span>
+<div class="h-px flex-grow bg-white/10"></div>
+</div>
+<h4 class="font-title-md text-[16px] leading-tight text-surface-bright truncate hover:text-shuji-vermillion cursor-pointer">Honkai Impact: I've Been Transported to Honkai Impact?</h4>
+<div class="flex flex-col gap-1 mt-2">
+<a class="font-caption text-[13px] text-surface-dim hover:text-shuji-vermillion truncate" href="#">#72 Chapter 3 Welcome to this imperfect world</a>
+</div>
+</div>
+</div>
+<!-- Update Item 2 -->
+<div class="flex items-start gap-4 p-4 border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
+<div class="w-12 h-16 flex-shrink-0 rounded overflow-hidden">
+<img class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCcvNLZ9leAP8M1sfBu97mwhPz8XqiL-p_YSBK8tTDa-rx89A8ZEaA0sTuLYPcJH-QKJEQ-xb-NofJKML8DoFLVeNTpCnujk0Fsritj43_bAQrre7SyPuIn9RvEwAQGYF_lCqmaLI8Mk0ipqfarR6UajW52zHUCK_SU0ZyXcDct9wAP_lKIuM5Wzf1gyhCNRyl9XKZ0lBcuJQhmGyVgthdCny3BN3WiW3ySOcnQxK7123B9c-p7MyQEKA"/>
+</div>
+<div class="flex-grow min-w-0">
+<div class="flex items-center gap-2 mb-1">
+<span class="font-caption text-caption text-secondary">6 minutes ago</span>
+<div class="h-px flex-grow bg-white/10"></div>
+</div>
+<h4 class="font-title-md text-[16px] leading-tight text-surface-bright truncate hover:text-shuji-vermillion cursor-pointer">Courtyard: The Story Starts with Bang Geng's Amputation</h4>
+<div class="flex flex-col gap-1 mt-2">
+<a class="font-caption text-[13px] text-surface-dim hover:text-shuji-vermillion truncate" href="#">#69 Chapter 69 A New Beginning, But Something's Wrong</a>
+<a class="font-caption text-[13px] text-surface-dim hover:text-shuji-vermillion truncate" href="#">#68 Chapter 68, over 14,000 points.</a>
+</div>
+</div>
+</div>
+<!-- Update Item 3 -->
+<div class="flex items-start gap-4 p-4 border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
+<div class="w-12 h-16 flex-shrink-0 rounded overflow-hidden">
+<img class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAIWNRxBF1O6GrZs1I5CuqvN9dly_He1Wa7JoA_Cz7CShe5V4wnc47h36uJIiVfehJkhvBq5b_TjlbU-Rll6k0vRppaamMsi0cP_wU48ygD6Mpvt9ZvXBrxXYrQVZr3rQDaON27kkXvAS5TOGuh4YE49solylND0qZ1VdpvG_tZbPj3VkWVqSiqeoYyeJDSOivc-vJYKyO9l4by4WHdfQnZgYxB9KJ8YKOPNCg5II1jABpxVkcgRmFrXg"/>
+</div>
+<div class="flex-grow min-w-0">
+<div class="flex items-center gap-2 mb-1">
+<span class="font-caption text-caption text-secondary">6 minutes ago</span>
+<div class="h-px flex-grow bg-white/10"></div>
+</div>
+<h4 class="font-title-md text-[16px] leading-tight text-surface-bright truncate hover:text-shuji-vermillion cursor-pointer">Awakening of the Masses: I'm Invincible After Just a Little Learning</h4>
+<div class="flex flex-col gap-1 mt-2">
+<a class="font-caption text-[13px] text-surface-dim hover:text-shuji-vermillion truncate" href="#">#643 Chapter 642 Buying the Black Market and Establishing a Branch</a>
+<a class="font-caption text-[13px] text-surface-dim hover:text-shuji-vermillion truncate" href="#">#642 Chapter 641 Black Market Observations: Bartering</a>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Right Column (Sidebar) -->
+<aside class="xl:col-span-4 2xl:col-span-3 flex flex-col gap-6 w-full">
+<!-- Novel Ranking Widget -->
+<div class="bg-muted-obsidian/30 rounded-lg border border-white/5">
+<div class="p-4 border-b border-white/5 flex justify-between items-center">
+<h2 class="font-title-md text-title-md text-surface-bright">Novel Ranking</h2>
+<a class="font-label-md text-label-md text-secondary border border-white/10 px-2 py-1 rounded-sm hover:text-shuji-vermillion hover:border-shuji-vermillion/50 transition-colors text-[12px]" href="#">See More</a>
+</div>
+<div class="flex border-b border-white/5">
+<button class="flex-1 py-2 text-center font-label-md text-[13px] text-shuji-vermillion border-b-2 border-shuji-vermillion">Daily</button>
+<button class="flex-1 py-2 text-center font-label-md text-[13px] text-secondary hover:text-surface-bright">Weekly</button>
+<button class="flex-1 py-2 text-center font-label-md text-[13px] text-secondary hover:text-surface-bright">Monthly</button>
+</div>
+<ul class="flex flex-col p-2 gap-2">
+<li class="flex items-center gap-3 p-2 hover:bg-white/5 rounded cursor-pointer group">
+<div class="w-10 h-14 flex-shrink-0 rounded overflow-hidden relative">
+<img class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0eN-EZB-o_SLnE6gkAyHzAa81O3I-bc0JLvn8pt3I01dC_iRUWGLW3Abh7dkiJc5d0L_trFTSD_3N0CNsRoAGkN2chtwpFT01sS2Xqe-mhM0IAp1u_yiDU6vxGAGFDehDlEFJBVckK1hA0aQooXjX7aBEre_glnKmipr_yNZ1kSVqr3ODhYNxaRK5B5WHprAWhYAmlWPHpcPdhHLnr5urh-Ml2L29DKNgnrecfCghaa6iNyou9bH6pQ"/>
+<div class="absolute top-0 left-0 bg-shuji-vermillion text-white text-[10px] font-bold px-1 rounded-br">1</div>
+</div>
+<div class="flex-grow min-w-0">
+<h4 class="font-label-md text-[13px] text-surface-bright truncate group-hover:text-shuji-vermillion">Konoha: My Wood Release Can Photosynthesize</h4>
+<div class="flex items-center gap-3 mt-1">
+<span class="font-caption text-[11px] text-secondary flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">visibility</span> 76347 Views</span>
+<span class="font-caption text-[11px] text-shuji-vermillion flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">star</span> 1.1</span>
+</div>
+</div>
+</li>
+<li class="flex items-center gap-3 p-2 hover:bg-white/5 rounded cursor-pointer group">
+<div class="w-10 h-14 flex-shrink-0 rounded overflow-hidden relative">
+<img class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCcvNLZ9leAP8M1sfBu97mwhPz8XqiL-p_YSBK8tTDa-rx89A8ZEaA0sTuLYPcJH-QKJEQ-xb-NofJKML8DoFLVeNTpCnujk0Fsritj43_bAQrre7SyPuIn9RvEwAQGYF_lCqmaLI8Mk0ipqfarR6UajW52zHUCK_SU0ZyXcDct9wAP_lKIuM5Wzf1gyhCNRyl9XKZ0lBcuJQhmGyVgthdCny3BN3WiW3ySOcnQxK7123B9c-p7MyQEKA"/>
+<div class="absolute top-0 left-0 bg-surface-dim text-sumi-ink text-[10px] font-bold px-1 rounded-br">2</div>
+</div>
+<div class="flex-grow min-w-0">
+<h4 class="font-label-md text-[13px] text-surface-bright truncate group-hover:text-shuji-vermillion">Survive on the Train, I Can Sublimate Everything!</h4>
+<div class="flex items-center gap-3 mt-1">
+<span class="font-caption text-[11px] text-secondary flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">visibility</span> 63659 Views</span>
+<span class="font-caption text-[11px] text-shuji-vermillion flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">star</span> 3.9</span>
+</div>
+</div>
+</li>
+<li class="flex items-center gap-3 p-2 hover:bg-white/5 rounded cursor-pointer group">
+<div class="w-10 h-14 flex-shrink-0 rounded overflow-hidden relative">
+<img class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAIWNRxBF1O6GrZs1I5CuqvN9dly_He1Wa7JoA_Cz7CShe5V4wnc47h36uJIiVfehJkhvBq5b_TjlbU-Rll6k0vRppaamMsi0cP_wU48ygD6Mpvt9ZvXBrxXYrQVZr3rQDaON27kkXvAS5TOGuh4YE49solylND0qZ1VdpvG_tZbPj3VkWVqSiqeoYyeJDSOivc-vJYKyO9l4by4WHdfQnZgYxB9KJ8YKOPNCg5II1jABpxVkcgRmFrXg"/>
+<div class="absolute top-0 left-0 bg-surface-dim/70 text-sumi-ink text-[10px] font-bold px-1 rounded-br">3</div>
+</div>
+<div class="flex-grow min-w-0">
+<h4 class="font-label-md text-[13px] text-surface-bright truncate group-hover:text-shuji-vermillion">Running Away to Africa, Everyone in the Country...</h4>
+<div class="flex items-center gap-3 mt-1">
+<span class="font-caption text-[11px] text-secondary flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">visibility</span> 61045 Views</span>
+<span class="font-caption text-[11px] text-shuji-vermillion flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">star</span> 3.5</span>
+</div>
+</div>
+</li>
+</ul>
+</div>
+<!-- Daily Top Spenders Widget -->
+<div class="bg-muted-obsidian/30 rounded-lg border border-white/5">
+<div class="p-4 border-b border-white/5 flex justify-between items-center">
+<h2 class="font-title-md text-title-md text-surface-bright">Daily Top Spenders</h2>
+<a class="font-label-md text-label-md text-secondary border border-white/10 px-2 py-1 rounded-sm hover:text-shuji-vermillion hover:border-shuji-vermillion/50 transition-colors text-[12px]" href="#">See More</a>
+</div>
+<ul class="flex flex-col p-4 gap-4">
+<li class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center text-yellow-500">
+<span class="material-symbols-outlined text-[18px]">workspace_premium</span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<span class="font-label-md text-[14px] text-surface-bright">Knyghte</span>
+<span class="bg-teal-500/20 text-teal-400 text-[10px] px-1 rounded font-bold">VIP</span>
+</div>
+<span class="font-caption text-[12px] text-shuji-vermillion">4,944.18 Tickets</span>
+</div>
+</li>
+<li class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-gray-400/20 flex items-center justify-center text-gray-400">
+<span class="material-symbols-outlined text-[18px]">workspace_premium</span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<span class="font-label-md text-[14px] text-surface-bright">HarvestRam</span>
+<span class="bg-yellow-500/20 text-yellow-400 text-[10px] px-1 rounded font-bold">VIP</span>
+</div>
+<span class="font-caption text-[12px] text-shuji-vermillion">3,291.1 Tickets</span>
+</div>
+</li>
+<li class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-orange-700/20 flex items-center justify-center text-orange-700">
+<span class="material-symbols-outlined text-[18px]">workspace_premium</span>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<span class="font-label-md text-[14px] text-surface-bright">Profound_Eternal</span>
+<span class="bg-green-500/20 text-green-400 text-[10px] px-1 rounded font-bold">MOD</span>
+</div>
+<span class="font-caption text-[12px] text-shuji-vermillion">2,690.21 Tickets</span>
+</div>
+</li>
+</ul>
+</div>
+<!-- Wider Trending Section -->
+<div class="bg-muted-obsidian/30 rounded-lg border border-white/5 p-6 h-full flex flex-col">
+<div class="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+<h2 class="font-headline-lg text-[24px] text-surface-bright">Trending</h2>
+<span class="bg-shuji-vermillion text-white text-[10px] font-bold px-2 py-0.5 rounded">V2</span>
+</div>
+<ul class="flex flex-col gap-5 flex-grow">
+<li class="flex items-center gap-4 group cursor-pointer">
+<span class="font-display-lg text-[36px] text-shuji-vermillion opacity-80 w-8 text-center font-bold">1</span>
+<div class="flex-grow border-b border-white/5 pb-2 group-hover:border-shuji-vermillion/50 transition-colors">
+<h4 class="font-title-md text-[18px] text-surface-bright shuji-hover line-clamp-1">The Blade of Whispers</h4>
+<div class="flex items-center gap-2 mt-1">
+<span class="material-symbols-outlined text-[14px] text-secondary">trending_up</span>
+<span class="font-caption text-[13px] text-secondary">98.5k readers</span>
+</div>
+</div>
+</li>
+<li class="flex items-center gap-4 group cursor-pointer">
+<span class="font-display-lg text-[36px] text-secondary opacity-50 w-8 text-center font-bold">2</span>
+<div class="flex-grow border-b border-white/5 pb-2 group-hover:border-shuji-vermillion/50 transition-colors">
+<h4 class="font-title-md text-[18px] text-surface-bright shuji-hover line-clamp-1">Echoes of the Lotus</h4>
+<div class="flex items-center gap-2 mt-1">
+<span class="material-symbols-outlined text-[14px] text-secondary">trending_up</span>
+<span class="font-caption text-[13px] text-secondary">85.2k readers</span>
+</div>
+</div>
+</li>
+<li class="flex items-center gap-4 group cursor-pointer">
+<span class="font-display-lg text-[36px] text-secondary opacity-50 w-8 text-center font-bold">3</span>
+<div class="flex-grow border-b border-white/5 pb-2 group-hover:border-shuji-vermillion/50 transition-colors">
+<h4 class="font-title-md text-[18px] text-surface-bright shuji-hover line-clamp-1">The Silent Summit</h4>
+<div class="flex items-center gap-2 mt-1">
+<span class="material-symbols-outlined text-[14px] text-secondary">trending_flat</span>
+<span class="font-caption text-[13px] text-secondary">72.1k readers</span>
+</div>
+</div>
+</li>
+<li class="flex items-center gap-4 group cursor-pointer">
+<span class="font-display-lg text-[36px] text-secondary opacity-50 w-8 text-center font-bold">4</span>
+<div class="flex-grow border-b border-white/5 pb-2 group-hover:border-shuji-vermillion/50 transition-colors">
+<h4 class="font-title-md text-[18px] text-surface-bright shuji-hover line-clamp-1">Neon &amp; Dust</h4>
+<div class="flex items-center gap-2 mt-1">
+<span class="material-symbols-outlined text-[14px] text-secondary">trending_up</span>
+<span class="font-caption text-[13px] text-secondary">64.3k readers</span>
+</div>
+</div>
+</li>
+<li class="flex items-center gap-4 group cursor-pointer">
+<span class="font-display-lg text-[36px] text-secondary opacity-50 w-8 text-center font-bold">5</span>
+<div class="flex-grow border-b border-white/5 pb-2 group-hover:border-shuji-vermillion/50 transition-colors">
+<h4 class="font-title-md text-[18px] text-surface-bright shuji-hover line-clamp-1">Crimson Sky</h4>
+<div class="flex items-center gap-2 mt-1">
+<span class="material-symbols-outlined text-[14px] text-secondary">trending_down</span>
+<span class="font-caption text-[13px] text-secondary">51.9k readers</span>
+</div>
+</div>
+</li>
+</ul>
+<button class="w-full mt-6 py-2.5 border border-white/10 rounded-DEFAULT font-label-md text-label-md text-secondary hover:text-surface-bright hover:border-white/30 transition-all duration-300">
+                        View Full Ranking
+                    </button>
+</div>
+</aside>
+</div>
+</main>
+<!-- Footer -->
+<footer class="bg-surface-container-low dark:bg-muted-obsidian w-full py-12 border-t border-muted-obsidian/10 dark:border-white/5 flat no shadows transition-all duration-300" id="footer">
+<div class="flex flex-col items-center justify-center gap-6 px-margin-desktop max-w-reading mx-auto">
+<img alt="Dokushodo Logo" class="h-12 w-auto object-contain mb-2" src="https://lh3.googleusercontent.com/aida/AP1WRLtchEsI7qWIy48iusmGqqCqfUx6yZSUCAo57IKkDyoAQ7bvqMuouEGESKdKe0ZJKqGtQbl6PFkfHUYE-Jn5T75lEax_2aogsWSmcMOAF296TXNQDgAwg4UYbQrHeg7MNywPhadUAQEh7HqP2bcbCxgDb5dw6MPNDHKHq4_qqB7dwH8J8Ck4UwFrxke802WZBCEFkMqqtQt5WmNLjyJGJca4JUJM1MTvGwcu5fhRpK352cCt_ORtsoxPJBXH"/><span class="font-title-md text-title-md text-on-surface dark:text-surface-bright">Dokushodo</span>
+<div class="flex flex-wrap justify-center gap-6">
+<a class="font-caption text-caption text-secondary dark:text-secondary-fixed-dim hover:border-b hover:border-shuji-vermillion opacity-80 hover:opacity-100 transition-opacity" href="#">About</a>
+<a class="font-caption text-caption text-secondary dark:text-secondary-fixed-dim hover:border-b hover:border-shuji-vermillion opacity-80 hover:opacity-100 transition-opacity" href="#">Support</a>
+<a class="font-caption text-caption text-secondary dark:text-secondary-fixed-dim hover:border-b hover:border-shuji-vermillion opacity-80 hover:opacity-100 transition-opacity" href="#">Stats</a>
+<a class="font-caption text-caption text-secondary dark:text-secondary-fixed-dim hover:border-b hover:border-shuji-vermillion opacity-80 hover:opacity-100 transition-opacity" href="#">Changelog</a>
+<a class="font-caption text-caption text-secondary dark:text-secondary-fixed-dim hover:border-b hover:border-shuji-vermillion opacity-80 hover:opacity-100 transition-opacity" href="#">DMCA</a>
+<a class="font-caption text-caption text-secondary dark:text-secondary-fixed-dim hover:border-b hover:border-shuji-vermillion opacity-80 hover:opacity-100 transition-opacity" href="#">Cookie Policy</a>
+<a class="font-caption text-caption text-secondary dark:text-secondary-fixed-dim hover:border-b hover:border-shuji-vermillion opacity-80 hover:opacity-100 transition-opacity" href="#">Privacy Policy</a>
+<a class="font-caption text-caption text-secondary dark:text-secondary-fixed-dim hover:border-b hover:border-shuji-vermillion opacity-80 hover:opacity-100 transition-opacity" href="#">Terms of Use</a>
+</div>
+<span class="font-caption text-caption text-secondary dark:text-secondary-fixed-dim mt-4">© 2024 Dokushodo. The Way of Reading.</span>
+</div>
+</footer>
+</body></html>

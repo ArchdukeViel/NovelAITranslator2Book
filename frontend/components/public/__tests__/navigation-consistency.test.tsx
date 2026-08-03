@@ -9,6 +9,8 @@ import { render, screen, cleanup, within } from "@testing-library/react";
 import { PublicHeader } from "@/components/public/public-header";
 import { MobileTabBar } from "@/components/public/mobile-tab-bar";
 import { PublicFooter } from "@/components/public/public-footer";
+import { PublicSidebar } from "@/components/public/public-sidebar";
+import { fireEvent } from "@testing-library/react";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -93,16 +95,18 @@ describe("Header navigation consistency", () => {
     setAuth(true);
     renderWithQuery(<PublicHeader />);
 
-    expect(screen.getByRole("link", { name: /^home$/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^browse$/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^request$/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^library$/i })).toBeInTheDocument();
+    const primaryNav = screen.getByRole("navigation", { name: /^primary$/i });
+    expect(within(primaryNav).getByRole("link", { name: /^home$/i })).toBeInTheDocument();
+    expect(within(primaryNav).getByRole("link", { name: /^browse$/i })).toBeInTheDocument();
+    expect(within(primaryNav).getByRole("link", { name: /^request$/i })).toBeInTheDocument();
+    expect(within(primaryNav).getByRole("link", { name: /^library$/i })).toBeInTheDocument();
 
     // Search field — now a button opening the shared overlay (DESIGN.md — Search contract)
     expect(screen.getByRole("button", { name: /search novels/i })).toBeInTheDocument();
 
-    // Theme toggle present
-    expect(screen.getByLabelText(/switch to (dark|light) theme/i)).toBeInTheDocument();
+    // Theme toggle present (scoped to the header banner; the sidebar has its own)
+    const headerBanner = screen.getByRole("banner");
+    expect(within(headerBanner).getByLabelText(/switch to (dark|light) theme/i)).toBeInTheDocument();
 
     // Notification bell present
     expect(screen.getByLabelText(/notifications/i)).toBeInTheDocument();
@@ -111,21 +115,23 @@ describe("Header navigation consistency", () => {
     expect(screen.getByText("a@b.c")).toBeInTheDocument();
     expect(screen.getByLabelText(/sign out/i)).toBeInTheDocument();
 
-    // No hamburger menu button
-    expect(screen.queryByLabelText(/open navigation menu/i)).not.toBeInTheDocument();
+    // Hamburger toggle opens the fixed sidebar (Stitch "Fixed Sidebar" design)
+    expect(screen.getByLabelText(/open navigation menu/i)).toBeInTheDocument();
   });
 
   it("renders desktop header nav items when guest", () => {
     setAuth(false);
     renderWithQuery(<PublicHeader />);
 
-    expect(screen.getByRole("link", { name: /^home$/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^browse$/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^request$/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^library$/i })).toBeInTheDocument();
+    const primaryNav = screen.getByRole("navigation", { name: /^primary$/i });
+    expect(within(primaryNav).getByRole("link", { name: /^home$/i })).toBeInTheDocument();
+    expect(within(primaryNav).getByRole("link", { name: /^browse$/i })).toBeInTheDocument();
+    expect(within(primaryNav).getByRole("link", { name: /^request$/i })).toBeInTheDocument();
+    expect(within(primaryNav).getByRole("link", { name: /^library$/i })).toBeInTheDocument();
 
     expect(screen.getByRole("button", { name: /search novels/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/switch to (dark|light) theme/i)).toBeInTheDocument();
+    const guestBanner = screen.getByRole("banner");
+    expect(within(guestBanner).getByLabelText(/switch to (dark|light) theme/i)).toBeInTheDocument();
 
     // Notification bell is hidden for guests (DESIGN.md guest behavior)
     expect(screen.queryByLabelText(/notifications/i)).not.toBeInTheDocument();
@@ -140,8 +146,49 @@ describe("Header navigation consistency", () => {
     expect(screen.queryByLabelText(/sign out/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/signing out/i)).not.toBeInTheDocument();
 
-    // No hamburger menu button
-    expect(screen.queryByLabelText(/open navigation menu/i)).not.toBeInTheDocument();
+    // Hamburger toggle opens the fixed sidebar (Stitch "Fixed Sidebar" design)
+    expect(screen.getByLabelText(/open navigation menu/i)).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fixed sidebar (Stitch "Fixed Sidebar" design)
+// ---------------------------------------------------------------------------
+
+describe("Fixed sidebar", () => {
+  const sidebarHrefs = [
+    "/home",
+    "/account/library",
+    "/browse-novels",
+    "/random",
+    "/request-novel",
+    "/contribute",
+  ];
+
+  it("every sidebar href resolves to an existing route page", () => {
+    for (const href of sidebarHrefs) {
+      const pagePath = hrefToPagePath(href);
+      expect(existsSync(pagePath), `Missing page for sidebar href ${href}: ${pagePath}`).toBe(true);
+    }
+  });
+
+  it("opens via the hamburger and shows nav links, then closes", () => {
+    setAuth(true);
+    renderWithQuery(<PublicSidebar />);
+
+    const toggle = screen.getByLabelText(/open navigation menu/i);
+    fireEvent.click(toggle);
+
+    const nav = screen.getByRole("navigation", { name: /sidebar/i });
+    expect(within(nav).getByRole("link", { name: /home/i })).toHaveAttribute("href", "/home");
+    expect(within(nav).getByRole("link", { name: /browse novels/i })).toHaveAttribute("href", "/browse-novels");
+    expect(within(nav).getByRole("link", { name: /random novel/i })).toHaveAttribute("href", "/random");
+    expect(within(nav).getByRole("link", { name: /request novel/i })).toHaveAttribute("href", "/request-novel");
+    expect(within(nav).getByRole("link", { name: /contributions/i })).toHaveAttribute("href", "/contribute");
+
+    fireEvent.click(screen.getByLabelText(/close navigation menu/i));
+    // Panel closes by translating off-canvas; assert toggle is collapsed again.
+    expect(screen.getByLabelText(/open navigation menu/i)).toHaveAttribute("aria-expanded", "false");
   });
 });
 

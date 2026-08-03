@@ -119,18 +119,21 @@ describe("HomePage honest spotlight", () => {
 });
 
 describe("HomePage rails", () => {
-  it("renders labeled New Releases and Recently Updated rails with real See all links", () => {
+  it("renders labeled New Novels grid and Recent Updates list with real See More links", () => {
     renderHome();
-    expect(screen.getByRole("region", { name: "New releases" })).toBeInTheDocument();
+    const newNovels = screen.getByRole("region", { name: "New releases" });
+    expect(
+      within(newNovels).getByRole("link", { name: "See More" })
+    ).toHaveAttribute("href", "/browse-novels?sort_by=added_at&order=desc");
     const updated = screen.getByRole("region", { name: "Recently updated" });
-    expect(within(updated).getByRole("link", { name: "See all" })).toHaveAttribute("href", "/browse-novels?sort_by=updated_at&order=desc");
+    expect(
+      within(updated).getByRole("link", { name: "See More" })
+    ).toHaveAttribute("href", "/browse-novels?sort_by=updated_at&order=desc");
   });
 
-  it("shows a quiet sign-in continuation tile to guests", () => {
+  it("hides the Continue reading region for guests", () => {
     renderHome();
-    const continuation = screen.getByRole("region", { name: "Continue reading" });
-    expect(within(continuation).getByText(/sign in to pick up/i)).toBeInTheDocument();
-    expect(within(continuation).getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login?mode=signin");
+    expect(screen.queryByRole("region", { name: "Continue reading" })).not.toBeInTheDocument();
   });
 
   it("uses existing history for signed-in Continue Reading", () => {
@@ -148,9 +151,18 @@ describe("HomePage rails", () => {
     expect(within(fantasy).getByRole("link", { name: "See all" })).toHaveAttribute("href", "/genres/fantasy");
   });
 
-  it("links Surprise Me to the real random route", () => {
+  it("links Surprise Me and the discovery tiles to real routes", () => {
     renderHome();
     expect(screen.getByRole("link", { name: /surprise me/i })).toHaveAttribute("href", "/random");
+    expect(screen.getByRole("link", { name: /random novel/i })).toHaveAttribute("href", "/random");
+    expect(screen.getByRole("link", { name: /request novel/i })).toHaveAttribute("href", "/request-novel");
+  });
+
+  it("renders honest catalog-derived sidebar widgets", () => {
+    renderHome();
+    expect(screen.getByText("Novel Ranking")).toBeInTheDocument();
+    expect(screen.getByText("Longest Series")).toBeInTheDocument();
+    expect(screen.getByText("Most Chapters")).toBeInTheDocument();
   });
 
   it("removes Reading Paths and duplicate browse utility boxes", () => {

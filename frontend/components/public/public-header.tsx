@@ -8,6 +8,7 @@ import { NotificationIndicator } from "@/components/public/notification-indicato
 import { SearchEntry } from "@/components/public/search-entry";
 import { CurrentUserIndicator } from "@/components/public/current-user-indicator";
 import { PublicBrand } from "@/components/public/public-brand";
+import { PublicSidebar } from "@/components/public/public-sidebar";
 import { PublicThemeToggle } from "@/components/public/public-theme-toggle";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +29,7 @@ export function PublicHeader() {
   return (
     <header className="sticky top-0 z-30 border-b border-border/80 bg-background/95 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
+        <PublicSidebar />
         <PublicBrand className="shrink-0" />
 
         <nav

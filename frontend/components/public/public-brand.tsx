@@ -17,12 +17,12 @@ export function PublicBrand({
   return (
     <Link
       href="/home"
-      className={cn("inline-flex items-center gap-2 text-foreground", className)}
+      className={cn("inline-flex items-center gap-2.5 text-foreground", className)}
       aria-label="Dokushodo home"
     >
       <span
         className={cn(
-          "flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-primary",
+          "flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-transparent",
           markClassName
         )}
         aria-hidden="true"
@@ -33,14 +33,14 @@ export function PublicBrand({
           width={32}
           height={32}
           sizes="32px"
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain"
         />
       </span>
       <span className="flex min-w-0 flex-col leading-none">
-        <span className="font-literary text-base font-semibold tracking-normal text-foreground">
+        <span className="font-literary text-base font-semibold tracking-normal text-primary">
           読書道
         </span>
-        <span className="mt-1 text-xs font-medium text-muted-foreground">
+        <span className="mt-0.5 text-xs font-medium text-muted-foreground">
           Dokushodo
         </span>
         {showPoweredBy && (

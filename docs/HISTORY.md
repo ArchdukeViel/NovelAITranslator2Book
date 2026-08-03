@@ -494,3 +494,17 @@ Restructured the frontend design documentation into a single global authority pl
 - **Route coverage**: All 55 App Router routes map to exactly one brief or a documented redirect; zero uncovered routes and zero orphan briefs.
 
 Validation: 53 briefs contain all 21 required headings; zero matches for implementation residue patterns and for EN/EM dashes across `docs/DESIGN.md` and `docs/design/`; final tree contains only `docs/design/public/*.md` and `docs/design/admin/*.md`; `git diff --check` clean; `graphify update . --no-cluster` success. Documentation-only change; no source code touched.
+
+## 2026-08-03 Home Page Stitch Replica, Fixed Sidebar & Transparent Logo
+
+Reworked the public home page from scratch to replicate the "Dokushodo - Fixed Sidebar & Transparent Logo" Stitch screen (project Minimalist Webnovel Portal, screen `1794eb02d11a407b9b6343d727670125`), and installed the Stitch "Dokushodo Transparent Logo" screen as the live brand mark.
+
+- **Stitch assets downloaded**: screen screenshot + full HTML/design-system export saved under `docs/design/exports/` (`1794eb02d11a407b9b6343d727670125.png`/`.html`; transparent logo `84294fafeb3a416db59bfb68006301b0.png`).
+- **Transparent brand mark**: `frontend/public/assets/dokushodo/brand/brand-mark.png` replaced with the Stitch transparent logo (1024x1024, ~97 KB); `PublicBrand` already renders it on a transparent container with `object-contain` at h-8.
+- **Collapsible fixed left sidebar**: new `frontend/components/public/public-sidebar.tsx` (240px drawer, hidden by default, slides in via the header hamburger over a dimming backdrop, closes via backdrop/close/Escape/route change, `aria-expanded`/`aria-controls`/labeled landmark, theme control, body scroll lock, portal-mounted). Wired into `public-header.tsx`.
+- **Home page rework (`app/(public)/home/page.tsx`)**: 12-column editorial grid (main feed 8 cols + right sidebar 4 cols, collapsing to a single stacked column on mobile); hero spotlight card; Random Novel / Request Novel banner tiles; Continue Reading rail (signed-in only); New Releases 5-column Bunko card grid (2-col on mobile); Recently Updated list; genre rails; Surprise Me callout; right-hand sidebar widgets.
+- **Honesty contract preserved**: the Stitch mock's fake metrics (views, ratings, "Top Spenders", reader counts) were replaced with honest catalog-derived widgets. Sidebar widgets are `Novel Ranking` (by translated chapters), `Longest Series` (by chapter count), and `Most Chapters`; section headers keep the canonical honest labels `New Releases` and `Recently Updated`. The `visual-atmosphere-honesty` contract continues to forbid a `Trending` header.
+- **Tests updated deliberately**: `home-page-data.test.tsx` (new layout contract, `See More` controls, widget labels, guest Continue Reading hidden), `navigation-consistency.test.tsx` (sidebar presence asserted instead of absence, queries scoped to landmarks to tolerate the portal, new Fixed sidebar suite). `visual-atmosphere-honesty.test.tsx` passes unchanged.
+- **Docs**: `docs/design/public/home.md` rewritten to the new composition; `docs/DESIGN.md` shell section 7.3 documents the fixed sidebar + hamburger and the z-index note updated for the nav drawer layer.
+
+Validation: `npm run typecheck` exit 0; `npm run test` 844 passed across 76 files; `eslint` on changed files clean; `graphify update . --no-cluster` success.

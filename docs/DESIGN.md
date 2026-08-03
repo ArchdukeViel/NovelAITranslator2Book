@@ -1,3 +1,117 @@
+---
+name: Dokushodo
+colors:
+  surface: '#fcf9f3'
+  surface-dim: '#dcdad4'
+  surface-bright: '#fcf9f3'
+  surface-container-lowest: '#ffffff'
+  surface-container-low: '#f6f3ed'
+  surface-container: '#f0eee8'
+  surface-container-high: '#ebe8e2'
+  surface-container-highest: '#e5e2dc'
+  on-surface: '#1c1c18'
+  on-surface-variant: '#59413d'
+  inverse-surface: '#31312d'
+  inverse-on-surface: '#f3f0ea'
+  outline: '#8c716c'
+  outline-variant: '#e0bfb9'
+  surface-tint: '#ad3222'
+  primary: '#9b2617'
+  on-primary: '#ffffff'
+  primary-container: '#bd3e2c'
+  on-primary-container: '#ffe6e2'
+  inverse-primary: '#ffb4a7'
+  secondary: '#5b5f63'
+  on-secondary: '#ffffff'
+  secondary-container: '#dde0e5'
+  on-secondary-container: '#5f6368'
+  tertiary: '#005975'
+  on-tertiary: '#ffffff'
+  tertiary-container: '#007396'
+  on-tertiary-container: '#d5f0ff'
+  error: '#ba1a1a'
+  on-error: '#ffffff'
+  error-container: '#ffdad6'
+  on-error-container: '#93000a'
+  primary-fixed: '#ffdad4'
+  primary-fixed-dim: '#ffb4a7'
+  on-primary-fixed: '#400200'
+  on-primary-fixed-variant: '#8b1a0c'
+  secondary-fixed: '#e0e3e8'
+  secondary-fixed-dim: '#c3c7cc'
+  on-secondary-fixed: '#181c20'
+  on-secondary-fixed-variant: '#43474c'
+  tertiary-fixed: '#bfe8ff'
+  tertiary-fixed-dim: '#7fd1f7'
+  on-tertiary-fixed: '#001f2b'
+  on-tertiary-fixed-variant: '#004d65'
+  background: '#fcf9f3'
+  on-background: '#1c1c18'
+  surface-variant: '#e5e2dc'
+  shuji-vermillion: '#BD3E2C'
+  washi-paper: '#F9F6F0'
+  sumi-ink: '#1A1A1A'
+  aged-parchment: '#F2EFE7'
+  muted-obsidian: '#212529'
+  discord-blurple: '#5865F2'
+typography:
+  display-lg:
+    fontFamily: EB Garamond
+    fontSize: 48px
+    fontWeight: '500'
+    lineHeight: 56px
+    letterSpacing: -0.02em
+  headline-lg:
+    fontFamily: EB Garamond
+    fontSize: 32px
+    fontWeight: '500'
+    lineHeight: 40px
+  headline-lg-mobile:
+    fontFamily: EB Garamond
+    fontSize: 28px
+    fontWeight: '500'
+    lineHeight: 36px
+  title-md:
+    fontFamily: EB Garamond
+    fontSize: 22px
+    fontWeight: '500'
+    lineHeight: 28px
+  body-lg:
+    fontFamily: Hanken Grotesk
+    fontSize: 18px
+    fontWeight: '400'
+    lineHeight: 32px
+  body-md:
+    fontFamily: Hanken Grotesk
+    fontSize: 16px
+    fontWeight: '400'
+    lineHeight: 26px
+  label-md:
+    fontFamily: Hanken Grotesk
+    fontSize: 14px
+    fontWeight: '600'
+    lineHeight: 20px
+    letterSpacing: 0.05em
+  caption:
+    fontFamily: Hanken Grotesk
+    fontSize: 12px
+    fontWeight: '400'
+    lineHeight: 16px
+rounded:
+  sm: 0.125rem
+  DEFAULT: 0.25rem
+  md: 0.375rem
+  lg: 0.5rem
+  xl: 0.75rem
+  full: 9999px
+spacing:
+  unit: 4px
+  gutter: 24px
+  margin-mobile: 20px
+  margin-desktop: 64px
+  max-width-reading: 720px
+---
+
 # Dokushodo Design System
 
 Canonical design authority for Dokushodo (読書道), a public reader for translated Japanese web novels with an owner-operated ingestion and translation control plane. This document is the single source of truth for visual identity, tokens, layout, components, states, accessibility, responsive behavior, motion, copy, and anti-slop rules. It supersedes all earlier design documents and is the reference for every page brief under `docs/design/`.
@@ -72,6 +186,79 @@ Interpretation:
 - Admin: utilitarian control plane. Very high density, low variance, minimal motion, no public literary motifs.
 - Informational, trust, and system pages (about, contact, cookie policy, DMCA, FAQ, legal, maintenance, news, not found, error, privacy, support, terms): public surface values applied at the restrained end. One focal moment or action at most, no decorative motifs, calm editorial composition.
 
+## Brand & Style
+
+The design system is centered on the concept of *The Way of Reading*. It moves away from the aggressive, gamified patterns of modern webnovel platforms toward a meditative, literary experience inspired by Japanese *Bunko-bon* (pocket-sized paperback) aesthetics.
+
+The visual style is **Contemporary Minimalism with Tactile Editorial influences**. It prioritizes high-fidelity "Washi" textures, generous negative space, and a refined editorial hierarchy. The emotional goal is to evoke the quiet focus of a physical library, utilizing subtle transitions and a sophisticated color palette to reduce digital fatigue.
+
+The aesthetic blends **Minimalism** with **Tactile** elements: surfaces feel like weighted paper, and interactive elements use high-contrast accents reminiscent of traditional Japanese calligraphy stamps (Hanko).
+
+## Colors
+
+The palette is anchored by **Washi Paper (#F9F6F0)**, a warm, off-white neutral that reduces eye strain compared to pure white. The primary accent is **Shuji Vermillion (#BD3E2C)**, a deep, desaturated red used sparingly for critical actions and brand markers, mimicking the ink used in traditional calligraphy.
+
+**Text and UI Elements:**
+- Use **Sumi Ink (#1A1A1A)** for primary body text to maintain high contrast without the harshness of pure black.
+- **Muted Obsidian (#212529)** is reserved for UI borders and secondary surfaces.
+
+**Dark Mode:**
+In dark mode, the "Washi" background shifts to a deep charcoal (Obsidian), and text adopts a soft grey-white. The Vermillion remains constant but is slightly desaturated to prevent "vibration" against dark backgrounds.
+
+## Typography
+
+This design system employs a dual-font strategy to balance literary elegance with functional clarity.
+
+- **EB Garamond (Serif):** Used for all high-level storytelling elements, including book titles, chapter headings, and long-form reading content. It evokes the prestige of classical publishing.
+- **Hanken Grotesk (Sans-Serif):** Used for navigation, metadata, buttons, and functional labels. Its sharp, contemporary geometry provides a clean counterpoint to the organic curves of the serif.
+
+**Reading Experience:**
+Body text (reading mode) should prioritize the serif face with a line height of at least 1.7x to ensure a breathable, "book-like" flow. Headlines use slightly tighter tracking to maintain a strong editorial presence.
+
+## Layout & Spacing
+
+The layout philosophy follows a **Fixed-Column Editorial Grid**.
+
+- **Reading View:** Content is strictly centered with a maximum width of 720px to optimize line length for readability.
+- **Shelf/Discovery View:** A 12-column fluid grid on desktop, transitioning to a 2-column grid on mobile.
+- **Rhythm:** An 8px base unit is used for component spacing, while 24px and 48px increments are used for section padding to reinforce the minimalist "luxury of space."
+
+Vertical rhythm is critical; spacing between a title and its body text is kept tight, while spacing between distinct content modules is kept very wide to avoid the cluttered feel of typical webnovel aggregators.
+
+## Elevation & Depth
+
+Depth is achieved through **Tonal Layering** and **Subtle Outlines** rather than heavy shadows.
+
+- **The Base:** The washi-paper background is the lowest layer.
+- **Surface Tier:** Cards and containers use a slightly darker paper tint (Aged Parchment) or a 1px solid border in Muted Obsidian with 10% opacity.
+- **Floating Elements:** Modals and dropdowns use a "Ghost Shadow", a very soft, 15% opacity tint of Vermillion or Obsidian with a 32px blur, suggesting a physical object resting on paper.
+- **Active State:** Selection is indicated by a vertical Vermillion bar or a subtle fill change, never a heavy glow.
+
+## Shapes
+
+The shape language is primarily **Soft (0.25rem)**.
+
+While the system values precision, sharp corners are avoided to maintain a gentle, approachable feel. Book covers in the "Shelf" view should have a subtle 2px radius to mimic the slightly worn corners of a physical volume. Buttons are rectangular with minimal rounding, emphasizing a sophisticated, mature aesthetic over "bubbly" app patterns.
+
+## Components
+
+**Buttons:**
+- Primary: Solid Sumi Ink with Washi Paper text. No gradients.
+- Secondary: Outline only (1px), using Muted Obsidian.
+- Action: Small, text-only buttons using Vermillion with a bottom-border hover effect.
+
+**The "Bunko" Card:**
+Used for book listings. It features a vertical layout, the book cover at the top, followed by the title in EB Garamond. Metadata (author, tags) is rendered in small, all-caps Hanken Grotesk.
+
+**Reading Controls:**
+A floating or pinned bottom bar that disappears during active scrolling. Icons are thin-stroke (1.5px) to match the weight of the typography.
+
+**Inputs:**
+Underlined inputs only (minimalist style) rather than boxed fields, utilizing the Washi background to maintain a "writing paper" feel. The focus state changes the underline color to Shuji Vermillion.
+
+**Chips/Tags:**
+Small, rectangular shapes with 2px radius. Backgrounds match the secondary surface color (Aged Parchment) to remain unobtrusive.
+
 ## 4. Brand Identity
 
 ### 4.1 Name and logo roles
@@ -82,11 +269,11 @@ Interpretation:
 ### 4.2 Brand mark (minimalist)
 
 - File: `frontend/public/assets/dokushodo/brand/brand-mark.png`
-- A one-color minimalist pinched-lantern silhouette, no gradients.
+- Transparent-background logo (Stitch export, screen "Dokushodo Transparent Logo"), rendered on transparent containers with `object-contain` so the surrounding surface shows through.
 - Used in desktop and mobile navigation headers and the footer.
 - Must remain recognizable from 16px to 64px height.
 - Safe zone: 4px padding around the mark.
-- Budget: under 50 KiB.
+- Budget: under 200 KiB (current asset 97 KB, 1024x1024).
 
 ### 4.3 Application icon (detailed)
 
@@ -232,7 +419,7 @@ Rules:
 
 ### 7.3 Shells
 
-- Public shell: sticky header with inline links (Home, Browse, Request, Library), search trigger, theme toggle, notification bell, and user menu on `md` and up; compact header plus fixed bottom tab bar (Home, Browse, Search, Library, Account) below `md`. Footer with navigation and legal columns.
+- Public shell: sticky header with a hamburger that opens a collapsible fixed left sidebar (Home, Library, Browse Novels, Random Novel, Request Novel, Contributions, theme control), inline links (Home, Browse, Request, Library), search trigger, theme toggle, notification bell, and user menu on `md` and up; compact header plus fixed bottom tab bar (Home, Browse, Search, Library, Account) below `md`. The fixed sidebar is 240px, hidden by default, slides in over a dimming backdrop, and is dismissed by the backdrop, a close control, Escape, or route change. Footer with navigation and legal columns.
 - Account shell: fixed left sidebar (desktop) with Library, History, Notifications, Requests, Reviews, Contributions, Settings, an Unavailable Support entry, theme control, and Sign out; mobile shows a horizontal scrollable sub-navigation bar instead.
 - Admin shell: fixed left sidebar with Home, Add Novel, Library, Activity Log, Scheduler, Maintenance, Analytics, Requests, Reviews, Users, Editor, Credentials, Settings, Audit Log; top bar with breadcrumb and session controls; collapsible drawer on narrow viewports.
 - Reader chrome: on chapter routes the public header, tab bar, and footer are suppressed entirely; only a minimal reader chrome bar and progress line remain.
@@ -255,7 +442,7 @@ Rules:
 - Overlay backdrops may use subtle blur; static surfaces must not.
 - Prohibited: decorative glow, colored shadows, or elevation on non-overlay UI surfaces.
 - Icon sizing: 16 to 20px inline icons; 24px+ for touch-primary icons.
-- Z-index scale: sticky header 1, sticky content 10, sidebar 20, public header 30, mobile nav and fixed CTAs 40, modal/search/reader chrome 50, admin overlay 60, skip link 100. No arbitrary values.
+- Z-index scale: sticky header 1, sticky content 10, sidebar 20, public header 30, mobile nav and fixed CTAs 40, modal/search/reader chrome 50 (the public navigation drawer and its backdrop use this layer so they sit above the header and tab bar), admin overlay 60, skip link 100. No arbitrary values.
 
 ## 9. Component and Interaction System
 
