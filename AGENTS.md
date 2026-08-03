@@ -21,7 +21,7 @@ Do not preload every document. Load canonical detail only when relevant:
 | Global frontend design index | `docs/DESIGN.md` |
 | Public page design | `docs/design/public/...` |
 | Admin page design | `docs/design/admin/...` |
-| Shared design & accessibility rules | `docs/design/shared/...` |
+| Shared design, system & accessibility rules | `docs/DESIGN.md` |
 | Configuration | `docs/CONFIGURATION.md` |
 | CI, deployment, or operator procedure | `docs/DEPLOYMENT.md` |
 | Unfinished work | `docs/WORK.md` |
