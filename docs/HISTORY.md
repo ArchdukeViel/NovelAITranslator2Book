@@ -473,8 +473,8 @@ WORK.md re-audit: all remaining open items (`DEBT-075`, `DEBT-079` — excluded 
 Refined public visual design tokens to **Option 1 (Shuji Vermillion & Washi Paper)** and established brand asset & PWA infrastructure:
 
 - **Shuji Vermillion Palette Refinement**: Primary accent updated from orange (`hsl(28 78% 50%)`) to rich Shuji Vermillion (`hsl(14 80% 50%)` in `:root`, `hsl(14 85% 55%)` in `.dark`). Background updated to Washi Warm Paper (`hsl(38 25% 96%)`) in light mode and Midnight Slate (`hsl(222 25% 10%)`) in dark mode. Focus rings (`--ring`/`--focus-ring`) updated to match Vermillion brand tone.
-- **Brand & Favicon Assets**: Created scalable SVG brand mark (`frontend/public/assets/dokushodo/brand/icon.svg`), `favicon.ico`, `apple-touch-icon.png` (180×180), `icon-192.png`, and `icon-512.png`.
+- **Brand & Favicon Assets**: Created scalable SVG brand mark (`frontend/public/assets/dokushodo/brand/icon.svg`), `favicon.ico`, `apple-touch-icon.png` (180×180), `icon-192.png`, and `icon-512.png` under `frontend/public/assets/dokushodo/brand/`.
 - **PWA Web Manifest**: Added Next.js metadata route `frontend/app/manifest.ts` providing standalone web manifest configuration (`manifest.webmanifest`), and updated `frontend/app/layout.tsx` metadata with `icons` and `manifest`.
-- **Documentation**: Updated `docs/design/public/design-system.md` token tables and `docs/design/public/assets.md` status.
+- **Documentation**: Updated `docs/design/public/design-system.md` token tables, `docs/design/public/assets.md`, and `frontend/public/assets/dokushodo/README.md` asset index trees.
 
 Validation: `token-contrast.test.ts` 4 passed (17 WCAG AA token pairs); `reader-contrast.test.ts` 6 passed (light/dark/sepia themes); `npm run typecheck`, `npm run lint`, `npm run build` static generation (52/52 pages) success.

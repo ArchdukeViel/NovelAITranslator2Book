@@ -23,16 +23,16 @@ Specification for brand assets, illustrations, and image handling.
 - **Status**: Implemented
 - **Files**:
   - `frontend/public/assets/dokushodo/brand/icon.svg` (primary scalable vector)
-  - `frontend/public/favicon.ico` (fallback multi-resolution)
-  - `frontend/public/apple-touch-icon.png` (180×180px)
+  - `frontend/public/assets/dokushodo/brand/favicon.ico` (fallback multi-resolution)
+  - `frontend/public/assets/dokushodo/brand/apple-touch-icon.png` (180×180px)
 
 ### PWA Icons & Web Manifest
 
 - **Status**: Implemented
 - **Files**:
   - `frontend/app/manifest.ts` (App Router metadata route for `manifest.webmanifest`)
-  - `frontend/public/icon-192.png` (`any` purpose icon, 192×192)
-  - `frontend/public/icon-512.png` (`maskable` purpose icon, 512×512)
+  - `frontend/public/assets/dokushodo/brand/icon-192.png` (`any` purpose icon, 192×192)
+  - `frontend/public/assets/dokushodo/brand/icon-512.png` (`maskable` purpose icon, 512×512)
 
 ## Illustration System
 
@@ -63,7 +63,12 @@ All assets live under `frontend/public/assets/dokushodo/`:
 ```
 frontend/public/assets/dokushodo/
 ├── brand/
+│   ├── apple-touch-icon.png
 │   ├── brand-mark.png
+│   ├── favicon.ico
+│   ├── icon-192.png
+│   ├── icon-512.png
+│   ├── icon.svg
 │   └── open-graph.png
 └── illustrations/
     ├── 404.png
