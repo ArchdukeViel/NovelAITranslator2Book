@@ -18,16 +18,27 @@ def _utc_now_iso() -> str:
 
 @dataclass
 class GenerationManifest:
-    """Manifest tracking a staged generation run."""
+    """Manifest tracking a staged generation run matching Section 8 requirements."""
 
     generation_id: str
     novel_id: str
+    source_key: str = ""
+    source_work_id: str = ""
     created_at: str = field(default_factory=_utc_now_iso)
-    status: str = "staging"  # "staging", "active", "failed"
+    committed_at: str | None = None
+    activated_at: str | None = None
+    status: str = "staging"  # "staging", "committed", "active", "failed"
+    metadata_fingerprint: str = ""
+    index_fingerprint: str = ""
+    expected_chapters: int = 0
+    saved_chapters: int = 0
+    reused_chapters: int = 0
+    failed_chapters: int = 0
+    removed_episode_ids: list[str] = field(default_factory=list)
     chapter_ids: list[str] = field(default_factory=list)
     source_hashes: dict[str, str] = field(default_factory=dict)
+    parser_versions: dict[str, str] = field(default_factory=dict)
     translation_versions: dict[str, str] = field(default_factory=dict)
-    activated_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -37,12 +48,23 @@ class GenerationManifest:
         return cls(
             generation_id=str(data.get("generation_id", "")),
             novel_id=str(data.get("novel_id", "")),
+            source_key=str(data.get("source_key", "")),
+            source_work_id=str(data.get("source_work_id", "")),
             created_at=str(data.get("created_at", _utc_now_iso())),
+            committed_at=data.get("committed_at"),
+            activated_at=data.get("activated_at"),
             status=str(data.get("status", "staging")),
+            metadata_fingerprint=str(data.get("metadata_fingerprint", "")),
+            index_fingerprint=str(data.get("index_fingerprint", "")),
+            expected_chapters=int(data.get("expected_chapters", 0)),
+            saved_chapters=int(data.get("saved_chapters", 0)),
+            reused_chapters=int(data.get("reused_chapters", 0)),
+            failed_chapters=int(data.get("failed_chapters", 0)),
+            removed_episode_ids=list(data.get("removed_episode_ids", [])),
             chapter_ids=list(data.get("chapter_ids", [])),
             source_hashes=dict(data.get("source_hashes", {})),
+            parser_versions=dict(data.get("parser_versions", {})),
             translation_versions=dict(data.get("translation_versions", {})),
-            activated_at=data.get("activated_at"),
         )
 
 
@@ -109,6 +131,8 @@ def activate_generation(
         raise FileNotFoundError(f"Generation manifest for {novel_id}/{generation_id} not found.")
 
     manifest = GenerationManifest.from_dict(json.loads(self._read_text(manifest_path)))
+    manifest.status = "committed"
+    manifest.committed_at = _utc_now_iso()
     manifest.status = "active"
     manifest.activated_at = _utc_now_iso()
 
