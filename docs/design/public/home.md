@@ -32,9 +32,9 @@ Start Reading on the hero spotlight card.
 ## Desktop Composition
 - Wide content column (max ~1600px) split into a 12-column grid: main feed spans 8 columns, sidebar spans 4 (3 at very wide)
 - Fixed left sidebar (240px) hidden by default; it slides in from the header hamburger and is dismissed by the backdrop, the close control, or Escape
-- Hero spotlight card at the top of the feed: eyebrow "Spotlight" in vermillion, serif title, source title, metadata, synopsis, genre chips, and a vermillion Start Reading button beside an asymmetric cover card
+- Hero spotlight card at the top of the feed: eyebrow "Featured Series" in vermillion, serif title, source title (italic, when distinct), an honest metadata row (status and translated/chapter counts from catalog fields), synopsis, up to three genre chips, and a vermillion Start Reading button beside an asymmetric bookplate cover card; subtle palette-wash background, never a stretched portrait image
 - Two half-width discovery banner tiles beneath the hero (Random Novel, Request Novel)
-- New Releases as a 5-column Bunko card grid (2 columns on small screens) under a bordered section header with a "See More" control
+- New Releases as a 5-column Bunko card grid (2 columns on small screens) under a bordered section header with a "See More" control; cards added within the freshness window carry a small vermillion NEW chip derived only from the real `added_at` catalog field
 - Recently Updated as a stacked list of rows (cover thumbnail, relative time, title, latest chapter) inside a bordered panel
 - Genre rails and the Surprise Me callout at the foot of the feed
 - Right sidebar widgets stacked vertically, each a bordered panel with a small "See More" control
@@ -48,10 +48,10 @@ Start Reading on the hero spotlight card.
 ## Page Anatomy
 - Public header (hamburger, brand, inline nav, search, theme, user)
 - Collapsible fixed left sidebar
-- Hero spotlight
+- Hero spotlight (eyebrow, title, source title, metadata row, synopsis, genre chips, Start Reading, asymmetric cover card)
 - Discovery banner tiles
 - Continue Reading rail
-- New Releases grid
+- New Releases grid (with honest NEW chips on fresh arrivals)
 - Recently Updated list
 - Genre rails
 - Surprise Me callout
@@ -59,8 +59,8 @@ Start Reading on the hero spotlight card.
 - Public footer
 
 ## Key Components
-- Spotlight card
-- Bunko novel card
+- Spotlight card (asymmetric copy + bookplate cover)
+- Bunko novel card (NEW chip on fresh arrivals only)
 - Banner tile
 - Recent update row
 - Ranked sidebar item
@@ -120,13 +120,15 @@ Calm two-column editorial layout; quiet Bunko cards on washi paper; one vermilli
 - Surprise Me behavior
 - Quiet density with no decorative motion
 - No invented metrics: never show views, reader counts, ratings, or spender leaderboards. Sidebar widgets are derived from real catalog fields (translated chapters, chapter count, added date) and use honest labels only.
+- NEW chips appear only when `added_at` is inside the freshness window (14 days) and never as a marketing claim
 
 ## Avoid
-- Hero carousels, autoplay, or rotating slides
+- Hero carousels, autoplay, or rotating slides (the spotlight may expose manual slide dots, never autoplay)
 - Fake curation labels or editorial claims
 - Confetti or celebratory graphics
 - More than one vermillion action per card region
 - "Trending", "Top Spenders", "Most Read", or view/rating counts presented as if they were live metrics
+- Stretched portrait imagery or invented banner art in the hero
 
 ## Stitch Output Requirements
 - Produce the settled state as a 1440 px desktop frame and a 390 px mobile frame

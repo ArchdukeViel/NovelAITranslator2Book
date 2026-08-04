@@ -79,6 +79,25 @@ function chapterLabel(number: number | null | undefined): string | null {
   return `Chapter ${number}`;
 }
 
+/** Honest freshness flag derived from the real added_at catalog field. */
+function isNewlyAdded(
+  iso: string | null | undefined,
+  withinDays = 14
+): boolean {
+  if (!iso) return false;
+  const added = new Date(iso).getTime();
+  if (Number.isNaN(added)) return false;
+  return Date.now() - added <= withinDays * 24 * 60 * 60 * 1000;
+}
+
+function NewBadge() {
+  return (
+    <span className="absolute left-2 top-2 z-10 rounded-sm bg-primary px-1.5 py-0.5 font-metadata text-[10px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm">
+      New
+    </span>
+  );
+}
+
 /* --------------------------- shared surface utilities ------------------------ */
 /* Elevation discipline: cards are SOLID one step up from the paper (bg-card vs
    bg-background), resting on shadow-card; hover lifts with shadow-raised. Dark
@@ -98,6 +117,7 @@ function RailCard({ novel }: { novel: PublicNovelSummary }) {
     <article role="listitem" className="w-44 shrink-0 snap-start">
       <Link href={publicNovelHref(novel.slug)} className="group block">
         <div className="relative overflow-hidden rounded-md bg-card p-1.5 shadow-card transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-raised hover:ring-1 hover:ring-primary/40">
+          {isNewlyAdded(novel.added_at) && <NewBadge />}
           <FallbackCover
             title={novel.title}
             sourceTitle={novel.source_title}
@@ -396,71 +416,106 @@ export default function HomePage() {
           {/* Spotlight hero carousel */}
           <section
             aria-label="Dokushodo spotlight novel"
-            className="group relative h-[480px] min-h-[400px] w-full overflow-hidden rounded-xl bg-card shadow-lg"
+            className="group relative min-h-[420px] w-full overflow-hidden rounded-xl bg-card shadow-lg"
           >
             {currentSpotlight ? (
               <>
-                {/* Atmospheric Background Layer with FallbackCover as visual base */}
-                <div className="absolute inset-0 opacity-40 transition-transform duration-700 group-hover:scale-105">
-                  <FallbackCover
-                    title={currentSpotlight.title}
-                    sourceTitle={currentSpotlight.source_title}
-                    language={currentSpotlight.language}
-                    status={currentSpotlight.publication_status}
-                    genres={currentSpotlight.genres}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-                {/* Gradient Overlay matching Stitch */}
-                <div className="absolute inset-0 bg-gradient-to-t from-background via-background/85 to-transparent" />
+                {/* Atmospheric background layer (subtle palette wash, not a stretched bookplate) */}
+                <div
+                  className="absolute inset-0 bg-gradient-to-br from-primary/10 via-card to-background"
+                  aria-hidden="true"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/25 to-transparent" />
 
                 {/* Content Overlay */}
-                <div className="absolute inset-0 flex flex-col justify-end p-6 sm:p-8 lg:p-10">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="font-metadata text-xs font-semibold uppercase tracking-wider text-primary">
-                      Featured Series {spotlightNovels.length > 1 ? `(${heroIndex + 1}/${spotlightNovels.length})` : ""}
-                    </span>
-                    {spotlightNovels.length > 1 && (
-                      <div className="flex gap-1.5 z-10" aria-label="Featured series carousel controls">
-                        {spotlightNovels.slice(0, 5).map((_, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => setHeroIndex(idx)}
-                            className={cn(
-                              "h-2 rounded-full transition-all",
-                              idx === heroIndex ? "w-6 bg-primary" : "w-2 bg-muted-foreground/40 hover:bg-muted-foreground"
-                            )}
-                            aria-label={`Go to slide ${idx + 1}`}
+                <div className="relative flex flex-col gap-8 p-6 sm:p-8 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-12 lg:p-10">
+                  <div className="order-2 flex min-w-0 flex-col lg:order-1">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="font-metadata text-xs font-semibold uppercase tracking-wider text-primary">
+                        Featured Series {spotlightNovels.length > 1 ? `(${heroIndex + 1}/${spotlightNovels.length})` : ""}
+                      </span>
+                      {spotlightNovels.length > 1 && (
+                        <div className="z-10 flex gap-1.5" aria-label="Featured series carousel controls">
+                          {spotlightNovels.slice(0, 5).map((_, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setHeroIndex(idx)}
+                              className={cn(
+                                "h-2 rounded-full transition-all",
+                                idx === heroIndex ? "w-6 bg-primary" : "w-2 bg-muted-foreground/40 hover:bg-muted-foreground"
+                              )}
+                              aria-label={`Go to slide ${idx + 1}`}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <h1 className="mb-2 font-literary text-3xl font-semibold leading-tight text-foreground sm:text-4xl lg:text-5xl">
+                      {currentSpotlight.title}
+                    </h1>
+                    {heroSourceTitle && (
+                      <p className="mb-3 font-literary text-base italic text-muted-foreground sm:text-lg">
+                        {heroSourceTitle}
+                      </p>
+                    )}
+                    <NovelMetadataRow
+                      className="mb-4"
+                      chapterCount={currentSpotlight.chapter_count}
+                      translatedCount={currentSpotlight.translated_count}
+                      status={currentSpotlight.publication_status}
+                    />
+                    {heroSynopsis && (
+                      <p className="mb-5 max-w-2xl line-clamp-3 text-sm leading-relaxed text-muted-foreground md:text-base">
+                        {heroSynopsis}
+                      </p>
+                    )}
+                    {currentSpotlight.genres && currentSpotlight.genres.length > 0 && (
+                      <div className="mb-6 flex flex-wrap gap-2">
+                        {currentSpotlight.genres.slice(0, 3).map((genre) => (
+                          <GenreChip
+                            key={genre.slug}
+                            label={genre.name_en ?? genre.slug}
+                            labelJa={genre.name_ja}
                           />
                         ))}
                       </div>
                     )}
-                  </div>
-                  <h1 className="mb-3 font-literary text-3xl font-semibold leading-tight text-foreground sm:text-4xl lg:text-5xl">
-                    {currentSpotlight.title}
-                  </h1>
-                  {heroSynopsis && (
-                    <p className="mb-6 max-w-2xl line-clamp-2 text-sm leading-relaxed text-muted-foreground md:text-base">
-                      {heroSynopsis}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-4">
-                    {heroReadableHref && (
+                    <div className="flex flex-wrap items-center gap-4">
+                      {heroReadableHref && (
+                        <Link
+                          href={heroReadableHref}
+                          className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-foreground px-6 text-sm font-semibold text-background shadow-md transition-colors hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <BookOpen className="h-4 w-4" aria-hidden="true" />
+                          Start Reading
+                        </Link>
+                      )}
                       <Link
-                        href={heroReadableHref}
-                        className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-foreground px-6 text-sm font-semibold text-background shadow-md transition-colors hover:bg-primary hover:text-primary-foreground"
+                        href={publicNovelHref(currentSpotlight.slug)}
+                        className="inline-flex h-11 items-center justify-center gap-1.5 rounded-md bg-card/60 px-5 text-sm font-medium text-foreground backdrop-blur-sm transition-colors hover:bg-muted"
                       >
-                        <BookOpen className="h-4 w-4" aria-hidden="true" />
-                        Start Reading
+                        Novel Details
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                       </Link>
-                    )}
+                    </div>
+                  </div>
+
+                  {/* Asymmetric cover card (editorial focal point; stacks above copy on mobile) */}
+                  <div className="order-1 flex justify-center lg:order-2 lg:justify-end lg:pr-2">
                     <Link
                       href={publicNovelHref(currentSpotlight.slug)}
-                      className="inline-flex h-11 items-center justify-center gap-1.5 rounded-md bg-card/60 px-5 text-sm font-medium text-foreground backdrop-blur-sm transition-colors hover:bg-muted"
+                      aria-label={`Open details for ${currentSpotlight.title}`}
+                      className="block w-36 shrink-0 rounded-md bg-card p-1.5 shadow-raised ring-1 ring-border/40 transition-transform duration-300 ease-out hover:-rotate-1 hover:scale-[1.02] sm:w-44 lg:w-56"
                     >
-                      Novel Details
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                      <FallbackCover
+                        title={currentSpotlight.title}
+                        sourceTitle={currentSpotlight.source_title}
+                        language={currentSpotlight.language}
+                        status={currentSpotlight.publication_status}
+                        genres={currentSpotlight.genres}
+                        className="rounded-sm"
+                      />
                     </Link>
                   </div>
                 </div>
@@ -553,6 +608,7 @@ export default function HomePage() {
                     )}
                   >
                     <div className="relative aspect-[2/3] w-full overflow-hidden rounded-sm bg-muted">
+                      {isNewlyAdded(novel.added_at) && <NewBadge />}
                       <FallbackCover
                         title={novel.title}
                         sourceTitle={novel.source_title}

@@ -177,3 +177,67 @@ describe("HomePage rails", () => {
     expect(mocks.catalogParams).toHaveBeenCalledWith(expect.not.objectContaining({ include_adult: true }));
   });
 });
+
+describe("HomePage editorial hero", () => {
+  it("shows source title, honest metadata, genre chips, and an asymmetric cover link", () => {
+    renderHome();
+    const hero = screen.getByLabelText("Dokushodo spotlight novel");
+    expect(within(hero).getAllByText("竜の道").length).toBeGreaterThan(0);
+    expect(within(hero).getByText("5/10 ch.")).toBeInTheDocument();
+    expect(within(hero).getByText(/Fantasy/)).toBeInTheDocument();
+    expect(
+      within(hero).getByRole("link", { name: "Open details for Dragon Road" })
+    ).toHaveAttribute("href", "/novels/dragon");
+  });
+
+  it("hides the asymmetric cover card when the catalog is empty", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: { novels: [], total: 0, page: 1, page_size: 8 },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderHome();
+    expect(
+      screen.queryByRole("link", { name: /open details for/i })
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("HomePage honest NEW badge", () => {
+  it("shows NEW only for novels added within the freshness window", () => {
+    const recent = novel({
+      novel_id: "n2",
+      slug: "fresh",
+      title: "Fresh Novel",
+      added_at: new Date().toISOString(),
+    });
+    const older = novel({
+      novel_id: "n3",
+      slug: "old",
+      title: "Old Novel",
+      added_at: "2026-01-01T00:00:00Z",
+    });
+    mocks.catalogQuery.mockReturnValue({
+      data: { novels: [recent, older], total: 2, page: 1, page_size: 8 },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderHome();
+    const grid = screen.getByRole("region", { name: "New releases" });
+    expect(within(grid).getAllByText("New")).toHaveLength(1);
+  });
+
+  it("does not render NEW badges on cards with no added_at", () => {
+    mocks.catalogQuery.mockReturnValue({
+      data: { novels: [novel({ added_at: null })], total: 1, page: 1, page_size: 8 },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderHome();
+    const grid = screen.getByRole("region", { name: "New releases" });
+    expect(within(grid).queryByText("New")).not.toBeInTheDocument();
+  });
+});
