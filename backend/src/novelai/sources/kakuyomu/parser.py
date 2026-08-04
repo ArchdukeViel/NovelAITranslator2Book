@@ -84,50 +84,74 @@ def next_data_apollo_state(soup: BeautifulSoup) -> dict[str, Any] | None:
 def extract_chapters_from_next_data(
     soup: BeautifulSoup,
     work_id: str,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     apollo_state = next_data_apollo_state(soup)
     if apollo_state is None:
-        return []
+        return [], {"metadata_extraction_mode": "html_dom"}
+
     work = apollo_record(apollo_state, f"Work:{work_id}")
     if work is None:
         root_query = apollo_state.get("ROOT_QUERY")
         if isinstance(root_query, dict):
-            work_ref = apollo_ref(root_query.get(f'work({{"id":"{work_id}"}})'))
-            work = apollo_record(apollo_state, work_ref)
-    if work is None:
-        return []
+            for key, val in root_query.items():
+                if key.startswith(f'work({{"id":"{work_id}"') or key == f"work:{work_id}":
+                    work_ref = apollo_ref(val)
+                    work = apollo_record(apollo_state, work_ref)
+                    if work:
+                        break
 
-    toc = work.get("tableOfContentsV2")
+    if work is None:
+        # Fall back to scanning all Work records in apollo_state
+        for key, rec in apollo_state.items():
+            if key.startswith("Work:") and isinstance(rec, dict) and rec.get("id") == work_id:
+                work = rec
+                break
+
+    if work is None:
+        return [], {"metadata_extraction_mode": "html_dom", "apollo_record_count": len(apollo_state)}
+
+    toc = work.get("tableOfContentsV2") or work.get("tableOfContents") or work.get("toc")
     if not isinstance(toc, list):
-        return []
+        return [], {"metadata_extraction_mode": "next_data_apollo", "apollo_record_count": len(apollo_state)}
 
     chapters: list[dict[str, Any]] = []
     seen_episode_ids: set[str] = set()
+
     for toc_item in toc:
-        toc_record = apollo_record(apollo_state, apollo_ref(toc_item))
+        toc_record = (
+            apollo_record(apollo_state, apollo_ref(toc_item))
+            if isinstance(toc_item, dict)
+            else (toc_item if isinstance(toc_item, dict) else None)
+        )
         if toc_record is None:
             continue
 
         part: str | None = None
         chapter_ref = apollo_ref(toc_record.get("chapter"))
-        chapter_record = apollo_record(apollo_state, chapter_ref)
+        chapter_record = apollo_record(apollo_state, chapter_ref) if chapter_ref else None
         if chapter_record is not None:
             title = chapter_record.get("title")
             if isinstance(title, str) and title.strip():
                 part = title.strip()
 
-        episode_refs = toc_record.get("episodeUnions")
+        episode_refs = toc_record.get("episodeUnions") or toc_record.get("episodes") or toc_record.get("episodeList")
         if not isinstance(episode_refs, list):
-            continue
+            # Check if toc_item itself is an episode record
+            if toc_record.get("__typename") == "Episode":
+                episode_refs = [toc_record]
+            else:
+                continue
+
         for episode_ref in episode_refs:
-            episode_record = apollo_record(apollo_state, apollo_ref(episode_ref))
+            episode_record = (
+                apollo_record(apollo_state, apollo_ref(episode_ref))
+                if isinstance(episode_ref, dict) and "__ref" in episode_ref
+                else (episode_ref if isinstance(episode_ref, dict) else None)
+            )
             if episode_record is None:
                 continue
-            episode_id = episode_record.get("id")
-            if not isinstance(episode_id, str) or not episode_id.strip():
-                continue
-            episode_id = episode_id.strip()
-            if episode_id in seen_episode_ids:
+            episode_id = str(episode_record.get("id") or "").strip()
+            if not episode_id or episode_id in seen_episode_ids:
                 continue
             seen_episode_ids.add(episode_id)
             index = len(chapters) + 1
@@ -141,9 +165,16 @@ def extract_chapters_from_next_data(
             }
             if part:
                 chapter["part"] = part
-            published_at = episode_record.get("publishedAt")
+            published_at = episode_record.get("publishedAt") or episode_record.get("created")
             if isinstance(published_at, str) and published_at.strip():
                 chapter["date_added"] = published_at.strip()
             chapters.append(chapter)
 
-    return chapters
+    provenance = {
+        "metadata_extraction_mode": "next_data_apollo",
+        "chapter_index_extraction_mode": "next_data_apollo",
+        "apollo_record_count": len(apollo_state),
+        "parser_version": "kakuyomu-v4",
+        "fallbacks_used": [],
+    }
+    return chapters, provenance

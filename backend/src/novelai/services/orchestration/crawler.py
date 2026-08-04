@@ -583,6 +583,35 @@ async def _scrape_chapters_impl(
             continue
 
         chapter_id = str(chapter_num)
+        ep_id = str(chapter.get("source_episode_id") or chapter_id)
+
+        # Operationalized Crawl Plan Check: skip HTTP fetch when planner marked chapter reusable!
+        if (
+            mode != "full"
+            and ep_id in crawl_plan.reusable_episode_ids
+            and ep_id not in crawl_plan.chapters_to_fetch_set
+        ):
+            skipped += 1
+            existing = existing_chapters_map.get(chapter_id) or {}
+            scraped_chapters_for_state.append(
+                {
+                    **chapter,
+                    "id": chapter_id,
+                    "source_episode_id": ep_id,
+                    "content_hash": existing.get("content_hash"),
+                }
+            )
+            if progress_callback:
+                progress_callback(f"[{_chapter_index + 1}/{_total_chapters}] Chapter {chapter_id}: reused via planner")
+            _emit(
+                STAGE_BODY_CRAWL,
+                "reused",
+                succeeded + skipped + failed,
+                _total_chapters,
+                source_episode_id=ep_id,
+                label=f"Chapter {chapter_id}: reused",
+            )
+            continue
         # Retry telemetry is per-chapter: a retry performed for an earlier
         # chapter must never leak into the attempt count of a later chapter.
         retry_attempts = [0]

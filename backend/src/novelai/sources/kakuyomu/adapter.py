@@ -25,6 +25,7 @@ from novelai.sources.kakuyomu.parser import (
     REMOVE_FROM_BODY_SELECTORS,
     TITLE_SELECTORS,
     extract_chapters_from_next_data,
+    next_data_apollo_state,
 )
 from novelai.sources.quality import detect_age_gate_text, detect_block_page_text
 from novelai.sources.source_layout import source_blocks_from_text_blocks
@@ -230,14 +231,19 @@ class KakuyomuSource(SourceAdapter):
         current_part: str | None = None
 
         for root in toc_roots:
-            for element in root.find_all(["a", "h3", "h4", "div", "li", "span"], recursive=True):
+            for element in root.find_all(["a", "h2", "h3", "h4", "div", "li", "span"], recursive=True):
                 if not isinstance(element, Tag):
                     continue
 
-                if element.name.lower() in {"h3", "h4", "div", "li", "span"}:
+                if element.name.lower() in {"h2", "h3", "h4", "div", "li", "span"}:
                     cls_list = element.get("class") or []
                     cls_str = " ".join(cls_list if isinstance(cls_list, list) else [str(cls_list)])
-                    if "widget-toc-chapter" in cls_str or "widget-toc-heading" in cls_str or "chapter-title" in cls_str:
+                    if (
+                        "widget-toc-chapter" in cls_str
+                        or "widget-toc-heading" in cls_str
+                        or "chapter-title" in cls_str
+                        or element.name.lower() == "h2"
+                    ):
                         heading_text = element.get_text(" ", strip=True)
                         if heading_text:
                             current_part = heading_text
@@ -264,6 +270,11 @@ class KakuyomuSource(SourceAdapter):
 
                 canonical_url = f"https://kakuyomu.jp/works/{work_id}/episodes/{match.group(2)}"
                 if canonical_url in seen_urls:
+                    # Update part mapping if duplicate link encountered under a real part heading
+                    if current_part:
+                        for existing_ch in chapters:
+                            if existing_ch.get("url") == canonical_url:
+                                existing_ch["part"] = current_part
                     continue
                 seen_urls.add(canonical_url)
 
@@ -281,13 +292,22 @@ class KakuyomuSource(SourceAdapter):
 
         return chapters
 
-    def _extract_chapters(self, soup: BeautifulSoup, url: str) -> list[dict[str, str | int]]:
-        chapters = extract_chapters_from_next_data(soup, self.normalize_novel_id(url))
+    def _extract_chapters(self, soup: BeautifulSoup, url: str) -> tuple[list[dict[str, str | int]], dict[str, Any]]:
+        chapters, provenance = extract_chapters_from_next_data(soup, self.normalize_novel_id(url))
         if chapters:
-            return chapters
-        return self._extract_chapters_from_html(soup, url)
+            return chapters, provenance
+        html_chapters = self._extract_chapters_from_html(soup, url)
+        return html_chapters, {"metadata_extraction_mode": "html_dom", "chapter_index_extraction_mode": "html_dom"}
 
     def _extract_publication_status_text(self, soup: BeautifulSoup) -> str | None:
+        apollo_state = next_data_apollo_state(soup)
+        if apollo_state:
+            for key, rec in apollo_state.items():
+                if key.startswith("Work:") and isinstance(rec, dict):
+                    status = rec.get("serialStatus") or rec.get("publicationStatus") or rec.get("status")
+                    if isinstance(status, str) and status.strip():
+                        return status.strip()
+
         status_selectors = (
             ".widget-workHeader-status",
             ".widget-work-status",
@@ -312,16 +332,29 @@ class KakuyomuSource(SourceAdapter):
                     return text
         return None
 
+    def _extract_dates(self, soup: BeautifulSoup) -> tuple[str | None, str | None]:
+        time_tags = soup.find_all("time")
+        published_at: str | None = None
+        updated_at: str | None = None
+        for tag in time_tags:
+            dt = tag.get("datetime") or tag.get_text(strip=True)
+            if dt and isinstance(dt, str):
+                if published_at is None:
+                    published_at = dt.strip()
+                updated_at = dt.strip()
+        return published_at, updated_at
+
     def _parse_metadata_html(self, html: str, url: str) -> dict[str, Any]:
         soup = BeautifulSoup(html, "html.parser")
         novel_id = self.normalize_novel_id(url)
         title = self._extract_work_title(soup) or f"Work {novel_id}"
         author = self._extract_author(soup)
         synopsis = self._extract_synopsis(soup)
-        chapters = self._extract_chapters(soup, url)
+        chapters, provenance = self._extract_chapters(soup, url)
         status_text = self._extract_publication_status_text(soup)
+        published_at, updated_at = self._extract_dates(soup)
 
-        return {
+        res = {
             "source_key": self.source_key,
             "source_url": url,
             "source_novel_id": novel_id,
@@ -330,8 +363,14 @@ class KakuyomuSource(SourceAdapter):
             "author": author,
             "synopsis": synopsis,
             "chapters": chapters,
+            **provenance,
             **publication_status_payload(status_text),
         }
+        if published_at:
+            res["published_at"] = published_at
+        if updated_at:
+            res["updated_at"] = updated_at
+        return res
 
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         full_url = self._normalize_url(url)
@@ -366,7 +405,9 @@ class KakuyomuSource(SourceAdapter):
             img.replace_with(image_placeholder(img))
 
         for hr in body_node.find_all("hr"):
-            hr.replace_with(f"\n\n{self.SEPARATOR_LINE}\n\n")
+            p_hr = soup.new_tag("p")
+            p_hr.string = self.SEPARATOR_LINE
+            hr.replace_with(p_hr)
 
         for br in body_node.find_all("br"):
             br.replace_with("\n")
@@ -391,6 +432,10 @@ class KakuyomuSource(SourceAdapter):
             "images": images,
             "source_blocks": source_blocks,
         }
+
+    def _parse_chapter_html(self, html: str, url: str = "https://kakuyomu.jp/") -> str:
+        payload = self._parse_chapter_payload(html, url)
+        return str(payload.get("text", ""))
 
     async def fetch_chapter_payload(
         self,

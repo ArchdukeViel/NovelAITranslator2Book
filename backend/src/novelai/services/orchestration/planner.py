@@ -9,12 +9,51 @@ from typing import Any
 
 @dataclass(frozen=True)
 class CrawlPlan:
-    """Planning decision for a crawl run."""
+    """Planning decision for a crawl run matching Section 6 contract."""
 
-    total_chapters: int
-    chapters_to_fetch: list[dict[str, Any]]
-    chapters_to_skip: list[dict[str, Any]]
-    plan_reason: dict[str, Any] = field(default_factory=dict)
+    total_index_entries: int
+    new_episode_ids: tuple[str, ...]
+    missing_local_episode_ids: tuple[str, ...]
+    changed_index_episode_ids: tuple[str, ...]
+    rolling_revalidation_episode_ids: tuple[str, ...]
+    explicitly_selected_episode_ids: tuple[str, ...]
+
+    reusable_episode_ids: tuple[str, ...]
+    removed_episode_ids: tuple[str, ...]
+    reordered_episode_ids: tuple[str, ...]
+
+    metadata_refresh: bool
+    index_refresh: bool
+    full_reconciliation_required: bool
+
+    reasons: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def chapters_to_fetch_set(self) -> set[str]:
+        return set(
+            self.new_episode_ids
+            + self.missing_local_episode_ids
+            + self.changed_index_episode_ids
+            + self.rolling_revalidation_episode_ids
+            + self.explicitly_selected_episode_ids
+        )
+
+    # Legacy compatibility properties
+    @property
+    def total_chapters(self) -> int:
+        return self.total_index_entries
+
+    @property
+    def chapters_to_fetch(self) -> list[dict[str, Any]]:
+        return [{"id": ep_id, "source_episode_id": ep_id} for ep_id in self.chapters_to_fetch_set]
+
+    @property
+    def chapters_to_skip(self) -> list[dict[str, Any]]:
+        return [{"id": ep_id, "source_episode_id": ep_id} for ep_id in self.reusable_episode_ids]
+
+    @property
+    def plan_reason(self) -> dict[str, Any]:
+        return self.reasons
 
 
 def _utc_now_iso() -> str:
@@ -28,62 +67,97 @@ def create_crawl_plan(
     existing_chapters: dict[str, dict[str, Any]],
     *,
     mode: str = "update",
+    revalidation_window: int = 5,
 ) -> CrawlPlan:
-    """Build an incremental crawl plan determining which chapters require fetching.
-
-    In ``mode == "full"``, all selected chapters are fetched regardless of state.
-    In ``mode == "update"``, a chapter is skipped if:
-    1. It already exists in local storage.
-    2. Its ``source_episode_id`` or ``id`` is present in ``source_state["episode_map"]``.
-    3. The index update timestamp (``source_update_date`` / ``date_added``) matches the
-       recorded timestamp in source state.
-    """
+    """Build an incremental crawl plan determining which chapters require fetching."""
     total = len(selected_chapters)
+    episode_map = source_state.get("episode_map") if isinstance(source_state, dict) else {}
+    if not isinstance(episode_map, dict):
+        episode_map = {}
+
+    new_eps: list[str] = []
+    missing_local_eps: list[str] = []
+    changed_index_eps: list[str] = []
+    rolling_reval_eps: list[str] = []
+    explicit_eps: list[str] = []
+    reusable_eps: list[str] = []
+
     if mode == "full" or not source_state:
+        for ch in selected_chapters:
+            ch_id = str(ch.get("id") or ch.get("source_episode_id") or ch.get("num") or "")
+            explicit_eps.append(ch_id)
+
         return CrawlPlan(
-            total_chapters=total,
-            chapters_to_fetch=list(selected_chapters),
-            chapters_to_skip=[],
-            plan_reason={
-                "mode": mode,
-                "reason": "Full mode or missing source state forces full refetch",
-                "fetch_count": total,
-                "skip_count": 0,
-            },
+            total_index_entries=total,
+            new_episode_ids=(),
+            missing_local_episode_ids=(),
+            changed_index_episode_ids=(),
+            rolling_revalidation_episode_ids=(),
+            explicitly_selected_episode_ids=tuple(explicit_eps),
+            reusable_episode_ids=(),
+            removed_episode_ids=(),
+            reordered_episode_ids=(),
+            metadata_refresh=True,
+            index_refresh=True,
+            full_reconciliation_required=(mode == "full"),
+            reasons={"mode": mode, "reason": "Full mode or missing source state forces refetch"},
         )
 
-    episode_map = source_state.get("episode_map") or {}
-    to_fetch: list[dict[str, Any]] = []
-    to_skip: list[dict[str, Any]] = []
+    # Calculate rolling revalidation target IDs (last N chapters in selected list)
+    reval_targets = set()
+    if revalidation_window > 0 and len(selected_chapters) > revalidation_window:
+        reval_targets = {
+            str(ch.get("id") or ch.get("source_episode_id") or ch.get("num") or "")
+            for ch in selected_chapters[-revalidation_window:]
+        }
 
-    for chapter in selected_chapters:
-        ch_id = str(chapter.get("id") or chapter.get("num") or "")
-        episode_id = str(chapter.get("source_episode_id") or ch_id)
+    for ch in selected_chapters:
+        ch_id = str(ch.get("id") or ch.get("num") or "")
+        ep_id = str(ch.get("source_episode_id") or ch_id)
 
         existing = existing_chapters.get(ch_id)
-        recorded_ep = episode_map.get(episode_id)
+        recorded_ep = episode_map.get(ep_id)
 
-        if not existing or not recorded_ep:
-            to_fetch.append(chapter)
-            continue
-
-        index_date = chapter.get("source_update_date") or chapter.get("date_added")
-        recorded_date = recorded_ep.get("source_update_date") or recorded_ep.get("last_updated_at")
-
-        if index_date and recorded_date and str(index_date).strip() != str(recorded_date).strip():
-            # Source index indicates chapter was updated since last crawl
-            to_fetch.append(chapter)
+        if not recorded_ep:
+            new_eps.append(ep_id)
+        elif not existing:
+            missing_local_eps.append(ep_id)
         else:
-            to_skip.append(chapter)
+            index_date = ch.get("source_update_date") or ch.get("date_added")
+            recorded_date = recorded_ep.get("source_update_date") or recorded_ep.get("last_updated_at")
+
+            if index_date and recorded_date and str(index_date).strip() != str(recorded_date).strip():
+                changed_index_eps.append(ep_id)
+            elif ep_id in reval_targets:
+                rolling_reval_eps.append(ep_id)
+            else:
+                reusable_eps.append(ep_id)
+
+    # Check for removed episode IDs (present in recorded episode_map but absent from current index)
+    current_ep_ids = {str(ch.get("source_episode_id") or ch.get("id") or ch.get("num")) for ch in selected_chapters}
+    removed_eps = [ep_id for ep_id in episode_map if ep_id not in current_ep_ids]
 
     return CrawlPlan(
-        total_chapters=total,
-        chapters_to_fetch=to_fetch,
-        chapters_to_skip=to_skip,
-        plan_reason={
+        total_index_entries=total,
+        new_episode_ids=tuple(new_eps),
+        missing_local_episode_ids=tuple(missing_local_eps),
+        changed_index_episode_ids=tuple(changed_index_eps),
+        rolling_revalidation_episode_ids=tuple(rolling_reval_eps),
+        explicitly_selected_episode_ids=tuple(explicit_eps),
+        reusable_episode_ids=tuple(reusable_eps),
+        removed_episode_ids=tuple(removed_eps),
+        reordered_episode_ids=(),
+        metadata_refresh=False,
+        index_refresh=False,
+        full_reconciliation_required=False,
+        reasons={
             "mode": mode,
-            "fetch_count": len(to_fetch),
-            "skip_count": len(to_skip),
+            "new_count": len(new_eps),
+            "missing_local_count": len(missing_local_eps),
+            "changed_count": len(changed_index_eps),
+            "revalidation_count": len(rolling_reval_eps),
+            "reusable_count": len(reusable_eps),
+            "removed_count": len(removed_eps),
         },
     )
 
