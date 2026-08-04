@@ -16,6 +16,7 @@ from novelai.prompts import METADATA_TRANSLATION_PROMPT_VERSION
 from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.services.glossary_repository import GlossaryRepository
 from novelai.services.library_summary_service import best_effort_invalidate
+from novelai.services.orchestration.planner import create_crawl_plan, update_source_state
 from novelai.sources.quality import (
     chapter_content_hash,
     evaluate_chapter_quality,
@@ -540,7 +541,8 @@ async def _scrape_chapters_impl(
 
     chapter_map = {int(c["id"]): c for c in meta.get("chapters", [])}
     selected_numbers = self._selected_chapter_numbers(meta, chapters)
-    _total_chapters = len(selected_numbers)
+    selected_chapters_list = [chapter_map[num] for num in selected_numbers if num in chapter_map]
+    _total_chapters = len(selected_chapters_list)
     if progress_callback:
         progress_callback(f"Preparing to scrape {_total_chapters} chapter(s)…")
 
@@ -549,7 +551,29 @@ async def _scrape_chapters_impl(
     failed = 0
     failures: list[dict[str, Any]] = []
     image_download_failures = 0
-    _emit(STAGE_INDEX_CRAWL, "started", 0, _total_chapters, label="Preparing chapter crawl")
+    scraped_chapters_for_state: list[dict[str, Any]] = []
+    existing_source_state = self.storage.load_source_state(novel_id)
+
+    existing_chapters_map = {
+        ch_id: (self.storage.load_chapter(novel_id, ch_id) or {})
+        for ch_id in [str(c.get("id") or c.get("num")) for c in selected_chapters_list]
+    }
+    crawl_plan = create_crawl_plan(
+        novel_id,
+        selected_chapters_list,
+        existing_source_state,
+        existing_chapters_map,
+        mode=mode,
+    )
+
+    _emit(
+        STAGE_INDEX_CRAWL,
+        "started",
+        0,
+        _total_chapters,
+        label="Preparing chapter crawl",
+        details=crawl_plan.plan_reason,
+    )
 
     for _chapter_index, chapter_num in enumerate(selected_numbers):
         if cancellation_check is not None and cancellation_check():
@@ -690,6 +714,15 @@ async def _scrape_chapters_impl(
             if any(img.get("download_error") for img in downloaded_images):
                 image_download_failures += 1
             succeeded += 1
+            scraped_chapters_for_state.append(
+                {
+                    "id": chapter_id,
+                    "chapter_id": chapter_id,
+                    "source_episode_id": str(chapter.get("source_episode_id") or chapter_id),
+                    "source_update_date": chapter.get("source_update_date") or chapter.get("date_added"),
+                    "content_hash": new_signature,
+                }
+            )
             _emit(
                 STAGE_BODY_CRAWL,
                 "completed",
@@ -761,6 +794,14 @@ async def _scrape_chapters_impl(
             )
         else:
             progress_callback(f"Scrape finished: {succeeded} saved, {skipped} skipped.")
+
+    new_source_state = update_source_state(
+        novel_id=novel_id,
+        existing_state=existing_source_state,
+        metadata=meta,
+        scraped_chapters=scraped_chapters_for_state,
+    )
+    self.storage.save_source_state(novel_id, new_source_state)
 
     _emit(
         STAGE_RECONCILIATION,

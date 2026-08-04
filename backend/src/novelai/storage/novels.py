@@ -37,9 +37,7 @@ def _validate_canonical_metadata_fields(payload: dict[str, Any]) -> None:
     }
     for legacy_field, canonical_field in canonical_replacements.items():
         if legacy_field in payload:
-            raise ValueError(
-                f"Legacy metadata field '{legacy_field}' is not supported; use '{canonical_field}'."
-            )
+            raise ValueError(f"Legacy metadata field '{legacy_field}' is not supported; use '{canonical_field}'.")
 
 
 def _index_path(self: Any) -> Path:
@@ -460,6 +458,28 @@ def load_metadata(self: Any, novel_id: str) -> dict[str, Any] | None:
         return self._normalize_loaded_metadata(payload, novel_id)
     except OSError as exc:
         logger.warning("Failed to read metadata for novel %s at %s: %s", novel_id, path, exc)
+        return None
+
+
+def save_source_state(self: Any, novel_id: str, data: dict[str, Any]) -> Path:
+    novel_id = self._normalize_library_novel_id(novel_id) or novel_id
+    novel_dir = self._novel_dir(novel_id)
+    path = novel_dir / "source_state.json"
+    self._write_text_atomic(path, json.dumps(data, ensure_ascii=False, indent=2))
+    return path
+
+
+def load_source_state(self: Any, novel_id: str) -> dict[str, Any] | None:
+    novel_id = self._normalize_library_novel_id(novel_id) or novel_id
+    path = self._novel_dir(novel_id) / "source_state.json"
+    if not self._path_exists(path):
+        return None
+    content = self._read_text(path)
+    try:
+        payload = json.loads(content)
+        return payload if isinstance(payload, dict) else None
+    except Exception as exc:
+        logger.warning("Failed to read source_state for novel %s at %s: %s", novel_id, path, exc)
         return None
 
 
