@@ -95,6 +95,7 @@ class FetchService:
         referer: str | None = None,
         headers: dict[str, str] | None = None,
         cookies: Any = None,
+        on_retry: Callable[[int, Exception], None] | None = None,
         profile: str | None = None,
     ) -> FetchResult:
         return await self._fetch(
@@ -103,6 +104,7 @@ class FetchService:
             referer=referer,
             headers=headers,
             cookies=cookies,
+            on_retry=on_retry,
             kind="asset",
             profile=profile,
         )
@@ -214,11 +216,19 @@ class FetchService:
         return client
 
     def close(self) -> None:
-        """Best-effort synchronous close of pooled clients.
+        """Close all pooled clients cleanly during shutdown."""
+        import asyncio
 
-        ``AsyncClient.close`` does not exist; tests use ``aclose`` via the
-        event loop, so this helper is kept for type-checked convenience.
-        """
+        _tasks = []
+        for client in list(self._clients.values()):
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    _tasks.append(loop.create_task(client.aclose()))
+                else:
+                    loop.run_until_complete(client.aclose())
+            except Exception:
+                pass
         self._clients.clear()
 
     async def aclose(self) -> None:

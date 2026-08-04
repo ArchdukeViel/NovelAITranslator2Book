@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -248,6 +249,7 @@ class FakeFetchService(FetchService):
         referer: str | None = None,
         headers: dict[str, str] | None = None,
         cookies: Any = None,
+        on_retry: Callable[[int, Exception], None] | None = None,
         profile: str | None = None,
     ) -> FetchResult:
         self.calls.append(
@@ -289,7 +291,8 @@ async def test_syosetu_adapter_uses_fetch_service():
     assert metadata["title"] == "Test Novel"
     assert metadata["source_key"] == "syosetu_ncode"
     assert metadata["chapters"][0]["url"] == "https://ncode.syosetu.com/n1234ab/1/"
-    assert fake_fetch.calls[0]["source_key"] == "syosetu_ncode"
+    # First call is official Syosetu API fetch attempt, followed by HTML page fetch
+    assert any(c["source_key"] == "syosetu_ncode" for c in fake_fetch.calls)
 
 
 @pytest.mark.asyncio
