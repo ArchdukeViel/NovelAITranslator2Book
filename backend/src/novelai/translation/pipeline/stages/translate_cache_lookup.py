@@ -143,6 +143,15 @@ def load_existing_chunk_output(
     for key, value in expected.items():
         if latest.get(key) != value:
             return None
+
+    # Verify provider key & model linkage if specified in metadata
+    req_provider_key = context.metadata.get("provider_key")
+    req_provider_model = context.metadata.get("provider_model")
+    if req_provider_key and latest.get("provider_key") and latest.get("provider_key") != req_provider_key:
+        return None
+    if req_provider_model and latest.get("provider_model") and latest.get("provider_model") != req_provider_model:
+        return None
+
     text = latest.get("translated_text")
     return text if isinstance(text, str) else None
 
