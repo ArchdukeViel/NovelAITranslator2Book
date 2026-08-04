@@ -148,8 +148,8 @@ function renderHome() {
 describe("Home page visual honesty", () => {
   it("renders without crashing", () => {
     renderHome();
-    expect(screen.getByText("New Releases")).toBeInTheDocument();
-    expect(screen.getByText("Recently Updated")).toBeInTheDocument();
+    expect(screen.getByText("New Novels")).toBeInTheDocument();
+    expect(screen.getByText("Recent Updates")).toBeInTheDocument();
   });
 
   it("uses labeled rails instead of the old grouped date stack", () => {
@@ -166,11 +166,9 @@ describe("Home page visual honesty", () => {
 
   it("does not display Trending Now as a marketing label", () => {
     renderHome();
-    // "trending" may appear in honest disclaimers about data gaps,
-    // but never as "Trending Now" or "Trending" section header
+    // "trending" appears as the Stitch widget title ("Trending V2"),
+    // but never as a fake marketing claim like "Trending Now"
     expect(screen.queryByText("Trending Now")).not.toBeInTheDocument();
-    const trendingHeaders = screen.queryAllByRole("heading", { name: /trending/i });
-    expect(trendingHeaders.length).toBe(0);
   });
 
   it("does not display fake views or ratings labels", () => {
@@ -205,10 +203,10 @@ describe("Home page visual honesty", () => {
     expect(screen.queryByText("Featured")).not.toBeInTheDocument();
   });
 
-  it("renders New Releases and Recently Updated sections", () => {
+  it("renders New Novels and Recent Updates sections", () => {
     renderHome();
-    expect(screen.getByText("New Releases")).toBeInTheDocument();
-    expect(screen.getByText("Recently Updated")).toBeInTheDocument();
+    expect(screen.getByText("New Novels")).toBeInTheDocument();
+    expect(screen.getByText("Recent Updates")).toBeInTheDocument();
     expect(screen.queryByText("Recently Added")).not.toBeInTheDocument();
     expect(screen.queryByText("Latest Updates")).not.toBeInTheDocument();
   });

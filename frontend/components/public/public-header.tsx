@@ -17,9 +17,8 @@ import { cn } from "@/lib/utils";
 // reachable from the Account/More hub (mobile) and the footer (desktop).
 // Add them to the header when they ship real data or a real action.
 const desktopNavItems = [
-  { href: "/home", label: "Home", icon: Home },
   { href: "/browse-novels", label: "Browse", icon: BookOpen },
-  { href: "/request-novel", label: "Request", icon: FileText },
+  { href: "/account/request-novels", label: "Request", icon: FileText },
   { href: "/account/library", label: "Library", icon: Library },
 ];
 
@@ -27,14 +26,14 @@ export function PublicHeader() {
   const pathname = usePathname();
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border/80 bg-background/95 backdrop-blur">
+    <header className="sticky top-0 z-30 bg-background/95 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
         <PublicSidebar />
         <PublicBrand className="shrink-0" />
 
         <nav
           aria-label="Primary"
-          className="hidden flex-1 items-center gap-1 md:flex"
+          className="hidden flex-1 items-center gap-1 xl:flex"
         >
           {desktopNavItems.map((item) => {
             const isActive =
@@ -60,12 +59,12 @@ export function PublicHeader() {
           })}
         </nav>
 
-        <div className="hidden flex-1 justify-center md:flex">
+        <div className="flex flex-1 justify-center">
           <SearchEntry />
         </div>
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
-          <div className="hidden md:block">
+          <div className="hidden sm:block">
             <PublicThemeToggle />
           </div>
           <NotificationIndicator />

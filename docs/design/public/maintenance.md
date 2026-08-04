@@ -63,8 +63,8 @@ A quiet status line and plain prose; no alarm styling when nothing is wrong.
 - Tap targets at least 44 px on mobile
 
 ## Assets
-- brand-mark.png
-- maintenance.png for the active maintenance state
+- brand-logo.svg
+- Wrench icon capsule / card status grid layout (PNG illustration deleted)
 
 ## Preserve Exactly
 - The exact default status wording

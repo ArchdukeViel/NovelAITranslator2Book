@@ -14,7 +14,7 @@ export default function AboutPage() {
       sections={[
         {
           title: "Platform",
-          body: "Dokushodo is powered by Novel AI.",
+          body: "Dokushodo is a public reading platform for translated web novels.",
         },
         {
           title: "FAQ",

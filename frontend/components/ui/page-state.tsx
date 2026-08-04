@@ -61,7 +61,13 @@ export function UnavailableState({
   description = "This service is temporarily unavailable. Please try again later.",
   ...props
 }: Partial<Pick<StateProps, "title" | "description">> & Omit<StateProps, "title" | "description">) {
-  return <ErrorState {...props} title={title} description={description} />;
+  return (
+    <ErrorState
+      {...props}
+      title={title}
+      description={description}
+    />
+  );
 }
 
 export function NotFoundState({
@@ -69,7 +75,13 @@ export function NotFoundState({
   description = "We could not find that page or it is no longer available.",
   ...props
 }: Partial<Pick<StateProps, "title" | "description">> & Omit<StateProps, "title" | "description">) {
-  return <State {...props} title={title} description={description} />;
+  return (
+    <State
+      {...props}
+      title={title}
+      description={description}
+    />
+  );
 }
 
 export function UnauthorizedState({

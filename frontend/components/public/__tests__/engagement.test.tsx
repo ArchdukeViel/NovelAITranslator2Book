@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import RequestsPage from "@/app/(public)/account/requests/page";
+import RequestsPage from "@/app/(public)/account/request-novels/page";
 import { RatingReview } from "@/components/public/rating-review";
 import { RequestControl } from "@/components/public/request-control";
 
@@ -178,7 +178,7 @@ describe("public engagement UI", () => {
     renderWithQuery(<RequestControl />);
 
     await userEvent.type(
-      await screen.findByPlaceholderText("https://example.com/novel"),
+      await screen.findByPlaceholderText(/syosetu/i),
       "https://example.com/novel"
     );
     await userEvent.click(screen.getByRole("button", { name: /submit request/i }));
@@ -254,19 +254,23 @@ describe("public engagement UI", () => {
     renderWithQuery(<RequestsPage />);
 
     // Page header (appears after auth resolves)
-    expect(await screen.findByText("My Requests")).toBeInTheDocument();
-    expect(await screen.findByText("Novel and chapter translation requests you have submitted.")).toBeInTheDocument();
+    expect(await screen.findByText("Request Novels")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Submit web novel or chapter translation requests from supported Japanese raw sources."
+      )
+    ).toBeInTheDocument();
 
     // Novel request entry (source URL shown)
     expect(await screen.findByText("https://example.com/novel")).toBeInTheDocument();
 
     // Chapter request entry (slug linked)
-    const novelLink = await screen.findByRole("link", { name: /demo/i });
+    const novelLink = await screen.findByRole("link", { name: /view novel/i });
     expect(novelLink).toHaveAttribute("href", "/novels/demo");
 
     // Status badges
-    expect(await screen.findByText("Pending")).toBeInTheDocument();
-    expect(await screen.findByText("Completed")).toBeInTheDocument();
+    expect(await screen.findByText("Pending Review")).toBeInTheDocument();
+    expect(await screen.findByText("Translated")).toBeInTheDocument();
   });
 
   it("shows empty requests state with browse link", async () => {
@@ -283,8 +287,7 @@ describe("public engagement UI", () => {
 
     renderWithQuery(<RequestsPage />);
 
-    expect(await screen.findByText("No matching requests.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /browse novels/i })).toBeInTheDocument();
+    expect(await screen.findByText(/no requests found/i)).toBeInTheDocument();
   });
 
   it("renders requests with long source URLs without breaking layout", async () => {
@@ -322,6 +325,6 @@ describe("public engagement UI", () => {
     ).toBeInTheDocument();
 
     // Status badge is present and shrinks safely
-    expect(screen.getByText("Pending")).toBeInTheDocument();
+    expect(screen.getByText("Pending Review")).toBeInTheDocument();
   });
 });

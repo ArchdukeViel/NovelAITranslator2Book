@@ -296,9 +296,9 @@ Small, rectangular shapes with 2px radius. Backgrounds match the secondary surfa
 - Budget: under 200 KiB.
 
 ### 4.6 Illustrations
+- Brand asset inventory under `frontend/public/assets/dokushodo/brand/`: `icon.svg`, `favicon.ico`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `open-graph.png`, `brand-logo-text.svg`, `brand-logo-bottom-text.svg`.
 
-- Files under `frontend/public/assets/dokushodo/illustrations/`: `empty.png` (catalog and library empty states), `404.png` (page-not-found surface), `maintenance.png` (maintenance surface).
-- Flat vector-style illustrations on the brand palette; no synthetic blurs or glassmorphism.
+- State representations: Empty, 404, error, and maintenance states use pure vector UI components (Lucide icons with card elevation and tactile styling); legacy PNG illustration binaries have been removed.
 - Each under 100 KiB. Decorative images use `alt=""` and are not the source of meaning.
 
 ### 4.7 Logo treatment rules
@@ -673,7 +673,7 @@ WTR-Lab is recorded only as a domain reference for the reading experience.
 | Account library | `/account/library` | `public/account-library.md` | Implemented | Board view settled | List view, empty, guest prompt |
 | Account history | `/account/history` | `public/account-history.md` | Implemented | Settled list | Empty, error, guest prompt |
 | Account notifications | `/account/notifications` | `public/account-notifications.md` | Implemented | Settled activity list | Empty |
-| Account requests | `/account/requests` | `public/account-requests.md` | Implemented | Settled history table | Empty |
+| Account requests | `/account/request-novels` | `public/account-requests.md` | Implemented | Settled history table | Empty |
 | Account reviews | `/account/reviews` | `public/account-reviews.md` | Implemented | Settled review list | Empty, delete confirmation |
 | Account contributions | `/account/contributions` | `public/account-contributions.md` | Implemented | Gated unavailable state | None |
 | Account settings | `/account/settings` | `public/account-settings.md` | Implemented | Settled settings panels | None |

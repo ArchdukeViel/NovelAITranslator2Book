@@ -66,7 +66,7 @@ One quiet centered illustration, a plain heading, and two links; no alarm stylin
 - Tap targets at least 44 px on mobile
 
 ## Assets
-- 404.png
+- Compass icon capsule / UI card elevation layout (PNG illustration deleted)
 
 ## Preserve Exactly
 - The exact heading

@@ -27,7 +27,7 @@ const NAV_ITEMS = [
 
 const SECONDARY_ITEMS = [
   { href: "/random", label: "Random Novel", icon: Shuffle },
-  { href: "/request-novel", label: "Request Novel", icon: FilePlus2 },
+  { href: "/account/request-novels", label: "Request Novels", icon: FilePlus2 },
   { href: "/contribute", label: "Contributions", icon: HandHeart },
 ] as const;
 
@@ -69,7 +69,7 @@ export function PublicSidebar() {
 
   function resolveHref(href: string): string {
     if (!isAuthenticated && href === "/account/library") {
-      return "/login?mode=signin&next=%2Faccount%2Flibrary";
+      return "/login?mode=signin&callbackUrl=%2Faccount%2Flibrary";
     }
     return href;
   }
@@ -95,7 +95,7 @@ export function PublicSidebar() {
         id="public-sidebar"
         aria-label="Site navigation"
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[240px] flex-col overflow-y-auto border-r border-border/80 bg-background py-4 transition-transform duration-300 ease-out",
+          "fixed inset-y-0 left-0 z-50 flex w-[240px] flex-col overflow-y-auto border-r border-border/30 bg-background py-4 transition-transform duration-300 ease-out",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -158,7 +158,7 @@ export function PublicSidebar() {
         </nav>
 
         <div className="mt-auto flex flex-col gap-2 px-4 pt-4">
-          <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+          <div className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2">
             <span className="text-xs font-medium text-muted-foreground">Theme</span>
             <PublicThemeToggle />
           </div>
