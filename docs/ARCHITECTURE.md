@@ -2,6 +2,14 @@
 
 Canonical project architecture. This file wins when project documents conflict.
 
+## Ingestion & Pipeline Architecture
+
+### Hybrid Crawl & Generation Contracts
+- **Syosetu / Novel18 Official API Enrichment**: Official JSON API array responses (Header `allcount` + work objects) provide initial title, author, genre codes, keywords, episode count, content length, timestamps, and status flags (`end=0` completed, `isstop=1` suspended). HTML crawling remains authoritative for chapter URLs, TOC structure, synopsis, and body text.
+- **Kakuyomu Apollo & DOM Parsing**: Kakuyomu works are parsed via Next.js `__NEXT_DATA__` Apollo state graph with direct `Work:{id}` lookup, varying `ROOT_QUERY` key fallbacks, and fallback to DOM structure. Kakuyomu's numeric episode ID serves as stable source identity end-to-end; sequence numbers represent mutable display ordering.
+- **Staged Raw Generations**: Crawl runs write to staged generation directories (`generations/<gen_id>/`) with manifest-last atomic pointer activation (`active_generation.json`). Full crawls never call destructive deletion on active data.
+- **Translation Lineage & LLM QA**: Translated versions are hash-linked to raw source content hashes, prompt versions, QA policies, and glossary hashes/revisions. LLM QA policy (`advisory`, `blocking_retry`, `review`) enforces bounded retry attempts for below-threshold chunks without leaking unapproved outputs into cache.
+
 ## Product Boundary
 
 Novel AI is a single-owner Japanese-novel ingestion, translation, editing, and
