@@ -30,6 +30,14 @@ from novelai.storage.chapters import (
     query_chapters,
     save_chapter,
 )
+from novelai.storage.generations import (
+    _generations_dir,
+    activate_generation,
+    create_generation_stage,
+    get_active_generation,
+    load_generation_manifest,
+    record_staged_chapter,
+)
 from novelai.storage.glossary import load_glossary, save_glossary
 from novelai.storage.jobs import (
     _get_checkpoints_dir,
@@ -561,6 +569,12 @@ class StorageService:
     load_metadata = load_metadata
     save_source_state = save_source_state
     load_source_state = load_source_state
+    _generations_dir = _generations_dir
+    create_generation_stage = create_generation_stage
+    record_staged_chapter = record_staged_chapter
+    activate_generation = activate_generation
+    load_generation_manifest = load_generation_manifest
+    get_active_generation = get_active_generation
     update_onboarding_status = update_onboarding_status
     resolve_onboarding_status = resolve_onboarding_status
     _load_latest_valid_metadata_backup = _load_latest_valid_metadata_backup
