@@ -156,13 +156,9 @@ class KakuyomuSource(SourceAdapter):
         Raises SourceError if the raw HTML matches known block/age-gate patterns.
         """
         if detect_block_page_text(html):
-            raise SourceError(
-                f"Kakuyomu page at {url} appears to be blocked (Cloudflare, CAPTCHA, or bot challenge)."
-            )
+            raise SourceError(f"Kakuyomu page at {url} appears to be blocked (Cloudflare, CAPTCHA, or bot challenge).")
         if detect_age_gate_text(html):
-            raise SourceError(
-                f"Kakuyomu page at {url} appears to require age verification or adult confirmation."
-            )
+            raise SourceError(f"Kakuyomu page at {url} appears to require age verification or adult confirmation.")
 
     async def _fetch_page(self, url: str, *, on_retry: Callable[[int, Exception], None] | None = None) -> str:
         try:
@@ -362,9 +358,8 @@ class KakuyomuSource(SourceAdapter):
         if "chapter" in lowered_classes or "part" in lowered_classes or "toc" in lowered_classes:
             return True
         lowered_text = text.lower()
-        return (
-            "part " in lowered_text
-            or bool(re.search(r"(?:^|\s)(?:第?[0-9０-９一二三四五六七八九十百]+[章部編]|[0-9０-９]+章)(?:\s|　|$)", text))
+        return "part " in lowered_text or bool(
+            re.search(r"(?:^|\s)(?:第?[0-9０-９一二三四五六七八九十百]+[章部編]|[0-9０-９]+章)(?:\s|　|$)", text)
         )
 
     def _nearest_part_heading(self, anchor: Tag) -> str | None:

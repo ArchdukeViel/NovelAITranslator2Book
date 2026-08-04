@@ -22,6 +22,21 @@ from novelai.sources.html_parsers import HTMLParserMixin
 from novelai.sources.quality import detect_age_gate_text, detect_block_page_text
 from novelai.sources.source_layout import normalize_source_blocks, source_blocks_from_text_blocks
 from novelai.sources.status import normalize_publication_status, publication_status_payload
+from novelai.sources.syosetu.parser import (
+    AFTERWORD_SELECTORS,
+    BODY_SELECTORS,
+    CHAPTER_ROW_CLASSES,
+    NOVEL_ID_PATH_PATTERN,
+    NOVEL_ID_PATTERN,
+    PART_HEADING_CLASSES,
+    PREFACE_SELECTORS,
+    PUBLICATION_STATUS_LABEL_MARKERS,
+    PUBLICATION_STATUS_VALUE_MARKERS,
+    REMOVE_FROM_SECTION_SELECTORS,
+    RUBY_REMOVE_SELECTORS,
+    SEPARATOR_LINE,
+    SOURCE_DATE_PATTERN,
+)
 from novelai.sources.taxonomy import (
     SYOSETU_GENRE_MAP,
     map_genre,
@@ -36,64 +51,19 @@ class SyosetuNcodeSource(SourceAdapter):
     source_key = "syosetu_ncode"
     """Source adapter for syosetu.com novels (ncode)."""
 
-    NOVEL_ID_PATTERN = re.compile(r"^n\d{4}[a-z]{2}$", re.IGNORECASE)
-    NOVEL_ID_PATH_PATTERN = re.compile(r"/(n\d{4}[a-z]{2})(?:/|$)", re.IGNORECASE)
-    SOURCE_DATE_PATTERN = re.compile(r"\d{4}/\d{1,2}/\d{1,2}(?:\s+\d{1,2}:\d{2})?")
-    PART_HEADING_CLASSES = {
-        "chapter_title",
-        "p-eplist__chapter-title",
-        "p-eplist__volume-title",
-        "p-eplist__part-title",
-        "p-eplist__group-title",
-    }
-    CHAPTER_ROW_CLASSES = {
-        "novel_sublist2",
-        "p-eplist__sublist",
-        "p-eplist__episode",
-        "p-eplist__item",
-    }
-    BODY_SELECTORS = (
-        "#novel_honbun",
-        ".p-novel__text--body",
-        ".js-novel-text",
-        ".p-novel__body .p-novel__text",
-        ".p-novel__body",
-        ".p-novel__text",
-        ".novel_view",
-    )
-    PREFACE_SELECTORS = (
-        "#novel_p",
-        ".p-novel__text--preface",
-        ".p-novel__preface",
-    )
-    AFTERWORD_SELECTORS = (
-        "#novel_a",
-        ".p-novel__text--afterword",
-        ".p-novel__afterword",
-    )
-    REMOVE_FROM_SECTION_SELECTORS = (".novel_bn",)
-    RUBY_REMOVE_SELECTORS = ("rt", "rp")
-    SEPARATOR_LINE = "-" * 60
-    PUBLICATION_STATUS_LABEL_MARKERS = (
-        "掲載状態",
-        "連載状態",
-        "状態",
-        "ステータス",
-        "作品種別",
-        "種別",
-    )
-    PUBLICATION_STATUS_VALUE_MARKERS = (
-        "完結済",
-        "連載終了",
-        "完結",
-        "完了",
-        "連載中",
-        "更新中",
-        "休載",
-        "一時停止",
-        "停止",
-        "中断",
-    )
+    NOVEL_ID_PATTERN = NOVEL_ID_PATTERN
+    NOVEL_ID_PATH_PATTERN = NOVEL_ID_PATH_PATTERN
+    SOURCE_DATE_PATTERN = SOURCE_DATE_PATTERN
+    PART_HEADING_CLASSES = PART_HEADING_CLASSES
+    CHAPTER_ROW_CLASSES = CHAPTER_ROW_CLASSES
+    BODY_SELECTORS = BODY_SELECTORS
+    PREFACE_SELECTORS = PREFACE_SELECTORS
+    AFTERWORD_SELECTORS = AFTERWORD_SELECTORS
+    REMOVE_FROM_SECTION_SELECTORS = REMOVE_FROM_SECTION_SELECTORS
+    RUBY_REMOVE_SELECTORS = RUBY_REMOVE_SELECTORS
+    SEPARATOR_LINE = SEPARATOR_LINE
+    PUBLICATION_STATUS_LABEL_MARKERS = PUBLICATION_STATUS_LABEL_MARKERS
+    PUBLICATION_STATUS_VALUE_MARKERS = PUBLICATION_STATUS_VALUE_MARKERS
 
     def __init__(self, fetch_service: FetchService | None = None) -> None:
         self._fetch_service = fetch_service or get_default_fetch_service()
