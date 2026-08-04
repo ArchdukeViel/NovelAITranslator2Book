@@ -1,5 +1,6 @@
 """Syosetu source subpackage."""
 
+from novelai.sources.syosetu.adapter import SyosetuNcodeSource
 from novelai.sources.syosetu.parser import (
     BODY_SELECTORS,
     PART_HEADING_CLASSES,
@@ -19,6 +20,7 @@ from novelai.sources.syosetu.parser import (
 __all__ = [
     "BODY_SELECTORS",
     "PART_HEADING_CLASSES",
+    "SyosetuNcodeSource",
     "extract_chapter_date",
     "extract_chapter_part",
     "extract_chapters",
