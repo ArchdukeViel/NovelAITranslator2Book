@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
 from novelai.infrastructure.http.fetch_service import FetchService, get_default_fetch_service
+from novelai.infrastructure.http.profiles import PROFILE_ASSETS, PROFILE_SYOSETU_HTML
 from novelai.sources._helpers import (
     attribute_to_str,
     extract_image_references,
@@ -46,6 +47,7 @@ from novelai.sources.syosetu.parser import (
     normalize_syosetu_novel_id,
     render_story_section,
 )
+from novelai.sources.syosetu_api import Novel18NovelApi, SyosetuNovelApi
 from novelai.sources.taxonomy import SYOSETU_GENRE_MAP, map_genre, normalize_keywords
 from novelai.utils.text_normalization import normalize_text
 
@@ -118,10 +120,15 @@ class SyosetuNcodeSource(SourceAdapter):
     def _decode_page_body(body: bytes) -> str:
         return body.decode("utf-8", errors="replace")
 
+    @property
+    def _request_profile(self) -> str:
+        return PROFILE_SYOSETU_HTML
+
     async def _fetch_page(self, url: str, *, on_retry: Callable[[int, Exception], None] | None = None) -> str:
         result = await self._fetch_service.get_text(
             url,
             source_key=self.source_key,
+            profile=self._request_profile,
             headers=self._request_headers(),
             cookies=self._build_request_cookies(),
             on_retry=on_retry,
@@ -134,6 +141,7 @@ class SyosetuNcodeSource(SourceAdapter):
         response = await self._fetch_service.get_bytes(
             url,
             source_key=self.source_key,
+            profile=PROFILE_ASSETS,
             referer=referer,
             headers=self._request_headers(referer=referer),
             cookies=self._build_request_cookies(),
@@ -435,8 +443,61 @@ class SyosetuNcodeSource(SourceAdapter):
 
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
         url = self._normalize_url(url)
+        novel_id = self.normalize_novel_id(url)
+
+        # 1. Official API integration with HTML fallback provenance
+        api_client = (
+            Novel18NovelApi(self._fetch_service)
+            if self.source_key == "novel18_syosetu"
+            else SyosetuNovelApi(self._fetch_service)
+        )
+        api_result = await api_client.fetch_novel_or_none(novel_id)
+
+        metadata_provenance: dict[str, Any] = {}
+        api_entry: dict[str, Any] = {}
+        if api_result is not None:
+            api_entry, _typed_meta = api_result
+            metadata_provenance = {
+                "metadata_extraction_mode": "api_plus_html",
+                "metadata_api_status": "success",
+                "metadata_api_endpoint": "adult" if self.source_key == "novel18_syosetu" else "regular",
+                "api_episode_count": api_entry.get("api_episode_count"),
+            }
+        else:
+            metadata_provenance = {
+                "metadata_extraction_mode": "html_fallback",
+                "metadata_api_status": "failed_or_missing",
+                "metadata_api_error_category": "api_miss_or_error",
+            }
+
+        # 2. Fetch HTML work page
         html = await self._fetch_page(url, on_retry=None)
         metadata = self._parse_metadata_html(html, url)
+
+        # Merge precedence: API overrides HTML fields where available, preserving HTML-only chapter links/URLs
+        for key in (
+            "title",
+            "author",
+            "synopsis",
+            "source_keywords",
+            "source_genre_name",
+            "genre_slug",
+            "published_at",
+            "updated_at",
+            "api_novel_updated_at",
+            "api_record_updated_at",
+            "publication_status",
+            "status",
+            "source_publication_status",
+            "is_long_stopped",
+            "content_length",
+            "illustration_count",
+        ):
+            if key in api_entry and api_entry[key] is not None:
+                metadata[key] = api_entry[key]
+
+        metadata.update(metadata_provenance)
+
         infotop_url = self._infotop_url(url)
         try:
             infotop_html = await self._fetch_page(infotop_url, on_retry=None)

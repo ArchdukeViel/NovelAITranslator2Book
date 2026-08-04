@@ -29,63 +29,64 @@ def test_jst_to_utc_iso_converts_correctly():
 
 def test_parse_novel_entry_maps_regular_genre_and_status():
     raw = {
-        "allcount": 1,
+        "ncode": "n1234ab",
         "title": " 魔法使いの旅 ",
         "writer": " 作者名 ",
-        "keywords": " 魔法, 冒険, 異世界 ",
-        "genre": "101",
+        "keyword": " 魔法 冒険 異世界 ",
+        "genre": 101,
         "general_firstup": "2023-05-10 12:00:00",
         "general_lastup": "2024-02-01 15:30:00",
         "novelupdated_at": "2024-02-01 15:30:00",
-        "end": "1",
-        "isstop": "0",
+        "end": 0,
+        "isstop": 0,
+        "general_all_no": 12,
+        "length": 50000,
     }
-    entry = parse_novel_entry(raw, genre_map=SYOSETU_GENRE_MAP)
+    entry, typed_meta = parse_novel_entry(raw, genre_map=SYOSETU_GENRE_MAP)
     assert entry["title"] == "魔法使いの旅"
     assert entry["author"] == "作者名"
     assert entry["source_keywords"] == ["魔法", "冒険", "異世界"]
-    assert entry["source_genre_name"] == "異世界転生"
-    assert entry["genre_slug"] == "isekai-tensei"
+    assert entry["source_genre_name"] == "異世界〔恋愛〕"
     assert entry["published_at"] == "2023-05-10T03:00:00Z"
     assert entry["updated_at"] == "2024-02-01T06:30:00Z"
     assert entry["publication_status"] == "completed"
     assert entry["status"] == "completed"
     assert entry["source_publication_status"] == "完結済"
-    assert "api_warnings" not in entry
+    assert typed_meta.ncode == "n1234ab"
+    assert typed_meta.episode_count == 12
+    assert typed_meta.content_length == 50000
 
 
 def test_parse_novel_entry_maps_adult_genre():
     raw = {
-        "allcount": 1,
+        "ncode": "n9999zz",
         "title": "Adult Tale",
-        "genre": "9901",  # 恋愛
-        "end": "0",
-        "isstop": "0",
+        "nocgenre": 1,
+        "end": 1,
+        "isstop": 0,
     }
-    entry = parse_novel_entry(raw, genre_map=NOVEL18_GENRE_MAP)
-    assert entry["source_genre_name"] == "恋愛"
-    # 恋愛 maps to romance; adult-specific markers map to adult-romance.
-    assert entry["genre_slug"] == "romance"
+    entry, typed_meta = parse_novel_entry(raw, source_key="novel18_syosetu", genre_map=NOVEL18_GENRE_MAP)
+    assert entry["source_genre_name"] == "男性向け（ノクターンノベルズ）"
     assert entry["publication_status"] == "ongoing"
+    assert typed_meta.age_restricted is True
 
 
 @pytest.mark.asyncio
 async def test_syosetu_novel_api_fetches_and_parses():
-    payload = {
-        "allcount": 1,
-        "title": [
-            {
-                "allcount": 1,
-                "title": "API Novel",
-                "writer": "Author",
-                "genre": "301",
-                "biggenre": "2",
-                "general_firstup": "2024-01-01 00:00:00",
-                "end": "0",
-                "isstop": "0",
-            }
-        ],
-    }
+    payload = [
+        {"allcount": 1},
+        {
+            "ncode": "n1234ab",
+            "title": "API Novel",
+            "writer": "Author",
+            "genre": 201,
+            "biggenre": 2,
+            "general_firstup": "2024-01-01 00:00:00",
+            "end": 1,
+            "isstop": 0,
+            "general_all_no": 5,
+        },
+    ]
 
     seen_requests: list[httpx.Request] = []
 
@@ -96,10 +97,12 @@ async def test_syosetu_novel_api_fetches_and_parses():
     service = FetchService(client_factory=_make_client_factory(httpx.MockTransport(handler)))
     api = SyosetuNovelApi(service)
 
-    entry = await api.fetch_novel("n1234ab")
-    assert entry is not None
+    res = await api.fetch_novel("n1234ab")
+    assert res is not None
+    entry, typed_meta = res
     assert entry["title"] == "API Novel"
     assert entry["author"] == "Author"
+    assert typed_meta.ncode == "n1234ab"
     assert seen_requests[0].url.host == "api.syosetu.com"
     assert "/novelapi/api/" in seen_requests[0].url.path
     assert "ncode=n1234ab" in seen_requests[0].url.query.decode("utf-8")
@@ -107,18 +110,16 @@ async def test_syosetu_novel_api_fetches_and_parses():
 
 @pytest.mark.asyncio
 async def test_novel18_api_uses_correct_profile_and_path():
-    payload = {
-        "allcount": 1,
-        "title": [
-            {
-                "allcount": 1,
-                "title": "Adult API Novel",
-                "writer": "Adult Author",
-                "genre": "9901",
-                "end": "0",
-            }
-        ],
-    }
+    payload = [
+        {"allcount": 1},
+        {
+            "ncode": "n9999zz",
+            "title": "Adult API Novel",
+            "writer": "Adult Author",
+            "nocgenre": 1,
+            "end": 1,
+        },
+    ]
 
     seen_requests: list[httpx.Request] = []
 
@@ -129,9 +130,11 @@ async def test_novel18_api_uses_correct_profile_and_path():
     service = FetchService(client_factory=_make_client_factory(httpx.MockTransport(handler)))
     api = Novel18NovelApi(service)
 
-    entry = await api.fetch_novel("n9999zz")
-    assert entry is not None
-    assert entry["genre_slug"] == "romance"
+    res = await api.fetch_novel("n9999zz")
+    assert res is not None
+    entry, typed_meta = res
+    assert entry["title"] == "Adult API Novel"
+    assert typed_meta.age_restricted is True
     assert seen_requests[0].url.host == "api.syosetu.com"
     assert "/novel18api/api/" in seen_requests[0].url.path
     assert api._profile == PROFILE_NOVEL18_API
@@ -139,7 +142,7 @@ async def test_novel18_api_uses_correct_profile_and_path():
 
 @pytest.mark.asyncio
 async def test_syosetu_novel_api_returns_none_on_empty_allcount():
-    payload = {"allcount": 0, "title": []}
+    payload = [{"allcount": 0}]
 
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=payload, request=request)
