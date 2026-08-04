@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from novelai.infrastructure.http.cache import InMemoryFetchCache
+from novelai.infrastructure.http.cache import FetchCacheEntry, InMemoryFetchCache, LRUFetchCache
 from novelai.infrastructure.http.fetch_service import FetchResult, FetchService, get_default_fetch_service
 from novelai.infrastructure.http.rate_limiter import (
     DisabledRateLimiter,
@@ -27,10 +27,12 @@ __all__ = [
     "BackoffCalculator",
     "DisabledRateLimiter",
     "DomainThrottle",
+    "FetchCacheEntry",
     "FetchResult",
     "FetchService",
     "InMemoryFetchCache",
     "InMemoryRateLimiter",
+    "LRUFetchCache",
     "RateLimiter",
     "RedisRateLimiter",
     "Retrier",

@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 
 from novelai.core.errors import SourceError
-from novelai.infrastructure.http.cache import FetchCache, FetchCacheEntry, InMemoryFetchCache
+from novelai.infrastructure.http.cache import FetchCache, FetchCacheEntry, LRUFetchCache
 from novelai.infrastructure.http.client import create_async_client, validate_safe_url
 from novelai.infrastructure.http.retry import Retrier, RetryConfig
 from novelai.infrastructure.http.throttle import DomainThrottle
@@ -41,7 +41,14 @@ def _headers_dict(headers: httpx.Headers | dict[str, str]) -> dict[str, str]:
 
 
 class FetchService:
-    """Central HTTP fetcher for source adapters."""
+    """Central HTTP fetcher for source adapters.
+
+    HTTP clients are pooled per request profile (``regular`` vs ``r18``,
+    etc.) and reused across requests; per-request headers, referers, and
+    cookies are attached to individual calls. Responses are cached through
+    a bounded, TTL-aware cache keyed by ``(source_key, profile, url)`` so
+    identical URLs fetched under different profiles never collide.
+    """
 
     _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
@@ -54,7 +61,9 @@ class FetchService:
     ) -> None:
         self._client_factory = client_factory
         self._throttle = throttle or _GLOBAL_THROTTLE
-        self._cache = cache or InMemoryFetchCache()
+        self._cache = cache or LRUFetchCache()
+        # Pooled clients keyed by request profile ("" for the default).
+        self._clients: dict[str, httpx.AsyncClient] = {}
 
     async def get_text(
         self,
@@ -65,6 +74,7 @@ class FetchService:
         headers: dict[str, str] | None = None,
         cookies: Any = None,
         on_retry: Callable[[int, Exception], None] | None = None,
+        profile: str | None = None,
     ) -> FetchResult:
         return await self._fetch(
             url,
@@ -73,6 +83,8 @@ class FetchService:
             headers=headers,
             cookies=cookies,
             on_retry=on_retry,
+            kind="html",
+            profile=profile,
         )
 
     async def get_bytes(
@@ -83,6 +95,7 @@ class FetchService:
         referer: str | None = None,
         headers: dict[str, str] | None = None,
         cookies: Any = None,
+        profile: str | None = None,
     ) -> FetchResult:
         return await self._fetch(
             url,
@@ -90,6 +103,8 @@ class FetchService:
             referer=referer,
             headers=headers,
             cookies=cookies,
+            kind="asset",
+            profile=profile,
         )
 
     async def _fetch(
@@ -100,26 +115,27 @@ class FetchService:
         referer: str | None,
         headers: dict[str, str] | None,
         cookies: Any,
+        kind: str,
+        profile: str | None,
         on_retry: Callable[[int, Exception], None] | None = None,
     ) -> FetchResult:
         requested_url = validate_safe_url(url)
         request_headers = dict(headers or {})
         if referer and referer.strip():
             request_headers["Referer"] = referer.strip()
-        request_headers.update(self._cache.conditional_headers(source_key, requested_url))
+        request_headers.update(self._cache.conditional_headers(source_key, requested_url, profile=profile))
 
         await self._throttle.before_request(requested_url)
         started = perf_counter()
         try:
             response = await self._with_retry(
-                lambda: self._request(requested_url, headers=request_headers, cookies=cookies),
+                lambda: self._request(requested_url, headers=request_headers, cookies=cookies, profile=profile),
                 on_retry=on_retry,
             )
         except httpx.HTTPStatusError as exc:
             await self._throttle.after_response(requested_url, exc.response.status_code)
             raise SourceError(
-                f"Failed to fetch {source_key} page from {requested_url} "
-                f"(status={exc.response.status_code})."
+                f"Failed to fetch {source_key} page from {requested_url} (status={exc.response.status_code})."
             ) from exc
         except httpx.HTTPError as exc:
             raise SourceError(f"Failed to fetch {source_key} page from {requested_url}: {exc}") from exc
@@ -128,7 +144,7 @@ class FetchService:
         await self._throttle.after_response(str(response.url), response.status_code)
 
         if response.status_code == 304:
-            cached = self._cache.get(source_key, requested_url)
+            cached = self._cache.get(source_key, requested_url, profile=profile)
             if cached is None:
                 raise SourceError(f"{source_key} returned 304 for {requested_url}, but no cached response exists.")
             return FetchResult(
@@ -169,16 +185,51 @@ class FetchService:
                 body=body,
                 source_key=source_key,
                 fetched_at=result.fetched_at,
+                kind=kind,
+                profile=profile,
             )
         )
         return result
 
-    async def _request(self, url: str, *, headers: dict[str, str], cookies: Any) -> httpx.Response:
-        async with self._client_factory(headers=headers, cookies=cookies) as client:
-            response = await client.get(url)
-            if response.status_code != 304:
-                response.raise_for_status()
-            return response
+    async def _request(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        cookies: Any,
+        profile: str | None,
+    ) -> httpx.Response:
+        client = self._pooled_client(profile)
+        response = await client.get(url, headers=headers, cookies=cookies)
+        if response.status_code != 304:
+            response.raise_for_status()
+        return response
+
+    def _pooled_client(self, profile: str | None) -> httpx.AsyncClient:
+        key = profile or ""
+        client = self._clients.get(key)
+        if client is None:
+            client = self._client_factory()
+            self._clients[key] = client
+        return client
+
+    def close(self) -> None:
+        """Best-effort synchronous close of pooled clients.
+
+        ``AsyncClient.close`` does not exist; tests use ``aclose`` via the
+        event loop, so this helper is kept for type-checked convenience.
+        """
+        self._clients.clear()
+
+    async def aclose(self) -> None:
+        for client in self._clients.values():
+            await client.aclose()
+        self._clients.clear()
+
+    def cache_stats(self) -> dict[str, int | float | None]:
+        if isinstance(self._cache, LRUFetchCache):
+            return self._cache.stats()
+        return {}
 
     async def _with_retry(
         self, fn: Callable[[], Any], *, on_retry: Callable[[int, Exception], None] | None = None

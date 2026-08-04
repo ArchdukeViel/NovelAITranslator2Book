@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from novelai.core.errors import SourceError
-from novelai.infrastructure.http.cache import InMemoryFetchCache
+from novelai.infrastructure.http.cache import InMemoryFetchCache, LRUFetchCache
 from novelai.infrastructure.http.client import create_async_client
 from novelai.infrastructure.http.fetch_service import FetchResult, FetchService
 from novelai.infrastructure.http.throttle import DomainThrottle
@@ -133,6 +133,75 @@ async def test_fetch_service_uses_conditional_cache_on_304():
     assert second.body == b"cached body"
 
 
+@pytest.mark.asyncio
+async def test_fetch_service_pools_client_per_profile():
+    created: list[str] = []
+
+    def factory(**kwargs: Any) -> httpx.AsyncClient:
+        created.append(str(kwargs))
+        return httpx.AsyncClient(transport=httpx.MockTransport(lambda req: httpx.Response(200, text="ok", request=req)))
+
+    service = FetchService(
+        client_factory=factory,
+        throttle=RecordingThrottle(),
+        cache=InMemoryFetchCache(),
+    )
+
+    await service.get_text("https://example.test/a", source_key="test_source")
+    await service.get_text("https://example.test/b", source_key="test_source")
+    await service.get_text("https://example.test/c", source_key="test_source", profile="r18")
+
+    # One client per profile; sequential requests reuse the pooled client.
+    assert len(created) == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_service_profiles_do_not_share_cache_entries():
+    seen_profiles: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen_profiles.append(request.headers.get("x-profile", ""))
+        return httpx.Response(200, text="body", request=request)
+
+    service = FetchService(
+        client_factory=_client_factory(httpx.MockTransport(handler)),
+        throttle=RecordingThrottle(),
+        cache=LRUFetchCache(max_bytes=None),
+    )
+
+    await service.get_text("https://example.test/page", source_key="test_source", profile="regular")
+    await service.get_text("https://example.test/page", source_key="test_source", profile="r18")
+    # Identical URL under a different profile is a cache miss (no collision).
+    await service.get_text("https://example.test/page", source_key="test_source", profile="regular")
+
+    assert seen_profiles == ["", "", ""]
+    stats = service.cache_stats()
+    assert stats["size"] == 2
+    assert stats["hits"] == 1
+    assert stats["misses"] == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_service_asset_fetches_use_asset_kind_entries():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"\x89PNG", headers={"content-type": "image/png"}, request=request)
+
+    service = FetchService(
+        client_factory=_client_factory(httpx.MockTransport(handler)),
+        throttle=RecordingThrottle(),
+        cache=LRUFetchCache(max_bytes=None),
+    )
+
+    result = await service.get_bytes(
+        "https://example.test/img.png", source_key="test_source", referer="https://example.test/page"
+    )
+
+    assert result.body == b"\x89PNG"
+    # Kind-aware TTL: the asset entry uses the asset TTL budget.
+    stats = service.cache_stats()
+    assert stats["size"] == 1
+
+
 class FakeFetchService(FetchService):
     def __init__(self, html: str) -> None:
         self.html = html
@@ -148,6 +217,7 @@ class FakeFetchService(FetchService):
         headers: dict[str, str] | None = None,
         cookies: Any = None,
         on_retry: Any = None,
+        profile: str | None = None,
     ) -> FetchResult:
         self.calls.append(
             {
@@ -156,6 +226,7 @@ class FakeFetchService(FetchService):
                 "referer": referer,
                 "headers": headers,
                 "cookies": cookies,
+                "profile": profile,
             }
         )
         return FetchResult(
@@ -177,6 +248,7 @@ class FakeFetchService(FetchService):
         referer: str | None = None,
         headers: dict[str, str] | None = None,
         cookies: Any = None,
+        profile: str | None = None,
     ) -> FetchResult:
         self.calls.append(
             {
@@ -185,6 +257,7 @@ class FakeFetchService(FetchService):
                 "referer": referer,
                 "headers": headers,
                 "cookies": cookies,
+                "profile": profile,
             }
         )
         return FetchResult(
