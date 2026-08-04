@@ -37,7 +37,7 @@ Submit Request.
 - Public header
 - Page heading block
 - Request form card
-- Supported Sources card
+- Routes `/request-novel` and `/request-novels` (plural route added for explicit naming consistency)
 - Public footer
 
 ## Key Components
@@ -78,7 +78,7 @@ A clean two-column form page with one vermillion submit button and a quiet sourc
 - Tap targets at least 44 px on mobile
 
 ## Assets
-- brand-mark.png
+- SVG brand logos (`brand-logo.svg`, `brand-logo-text.svg`)
 
 ## Preserve Exactly
 - Supported source names exactly as listed

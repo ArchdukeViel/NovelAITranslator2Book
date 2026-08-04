@@ -26,10 +26,10 @@ export function MobileTabBar() {
   function resolveHref(href: string): string {
     if (!isAuthenticated) {
       if (href === "/account/library") {
-        return "/login?mode=signin&next=%2Faccount%2Flibrary";
+        return "/login?mode=signin&callbackUrl=%2Faccount%2Flibrary";
       }
       if (href === "/account") {
-        return "/login?mode=signin&next=%2Faccount";
+        return "/login?mode=signin&callbackUrl=%2Faccount";
       }
     }
     return href;

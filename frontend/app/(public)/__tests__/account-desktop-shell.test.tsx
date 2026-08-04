@@ -172,14 +172,16 @@ describe("Account desktop shell", () => {
       "/account/library",
       "/account/history",
       "/account/notifications",
-      "/account/requests",
+      "/account/request-novels",
       "/account/reviews",
       "/account/contributions",
       "/account/settings",
     ];
 
     for (const href of links) {
-      const link = within(nav).getByRole("link", { name: new RegExp(href.split("/").pop() || "", "i") });
+      // Hyphens in the href (e.g. request-novels) match the spaced label (Request Novels)
+      const namePattern = (href.split("/").pop() || "").replace(/-/g, "[ -]");
+      const link = within(nav).getByRole("link", { name: new RegExp(namePattern, "i") });
       expect(link).toBeInTheDocument();
       expect(link).toHaveAttribute("href", href);
     }
@@ -425,7 +427,7 @@ describe("Loading and auth states", () => {
       </Layout>
     );
 
-    expect(replaceMock).toHaveBeenCalledWith("/login?mode=signin&next=%2Faccount");
+    expect(replaceMock).toHaveBeenCalledWith("/login?mode=signin&callbackUrl=%2Faccount");
   });
 
   it("redirects to login preserving deep account pathname", async () => {
@@ -455,7 +457,7 @@ describe("Loading and auth states", () => {
       </Layout>
     );
 
-    expect(replaceMock).toHaveBeenCalledWith("/login?mode=signin&next=%2Faccount%2Fsettings");
+    expect(replaceMock).toHaveBeenCalledWith("/login?mode=signin&callbackUrl=%2Faccount%2Fsettings");
   });
 });
 

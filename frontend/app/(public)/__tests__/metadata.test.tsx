@@ -355,9 +355,9 @@ describe("metadata — safety and honesty", () => {
     expect(sourceText).not.toContain("Google OAuth");
   });
 
-  it("request-novel page does not contain backend or API jargon", () => {
+  it("request-novels page does not contain backend or API jargon", () => {
     const sourceText = readFileSync(
-      "app/(public)/request-novel/page.tsx",
+      "app/(public)/account/request-novels/page.tsx",
       "utf8"
     );
     expect(sourceText.toLowerCase()).not.toContain("backend");

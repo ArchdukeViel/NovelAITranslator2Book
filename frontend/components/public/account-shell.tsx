@@ -23,7 +23,7 @@ const sidebarLinks = [
   { href: "/account/library", label: "Library", icon: Library },
   { href: "/account/history", label: "History", icon: History },
   { href: "/account/notifications", label: "Notifications", icon: Bell },
-  { href: "/account/requests", label: "Requests", icon: Clock },
+  { href: "/account/request-novels", label: "Request Novels", icon: Clock },
   { href: "/account/reviews", label: "Reviews", icon: Star },
   { href: "/account/contributions", label: "Contributions", icon: Heart },
   { href: "/account/settings", label: "Settings", icon: Settings },
@@ -41,7 +41,7 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isPending && !isAuthenticated) {
-      router.replace(`/login?mode=signin&next=${encodeURIComponent(pathname)}`);
+      router.replace(`/login?mode=signin&callbackUrl=${encodeURIComponent(pathname)}`);
     }
   }, [isPending, isAuthenticated, pathname, router]);
 

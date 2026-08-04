@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -78,13 +79,45 @@ function chapterLabel(number: number | null | undefined): string | null {
   return `Chapter ${number}`;
 }
 
+/** Honest freshness flag derived from the real added_at catalog field. */
+function isNewlyAdded(
+  iso: string | null | undefined,
+  withinDays = 14
+): boolean {
+  if (!iso) return false;
+  const added = new Date(iso).getTime();
+  if (Number.isNaN(added)) return false;
+  return Date.now() - added <= withinDays * 24 * 60 * 60 * 1000;
+}
+
+function NewBadge() {
+  return (
+    <span className="absolute left-2 top-2 z-10 rounded-sm bg-primary px-1.5 py-0.5 font-metadata text-[10px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm">
+      New
+    </span>
+  );
+}
+
+/* --------------------------- shared surface utilities ------------------------ */
+/* Elevation discipline: cards are SOLID one step up from the paper (bg-card vs
+   bg-background), resting on shadow-card; hover lifts with shadow-raised. Dark
+   mode shadows are near-invisible, so a 5% white ring carries the edge instead.
+   Only the hero may use a heavier shadow than shadow-raised. */
+
+const CARD_SURFACE =
+  "bg-card shadow-card dark:ring-1 dark:ring-white/5";
+
+const CARD_LIFT =
+  "transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-raised";
+
 /* ------------------------------- rail novel card ------------------------------ */
 
 function RailCard({ novel }: { novel: PublicNovelSummary }) {
   return (
     <article role="listitem" className="w-44 shrink-0 snap-start">
       <Link href={publicNovelHref(novel.slug)} className="group block">
-        <div className="relative overflow-hidden rounded-md border border-border/40 bg-card p-1.5 transition-all duration-300 ease-out hover:-translate-y-1 hover:border-primary/40 hover:shadow-md">
+        <div className="relative overflow-hidden rounded-md bg-card p-1.5 shadow-card transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-raised hover:ring-1 hover:ring-primary/40">
+          {isNewlyAdded(novel.added_at) && <NewBadge />}
           <FallbackCover
             title={novel.title}
             sourceTitle={novel.source_title}
@@ -123,9 +156,13 @@ function BannerTile({
   return (
     <Link
       href={href}
-      className="group relative flex h-28 items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-card transition-colors hover:border-primary/40"
+      className={cn(
+        CARD_SURFACE,
+        CARD_LIFT,
+        "group relative flex h-28 items-center justify-center overflow-hidden rounded-lg p-4"
+      )}
     >
-      <div className="absolute inset-0 bg-gradient-to-r from-muted/60 to-muted/20 transition-transform duration-500 group-hover:scale-105" />
+      <div className="absolute inset-0 bg-gradient-to-r from-muted/40 to-transparent transition-transform duration-500 group-hover:scale-105" />
       <div className="relative flex flex-col items-center gap-1.5 text-center">
         <Icon className="h-7 w-7 text-primary" />
         <span className="font-literary text-lg font-semibold text-foreground">{title}</span>
@@ -148,7 +185,7 @@ function RecentUpdateItem({ novel }: { novel: PublicNovelSummary }) {
   const chapterHref = readableChapterHref(novel);
 
   return (
-    <div className="flex items-start gap-4 border-b border-border/50 p-4 transition-colors last:border-0 hover:bg-card/70">
+    <div className="flex items-start gap-4 border-b border-border/20 p-4 transition-colors last:border-0 hover:bg-muted/50">
       <Link
         href={publicNovelHref(novel.slug)}
         className="block w-12 shrink-0 overflow-hidden rounded"
@@ -167,7 +204,7 @@ function RecentUpdateItem({ novel }: { novel: PublicNovelSummary }) {
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2">
           <span className="font-metadata text-xs text-muted-foreground">{when ?? "—"}</span>
-          <div className="h-px flex-1 bg-border/60" />
+          <div className="h-px flex-1 bg-border/20" />
         </div>
         <Link
           href={publicNovelHref(novel.slug)}
@@ -201,7 +238,7 @@ function RankedItem({ novel, rank }: { novel: PublicNovelSummary; rank: number }
     <li>
       <Link
         href={publicNovelHref(novel.slug)}
-        className="group flex items-center gap-3 rounded p-2 transition-colors hover:bg-card/70"
+        className="group flex items-center gap-3 rounded p-2 transition-colors hover:bg-muted/50"
       >
         <div className="relative w-10 shrink-0 overflow-hidden rounded">
           <FallbackCover
@@ -255,7 +292,7 @@ function TrendingItem({ novel, rank }: { novel: PublicNovelSummary; rank: number
         >
           {rank}
         </span>
-        <div className="min-w-0 flex-1 border-b border-border/50 pb-2 transition-colors group-hover:border-primary/50">
+        <div className="min-w-0 flex-1 border-b border-border/20 pb-2 transition-colors group-hover:border-primary/50">
           <h4 className="line-clamp-1 font-literary text-base font-medium text-foreground transition-colors group-hover:text-primary">
             {novel.title}
           </h4>
@@ -287,8 +324,8 @@ function WidgetCard({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-lg border border-border/60 bg-muted/30", className)}>
-      <div className="flex items-center justify-between border-b border-border/50 p-4">
+    <div className={cn(CARD_SURFACE, "rounded-lg", className)}>
+      <div className="flex items-center justify-between border-b border-border/20 p-4">
         <h2 className="font-literary text-lg font-semibold text-foreground">{title}</h2>
         {action}
       </div>
@@ -307,16 +344,20 @@ export default function HomePage() {
   });
 
   const novels = data?.novels ?? [];
-  const spotlightNovel = novels.find(
+  const spotlightNovels = novels.filter(
     (novel) => Boolean(synopsisPreview(novel.synopsis) && readableChapterHref(novel))
   );
+  const spotlightNovel = spotlightNovels[0];
+  const [heroIndex, setHeroIndex] = useState(0);
+  const currentSpotlight = spotlightNovels[heroIndex] ?? spotlightNovel;
+
   const genreLabels = useGenreLabelMap();
   const { isAuthenticated } = usePublicAuth();
-  const heroSourceTitle = spotlightNovel
-    ? usefulSourceTitle(spotlightNovel.source_title, spotlightNovel.title)
+  const heroSourceTitle = currentSpotlight
+    ? usefulSourceTitle(currentSpotlight.source_title, currentSpotlight.title)
     : null;
-  const heroSynopsis = synopsisPreview(spotlightNovel?.synopsis);
-  const heroReadableHref = spotlightNovel ? readableChapterHref(spotlightNovel) : null;
+  const heroSynopsis = synopsisPreview(currentSpotlight?.synopsis);
+  const heroReadableHref = currentSpotlight ? readableChapterHref(currentSpotlight) : null;
   const history = useHistory({ limit: 12 });
   const continueNovels = isAuthenticated
     ? [...new Set((history.data?.items ?? []).map((item) => item.slug))]
@@ -352,194 +393,178 @@ export default function HomePage() {
     .sort((left, right) => right[1].count - left[1].count || left[0].localeCompare(right[0]))
     .slice(0, 2);
 
-  /* ---------------------------------- loading --------------------------------- */
-  if (isPending) {
-    return (
-      <main>
-        <section
-          className="relative isolate min-h-[80vh] overflow-hidden border-b border-border/80 bg-card/30"
-          aria-label="Loading featured novel"
-        >
-          <div className="mx-auto flex min-h-[80vh] max-w-7xl items-end px-4 pb-14 pt-20 sm:px-6 lg:px-8 lg:pb-20">
-            <div className="max-w-3xl space-y-4">
-              <div className="h-6 w-32 animate-pulse rounded bg-muted" />
-              <div className="h-12 w-3/4 animate-pulse rounded-lg bg-muted" />
-              <div className="h-5 w-64 animate-pulse rounded bg-muted" />
-              <div className="flex gap-3 pt-4">
-                <div className="h-11 w-40 animate-pulse rounded-md bg-muted" />
-              </div>
-            </div>
-          </div>
-        </section>
-        <div className="mx-auto max-w-7xl space-y-12 px-4 py-14 sm:px-6 lg:px-8">
-          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <div key={i} className="space-y-2">
-                <div className="aspect-[2/3] animate-pulse rounded-md bg-muted" />
-                <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
-              </div>
-            ))}
-          </div>
-        </div>
-        <span className="sr-only" role="status">
-          Loading catalog…
-        </span>
-      </main>
-    );
-  }
-
-  /* ----------------------------------- error ---------------------------------- */
-  if (isError) {
-    return (
-      <main>
-        <div className="mx-auto max-w-7xl px-4 py-24 text-center sm:px-6 lg:px-8">
-          <BookOpen className="mx-auto h-10 w-10 text-muted-foreground/50" />
-          <p className="mt-4 text-base font-semibold text-foreground">
-            Could not load the catalog
-          </p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Something went wrong fetching novels. This is usually temporary.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            <button
-              type="button"
-              onClick={() => refetch()}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none"
-            >
-              Try again
-            </button>
-            <Link
-              href="/browse-novels"
-              className="inline-flex h-11 items-center gap-2 rounded-md border border-accent/40 px-5 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
-            >
-              Browse the catalog
-            </Link>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  /* ----------------------------------- empty ---------------------------------- */
-  if (novels.length === 0) {
-    return (
-      <main>
-        <div className="mx-auto max-w-7xl px-4 py-24 text-center sm:px-6 lg:px-8">
-          <BookOpen className="mx-auto h-10 w-10 text-muted-foreground/50" />
-          <p className="mt-4 text-base font-semibold text-foreground">
-            No novels in the catalog yet
-          </p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            New translations are added regularly. You can also request a novel
-            to be translated.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            <Link
-              href="/request-novel"
-              className="inline-flex h-11 items-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-            >
-              Request a novel
-            </Link>
-            <Link
-              href="/browse-novels"
-              className="inline-flex h-11 items-center gap-2 rounded-md border border-accent/40 px-5 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
-            >
-              Browse the catalog
-            </Link>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
   /* ----------------------------------- settled -------------------------------- */
   return (
     <main className="bg-background">
       <div className="mx-auto w-full max-w-[1600px] grid-cols-1 gap-8 px-4 py-8 sm:px-6 lg:px-8 xl:grid xl:grid-cols-12">
         {/* Left column: main feed */}
         <div className="flex w-full flex-col gap-10 xl:col-span-8 2xl:col-span-9">
-          {/* Spotlight hero */}
-          {spotlightNovel && (
-            <section
-              aria-label="Dokushodo spotlight novel"
-              className="relative isolate overflow-hidden rounded-xl border border-border/80 bg-card/60 p-6 shadow-sm sm:p-8 lg:p-10"
-            >
-              <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-12 lg:gap-12">
-                <div className="space-y-4 lg:col-span-8">
-                  <span className="font-metadata text-xs font-semibold uppercase tracking-wider text-primary">
-                    Spotlight
-                  </span>
-                  <h1 className="font-literary text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl lg:text-5xl">
-                    {spotlightNovel.title}
-                  </h1>
-                  {heroSourceTitle && (
-                    <p className="font-literary text-base text-accent">{heroSourceTitle}</p>
-                  )}
-                  <NovelMetadataRow
-                    className="mt-2"
-                    chapterCount={spotlightNovel.chapter_count}
-                    translatedCount={spotlightNovel.translated_count}
-                    source={spotlightNovel.language}
-                    status={spotlightNovel.publication_status}
-                  />
-                  <p className="max-w-2xl line-clamp-3 text-sm leading-relaxed text-muted-foreground md:text-base">
-                    {heroSynopsis ?? "Synopsis unavailable for this novel."}
-                  </p>
-                  {spotlightNovel.genres && spotlightNovel.genres.length > 0 && (
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {spotlightNovel.genres.map((genre) => (
-                        <GenreChip
-                          key={genre.slug}
-                          label={genreLabels?.get(genre.slug) ?? genre.slug}
-                        />
-                      ))}
+          {/* Offline / Error notice banner (non-blocking) */}
+          {isError && (
+            <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-primary">
+              <span>Could not connect to catalog backend. Showing layout preview.</span>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="font-medium underline hover:text-primary-text"
+              >
+                Try reconnecting
+              </button>
+            </div>
+          )}
+
+          {/* Spotlight hero carousel */}
+          <section
+            aria-label="Dokushodo spotlight novel"
+            className="group relative min-h-[420px] w-full overflow-hidden rounded-xl bg-card shadow-lg"
+          >
+            {currentSpotlight ? (
+              <>
+                {/* Atmospheric background layer (subtle palette wash, not a stretched bookplate) */}
+                <div
+                  className="absolute inset-0 bg-gradient-to-br from-primary/10 via-card to-background"
+                  aria-hidden="true"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/25 to-transparent" />
+
+                {/* Content Overlay */}
+                <div className="relative flex flex-col gap-8 p-6 sm:p-8 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-12 lg:p-10">
+                  <div className="order-2 flex min-w-0 flex-col lg:order-1">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="font-metadata text-xs font-semibold uppercase tracking-wider text-primary">
+                        Featured Series {spotlightNovels.length > 1 ? `(${heroIndex + 1}/${spotlightNovels.length})` : ""}
+                      </span>
+                      {spotlightNovels.length > 1 && (
+                        <div className="z-10 flex gap-1.5" aria-label="Featured series carousel controls">
+                          {spotlightNovels.slice(0, 5).map((_, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setHeroIndex(idx)}
+                              className={cn(
+                                "h-2 rounded-full transition-all",
+                                idx === heroIndex ? "w-6 bg-primary" : "w-2 bg-muted-foreground/40 hover:bg-muted-foreground"
+                              )}
+                              aria-label={`Go to slide ${idx + 1}`}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                  <div className="flex flex-wrap items-center gap-4 pt-2">
-                    {heroReadableHref && (
-                      <Link
-                        href={heroReadableHref}
-                        className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-                      >
-                        <BookOpen className="h-4 w-4" />
-                        Start Reading
-                      </Link>
+                    <h1 className="mb-2 font-literary text-3xl font-semibold leading-tight text-foreground sm:text-4xl lg:text-5xl">
+                      {currentSpotlight.title}
+                    </h1>
+                    {heroSourceTitle && (
+                      <p className="mb-3 font-literary text-base italic text-muted-foreground sm:text-lg">
+                        {heroSourceTitle}
+                      </p>
                     )}
+                    <NovelMetadataRow
+                      className="mb-4"
+                      chapterCount={currentSpotlight.chapter_count}
+                      translatedCount={currentSpotlight.translated_count}
+                      status={currentSpotlight.publication_status}
+                    />
+                    {heroSynopsis && (
+                      <p className="mb-5 max-w-2xl line-clamp-3 text-sm leading-relaxed text-muted-foreground md:text-base">
+                        {heroSynopsis}
+                      </p>
+                    )}
+                    {currentSpotlight.genres && currentSpotlight.genres.length > 0 && (
+                      <div className="mb-6 flex flex-wrap gap-2">
+                        {currentSpotlight.genres.slice(0, 3).map((genre) => (
+                          <GenreChip
+                            key={genre.slug}
+                            label={genre.name_en ?? genre.slug}
+                            labelJa={genre.name_ja}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center gap-4">
+                      {heroReadableHref && (
+                        <Link
+                          href={heroReadableHref}
+                          className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-foreground px-6 text-sm font-semibold text-background shadow-md transition-colors hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <BookOpen className="h-4 w-4" aria-hidden="true" />
+                          Start Reading
+                        </Link>
+                      )}
+                      <Link
+                        href={publicNovelHref(currentSpotlight.slug)}
+                        className="inline-flex h-11 items-center justify-center gap-1.5 rounded-md bg-card/60 px-5 text-sm font-medium text-foreground backdrop-blur-sm transition-colors hover:bg-muted"
+                      >
+                        Novel Details
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                      </Link>
+                    </div>
+                  </div>
+
+                  {/* Asymmetric cover card (editorial focal point; stacks above copy on mobile) */}
+                  <div className="order-1 flex justify-center lg:order-2 lg:justify-end lg:pr-2">
                     <Link
-                      href={publicNovelHref(spotlightNovel.slug)}
-                      className="inline-flex h-11 items-center justify-center gap-1.5 rounded-md border border-border bg-card px-5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                      href={publicNovelHref(currentSpotlight.slug)}
+                      aria-label={`Open details for ${currentSpotlight.title}`}
+                      className="block w-36 shrink-0 rounded-md bg-card p-1.5 shadow-raised ring-1 ring-border/40 transition-transform duration-300 ease-out hover:-rotate-1 hover:scale-[1.02] sm:w-44 lg:w-56"
                     >
-                      Novel details
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      <FallbackCover
+                        title={currentSpotlight.title}
+                        sourceTitle={currentSpotlight.source_title}
+                        language={currentSpotlight.language}
+                        status={currentSpotlight.publication_status}
+                        genres={currentSpotlight.genres}
+                        className="rounded-sm"
+                      />
                     </Link>
                   </div>
                 </div>
-                <div className="hidden lg:col-span-4 lg:flex lg:justify-end">
-                  <div className="group relative w-64 overflow-hidden rounded-lg border border-border/80 bg-card p-3 shadow-md transition-transform duration-300 hover:-translate-y-1">
-                    <FallbackCover
-                      title={spotlightNovel.title}
-                      sourceTitle={spotlightNovel.source_title}
-                      language={spotlightNovel.language}
-                      status={spotlightNovel.publication_status}
-                      genres={spotlightNovel.genres}
-                      className="rounded-md shadow-sm"
-                    />
+              </>
+            ) : (
+              /* Catalog Fallback Hero when catalog has 0 novels or loading error */
+              <>
+                <div className="absolute inset-0 bg-gradient-to-t from-background via-card to-muted/40" />
+                <div className="absolute inset-0 flex flex-col justify-end p-6 sm:p-8 lg:p-10">
+                  <span className="mb-2 font-metadata text-xs font-semibold uppercase tracking-wider text-primary">
+                    Featured Series
+                  </span>
+                  <h1 className="mb-3 font-literary text-3xl font-semibold leading-tight text-foreground sm:text-4xl lg:text-5xl">
+                    The Way of Reading
+                  </h1>
+                  <p className="mb-6 max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">
+                    Discover translated Japanese web novels in a quiet, tactile paperback aesthetic.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <Link
+                      href="/browse-novels"
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-foreground px-6 text-sm font-semibold text-background shadow-md transition-colors hover:bg-primary hover:text-primary-foreground"
+                    >
+                      <BookOpen className="h-4 w-4" aria-hidden="true" />
+                      Browse Catalog
+                    </Link>
+                    <Link
+                      href="/account/request-novels"
+                      className="inline-flex h-11 items-center justify-center gap-1.5 rounded-md bg-card/60 px-5 text-sm font-medium text-foreground backdrop-blur-sm transition-colors hover:bg-muted"
+                    >
+                      Request a Novel
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    </Link>
                   </div>
                 </div>
-              </div>
-            </section>
-          )}
+              </>
+            )}
+          </section>
 
-          {/* Discovery banner tiles */}
+          {/* Discovery banner tiles (ALWAYS rendered) */}
           <section aria-label="Discovery shortcuts" className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <BannerTile
               href="/random"
               icon={Shuffle}
-              title="Random Novel"
+              title="Random Novels"
               subtitle="Let chance decide"
             />
             <BannerTile
-              href="/request-novel"
+              href="/account/request-novels"
               icon={FilePlus2}
               title="Request Novel"
               subtitle="Ask for a translation"
@@ -561,70 +586,87 @@ export default function HomePage() {
 
           {/* New releases grid (Stitch "New Novels") */}
           <section aria-label="New releases" className="flex flex-col gap-6">
-            <div className="flex items-end justify-between border-b border-border/60 pb-2">
-              <h2 className="font-literary text-2xl font-semibold text-foreground">New Releases</h2>
+            <div className="flex items-end justify-between border-b border-border/20 pb-2">
+              <h2 className="font-literary text-2xl font-semibold text-foreground">New Novels</h2>
               <Link
                 href="/browse-novels?sort_by=added_at&order=desc"
-                className="rounded-sm border border-border/60 px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                className="rounded-sm bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
               >
                 See More
               </Link>
             </div>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {newReleases.map((novel) => (
-                <Link
-                  key={novel.novel_id}
-                  href={publicNovelHref(novel.slug)}
-                  className="group flex flex-col gap-2 rounded-lg border border-border/40 bg-card p-2 transition-all duration-300 ease-out hover:-translate-y-1 hover:border-primary/40 hover:shadow-md"
-                >
-                  <div className="relative aspect-[2/3] w-full overflow-hidden rounded-sm bg-muted">
-                    <FallbackCover
-                      title={novel.title}
-                      sourceTitle={novel.source_title}
-                      language={novel.language}
-                      status={novel.publication_status}
-                      genres={novel.genres}
-                      className="rounded-sm"
-                    />
-                  </div>
-                  <div className="mt-1">
-                    <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
-                      {novel.title}
-                    </h3>
-                    <div className="mt-2 flex items-center justify-between">
-                      <span className="rounded-sm border border-border/50 px-1.5 py-0.5 font-metadata text-[10px] text-muted-foreground">
-                        {novel.genres?.[0]?.name_en ?? novel.genres?.[0]?.slug ?? "Web Novel"}
-                      </span>
-                      <span className="font-metadata text-[10px] text-muted-foreground">
-                        {novel.translated_count > 0 ? `${novel.translated_count} Ch` : "Pending"}
-                      </span>
+            {newReleases.length > 0 ? (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                {newReleases.map((novel) => (
+                  <Link
+                    key={novel.novel_id}
+                    href={publicNovelHref(novel.slug)}
+                    className={cn(
+                      CARD_SURFACE,
+                      CARD_LIFT,
+                      "group flex flex-col gap-2 rounded-lg p-2.5"
+                    )}
+                  >
+                    <div className="relative aspect-[2/3] w-full overflow-hidden rounded-sm bg-muted">
+                      {isNewlyAdded(novel.added_at) && <NewBadge />}
+                      <FallbackCover
+                        title={novel.title}
+                        sourceTitle={novel.source_title}
+                        language={novel.language}
+                        status={novel.publication_status}
+                        genres={novel.genres}
+                        className="rounded-sm"
+                      />
                     </div>
-                    <p className="mt-1 font-metadata text-[10px] text-muted-foreground">
-                      Added {relativeTime(novel.added_at) ?? "recently"}
-                    </p>
-                  </div>
-                </Link>
-              ))}
-            </div>
+                    <div className="mt-1">
+                      <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
+                        {novel.title}
+                      </h3>
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="rounded-sm bg-muted px-1.5 py-0.5 font-metadata text-[10px] text-muted-foreground">
+                          {novel.genres?.[0]?.name_en ?? novel.genres?.[0]?.slug ?? "Web Novel"}
+                        </span>
+                        <span className="font-metadata text-[10px] text-muted-foreground">
+                          {novel.translated_count > 0 ? `${novel.translated_count} Ch` : "Pending"}
+                        </span>
+                      </div>
+                      <p className="mt-1 font-metadata text-[10px] text-muted-foreground">
+                        Added {relativeTime(novel.added_at) ?? "recently"}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg bg-muted/60 p-8 text-center text-sm text-muted-foreground">
+                Catalog empty — new translations added regularly.
+              </div>
+            )}
           </section>
 
           {/* Recently updated list */}
-          <section aria-label="Recently updated" className="flex flex-col gap-4">
-            <div className="flex items-end justify-between border-b border-border/60 pb-2">
+          <section aria-label="Recently updated" className="flex flex-col gap-6">
+            <div className="flex items-end justify-between border-b border-border/20 pb-2">
               <h2 className="font-literary text-2xl font-semibold text-foreground">
-                Recently Updated
+                Recent Updates
               </h2>
               <Link
                 href="/browse-novels?sort_by=updated_at&order=desc"
-                className="rounded-sm border border-border/60 px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                className="rounded-sm bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
               >
                 See More
               </Link>
             </div>
-            <div className="flex flex-col rounded-lg border border-border/60 bg-muted/30">
-              {recentlyUpdated.slice(0, 6).map((novel) => (
-                <RecentUpdateItem key={novel.novel_id} novel={novel} />
-              ))}
+            <div className={cn(CARD_SURFACE, "flex flex-col rounded-lg")}>
+              {recentlyUpdated.length > 0 ? (
+                recentlyUpdated.slice(0, 6).map((novel) => (
+                  <RecentUpdateItem key={novel.novel_id} novel={novel} />
+                ))
+              ) : (
+                <div className="p-6 text-center text-sm text-muted-foreground">
+                  No recent chapter updates yet.
+                </div>
+              )}
             </div>
           </section>
 
@@ -648,7 +690,7 @@ export default function HomePage() {
           {/* Surprise me callout */}
           <section
             aria-label="Discovery"
-            className="rounded-xl border border-border/80 bg-card p-6 shadow-sm sm:p-8"
+            className={cn(CARD_SURFACE, "rounded-xl p-6 sm:p-8")}
           >
             <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
@@ -683,67 +725,98 @@ export default function HomePage() {
             action={
               <Link
                 href="/browse-novels?sort_by=chapter_count&order=desc"
-                className="rounded-sm border border-border/60 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                className="rounded-sm bg-muted/50 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
               >
                 See More
               </Link>
             }
           >
+            <div className="flex gap-4 border-b border-border/20 px-4 pt-3 pb-2 text-xs font-medium text-muted-foreground">
+              <span className="border-b-2 border-primary font-semibold text-primary pb-1 cursor-pointer">Daily</span>
+              <span className="hover:text-foreground transition-colors pb-1 cursor-pointer">Weekly</span>
+              <span className="hover:text-foreground transition-colors pb-1 cursor-pointer">Monthly</span>
+            </div>
             <ul className="flex flex-col gap-1 p-2">
-              {ranked.map((novel, i) => (
-                <RankedItem key={novel.novel_id} novel={novel} rank={i + 1} />
-              ))}
+              {ranked.length > 0 ? (
+                ranked.slice(0, 3).map((novel, i) => (
+                  <RankedItem key={novel.novel_id} novel={novel} rank={i + 1} />
+                ))
+              ) : (
+                <li className="p-4 text-center text-xs text-muted-foreground">
+                  Awaiting novel entries
+                </li>
+              )}
             </ul>
           </WidgetCard>
 
-          {/* Longest series (by chapter count — honest, catalog-derived) */}
+          {/* Longest series */}
           <WidgetCard
             title="Longest Series"
             action={
               <Link
                 href="/browse-novels?sort_by=chapter_count&order=desc"
-                className="rounded-sm border border-border/60 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                className="rounded-sm bg-muted/50 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
               >
                 See More
               </Link>
             }
           >
             <ul className="flex flex-col gap-3 p-4">
-              {trending.slice(0, 3).map((novel) => (
-                <li key={novel.novel_id}>
-                  <Link
-                    href={publicNovelHref(novel.slug)}
-                    className="group flex items-center gap-3"
-                  >
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <BookOpen className="h-4 w-4" aria-hidden="true" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-foreground transition-colors group-hover:text-primary">
-                        {novel.title}
-                      </span>
-                      <span className="block font-metadata text-xs text-muted-foreground">
-                        {novel.chapter_count} chapters
-                      </span>
-                    </div>
-                  </Link>
+              {trending.length > 0 ? (
+                trending.slice(0, 3).map((novel) => (
+                  <li key={novel.novel_id}>
+                    <Link
+                      href={publicNovelHref(novel.slug)}
+                      className="group flex items-center gap-3"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <BookOpen className="h-4 w-4" aria-hidden="true" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-foreground transition-colors group-hover:text-primary">
+                          {novel.title}
+                        </span>
+                        <span className="block font-metadata text-xs text-muted-foreground">
+                          {novel.chapter_count} chapters
+                        </span>
+                      </div>
+                    </Link>
+                  </li>
+                ))
+              ) : (
+                <li className="text-center text-xs text-muted-foreground">
+                  Awaiting novel entries
                 </li>
-              ))}
+              )}
             </ul>
           </WidgetCard>
 
-          {/* Most chapters (honest replacement for Stitch's fake "Trending") */}
-          <WidgetCard title="Most Chapters" className="flex h-full flex-col p-6 [&>div:first-child]:mb-6 [&>div:first-child]:border-b [&>div:first-child]:p-0 [&>div:first-child]:pb-4">
+          {/* Trending (with V2 badge matching Stitch design) */}
+          <WidgetCard
+            title="Trending"
+            action={
+              <span className="rounded bg-primary px-1.5 py-0.5 font-metadata text-[10px] font-bold text-primary-foreground">
+                V2
+              </span>
+            }
+            className="flex h-full flex-col p-6 [&>div:first-child]:mb-6 [&>div:first-child]:border-b [&>div:first-child]:border-border/20 [&>div:first-child]:p-0 [&>div:first-child]:pb-4"
+          >
             <ul className="flex flex-1 flex-col gap-5">
-              {trending.map((novel, i) => (
-                <TrendingItem key={novel.novel_id} novel={novel} rank={i + 1} />
-              ))}
+              {trending.length > 0 ? (
+                trending.map((novel, i) => (
+                  <TrendingItem key={novel.novel_id} novel={novel} rank={i + 1} />
+                ))
+              ) : (
+                <li className="py-4 text-center text-xs text-muted-foreground">
+                  Awaiting novel entries
+                </li>
+              )}
             </ul>
             <Link
               href="/browse-novels?sort_by=chapter_count&order=desc"
-              className="mt-6 inline-flex w-full items-center justify-center rounded-md border border-border/60 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+              className="mt-6 inline-flex w-full items-center justify-center rounded-md bg-muted/50 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              View Full Catalog
+              View Full Ranking
             </Link>
           </WidgetCard>
         </aside>

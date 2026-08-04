@@ -12,8 +12,9 @@ function modeFromQuery(value: string | null): LoginMode {
   return value === "signup" ? "signup" : "signin";
 }
 
-/** Return the safe in-app destination a guest was headed to before sign-in. */
-function nextFromQuery(value: string | null): string {
+/** Return the safe in-app destination a guest was headed to before sign-in. Supports next or callbackUrl. */
+function nextFromQuery(nextVal: string | null, callbackVal: string | null): string {
+  const value = callbackVal || nextVal;
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
     return "/home";
   }
@@ -24,7 +25,7 @@ function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const mode = modeFromQuery(searchParams.get("mode"));
-  const next = nextFromQuery(searchParams.get("next"));
+  const next = nextFromQuery(searchParams.get("next"), searchParams.get("callbackUrl"));
 
   return (
     <main className="mx-auto flex min-h-[60vh] max-w-md items-center justify-center px-4 py-8">

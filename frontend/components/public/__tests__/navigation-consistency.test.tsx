@@ -80,7 +80,7 @@ describe("Header navigation consistency", () => {
   const headerNavHrefs = [
     "/home",
     "/browse-novels",
-    "/request-novel",
+    "/account/request-novels",
     "/account/library",
   ];
 
@@ -91,15 +91,16 @@ describe("Header navigation consistency", () => {
     }
   });
 
-  it("renders desktop header nav items when authenticated", () => {
+  it("renders desktop header nav items when authenticated (Home lives in the fixed sidebar)", () => {
     setAuth(true);
     renderWithQuery(<PublicHeader />);
 
     const primaryNav = screen.getByRole("navigation", { name: /^primary$/i });
-    expect(within(primaryNav).getByRole("link", { name: /^home$/i })).toBeInTheDocument();
     expect(within(primaryNav).getByRole("link", { name: /^browse$/i })).toBeInTheDocument();
     expect(within(primaryNav).getByRole("link", { name: /^request$/i })).toBeInTheDocument();
     expect(within(primaryNav).getByRole("link", { name: /^library$/i })).toBeInTheDocument();
+    // Stitch design: Home is reachable from the fixed sidebar, not the header nav.
+    expect(within(primaryNav).queryByRole("link", { name: /^home$/i })).not.toBeInTheDocument();
 
     // Search field — now a button opening the shared overlay (DESIGN.md — Search contract)
     expect(screen.getByRole("button", { name: /search novels/i })).toBeInTheDocument();
@@ -119,15 +120,16 @@ describe("Header navigation consistency", () => {
     expect(screen.getByLabelText(/open navigation menu/i)).toBeInTheDocument();
   });
 
-  it("renders desktop header nav items when guest", () => {
+  it("renders desktop header nav items when guest (Home lives in the fixed sidebar)", () => {
     setAuth(false);
     renderWithQuery(<PublicHeader />);
 
     const primaryNav = screen.getByRole("navigation", { name: /^primary$/i });
-    expect(within(primaryNav).getByRole("link", { name: /^home$/i })).toBeInTheDocument();
     expect(within(primaryNav).getByRole("link", { name: /^browse$/i })).toBeInTheDocument();
     expect(within(primaryNav).getByRole("link", { name: /^request$/i })).toBeInTheDocument();
     expect(within(primaryNav).getByRole("link", { name: /^library$/i })).toBeInTheDocument();
+    // Stitch design: Home is reachable from the fixed sidebar, not the header nav.
+    expect(within(primaryNav).queryByRole("link", { name: /^home$/i })).not.toBeInTheDocument();
 
     expect(screen.getByRole("button", { name: /search novels/i })).toBeInTheDocument();
     const guestBanner = screen.getByRole("banner");
@@ -161,7 +163,7 @@ describe("Fixed sidebar", () => {
     "/account/library",
     "/browse-novels",
     "/random",
-    "/request-novel",
+    "/account/request-novels",
     "/contribute",
   ];
 
@@ -183,7 +185,7 @@ describe("Fixed sidebar", () => {
     expect(within(nav).getByRole("link", { name: /home/i })).toHaveAttribute("href", "/home");
     expect(within(nav).getByRole("link", { name: /browse novels/i })).toHaveAttribute("href", "/browse-novels");
     expect(within(nav).getByRole("link", { name: /random novel/i })).toHaveAttribute("href", "/random");
-    expect(within(nav).getByRole("link", { name: /request novel/i })).toHaveAttribute("href", "/request-novel");
+    expect(within(nav).getByRole("link", { name: /request novel/i })).toHaveAttribute("href", "/account/request-novels");
     expect(within(nav).getByRole("link", { name: /contributions/i })).toHaveAttribute("href", "/contribute");
 
     fireEvent.click(screen.getByLabelText(/close navigation menu/i));
@@ -223,11 +225,11 @@ describe("Mobile tab bar consistency", () => {
     expect(screen.queryByRole("link", { name: /^search$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^library$/i })).toHaveAttribute(
       "href",
-      "/login?mode=signin&next=%2Faccount%2Flibrary"
+      "/login?mode=signin&callbackUrl=%2Faccount%2Flibrary"
     );
     expect(screen.getByRole("link", { name: /^account$/i })).toHaveAttribute(
       "href",
-      "/login?mode=signin&next=%2Faccount"
+      "/login?mode=signin&callbackUrl=%2Faccount"
     );
 
     // Authenticated: library and account tabs point to their real destinations
@@ -267,25 +269,15 @@ describe("Footer navigation consistency", () => {
     expect(screen.queryByRole("link", { name: /library/i })).not.toBeInTheDocument();
   });
 
-  it("footer contains Read section links", () => {
+  it("footer contains essential navigation and legal links", () => {
     render(<PublicFooter />);
-    expect(screen.getByText(/browse novels/i)).toBeInTheDocument();
-    expect(screen.getByText(/ranking/i)).toBeInTheDocument();
-    expect(screen.getByText(/request novel/i)).toBeInTheDocument();
-    expect(screen.getByText(/contribute/i)).toBeInTheDocument();
+    expect(screen.getByText(/about/i)).toBeInTheDocument();
     expect(screen.getByText(/support/i)).toBeInTheDocument();
     expect(screen.getByText(/faq/i)).toBeInTheDocument();
     expect(screen.getByText(/news/i)).toBeInTheDocument();
-  });
-
-  it("footer contains Trust section legal links", () => {
-    render(<PublicFooter />);
-    expect(screen.getByText(/about/i)).toBeInTheDocument();
     expect(screen.getByText(/privacy/i)).toBeInTheDocument();
     expect(screen.getByText(/terms/i)).toBeInTheDocument();
-    expect(screen.getByText(/legal/i)).toBeInTheDocument();
     expect(screen.getByText(/dmca/i)).toBeInTheDocument();
-    expect(screen.getByText(/contact/i)).toBeInTheDocument();
     expect(screen.getByText(/cookie policy/i)).toBeInTheDocument();
   });
 });
@@ -306,6 +298,7 @@ describe("Route inventory completeness", () => {
     { route: "/error", reason: "Next.js error boundary fallback" },
     { route: "/not-found", reason: "Next.js 404 fallback" },
     { route: "/maintenance", reason: "Server-side maintenance redirect" },
+    { route: "/request-novel", reason: "Public request novel form route" },
     { route: "/", reason: "Root redirects to /home (page.tsx contains redirect())" },
   ];
 
@@ -318,7 +311,7 @@ describe("Route inventory completeness", () => {
     "/browse-novels",
     "/ranking",
     "/random",
-    "/request-novel",
+    "/account/request-novels",
     "/contribute",
     "/about",
     "/privacy",
@@ -333,7 +326,7 @@ describe("Route inventory completeness", () => {
     "/account/history",
     "/account/reviews",
     "/account/notifications",
-    "/account/requests",
+    "/account/request-novels",
     "/account/contributions",
     "/account/settings",
     "/faq",

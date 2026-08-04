@@ -62,7 +62,7 @@ const mockNotifications = [
     body: "Translation job encountered an error.",
     severity: "error" as const,
     status: "read" as const,
-    action_url: "/account/requests",
+    action_url: "/account/request-novels",
     created_at: "2026-01-14T08:00:00Z",
     read_at: "2026-01-14T09:00:00Z",
   },
@@ -253,7 +253,7 @@ describe("NotificationList", () => {
     expect(viewLinks).toHaveLength(2);
     expect(viewLinks.map((l) => l.getAttribute("href"))).toEqual([
       "/account/library/demo",
-      "/account/requests",
+      "/account/request-novels",
     ]);
 
     // Check fourth item (archived) - no action_url, no View link

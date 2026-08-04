@@ -87,6 +87,12 @@ vi.mock("lucide-react", () => {
     ArrowRight: Svg,
     BookOpen: Svg,
     Bookmark: Svg,
+    CheckCircle2: Svg,
+    Clock: Svg,
+    ExternalLink: Svg,
+    FilePlus2: Svg,
+    HelpCircle: Svg,
+    Info: Svg,
     LayoutGrid: Svg,
     List: Svg,
     Loader2: Svg,
@@ -94,9 +100,12 @@ vi.mock("lucide-react", () => {
     MessageSquare: Svg,
     Flag: Svg,
     Lock: Svg,
+    Search: Svg,
+    ShieldCheck: Svg,
     User: Svg,
     AlertTriangle: Svg,
     ShieldAlert: Svg,
+    XCircle: Svg,
   };
 });
 
@@ -210,7 +219,7 @@ describe("Account requests — no fake rejection reason", () => {
       isPending: false,
       isError: false,
     });
-    const { default: Page } = await import("../account/requests/page");
+    const { default: Page } = await import("../account/request-novels/page");
     renderWithProviders(<Page />);
     const body = document.body.textContent ?? "";
     expect(body).not.toContain("Not provided by current API");
@@ -229,7 +238,7 @@ describe("Account requests — no fake rejection reason", () => {
       isPending: false,
       isError: false,
     });
-    const { default: Page } = await import("../account/requests/page");
+    const { default: Page } = await import("../account/request-novels/page");
     renderWithProviders(<Page />);
     const body = document.body.textContent ?? "";
     expect(body).not.toMatch(/rejection reason/i);
@@ -254,7 +263,7 @@ describe("Account pages — guest auth gate", () => {
   });
 
   it("requests page shows login prompt for guests", async () => {
-    const { default: Page } = await import("../account/requests/page");
+    const { default: Page } = await import("../account/request-novels/page");
     const { queryByTestId } = renderWithProviders(<Page />);
     expect(queryByTestId("login-prompt")).toBeTruthy();
   });

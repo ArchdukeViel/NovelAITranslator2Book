@@ -508,3 +508,14 @@ Reworked the public home page from scratch to replicate the "Dokushodo - Fixed S
 - **Docs**: `docs/design/public/home.md` rewritten to the new composition; `docs/DESIGN.md` shell section 7.3 documents the fixed sidebar + hamburger and the z-index note updated for the nav drawer layer.
 
 Validation: `npm run typecheck` exit 0; `npm run test` 844 passed across 76 files; `eslint` on changed files clean; `graphify update . --no-cluster` success.
+
+## 2026-08-04 Home Hero Editorial Upgrade & Honest Freshness Badges
+
+Modernized the home spotlight toward the Dreamy-Translations-style editorial hero without violating the Dokushodo honesty contract (no invented views/ratings; imagery stays with generated bookplates since no cover-URL pipeline exists):
+
+- **Asymmetric editorial hero**: the stretched full-bleed bookplate background was replaced with a subtle palette-wash gradient; the spotlight now lays copy on the left (eyebrow, serif title, italic source title when distinct, honest metadata row with status + translated/chapter counts, synopsis, up to three genre chips, Start Reading + Novel Details) beside an asymmetric bookplate cover card on the right (`shadow-raised`, ring, hover lift/rotation). Mobile stacks cover above copy per `docs/design/public/home.md`. `GenreChip` and `NovelMetadataRow` imports are now consumed (previously unused).
+- **Honest NEW chips**: Bunko grid cards and rail cards show a small vermillion `NEW` chip only when `added_at` falls inside a 14-day freshness window — derived from the real catalog field, never a marketing claim. Absent when `added_at` is missing.
+- **Tests**: 4 new focused tests in `home-page-data.test.tsx` (source title/metadata/chips/cover link, cover hidden on empty catalog, NEW badge presence window, NEW absent without `added_at`). Honesty contract tests unchanged and green.
+- **Docs**: `docs/design/public/home.md` updated (hero composition, NEW chip rule in Preserve Exactly, manual-dots-only carousel clarification in Avoid).
+
+Validation: `npx tsc --noEmit` exit 0; `npm run lint` exit 0; `npm run test` 847 passed across 76 files (was 843); `npm run build` exit 0; `graphify update . --no-cluster` success.

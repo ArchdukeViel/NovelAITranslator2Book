@@ -13,14 +13,14 @@ const mobileLibraryLinks = [
   { href: "/account/library", label: "Library", icon: Library },
   { href: "/account/history", label: "History", icon: History },
   { href: "/account/notifications", label: "Notifications", icon: Bell },
-  { href: "/account/requests", label: "Requests", icon: Clock },
+  { href: "/account/request-novels", label: "Request Novels", icon: Clock },
   { href: "/account/contributions", label: "Contributions", icon: Heart },
   { href: "/account/settings", label: "Settings", icon: Settings },
 ];
 
 const mobileMoreLinks = [
   { href: "/ranking", label: "Ranking", icon: Trophy },
-  { href: "/request-novel", label: "Request Novel", icon: FileText },
+  { href: "/account/request-novels", label: "Request Novels", icon: FileText },
   { href: "/contribute", label: "Contribute", icon: Heart },
   { href: "/faq", label: "FAQ", icon: HelpCircle },
   { href: "/news", label: "News", icon: Newspaper },

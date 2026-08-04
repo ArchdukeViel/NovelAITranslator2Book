@@ -22,7 +22,7 @@ Reviewing a request status.
 - Page heading My Requests
 - Status filter
 - Request list
-- Full request history toggle
+- Route `/account/request-novels` (renamed from `/account/requests` for explicit naming alignment)
 
 ## Desktop Composition
 - Filter row above the list
@@ -71,7 +71,7 @@ A tidy filtered list with quiet status badges and monospace URLs.
 - Tap targets at least 44 px on mobile
 
 ## Assets
-- empty.png for the empty list
+- brand-logo.svg / empty state fallback
 
 ## Preserve Exactly
 - Status names exactly as listed

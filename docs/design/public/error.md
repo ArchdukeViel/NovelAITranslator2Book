@@ -61,6 +61,7 @@ A calm centered heading with two quiet links; no stack traces, no alarm colors.
 - Tap targets at least 44 px on mobile
 
 ## Assets
+- AlertTriangle icon capsule / card surface error fallback layout (PNG illustration deleted)
 
 ## Preserve Exactly
 - The exact heading

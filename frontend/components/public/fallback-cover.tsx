@@ -28,6 +28,7 @@ interface FallbackCoverProps {
   sourceTitle?: string | null;
   status?: string | null;
   title: string;
+  aspectRatio?: "2/3" | "1/1";
 }
 
 function hashText(value: string): number {
@@ -72,6 +73,7 @@ export function FallbackCover({
   sourceTitle,
   status,
   title,
+  aspectRatio = "2/3",
 }: FallbackCoverProps) {
   const safeTitle = cleanText(title) ?? "Untitled novel";
   const safeSourceTitle = cleanText(sourceTitle);
@@ -84,7 +86,8 @@ export function FallbackCover({
       role="img"
       aria-label={`Generated Dokushodo bookplate for ${safeTitle}`}
       className={cn(
-        "relative flex aspect-[2/3] h-full w-full overflow-hidden rounded-lg border border-border bg-card shadow-sm",
+        "relative flex h-full w-full overflow-hidden rounded-lg border border-border bg-card shadow-sm",
+        aspectRatio === "1/1" ? "aspect-square" : "aspect-[2/3]",
         palette.root,
         className
       )}
