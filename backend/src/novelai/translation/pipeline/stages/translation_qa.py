@@ -111,11 +111,17 @@ class TranslationQAStage(PipelineStage):
         multi_model_warning = len(self._provider_models(context)) > 1
         approved_glossary = _extract_glossary_terms(context)
         llm_grader = await _resolve_llm_grader_async()
-        # DEBT-053: when the LLM grader is enabled, chunks that pass the
-        # deterministic checks are additionally scored by the provider. Any
-        # chunk below ``settings.LLM_QA_MIN_SCORE`` is marked
-        # ``qa_status="needs_llm_retry"`` so downstream retry policy can
-        # re-translate it. This is best-effort: grader failures never raise.
+        # DEBT-053: the deterministic gate stays authoritative; the optional
+        # LLM grader only refines chunk disposition. ``settings.LLM_QA_POLICY``
+        # decides how below-threshold chunks are handled (see settings):
+        #   advisory      -> warning only, status stays "translated";
+        #   blocking_retry-> status "needs_retry" (bounded attempts), then
+        #                    "needs_review" once exhausted;
+        #   review        -> status "needs_review" immediately.
+        # A retry marker is always backed by a real chunk status, and retry
+        # accounting survives stage re-runs via chunk_state. Grader failures
+        # never raise.
+        llm_qa_policy = settings.LLM_QA_POLICY
         llm_retry_counts: dict[str, int] = {}
 
         for index, translated in enumerate(raw_translations):
@@ -162,15 +168,41 @@ class TranslationQAStage(PipelineStage):
                     )
                     chunk_state["llm_qa_score"] = llm_score
                     if llm_score < settings.LLM_QA_MIN_SCORE:
-                        # Surfaced to retry policy; deterministic QA stays green.
-                        retries = llm_retry_counts.get(chunk_id, 0)
-                        if retries >= settings.LLM_QA_MAX_RETRY_ATTEMPTS:
-                            chunk_state["qa_status"] = "llm_score_below_threshold_no_retry"
-                            chunk_state["qa_warnings"] = [*list(result.warnings), "llm_qa_below_threshold_no_retry"]
+                        if llm_qa_policy == "blocking_retry":
+                            # Retry accounting persists on the chunk state so
+                            # bounded retries survive stage re-runs.
+                            retries = int(chunk_state.get("llm_qa_retry_count", 0) or 0)
+                            if retries >= settings.LLM_QA_MAX_RETRY_ATTEMPTS:
+                                chunk_state["status"] = ChunkTranslationStatus.NEEDS_REVIEW.value
+                                chunk_state["qa_status"] = "llm_score_below_threshold_no_retry"
+                                chunk_state["qa_warnings"] = [
+                                    *list(result.warnings),
+                                    "llm_qa_below_threshold_no_retry",
+                                ]
+                            else:
+                                chunk_state["status"] = ChunkTranslationStatus.NEEDS_RETRY.value
+                                chunk_state["qa_status"] = "needs_llm_retry"
+                                chunk_state["qa_warnings"] = [
+                                    *list(result.warnings),
+                                    "llm_qa_below_threshold",
+                                ]
+                                chunk_state["llm_qa_retry_count"] = retries + 1
+                                llm_retry_counts[chunk_id] = retries + 1
+                        elif llm_qa_policy == "review":
+                            chunk_state["status"] = ChunkTranslationStatus.NEEDS_REVIEW.value
+                            chunk_state["qa_status"] = "needs_review"
+                            chunk_state["qa_warnings"] = [
+                                *list(result.warnings),
+                                "llm_qa_below_threshold",
+                            ]
                         else:
-                            chunk_state["qa_status"] = "needs_llm_retry"
-                            chunk_state["qa_warnings"] = [*list(result.warnings), "llm_qa_below_threshold"]
-                            llm_retry_counts[chunk_id] = retries + 1
+                            # advisory (default): deterministic QA stays green;
+                            # a warning is recorded and no retry marker is set.
+                            chunk_state["qa_status"] = "llm_qa_advisory_below_threshold"
+                            chunk_state["qa_warnings"] = [
+                                *list(result.warnings),
+                                "llm_qa_below_threshold",
+                            ]
             else:
                 chunk_state["status"] = ChunkTranslationStatus.QA_FAILED.value
                 chunk_state["qa_status"] = "qa_failed"

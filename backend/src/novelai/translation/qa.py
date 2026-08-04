@@ -608,12 +608,13 @@ async def evaluate_translation_quality_with_llm(
     ``settings.LLM_QA_ENABLED``. Failures (provider error, malformed JSON,
     out-of-range number) return ``1.0`` so the deterministic QA stage
     never fails a translation on account of grader downtime — low scores
-    are surfaced as a ``needs_llm_retry`` QA status by the stage, not
+    are disposed of by the stage according to ``settings.LLM_QA_POLICY``
+    (advisory warning, bounded needs_retry, or needs_review), never
     raised here.
 
     ``provider`` may be ``None`` or the dummy provider, in which case the
-    grader is a no-op (score 1.0). The caller decides retry eligibility
-    by comparing the returned score against ``settings.LLM_QA_MIN_SCORE``.
+    grader is a no-op (score 1.0). The caller decides chunk disposition by
+    comparing the returned score against ``settings.LLM_QA_MIN_SCORE``.
     """
     if provider is None:
         return 1.0

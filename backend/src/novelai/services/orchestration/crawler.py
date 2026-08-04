@@ -5,6 +5,7 @@ import contextlib
 import logging
 import re
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 from novelai.core.errors import ProviderConfigError, SourceError
@@ -31,6 +32,74 @@ _METADATA_TRANSLATION_UNAVAILABLE_MESSAGE = (
     "Metadata translation skipped because no active Gemini provider is configured."
 )
 _METADATA_TRANSLATION_ERROR_MAX_CHARS = 500
+
+# Terminal statuses for crawl results. A crawl that saved some chapters but
+# failed others is *not* a plain success or a total failure: it is reported
+# as ``completed_with_errors`` so callers and source health reflect the
+# partial outcome.
+TERMINAL_STATUS_COMPLETED = "completed"
+TERMINAL_STATUS_COMPLETED_WITH_WARNINGS = "completed_with_warnings"
+TERMINAL_STATUS_COMPLETED_WITH_ERRORS = "completed_with_errors"
+TERMINAL_STATUS_FAILED = "failed"
+CRAWL_TERMINAL_STATUSES = frozenset(
+    {
+        TERMINAL_STATUS_COMPLETED,
+        TERMINAL_STATUS_COMPLETED_WITH_WARNINGS,
+        TERMINAL_STATUS_COMPLETED_WITH_ERRORS,
+        TERMINAL_STATUS_FAILED,
+    }
+)
+
+# Progress-reporting stages of a crawl run.
+STAGE_METADATA_CRAWL = "metadata_crawl"
+STAGE_INDEX_CRAWL = "index_crawl"
+STAGE_BODY_CRAWL = "body_crawl"
+STAGE_ASSETS = "assets"
+STAGE_STORAGE_COMMIT = "storage_commit"
+STAGE_RECONCILIATION = "reconciliation"
+
+
+@dataclass(frozen=True)
+class CrawlProgressEvent:
+    """Structured crawl progress event.
+
+    ``completed`` is monotonic and only increments when a real unit (chapter,
+    index page, or stage) reaches a terminal outcome. Labels and arbitrary
+    log messages never change the numeric progress.
+    """
+
+    stage: str
+    status: str
+    completed: int
+    total: int | None = None
+    source_episode_id: str | None = None
+    label: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "stage": self.stage,
+            "status": self.status,
+            "completed": self.completed,
+        }
+        if self.total is not None:
+            payload["total"] = self.total
+        if self.source_episode_id is not None:
+            payload["source_episode_id"] = self.source_episode_id
+        if self.label is not None:
+            payload["label"] = self.label
+        if self.details:
+            payload["details"] = self.details
+        return payload
+
+
+def crawl_terminal_status(*, succeeded: int, skipped: int, failed: int, image_download_failures: int) -> str:
+    """Derive the terminal status of a chapter crawl from its counts."""
+    if failed > 0:
+        return TERMINAL_STATUS_COMPLETED_WITH_ERRORS
+    if image_download_failures > 0 or (succeeded == 0 and skipped > 0):
+        return TERMINAL_STATUS_COMPLETED_WITH_WARNINGS
+    return TERMINAL_STATUS_COMPLETED
 
 
 def _get_crawl_lock(source_key: str, novel_id: str) -> asyncio.Lock:
@@ -70,7 +139,7 @@ def _bounded_metadata_translation_error(exc: Exception) -> str:
     message = str(exc).strip() or exc.__class__.__name__
     if len(message) <= _METADATA_TRANSLATION_ERROR_MAX_CHARS:
         return message
-    return f"{message[:_METADATA_TRANSLATION_ERROR_MAX_CHARS - 3]}..."
+    return f"{message[: _METADATA_TRANSLATION_ERROR_MAX_CHARS - 3]}..."
 
 
 def _mark_metadata_translation_failure(meta: dict[str, Any], exc: Exception, *, config: dict[str, str]) -> None:
@@ -93,7 +162,9 @@ async def _translate_and_mark_metadata(
     try:
         translated = await self._translate_metadata_fields(meta, existing_metadata)
     except Exception as exc:
-        logger.warning("Failed to translate metadata for %s: %s", meta.get("context_group_id") or meta.get("novel_id"), exc)
+        logger.warning(
+            "Failed to translate metadata for %s: %s", meta.get("context_group_id") or meta.get("novel_id"), exc
+        )
         _mark_metadata_translation_failure(meta, exc, config=config)
         return meta
 
@@ -168,8 +239,7 @@ async def bootstrap_glossary_if_needed(self: Any, novel_id: str, meta: dict[str,
             novel.glossary_status = "glossary_pending"
             repository = GlossaryRepository(session)
             existing = {
-                entry.canonical_term.casefold()
-                for entry in repository.list_glossary_entries_for_novel(novel.id)
+                entry.canonical_term.casefold() for entry in repository.list_glossary_entries_for_novel(novel.id)
             }
             for candidate in candidates:
                 canonical = candidate.source.strip()
@@ -205,8 +275,29 @@ async def scrape_metadata(
     max_chapter: int | None = None,
     source_identifier: str | None = None,
     progress_callback: Callable[[str], None] | None = None,
+    progress_events_callback: Callable[[CrawlProgressEvent], None] | None = None,
 ) -> dict[str, Any]:
+    """Scrape novel metadata from the source and persist it.
+
+    ``progress_callback`` receives human-readable labels only and never
+    drives numeric progress. ``progress_events_callback`` receives structured
+    :class:`CrawlProgressEvent` records whose ``completed`` counter increments
+    only on real unit completion.
+    """
     logger.info(f"Scraping metadata for {novel_id} from {source_key} (mode={mode})")
+
+    def _emit(stage: str, status: str, completed: int, total: int | None, label: str | None = None) -> None:
+        if progress_events_callback is not None:
+            progress_events_callback(
+                CrawlProgressEvent(
+                    stage=stage,
+                    status=status,
+                    completed=completed,
+                    total=total,
+                    label=label,
+                )
+            )
+
     existing_metadata = self.storage.load_metadata(novel_id) if mode != "full" else None
     if mode == "full":
         logger.debug(f"Full scrape mode - deleting existing data for {novel_id}")
@@ -217,10 +308,14 @@ async def scrape_metadata(
 
     if progress_callback:
         progress_callback(f"Connecting to {source_key}\u2026")
+    _emit(STAGE_METADATA_CRAWL, "started", 0, None, f"Connecting to {source_key}")
     source = self._source_factory(source_key)
-    fetch_target = source_identifier.strip() if isinstance(source_identifier, str) and source_identifier.strip() else novel_id
+    fetch_target = (
+        source_identifier.strip() if isinstance(source_identifier, str) and source_identifier.strip() else novel_id
+    )
     meta = await source.fetch_metadata(fetch_target, max_chapter=max_chapter)
     meta = _apply_metadata_quality_gate(meta, source_key=source_key, novel_id=novel_id)
+    _emit(STAGE_METADATA_CRAWL, "completed", 1, 1, "Metadata fetched")
     if progress_callback:
         chapter_count = len(meta.get("chapters") or [])
         progress_callback(f"Fetched: {str(meta.get('title') or novel_id)!r}  ({chapter_count} chapters listed)")
@@ -255,6 +350,7 @@ async def scrape_metadata(
         meta["onboarding_status"] = "metadata_discovered"
         meta["body_scrape_required"] = False
     logger.info(f"Metadata scraped: {len(meta)} fields saved")
+    _emit(STAGE_STORAGE_COMMIT, "completed", 1, 1, "Metadata saved")
     if progress_callback:
         progress_callback(f"Metadata saved ({len(meta)} fields).")
     return meta
@@ -309,6 +405,7 @@ async def scrape_chapters(
     mode: str = "update",
     progress_callback: Callable[[str], None] | None = None,
     cancellation_check: Callable[[], bool] | None = None,
+    progress_events_callback: Callable[[CrawlProgressEvent], None] | None = None,
 ) -> dict[str, Any]:
     """Fetch chapter content from the source site and persist it.
 
@@ -317,9 +414,11 @@ async def scrape_chapters(
     Chapters are identified by the *chapters* selection string (e.g.
     ``"all"`` or ``"1-5"``).
 
-    Returns a summary dict with ``succeeded``, ``skipped``, ``failed`` counts
-    and a ``failures`` list describing each failed chapter. Per-chapter
-    failures are non-fatal; metadata/list-level failures still raise.
+    Returns a summary dict with ``succeeded``, ``skipped``, ``failed`` counts,
+    a ``failures`` list describing each failed chapter, and a
+    ``terminal_status`` (``completed``, ``completed_with_warnings``,
+    ``completed_with_errors``, or ``failed``). Per-chapter failures are
+    non-fatal; metadata/list-level failures still raise.
 
     Raises ``RuntimeError`` if another scrape is already in progress for the
     same source_key + novel_id combination.
@@ -334,9 +433,17 @@ async def scrape_chapters(
 
     async with lock:
         result = await _scrape_chapters_impl(
-            self, source_key, novel_id, chapters, mode, progress_callback, cancellation_check
+            self,
+            source_key,
+            novel_id,
+            chapters,
+            mode,
+            progress_callback,
+            cancellation_check,
+            progress_events_callback,
         )
 
+    terminal_status = result.get("terminal_status", TERMINAL_STATUS_FAILED)
     if result["succeeded"] > 0:
         self.storage.update_onboarding_status(novel_id, "ready_for_translation")
     elif result["failed"] > 0 and result["succeeded"] == 0:
@@ -345,6 +452,13 @@ async def scrape_chapters(
             "failed",
             error_code="scrape_completed_without_chapters",
             error_message="Chapter scrape finished without saving any usable raw chapters.",
+        )
+    elif terminal_status == TERMINAL_STATUS_COMPLETED_WITH_WARNINGS:
+        self.storage.update_onboarding_status(
+            novel_id,
+            "scraping_chapters",
+            error_code="scrape_completed_with_warnings",
+            error_message="Chapter scrape finished with warnings (image download issues).",
         )
 
     return result
@@ -358,9 +472,39 @@ async def _scrape_chapters_impl(
     mode: str,
     progress_callback: Callable[[str], None] | None,
     cancellation_check: Callable[[], bool] | None = None,
+    progress_events_callback: Callable[[CrawlProgressEvent], None] | None = None,
 ) -> dict[str, Any]:
-    """Internal implementation of scrape_chapters (called under lock)."""
+    """Internal implementation of scrape_chapters (called under lock).
+
+    ``progress_callback`` is a label-only channel; numeric progress is
+    reported through ``progress_events_callback`` via
+    :class:`CrawlProgressEvent` records. Only the terminal processing of a
+    chapter increments ``completed``, and the value never exceeds ``total``.
+    """
     source = self._source_factory(source_key)
+
+    def _emit(
+        stage: str,
+        status: str,
+        completed: int,
+        total: int | None,
+        source_episode_id: str | None = None,
+        label: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        if progress_events_callback is None:
+            return
+        progress_events_callback(
+            CrawlProgressEvent(
+                stage=stage,
+                status=status,
+                completed=completed,
+                total=total,
+                source_episode_id=source_episode_id,
+                label=label,
+                details=details or {},
+            )
+        )
 
     self.storage.update_onboarding_status(novel_id, "scraping_chapters", clear_error=True)
 
@@ -404,8 +548,8 @@ async def _scrape_chapters_impl(
     skipped = 0
     failed = 0
     failures: list[dict[str, Any]] = []
-    retry_attempts = [0]
     image_download_failures = 0
+    _emit(STAGE_INDEX_CRAWL, "started", 0, _total_chapters, label="Preparing chapter crawl")
 
     for _chapter_index, chapter_num in enumerate(selected_numbers):
         if cancellation_check is not None and cancellation_check():
@@ -415,6 +559,9 @@ async def _scrape_chapters_impl(
             continue
 
         chapter_id = str(chapter_num)
+        # Retry telemetry is per-chapter: a retry performed for an earlier
+        # chapter must never leak into the attempt count of a later chapter.
+        retry_attempts = [0]
         if progress_callback:
             _ch_title = str(chapter.get("title") or f"Chapter {chapter_id}")
             progress_callback(f"[{_chapter_index + 1}/{_total_chapters}] {_ch_title}")
@@ -466,6 +613,14 @@ async def _scrape_chapters_impl(
                 if progress_callback:
                     progress_callback(f"  Chapter {chapter_id}: unchanged, skipping.")
                 skipped += 1
+                _emit(
+                    STAGE_BODY_CRAWL,
+                    "skipped",
+                    succeeded + skipped + failed,
+                    _total_chapters,
+                    source_episode_id=chapter_id,
+                    label=f"Chapter {chapter_id}: unchanged",
+                )
                 continue
 
             downloaded_images: list[dict[str, Any]] = []
@@ -535,6 +690,14 @@ async def _scrape_chapters_impl(
             if any(img.get("download_error") for img in downloaded_images):
                 image_download_failures += 1
             succeeded += 1
+            _emit(
+                STAGE_BODY_CRAWL,
+                "completed",
+                succeeded + skipped + failed,
+                _total_chapters,
+                source_episode_id=chapter_id,
+                label=f"Chapter {chapter_id}: saved",
+            )
 
         except (SourceError, RuntimeError, Exception) as exc:
             error_type = type(exc).__name__
@@ -546,15 +709,17 @@ async def _scrape_chapters_impl(
 
             logger.warning(
                 "Chapter %s/%s/%s failed (%s): %s",
-                source_key, novel_id, chapter_id, error_type, error_message,
+                source_key,
+                novel_id,
+                chapter_id,
+                error_type,
+                error_message,
             )
             if progress_callback:
-                progress_callback(
-                    f"  Chapter {chapter_id} failed ({error_type}): {error_message}"
-                )
+                progress_callback(f"  Chapter {chapter_id} failed ({error_type}): {error_message}")
 
             http_status_code = _extract_http_status(exc)
-            failures.append({
+            failure = {
                 "chapter_id": chapter_id,
                 "chapter_number": chapter_num,
                 "title": chapter.get("title"),
@@ -564,19 +729,52 @@ async def _scrape_chapters_impl(
                 "error_category": _classify_error(exc, error_message, http_status_code),
                 "http_status_code": http_status_code,
                 "retry_attempts": retry_attempts[0],
-            })
+            }
+            failures.append(failure)
             failed += 1
+            _emit(
+                STAGE_BODY_CRAWL,
+                "failed",
+                succeeded + skipped + failed,
+                _total_chapters,
+                source_episode_id=chapter_id,
+                label=f"Chapter {chapter_id}: failed ({error_type})",
+                details={
+                    "error_type": error_type,
+                    "error_category": failure["error_category"],
+                    "http_status_code": http_status_code,
+                    "retry_attempts": failure["retry_attempts"],
+                },
+            )
+
+    terminal_status = crawl_terminal_status(
+        succeeded=succeeded,
+        skipped=skipped,
+        failed=failed,
+        image_download_failures=image_download_failures,
+    )
 
     if progress_callback:
         if failures:
             progress_callback(
-                f"Scrape finished with partial success: {succeeded} saved, "
-                f"{skipped} skipped, {failed} failed."
+                f"Scrape finished with partial success: {succeeded} saved, {skipped} skipped, {failed} failed."
             )
         else:
-            progress_callback(
-                f"Scrape finished: {succeeded} saved, {skipped} skipped."
-            )
+            progress_callback(f"Scrape finished: {succeeded} saved, {skipped} skipped.")
+
+    _emit(
+        STAGE_RECONCILIATION,
+        terminal_status,
+        succeeded + skipped + failed,
+        _total_chapters,
+        label="Scrape finished",
+        details={
+            "succeeded": succeeded,
+            "skipped": skipped,
+            "failed": failed,
+            "image_download_failures": image_download_failures,
+        },
+    )
 
     return {
         "succeeded": succeeded,
@@ -584,4 +782,5 @@ async def _scrape_chapters_impl(
         "failed": failed,
         "failures": failures,
         "image_download_failures": image_download_failures,
+        "terminal_status": terminal_status,
     }
