@@ -312,6 +312,14 @@ class AppSettings(BaseSettings):
     LLM_QA_MAX_RETRY_ATTEMPTS: int = 1
     LLM_QA_POLICY: str = "advisory"
 
+    @field_validator("LLM_QA_POLICY", mode="after")
+    @classmethod
+    def _validate_llm_qa_policy(cls, v: str) -> str:
+        valid = {"advisory", "blocking_retry", "review"}
+        if v not in valid:
+            raise ValueError(f"Invalid LLM_QA_POLICY '{v}'. Allowed values: {sorted(valid)}")
+        return v
+
     # --- Public reader availability
     # Controls behavior when a public chapter has no active translation.
     # Allowed values: "hard_404" (default), "chapter_shell", "latest_version".
