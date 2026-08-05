@@ -436,15 +436,25 @@ class ActivityWorkerService:
         try:
             if activity.get("type") == "crawl":
                 result_metadata = await self._run_crawl_activity(activity)
-                has_errors = isinstance(result_metadata, dict) and (
-                    result_metadata.get("failed", 0) > 0
-                    or result_metadata.get("terminal_status") in ("failed", "completed_with_errors")
+                # Blocker E: count/terminal-status live under
+                # ``crawl_result``, not at the top of ``result_metadata``.
+                # Reading from the top silently treats every crawl as clean,
+                # so record_source_health never sees partial-failure crawls.
+                crawl_result_meta: dict[str, Any] | None = None
+                if isinstance(result_metadata, dict):
+                    inner = result_metadata.get("crawl_result")
+                    if isinstance(inner, dict):
+                        crawl_result_meta = inner
+                has_errors = crawl_result_meta is not None and (
+                    crawl_result_meta.get("failed", 0) > 0
+                    or crawl_result_meta.get("terminal_status") in ("failed", "completed_with_errors")
                 )
                 if has_errors:
+                    failed_count = int(crawl_result_meta.get("failed", 0) or 0)  # type: ignore[union-attr]
                     self.activity_log.record_source_health(
                         str(activity.get("source_key") or ""),
                         success=False,
-                        error=f"Crawl completed with errors ({result_metadata.get('failed', 0)} failed chapters)",
+                        error=f"Crawl completed with errors ({failed_count} failed chapters)",
                     )
                 else:
                     self.activity_log.record_source_health(str(activity.get("source_key") or ""), success=True)
