@@ -177,7 +177,7 @@ def create_crawl_plan(
         explicitly_selected_episode_ids=tuple(explicit_eps),
         reusable_episode_ids=tuple(reusable_eps),
         removed_episode_ids=tuple(removed_eps),
-        reordered_episode_ids=(),
+        reordered_episode_ids=tuple(reordered_eps),
         metadata_refresh=False,
         index_refresh=False,
         full_reconciliation_required=False,
@@ -189,6 +189,7 @@ def create_crawl_plan(
             "revalidation_count": len(rolling_reval_eps),
             "reusable_count": len(reusable_eps),
             "removed_count": len(removed_eps),
+            "reordered_count": len(reordered_eps),
         },
     )
 

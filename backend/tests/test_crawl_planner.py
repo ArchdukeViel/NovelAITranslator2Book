@@ -106,3 +106,56 @@ def test_recent_window_unchanged_chapter_is_revalidated():
     assert set(plan.reusable_episode_ids) == {str(i) for i in range(1, 8)}
     # Recent window 8-10 revalidated.
     assert set(plan.rolling_revalidation_episode_ids) == {"8", "9", "10"}
+
+
+def test_planner_surfaces_reordered_episode_ids_and_reason():
+    """Blocker F: create_crawl_plan used to compute ``reordered_eps`` but then
+    discard it with ``reordered_episode_ids=()``.  When consecutive episodes
+    appear in a different relative order between the source state and the
+    live index the plan must surface the displaced ids and report a
+    ``reordered_count`` reason so downstream consumers can decide to
+    invalidate cached translations.
+    """
+
+    source_state = {
+        "episode_map": {
+            "1": {"source_episode_id": "1", "source_update_date": "2024-01-01"},
+            "2": {"source_episode_id": "2", "source_update_date": "2024-02-01"},
+            "3": {"source_episode_id": "3", "source_update_date": "2024-03-01"},
+        }
+    }
+    # Live index swaps episodes 2 and 3; episode 1 stays put.
+    swapped_selected = [
+        {"id": "1", "source_episode_id": "1", "source_update_date": "2024-01-01"},
+        {"id": "3", "source_episode_id": "3", "source_update_date": "2024-03-01"},
+        {"id": "2", "source_episode_id": "2", "source_update_date": "2024-02-01"},
+    ]
+    existing = {"1": {"text": "ch1 text"}, "2": {"text": "ch2 text"}, "3": {"text": "ch3 text"}}
+
+    plan = create_crawl_plan("n1234ab", swapped_selected, source_state, existing, mode="update")
+    # Mismatches: position 1 ("2" → "3") and position 2 ("3" → "2").  ``1``
+    # matches position 0 and is not in the reordered set.
+    assert set(plan.reordered_episode_ids) == {"2", "3"}
+    assert plan.reasons.get("reordered_count") == 2
+
+
+def test_planner_leaves_reordered_episode_ids_empty_when_order_unchanged():
+    """The default case (ordering preserved) leaves ``reordered_episode_ids``
+    empty and reports ``reordered_count == 0`` (Blocker F: empirical
+    happy-path stays quiet)."""
+
+    selected = [
+        {"id": "1", "source_episode_id": "1", "source_update_date": "2024-01-01"},
+        {"id": "2", "source_episode_id": "2", "source_update_date": "2024-02-01"},
+    ]
+    source_state = {
+        "episode_map": {
+            "1": {"source_episode_id": "1", "source_update_date": "2024-01-01"},
+            "2": {"source_episode_id": "2", "source_update_date": "2024-02-01"},
+        }
+    }
+    existing = {"1": {"text": "ch1 text"}, "2": {"text": "ch2 text"}}
+
+    plan = create_crawl_plan("n1234ab", selected, source_state, existing, mode="update")
+    assert plan.reordered_episode_ids == ()
+    assert plan.reasons.get("reordered_count") == 0
