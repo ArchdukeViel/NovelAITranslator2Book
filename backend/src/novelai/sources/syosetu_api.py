@@ -309,6 +309,7 @@ class SyosetuNovelApi:
             url,
             source_key="syosetu_api",
             profile=self._profile,
+            kind="api",
         )
         try:
             payload = json.loads(result.text)

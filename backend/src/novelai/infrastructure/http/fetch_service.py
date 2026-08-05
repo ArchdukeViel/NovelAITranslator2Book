@@ -3,18 +3,68 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from time import perf_counter
 from typing import Any
+from urllib.parse import urljoin
 
 import httpx
 
+from novelai.config.settings import settings
 from novelai.core.errors import SourceError
 from novelai.infrastructure.http.cache import FetchCache, FetchCacheEntry, LRUFetchCache
 from novelai.infrastructure.http.client import create_async_client, validate_safe_url
 from novelai.infrastructure.http.retry import Retrier, RetryConfig
 from novelai.infrastructure.http.throttle import DomainThrottle
 
-MAX_RESPONSE_SIZE = 50 * 1024 * 1024  # 50 MB limit
+MAX_RESPONSE_SIZE = 50 * 1024 * 1024  # legacy fallback cap (per-kind limits come from settings)
+
+_REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+
+
+def _kind_limit_bytes(kind: str) -> int:
+    """Return the configured response-size limit for a fetch kind."""
+    return {
+        "api": settings.HTTP_API_RESPONSE_MAX_BYTES,
+        "html": settings.HTTP_HTML_RESPONSE_MAX_BYTES,
+        "asset": settings.HTTP_ASSET_RESPONSE_MAX_BYTES,
+    }.get(kind, settings.HTTP_HTML_RESPONSE_MAX_BYTES)
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse a ``Retry-After`` header into seconds (seconds or HTTP-date).
+
+    Returns ``None`` when the value is absent or unparseable so callers fall
+    back to the regular backoff schedule.
+    """
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        seconds = float(text)
+        if seconds >= 0 and seconds == seconds:  # reject NaN
+            return seconds
+    except ValueError:
+        pass
+    try:
+        parsed = parsedate_to_datetime(text)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    delta = (parsed - datetime.now(UTC)).total_seconds()
+    return max(0.0, delta)
+
+
+@dataclass(frozen=True)
+class _FetchedBody:
+    """A fully streamed response with the validated final URL."""
+
+    final_url: str
+    status_code: int
+    headers: dict[str, str]
+    body: bytes
+    text: str
 
 
 @dataclass(frozen=True)
@@ -77,6 +127,7 @@ class FetchService:
         cookies: Any = None,
         on_retry: Callable[[int, Exception], None] | None = None,
         profile: str | None = None,
+        kind: str = "html",
     ) -> FetchResult:
         return await self._fetch(
             url,
@@ -85,7 +136,7 @@ class FetchService:
             headers=headers,
             cookies=cookies,
             on_retry=on_retry,
-            kind="html",
+            kind=kind,
             profile=profile,
         )
 
@@ -99,6 +150,7 @@ class FetchService:
         cookies: Any = None,
         on_retry: Callable[[int, Exception], None] | None = None,
         profile: str | None = None,
+        kind: str = "asset",
     ) -> FetchResult:
         return await self._fetch(
             url,
@@ -107,7 +159,7 @@ class FetchService:
             headers=headers,
             cookies=cookies,
             on_retry=on_retry,
-            kind="asset",
+            kind=kind,
             profile=profile,
         )
 
@@ -132,8 +184,14 @@ class FetchService:
         await self._throttle.before_request(requested_url)
         started = perf_counter()
         try:
-            response = await self._with_retry(
-                lambda: self._request(requested_url, headers=request_headers, cookies=cookies, profile=profile),
+            fetched = await self._with_retry(
+                lambda: self._request(
+                    requested_url,
+                    headers=request_headers,
+                    cookies=cookies,
+                    profile=profile,
+                    kind=kind,
+                ),
                 on_retry=on_retry,
             )
         except httpx.HTTPStatusError as exc:
@@ -145,10 +203,10 @@ class FetchService:
             raise SourceError(f"Failed to fetch {source_key} page from {requested_url}: {exc}") from exc
 
         elapsed = perf_counter() - started
-        final_url = validate_safe_url(str(response.url))
-        await self._throttle.after_response(final_url, response.status_code)
+        final_url = validate_safe_url(fetched.final_url)
+        await self._throttle.after_response(final_url, fetched.status_code)
 
-        if response.status_code == 304:
+        if fetched.status_code == 304:
             cached = self._cache.get(source_key, requested_url, profile=profile)
             if cached is None:
                 raise SourceError(f"{source_key} returned 304 for {requested_url}, but no cached response exists.")
@@ -156,7 +214,7 @@ class FetchService:
                 requested_url=requested_url,
                 final_url=final_url,
                 status_code=304,
-                headers=_headers_dict(response.headers),
+                headers=fetched.headers,
                 text=cached.text,
                 body=cached.body,
                 source_key=source_key,
@@ -165,17 +223,13 @@ class FetchService:
                 elapsed_seconds=elapsed,
             )
 
-        headers_payload = _headers_dict(response.headers)
-        body = bytes(response.content)
-        if len(body) > MAX_RESPONSE_SIZE:
-            raise SourceError(
-                f"Response payload from {final_url} exceeds maximum size limit ({len(body)} > {MAX_RESPONSE_SIZE} bytes)."
-            )
-        text = response.text
+        headers_payload = fetched.headers
+        body = fetched.body
+        text = fetched.text
         result = FetchResult(
             requested_url=requested_url,
             final_url=final_url,
-            status_code=response.status_code,
+            status_code=fetched.status_code,
             headers=headers_payload,
             text=text,
             body=body,
@@ -207,12 +261,68 @@ class FetchService:
         headers: dict[str, str],
         cookies: Any,
         profile: str | None,
-    ) -> httpx.Response:
+        kind: str,
+    ) -> _FetchedBody:
+        """Fetch ``url`` with bounded, validated manual redirect handling.
+
+        Redirect hops are followed only after the resolved destination passes
+        SSRF validation (scheme, credentials, hostname, resolved addresses).
+        Bodies are read incrementally and rejected as soon as the applicable
+        per-kind size limit is exceeded.
+        """
         client = self._pooled_client(profile)
-        response = await client.get(url, headers=headers, cookies=cookies)
-        if response.status_code != 304:
-            response.raise_for_status()
-        return response
+        current = url
+        visited: set[str] = {url}
+        max_redirects = settings.HTTP_MAX_REDIRECTS
+
+        for _ in range(max_redirects + 1):
+            async with client.stream("GET", current, headers=headers, cookies=cookies) as response:
+                if response.status_code in _REDIRECT_STATUSES:
+                    location = response.headers.get("location")
+                    if not location or not location.strip():
+                        raise SourceError(f"Redirect response from {current} without Location header.")
+                    next_url = urljoin(current, location.strip())
+                    # Validate before requesting the destination (SSRF).
+                    validate_safe_url(next_url)
+                    if next_url in visited:
+                        raise SourceError(f"Redirect loop detected at {next_url}.")
+                    visited.add(next_url)
+                    current = next_url
+                    continue
+                body = await self._read_body_limited(response, current, kind)
+                if response.status_code != 304:
+                    response.raise_for_status()
+                return _FetchedBody(
+                    final_url=current,
+                    status_code=response.status_code,
+                    headers=_headers_dict(response.headers),
+                    body=body,
+                    text=body.decode(response.encoding or "utf-8", errors="replace"),
+                )
+
+        raise SourceError(f"Too many redirects (max {max_redirects}) fetching {url}.")
+
+    async def _read_body_limited(self, response: httpx.Response, url: str, kind: str) -> bytes:
+        """Stream a response body, enforcing the per-kind limit incrementally."""
+        limit = _kind_limit_bytes(kind)
+        declared = response.headers.get("content-length")
+        if declared:
+            try:
+                if int(declared) > limit:
+                    raise SourceError(
+                        f"Declared Content-Length {declared} for {url} exceeds the {kind} limit of {limit} bytes."
+                    )
+            except ValueError:
+                # Malformed header: rely on streaming enforcement below.
+                pass
+        chunks: list[bytes] = []
+        size = 0
+        async for chunk in response.aiter_bytes():
+            size += len(chunk)
+            if size > limit:
+                raise SourceError(f"Response from {url} exceeds the {kind} size limit of {limit} bytes.")
+            chunks.append(chunk)
+        return b"".join(chunks)
 
     def _pooled_client(self, profile: str | None) -> httpx.AsyncClient:
         key = profile or ""
@@ -221,22 +331,6 @@ class FetchService:
             client = self._client_factory()
             self._clients[key] = client
         return client
-
-    def close(self) -> None:
-        """Close all pooled clients cleanly during shutdown."""
-        import asyncio
-
-        _tasks = []
-        for client in list(self._clients.values()):
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    _tasks.append(loop.create_task(client.aclose()))
-                else:
-                    loop.run_until_complete(client.aclose())
-            except Exception:
-                pass
-        self._clients.clear()
 
     async def aclose(self) -> None:
         for client in self._clients.values():
@@ -250,7 +344,7 @@ class FetchService:
 
     async def _with_retry(
         self, fn: Callable[[], Any], *, on_retry: Callable[[int, Exception], None] | None = None
-    ) -> httpx.Response:
+    ) -> _FetchedBody:
         config = RetryConfig(
             max_attempts=3,
             initial_delay=1.0,
@@ -263,7 +357,16 @@ class FetchService:
         class _NonRetryableError(Exception):
             pass
 
-        async def _wrapped() -> httpx.Response:
+        def _retry_after_override(retry_number: int, exc: Exception) -> float | None:
+            """Honor a valid ``Retry-After`` header, bounded by configuration."""
+            if not isinstance(exc, httpx.HTTPStatusError):
+                return None
+            parsed = _parse_retry_after(exc.response.headers.get("retry-after"))
+            if parsed is None:
+                return None
+            return min(parsed, float(settings.HTTP_RETRY_AFTER_MAX_SECONDS))
+
+        async def _wrapped() -> _FetchedBody:
             try:
                 return await fn()
             except httpx.HTTPStatusError as exc:
@@ -272,7 +375,11 @@ class FetchService:
                 raise
 
         try:
-            return await retrier.execute_async(_wrapped, on_retry=on_retry)
+            return await retrier.execute_async(
+                _wrapped,
+                on_retry=on_retry,
+                retry_delay_override=_retry_after_override,
+            )
         except _NonRetryableError as exc:
             original = exc.args[0] if exc.args else None
             if isinstance(original, BaseException):

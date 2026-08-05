@@ -110,6 +110,13 @@ class AppSettings(BaseSettings):
     JOB_WORKER_ENABLED: bool = False
     JOB_WORKER_POLL_SECONDS: float = 2.0
 
+    # --- Outbound fetch hardening (bounded redirects, streaming size limits)
+    HTTP_MAX_REDIRECTS: int = Field(default=5, ge=1, le=20)
+    HTTP_RETRY_AFTER_MAX_SECONDS: int = Field(default=120, ge=1, le=3600)
+    HTTP_API_RESPONSE_MAX_BYTES: int = Field(default=10 * 1024 * 1024, ge=1024)
+    HTTP_HTML_RESPONSE_MAX_BYTES: int = Field(default=20 * 1024 * 1024, ge=1024)
+    HTTP_ASSET_RESPONSE_MAX_BYTES: int = Field(default=50 * 1024 * 1024, ge=1024)
+
     # --- Production hardening (DEBT-055)
     TRUSTED_PROXY_CIDRS: Annotated[list[str], NoDecode] = Field(
         default_factory=list,

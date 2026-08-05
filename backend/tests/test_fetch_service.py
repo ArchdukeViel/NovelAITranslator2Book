@@ -219,6 +219,7 @@ class FakeFetchService(FetchService):
         cookies: Any = None,
         on_retry: Any = None,
         profile: str | None = None,
+        kind: str = "html",
     ) -> FetchResult:
         self.calls.append(
             {
@@ -228,6 +229,7 @@ class FakeFetchService(FetchService):
                 "headers": headers,
                 "cookies": cookies,
                 "profile": profile,
+                "kind": kind,
             }
         )
         return FetchResult(
@@ -251,6 +253,7 @@ class FakeFetchService(FetchService):
         cookies: Any = None,
         on_retry: Callable[[int, Exception], None] | None = None,
         profile: str | None = None,
+        kind: str = "asset",
     ) -> FetchResult:
         self.calls.append(
             {
@@ -260,6 +263,7 @@ class FakeFetchService(FetchService):
                 "headers": headers,
                 "cookies": cookies,
                 "profile": profile,
+                "kind": kind,
             }
         )
         return FetchResult(
