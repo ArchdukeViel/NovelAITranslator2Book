@@ -495,6 +495,7 @@ async def _try_delta_translate_chapter(
     glossary: Any | None,
     style_preset: str | None,
     consistency_mode: bool,
+    translation_run_id: str | None,
     job_id: str | None,
     activity_id: str | None,
     allow_cross_provider_fallback: bool,
@@ -567,6 +568,7 @@ async def _try_delta_translate_chapter(
             result = await self.translation.translate_chapter(
                 source_adapter=source,
                 chapter_url=f"{chapter_url}#delta-window-{window_number}",
+                translation_run_id=translation_run_id,
                 job_id=job_id,
                 activity_id=activity_id,
                 novel_id=novel_id,

@@ -47,6 +47,7 @@ class TranslationService:
         *,
         source_adapter: SourceAdapter | None,
         chapter_url: str,
+        translation_run_id: str | None = None,
         job_id: str | None = None,
         activity_id: str | None = None,
         novel_id: str | None = None,
@@ -101,7 +102,9 @@ class TranslationService:
             state.metadata["job_id"] = job_id
         if activity_id is not None:
             state.metadata["activity_id"] = activity_id
-        state.metadata["translation_run_id"] = job_id or activity_id or f"translation_run_{uuid4().hex}"
+        state.metadata["translation_run_id"] = (
+            translation_run_id or job_id or activity_id or f"translation_run_{uuid4().hex}"
+        )
         if novel_id is not None:
             state.metadata["novel_id"] = novel_id
         if platform_novel_id is not None:

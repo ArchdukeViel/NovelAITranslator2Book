@@ -14,7 +14,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState, TranslationState
@@ -33,6 +35,8 @@ from novelai.services.orchestration.translation_lineage import (
 from novelai.services.orchestration.translation_progress import _build_chapter_summary
 from novelai.services.pipeline.checkpoint import Checkpoint
 from novelai.sources.base import SourceAdapter
+from novelai.translation.pipeline.stages.translate_result_assembly import hash_text
+from novelai.translation.run_manifest import TranslationRunManifest
 
 logger = logging.getLogger(__name__)
 
@@ -180,9 +184,15 @@ def _failed_stage_name_from_exception(exc: BaseException) -> str:
     return "Pipeline"
 
 
-def _persist_chunk_qa_results_to_outputs(storage: Any, novel_id: str, chunk_states: dict[str, Any]) -> None:
+def _persist_chunk_qa_results_to_outputs(storage: Any, novel_id: str, chunk_states: dict[str, Any]) -> dict[str, str]:
+    """Persist QA results onto the latest stored translation output per chunk.
+
+    Returns a mapping of ``chunk_id -> output_hash`` for every chunk that had
+    an existing output record, used as run-manifest evidence (Blocker D).
+    """
+    chunk_output_hashes: dict[str, str] = {}
     if not isinstance(novel_id, str) or not novel_id.strip():
-        return
+        return chunk_output_hashes
     for chunk_id, state in chunk_states.items():
         if not isinstance(chunk_id, str) or not chunk_id.strip() or not isinstance(state, dict):
             continue
@@ -211,6 +221,10 @@ def _persist_chunk_qa_results_to_outputs(storage: Any, novel_id: str, chunk_stat
                 "qa_status": qa_status,
             }
         )
+        output_hash = latest.get("output_hash")
+        if isinstance(output_hash, str) and output_hash.strip():
+            chunk_output_hashes[chunk_id] = output_hash
+    return chunk_output_hashes
 
 
 def _preflight_translation(
@@ -782,6 +796,33 @@ async def translate_chapters(
         force=force,
     )
 
+    # Blocker D: derive one run id for the entire run and persist a
+    # TranslationRunManifest (initial "running" record).  The same id is
+    # stamped into pipeline metadata, cache entries, chunk states and
+    # translation outputs, so the manifest is hash-linked evidence of the
+    # exact inputs, provider, glossary and prompt used for the run.
+    translation_run_id = job_id or activity_id or f"translation_run_{uuid4().hex}"
+    manifest = TranslationRunManifest(
+        translation_run_id=translation_run_id,
+        novel_id=novel_id,
+        status="running",
+        prompt_version="translation_request_v1",
+        qa_policy_version=str(getattr(settings, "LLM_QA_POLICY", "") or ""),
+        glossary_hash=hash_text(str(glossary or "")),
+        glossary_revision=glossary_revision,
+        provider_key=effective_provider_key,
+        provider_model=effective_provider_model,
+        source_language=effective_source_language,
+        target_language=effective_target_language,
+        style_preset=effective_style_preset,
+        json_output=json_output,
+        consistency_mode=effective_consistency_mode,
+        requested_chapters=[str(number) for number in selected_numbers],
+        expected_count=len(selected_numbers),
+    )
+    with contextlib.suppress(Exception):
+        self.storage.save_translation_run_manifest(novel_id, manifest)
+
     # Bounded chapter-level concurrency.  Default 1 preserves the previous
     # sequential behavior.  Each chapter is independent (per-chapter lock,
     # per-chapter storage keys, per-chapter DB rows) so they can run in
@@ -843,6 +884,8 @@ async def translate_chapters(
                     else:
                         raw_text = raw_chapter.get("text") if isinstance(raw_chapter.get("text"), str) else None
                     raw_images = raw_chapter.get("images") if isinstance(raw_chapter.get("images"), list) else None
+                if raw_text is not None and raw_text.strip():
+                    manifest.chapter_source_hashes[chapter_id] = hash_text(raw_text)
                 chapter_url = str(
                     chapter.get("url") or (raw_chapter or {}).get("source_url") or f"import://{novel_id}/{chapter_id}"
                 )
@@ -865,6 +908,7 @@ async def translate_chapters(
                         glossary=glossary,
                         style_preset=effective_style_preset,
                         consistency_mode=effective_consistency_mode,
+                        translation_run_id=translation_run_id,
                         job_id=job_id,
                         activity_id=activity_id,
                         allow_cross_provider_fallback=allow_cross_provider_fallback,
@@ -942,6 +986,7 @@ async def translate_chapters(
                 result = await self.translation.translate_chapter(
                     source_adapter=source,
                     chapter_url=chapter_url,
+                    translation_run_id=translation_run_id,
                     job_id=job_id,
                     activity_id=activity_id,
                     novel_id=novel_id,
@@ -1015,7 +1060,9 @@ async def translate_chapters(
                 self.storage.append_pipeline_events(result.pipeline_events)
                 for chunk_state in result.chunk_states.values():
                     self.storage.upsert_chunk_state(chunk_state)
-                _persist_chunk_qa_results_to_outputs(self.storage, novel_id, result.chunk_states)
+                manifest.chunk_outputs.update(
+                    _persist_chunk_qa_results_to_outputs(self.storage, novel_id, result.chunk_states)
+                )
                 self.storage.create_checkpoint(novel_id, chapter_id, "translated")
                 # Mark COMPLETE in DB + write CheckpointManager checkpoint (REQ-2.3, REQ-3.1)
                 _update_db_translation_state(novel_id, chapter_id, TranslationState.COMPLETE)
@@ -1063,7 +1110,9 @@ async def translate_chapters(
                     for chunk_state in chunk_states.values():
                         if isinstance(chunk_state, dict):
                             self.storage.upsert_chunk_state(chunk_state)
-                    _persist_chunk_qa_results_to_outputs(self.storage, novel_id, chunk_states)
+                    manifest.chunk_outputs.update(
+                        _persist_chunk_qa_results_to_outputs(self.storage, novel_id, chunk_states)
+                    )
                 if isinstance(failed_chunk_id, str) and failed_chunk_id.strip():
                     self.storage.upsert_chunk_state(
                         {
@@ -1124,6 +1173,23 @@ async def translate_chapters(
         force=force,
         target_language=effective_target_language,
     )
+
+    # Finalize the run manifest (Blocker D): succeeded chapter ids in source
+    # order, final counts, commit timestamp, and final status.  Best-effort
+    # so manifest storage failure never fails the translation run itself.
+    manifest.chapter_ids = [
+        str(chapter_id)
+        for chapter_id, entry in summary["chapter_progress"].items()
+        if entry.get("status") == "succeeded"
+    ]
+    manifest.completed_count = int(summary.get("succeeded") or 0)
+    manifest.skipped_count = int(summary.get("skipped") or 0)
+    manifest.failed_count = int(summary.get("failed") or 0)
+    manifest.status = "failed" if first_error is not None else "completed"
+    manifest.committed_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    with contextlib.suppress(Exception):
+        self.storage.save_translation_run_manifest(novel_id, manifest)
+    summary["translation_run_id"] = translation_run_id
     if first_error is not None:
         # Attach progress so the activity worker can surface a partial-failure
         # summary (REQ-3.3) while still propagating the underlying error so
