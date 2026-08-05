@@ -286,13 +286,28 @@ class ActivityWorkerService:
             )
 
             self._check_cancelled(activity_id)
+            succeeded = int(result.get("succeeded") or 0)
+            skipped = int(result.get("skipped") or 0)
+            failed = int(result.get("failed") or 0)
+            image_download_failures = int(result.get("image_download_failures") or 0)
+            terminal_status = result.get("terminal_status")
+            if not isinstance(terminal_status, str) or not terminal_status:
+                # Compute from counts when the orchestrator omits it; matches
+                # crawler.crawl_terminal_status so downstream consumers see a
+                # coherent status regardless of orchestrator implementation.
+                if failed > 0:
+                    terminal_status = "completed_with_errors"
+                elif image_download_failures > 0 or (succeeded == 0 and skipped > 0):
+                    terminal_status = "completed_with_warnings"
+                else:
+                    terminal_status = "completed"
             crawl_result = {
-                "succeeded": result.get("succeeded", 0),
-                "skipped": result.get("skipped", 0),
-                "failed": result.get("failed", 0),
+                "succeeded": succeeded,
+                "skipped": skipped,
+                "failed": failed,
                 "failures": result.get("failures", []),
-                "image_download_failures": result.get("image_download_failures", 0),
-                "terminal_status": result.get("terminal_status", "failed"),
+                "image_download_failures": image_download_failures,
+                "terminal_status": terminal_status,
             }
             self.activity_log.update_activity_metadata(activity_id, {"crawl_result": crawl_result})
 
