@@ -467,7 +467,7 @@ def load_translation_edit_history(self: Any, novel_id: str, chapter_id: str) -> 
 def list_translated_chapters(self: Any, novel_id: str) -> list[str]:
     """Return sorted chapter IDs that have translated content on disk."""
     ids: set[str] = set()
-    chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
+    chapter_dir = self._content_root(novel_id) / self.CHAPTERS_DIRNAME
     if self._is_dir_present(chapter_dir):
         for chapter_path in self._glob(chapter_dir, "*.json"):
             try:

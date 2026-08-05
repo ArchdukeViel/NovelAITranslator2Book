@@ -20,6 +20,7 @@ from novelai.storage.chapters import (
     _chapter_path,
     _load_chapter_bundle,
     _persist_chapter_bundle,
+    build_chapter_payload,
     count_stored_chapters,
     existing_chapter_hash,
     get_chapter_progress,
@@ -32,12 +33,22 @@ from novelai.storage.chapters import (
     save_chapter,
 )
 from novelai.storage.generations import (
+    _generation_dir,
     _generations_dir,
     activate_generation,
+    commit_generation,
     create_generation_stage,
     get_active_generation,
+    list_generations,
     load_generation_manifest,
     record_staged_chapter,
+    rollback_generation,
+    seed_generation_from_active,
+    stage_generation_chapter,
+    stage_generation_chapter_index,
+    stage_generation_image,
+    stage_generation_metadata,
+    stage_generation_source_state,
 )
 from novelai.storage.glossary import load_glossary, save_glossary
 from novelai.storage.jobs import (
@@ -266,6 +277,23 @@ class StorageService:
             return str(int(stem))
         except (ValueError, TypeError):
             return decode_physical_stem(stem)
+
+    def _content_root(self, novel_id: str) -> Path:
+        """Return the directory holding a novel's active content snapshot.
+
+        When an active generation exists, chapter bundles and images are read
+        from and written to the generation snapshot so a crawl becomes
+        visible atomically (manifest-last, then pointer swap). Otherwise the
+        legacy novel-directory layout is used unchanged.
+
+        Control artifacts (folder index, metadata backups, chapter state,
+        checkpoints, ``generations/`` itself) always stay in the novel
+        directory and are never generation-scoped.
+        """
+        active = get_active_generation(self, novel_id)
+        if active is not None:
+            return self._generations_dir(novel_id) / active.generation_id
+        return self._novel_dir(novel_id)
 
     def __init__(self, base_dir: Path | None = None, backend: Any | None = None) -> None:
         if backend is not None:
@@ -574,9 +602,19 @@ class StorageService:
     save_source_state = save_source_state
     load_source_state = load_source_state
     _generations_dir = _generations_dir
+    _generation_dir = _generation_dir
     create_generation_stage = create_generation_stage
     record_staged_chapter = record_staged_chapter
+    stage_generation_chapter = stage_generation_chapter
+    stage_generation_image = stage_generation_image
+    stage_generation_metadata = stage_generation_metadata
+    stage_generation_chapter_index = stage_generation_chapter_index
+    stage_generation_source_state = stage_generation_source_state
+    seed_generation_from_active = seed_generation_from_active
+    commit_generation = commit_generation
     activate_generation = activate_generation
+    rollback_generation = rollback_generation
+    list_generations = list_generations
     load_generation_manifest = load_generation_manifest
     get_active_generation = get_active_generation
     update_onboarding_status = update_onboarding_status
@@ -597,6 +635,7 @@ class StorageService:
     _persist_chapter_bundle = _persist_chapter_bundle
     existing_chapter_hash = existing_chapter_hash
     save_chapter = save_chapter
+    build_chapter_payload = build_chapter_payload
     load_chapter = load_chapter
     list_stored_chapters = list_stored_chapters
     count_stored_chapters = count_stored_chapters

@@ -50,3 +50,44 @@ def test_activate_generation_atomic_write(storage: StorageService):
     assert active_current is not None
     assert active_current.generation_id == "gen-200"
     assert active_current.status == "committed"
+
+
+def test_stage_snapshot_files_are_files_not_directories(storage: StorageService):
+    """Regression: staged snapshot entries must be regular files.
+
+    Writing through the stage-dir helper used to create a *directory* at the
+    file path, which made the subsequent atomic rename fail on Windows
+    (WinError 5 Access denied).
+    """
+    storage.create_generation_stage("novel-1", "gen-300")
+    g_dir = storage.base_dir / "novels" / "novel-1" / "generations" / "gen-300"
+
+    # Each snapshot stage can be written repeatedly and must produce a file.
+    for _ in range(2):
+        storage.stage_generation_source_state("novel-1", "gen-300", {"chapters": []})
+        storage.stage_generation_chapter_index("novel-1", "gen-300", [])
+        storage.stage_generation_metadata("novel-1", "gen-300", {"title": "T"})
+
+    assert (g_dir / "source_state.json").is_file()
+    assert (g_dir / "chapter_index.json").is_file()
+    assert (g_dir / "metadata.json").is_file()
+
+    # Chapter and image staging must also land as files.
+    storage.stage_generation_chapter("novel-1", "gen-300", "1", {"id": "1", "raw": {"text": "x"}})
+    assert (g_dir / "chapters" / "0001.json").is_file()
+    stored = storage.stage_generation_image(
+        "novel-1",
+        "gen-300",
+        "1",
+        image_index=0,
+        content=b"\x89PNG",
+        source_url="https://example.test/img.png",
+    )
+    assert (storage.base_dir / "novels" / "novel-1" / stored["local_path"]).is_file()
+
+    manifest = storage.load_generation_manifest("novel-1", "gen-300")
+    assert manifest is not None
+    assert manifest.source_state_hash
+    assert manifest.chapter_index_hash
+    assert manifest.metadata_hash
+    assert manifest.chapter_ids == ["1"]

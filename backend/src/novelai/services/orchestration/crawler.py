@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
+import json
 import logging
 import re
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -101,6 +104,13 @@ def crawl_terminal_status(*, succeeded: int, skipped: int, failed: int, image_do
     if image_download_failures > 0 or (succeeded == 0 and skipped > 0):
         return TERMINAL_STATUS_COMPLETED_WITH_WARNINGS
     return TERMINAL_STATUS_COMPLETED
+
+
+def _json_hash(value: Any) -> str:
+    """SHA256 of a JSON-stable serialization (used for manifest hashes)."""
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
 
 
 def _get_crawl_lock(source_key: str, novel_id: str) -> asyncio.Lock:
@@ -557,8 +567,34 @@ async def _scrape_chapters_impl(
         all_chapters=meta.get("chapters", []),
     )
 
+    # Staged generation (DEBT-GEN-01): all crawl writes go into a generation
+    # snapshot and become visible only after commit_generation swaps the
+    # active_generation.json pointer (manifest written last). On any hard
+    # failure the stage is rolled back and the previous active state stays.
+    generation_id = f"gen-{uuid.uuid4().hex[:12]}"
+    self.storage.create_generation_stage(
+        novel_id,
+        generation_id,
+        source_key=source_key,
+        source_work_id=str(meta.get("source_novel_id") or novel_id),
+        mode=mode,
+        expected_chapters=_total_chapters,
+        metadata_fingerprint=str(meta.get("metadata_fingerprint") or ""),
+        index_fingerprint=str(meta.get("index_fingerprint") or ""),
+    )
+
     # Build stored chapter hash cache once before chapter loop to avoid O(n^2) disk re-scans
     cached_stored_hashes = _stored_chapter_hashes(self.storage, novel_id, exclude_chapter_id="")
+
+    # Seed the stage with bundles the planner marks reusable (not refetched),
+    # so the activated snapshot is complete (raw + translations + images).
+    seed_targets = [
+        str(ch.get("id") or ch.get("num"))
+        for ch in selected_chapters_list
+        if str(ch.get("source_episode_id") or ch.get("id") or ch.get("num")) in crawl_plan.reusable_episode_ids
+    ]
+    if seed_targets:
+        self.storage.seed_generation_from_active(novel_id, generation_id, seed_targets)
 
     _emit(
         STAGE_INDEX_CRAWL,
@@ -569,283 +605,328 @@ async def _scrape_chapters_impl(
         details=crawl_plan.plan_reason,
     )
 
-    for _chapter_index, chapter_num in enumerate(selected_numbers):
-        if cancellation_check is not None and cancellation_check():
-            raise asyncio.CancelledError(f"Scrape cancelled for {source_key}/{novel_id}")
-        chapter = chapter_map.get(chapter_num)
-        if not chapter:
-            continue
+    try:
+        for _chapter_index, chapter_num in enumerate(selected_numbers):
+            if cancellation_check is not None and cancellation_check():
+                raise asyncio.CancelledError(f"Scrape cancelled for {source_key}/{novel_id}")
+            chapter = chapter_map.get(chapter_num)
+            if not chapter:
+                continue
 
-        chapter_id = str(chapter.get("id") or chapter_num)
-        ep_id = str(chapter.get("source_episode_id") or chapter_id)
+            chapter_id = str(chapter.get("id") or chapter_num)
+            ep_id = str(chapter.get("source_episode_id") or chapter_id)
 
-        # Operationalized Crawl Plan Check: skip HTTP fetch when planner marked chapter reusable!
-        if (
-            mode != "full"
-            and ep_id in crawl_plan.reusable_episode_ids
-            and ep_id not in crawl_plan.chapters_to_fetch_set
-        ):
-            skipped += 1
-            existing = existing_chapters_map.get(chapter_id) or {}
-            scraped_chapters_for_state.append(
-                {
-                    **chapter,
-                    "id": chapter_id,
-                    "source_episode_id": ep_id,
-                    "content_hash": existing.get("content_hash"),
-                }
-            )
-            if progress_callback:
-                progress_callback(f"[{_chapter_index + 1}/{_total_chapters}] Chapter {chapter_id}: reused via planner")
-            _emit(
-                STAGE_BODY_CRAWL,
-                "reused",
-                succeeded + skipped + failed,
-                _total_chapters,
-                source_episode_id=ep_id,
-                label=f"Chapter {chapter_id}: reused",
-            )
-            continue
-        # Retry telemetry is per-chapter: a retry performed for an earlier
-        # chapter must never leak into the attempt count of a later chapter.
-        retry_attempts = [0]
-        if progress_callback:
-            _ch_title = str(chapter.get("title") or f"Chapter {chapter_id}")
-            progress_callback(f"[{_chapter_index + 1}/{_total_chapters}] {_ch_title}")
-
-        def _on_retry(retry_number: int, exc: Exception) -> None:
-            retry_attempts[0] = retry_number
-
-        try:
-            payload = await source.fetch_chapter_payload(chapter["url"], on_retry=_on_retry)
-            text = payload.get("text")
-            if not isinstance(text, str):
-                raise RuntimeError(f"Source returned invalid chapter text for {chapter['url']}.")
-
-            images = payload.get("images")
-            image_manifest = [image for image in images if isinstance(image, dict)] if isinstance(images, list) else []
-            quality = evaluate_chapter_quality(
-                text,
-                source_key=source_key,
-                url=chapter.get("url") if isinstance(chapter.get("url"), str) else None,
-                images=image_manifest,
-                duplicate_hashes=cached_stored_hashes,
-            )
-            if quality.warnings:
-                logger.warning(
-                    "Chapter quality warnings for %s/%s/%s: %s",
-                    source_key,
-                    novel_id,
-                    chapter_id,
-                    quality.warnings,
-                )
-                if progress_callback:
-                    progress_callback(f"  Quality warnings: {', '.join(quality.warnings)}")
-            if quality.errors:
-                raise SourceError(
-                    f"Chapter quality gate failed for {source_key}/{novel_id}/{chapter_id}: "
-                    + ", ".join(quality.errors)
-                )
-
-            existing = self.storage.load_chapter(novel_id, chapter_id) or {}
-            existing_text = existing.get("text")
-            existing_images = existing.get("images") if isinstance(existing.get("images"), list) else []
-            existing_signature = self._chapter_content_signature(
-                existing_text if isinstance(existing_text, str) else "",
-                existing_images,
-            )
-            new_signature = self._chapter_content_signature(text, image_manifest)
-
-            if mode == "update" and existing_signature == new_signature:
-                if progress_callback:
-                    progress_callback(f"  Chapter {chapter_id}: unchanged, skipping.")
+            # Operationalized Crawl Plan Check: skip HTTP fetch when planner marked chapter reusable!
+            if (
+                mode != "full"
+                and ep_id in crawl_plan.reusable_episode_ids
+                and ep_id not in crawl_plan.chapters_to_fetch_set
+            ):
                 skipped += 1
+                existing = existing_chapters_map.get(chapter_id) or {}
+                scraped_chapters_for_state.append(
+                    {
+                        **chapter,
+                        "id": chapter_id,
+                        "source_episode_id": ep_id,
+                        "content_hash": existing.get("content_hash"),
+                    }
+                )
+                if progress_callback:
+                    progress_callback(
+                        f"[{_chapter_index + 1}/{_total_chapters}] Chapter {chapter_id}: reused via planner"
+                    )
                 _emit(
                     STAGE_BODY_CRAWL,
-                    "skipped",
+                    "reused",
+                    succeeded + skipped + failed,
+                    _total_chapters,
+                    source_episode_id=ep_id,
+                    label=f"Chapter {chapter_id}: reused",
+                )
+                continue
+            # Retry telemetry is per-chapter: a retry performed for an earlier
+            # chapter must never leak into the attempt count of a later chapter.
+            retry_attempts = [0]
+            if progress_callback:
+                _ch_title = str(chapter.get("title") or f"Chapter {chapter_id}")
+                progress_callback(f"[{_chapter_index + 1}/{_total_chapters}] {_ch_title}")
+
+            def _on_retry(retry_number: int, exc: Exception) -> None:
+                retry_attempts[0] = retry_number
+
+            try:
+                payload = await source.fetch_chapter_payload(chapter["url"], on_retry=_on_retry)
+                text = payload.get("text")
+                if not isinstance(text, str):
+                    raise RuntimeError(f"Source returned invalid chapter text for {chapter['url']}.")
+
+                images = payload.get("images")
+                image_manifest = (
+                    [image for image in images if isinstance(image, dict)] if isinstance(images, list) else []
+                )
+                quality = evaluate_chapter_quality(
+                    text,
+                    source_key=source_key,
+                    url=chapter.get("url") if isinstance(chapter.get("url"), str) else None,
+                    images=image_manifest,
+                    duplicate_hashes=cached_stored_hashes,
+                )
+                if quality.warnings:
+                    logger.warning(
+                        "Chapter quality warnings for %s/%s/%s: %s",
+                        source_key,
+                        novel_id,
+                        chapter_id,
+                        quality.warnings,
+                    )
+                    if progress_callback:
+                        progress_callback(f"  Quality warnings: {', '.join(quality.warnings)}")
+                if quality.errors:
+                    raise SourceError(
+                        f"Chapter quality gate failed for {source_key}/{novel_id}/{chapter_id}: "
+                        + ", ".join(quality.errors)
+                    )
+
+                existing = self.storage.load_chapter(novel_id, chapter_id) or {}
+                existing_text = existing.get("text")
+                existing_images = existing.get("images") if isinstance(existing.get("images"), list) else []
+                existing_signature = self._chapter_content_signature(
+                    existing_text if isinstance(existing_text, str) else "",
+                    existing_images,
+                )
+                new_signature = self._chapter_content_signature(text, image_manifest)
+
+                if mode == "update" and existing_signature == new_signature:
+                    if progress_callback:
+                        progress_callback(f"  Chapter {chapter_id}: unchanged, skipping.")
+                    # Carry the existing bundle (raw + translations + images)
+                    # forward into the staged snapshot.
+                    self.storage.seed_generation_from_active(novel_id, generation_id, [chapter_id])
+                    skipped += 1
+                    _emit(
+                        STAGE_BODY_CRAWL,
+                        "skipped",
+                        succeeded + skipped + failed,
+                        _total_chapters,
+                        source_episode_id=chapter_id,
+                        label=f"Chapter {chapter_id}: unchanged",
+                    )
+                    continue
+
+                downloaded_images: list[dict[str, Any]] = []
+                for image in image_manifest:
+                    entry = dict(image)
+                    original_url = entry.get("original_url")
+                    if not isinstance(original_url, str) or not original_url.strip():
+                        downloaded_images.append(entry)
+                        continue
+                    try:
+                        asset = await source.fetch_asset(original_url, referer=chapter.get("url"))
+                        content = asset.get("content")
+                        if not isinstance(content, (bytes, bytearray)):
+                            raise RuntimeError("Source returned invalid asset bytes.")
+                        if not content:
+                            raise RuntimeError("Source returned empty asset bytes.")
+                        content_type = asset.get("content_type") if isinstance(asset.get("content_type"), str) else None
+                        if isinstance(content_type, str) and content_type.lower().startswith("text/html"):
+                            raise RuntimeError("Asset response was HTML instead of image content.")
+                        stored_asset = self.storage.stage_generation_image(
+                            novel_id,
+                            generation_id,
+                            chapter_id,
+                            image_index=int(entry.get("index", len(downloaded_images))),
+                            content=bytes(content),
+                            source_url=str(asset.get("url") or original_url),
+                            content_type=content_type,
+                        )
+                        entry.update(stored_asset)
+                        entry["original_url"] = str(asset.get("url") or original_url)
+                    except Exception as exc:
+                        logger.warning(
+                            "Failed to download chapter image for %s/%s from %s: %s",
+                            novel_id,
+                            chapter_id,
+                            original_url,
+                            exc,
+                        )
+                        entry["download_error"] = str(exc)
+                    downloaded_images.append(entry)
+
+                chapter_payload = self.storage.build_chapter_payload(
+                    novel_id,
+                    chapter_id,
+                    text,
+                    source_key=source_key,
+                    source_url=chapter.get("url"),
+                    images=downloaded_images,
+                    source_blocks=payload.get("source_blocks")
+                    if isinstance(payload.get("source_blocks"), list)
+                    else None,
+                    input_adapter_key="web",
+                    origin_type="url",
+                    origin_uri_or_path=str(chapter.get("url") or meta.get("source_url") or novel_id),
+                    document_type="web_novel",
+                    unit_type="chapter",
+                    import_order=chapter_num,
+                    context_group_id=novel_id,
+                )
+                raw_block = chapter_payload.get("raw") if isinstance(chapter_payload.get("raw"), dict) else {}
+                self.storage.stage_generation_chapter(
+                    novel_id,
+                    generation_id,
+                    chapter_id,
+                    chapter_payload,
+                    source_hash=new_signature,
+                    structure_hash=_json_hash(raw_block.get("source_blocks") or []),
+                    image_manifest_hash=_json_hash(downloaded_images),
+                    parser_version=str(meta.get("chapter_index_extraction_mode") or ""),
+                )
+                safely_refresh_catalog_projection_after_storage_write(
+                    novel_id,
+                    self.storage,
+                    context="scrape_chapter",
+                )
+                # Invalidate library summary cache after successful storage write
+                best_effort_invalidate()
+                if progress_callback:
+                    progress_callback(f"  Saved chapter {chapter_id}.")
+                if any(img.get("download_error") for img in downloaded_images):
+                    image_download_failures += 1
+                succeeded += 1
+                cached_stored_hashes.add(new_signature)
+                scraped_chapters_for_state.append(
+                    {
+                        "id": chapter_id,
+                        "chapter_id": chapter_id,
+                        "source_episode_id": str(chapter.get("source_episode_id") or chapter_id),
+                        "source_update_date": chapter.get("source_update_date") or chapter.get("date_added"),
+                        "content_hash": new_signature,
+                    }
+                )
+                _emit(
+                    STAGE_BODY_CRAWL,
+                    "completed",
                     succeeded + skipped + failed,
                     _total_chapters,
                     source_episode_id=chapter_id,
-                    label=f"Chapter {chapter_id}: unchanged",
+                    label=f"Chapter {chapter_id}: saved",
                 )
-                continue
 
-            downloaded_images: list[dict[str, Any]] = []
-            self.storage.clear_chapter_image_assets(novel_id, chapter_id)
-            for image in image_manifest:
-                entry = dict(image)
-                original_url = entry.get("original_url")
-                if not isinstance(original_url, str) or not original_url.strip():
-                    downloaded_images.append(entry)
-                    continue
-                try:
-                    asset = await source.fetch_asset(original_url, referer=chapter.get("url"))
-                    content = asset.get("content")
-                    if not isinstance(content, (bytes, bytearray)):
-                        raise RuntimeError("Source returned invalid asset bytes.")
-                    if not content:
-                        raise RuntimeError("Source returned empty asset bytes.")
-                    content_type = asset.get("content_type") if isinstance(asset.get("content_type"), str) else None
-                    if isinstance(content_type, str) and content_type.lower().startswith("text/html"):
-                        raise RuntimeError("Asset response was HTML instead of image content.")
-                    stored_asset = self.storage.save_chapter_image_asset(
-                        novel_id,
-                        chapter_id,
-                        image_index=int(entry.get("index", len(downloaded_images))),
-                        content=bytes(content),
-                        source_url=str(asset.get("url") or original_url),
-                        content_type=content_type,
-                    )
-                    entry.update(stored_asset)
-                    entry["original_url"] = str(asset.get("url") or original_url)
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to download chapter image for %s/%s from %s: %s",
-                        novel_id,
-                        chapter_id,
-                        original_url,
-                        exc,
-                    )
-                    entry["download_error"] = str(exc)
-                downloaded_images.append(entry)
+            except (SourceError, RuntimeError, Exception) as exc:
+                error_type = type(exc).__name__
+                error_message = str(exc) if str(exc) else error_type
+                # Sanitize: remove stack traces, limit length
+                if "\nTraceback" in error_message:
+                    error_message = error_message.split("\nTraceback")[0]
+                error_message = error_message[:500]
 
-            self.storage.save_chapter(
-                novel_id,
-                chapter_id,
-                text,
-                source_key=source_key,
-                source_url=chapter.get("url"),
-                images=downloaded_images,
-                source_blocks=payload.get("source_blocks") if isinstance(payload.get("source_blocks"), list) else None,
-                input_adapter_key="web",
-                origin_type="url",
-                origin_uri_or_path=str(chapter.get("url") or meta.get("source_url") or novel_id),
-                document_type="web_novel",
-                unit_type="chapter",
-                import_order=chapter_num,
-                context_group_id=novel_id,
-            )
-            safely_refresh_catalog_projection_after_storage_write(
-                novel_id,
-                self.storage,
-                context="scrape_chapter",
-            )
-            # Invalidate library summary cache after successful storage write
-            best_effort_invalidate()
-            if progress_callback:
-                progress_callback(f"  Saved chapter {chapter_id}.")
-            if any(img.get("download_error") for img in downloaded_images):
-                image_download_failures += 1
-            succeeded += 1
-            cached_stored_hashes.add(new_signature)
-            scraped_chapters_for_state.append(
-                {
-                    "id": chapter_id,
+                logger.warning(
+                    "Chapter %s/%s/%s failed (%s): %s",
+                    source_key,
+                    novel_id,
+                    chapter_id,
+                    error_type,
+                    error_message,
+                )
+                if progress_callback:
+                    progress_callback(f"  Chapter {chapter_id} failed ({error_type}): {error_message}")
+
+                http_status_code = _extract_http_status(exc)
+                failure = {
                     "chapter_id": chapter_id,
-                    "source_episode_id": str(chapter.get("source_episode_id") or chapter_id),
-                    "source_update_date": chapter.get("source_update_date") or chapter.get("date_added"),
-                    "content_hash": new_signature,
-                }
-            )
-            _emit(
-                STAGE_BODY_CRAWL,
-                "completed",
-                succeeded + skipped + failed,
-                _total_chapters,
-                source_episode_id=chapter_id,
-                label=f"Chapter {chapter_id}: saved",
-            )
-
-        except (SourceError, RuntimeError, Exception) as exc:
-            error_type = type(exc).__name__
-            error_message = str(exc) if str(exc) else error_type
-            # Sanitize: remove stack traces, limit length
-            if "\nTraceback" in error_message:
-                error_message = error_message.split("\nTraceback")[0]
-            error_message = error_message[:500]
-
-            logger.warning(
-                "Chapter %s/%s/%s failed (%s): %s",
-                source_key,
-                novel_id,
-                chapter_id,
-                error_type,
-                error_message,
-            )
-            if progress_callback:
-                progress_callback(f"  Chapter {chapter_id} failed ({error_type}): {error_message}")
-
-            http_status_code = _extract_http_status(exc)
-            failure = {
-                "chapter_id": chapter_id,
-                "chapter_number": chapter_num,
-                "title": chapter.get("title"),
-                "source_url": chapter.get("url"),
-                "error_type": error_type,
-                "error_message": error_message,
-                "error_category": _classify_error(exc, error_message, http_status_code),
-                "http_status_code": http_status_code,
-                "retry_attempts": retry_attempts[0],
-            }
-            failures.append(failure)
-            failed += 1
-            _emit(
-                STAGE_BODY_CRAWL,
-                "failed",
-                succeeded + skipped + failed,
-                _total_chapters,
-                source_episode_id=chapter_id,
-                label=f"Chapter {chapter_id}: failed ({error_type})",
-                details={
+                    "chapter_number": chapter_num,
+                    "title": chapter.get("title"),
+                    "source_url": chapter.get("url"),
                     "error_type": error_type,
-                    "error_category": failure["error_category"],
+                    "error_message": error_message,
+                    "error_category": _classify_error(exc, error_message, http_status_code),
                     "http_status_code": http_status_code,
-                    "retry_attempts": failure["retry_attempts"],
-                },
-            )
+                    "retry_attempts": retry_attempts[0],
+                }
+                failures.append(failure)
+                failed += 1
+                _emit(
+                    STAGE_BODY_CRAWL,
+                    "failed",
+                    succeeded + skipped + failed,
+                    _total_chapters,
+                    source_episode_id=chapter_id,
+                    label=f"Chapter {chapter_id}: failed ({error_type})",
+                    details={
+                        "error_type": error_type,
+                        "error_category": failure["error_category"],
+                        "http_status_code": http_status_code,
+                        "retry_attempts": failure["retry_attempts"],
+                    },
+                )
 
-    terminal_status = crawl_terminal_status(
-        succeeded=succeeded,
-        skipped=skipped,
-        failed=failed,
-        image_download_failures=image_download_failures,
-    )
+        terminal_status = crawl_terminal_status(
+            succeeded=succeeded,
+            skipped=skipped,
+            failed=failed,
+            image_download_failures=image_download_failures,
+        )
 
-    if progress_callback:
-        if failures:
-            progress_callback(
-                f"Scrape finished with partial success: {succeeded} saved, {skipped} skipped, {failed} failed."
-            )
-        else:
-            progress_callback(f"Scrape finished: {succeeded} saved, {skipped} skipped.")
+        if progress_callback:
+            if failures:
+                progress_callback(
+                    f"Scrape finished with partial success: {succeeded} saved, {skipped} skipped, {failed} failed."
+                )
+            else:
+                progress_callback(f"Scrape finished: {succeeded} saved, {skipped} skipped.")
 
-    new_source_state = update_source_state(
-        novel_id=novel_id,
-        existing_state=existing_source_state,
-        metadata=meta,
-        scraped_chapters=scraped_chapters_for_state,
-    )
-    self.storage.save_source_state(novel_id, new_source_state)
+        new_source_state = update_source_state(
+            novel_id=novel_id,
+            existing_state=existing_source_state,
+            metadata=meta,
+            scraped_chapters=scraped_chapters_for_state,
+        )
+        self.storage.save_source_state(novel_id, new_source_state)
+        # Stage the source-state / chapter-index / metadata snapshots so the
+        # committed generation is a complete, reproducible record of the run.
+        self.storage.stage_generation_source_state(novel_id, generation_id, new_source_state)
+        self.storage.stage_generation_chapter_index(novel_id, generation_id, meta.get("chapters", []))
+        if mode == "full":
+            self.storage.stage_generation_metadata(novel_id, generation_id, meta)
 
-    _emit(
-        STAGE_RECONCILIATION,
-        terminal_status,
-        succeeded + skipped + failed,
-        _total_chapters,
-        label="Scrape finished",
-        details={
+        # Manifest is written with final counts before the active pointer swaps,
+        # so readers never observe a partially recorded snapshot as active.
+        self.storage.commit_generation(
+            novel_id,
+            generation_id,
+            removed_episode_ids=list(crawl_plan.removed_episode_ids),
+            reused_chapters=skipped,
+            failed_chapters=failed,
+        )
+
+        _emit(
+            STAGE_RECONCILIATION,
+            terminal_status,
+            succeeded + skipped + failed,
+            _total_chapters,
+            label="Scrape finished",
+            details={
+                "succeeded": succeeded,
+                "skipped": skipped,
+                "failed": failed,
+                "image_download_failures": image_download_failures,
+                "generation_id": generation_id,
+            },
+        )
+
+        return {
             "succeeded": succeeded,
             "skipped": skipped,
             "failed": failed,
+            "failures": failures,
             "image_download_failures": image_download_failures,
-        },
-    )
-
-    return {
-        "succeeded": succeeded,
-        "skipped": skipped,
-        "failed": failed,
-        "failures": failures,
-        "image_download_failures": image_download_failures,
-        "terminal_status": terminal_status,
-    }
+            "terminal_status": terminal_status,
+            "generation_id": generation_id,
+        }
+    except BaseException as exc:
+        # A hard failure (including cancellation) must not leave a partially
+        # recorded snapshot: roll the stage back and keep the previously
+        # active generation (or legacy layout) in effect.
+        self.storage.rollback_generation(novel_id, generation_id, reason=str(exc.__class__.__name__))
+        raise

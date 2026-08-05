@@ -11,7 +11,7 @@ from novelai.storage.common import _UNSET
 
 def _chapter_image_dir(self: Any, novel_id: str, chapter_id: str) -> Path:
     safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
-    image_dir = self._novel_dir(novel_id) / "assets" / "images" / encode_physical_stem(safe_chapter_id)
+    image_dir = self._content_root(novel_id) / "assets" / "images" / encode_physical_stem(safe_chapter_id)
     self._mkdirs(image_dir)
     return image_dir
 
@@ -38,7 +38,7 @@ def _guess_asset_suffix(self: Any, source_url: str | None, content_type: str | N
 
 def clear_chapter_image_assets(self: Any, novel_id: str, chapter_id: str) -> None:
     safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
-    image_dir = self._novel_dir(novel_id) / "assets" / "images" / encode_physical_stem(safe_chapter_id)
+    image_dir = self._content_root(novel_id) / "assets" / "images" / encode_physical_stem(safe_chapter_id)
     if self._path_exists(image_dir):
         self._rmtree(image_dir)
 

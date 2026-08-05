@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def _chapter_dir(self: Any, novel_id: str) -> Path:
-    chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
+    chapter_dir = self._content_root(novel_id) / self.CHAPTERS_DIRNAME
     self._mkdirs(chapter_dir)
     return chapter_dir
 
@@ -81,6 +81,80 @@ def existing_chapter_hash(self: Any, novel_id: str, chapter_id: str) -> str | No
     return self._hash_text(text)
 
 
+def build_chapter_payload(
+    self: Any,
+    novel_id: str,
+    chapter_id: str,
+    text: str,
+    title: str | None = None,
+    source_key: str | None = None,
+    source_url: str | None = None,
+    images: list[dict[str, Any]] | None = None,
+    source_blocks: list[dict[str, Any]] | None = None,
+    input_adapter_key: str | None = None,
+    origin_type: str | None = None,
+    origin_uri_or_path: str | None = None,
+    document_type: str | None = None,
+    unit_type: str | None = None,
+    import_order: int | None = None,
+    context_group_id: str | None = None,
+    region_metadata: list[dict[str, Any]] | None = None,
+    ocr_artifacts: list[dict[str, Any]] | None = None,
+    existing: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a current-schema chapter bundle without writing it.
+
+    Used by both :func:`save_chapter` (legacy direct writes) and staged
+    generation writes so payload normalization stays in one place.
+
+    When ``existing`` is supplied, fields whose arguments are ``None`` are
+    preserved from the existing bundle instead of being cleared (e.g. a
+    catalog title-only edit must not wipe stored images or source blocks).
+    """
+    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
+    existing_raw = existing.get("raw") if isinstance(existing, dict) else None
+    existing_raw = existing_raw if isinstance(existing_raw, dict) else None
+    payload: dict[str, Any] = {"id": safe_chapter_id}
+    payload["title"] = title if title is not None else (existing.get("title") if isinstance(existing, dict) else None)
+    payload["source_key"] = source_key
+    payload["source_url"] = source_url
+    if input_adapter_key is not None:
+        payload["input_adapter_key"] = input_adapter_key
+    if origin_type is not None:
+        payload["origin_type"] = origin_type
+    if origin_uri_or_path is not None:
+        payload["origin_uri_or_path"] = origin_uri_or_path
+    if document_type is not None:
+        payload["document_type"] = document_type
+    if unit_type is not None:
+        payload["unit_type"] = unit_type
+    if import_order is not None:
+        payload["import_order"] = int(import_order)
+    if context_group_id is not None:
+        payload["context_group_id"] = context_group_id
+    if region_metadata is not None:
+        payload["region_metadata"] = self._normalize_named_dict_items(region_metadata)
+    if ocr_artifacts is not None:
+        payload["ocr_artifacts"] = self._normalize_named_dict_items(ocr_artifacts)
+    if images is None and existing_raw is not None and existing_raw.get("images") is not None:
+        resolved_images = existing_raw.get("images")
+    else:
+        resolved_images = self._normalize_image_manifest(images)
+    raw: dict[str, Any] = {
+        "id": safe_chapter_id,
+        "scraped_at": _utc_now_iso(),
+        "text": text,
+        "paragraphs": self._text_paragraphs(text),
+        "images": resolved_images,
+    }
+    if source_blocks is not None:
+        raw["source_blocks"] = self._normalize_source_blocks(source_blocks)
+    elif existing_raw is not None and existing_raw.get("source_blocks") is not None:
+        raw["source_blocks"] = existing_raw.get("source_blocks")
+    payload["raw"] = raw
+    return payload
+
+
 def save_chapter(
     self: Any,
     novel_id: str,
@@ -104,42 +178,30 @@ def save_chapter(
     """Save a raw / scraped chapter as structured JSON."""
     safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
     payload: dict[str, Any] = self._load_chapter_bundle(novel_id, safe_chapter_id) or {"id": safe_chapter_id}
-    payload["id"] = safe_chapter_id
-    payload["title"] = title if title is not None else payload.get("title")
-    payload["source_key"] = source_key if source_key is not None else payload.get("source_key")
-    payload["source_url"] = source_url if source_url is not None else payload.get("source_url")
-    if input_adapter_key is not None:
-        payload["input_adapter_key"] = input_adapter_key
-    if origin_type is not None:
-        payload["origin_type"] = origin_type
-    if origin_uri_or_path is not None:
-        payload["origin_uri_or_path"] = origin_uri_or_path
-    if document_type is not None:
-        payload["document_type"] = document_type
-    if unit_type is not None:
-        payload["unit_type"] = unit_type
-    if import_order is not None:
-        payload["import_order"] = int(import_order)
-    if context_group_id is not None:
-        payload["context_group_id"] = context_group_id
-    if region_metadata is not None:
-        payload["region_metadata"] = self._normalize_named_dict_items(region_metadata)
-    if ocr_artifacts is not None:
-        payload["ocr_artifacts"] = self._normalize_named_dict_items(ocr_artifacts)
-    existing_raw = payload.get("raw") if isinstance(payload.get("raw"), dict) else {}
-    payload["raw"] = {
-        "id": safe_chapter_id,
-        "scraped_at": _utc_now_iso(),
-        "text": text,
-        "paragraphs": self._text_paragraphs(text),
-        "images": self._normalize_image_manifest(images)
-        if images is not None
-        else self._normalize_image_manifest(existing_raw.get("images") if isinstance(existing_raw, dict) else None),
-    }
-    if source_blocks is not None:
-        payload["raw"]["source_blocks"] = self._normalize_source_blocks(source_blocks)
-    elif isinstance(existing_raw, dict) and isinstance(existing_raw.get("source_blocks"), list):
-        payload["raw"]["source_blocks"] = self._normalize_source_blocks(existing_raw.get("source_blocks"))
+    existing_bundle = payload if payload.get("id") == safe_chapter_id else None
+    payload.update(
+        build_chapter_payload(
+            self,
+            novel_id,
+            chapter_id,
+            text,
+            title=title,
+            source_key=source_key,
+            source_url=source_url,
+            images=images,
+            source_blocks=source_blocks,
+            input_adapter_key=input_adapter_key,
+            origin_type=origin_type,
+            origin_uri_or_path=origin_uri_or_path,
+            document_type=document_type,
+            unit_type=unit_type,
+            import_order=import_order,
+            context_group_id=context_group_id,
+            region_metadata=region_metadata,
+            ocr_artifacts=ocr_artifacts,
+            existing=existing_bundle,
+        )
+    )
     return self._persist_chapter_bundle(novel_id, safe_chapter_id, payload)
 
 
@@ -189,7 +251,7 @@ def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
     Reads only the current unified ``chapters/`` directory.
     """
     ids: set[str] = set()
-    chapter_dir = self._novel_dir(novel_id) / self.CHAPTERS_DIRNAME
+    chapter_dir = self._content_root(novel_id) / self.CHAPTERS_DIRNAME
     if self._is_dir_present(chapter_dir):
         for chapter_path in self._glob(chapter_dir, "*.json"):
             try:
