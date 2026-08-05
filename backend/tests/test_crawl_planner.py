@@ -52,3 +52,57 @@ def test_update_source_state_builds_valid_snapshot():
     assert state["scraped_chapter_count"] == 1
     assert "1" in state["episode_map"]
     assert state["episode_map"]["1"]["content_hash"] == "abc123hash"
+
+
+def test_undated_chapter_enters_periodic_revalidation():
+    """Undated episodes must never be permanently skipped just because local
+    data and a source-state entry both exist (PR-41 blocker 3)."""
+    selected = [
+        {"id": "1", "source_episode_id": "1"},
+        {"id": "2", "source_episode_id": "2"},
+    ]
+    source_state = {
+        "episode_map": {
+            "1": {"source_update_date": None, "last_updated_at": "2026-01-01T00:00:00Z"},
+            "2": {"source_update_date": None, "last_updated_at": "2026-01-01T00:00:00Z"},
+        }
+    }
+    existing = {"1": {"text": "ch1"}, "2": {"text": "ch2"}}
+
+    plan = create_crawl_plan("n1234ab", selected, source_state, existing, mode="update")
+    assert plan.reusable_episode_ids == ()
+    assert set(plan.rolling_revalidation_episode_ids) == {"1", "2"}
+    assert len(plan.chapters_to_fetch_set) == 2
+
+
+def test_recent_window_unchanged_chapter_is_revalidated():
+    """A dated unchanged chapter inside the rolling window is revalidated."""
+    selected = []
+    source_state_map = {}
+    existing = {}
+    for i in range(1, 11):
+        selected.append(
+            {
+                "id": str(i),
+                "source_episode_id": str(i),
+                "source_update_date": f"2024-01-{i:02d}",
+            }
+        )
+        source_state_map[str(i)] = {
+            "source_update_date": f"2024-01-{i:02d}",
+            "last_updated_at": "2024-01-15",
+        }
+        existing[str(i)] = {"text": f"ch{i}"}
+
+    plan = create_crawl_plan(
+        "n1234ab",
+        selected,
+        {"episode_map": source_state_map},
+        existing,
+        mode="update",
+        revalidation_window=3,
+    )
+    # Old dated-unchanged chapters 1-7 are reusable (no HTTP body request).
+    assert set(plan.reusable_episode_ids) == {str(i) for i in range(1, 8)}
+    # Recent window 8-10 revalidated.
+    assert set(plan.rolling_revalidation_episode_ids) == {"8", "9", "10"}

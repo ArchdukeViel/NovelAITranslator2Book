@@ -126,12 +126,24 @@ def create_crawl_plan(
             index_date = ch.get("source_update_date") or ch.get("date_added")
             recorded_date = recorded_ep.get("source_update_date") or recorded_ep.get("last_updated_at")
 
-            if index_date and recorded_date and str(index_date).strip() != str(recorded_date).strip():
+            index_date_s = str(index_date).strip() if index_date is not None else ""
+            recorded_date_s = str(recorded_date).strip() if recorded_date is not None else ""
+
+            if index_date_s and recorded_date_s and index_date_s != recorded_date_s:
                 changed_index_eps.append(ep_id)
+            elif index_date_s and recorded_date_s and index_date_s == recorded_date_s:
+                # Confidently dated and unchanged.
+                if ep_id in reval_targets:
+                    rolling_reval_eps.append(ep_id)
+                else:
+                    reusable_eps.append(ep_id)
             elif ep_id in reval_targets:
+                # Recent window always revalidated regardless of date signal.
                 rolling_reval_eps.append(ep_id)
             else:
-                reusable_eps.append(ep_id)
+                # Undated (no reliable change signal): never permanently reuse;
+                # enter periodic revalidation so changes are not missed.
+                rolling_reval_eps.append(ep_id)
 
     # Check for removed episode IDs (present in recorded episode_map but absent from current index)
     current_ep_ids = {str(ch.get("source_episode_id") or ch.get("id") or ch.get("num")) for ch in selected_chapters}

@@ -28,7 +28,6 @@ from novelai.sources.kakuyomu.parser import (
     next_data_apollo_state,
 )
 from novelai.sources.quality import detect_age_gate_text, detect_block_page_text
-from novelai.sources.source_layout import source_blocks_from_text_blocks
 from novelai.sources.status import publication_status_payload
 from novelai.utils.text_normalization import normalize_text
 
@@ -344,6 +343,35 @@ class KakuyomuSource(SourceAdapter):
                 updated_at = dt.strip()
         return published_at, updated_at
 
+    def _extract_genre_and_tags(self, soup: BeautifulSoup) -> tuple[str | None, list[str]]:
+        """Extract genre and tags from Kakuyomu HTML (DOM fallback)."""
+        genre_name: str | None = None
+        tags: list[str] = []
+
+        # Try widget-workGenre selector
+        genre_node = soup.select_one(".widget-workGenre")
+        if isinstance(genre_node, Tag):
+            text = genre_node.get_text(" ", strip=True)
+            if text:
+                genre_name = text
+
+        # Fallback: work-genre link
+        if genre_name is None:
+            genre_node = soup.select_one(".work-genre a")
+            if isinstance(genre_node, Tag):
+                text = genre_node.get_text(" ", strip=True)
+                if text:
+                    genre_name = text
+
+        # Tags: widget-workTag links
+        for tag_node in soup.select(".widget-workTag a"):
+            if isinstance(tag_node, Tag):
+                text = tag_node.get_text(" ", strip=True)
+                if text:
+                    tags.append(text)
+
+        return genre_name, tags
+
     def _parse_metadata_html(self, html: str, url: str) -> dict[str, Any]:
         soup = BeautifulSoup(html, "html.parser")
         novel_id = self.normalize_novel_id(url)
@@ -353,6 +381,9 @@ class KakuyomuSource(SourceAdapter):
         chapters, provenance = self._extract_chapters(soup, url)
         status_text = self._extract_publication_status_text(soup)
         published_at, updated_at = self._extract_dates(soup)
+
+        # Genre and tags (DOM fallback when Apollo unavailable)
+        genre_name, tags = self._extract_genre_and_tags(soup)
 
         res = {
             "source_key": self.source_key,
@@ -370,6 +401,20 @@ class KakuyomuSource(SourceAdapter):
             res["published_at"] = published_at
         if updated_at:
             res["updated_at"] = updated_at
+        if genre_name:
+            res["source_genre_name"] = genre_name
+            from novelai.sources.taxonomy import KAKUYOMU_GENRE_MAP, map_genre
+
+            slug = map_genre(genre_name, KAKUYOMU_GENRE_MAP)
+            if slug:
+                res["genre_slug"] = slug
+        else:
+            res["source_genre_name"] = None
+            res["genre_slug"] = None
+        if tags:
+            res["source_tags"] = tags
+        else:
+            res["source_tags"] = []
         return res
 
     async def fetch_metadata(self, url: str, *, max_chapter: int | None = None) -> dict[str, Any]:
@@ -407,16 +452,23 @@ class KakuyomuSource(SourceAdapter):
         for hr in body_node.find_all("hr"):
             p_hr = soup.new_tag("p")
             p_hr.string = self.SEPARATOR_LINE
+            p_hr["data-kakuyomu-separator"] = "1"
             hr.replace_with(p_hr)
 
         for br in body_node.find_all("br"):
             br.replace_with("\n")
 
         raw_blocks: list[str] = []
+        separator_indices: set[int] = set()
         for element in iter_story_blocks(body_node, ("p", "blockquote", "figure", "hr", "img")):
             if isinstance(element, Tag):
                 text = normalize_text(element.get_text(separator="", strip=False))
-                if text:
+                if element.get("data-kakuyomu-separator") is not None:
+                    # HR separator: keep text for the plain-text projection but
+                    # type it as a structural break in source blocks.
+                    raw_blocks.append(text or self.SEPARATOR_LINE)
+                    separator_indices.add(len(raw_blocks) - 1)
+                elif text:
                     raw_blocks.append(text)
 
         if not raw_blocks:
@@ -425,7 +477,16 @@ class KakuyomuSource(SourceAdapter):
                 raw_blocks.append(text)
 
         full_text = "\n\n".join(raw_blocks)
-        source_blocks = source_blocks_from_text_blocks(raw_blocks)
+
+        from novelai.sources.source_layout import normalize_source_blocks
+
+        raw_block_records: list[dict[str, Any]] = []
+        for index, block in enumerate(raw_blocks):
+            if index in separator_indices:
+                raw_block_records.append({"type": "break"})
+            elif block.strip():
+                raw_block_records.append({"type": "line", "text": block})
+        source_blocks = normalize_source_blocks(raw_block_records)
 
         return {
             "text": full_text,

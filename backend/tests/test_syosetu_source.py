@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from novelai.sources.syosetu_ncode import SyosetuNcodeSource
+from tests.test_fetch_service import FakeFetchService
 
 
 def test_normalize_novel_id_accepts_chapter_and_infotop_urls() -> None:
@@ -314,7 +315,7 @@ def test_parse_chapter_payload_extracts_images_wrapped_in_paragraph() -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_metadata_collects_all_paginated_chapter_pages() -> None:
-    source = SyosetuNcodeSource()
+    source = SyosetuNcodeSource(fetch_service=FakeFetchService(""))
     root_url = "https://ncode.syosetu.com/n8733gf/"
     infotop_url = "https://ncode.syosetu.com/novelview/infotop/ncode/n8733gf/"
     pages = {
@@ -355,7 +356,7 @@ async def test_fetch_metadata_collects_all_paginated_chapter_pages() -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_metadata_carries_part_heading_between_paginated_pages() -> None:
-    source = SyosetuNcodeSource()
+    source = SyosetuNcodeSource(fetch_service=FakeFetchService(""))
     root_url = "https://ncode.syosetu.com/n8733gf/"
     infotop_url = "https://ncode.syosetu.com/novelview/infotop/ncode/n8733gf/"
     pages = {
@@ -412,7 +413,7 @@ async def test_fetch_metadata_carries_part_heading_between_paginated_pages() -> 
 
 @pytest.mark.asyncio
 async def test_fetch_metadata_stops_after_requested_max_chapter_page() -> None:
-    source = SyosetuNcodeSource()
+    source = SyosetuNcodeSource(fetch_service=FakeFetchService(""))
     root_url = "https://ncode.syosetu.com/n8733gf/"
     infotop_url = "https://ncode.syosetu.com/novelview/infotop/ncode/n8733gf/"
     requests: list[str] = []
@@ -463,7 +464,7 @@ async def test_fetch_metadata_stops_after_requested_max_chapter_page() -> None:
 
 @pytest.mark.asyncio
 async def test_fetch_metadata_caps_single_page_toc_without_counting_headings() -> None:
-    source = SyosetuNcodeSource()
+    source = SyosetuNcodeSource(fetch_service=FakeFetchService(""))
     root_url = "https://ncode.syosetu.com/n8733gf/"
     infotop_url = "https://ncode.syosetu.com/novelview/infotop/ncode/n8733gf/"
 
@@ -504,7 +505,7 @@ async def test_fetch_metadata_surfaces_infotop_fetch_failure_not_swallowed() -> 
     """
     from novelai.core.errors import SourceError
 
-    source = SyosetuNcodeSource()
+    source = SyosetuNcodeSource(fetch_service=FakeFetchService(""))
     root_url = "https://ncode.syosetu.com/n8733gf/"
     infotop_url = "https://ncode.syosetu.com/novelview/infotop/ncode/n8733gf/"
 
