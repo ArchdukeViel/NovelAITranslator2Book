@@ -300,12 +300,6 @@ async def scrape_metadata(
             )
 
     existing_metadata = self.storage.load_metadata(novel_id) if mode != "full" else None
-    if mode == "full":
-        logger.debug(f"Full scrape mode - deleting existing data for {novel_id}")
-        self.storage.delete_novel(novel_id)
-        # Destructive deletion: invalidate cache immediately so the Admin
-        # Library does not continue reporting the deleted inventory.
-        best_effort_invalidate()
 
     if progress_callback:
         progress_callback(f"Connecting to {source_key}\u2026")
@@ -445,21 +439,21 @@ async def scrape_chapters(
         )
 
     terminal_status = result.get("terminal_status", TERMINAL_STATUS_FAILED)
-    if result["succeeded"] > 0:
+    if terminal_status in (TERMINAL_STATUS_COMPLETED, TERMINAL_STATUS_COMPLETED_WITH_WARNINGS):
         self.storage.update_onboarding_status(novel_id, "ready_for_translation")
+    elif terminal_status == TERMINAL_STATUS_COMPLETED_WITH_ERRORS or (result["failed"] > 0 and result["succeeded"] > 0):
+        self.storage.update_onboarding_status(
+            novel_id,
+            "partially_scraped",
+            error_code="scrape_completed_with_errors",
+            error_message=f"Chapter scrape completed with errors: {result['succeeded']} succeeded, {result['failed']} failed.",
+        )
     elif result["failed"] > 0 and result["succeeded"] == 0:
         self.storage.update_onboarding_status(
             novel_id,
             "failed",
             error_code="scrape_completed_without_chapters",
             error_message="Chapter scrape finished without saving any usable raw chapters.",
-        )
-    elif terminal_status == TERMINAL_STATUS_COMPLETED_WITH_WARNINGS:
-        self.storage.update_onboarding_status(
-            novel_id,
-            "scraping_chapters",
-            error_code="scrape_completed_with_warnings",
-            error_message="Chapter scrape finished with warnings (image download issues).",
         )
 
     return result
@@ -510,10 +504,6 @@ async def _scrape_chapters_impl(
     self.storage.update_onboarding_status(novel_id, "scraping_chapters", clear_error=True)
 
     if mode == "full":
-        self.storage.delete_novel(novel_id)
-        # Destructive deletion: invalidate immediately. If later work
-        # fails, the cache still reflects the absent storage.
-        best_effort_invalidate()
         meta = await source.fetch_metadata(novel_id)
         meta = _apply_metadata_quality_gate(meta, source_key=source_key, novel_id=novel_id)
         if not meta.get("source_language"):
@@ -539,7 +529,7 @@ async def _scrape_chapters_impl(
         if not meta:
             raise RuntimeError("Metadata not found; run scrape-metadata first.")
 
-    chapter_map = {int(c["id"]): c for c in meta.get("chapters", [])}
+    chapter_map = {int(c.get("num") or idx + 1): c for idx, c in enumerate(meta.get("chapters", []))}
     selected_numbers = self._selected_chapter_numbers(meta, chapters)
     selected_chapters_list = [chapter_map[num] for num in selected_numbers if num in chapter_map]
     _total_chapters = len(selected_chapters_list)
@@ -564,7 +554,11 @@ async def _scrape_chapters_impl(
         existing_source_state,
         existing_chapters_map,
         mode=mode,
+        all_chapters=meta.get("chapters", []),
     )
+
+    # Build stored chapter hash cache once before chapter loop to avoid O(n^2) disk re-scans
+    cached_stored_hashes = _stored_chapter_hashes(self.storage, novel_id, exclude_chapter_id="")
 
     _emit(
         STAGE_INDEX_CRAWL,
@@ -582,7 +576,7 @@ async def _scrape_chapters_impl(
         if not chapter:
             continue
 
-        chapter_id = str(chapter_num)
+        chapter_id = str(chapter.get("id") or chapter_num)
         ep_id = str(chapter.get("source_episode_id") or chapter_id)
 
         # Operationalized Crawl Plan Check: skip HTTP fetch when planner marked chapter reusable!
@@ -635,7 +629,7 @@ async def _scrape_chapters_impl(
                 source_key=source_key,
                 url=chapter.get("url") if isinstance(chapter.get("url"), str) else None,
                 images=image_manifest,
-                duplicate_hashes=_stored_chapter_hashes(self.storage, novel_id, exclude_chapter_id=chapter_id),
+                duplicate_hashes=cached_stored_hashes,
             )
             if quality.warnings:
                 logger.warning(
@@ -743,6 +737,7 @@ async def _scrape_chapters_impl(
             if any(img.get("download_error") for img in downloaded_images):
                 image_download_failures += 1
             succeeded += 1
+            cached_stored_hashes.add(new_signature)
             scraped_chapters_for_state.append(
                 {
                     "id": chapter_id,

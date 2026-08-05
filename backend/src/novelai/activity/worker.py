@@ -436,7 +436,18 @@ class ActivityWorkerService:
         try:
             if activity.get("type") == "crawl":
                 result_metadata = await self._run_crawl_activity(activity)
-                self.activity_log.record_source_health(str(activity.get("source_key") or ""), success=True)
+                has_errors = isinstance(result_metadata, dict) and (
+                    result_metadata.get("failed", 0) > 0
+                    or result_metadata.get("terminal_status") in ("failed", "completed_with_errors")
+                )
+                if has_errors:
+                    self.activity_log.record_source_health(
+                        str(activity.get("source_key") or ""),
+                        success=False,
+                        error=f"Crawl completed with errors ({result_metadata.get('failed', 0)} failed chapters)",
+                    )
+                else:
+                    self.activity_log.record_source_health(str(activity.get("source_key") or ""), success=True)
             elif activity.get("type") == "translation":
                 result_metadata = await self._run_translation_activity(activity)
             else:

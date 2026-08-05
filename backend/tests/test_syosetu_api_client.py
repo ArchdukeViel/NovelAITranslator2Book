@@ -4,6 +4,8 @@ import pytest
 from novelai.infrastructure.http.fetch_service import FetchService
 from novelai.infrastructure.http.profiles import PROFILE_NOVEL18_API
 from novelai.sources.syosetu_api import (
+    R18_OF_FIELDS,
+    REGULAR_OF_FIELDS,
     Novel18NovelApi,
     SyosetuApiError,
     SyosetuNovelApi,
@@ -81,6 +83,7 @@ async def test_syosetu_novel_api_fetches_and_parses():
             "writer": "Author",
             "genre": 201,
             "biggenre": 2,
+            "noveltype": 1,
             "general_firstup": "2024-01-01 00:00:00",
             "end": 1,
             "isstop": 0,
@@ -103,9 +106,12 @@ async def test_syosetu_novel_api_fetches_and_parses():
     assert entry["title"] == "API Novel"
     assert entry["author"] == "Author"
     assert typed_meta.ncode == "n1234ab"
+    assert typed_meta.novel_type == 1
     assert seen_requests[0].url.host == "api.syosetu.com"
     assert "/novelapi/api/" in seen_requests[0].url.path
-    assert "ncode=n1234ab" in seen_requests[0].url.query.decode("utf-8")
+    query = seen_requests[0].url.query.decode("utf-8")
+    assert "ncode=n1234ab" in query
+    assert f"of={REGULAR_OF_FIELDS}" in query
 
 
 @pytest.mark.asyncio
@@ -117,6 +123,7 @@ async def test_novel18_api_uses_correct_profile_and_path():
             "title": "Adult API Novel",
             "writer": "Adult Author",
             "nocgenre": 1,
+            "noveltype": 2,
             "end": 1,
         },
     ]
@@ -135,9 +142,12 @@ async def test_novel18_api_uses_correct_profile_and_path():
     entry, typed_meta = res
     assert entry["title"] == "Adult API Novel"
     assert typed_meta.age_restricted is True
+    assert typed_meta.novel_type == 2
     assert seen_requests[0].url.host == "api.syosetu.com"
     assert "/novel18api/api/" in seen_requests[0].url.path
     assert api._profile == PROFILE_NOVEL18_API
+    query = seen_requests[0].url.query.decode("utf-8")
+    assert f"of={R18_OF_FIELDS}" in query
 
 
 @pytest.mark.asyncio

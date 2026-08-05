@@ -68,9 +68,11 @@ def create_crawl_plan(
     *,
     mode: str = "update",
     revalidation_window: int = 5,
+    all_chapters: list[dict[str, Any]] | None = None,
 ) -> CrawlPlan:
     """Build an incremental crawl plan determining which chapters require fetching."""
-    total = len(selected_chapters)
+    full_index = all_chapters if all_chapters is not None else selected_chapters
+    total = len(full_index)
     episode_map = source_state.get("episode_map") if isinstance(source_state, dict) else {}
     if not isinstance(episode_map, dict):
         episode_map = {}
@@ -103,7 +105,11 @@ def create_crawl_plan(
             reasons={"mode": mode, "reason": "Full mode or missing source state forces refetch"},
         )
 
-    # Calculate rolling revalidation target IDs (last N chapters in selected list)
+    # Calculate rolling revalidation target IDs (last N chapters in selected list).
+    # The window is only applied when the index exceeds the window size; for
+    # smaller indices every confidently-dated unchanged chapter is reused
+    # without a body request (PR-41 blocker 3 contract). Undated episodes are
+    # always revalidated regardless of the window below.
     reval_targets = set()
     if revalidation_window > 0 and len(selected_chapters) > revalidation_window:
         reval_targets = {
@@ -145,9 +151,22 @@ def create_crawl_plan(
                 # enter periodic revalidation so changes are not missed.
                 rolling_reval_eps.append(ep_id)
 
-    # Check for removed episode IDs (present in recorded episode_map but absent from current index)
-    current_ep_ids = {str(ch.get("source_episode_id") or ch.get("id") or ch.get("num")) for ch in selected_chapters}
-    removed_eps = [ep_id for ep_id in episode_map if ep_id not in current_ep_ids]
+    # Check for removed episode IDs (present in recorded episode_map but absent from complete index)
+    complete_ep_ids = {str(ch.get("source_episode_id") or ch.get("id") or ch.get("num")) for ch in full_index}
+    removed_eps = [ep_id for ep_id in episode_map if ep_id not in complete_ep_ids]
+
+    # Calculate reordered episode IDs (compare relative order of common episode IDs)
+    prev_ordered_ep_ids = [ep_id for ep_id in episode_map if ep_id in complete_ep_ids]
+    curr_ordered_ep_ids = [
+        str(ch.get("source_episode_id") or ch.get("id") or ch.get("num"))
+        for ch in full_index
+        if str(ch.get("source_episode_id") or ch.get("id") or ch.get("num")) in episode_map
+    ]
+    reordered_eps = []
+    if len(prev_ordered_ep_ids) == len(curr_ordered_ep_ids):
+        for ep_prev, ep_curr in zip(prev_ordered_ep_ids, curr_ordered_ep_ids, strict=False):
+            if ep_prev != ep_curr:
+                reordered_eps.append(ep_curr)
 
     return CrawlPlan(
         total_index_entries=total,

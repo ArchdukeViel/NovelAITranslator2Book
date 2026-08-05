@@ -503,6 +503,7 @@ class TranslateStage(PipelineStage):
                     created_at=datetime.now(UTC).isoformat(),
                     ttl_seconds=settings.TRANSLATION_CACHE_TTL_SECONDS,
                     novel_id=context.novel_id,
+                    chunk_id=chunk_id,
                 )
                 logger.debug("Cache miss for chunk: key=%s, cache_hit=False", cache_key[:16])
             except Exception as exc:

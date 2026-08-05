@@ -118,11 +118,11 @@ def extract_chapters_from_next_data(
     seen_episode_ids: set[str] = set()
 
     for toc_item in toc:
-        toc_record = (
-            apollo_record(apollo_state, apollo_ref(toc_item))
-            if isinstance(toc_item, dict)
-            else (toc_item if isinstance(toc_item, dict) else None)
-        )
+        if isinstance(toc_item, dict):
+            ref = apollo_ref(toc_item)
+            toc_record = apollo_record(apollo_state, ref) if ref else toc_item
+        else:
+            toc_record = None
         if toc_record is None:
             continue
 
@@ -157,8 +157,9 @@ def extract_chapters_from_next_data(
             index = len(chapters) + 1
             title = episode_record.get("title")
             chapter: dict[str, Any] = {
-                "id": str(index),
+                "id": f"kakuyomu:{episode_id}",
                 "num": index,
+                "sequence_number": index,
                 "title": title.strip() if isinstance(title, str) and title.strip() else f"Episode {index}",
                 "url": f"https://kakuyomu.jp/works/{work_id}/episodes/{episode_id}",
                 "source_episode_id": episode_id,

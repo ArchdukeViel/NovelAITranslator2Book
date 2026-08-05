@@ -522,3 +522,26 @@ def activate_translated_chapter_version(
     )
     self._persist_chapter_bundle(novel_id, chapter_id, payload)
     return True
+
+
+def save_translation_run_manifest(self: Any, novel_id: str, manifest: Any) -> Path:
+    """Save a translation run manifest tracking execution parameters and input hashes."""
+    g_dir = self._generations_dir(novel_id)
+    manifest_path = g_dir / f"translation_run_{manifest.translation_run_id}.json"
+    self._write_text_atomic(manifest_path, json.dumps(manifest.to_dict(), ensure_ascii=False, indent=2))
+    return manifest_path
+
+
+def load_translation_run_manifest(self: Any, novel_id: str, translation_run_id: str) -> Any | None:
+    """Load a translation run manifest if it exists."""
+    from novelai.translation.run_manifest import TranslationRunManifest
+
+    g_dir = self._generations_dir(novel_id)
+    manifest_path = g_dir / f"translation_run_{translation_run_id}.json"
+    if not self._path_exists(manifest_path):
+        return None
+    try:
+        return TranslationRunManifest.from_dict(json.loads(self._read_text(manifest_path)))
+    except Exception as exc:
+        logger.warning("Failed to load translation run manifest for %s/%s: %s", novel_id, translation_run_id, exc)
+        return None

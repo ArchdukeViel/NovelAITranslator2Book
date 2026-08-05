@@ -154,8 +154,10 @@ def test_full_pipeline_create_to_public_read(
     assert resp.status_code == 200
     catalog = resp.json()
     slugs = [n.get("slug") for n in catalog.get("novels", [])]
-    # Japanese-only title gets slugified to "novel-" + novel_id in storage
-    expected_slug = f"novel-{nid}"
+    # Non-destructive full crawls keep the storage slug stable from creation:
+    # the folder is never deleted/re-derived from scraped metadata, so the
+    # English create title "E2E Test Novel (test-happy-e2e)" yields this slug.
+    expected_slug = "e2e-test-novel-test-happy-e2e"
     assert expected_slug in slugs, f"Novel {expected_slug} not found in catalog: {slugs}"
 
     # Step 7: Public chapter read — translated text present

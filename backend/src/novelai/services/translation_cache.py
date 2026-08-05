@@ -117,6 +117,7 @@ class CacheEntry(BaseModel):
     created_at: str  # ISO timestamp
     ttl_seconds: int = 0
     novel_id: str | None = None
+    chunk_id: str | None = None
 
 
 # ---------------------------------------------------------------------------

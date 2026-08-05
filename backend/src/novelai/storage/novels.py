@@ -543,6 +543,7 @@ VALID_ONBOARDING_STATUSES = frozenset(
         "glossary_pending",
         "chapters_pending",
         "scraping_chapters",
+        "partially_scraped",
         "ready_for_translation",
         "failed",
         "cancelled",

@@ -294,11 +294,18 @@ def prepare_story_section(section: Tag) -> Tag | None:
         for tag in prepared.select(removable):
             tag.decompose()
 
-    for ruby_selector in RUBY_REMOVE_SELECTORS:
-        for tag in prepared.find_all(ruby_selector):
-            tag.decompose()
     for ruby in prepared.find_all("ruby"):
-        ruby.unwrap()
+        rt = ruby.find("rt")
+        rt_text = rt.get_text(strip=True) if rt else ""
+        for rp in ruby.find_all("rp"):
+            rp.decompose()
+        if rt:
+            rt.decompose()
+        base_text = ruby.get_text(strip=True)
+        if rt_text and base_text:
+            ruby.replace_with(f"{base_text}《{rt_text}》")
+        else:
+            ruby.unwrap()
 
     if not prepared.get_text(separator="\n", strip=True) and not prepared.find(["hr", "img"]):
         return None

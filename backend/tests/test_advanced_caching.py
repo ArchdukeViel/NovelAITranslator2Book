@@ -593,6 +593,91 @@ async def test_cache_flush_stage_writes_pending_entries(cache_dir: Path) -> None
 
 
 @pytest.mark.asyncio
+async def test_cache_flush_stage_suppresses_non_translated_chunks(cache_dir: Path) -> None:
+    """CacheFlushStage must not cache chunks whose QA status is not TRANSLATED."""
+    from novelai.services.translation_cache import TranslationCacheService
+    from novelai.translation.pipeline.stages.cache_flush import CacheFlushStage
+
+    svc = TranslationCacheService(cache_dir=cache_dir)
+    stage = CacheFlushStage(cache_service=svc)
+    ctx = PipelineState(
+        chapter_url="https://example.com/c1",
+        novel_id="novel1",
+        chapter_id="ch1",
+        provider_key="p",
+        provider_model="m",
+    )
+    ctx.chunk_states = {
+        "c0001": {"status": "translated", "qa_status": "passed"},
+        "c0002": {"status": "needs_retry", "qa_status": "needs_llm_retry"},
+        "c0003": {"status": "needs_review", "qa_status": "needs_review"},
+        "c0004": {"status": "qa_failed", "qa_status": "qa_failed"},
+    }
+    ctx.metadata["_pending_cache_entries"] = [
+        (
+            "key1",
+            CacheEntry(
+                key="key1",
+                source_text="a",
+                translated_text="A",
+                glossary_hash="g",
+                provider_key="p",
+                provider_model="m",
+                created_at="2026-01-01T00:00:00Z",
+                chunk_id="c0001",
+            ),
+        ),
+        (
+            "key2",
+            CacheEntry(
+                key="key2",
+                source_text="b",
+                translated_text="B",
+                glossary_hash="g",
+                provider_key="p",
+                provider_model="m",
+                created_at="2026-01-01T00:00:00Z",
+                chunk_id="c0002",
+            ),
+        ),
+        (
+            "key3",
+            CacheEntry(
+                key="key3",
+                source_text="c",
+                translated_text="C",
+                glossary_hash="g",
+                provider_key="p",
+                provider_model="m",
+                created_at="2026-01-01T00:00:00Z",
+                chunk_id="c0003",
+            ),
+        ),
+        (
+            "key4",
+            CacheEntry(
+                key="key4",
+                source_text="d",
+                translated_text="D",
+                glossary_hash="g",
+                provider_key="p",
+                provider_model="m",
+                created_at="2026-01-01T00:00:00Z",
+                chunk_id="c0004",
+            ),
+        ),
+    ]
+    ctx.metadata["progress"] = {}
+
+    await stage.run(ctx)
+    assert svc.get("key1") is not None
+    assert svc.get("key2") is None
+    assert svc.get("key3") is None
+    assert svc.get("key4") is None
+    assert ctx.metadata["progress"]["cache_flush_written"] == 1
+
+
+@pytest.mark.asyncio
 async def test_cache_flush_stage_skips_empty_pending(cache_dir: Path) -> None:
     """CacheFlushStage does nothing when no pending entries exist."""
     from novelai.services.translation_cache import TranslationCacheService

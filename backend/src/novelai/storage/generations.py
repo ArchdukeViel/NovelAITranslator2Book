@@ -132,8 +132,7 @@ def activate_generation(
 
     manifest = GenerationManifest.from_dict(json.loads(self._read_text(manifest_path)))
     manifest.status = "committed"
-    manifest.committed_at = _utc_now_iso()
-    manifest.status = "active"
+    manifest.committed_at = manifest.committed_at or _utc_now_iso()
     manifest.activated_at = _utc_now_iso()
 
     # Manifest-last atomic write

@@ -14,6 +14,8 @@ from novelai.infrastructure.http.client import create_async_client, validate_saf
 from novelai.infrastructure.http.retry import Retrier, RetryConfig
 from novelai.infrastructure.http.throttle import DomainThrottle
 
+MAX_RESPONSE_SIZE = 50 * 1024 * 1024  # 50 MB limit
+
 
 @dataclass(frozen=True)
 class FetchResult:
@@ -143,7 +145,8 @@ class FetchService:
             raise SourceError(f"Failed to fetch {source_key} page from {requested_url}: {exc}") from exc
 
         elapsed = perf_counter() - started
-        await self._throttle.after_response(str(response.url), response.status_code)
+        final_url = validate_safe_url(str(response.url))
+        await self._throttle.after_response(final_url, response.status_code)
 
         if response.status_code == 304:
             cached = self._cache.get(source_key, requested_url, profile=profile)
@@ -151,7 +154,7 @@ class FetchService:
                 raise SourceError(f"{source_key} returned 304 for {requested_url}, but no cached response exists.")
             return FetchResult(
                 requested_url=requested_url,
-                final_url=str(response.url),
+                final_url=final_url,
                 status_code=304,
                 headers=_headers_dict(response.headers),
                 text=cached.text,
@@ -164,10 +167,14 @@ class FetchService:
 
         headers_payload = _headers_dict(response.headers)
         body = bytes(response.content)
+        if len(body) > MAX_RESPONSE_SIZE:
+            raise SourceError(
+                f"Response payload from {final_url} exceeds maximum size limit ({len(body)} > {MAX_RESPONSE_SIZE} bytes)."
+            )
         text = response.text
         result = FetchResult(
             requested_url=requested_url,
-            final_url=str(response.url),
+            final_url=final_url,
             status_code=response.status_code,
             headers=headers_payload,
             text=text,

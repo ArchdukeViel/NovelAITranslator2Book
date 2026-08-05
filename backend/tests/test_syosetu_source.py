@@ -236,7 +236,7 @@ def test_parse_chapter_html_preserves_preface_afterword_and_separator_lines() ->
     chapter_text = source._parse_chapter_html(html)
 
     assert (
-        chapter_text == "Preface note.\n\nKanji line one.\nLine two.\n\nSecond paragraph.\n\n"
+        chapter_text == "Preface note.\n\nKanji《reading》 line one.\nLine two.\n\nSecond paragraph.\n\n"
         "------------------------------------------------------------\n\nAfterword note."
     )
 

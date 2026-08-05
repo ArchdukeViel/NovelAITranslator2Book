@@ -43,10 +43,10 @@ def test_activate_generation_atomic_write(storage: StorageService):
     storage.record_staged_chapter("novel-1", "gen-200", "1", "v1", "hash1")
 
     activated = storage.activate_generation("novel-1", "gen-200")
-    assert activated.status == "active"
+    assert activated.status == "committed"
     assert activated.activated_at is not None
 
     active_current = storage.get_active_generation("novel-1")
     assert active_current is not None
     assert active_current.generation_id == "gen-200"
-    assert active_current.status == "active"
+    assert active_current.status == "committed"

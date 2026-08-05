@@ -42,8 +42,12 @@ R18_API_PATH = "/novel18api/api/"
 
 _JST = timezone(timedelta(hours=9))
 
-# Standard 'of' parameter fields requested from Syosetu API
-OF_FIELDS = "t-n-u-w-s-bg-g-k-gf-gl-nt-e-ga-l-ti-i-r15-bl-gl-z-t-tn-p-gp-dp-wp-mp-qp-yp-f-imp-r-a-ah-sa-ka-nu-ua-nc"
+REGULAR_OF_FIELDS = (
+    "t-n-u-w-s-bg-g-k-gf-gl-nt-e-ga-l-ti-i-ir-ibl-igl-izk-its-iti-gp-dp-wp-mp-qp-yp-f-imp-r-a-ah-sa-ka-nu-ua"
+)
+
+R18_OF_FIELDS = "t-n-w-s-ng-k-gf-gl-nt-e-ga-l-ti-i-ibl-igl-izk-its-iti-gp-dp-wp-mp-qp-yp-f-imp-r-a-ah-sa-ka-nu-ua"
+OF_FIELDS = REGULAR_OF_FIELDS
 
 # Documented Syosetu Biggenre & Genre mappings
 SYOSETU_BIGGENRE_CODES: dict[int, str] = {
@@ -82,7 +86,8 @@ SYOSETU_GENRE_CODES: dict[int, str] = {
 NOCGENRE_CODES: dict[int, str] = {
     1: "男性向け（ノクターンノベルズ）",
     2: "女性向け（ムーンライトノベルズ）",
-    3: "大人向け（ミッドナイトノベルズ）",
+    3: "BL（ムーンライトノベルズ）",
+    4: "大人向け（ミッドナイトノベルズ）",
 }
 
 
@@ -187,7 +192,7 @@ def parse_novel_entry(
     # novel_type: 1 = serialized (連載), 2 = short story (短編)
     # end: 0 = ended/completed (完結済), 1 = ongoing (連載中) for novel_type=1 (Note official Syosetu API: end=0 is completed!)
     # isstop: 1 = update suspended (休載)
-    novel_type_raw = _parse_int(raw.get("novel_type")) or 1
+    novel_type_raw = _parse_int(raw.get("noveltype") or raw.get("novel_type")) or 1
     end_flag = _parse_int(raw.get("end"))
     isstop_flag = _parse_int(raw.get("isstop"))
 
@@ -279,16 +284,18 @@ class SyosetuNovelApi:
         profile: str = PROFILE_SYOSETU_API,
         source_key: str = "syosetu_ncode",
         genre_map: dict[str, str] = SYOSETU_GENRE_MAP,
+        of_fields: str = REGULAR_OF_FIELDS,
     ) -> None:
         self._fetch_service = fetch_service or get_default_fetch_service()
         self._api_path = api_path
         self._profile = profile
         self._source_key = source_key
         self._genre_map = genre_map
+        self._of_fields = of_fields
 
     def api_url(self, ncode: str) -> str:
         clean_ncode = ncode.strip().lower()
-        return f"{API_HOST}{self._api_path}?ncode={clean_ncode}&of={OF_FIELDS}&out=json"
+        return f"{API_HOST}{self._api_path}?ncode={clean_ncode}&of={self._of_fields}&out=json"
 
     async def fetch_novel(self, ncode: str) -> tuple[dict[str, Any], SyosetuWorkMetadata] | None:
         """Fetch one novel's metadata.
@@ -359,4 +366,5 @@ class Novel18NovelApi(SyosetuNovelApi):
             profile=PROFILE_NOVEL18_API,
             source_key="novel18_syosetu",
             genre_map=NOVEL18_GENRE_MAP,
+            of_fields=R18_OF_FIELDS,
         )

@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup, Tag
 
 from novelai.core.errors import SourceError
 from novelai.infrastructure.http.fetch_service import FetchService, get_default_fetch_service
+from novelai.infrastructure.http.profiles import PROFILE_ASSETS, PROFILE_KAKUYOMU_HTML
 from novelai.sources._helpers import (
     attribute_to_str,
     extract_image_references,
@@ -147,6 +148,7 @@ class KakuyomuSource(SourceAdapter):
                 url,
                 source_key=self.source_key,
                 headers=self._request_headers(),
+                profile=PROFILE_KAKUYOMU_HTML,
                 on_retry=on_retry,
             )
         except SourceError as exc:
@@ -157,7 +159,12 @@ class KakuyomuSource(SourceAdapter):
 
     async def fetch_asset(self, url: str, *, referer: str | None = None) -> dict[str, Any]:
         try:
-            result = await self._fetch_service.get_bytes(url, source_key=self.source_key, referer=referer)
+            result = await self._fetch_service.get_bytes(
+                url,
+                source_key=self.source_key,
+                referer=referer,
+                profile=PROFILE_ASSETS,
+            )
         except SourceError as exc:
             raise SourceError(f"Failed to fetch Kakuyomu asset from {url}: {exc}") from exc
 
@@ -278,12 +285,14 @@ class KakuyomuSource(SourceAdapter):
                 seen_urls.add(canonical_url)
 
                 index = len(chapters) + 1
+                ep_id = match.group(2)
                 chapter_item: dict[str, str | int] = {
-                    "id": str(index),
+                    "id": f"kakuyomu:{ep_id}",
                     "num": index,
+                    "sequence_number": index,
                     "title": self._extract_episode_title(element, index),
                     "url": canonical_url,
-                    "source_episode_id": match.group(2),
+                    "source_episode_id": ep_id,
                 }
                 if current_part:
                     chapter_item["part"] = current_part
@@ -439,11 +448,18 @@ class KakuyomuSource(SourceAdapter):
             for tag in body_node.select(sel):
                 tag.decompose()
 
-        for sel in self.RUBY_REMOVE_SELECTORS:
-            for tag in body_node.find_all(sel):
-                tag.decompose()
         for ruby in body_node.find_all("ruby"):
-            ruby.unwrap()
+            rt = ruby.find("rt")
+            rt_text = rt.get_text(strip=True) if rt else ""
+            for rp in ruby.find_all("rp"):
+                rp.decompose()
+            if rt:
+                rt.decompose()
+            base_text = ruby.get_text(strip=True)
+            if rt_text and base_text:
+                ruby.replace_with(f"{base_text}《{rt_text}》")
+            else:
+                ruby.unwrap()
 
         images = extract_image_references(body_node, base_url=url)
         for img in body_node.find_all("img"):
