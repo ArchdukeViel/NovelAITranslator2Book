@@ -153,6 +153,7 @@ class Container:
         if self._translation is None:
             # Build translation service with all dependencies
             from novelai.translation.pipeline.pipeline import TranslationPipeline
+            from novelai.translation.pipeline.stages.cache_flush import CacheFlushStage
             from novelai.translation.pipeline.stages.fetch import FetchStage
             from novelai.translation.pipeline.stages.parse import ParseStage
             from novelai.translation.pipeline.stages.post_process import PostProcessStage
@@ -171,7 +172,8 @@ class Container:
                     usage_service=self.usage,
                     storage=self.storage,
                 ),
-                TranslationQAStage(),
+                TranslationQAStage(storage=self.storage),
+                CacheFlushStage(),
                 PostProcessStage(),
             ]
             self._translation = TranslationService(pipeline=TranslationPipeline(stages=stages))

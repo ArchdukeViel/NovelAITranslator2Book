@@ -6,8 +6,10 @@ from typing import Any
 from novelai.config.settings import settings
 from novelai.providers.registry import get_provider
 from novelai.shared.pipeline import ChunkTranslationStatus
+from novelai.storage.service import StorageService
 from novelai.translation.pipeline.context import PipelineState, TranslationChunk
 from novelai.translation.pipeline.stages.base import PipelineStage
+from novelai.translation.pipeline.stages.translate_cache_lookup import persist_chunk_state
 from novelai.translation.qa import (
     TranslationQAError,
     TranslationQAResult,
@@ -57,7 +59,17 @@ async def _resolve_llm_grader_async() -> Any | None:
 
 
 class TranslationQAStage(PipelineStage):
-    """Deterministic validation of translated chunks before final post-processing."""
+    """Deterministic validation of translated chunks before final post-processing.
+
+    Chunk dispositions are persisted to storage so retry markers
+    (``needs_retry``/``needs_review``/``qa_failed``) survive stage re-runs
+    and restarts (Blocker C): a persisted marker guarantees the chunk is
+    re-translated with a fresh provider request instead of being resumed
+    from rejected output.
+    """
+
+    def __init__(self, storage: StorageService | None = None) -> None:
+        self._storage = storage or StorageService()
 
     @staticmethod
     def _chunk_for_index(context: PipelineState, index: int) -> TranslationChunk:
@@ -150,6 +162,8 @@ class TranslationQAStage(PipelineStage):
                 **context.chunk_states.get(chunk_id, {}),
                 "chunk_id": chunk_id,
                 "novel_id": chunk.novel_id or "unknown_novel",
+                "chapter_ids": list(chunk.chapter_ids),
+                "paragraph_ids": list(chunk.paragraph_ids),
                 "qa_score": result.score,
                 "qa_warnings": list(result.warnings),
                 "qa_errors": list(result.errors),
@@ -209,6 +223,9 @@ class TranslationQAStage(PipelineStage):
                 chunk_state["error_code"] = result.errors[0] if result.errors else "translation_qa_failed"
                 failed_chunk_ids.append(chunk_id)
             context.chunk_states[chunk_id] = chunk_state
+            # Persist the disposition so needs_retry/needs_review/qa_failed
+            # markers survive re-runs and restarts (Blocker C).
+            persist_chunk_state(self._storage, context, chunk_id)
 
         combined = self._merge_results(results)
         context.metadata["qa_results"] = qa_payloads

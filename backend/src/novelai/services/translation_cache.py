@@ -118,6 +118,12 @@ class CacheEntry(BaseModel):
     ttl_seconds: int = 0
     novel_id: str | None = None
     chunk_id: str | None = None
+    # Provenance fields (accepted-output-only contract): pending entries
+    # carry the exact attempt, run, and output identity so a flush can never
+    # cache an output from a rejected attempt.
+    attempt_number: int | None = None
+    translation_run_id: str | None = None
+    output_hash: str | None = None
 
 
 # ---------------------------------------------------------------------------

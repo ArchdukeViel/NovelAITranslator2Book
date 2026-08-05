@@ -41,6 +41,17 @@ from novelai.translation.pipeline.stages.translate_result_assembly import (
     paragraph_lineage as paragraph_lineage_fn,
 )
 
+# Statuses that mark a chunk as NOT accepted: its output must never be
+# reused (no resume from stored output, no cache lookup, no cache write)
+# and a fresh provider request must be issued instead (Blocker C).
+RETRY_MARKED_STATUSES = frozenset(
+    {
+        ChunkTranslationStatus.NEEDS_RETRY.value,
+        ChunkTranslationStatus.NEEDS_REVIEW.value,
+        ChunkTranslationStatus.QA_FAILED.value,
+    }
+)
+
 
 def save_chunk_records(
     storage: StorageService,
@@ -94,10 +105,19 @@ def load_persisted_chunk_states(
     for stored in stored_states:
         chunk_id = stored.get("chunk_id") if isinstance(stored, dict) else None
         if isinstance(chunk_id, str) and chunk_id.strip():
-            context.chunk_states[chunk_id] = {
-                **context.chunk_states.get(chunk_id, {}),
-                **dict(stored),
-            }
+            existing = context.chunk_states.get(chunk_id, {})
+            existing_status = existing.get("status") if isinstance(existing, dict) else None
+            merged = {**existing, **dict(stored)}
+            # Blocker C: a persisted "translated" state must never overwrite an
+            # in-memory retry marker (needs_retry/needs_review/qa_failed). The
+            # chunk must be re-translated with a fresh provider request, not
+            # resumed from stale output.
+            if (
+                existing_status in RETRY_MARKED_STATUSES
+                and merged.get("status") == ChunkTranslationStatus.TRANSLATED.value
+            ):
+                merged["status"] = existing_status
+            context.chunk_states[chunk_id] = merged
 
 
 def load_existing_chunk_output(
