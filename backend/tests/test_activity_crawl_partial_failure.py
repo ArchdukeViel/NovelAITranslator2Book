@@ -110,6 +110,7 @@ async def test_partial_failure_crawl_records_source_health_failure(activity_env)
         }
 
     # Patch the unbound method on the class so ``self`` binds correctly.
+    _original_method = ActivityWorkerService._run_crawl_activity
     ActivityWorkerService._run_crawl_activity = _stub_run_crawl_activity  # type: ignore[method-assign]
     try:
         # Drive the worker; the activity must complete.
@@ -118,7 +119,7 @@ async def test_partial_failure_crawl_records_source_health_failure(activity_env)
         assert result["status"] == JobStatus.COMPLETED.value
     finally:
         # Restore the original method to avoid leaking across tests.
-        del ActivityWorkerService._run_crawl_activity  # type: ignore[attr-defined]
+        ActivityWorkerService._run_crawl_activity = _original_method  # type: ignore[method-assign]
 
     health = _read_source_health(log_store, source_key)
     assert health is not None, "source_health must be recorded after a crawl activity"
@@ -154,13 +155,14 @@ async def test_clean_crawl_records_source_health_success(activity_env) -> None:
             },
         }
 
+    _original_method = ActivityWorkerService._run_crawl_activity
     ActivityWorkerService._run_crawl_activity = _stub_run_crawl_activity  # type: ignore[method-assign]
     try:
         result = await worker.run_activity(activity_id)
         assert result is not None
         assert result["status"] == JobStatus.COMPLETED.value
     finally:
-        del ActivityWorkerService._run_crawl_activity  # type: ignore[attr-defined]
+        ActivityWorkerService._run_crawl_activity = _original_method  # type: ignore[method-assign]
 
     health = _read_source_health(log_store, source_key)
     assert health is not None
