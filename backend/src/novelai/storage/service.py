@@ -14,6 +14,7 @@ from typing import Any
 from novelai.config.settings import settings
 from novelai.core.chapter_state import ChapterState, ChapterStateTransition
 from novelai.core.platform import ChapterVersionKind
+from novelai.core.security import decode_physical_stem
 from novelai.storage.chapters import (
     _chapter_dir,
     _chapter_path,
@@ -258,12 +259,13 @@ class StorageService:
     def logical_id_from_stem(stem: str) -> str:
         """Convert a physical filename stem to a logical chapter ID.
 
-        ``0001`` (zero-padded) → ``1``, ``abc`` → ``abc``.
+        ``0001`` (zero-padded) → ``1``, ``kakuyomu%3A123`` →
+        ``kakuyomu:123``, legacy ``abc`` → ``abc``.
         """
         try:
             return str(int(stem))
         except (ValueError, TypeError):
-            return stem
+            return decode_physical_stem(stem)
 
     def __init__(self, base_dir: Path | None = None, backend: Any | None = None) -> None:
         if backend is not None:

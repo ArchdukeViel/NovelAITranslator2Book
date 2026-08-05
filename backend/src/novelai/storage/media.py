@@ -5,13 +5,13 @@ import mimetypes
 from pathlib import Path
 from typing import Any
 
-from novelai.core.security import safe_child_path, validate_storage_identifier
+from novelai.core.security import encode_physical_stem, safe_child_path, validate_storage_identifier
 from novelai.storage.common import _UNSET
 
 
 def _chapter_image_dir(self: Any, novel_id: str, chapter_id: str) -> Path:
     safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
-    image_dir = self._novel_dir(novel_id) / "assets" / "images" / safe_chapter_id
+    image_dir = self._novel_dir(novel_id) / "assets" / "images" / encode_physical_stem(safe_chapter_id)
     self._mkdirs(image_dir)
     return image_dir
 
@@ -38,7 +38,7 @@ def _guess_asset_suffix(self: Any, source_url: str | None, content_type: str | N
 
 def clear_chapter_image_assets(self: Any, novel_id: str, chapter_id: str) -> None:
     safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
-    image_dir = self._novel_dir(novel_id) / "assets" / "images" / safe_chapter_id
+    image_dir = self._novel_dir(novel_id) / "assets" / "images" / encode_physical_stem(safe_chapter_id)
     if self._path_exists(image_dir):
         self._rmtree(image_dir)
 
@@ -68,7 +68,10 @@ def save_chapter_image_asset(
 def resolve_asset_path(self: Any, novel_id: str, local_path: str | None) -> Path | None:
     if not isinstance(local_path, str) or not local_path.strip():
         return None
-    return safe_child_path(self._novel_dir(novel_id), local_path)
+    # Stored local_path values may contain percent-escapes from the physical
+    # chapter-id codec (e.g. ``kakuyomu%3A...``), so skip the unquote step;
+    # the containment check still rejects traversal.
+    return safe_child_path(self._novel_dir(novel_id), local_path, unquote=False)
 
 
 def _normalize_media_fields(self: Any, payload: dict[str, Any]) -> dict[str, Any]:

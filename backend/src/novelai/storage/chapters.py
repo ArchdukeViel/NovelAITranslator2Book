@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from novelai.core.chapter_state import ChapterState
-from novelai.core.security import validate_storage_identifier
+from novelai.core.security import encode_physical_stem, validate_storage_identifier
 from novelai.services.query_builder import ChapterQueryBuilder
 from novelai.storage.common import _utc_now_iso, validate_storage_schema_version
 
@@ -20,14 +20,21 @@ def _chapter_dir(self: Any, novel_id: str) -> Path:
 
 
 def _chapter_filename(chapter_id: str) -> str:
-    """Return zero-padded 4-digit filename for numeric chapter IDs."""
+    """Return the physical filename for a logical chapter ID.
+
+    Numeric IDs keep the legacy zero-padded 4-digit form. Non-numeric IDs
+    (e.g. Kakuyomu's ``kakuyomu:<episode-id>``) are percent-encoded with
+    :func:`encode_physical_stem` so characters such as ``:`` never reach the
+    filesystem (invalid on Windows) while remaining reversible through
+    ``logical_id_from_stem``.
+    """
     raw = str(chapter_id)
     try:
         num = int(raw)
         return f"{num:04d}.json"
     except (ValueError, TypeError):
         safe = validate_storage_identifier(raw, "chapter_id")
-        return f"{safe}.json"
+        return f"{encode_physical_stem(safe)}.json"
 
 
 def _chapter_path(self: Any, novel_id: str, chapter_id: str) -> Path:

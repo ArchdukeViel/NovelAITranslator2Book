@@ -17,9 +17,7 @@ _SENSITIVE_KEY_PARTS = (
     "session",
     "token",
 )
-_HEADER_SECRET_RE = re.compile(
-    r"(?i)\b(authorization|cookie|set-cookie)\s*[:=]\s*([^\r\n;,]+)"
-)
+_HEADER_SECRET_RE = re.compile(r"(?i)\b(authorization|cookie|set-cookie)\s*[:=]\s*([^\r\n;,]+)")
 _KEY_VALUE_SECRET_RE = re.compile(
     r"(?i)\b(api[_-]?key|apikey|secret|token|password|admin[_-]?token)\s*[:=]\s*([^\s,;&]+)"
 )
@@ -28,6 +26,51 @@ _JSON_SECRET_RE = re.compile(
 )
 _BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
 _WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:")
+_SAFE_PHYSICAL_STEM_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def encode_physical_stem(logical_identifier: str) -> str:
+    """Encode an arbitrary logical identifier into a filesystem-safe name.
+
+    Characters in ``[A-Za-z0-9._-]`` are preserved verbatim; every other
+    character is percent-encoded from its UTF-8 bytes (``%XX``, uppercase
+    hex). ``%`` itself is encoded as ``%25`` so the mapping is unambiguous
+    and reversible on every filesystem, including Windows, which forbids
+    ``: * ? " < > |`` and control characters in file names.
+
+    Numeric identifiers pass through unchanged so callers may keep applying
+    legacy zero-padded naming rules.
+    """
+    raw = str(logical_identifier)
+    if _SAFE_PHYSICAL_STEM_RE.fullmatch(raw):
+        return raw
+    parts: list[str] = []
+    for char in raw:
+        if char.isascii() and (char.isalnum() or char in "._-"):
+            parts.append(char)
+        else:
+            parts.extend(f"%{byte:02X}" for byte in char.encode("utf-8"))
+    return "".join(parts)
+
+
+def decode_physical_stem(stem: str) -> str:
+    """Reverse :func:`encode_physical_stem` when ``stem`` is an encoded name.
+
+    Returns the stem unchanged when it is not a valid encoding, so legacy
+    names written before the codec (zero-padded numeric stems, or POSIX
+    names containing reserved characters such as ``kakuyomu:123``) keep
+    resolving to themselves. A stem is only decoded when re-encoding the
+    decoded value reproduces the stem exactly, which keeps the codec
+    injective for all names produced by :func:`encode_physical_stem`.
+    """
+    raw = str(stem)
+    if _SAFE_PHYSICAL_STEM_RE.fullmatch(raw):
+        return raw
+    if "%" in raw:
+        decoded = _fully_unquote(raw)
+        if encode_physical_stem(decoded) == raw:
+            return decoded
+    return raw
 
 
 def redact_secret_text(text: Any) -> str:
@@ -97,12 +140,22 @@ def validate_storage_identifier(value: str, field_name: str = "identifier") -> s
     return candidate
 
 
-def safe_child_path(root: Path, relative_path: str | Path) -> Path:
-    """Resolve a child path and ensure it remains within root."""
+def safe_child_path(root: Path, relative_path: str | Path, *, unquote: bool = True) -> Path:
+    """Resolve a child path and ensure it remains within root.
+
+    With ``unquote=True`` (default) percent-encoded segments are decoded
+    before validation as defense-in-depth against encoded traversal. Pass
+    ``unquote=False`` when the relative path may legitimately contain
+    percent-escapes produced by :func:`encode_physical_stem` (e.g. stored
+    asset ``local_path`` values); the containment check still applies.
+    """
 
     root_resolved = root.resolve()
     raw = str(relative_path)
-    decoded = _fully_unquote(raw.strip())
+    if unquote:
+        decoded = _fully_unquote(raw.strip())
+    else:
+        decoded = raw.strip()
     if not decoded:
         raise ValueError("relative path must not be empty.")
     if "\x00" in decoded:
