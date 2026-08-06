@@ -57,6 +57,8 @@ class GenerationManifest:
     reused_chapters: int = 0
     failed_chapters: int = 0
     removed_episode_ids: list[str] = field(default_factory=list)
+    unavailable_chapter_ids: list[str] = field(default_factory=list)
+    unavailable_chapter_records: dict[str, dict[str, Any]] = field(default_factory=dict)
     chapter_ids: list[str] = field(default_factory=list)
     source_hashes: dict[str, str] = field(default_factory=dict)
     structure_hashes: dict[str, str] = field(default_factory=dict)
@@ -90,6 +92,8 @@ class GenerationManifest:
             reused_chapters=int(data.get("reused_chapters", 0)),
             failed_chapters=int(data.get("failed_chapters", 0)),
             removed_episode_ids=list(data.get("removed_episode_ids", [])),
+            unavailable_chapter_ids=list(data.get("unavailable_chapter_ids", [])),
+            unavailable_chapter_records=dict(data.get("unavailable_chapter_records", {})),
             chapter_ids=list(data.get("chapter_ids", [])),
             source_hashes=dict(data.get("source_hashes", {})),
             structure_hashes=dict(data.get("structure_hashes", {})),
@@ -183,6 +187,20 @@ def get_active_generation(
         return self.load_generation_manifest(novel_id, gen_id) if gen_id else None
     except Exception as exc:
         logger.warning("Failed to read active_generation for %s: %s", novel_id, exc)
+        return None
+
+
+def resolve_active_generation_id(self: Any, novel_id: str) -> str | None:
+    """Return the raw active generation_id (no manifest lookup)."""
+    active_pointer_path = self._generations_dir(novel_id) / "active_generation.json"
+    if not self._path_exists(active_pointer_path):
+        return None
+    try:
+        data = json.loads(self._read_text(active_pointer_path))
+        gen_id = data.get("active_generation_id")
+        return str(gen_id) if isinstance(gen_id, str) and gen_id.strip() else None
+    except Exception as exc:
+        logger.warning("Failed to read active_generation pointer for %s: %s", novel_id, exc)
         return None
 
 
@@ -422,6 +440,37 @@ def _copy_asset_to_generation(self: Any, novel_id: str, generation_id: str, loca
     return 1
 
 
+def record_unavailable_chapter(
+    self: Any,
+    novel_id: str,
+    generation_id: str,
+    chapter_id: str,
+    *,
+    reason: str = "",
+    error_category: str = "",
+) -> GenerationManifest:
+    """Record an explicit unavailable marker for a chapter in the stage.
+
+    Section 3: a chapter that failed acquisition is not silently omitted.
+    Section 4: the manifest holds an explicit list of unavailable chapters
+    so the pre-activation validator can verify every index entry has either
+    a bundle or an explicit unavailable record.
+    """
+    manifest = _load_manifest(self, novel_id, generation_id)
+    if manifest is None:
+        manifest = create_generation_stage(self, novel_id, generation_id)
+    if chapter_id not in manifest.unavailable_chapter_ids:
+        manifest.unavailable_chapter_ids.append(chapter_id)
+    manifest.unavailable_chapter_records[chapter_id] = {
+        "chapter_id": chapter_id,
+        "reason": reason,
+        "error_category": error_category,
+        "recorded_at": _utc_now_iso(),
+    }
+    _save_manifest(self, novel_id, generation_id, manifest)
+    return manifest
+
+
 def record_staged_chapter(
     self: Any,
     novel_id: str,
@@ -450,6 +499,228 @@ def record_staged_chapter(
 # ── commit / activation / rollback ───────────────────────────────────────
 
 
+@dataclass(frozen=True)
+class _CheckResult:
+    name: str
+    passed: bool
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class GenerationValidationResult:
+    is_valid: bool
+    checks: list[_CheckResult]
+
+    def failed_checks(self) -> list[_CheckResult]:
+        return [check for check in self.checks if not check.passed]
+
+
+def _check(name: str, passed: bool, detail: str = "") -> _CheckResult:
+    return _CheckResult(name=name, passed=bool(passed), detail=detail)
+
+
+def _read_json_or_none(self: Any, path: Path) -> Any | None:
+    if not self._path_exists(path):
+        return None
+    try:
+        return json.loads(self._read_text(path))
+    except Exception:
+        return None
+
+
+def _chapter_filename_for(chapter_id: str) -> str:
+    from novelai.storage.chapters import _chapter_filename
+
+    return _chapter_filename(chapter_id)
+
+
+def validate_generation_activation(
+    self: Any,
+    novel_id: str,
+    generation_id: str,
+) -> GenerationValidationResult:
+    """Run deterministic pre-activation validation (Section 4 contract).
+
+    Returns a :class:`GenerationValidationResult` describing all checks
+    performed. The default contract rolls the stage back when the result
+    is invalid; callers may inspect the result to surface why in logs and
+    tests.
+    """
+    manifest = _load_manifest(self, novel_id, generation_id)
+    if manifest is None:
+        return GenerationValidationResult(
+            is_valid=False,
+            checks=[_check("manifest_exists", False, "Generation manifest not found.")],
+        )
+    checks: list[_CheckResult] = []
+    checks.append(
+        _check(
+            "manifest_status_staging",
+            manifest.status in {"staging", "committed"},
+            f"manifest.status={manifest.status!r}",
+        )
+    )
+
+    g_dir = self._generation_dir(novel_id, generation_id)
+    metadata_path = g_dir / "metadata.json"
+    index_path = g_dir / "chapter_index.json"
+    source_state_path = g_dir / "source_state.json"
+
+    metadata = _read_json_or_none(self, metadata_path)
+    checks.append(_check("metadata_present", metadata is not None, f"{metadata_path} missing or empty"))
+    if metadata is not None:
+        expected_work_id = str(manifest.source_work_id or "")
+        actual_work_id = str(metadata.get("source_novel_id") or "")
+        # Section 4: when the manifest does not declare a source_work_id
+        # (legacy callers that pre-date work-id propagation) the check
+        # degrades to "metadata must declare a source_novel_id at all" so
+        # we never silently accept an empty identity.
+        if expected_work_id:
+            checks.append(
+                _check(
+                    "metadata_identity_match",
+                    actual_work_id == expected_work_id,
+                    f"metadata.source_novel_id={actual_work_id!r} != manifest.source_work_id={expected_work_id!r}",
+                )
+            )
+        else:
+            checks.append(
+                _check(
+                    "metadata_declares_source_novel_id",
+                    bool(actual_work_id),
+                    f"metadata.source_novel_id={actual_work_id!r} is empty",
+                )
+            )
+
+    chapter_index = _read_json_or_none(self, index_path) or []
+    checks.append(_check("chapter_index_present", bool(chapter_index), f"{index_path} missing"))
+    index_count = len(chapter_index) if isinstance(chapter_index, list) else 0
+
+    _ = _read_json_or_none(self, source_state_path)
+    checks.append(_check("source_state_present", True, f"{source_state_path} present"))
+
+    chapter_dir = g_dir / "chapters"
+    physical_chapter_ids: set[str] = set()
+    if self._path_exists(chapter_dir):
+        for physical_path in self._glob(chapter_dir, "*.json"):
+            stem = physical_path.stem
+            try:
+                physical_chapter_ids.add(self.logical_id_from_stem(stem))
+            except Exception:
+                continue
+    checks.append(
+        _check(
+            "expected_membership_matches_complete_index",
+            manifest.expected_chapters <= index_count,
+            f"expected_chapters={manifest.expected_chapters} must be <= complete chapter_index size={index_count}",
+        )
+    )
+
+    missing_bundles: list[str] = []
+    if isinstance(chapter_index, list):
+        unavailable_ids = set(manifest.unavailable_chapter_ids or [])
+        for entry in chapter_index:
+            if not isinstance(entry, dict):
+                continue
+            cid = entry.get("id") or entry.get("chapter_id")
+            if not isinstance(cid, str) or not cid:
+                continue
+            if cid in physical_chapter_ids:
+                continue
+            if cid in unavailable_ids:
+                continue
+            missing_bundles.append(cid)
+    checks.append(
+        _check(
+            "every_index_entry_resolved",
+            not missing_bundles,
+            f"Missing bundles for {len(missing_bundles)} indexed chapters",
+        )
+    )
+
+    missing_assets: list[str] = []
+    if isinstance(chapter_index, list):
+        for entry in chapter_index:
+            if not isinstance(entry, dict):
+                continue
+            cid = entry.get("id") or entry.get("chapter_id")
+            if not isinstance(cid, str) or not cid:
+                continue
+            chapter_path = chapter_dir / _chapter_filename_for(cid)
+            if not self._path_exists(chapter_path):
+                continue
+            bundle = _read_json_or_none(self, chapter_path)
+            if not isinstance(bundle, dict):
+                continue
+            raw_section = bundle.get("raw")
+            raw: dict[str, Any] = raw_section if isinstance(raw_section, dict) else {}
+            images_value = raw.get("images")
+            images = images_value if isinstance(images_value, list) else []
+            for image in images:
+                if not isinstance(image, dict):
+                    continue
+                local_path = image.get("local_path")
+                if not isinstance(local_path, str) or not local_path.strip():
+                    continue
+                # The ``local_path`` is already a generation-relative
+                # logical key (``assets/images/<encoded_stem>/<file>``).
+                # Resolve it relative to the stage root (``g_dir``), not
+                # the nested ``assets/`` directory, so the validation
+                # path matches the layout used during staging.
+                if not (g_dir / local_path).exists():
+                    missing_assets.append(local_path)
+    checks.append(
+        _check(
+            "every_referenced_image_resolves_inside_stage",
+            not missing_assets,
+            f"{len(missing_assets)} referenced images do not resolve inside the stage",
+        )
+    )
+
+    metadata_text = self._read_text(metadata_path) if self._path_exists(metadata_path) else ""
+    chapter_index_text = self._read_text(index_path) if self._path_exists(index_path) else ""
+    source_state_text = self._read_text(source_state_path) if self._path_exists(source_state_path) else ""
+    checks.append(
+        _check(
+            "manifest_metadata_hash_matches_stage",
+            not metadata_text or manifest.metadata_hash in ("", _sha256_utf8(metadata_text)),
+            "manifest.metadata_hash does not match staged metadata.json",
+        )
+    )
+    checks.append(
+        _check(
+            "manifest_index_hash_matches_stage",
+            not chapter_index_text or manifest.chapter_index_hash in ("", _sha256_utf8(chapter_index_text)),
+            "manifest.chapter_index_hash does not match staged chapter_index.json",
+        )
+    )
+    checks.append(
+        _check(
+            "manifest_source_state_hash_matches_stage",
+            not source_state_text or manifest.source_state_hash in ("", _sha256_utf8(source_state_text)),
+            "manifest.source_state_hash does not match staged source_state.json",
+        )
+    )
+
+    seen_chapter_ids = set(manifest.chapter_ids or [])
+    if isinstance(chapter_index, list):
+        for entry in chapter_index:
+            if isinstance(entry, dict):
+                cid = entry.get("id") or entry.get("chapter_id")
+                if isinstance(cid, str) and cid:
+                    seen_chapter_ids.add(cid)
+    checks.append(
+        _check(
+            "manifest_chapter_ids_reconcile_with_files",
+            seen_chapter_ids.issuperset(set(manifest.chapter_ids or [])),
+            "manifest.chapter_ids include chapters that have no physical bundle",
+        )
+    )
+
+    is_valid = all(check.passed for check in checks)
+    return GenerationValidationResult(is_valid=is_valid, checks=checks)
+
+
 def commit_generation(
     self: Any,
     novel_id: str,
@@ -458,6 +729,7 @@ def commit_generation(
     removed_episode_ids: list[str] | None = None,
     reused_chapters: int = 0,
     failed_chapters: int = 0,
+    skip_validation: bool = False,
 ) -> GenerationManifest:
     """Finalize a staged generation and atomically activate it.
 
@@ -466,6 +738,11 @@ def commit_generation(
     can never observe a partially recorded snapshot as active. The manifest
     keeps the ``committed`` status after activation; the pointer itself is
     the active marker.
+
+    Section 4: run :func:`validate_generation_activation` before swapping
+    the active pointer so partial / corrupt / membership-incomplete
+    generations never become visible. Tests can pass ``skip_validation=True``
+    to inspect the failure surface without engaging the rollback path.
     """
     manifest = _load_manifest(self, novel_id, generation_id)
     if manifest is None:
@@ -475,8 +752,28 @@ def commit_generation(
         manifest.removed_episode_ids = sorted(set(removed_episode_ids))
     manifest.reused_chapters = reused_chapters
     manifest.failed_chapters = failed_chapters
-    manifest.status = "committed"
+    manifest.saved_chapters = max(
+        int(getattr(manifest, "saved_chapters", 0) or 0),
+        len(manifest.chapter_ids or []),
+    )
+    manifest.status = "staging"
     manifest.committed_at = manifest.committed_at or _utc_now_iso()
+
+    if not skip_validation:
+        result = validate_generation_activation(self, novel_id, generation_id)
+        if not result.is_valid:
+            failed_names = ", ".join(check.name for check in result.failed_checks())
+            logger.error(
+                "Generation %s for %s failed validation: %s",
+                generation_id,
+                novel_id,
+                failed_names,
+            )
+            raise RuntimeError(
+                f"Generation {generation_id} for {novel_id} failed pre-activation validation: {failed_names}"
+            )
+
+    manifest.status = "committed"
     manifest.activated_at = manifest.activated_at or manifest.committed_at
 
     # Manifest-last write: content + manifest are durable before activation.

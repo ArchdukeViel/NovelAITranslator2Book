@@ -1,3 +1,5 @@
+"""Storage-stage generation tests (DEBT-GEN-01, Section 4 pre-activation)."""
+
 from pathlib import Path
 
 import pytest
@@ -21,6 +23,27 @@ def test_generation_manifest_dataclass():
     assert m2.generation_id == "gen-1"
 
 
+def _stage_active_snapshot(storage: StorageService, generation_id: str) -> None:
+    """Stage metadata+chapter_index+source_state so Section 4 validation passes."""
+    storage.stage_generation_metadata(
+        "novel-1",
+        generation_id,
+        {"title": "T", "source_novel_id": "novel-1"},
+    )
+    storage.stage_generation_chapter_index(
+        "novel-1",
+        generation_id,
+        [{"id": "1", "chapter_id": "1", "title": "T", "url": "u"}],
+    )
+    storage.stage_generation_source_state("novel-1", generation_id, {"chapters": []})
+    storage.stage_generation_chapter(
+        "novel-1",
+        generation_id,
+        "1",
+        {"id": "1", "raw": {"text": "x"}},
+    )
+
+
 def test_create_and_record_staged_generation(storage: StorageService):
     manifest = storage.create_generation_stage("novel-1", "gen-100")
     assert manifest.status == "staging"
@@ -41,6 +64,7 @@ def test_create_and_record_staged_generation(storage: StorageService):
 def test_activate_generation_atomic_write(storage: StorageService):
     storage.create_generation_stage("novel-1", "gen-200")
     storage.record_staged_chapter("novel-1", "gen-200", "1", "v1", "hash1")
+    _stage_active_snapshot(storage, "gen-200")
 
     activated = storage.activate_generation("novel-1", "gen-200")
     assert activated.status == "committed"
@@ -65,8 +89,12 @@ def test_stage_snapshot_files_are_files_not_directories(storage: StorageService)
     # Each snapshot stage can be written repeatedly and must produce a file.
     for _ in range(2):
         storage.stage_generation_source_state("novel-1", "gen-300", {"chapters": []})
-        storage.stage_generation_chapter_index("novel-1", "gen-300", [])
-        storage.stage_generation_metadata("novel-1", "gen-300", {"title": "T"})
+        storage.stage_generation_chapter_index("novel-1", "gen-300", [{"id": "1"}])
+        storage.stage_generation_metadata(
+            "novel-1",
+            "gen-300",
+            {"title": "T", "source_novel_id": "novel-1"},
+        )
 
     assert (g_dir / "source_state.json").is_file()
     assert (g_dir / "chapter_index.json").is_file()
@@ -95,3 +123,46 @@ def test_stage_snapshot_files_are_files_not_directories(storage: StorageService)
     assert manifest.chapter_index_hash
     assert manifest.metadata_hash
     assert manifest.chapter_ids == ["1"]
+
+
+def test_pre_activation_validation_aborts_when_stage_incomplete(storage: StorageService):
+    """Sections 4 + 5: a stage missing ``metadata.json`` must not become active.
+
+    ``commit_generation`` runs the deterministic validation function and
+    raises before touching the active pointer when membership, identity, or
+    hash invariants fail. The previous active pointer remains untouched so
+    readers continue to see the legacy layout / previous generation.
+    """
+    storage.create_generation_stage("novel-1", "gen-empty")
+    storage.stage_generation_chapter_index("novel-1", "gen-empty", [{"id": "1"}])
+    storage.stage_generation_chapter(
+        "novel-1",
+        "gen-empty",
+        "1",
+        {"id": "1", "raw": {"text": "x"}},
+    )
+
+    with pytest.raises(RuntimeError):
+        storage.commit_generation("novel-1", "gen-empty")
+
+    assert storage.get_active_generation("novel-1") is None
+
+
+def test_skip_validation_bypasses_validation_for_recovery_paths(storage: StorageService):
+    """Operators can opt out of validation via ``skip_validation=True``.
+
+    Mirrors the rollback recovery path: the operator already inspected the
+    stage manually and accepts the partial / legacy shape, so the strict
+    default must yield to explicit consent.
+    """
+    storage.create_generation_stage("novel-1", "gen-recovery")
+    manifest = storage.commit_generation(
+        "novel-1",
+        "gen-recovery",
+        skip_validation=True,
+    )
+    assert manifest.status == "committed"
+    assert manifest.activated_at is not None
+    active = storage.get_active_generation("novel-1")
+    assert active is not None
+    assert active.generation_id == "gen-recovery"

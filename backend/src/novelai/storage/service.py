@@ -42,6 +42,8 @@ from novelai.storage.generations import (
     list_generations,
     load_generation_manifest,
     record_staged_chapter,
+    record_unavailable_chapter,
+    resolve_active_generation_id,
     rollback_generation,
     seed_generation_from_active,
     stage_generation_chapter,
@@ -49,6 +51,7 @@ from novelai.storage.generations import (
     stage_generation_image,
     stage_generation_metadata,
     stage_generation_source_state,
+    validate_generation_activation,
 )
 from novelai.storage.glossary import load_glossary, save_glossary
 from novelai.storage.jobs import (
@@ -612,6 +615,9 @@ class StorageService:
     stage_generation_source_state = stage_generation_source_state
     seed_generation_from_active = seed_generation_from_active
     commit_generation = commit_generation
+    validate_generation_activation = validate_generation_activation
+    resolve_active_generation_id = resolve_active_generation_id
+    record_unavailable_chapter = record_unavailable_chapter
     activate_generation = activate_generation
     rollback_generation = rollback_generation
     list_generations = list_generations
