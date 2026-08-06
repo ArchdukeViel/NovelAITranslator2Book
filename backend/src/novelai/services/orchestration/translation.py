@@ -115,11 +115,10 @@ def _update_db_translation_state(
 
     REQ-1.4: State must be updated before/after each pipeline stage.
 
-    Section 2: ``chapter_id`` is the stable logical identifier. Stable
-    numeric ids map to ``chapter_number``; non-numeric ids (e.g.
-    ``kakuyomu:<episode>``) require the small stable-id migration
-    (logical_chapter_id) before the DB row is reachable. Until that
-    migration is applied, the DB row is intentionally left alone.
+    Section 2: ``chapter_id`` is the stable logical identifier. The lookup
+    prefers ``logical_chapter_id`` (canonical stable key for both
+    numeric and Kakuyomu ids) and falls back to ``chapter_number`` for
+    legacy rows pre-dating the stable-id migration.
     """
     try:
         with session_scope() as session:
@@ -158,24 +157,28 @@ def _load_db_translation_state(novel_id: str, chapter_id: str) -> str:
 def _lookup_chapter_row(session: Any, novel_id: int, chapter_id: str) -> Any | None:
     """Resolve a Chapter row by stable id then by numeric fallback (Section 2).
 
-    The lookup prefers the optional ``logical_chapter_id`` column when the
-    stable-id migration has been applied; before the migration is in place
-    we fall back to ``chapter_number`` so legacy rows remain reachable.
-    ``getattr`` keeps the type checker happy until the model migration is
-    merged.
+    The lookup prefers the optional ``logical_chapter_id`` column when
+    the stable-id migration has been applied; before the migration is
+    in place we fall back to ``chapter_number`` so legacy rows remain
+    reachable.
     """
-    stable_attr = getattr(Chapter, "logical_chapter_id", None)
-    if stable_attr is not None:
-        try:
+    from sqlalchemy import inspect
+
+    try:
+        mapper = inspect(Chapter)
+        if "logical_chapter_id" in {col.key for col in mapper.columns}:
             stable = (
                 session.query(Chapter)
-                .filter(Chapter.novel_id == novel_id, stable_attr == str(chapter_id))
+                .filter(
+                    Chapter.novel_id == novel_id,
+                    Chapter.logical_chapter_id == str(chapter_id),
+                )
                 .one_or_none()
             )
             if stable is not None:
                 return stable
-        except Exception:
-            pass
+    except Exception:
+        pass
     if str(chapter_id).isdigit():
         return (
             session.query(Chapter)
