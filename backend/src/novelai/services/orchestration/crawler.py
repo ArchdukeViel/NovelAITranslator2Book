@@ -25,6 +25,7 @@ from novelai.sources.quality import (
     evaluate_chapter_quality,
     evaluate_metadata_quality,
 )
+from novelai.utils.chapter_selection import ResolvedChapterSelection, resolve_chapter_selection
 
 logger = logging.getLogger(__name__)
 
@@ -513,6 +514,11 @@ async def _scrape_chapters_impl(
 
     self.storage.update_onboarding_status(novel_id, "scraping_chapters", clear_error=True)
 
+    # Section 5: declare the stage up-front so the metadata, chapter index,
+    # source state and chapter bundles can all be staged into it before
+    # activation rolls the active pointer.
+    generation_id = f"gen-{uuid.uuid4().hex[:12]}"
+
     if mode == "full":
         meta = await source.fetch_metadata(novel_id)
         meta = _apply_metadata_quality_gate(meta, source_key=source_key, novel_id=novel_id)
@@ -526,6 +532,12 @@ async def _scrape_chapters_impl(
         meta.setdefault("input_adapter_key", "web")
         meta.setdefault("context_group_id", novel_id)
         meta = await _translate_and_mark_metadata(self, meta)
+        # Section 5: the legacy ``save_metadata`` write is kept only as a
+        # safety projection so other legacy callers still see something
+        # during the run. The authoritative metadata is staged into the
+        # generation snapshot below and the active pointer is the source of
+        # truth after activation; a partial stage is rolled back without
+        # touching the legacy file.
         self.storage.save_metadata(novel_id, meta)
         safely_refresh_catalog_projection_after_storage_write(
             novel_id,
@@ -539,10 +551,12 @@ async def _scrape_chapters_impl(
         if not meta:
             raise RuntimeError("Metadata not found; run scrape-metadata first.")
 
-    chapter_map = {int(c.get("num") or idx + 1): c for idx, c in enumerate(meta.get("chapters", []))}
-    selected_numbers = self._selected_chapter_numbers(meta, chapters)
-    selected_chapters_list = [chapter_map[num] for num in selected_numbers if num in chapter_map]
-    _total_chapters = len(selected_chapters_list)
+    # Section 2: resolve the selection to stable resolved records; non-numeric
+    # Kakuyomu ids, sequence-position selections, and full-crawl selections
+    # all flow through the same resolver.
+    resolved: list[ResolvedChapterSelection] = resolve_chapter_selection(meta, chapters)
+    selected_chapters_list = [record.metadata for record in resolved if isinstance(record.metadata, dict)]
+    _total_chapters = len(resolved)
     if progress_callback:
         progress_callback(f"Preparing to scrape {_total_chapters} chapter(s)…")
 
@@ -555,8 +569,7 @@ async def _scrape_chapters_impl(
     existing_source_state = self.storage.load_source_state(novel_id)
 
     existing_chapters_map = {
-        ch_id: (self.storage.load_chapter(novel_id, ch_id) or {})
-        for ch_id in [str(c.get("id") or c.get("num")) for c in selected_chapters_list]
+        record.chapter_id: (self.storage.load_chapter(novel_id, record.chapter_id) or {}) for record in resolved
     }
     crawl_plan = create_crawl_plan(
         novel_id,
@@ -571,7 +584,6 @@ async def _scrape_chapters_impl(
     # snapshot and become visible only after commit_generation swaps the
     # active_generation.json pointer (manifest written last). On any hard
     # failure the stage is rolled back and the previous active state stays.
-    generation_id = f"gen-{uuid.uuid4().hex[:12]}"
     self.storage.create_generation_stage(
         novel_id,
         generation_id,
@@ -583,16 +595,25 @@ async def _scrape_chapters_impl(
         index_fingerprint=str(meta.get("index_fingerprint") or ""),
     )
 
+    # Section 5: stage metadata+chapter_index+source_state up-front so the
+    # pre-activation validation can verify them even when the body loop
+    # fails before staging them itself. The final source state still
+    # re-runs ``update_source_state`` after the body loop and stages the
+    # authoritative copy, overwriting this provisional one.
+    self.storage.stage_generation_metadata(novel_id, generation_id, meta)
+    self.storage.stage_generation_chapter_index(novel_id, generation_id, meta.get("chapters", []))
+
     # Build stored chapter hash cache once before chapter loop to avoid O(n^2) disk re-scans
     cached_stored_hashes = _stored_chapter_hashes(self.storage, novel_id, exclude_chapter_id="")
 
-    # Seed the stage with bundles the planner marks reusable (not refetched),
-    # so the activated snapshot is complete (raw + translations + images).
-    seed_targets = [
-        str(ch.get("id") or ch.get("num"))
-        for ch in selected_chapters_list
-        if str(ch.get("source_episode_id") or ch.get("id") or ch.get("num")) in crawl_plan.reusable_episode_ids
-    ]
+    # Seed the stage with bundles for *every* selected chapter so the
+    # activated snapshot is always complete (raw + translations + images).
+    # Chapter bundles are copied from the previous active generation when one
+    # exists; a fresh fetch in the body loop replaces any updated bundle.
+    # Together with the body loop, this guarantees every chapter the index
+    # declares has either a bundle or an explicit unavailable record before
+    # activation, satisfying the Section 4 validation contract.
+    seed_targets = [record.chapter_id for record in resolved]
     if seed_targets:
         self.storage.seed_generation_from_active(novel_id, generation_id, seed_targets)
 
@@ -606,15 +627,13 @@ async def _scrape_chapters_impl(
     )
 
     try:
-        for _chapter_index, chapter_num in enumerate(selected_numbers):
+        for _chapter_index, record in enumerate(resolved):
             if cancellation_check is not None and cancellation_check():
                 raise asyncio.CancelledError(f"Scrape cancelled for {source_key}/{novel_id}")
-            chapter = chapter_map.get(chapter_num)
-            if not chapter:
-                continue
-
-            chapter_id = str(chapter.get("id") or chapter_num)
-            ep_id = str(chapter.get("source_episode_id") or chapter_id)
+            chapter = record.metadata if isinstance(record.metadata, dict) else {}
+            chapter_id = record.chapter_id
+            chapter_num = record.sequence_number
+            ep_id = record.source_episode_id or chapter_id
 
             # Operationalized Crawl Plan Check: skip HTTP fetch when planner marked chapter reusable!
             if (
@@ -846,6 +865,19 @@ async def _scrape_chapters_impl(
                 }
                 failures.append(failure)
                 failed += 1
+                # Section 3 contract: represent an acquisition failure
+                # explicitly as an unavailable record, not by omission.
+                # Carrying the previous chapter forward via
+                # ``seed_generation_from_active`` is the fallback path; an
+                # explicit ``unavailable`` marker wins when no prior bundle
+                # exists so Section 4 validation can succeed.
+                self.storage.record_unavailable_chapter(
+                    novel_id,
+                    generation_id,
+                    chapter_id,
+                    reason=error_message,
+                    error_category=failure["error_category"],
+                )
                 _emit(
                     STAGE_BODY_CRAWL,
                     "failed",
@@ -890,8 +922,10 @@ async def _scrape_chapters_impl(
         if mode == "full":
             self.storage.stage_generation_metadata(novel_id, generation_id, meta)
 
-        # Manifest is written with final counts before the active pointer swaps,
-        # so readers never observe a partially recorded snapshot as active.
+        # Section 4: validation must succeed before we swap the active pointer.
+        # We carry every chapter forward explicitly (seeding above + the
+        # bundle writes in the body loop) so the deterministic checks pass on
+        # the *complete* index even when some new chapter fetches failed.
         self.storage.commit_generation(
             novel_id,
             generation_id,

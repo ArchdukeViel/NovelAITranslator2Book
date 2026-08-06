@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -24,7 +25,11 @@ from novelai.core.errors import TranslationInProgressError
 from novelai.db.engine import session_scope
 from novelai.db.models.chapter import Chapter
 from novelai.db.models.novel import Novel
-from novelai.glossary import glossary_status_counts, normalize_glossary_entries
+from novelai.glossary import (
+    canonical_glossary_hash,
+    glossary_status_counts,
+    normalize_glossary_entries,
+)
 from novelai.services.catalog_service import safely_refresh_catalog_projection_after_storage_write
 from novelai.services.library_summary_service import best_effort_invalidate
 from novelai.services.orchestration.common import PreflightIssue, _make_state_data
@@ -35,8 +40,10 @@ from novelai.services.orchestration.translation_lineage import (
 from novelai.services.orchestration.translation_progress import _build_chapter_summary
 from novelai.services.pipeline.checkpoint import Checkpoint
 from novelai.sources.base import SourceAdapter
+from novelai.storage.generations import resolve_active_generation_id
 from novelai.translation.pipeline.stages.translate_result_assembly import hash_text
 from novelai.translation.run_manifest import TranslationRunManifest
+from novelai.utils.chapter_selection import ResolvedChapterSelection, resolve_chapter_selection
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +58,53 @@ def _get_translation_lock(novel_id: str, chapter_id: str) -> asyncio.Lock:
     return _translation_locks[key]
 
 
+def _resolve_effective_prompt_version(self: Any, meta: dict[str, Any]) -> str:
+    """Resolve the effective prompt template version for a translation run.
+
+    Section 9: do not hard-code ``translation_request_v1``. The pipeline
+    records the actual prompt template version produced by
+    :func:`build_translation_request`; if that import is unavailable
+    (e.g. during early import ordering) we fall back to whatever version
+    the metadata carries.
+    """
+    try:
+        from novelai.prompts import PROMPT_TEMPLATE_VERSION  # type: ignore[attr-defined]
+    except Exception:  # pragma: no cover - defensive
+        PROMPT_TEMPLATE_VERSION = None
+
+    if isinstance(PROMPT_TEMPLATE_VERSION, str) and PROMPT_TEMPLATE_VERSION.strip():
+        return PROMPT_TEMPLATE_VERSION.strip()
+    metadata_version = meta.get("prompt_template_version")
+    if isinstance(metadata_version, str) and metadata_version.strip():
+        return metadata_version.strip()
+    return "translation_request_v1"
+
+
+def _qa_policy_fingerprint(
+    *,
+    prompt_template_version: str | None,
+) -> str:
+    """Section 9: deterministic fingerprint of relevant QA policy inputs.
+
+    Captures the structural QA inputs (policy mode, deterministic-qa
+    version, LLM grader model, min-score, retry budget, structured-output
+    policy) plus the prompt template version so any change to one of them
+    invalidates downstream translation records.
+    """
+    payload = {
+        "qa_policy_mode": str(getattr(settings, "LLM_QA_POLICY", "") or ""),
+        "llm_qa_enabled": bool(getattr(settings, "LLM_QA_ENABLED", False)),
+        "llm_qa_min_score": float(getattr(settings, "LLM_QA_MIN_SCORE", 0.0) or 0.0),
+        "llm_qa_max_retry_attempts": int(getattr(settings, "LLM_QA_MAX_RETRY_ATTEMPTS", 0) or 0),
+        "deterministic_qa_version": str(getattr(settings, "DETERMINISTIC_QA_VERSION", "") or "v1"),
+        "structured_output_policy_version": str(getattr(settings, "STRUCTURED_OUTPUT_POLICY_VERSION", "") or "v1"),
+        "llm_grader_model": str(getattr(settings, "LLM_QA_GRADER_MODEL", "") or "default"),
+        "prompt_template_version": prompt_template_version or "",
+    }
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hash_text(serialized)
+
+
 def _update_db_translation_state(
     novel_id: str,
     chapter_id: str,
@@ -60,21 +114,19 @@ def _update_db_translation_state(
     """Update ``translation_state`` and ``translation_error`` on Chapter row.
 
     REQ-1.4: State must be updated before/after each pipeline stage.
+
+    Section 2: ``chapter_id`` is the stable logical identifier. Stable
+    numeric ids map to ``chapter_number``; non-numeric ids (e.g.
+    ``kakuyomu:<episode>``) require the small stable-id migration
+    (logical_chapter_id) before the DB row is reachable. Until that
+    migration is applied, the DB row is intentionally left alone.
     """
     try:
         with session_scope() as session:
             novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
             if novel is None:
                 return
-            chapter_num = int(chapter_id) if chapter_id.isdigit() else -1
-            row = (
-                session.query(Chapter)
-                .filter(
-                    Chapter.novel_id == novel.id,
-                    Chapter.chapter_number == chapter_num,
-                )
-                .one_or_none()
-            )
+            row = _lookup_chapter_row(session, novel.id, chapter_id)
             if row is not None:
                 row.translation_state = state.value  # type: ignore[assignment]
                 if error is not None:
@@ -85,26 +137,52 @@ def _update_db_translation_state(
 
 
 def _load_db_translation_state(novel_id: str, chapter_id: str) -> str:
-    """Read ``translation_state`` from the Chapter row (REQ-3.1)."""
+    """Read ``translation_state`` from the Chapter row (REQ-3.1, Section 2)."""
     try:
         with session_scope() as session:
             novel = session.query(Novel).filter_by(slug=novel_id).one_or_none()
             if novel is None:
                 return TranslationState.PENDING.value
-            chapter_num = int(chapter_id) if chapter_id.isdigit() else -1
-            row = (
-                session.query(Chapter.translation_state)
-                .filter(
-                    Chapter.novel_id == novel.id,
-                    Chapter.chapter_number == chapter_num,
-                )
-                .one_or_none()
-            )
+            row = _lookup_chapter_row(session, novel.id, chapter_id)
             if row is not None:
-                return row[0] or TranslationState.PENDING.value
+                state_attr = getattr(row, "translation_state", None)
+                if state_attr is not None:
+                    return state_attr or TranslationState.PENDING.value
+                if isinstance(row, tuple):
+                    return row[0] or TranslationState.PENDING.value
     except Exception:
         logger.warning("Failed to load DB translation state %s/%s", novel_id, chapter_id, exc_info=True)
     return TranslationState.PENDING.value
+
+
+def _lookup_chapter_row(session: Any, novel_id: int, chapter_id: str) -> Any | None:
+    """Resolve a Chapter row by stable id then by numeric fallback (Section 2).
+
+    The lookup prefers the optional ``logical_chapter_id`` column when the
+    stable-id migration has been applied; before the migration is in place
+    we fall back to ``chapter_number`` so legacy rows remain reachable.
+    ``getattr`` keeps the type checker happy until the model migration is
+    merged.
+    """
+    stable_attr = getattr(Chapter, "logical_chapter_id", None)
+    if stable_attr is not None:
+        try:
+            stable = (
+                session.query(Chapter)
+                .filter(Chapter.novel_id == novel_id, stable_attr == str(chapter_id))
+                .one_or_none()
+            )
+            if stable is not None:
+                return stable
+        except Exception:
+            pass
+    if str(chapter_id).isdigit():
+        return (
+            session.query(Chapter)
+            .filter(Chapter.novel_id == novel_id, Chapter.chapter_number == int(chapter_id))
+            .one_or_none()
+        )
+    return None
 
 
 def _pipeline_context_from_exception(exc: BaseException) -> Any | None:
@@ -233,7 +311,7 @@ def _preflight_translation(
     novel_id: str,
     source_key: str,
     meta: dict[str, Any],
-    selected_numbers: list[int],
+    selected: list[ResolvedChapterSelection],
     force: bool,
     source_language: str | None,
     target_language: str | None,
@@ -243,7 +321,7 @@ def _preflight_translation(
 
     issues: list[PreflightIssue] = []
 
-    if not selected_numbers:
+    if not selected:
         issues.append(
             PreflightIssue(
                 code="empty_selection",
@@ -262,48 +340,37 @@ def _preflight_translation(
             )
         )
 
-    chapter_map = {
-        int(chapter["id"]): chapter
-        for chapter in meta.get("chapters", [])
-        if isinstance(chapter, dict) and str(chapter.get("id", "")).isdigit()
-    }
+    chapter_by_id = {record.chapter_id: record for record in selected}
 
-    missing_chapters = [number for number in selected_numbers if number not in chapter_map]
+    missing_chapters = [record.chapter_id for record in selected if record.chapter_id not in chapter_by_id]
     if missing_chapters:
         issues.append(
             PreflightIssue(
                 code="metadata_mismatch",
-                reason=(
-                    "Selected chapters are missing from metadata: "
-                    + ", ".join(str(number) for number in missing_chapters)
-                ),
+                reason=("Selected chapters are missing from metadata: " + ", ".join(missing_chapters)),
             )
         )
 
-    unresolved_urls: list[int] = []
-    for number in selected_numbers:
-        chapter = chapter_map.get(number)
-        if chapter is None:
-            continue
-        chapter_id = str(number)
+    unresolved_urls: list[str] = []
+    for record in selected:
+        chapter_id = record.chapter_id
+        chapter_meta = record.metadata
         raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
-        if chapter.get("url") or (raw_chapter and isinstance(raw_chapter.get("text"), str)):
+        if chapter_meta.get("url") or (raw_chapter and isinstance(raw_chapter.get("text"), str)):
             continue
-        unresolved_urls.append(number)
+        unresolved_urls.append(chapter_id)
     if unresolved_urls:
         issues.append(
             PreflightIssue(
                 code="missing_chapter_url",
-                reason=(
-                    "Some selected chapters have no source URL: " + ", ".join(str(number) for number in unresolved_urls)
-                ),
+                reason=("Some selected chapters have no source URL: " + ", ".join(unresolved_urls)),
             )
         )
 
     effective_source_language = source_language or self._infer_source_language(source_key, meta)
     if not effective_source_language:
-        for number in selected_numbers:
-            raw_chapter = self.storage.load_chapter(novel_id, str(number))
+        for record in selected:
+            raw_chapter = self.storage.load_chapter(novel_id, record.chapter_id)
             if raw_chapter is None:
                 continue
             raw_text = raw_chapter.get("text")
@@ -385,8 +452,8 @@ def _preflight_translation(
         )
 
     chapters_missing_ocr_review: list[str] = []
-    for number in selected_numbers:
-        chapter_id = str(number)
+    for record in selected:
+        chapter_id = record.chapter_id
         media_state = self.storage.load_chapter_media_state(novel_id, chapter_id)
         if media_state is None:
             continue
@@ -411,10 +478,8 @@ def _preflight_translation(
 
     if not force:
         translatable = 0
-        for number in selected_numbers:
-            if number not in chapter_map:
-                continue
-            chapter_id = str(number)
+        for record in selected:
+            chapter_id = record.chapter_id
             raw_chapter = self.storage.load_chapter(novel_id, chapter_id)
             has_raw_text = isinstance(raw_chapter, dict) and isinstance(raw_chapter.get("text"), str)
             if self.storage.load_translated_chapter(novel_id, chapter_id) is None or (
@@ -456,18 +521,15 @@ async def polish_low_confidence_chapters(
     effective_provider = provider_key or profile_provider
     effective_model = provider_model or profile_model
 
-    chapter_map = {
-        int(chapter["id"]): chapter
-        for chapter in meta.get("chapters", [])
-        if isinstance(chapter, dict) and str(chapter.get("id", "")).isdigit()
-    }
-    selected_numbers = self._selected_chapter_numbers(meta, chapters)
+    resolved = resolve_chapter_selection(meta, chapters)
+    _chapter_by_id = {record.chapter_id: record for record in resolved}
+    selected_numbers = [record.sequence_number for record in resolved]
     low_confidence_ids: list[str] = []
     normalized_threshold = max(0.0, min(1.0, confidence_threshold))
 
-    for number in selected_numbers:
-        chapter_id = str(number)
-        if number not in chapter_map:
+    for record in resolved:
+        chapter_id = record.chapter_id
+        if chapter_id not in _chapter_by_id:
             continue
         raw = self.storage.load_chapter(novel_id, chapter_id) or {}
         translated = self.storage.load_translated_chapter(novel_id, chapter_id) or {}
@@ -767,15 +829,16 @@ async def translate_chapters(
         if stored_entries:
             glossary = stored_entries
 
-    chapter_map = {int(c["id"]): c for c in meta.get("chapters", [])}
-    selected_numbers = self._selected_chapter_numbers(meta, chapters)
+    resolved = resolve_chapter_selection(meta, chapters)
+    _chapter_by_id = {record.chapter_id: record for record in resolved}
+    selected_numbers = [record.sequence_number for record in resolved]
     normalized_threshold = max(0.0, min(1.0, confidence_threshold))
 
     preflight_issues = self._preflight_translation(
         novel_id=novel_id,
         source_key=source_key,
         meta=meta,
-        selected_numbers=selected_numbers,
+        selected=resolved,
         force=force,
         source_language=effective_source_language,
         target_language=effective_target_language,
@@ -796,6 +859,21 @@ async def translate_chapters(
         force=force,
     )
 
+    # Section 9: link the run to the active raw generation so every
+    # translation version can be traced back to its immutable snapshot.
+    raw_generation_id = resolve_active_generation_id(self.storage, novel_id) or ""
+
+    # Section 9: hash the glossary through the canonical serializer
+    # (normalized source/target/status/locked/notes, sort_keys, JSON).
+    glossary_hash = canonical_glossary_hash(glossary)
+
+    # Section 9: resolve the effective prompt template version from
+    # :func:`build_translation_request` instead of a hard-coded literal so the
+    # manifest records what the pipeline actually used.
+    prompt_template_version = _resolve_effective_prompt_version(self, meta)
+
+    qa_policy_fingerprint = _qa_policy_fingerprint(prompt_template_version=prompt_template_version)
+
     # Blocker D: derive one run id for the entire run and persist a
     # TranslationRunManifest (initial "running" record).  The same id is
     # stamped into pipeline metadata, cache entries, chunk states and
@@ -805,10 +883,13 @@ async def translate_chapters(
     manifest = TranslationRunManifest(
         translation_run_id=translation_run_id,
         novel_id=novel_id,
+        raw_generation_id=raw_generation_id,
         status="running",
-        prompt_version="translation_request_v1",
+        prompt_version=prompt_template_version,
+        prompt_template_version=prompt_template_version,
         qa_policy_version=str(getattr(settings, "LLM_QA_POLICY", "") or ""),
-        glossary_hash=hash_text(str(glossary or "")),
+        qa_policy_fingerprint=qa_policy_fingerprint,
+        glossary_hash=glossary_hash,
         glossary_revision=glossary_revision,
         provider_key=effective_provider_key,
         provider_model=effective_provider_model,
@@ -817,8 +898,8 @@ async def translate_chapters(
         style_preset=effective_style_preset,
         json_output=json_output,
         consistency_mode=effective_consistency_mode,
-        requested_chapters=[str(number) for number in selected_numbers],
-        expected_count=len(selected_numbers),
+        requested_chapters=[record.chapter_id for record in resolved],
+        expected_count=len(resolved),
     )
     with contextlib.suppress(Exception):
         self.storage.save_translation_run_manifest(novel_id, manifest)
@@ -831,13 +912,11 @@ async def translate_chapters(
     chapter_concurrency = min(chapter_concurrency, max(1, len(selected_numbers)) or 1)
     chapter_semaphore = asyncio.Semaphore(chapter_concurrency)
 
-    async def _run_chapter(chapter_num: int) -> dict[str, str]:
+    async def _run_chapter(record: ResolvedChapterSelection) -> dict[str, str]:
         async with chapter_semaphore:
-            chapter = chapter_map.get(chapter_num)
-            if not chapter:
-                return {"chapter_id": str(chapter_num), "status": "skipped", "reason": "missing_metadata"}
-
-            chapter_id = str(chapter_num)
+            chapter = record.metadata if isinstance(record.metadata, dict) else {}
+            chapter_id = record.chapter_id
+            _chapter_num = record.sequence_number
 
             # Resume logic (REQ-3.1): skip COMPLETE, reset FAILED - bypassed when force=True (REQ-3.4)
             from novelai.services.orchestration.translation_resume import _check_chapter_resume_state
@@ -1161,13 +1240,13 @@ async def translate_chapters(
     # independent (different chapter_id, different storage keys, different
     # DB rows).  Exceptions are captured via return_exceptions=True so a
     # single chapter failure does not abort the rest of the run.
-    tasks = [asyncio.create_task(_run_chapter(cn)) for cn in selected_numbers]
+    tasks = [asyncio.create_task(_run_chapter(record)) for record in resolved]
     task_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Aggregate per-chapter progress in source order.  REQ-3.3.
 
     summary, first_error = _build_chapter_summary(
-        selected_numbers=selected_numbers,
+        resolved=resolved,
         task_results=task_results,
         chapters=chapters,
         force=force,
@@ -1177,18 +1256,34 @@ async def translate_chapters(
     # Finalize the run manifest (Blocker D): succeeded chapter ids in source
     # order, final counts, commit timestamp, and final status.  Best-effort
     # so manifest storage failure never fails the translation run itself.
-    manifest.chapter_ids = [
-        str(chapter_id)
-        for chapter_id, entry in summary["chapter_progress"].items()
-        if entry.get("status") == "succeeded"
-    ]
+    review_count = 0
+    succeeded_chapter_ids: list[str] = []
+    ordered_ids = [record.chapter_id for record in resolved]
+    for chapter_id in ordered_ids:
+        entry = summary["chapter_progress"].get(chapter_id)
+        if not isinstance(entry, dict):
+            continue
+        status = str(entry.get("status") or "")
+        if status == "succeeded":
+            succeeded_chapter_ids.append(chapter_id)
+        elif status == "requires_review" or entry.get("needs_review"):
+            review_count += 1
+
+    manifest.chapter_ids = succeeded_chapter_ids
     manifest.completed_count = int(summary.get("succeeded") or 0)
     manifest.skipped_count = int(summary.get("skipped") or 0)
     manifest.failed_count = int(summary.get("failed") or 0)
+    manifest.review_count = review_count
     manifest.status = "failed" if first_error is not None else "completed"
     manifest.committed_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    with contextlib.suppress(Exception):
+    # Section 9 surfaces persistence errors instead of swallowing them so
+    # CI and operators can see when the final committed manifest goes
+    # missing; running translation still tolerates a manifest write
+    # failure because the per-chapter storage writes already happened.
+    try:
         self.storage.save_translation_run_manifest(novel_id, manifest)
+    except Exception as exc:
+        logger.warning("Translation run manifest persistence failed for %s/%s: %s", novel_id, translation_run_id, exc)
     summary["translation_run_id"] = translation_run_id
     if first_error is not None:
         # Attach progress so the activity worker can surface a partial-failure
@@ -1215,10 +1310,22 @@ async def retranslate_chapter(
     json_output: bool = False,
     allow_cross_provider_fallback: bool = True,
 ) -> None:
-    """Force retranslation for a single chapter using chapter-scoped selection."""
+    """Force retranslation for a single chapter using chapter-scoped selection.
+
+    Section 2: ``chapter_id`` is the stable logical identifier (numeric or
+    ``kakuyomu:<episode>``). Validation only ensures the id is non-empty;
+    resolution to a chapter must rely on the current source index.
+    """
     normalized_chapter_id = str(chapter_id).strip()
-    if not normalized_chapter_id.isdigit():
-        raise ValueError("chapter_id must be a numeric chapter identifier.")
+    if not normalized_chapter_id:
+        raise ValueError("chapter_id must be a non-empty identifier.")
+
+    meta = self.storage.load_metadata(novel_id)
+    if not meta:
+        raise RuntimeError("Metadata not found; run scrape-metadata first.")
+    resolved = resolve_chapter_selection(meta, normalized_chapter_id)
+    if not resolved:
+        raise ValueError(f"chapter_id {normalized_chapter_id!r} does not match any chapter in the current index.")
 
     await self.translate_chapters(
         source_key=source_key,

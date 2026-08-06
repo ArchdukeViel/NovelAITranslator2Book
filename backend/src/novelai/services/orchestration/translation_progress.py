@@ -10,17 +10,22 @@ from __future__ import annotations
 from typing import Any
 
 from novelai.translation.scheduler import build_scheduler_summary, collect_scheduler_decisions
+from novelai.utils.chapter_selection import ResolvedChapterSelection
 
 
 def _build_chapter_summary(
     *,
-    selected_numbers: list[int],
+    resolved: list[ResolvedChapterSelection],
     task_results: list[Any],
     chapters: str,
     force: bool,
     target_language: str,
 ) -> tuple[dict[str, Any], BaseException | None]:
     """Aggregate per-chapter progress in source order. REQ-3.3.
+
+    Section 2: the progress dict is keyed by stable chapter_id, never by
+    sequence position, so a reorder or re-mapping can never be confused
+    with a failed translation.
 
     Returns ``(summary, first_error)``. The caller should attach
     ``chapter_progress`` and ``chapter_summary`` to ``first_error`` before
@@ -31,8 +36,8 @@ def _build_chapter_summary(
     failed_count = 0
     skipped_count = 0
     first_error: BaseException | None = None
-    for cn, result in zip(selected_numbers, task_results, strict=False):
-        chapter_id = str(cn)
+    for record, result in zip(resolved, task_results, strict=False):
+        chapter_id = record.chapter_id
         if isinstance(result, BaseException):
             chapter_progress[chapter_id] = {"status": "failed", "error": str(result)[:512]}
             failed_count += 1
@@ -64,7 +69,7 @@ def _build_chapter_summary(
         "succeeded": succeeded_count,
         "failed": failed_count,
         "skipped": skipped_count,
-        "total": len(selected_numbers),
+        "total": len(resolved),
         "scheduler_summary": build_scheduler_summary(collect_scheduler_decisions()),
     }
     return summary, first_error
