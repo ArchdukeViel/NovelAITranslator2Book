@@ -309,8 +309,8 @@ def extract_candidate_glossary_terms(
             ).normalized()
         )
 
-        ranked_terms.sort(key=lambda item: (-item.occurrence_count, item.source.casefold(), item.source))
-        return ranked_terms[:max_terms]
+    ranked_terms.sort(key=lambda item: (-item.occurrence_count, item.source.casefold(), item.source))
+    return ranked_terms[:max_terms]
 
 
 def canonical_glossary_hash(entries: Any) -> str:
