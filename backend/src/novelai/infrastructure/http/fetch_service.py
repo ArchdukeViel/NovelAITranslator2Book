@@ -39,10 +39,29 @@ _CROSS_ORIGIN_STRIPPED_HEADERS = frozenset(
 )
 
 
-def _origin(url: str) -> tuple[str, str]:
-    """Return the (scheme, hostname) origin tuple for an HTTP URL."""
+def _origin(url: str) -> tuple[str, str, int]:
+    """Return the (scheme, hostname, effective-port) origin tuple for an HTTP URL.
+
+    Section 11: an effective port different from the scheme default counts
+    as a cross-origin boundary. Default ports are 80 for http and 443 for
+    https; any other port is its own origin even when the host matches.
+    """
     parsed = urlparse(url)
-    return parsed.scheme.lower(), (parsed.hostname or "").lower()
+    scheme = parsed.scheme.lower()
+    hostname = (parsed.hostname or "").lower()
+    port = parsed.port
+    if port is None:
+        port = 443 if scheme == "https" else 80
+    return scheme, hostname, int(port)
+
+
+# Section 11: the legacy 2-tuple form remains exported so callers that don't
+# care about effective port still match on scheme/hostname only. New code
+# should use the 3-tuple ``_origin`` directly.
+def _origin_no_port(url: str) -> tuple[str, str]:
+    """Backwards-compatible origin tuple (scheme, hostname)."""
+    scheme, hostname, _ = _origin(url)
+    return scheme, hostname
 
 
 def _strip_origin_sensitive_headers(headers: dict[str, str]) -> dict[str, str]:
@@ -314,29 +333,42 @@ class FetchService:
         max_redirects = settings.HTTP_MAX_REDIRECTS
         current_origin = _origin(current)
         current_headers = dict(headers)
+        # Section 11: cookies that look like an httpx real cookie jar
+        # (``httpx.Cookies`` or a ``RequestsCookieJar``-shaped object) keep
+        # domain/path semantics and are forwarded across hops. Dict-style
+        # cookies (which lack domain context) only apply to the first hop
+        # because we cannot safely reconstruct their scope across origins.
+        cookies_is_jar = isinstance(cookies, httpx.Cookies) or hasattr(cookies, "get")
+        current_cookies = cookies
 
         for _ in range(max_redirects + 1):
             # Per-hop throttle accounting.
             await self._throttle.before_request(current)
-            async with client.stream("GET", current, headers=current_headers, cookies=cookies) as response:
+            async with client.stream("GET", current, headers=current_headers, cookies=current_cookies) as response:
                 if response.status_code in _REDIRECT_STATUSES:
                     location = response.headers.get("location")
                     if not location or not location.strip():
+                        await self._throttle.after_response(current, response.status_code)
                         raise SourceError(f"Redirect response from {current} without Location header.")
                     next_url = urljoin(current, location.strip())
                     # Validate before requesting the destination (SSRF).
                     validate_safe_url(next_url)
                     if next_url in visited:
+                        await self._throttle.after_response(current, response.status_code)
                         raise SourceError(f"Redirect loop detected at {next_url}.")
                     next_origin = _origin(next_url)
                     # Rebuild per-hop headers so we can strip credentials /
                     # validators when the origin changes.
-                    if next_origin != current_origin:
+                    origin_changed = next_origin != current_origin
+                    if origin_changed:
                         current_headers = _strip_origin_sensitive_headers(headers)
                         # Referer is origin-specific too: pointing the new
                         # host at the original URL would leak the previous
                         # origin to the redirect target.  Drop it.
                         current_headers.pop("Referer", None)
+                        # Dict-cookies do not survive a cross-origin hop.
+                        if not cookies_is_jar:
+                            current_cookies = None
                     else:
                         # Same-origin redirect: keep the caller's headers
                         # and set Referer to the URL we're coming FROM.
@@ -345,6 +377,9 @@ class FetchService:
                     visited.add(next_url)
                     current = next_url
                     current_origin = next_origin
+                    # Per-hop throttle accounting for the redirect itself:
+                    # attribute the response to the host that returned it.
+                    await self._throttle.after_response(next_url, 0)
                     continue
                 body = await self._read_body_limited(response, current, kind)
                 if response.status_code != 304:
