@@ -66,11 +66,37 @@ def save_chapter_image_asset(
 
 
 def resolve_asset_path(self: Any, novel_id: str, local_path: str | None) -> Path | None:
+    """Resolve a logical asset ``local_path`` to an on-disk ``Path``.
+
+    Looks first under the active generation's ``assets/images/...`` layout,
+    then falls back to the legacy novel-root layout for novels that have not
+    yet been migrated to a generation snapshot. Returns ``None`` when the
+    path is empty or unsafe.
+
+    The ``local_path`` may contain percent-escapes from the chapter-identity
+    codec (e.g. ``kakuyomu%3A...``); ``safe_child_path`` keeps those intact
+    while still rejecting path traversal.
+    """
     if not isinstance(local_path, str) or not local_path.strip():
         return None
-    # Stored local_path values may contain percent-escapes from the physical
-    # chapter-id codec (e.g. ``kakuyomu%3A...``), so skip the unquote step;
-    # the containment check still rejects traversal.
+
+    # First, try the active generation: the staged ``assets/`` tree mirrors
+    # the logical local_path exactly (Section 2 contract).
+    try:
+        active_manifest = self.get_active_generation(novel_id)
+    except Exception:
+        active_manifest = None
+    if active_manifest is not None and getattr(active_manifest, "generation_id", None):
+        gen_path = safe_child_path(
+            self._generations_dir(novel_id) / str(active_manifest.generation_id),
+            local_path,
+            unquote=False,
+        )
+        if gen_path is not None and self._path_exists(gen_path):
+            return gen_path
+
+    # Legacy fallback: novels without an active generation still store
+    # assets directly under the novel directory.
     return safe_child_path(self._novel_dir(novel_id), local_path, unquote=False)
 
 

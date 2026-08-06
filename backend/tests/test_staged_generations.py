@@ -83,7 +83,11 @@ def test_stage_snapshot_files_are_files_not_directories(storage: StorageService)
         content=b"\x89PNG",
         source_url="https://example.test/img.png",
     )
-    assert (storage.base_dir / "novels" / "novel-1" / stored["local_path"]).is_file()
+    # The logical local_path is generation-agnostic.  After activation the
+    # reader API can resolve it through the active generation layout.
+    storage.commit_generation("novel-1", "gen-300")
+    resolved = storage.resolve_asset_path("novel-1", stored["local_path"])
+    assert resolved is not None and resolved.is_file()
 
     manifest = storage.load_generation_manifest("novel-1", "gen-300")
     assert manifest is not None

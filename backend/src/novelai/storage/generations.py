@@ -326,14 +326,38 @@ def stage_generation_image(
     source_url: str | None = None,
     content_type: str | None = None,
 ) -> dict[str, Any]:
-    """Stage one chapter image asset into a generation snapshot."""
+    """Stage one chapter image asset into a generation snapshot.
+
+    Asset layout inside the generation directory is::
+
+        generations/<generation_id>/
+            assets/
+                images/
+                    <encoded_chapter_stem>/
+                        0000.jpg
+
+    The asset directory uses the chapter's encoded physical stem — never the
+    chapter bundle filename ``<stem>.json`` — so the directory tree stays
+    independent of any ``.json`` suffix and remains Windows-safe for stable
+    ids such as ``kakuyomu%3A<episode_id>``.
+
+    The returned ``local_path`` is the logical, generation-agnostic form
+    (``assets/images/<encoded_stem>/<filename>``); readers resolve it against
+    the active generation via :func:`resolve_asset_path`.
+    """
+    # Late import: the chapter-identity codec is the canonical source of
+    # physical stems and lives in core.security; storage imports are kept
+    # minimal here.
+    from novelai.core.security import encode_physical_stem, validate_storage_identifier
+
     suffix = self._guess_asset_suffix(source_url, content_type)
     filename = f"{image_index:04d}{suffix}"
-    physical = _physical_chapter_filename(self, chapter_id)
-    path = _stage_dir(self, novel_id, generation_id, "images", physical) / filename
+    safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
+    encoded_stem = encode_physical_stem(safe_chapter_id)
+    path = _stage_dir(self, novel_id, generation_id, "assets", "images", encoded_stem) / filename
     self._backend.save(self._rel(path), content)
     return {
-        "local_path": path.relative_to(self._novel_dir(novel_id)).as_posix(),
+        "local_path": f"assets/images/{encoded_stem}/{filename}",
         "content_type": content_type,
         "size_bytes": len(content),
         "sha256": hashlib.sha256(content).hexdigest(),
