@@ -23,9 +23,28 @@ Do not preload every document. Load canonical detail only when relevant:
 | Admin page design | `docs/design/admin/...` |
 | Shared design, system & accessibility rules | `docs/DESIGN.md` |
 | Configuration | `docs/CONFIGURATION.md` |
-| CI, deployment, or operator procedure | `docs/DEPLOYMENT.md` |
+| CI or deployment procedure | `docs/DEPLOYMENT.md` |
+| Operator runbook, health, or backup procedure | `docs/OPERATIONS.md` |
+| Translation quality policy & prompt lifecycle | `docs/TRANSLATION.md` |
 | Unfinished work | `docs/WORK.md` |
 | Completed evidence | `docs/HISTORY.md` |
+
+## Project Venv
+
+The project virtualenv at `.venv/` is the canonical interpreter. Python
+version: ≥ 3.13. PATH-precedence mistakes cannot poison results when the
+wrapper resolves to `.venv\Scripts\python.exe` explicitly. Always invoke
+backend tooling through the wrappers in `tools/`:
+
+- `tools/pytest.ps1` — runs the backend test suite.
+- `tools/pyright.ps1` — runs pyright.
+- `tools/ruff.ps1` — runs ruff check / format.
+
+Each script refuses to run when `.venv\Scripts\python.exe` is missing.
+The CI workflow installs `.[documents,gemini,dev,db,worker,s3,auth]`
+into the venv before invoking tooling. Bare `python` / `pytest` /
+`ruff` / `pyright` invocations outside the wrappers fall through to
+the system interpreter and lose the venv pinning.
 
 ## Verification
 
@@ -33,16 +52,19 @@ Run smallest check proving changed behavior, from repository root unless command
 
 | Command | Purpose |
 | --- | --- |
-| `python -m ruff check .` | Backend lint; do not fix unrelated pre-existing errors. |
-| `python -m pyright` | Backend type checking for `backend/src` and `backend/tests`. |
-| `python -m pytest backend/tests/test_<name>.py` | Focused backend test file. |
-| `python -m pytest backend/tests/e2e/` | Backend E2E tests; slower and fixture-dependent. |
+| `tools/ruff.ps1 check .` | Backend lint; do not fix unrelated pre-existing errors. |
+| `tools/pyright.ps1` | Backend type checking for `backend/src` and `backend/tests`. |
+| `tools/pytest.ps1 backend/tests/test_<name>.py` | Focused backend test file. |
+| `tools/pytest.ps1 backend/tests/e2e/` | Backend E2E tests; slower and fixture-dependent. |
 | `cd frontend; npm run typecheck` | Frontend TypeScript check. |
 | `cd frontend; npm run test` | Frontend Vitest suite. |
 | `cd frontend; npm run lint` | Frontend ESLint. |
 | `cd frontend; npx vitest run <file>` | Focused frontend test file(s). |
 | `cd frontend; npm run build` | Production frontend build. |
-| `cd backend; alembic -c alembic.ini upgrade head` | Apply migrations; requires `DATABASE_URL`. |
+| `alembic -c alembic.ini upgrade head` | Apply migrations from repository root; requires `DATABASE_URL`. |
+
+The `tools/*.ps1` wrappers resolve to `.venv\Scripts\python.exe`
+automatically; see *Project Venv* above.
 
 Router-layer guard must return no matches:
 
@@ -61,7 +83,8 @@ rg -n "^from novelai\.(db\.models|storage\.service|sources\.)" backend/src/novel
 After every edit, including documentation edits, run:
 
 ```powershell
-graphify update . --no-cluster
+tools/pyright.ps1   # only when Python source changed
+& uv run python -m graphify update . --no-cluster   # always
 ```
 
 Record raw validation command, timeout when relevant, exit code, result count, and exact paths. Never claim a check passed unless run successfully.
@@ -223,7 +246,7 @@ Full architecture and operator detail belongs in canonical docs. Preserve these 
 When `.codegraph/` exists, use CodeGraph before broad file searches for current source questions. It locates symbols, current source, callers/callees, dynamic dispatch, blast radius, and affected tests:
 
 ```powershell
-codegraph explore "<symbol names or question>"
+python -m codegraph explore "<symbol names or question>"
 ```
 
 After results, read only decisive source locations. CodeGraph does not replace source verification, diff inspection, lint, type checks, migrations, tests, builds, or runtime checks. Do not initialize or edit `.codegraph/` during ordinary tasks.
@@ -233,14 +256,14 @@ After results, read only decisive source locations. CodeGraph does not replace s
 Graphify covers architecture, docs, config, SQL, storage, specifications, and cross-artifact context. Prefer scoped commands:
 
 ```powershell
-graphify query "<question>"
-graphify path "<A>" "<B>"
-graphify explain "<concept>"
+python -m graphify query "<question>"
+python -m graphify path "<A>" "<B>"
+python -m graphify explain "<concept>"
 ```
 
 Use `graphify-out/wiki/index.md` for broad navigation when present. Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review or when scoped queries are insufficient. Do not use CodeGraph and Graphify for the same question unless first leaves a documented gap.
 
-`graphify check-update .` checks only pending non-code semantic extraction; silence does not prove source freshness. Run `graphify update . --no-cluster` after every edit, including docs. Never run semantic extraction, clustering, or labeling without explicit approval and budget controls. Do not edit generated `.codegraph/` contents.
+`python -m graphify check-update .` checks only pending non-code semantic extraction; silence does not prove source freshness. Run `python -m graphify update . --no-cluster` after every edit, including docs. Never run semantic extraction, clustering, or labeling without explicit approval and budget controls. Do not edit generated `.codegraph/` contents.
 
 ## Windows and GitHub
 
