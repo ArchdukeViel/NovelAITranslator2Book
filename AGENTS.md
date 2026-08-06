@@ -215,6 +215,8 @@ Full architecture and operator detail belongs in canonical docs. Preserve these 
 - Pytest configuration supplies `backend/src` and `backend` python paths, disables cache provider, and defines `e2e`.
 - Add or update tests directly proving changed behavior. Run closest focused test first, then affected language type checking. Run broader checks only for cross-subsystem changes.
 - One-line changes still require one runnable verification command.
+- File-backed SQLite test databases should enable `PRAGMA journal_mode=WAL`; default-journal commits measure 16–66 ms each on Windows (WAL ≈ 4 ms) and synchronous commits serialize the event loop in async tests.
+- Avoid absolute wall-clock timing bounds in tests; prefer overhead-invariant metrics (e.g., total-overlap sums) that hold on slow machines and loaded CI.
 
 ## Dependencies and Lockfiles
 
