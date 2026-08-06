@@ -167,8 +167,15 @@ chapter storage -> paragraph IDs -> chunks/bundles -> prompt + glossary
 
 - Storage owns canonical novel metadata, raw chapters, translated versions,
   edit history, and assets.
+- Storage also owns the immutable raw generation tree
+  (`generations/<gen-id>/`) and the per-chapter translation overlay
+  (`translations/<encoded-chapter-stem>.json`); raw bundles are byte-immutable
+  once a generation is active and translation writes never touch them.
 - PostgreSQL owns users, sessions, identities, glossary, requests, reviews,
   credentials, audit, jobs, and catalog projections.
+- The `chapters` table carries stable-identity columns
+  (`logical_chapter_id`, `source_episode_id`, `sequence_number`) for
+  Kakuyomu-style percent-encoded ids and Syosetu numeric ids.
 - SQL chapter counts are projections; canonical counts come from storage.
 - S3/R2 directories are virtual prefixes; no host-filesystem assumptions.
 - Preserve raw scraped chapters and historical generated files.
@@ -184,7 +191,12 @@ Canonical names:
 ```text
 source_key source_novel_id source_url novel_id chapter_id paragraph_id chunk_id
 bundle_id provider_key provider_model activity_id job_id request_id credential_id
-requesting_user_id credential_owner_user_id prompt_version glossary_hash
+requesting_user_id credential_owner_user_id prompt_version prompt_template_version
+glossary_hash canonical_glossary_hash qa_policy_version qa_policy_fingerprint
+raw_generation_id logical_chapter_id stable_chapter_id source_episode_id
+sequence_number ordered_episode_ids removed_episode_ids unavailable_chapter_ids
+translation_run_id attempt_number output_hash cache_key
+
 ```
 
 Contracts are forward-only. Update all callers together; no aliases, mirrored
@@ -246,6 +258,24 @@ controls, and owner approval exist.
   safe result, and next eligibility for owner UI. Missing state means `never_run`.
 - R2 CRUD, snapshot reads, and backup writes use separate credentials.
 - Backups are independently restorable copies, not lifecycle rules.
+- HTTP origin is `(scheme, hostname, effective_port)`; default ports are
+  80 for http and 443 for https, so different effective ports are
+  cross-origin. Multi-hop redirects strip Authorization / Proxy-Authorization /
+  Cookie / Host / If-* / If-Range headers and Referer on cross-origin hops;
+  dict-style cookies (which lack domain context) only apply to the first
+  hop, real cookie jars keep domain semantics across hops. `throttle.before_request`
+  / `throttle.after_response` runs for every hop and attributes to the host
+  that returned the status code.
+- Cache acceptance is locked to the QA-accepted attempt: `CacheEntry` carries
+  `attempt_number`, `translation_run_id`, `output_hash`, and `cache_key`;
+  `CacheFlushStage` drops pending entries for rejected chunks
+  (`needs_retry`, `needs_review`, `qa_failed`) and dedupes by key. Provider /
+  model / prompt / glossary hash changes produce different cache keys.
+- Translation runs produce a `TranslationRunManifest` linking
+  `translation_run_id` to `raw_generation_id`, the canonical glossary hash,
+  the effective `prompt_template_version`, the `qa_policy_fingerprint`,
+  finalized counts (`expected_count`, `completed_count`, `skipped_count`,
+  `review_count`, `failed_count`) and the in-source-order `chapter_ids`.
 
 ## Reader Contracts
 

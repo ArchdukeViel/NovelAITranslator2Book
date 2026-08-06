@@ -21,6 +21,7 @@ contains full former requirements/design/task documents.
 | Maintenance runtime status (DEBT-042) | Every registered cleanup task records durable transitions; owner API/UI reports cron, timezone, last completion, redacted result, and next eligibility. | `ARCHITECTURE.md`, `OPERATIONS.md` |
 | Reader missing-asset boundary (DEBT-117) | Existing generated bookplate and asset-independent chapter/library behavior proven across routes; no redundant wrapper added. | `DESIGN.md` |
 | Error handling and storage safety | Structured safe errors, logging, atomic JSON writes, file locks, schema tests, and storage boundary consolidation implemented. | `ARCHITECTURE.md`, `STORAGE.md` |
+| Stable chapter identity, immutable raw generations + translation overlays, and pre-activation generation validation (PR-41) | Stable `chapter_id` plus `source_episode_id` and `sequence_number` so Kakuyomu (`kakuyomu:<episode>`) and Syosetu numeric ids share one pipeline; `resolve_chapter_selection` resolves `"all"`, `"1-3;8"`, `"2"`, and explicit stable ids against the complete current index. Committed raw generations under `generations/<gen-id>/` are byte-immutable; translation writes land in the per-chapter overlay `translations/<encoded-chapter-stem>.json` plus an `active/` pointer. `commit_generation` runs `validate_generation_activation` (manifest status, identity, every-index-entry-resolved with explicit `unavailable_chapter_ids`, image-asset resolution inside the staged generation, hash reconciliation, count reconciliation) before swapping `active_generation.json`; failures roll back the stage. `TranslationRunManifest` carries `raw_generation_id`, canonical glossary hash, effective `prompt_template_version`, `qa_policy_fingerprint`, finalized `expected_count`/`completed_count`/`skipped_count`/`review_count`/`failed_count`, and source-order `chapter_ids`. Source state persists `ordered_episode_ids` and per-episode availability so reorders / removals converge after a single update. Cache acceptance locks to the QA-accepted attempt; model / prompt / provider / glossary changes produce distinct keys. HTTP origin distinguishes scheme, hostname, and effective port; multi-hop redirects strip origin-sensitive headers and cookies that lack domain context, and `throttle.before_request` / `throttle.after_response` runs per hop. Migration `c7a8b9d0e1f2_add_stable_chapter_identity` adds the `logical_chapter_id`, `source_episode_id`, `sequence_number` columns on `chapters`. Project venv pinned at Python 3.13 via `tools/{pytest,pyright,ruff}.ps1` wrappers. | `ARCHITECTURE.md`, `STORAGE.md`, `TRANSLATION.md` |
 
 ## Cancelled
 
@@ -519,3 +520,52 @@ Modernized the home spotlight toward the Dreamy-Translations-style editorial her
 - **Docs**: `docs/design/public/home.md` updated (hero composition, NEW chip rule in Preserve Exactly, manual-dots-only carousel clarification in Avoid).
 
 Validation: `npx tsc --noEmit` exit 0; `npm run lint` exit 0; `npm run test` 847 passed across 76 files (was 843); `npm run build` exit 0; `graphify update . --no-cluster` success.
+
+## 2026-08-06 PR-41 Production-Path Correctness Pass
+
+Stabilized the cross-layer production contracts the PR-41 review called
+out: stable chapter identity, immutable raw generations plus translation
+overlays, pre-activation validation, source-order convergence,
+raw-to-translation lineage, and HTTP redirect / throttle hardening. Same
+branch (`feat/pipeline-upgrade-phases-1-8`); starting SHA `7371eda`;
+final HEAD landed as a focused commit series without auto-merge or push.
+
+Commits:
+
+- `057b2d1` `fix(identity): resolve sequence selections to stable chapter ids` — introduces `ResolvedChapterSelection`, removes `int(c["id"])` / `chapter_id.isdigit()` / `chapter_number == -1` from request flow.
+- `bf58e6c` `fix(storage): validate generation membership and assets before activation` — `validate_generation_activation`, `record_unavailable_chapter`, pre-activation membership invariant.
+- `4be9a4d` `fix(planner): persist convergent episode order and availability` — explicit `ordered_episode_ids` and per-episode `source_availability`/`missing_since`.
+- `32faffa` `feat(translation): link versions to raw generation and run manifests` — canonical glossary hash, effective prompt template version, `qa_policy_fingerprint`, manifest counts.
+- `52f6a7e` `fix(http): preserve redirect sanitization across multi-hop chains` — `_origin` is `(scheme, hostname, effective_port)`; per-hop `throttle.after_response`; dict-cookie drop on cross-origin.
+- `14d34e9` `test(pipeline): cover stable identity, validation, and acceptance contracts` — Section 11 + Section 12 scenarios 1–3.
+- `40d9ffe` `test(orchestration): update preflight test to use ResolvedChapterSelection` — single test updated to typed selection.
+- `426d7dd` `refactor(storage): separate immutable raw generations from mutable overlays` — Section 6/7 production contracts.
+- `e100b0d` `fix(identity): add stable chapter identity columns and scenarios` — Alembic migration `c7a8b9d0e1f2_add_stable_chapter_identity`, Chapter ORM update, Section 12 scenarios 4/5/10/13.
+- `39c6660` `chore(tools): pin interpreter, fix glossary dedent regression, scope pyright` — `tools/{pytest,pyright,ruff}.ps1`, `pyrightconfig.json` scope, glossary dedent fix.
+- `215d8d9` `test(storage): align pre-existing tests with the immutable overlay contract` — overlay-aware rewrite of 8 pre-existing tests plus `uv lock --upgrade` (ruff 0.16.1, uvicorn 0.52.1, starlette 1.4.1, websockets 16.1.1, redis 8.1.0, plus transitive updates).
+
+Validation:
+
+- `tools/pytest.ps1 -m "not e2e"`: 2917 passed in 555s, 26 skipped, 5 deselected, zero failures.
+- `tools/ruff.ps1 check backend/src backend/tests`: All checks passed (target-version `py313`).
+- `tools/pyright.ps1`: 0 errors, 0 warnings.
+- Project venv: CPython 3.13.3, ruff 0.16.1, pypdf 6.14.2, pyright 1.1.411.
+- `.venv` re-created via `uv venv --python 3.13` + `uv sync --extra documents --extra dev --extra db --extra auth --extra s3 --extra worker --extra gemini --extra test`. No legacy binaries.
+- New Alembic head: `c7a8b9d0e1f2` (single head). Old `9ac503a` lineage unchanged.
+
+Sections 6 (raw generation byte-immutability across translation) and 7
+(carried image survives prior-generation deletion) are now exercised by
+`test_section67_immutable_raw_and_carried_images.py`. Section 12 scenarios
+4 (scoped crawl preserves the complete novel), 5 (failed replacement
+preserves previous content), 8 (missing image rejects activation), 10
+(translation version linked to active raw generation), and 13 (reorder
+converges after a single update) are exercised by the test files committed
+above. Remaining non-blocking debt:
+
+- Section 5 rollback integration tests (metadata-fetch / chapter-index /
+  one-changed-chapter / cancellation / active-pointer-race /
+  projection-before-activation permutations) are partially covered through
+  the validator staging tests; a dedicated per-failure integration matrix
+  has not been authored.
+- Frontend lint / typecheck / test / build, full-backend extended shards,
+  and the e2e suite were not executed locally this round.
