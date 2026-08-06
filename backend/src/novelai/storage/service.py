@@ -73,7 +73,9 @@ from novelai.storage.media import (
     _asset_relative_path,
     _chapter_image_dir,
     _guess_asset_suffix,
+    _load_media_overlay,
     _normalize_media_fields,
+    _save_media_overlay,
     clear_chapter_image_assets,
     load_chapter_media_state,
     resolve_asset_path,
@@ -677,6 +679,8 @@ class StorageService:
     save_chapter_image_asset = save_chapter_image_asset
     resolve_asset_path = resolve_asset_path
     _normalize_media_fields = _normalize_media_fields
+    _load_media_overlay = _load_media_overlay
+    _save_media_overlay = _save_media_overlay
     load_chapter_media_state = load_chapter_media_state
     save_chapter_media_state = save_chapter_media_state
     _get_state_dir = _get_state_dir

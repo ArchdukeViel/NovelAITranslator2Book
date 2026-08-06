@@ -90,11 +90,17 @@ def is_translation_valid(
     provider_model: str | None,
     record: dict[str, Any],
 ) -> bool:
-    """Verify if a translation record is valid against current input hashes matching Section 10 requirements."""
+    """Verify if a translation record is valid against current input hashes matching Section 10 requirements.
+
+    Reads the keys actually written by the production overlay writer
+    (``source_hash`` / ``prompt_template_version``), falling back to the
+    legacy spellings (``source_text_hash`` / ``source_content_hash`` /
+    ``prompt_version``) for entries persisted before the overlay layout.
+    """
     if not isinstance(record, dict):
         return False
 
-    rec_source_hash = record.get("source_text_hash") or record.get("source_content_hash")
+    rec_source_hash = record.get("source_hash") or record.get("source_text_hash") or record.get("source_content_hash")
     if not rec_source_hash or rec_source_hash != source_text_hash:
         return False
 
@@ -104,7 +110,7 @@ def is_translation_valid(
             return False
 
     if prompt_version:
-        rec_prompt_ver = record.get("prompt_version")
+        rec_prompt_ver = record.get("prompt_template_version") or record.get("prompt_version")
         if not rec_prompt_ver or rec_prompt_ver != prompt_version:
             return False
 

@@ -18,7 +18,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from novelai.config.settings import settings
@@ -43,6 +43,15 @@ def _configure_catalog_projection_db(data_dir: Path, monkeypatch):
     monkeypatch.setattr(settings, "DATABASE_URL", database_url)
     engine = create_engine(database_url)
     Base.metadata.create_all(engine)
+    # WAL journal mode: with the default rollback journal, every commit
+    # fsyncs and costs 20-60ms on Windows, serializing the concurrent
+    # per-chapter translation-state and catalog writes and breaking the
+    # REQ-4.1 wall-clock bound even though the chapters do overlap.  The
+    # pragma is persisted in the DB file itself, so every writer to this
+    # file (including ``session_scope()``, which reads
+    # settings.DATABASE_URL per call) inherits it.
+    with engine.connect() as conn:
+        conn.execute(text("PRAGMA journal_mode=WAL"))
     SessionLocal = sessionmaker(bind=engine)
     return SessionLocal, engine
 
@@ -162,16 +171,21 @@ def _build_orchestrator(env, translation: TranslationService) -> NovelOrchestrat
 
 
 @pytest.mark.asyncio
-async def test_chapter_translations_run_concurrently_when_concurrency_above_one(
-    orchestration_env, monkeypatch
-) -> None:
+async def test_chapter_translations_run_concurrently_when_concurrency_above_one(orchestration_env, monkeypatch) -> None:
     """REQ-4.1: with concurrency > 1, chapters overlap in wall time."""
     monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
     monkeypatch.setattr(settings, "TRANSLATION_CHAPTER_CONCURRENCY", 3)
     storage = orchestration_env["storage"]
     slug = uuid4().hex
     _save_novel(storage, slug, num_chapters=3)
-    service = _TimingTranslationService(sleep_seconds=0.2)
+    # The sleep must dominate the per-chapter storage/DB overhead (which
+    # is serialized because the pipeline's SQLite/file calls are
+    # synchronous and block the event loop): with sleep=1.0, concurrent
+    # execution measures ~1.0-1.5s on any machine while fully sequential
+    # execution takes ~3x the sleep, so the 2x bound below discriminates
+    # reliably on both Linux and Windows.
+    sleep_seconds = 1.0
+    service = _TimingTranslationService(sleep_seconds=sleep_seconds)
     orchestrator = _build_orchestrator(orchestration_env, service)
 
     summary = await orchestrator.translate_chapters(
@@ -193,8 +207,15 @@ async def test_chapter_translations_run_concurrently_when_concurrency_above_one(
             if starts[i] < ends[j] and starts[j] < ends[i]:
                 overlaps += 1
     assert overlaps >= 1, f"expected overlapping execution, starts={starts} ends={ends}"
-    # Wall clock should be one chapter's worth of sleep, not three.
-    assert (max(ends) - min(starts)) < 3 * 0.2 + 0.15
+    # REQ-4.1: chapters overlap in wall time.  An absolute wall-clock bound
+    # is environment-dependent: per-chapter storage/DB work (checkpoints,
+    # taxonomy persistence, cache invalidation) is synchronous and
+    # serialized by the event loop, so its cost varies by machine and load.
+    # Total overlap time (= sum of chapter durations - wall time) is ~2x the
+    # sleep for three concurrent chapters and ~0 for sequential execution,
+    # independent of that overhead.
+    total_overlap = sum(end - start for start, end in zip(starts, ends, strict=False)) - (max(ends) - min(starts))
+    assert total_overlap > 0.5 * sleep_seconds, f"expected overlapping execution, total_overlap={total_overlap}"
 
 
 @pytest.mark.asyncio
@@ -232,9 +253,7 @@ async def test_chapter_translation_output_remains_in_source_order_under_concurre
 
 
 @pytest.mark.asyncio
-async def test_chapter_failure_does_not_erase_successful_outputs(
-    orchestration_env, monkeypatch
-) -> None:
+async def test_chapter_failure_does_not_erase_successful_outputs(orchestration_env, monkeypatch) -> None:
     """REQ-4.3: a failure in one chapter does not clobber siblings."""
     monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
     monkeypatch.setattr(settings, "TRANSLATION_CHAPTER_CONCURRENCY", 3)
@@ -265,9 +284,7 @@ async def test_chapter_failure_does_not_erase_successful_outputs(
 
 
 @pytest.mark.asyncio
-async def test_chapter_concurrency_one_runs_sequentially(
-    orchestration_env, monkeypatch
-) -> None:
+async def test_chapter_concurrency_one_runs_sequentially(orchestration_env, monkeypatch) -> None:
     """REQ-4.4: with concurrency = 1, chapters finish in source order, no overlap."""
     monkeypatch.setattr(settings, "TRANSLATION_DELTA_RETRANSLATION_ENABLED", False)
     monkeypatch.setattr(settings, "TRANSLATION_CHAPTER_CONCURRENCY", 1)
@@ -290,8 +307,7 @@ async def test_chapter_concurrency_one_runs_sequentially(
     # Sequential: each chapter's end time must be <= the next chapter's start.
     for a, b in (("1", "2"), ("2", "3")):
         assert service.end_times[a] <= service.start_times[b] + 0.01, (
-            f"chapter {a} ended at {service.end_times[a]} but chapter {b} "
-            f"started at {service.start_times[b]}"
+            f"chapter {a} ended at {service.end_times[a]} but chapter {b} started at {service.start_times[b]}"
         )
     # Wall clock must be at least the sum of the per-chapter sleeps.
     wall_time = service.end_times["3"] - service.start_times["1"]

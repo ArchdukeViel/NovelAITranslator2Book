@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 
 from novelai.config.settings import settings
 from novelai.services.translation_cache import CacheEntry, TranslationCacheService
@@ -60,6 +61,13 @@ class CacheFlushStage(PipelineStage):
 
         for key, entry in by_key.values():
             try:
+                # Stamp acceptance provenance: the entry only reaches this
+                # point after QA passed, so record exactly that fact.
+                if entry.accepted_at is None:
+                    entry.accepted_at = datetime.now(UTC).isoformat()
+                if entry.qa_status is None:
+                    chunk_state = context.chunk_states.get(entry.chunk_id or "", {}) if entry.chunk_id else {}
+                    entry.qa_status = str(chunk_state.get("qa_status") or chunk_state.get("status") or "passed")
                 self._cache_service.set(key, entry)
                 written += 1
             except Exception as exc:

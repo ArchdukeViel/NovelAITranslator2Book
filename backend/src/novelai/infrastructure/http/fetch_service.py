@@ -371,15 +371,18 @@ class FetchService:
                             current_cookies = None
                     else:
                         # Same-origin redirect: keep the caller's headers
-                        # and set Referer to the URL we're coming FROM.
-                        current_headers = dict(headers)
+                        # (preserving any credentials stripped on an earlier
+                        # cross-origin hop) and set Referer to the URL we're
+                        # coming FROM.
+                        current_headers = dict(current_headers)
                         current_headers["Referer"] = current
                     visited.add(next_url)
+                    # Per-hop throttle accounting for the redirect itself:
+                    # attribute the response to the host that returned it
+                    # (``current``), not the redirect destination.
+                    await self._throttle.after_response(current, response.status_code)
                     current = next_url
                     current_origin = next_origin
-                    # Per-hop throttle accounting for the redirect itself:
-                    # attribute the response to the host that returned it.
-                    await self._throttle.after_response(next_url, 0)
                     continue
                 body = await self._read_body_limited(response, current, kind)
                 if response.status_code != 304:

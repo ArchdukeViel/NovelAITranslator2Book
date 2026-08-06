@@ -117,9 +117,20 @@ def _persist_chapter_bundle(self: Any, novel_id: str, chapter_id: str, payload: 
     Callers that only mutate raw content should land here.
     Translation writes must use ``_persist_translation_overlay`` so the
     raw generation stays byte-immutable (Section 6).
+
+    Section 10/11: when a generation snapshot is active, the snapshot's
+    ``chapters/`` tree is byte-immutable and the canonical raw layout.
+    Raw writes are refused outright instead of silently mutating or
+    shadowing committed bytes; mutable derived state belongs in the
+    media/translation overlays at the novel root.
     """
     self._normalize_media_fields(payload)
     payload["schema_version"] = self.SCHEMA_VERSION
+    if self.get_active_generation(novel_id) is not None:
+        raise RuntimeError(
+            f"Refusing to overwrite committed raw chapter {novel_id}/{chapter_id}: "
+            "an active generation snapshot is the authoritative raw layout"
+        )
     path = self._chapter_path(novel_id, chapter_id)
     self._write_text_atomic(path, json.dumps(payload, ensure_ascii=False, indent=2))
     return path
@@ -276,7 +287,7 @@ def load_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | 
         return None
 
     safe_chapter_id = validate_storage_identifier(str(chapter_id), "chapter_id")
-    return {
+    result = {
         "id": safe_chapter_id,
         "title": payload.get("title"),
         "source_key": payload.get("source_key"),
@@ -299,6 +310,15 @@ def load_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | 
         "ocr_status": payload.get("ocr_status", "skipped"),
         "reembed_status": payload.get("reembed_status", "skipped"),
     }
+    # Section 11: the novel-root media overlay holds mutable derived OCR
+    # state that must not live in the committed snapshot; compose it on
+    # read so OCR workers see overlay state win over the bundle.
+    media_overlay = self._load_media_overlay(novel_id, safe_chapter_id)
+    if media_overlay is not None:
+        for key in ("ocr_required", "ocr_text", "ocr_status", "reembed_status"):
+            if key in media_overlay:
+                result[key] = media_overlay[key]
+    return result
 
 
 def list_stored_chapters(self: Any, novel_id: str) -> list[str]:

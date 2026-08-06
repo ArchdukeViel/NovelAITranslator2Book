@@ -534,6 +534,25 @@ def _chapter_filename_for(chapter_id: str) -> str:
     return _chapter_filename(chapter_id)
 
 
+def _index_entry_logical_id(entry: dict[str, Any]) -> str:
+    """Normalize a chapter-index entry's id to the logical chapter_id.
+
+    Mirrors ``novelai.utils.chapter_selection._chapter_logical_id``:
+    adapters may emit ``"id"`` as a string or an integer, while every
+    downstream storage call uses the stringified logical id. The index
+    snapshot preserves the raw adapter spelling (``json.dumps`` keeps
+    integers), so validation must normalize before comparing against
+    physical bundle ids and ``manifest.chapter_ids``.
+    """
+    for key in ("id", "chapter_id"):
+        raw = entry.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+        if isinstance(raw, int):
+            return str(raw)
+    return ""
+
+
 def validate_generation_activation(
     self: Any,
     novel_id: str,
@@ -596,8 +615,14 @@ def validate_generation_activation(
     checks.append(_check("chapter_index_present", bool(chapter_index), f"{index_path} missing"))
     index_count = len(chapter_index) if isinstance(chapter_index, list) else 0
 
-    _ = _read_json_or_none(self, source_state_path)
-    checks.append(_check("source_state_present", True, f"{source_state_path} present"))
+    source_state = _read_json_or_none(self, source_state_path)
+    checks.append(
+        _check(
+            "source_state_present",
+            source_state is not None,
+            f"{source_state_path} missing or empty",
+        )
+    )
 
     chapter_dir = g_dir / "chapters"
     physical_chapter_ids: set[str] = set()
@@ -622,8 +647,8 @@ def validate_generation_activation(
         for entry in chapter_index:
             if not isinstance(entry, dict):
                 continue
-            cid = entry.get("id") or entry.get("chapter_id")
-            if not isinstance(cid, str) or not cid:
+            cid = _index_entry_logical_id(entry)
+            if not cid:
                 continue
             if cid in physical_chapter_ids:
                 continue
@@ -643,8 +668,8 @@ def validate_generation_activation(
         for entry in chapter_index:
             if not isinstance(entry, dict):
                 continue
-            cid = entry.get("id") or entry.get("chapter_id")
-            if not isinstance(cid, str) or not cid:
+            cid = _index_entry_logical_id(entry)
+            if not cid:
                 continue
             chapter_path = chapter_dir / _chapter_filename_for(cid)
             if not self._path_exists(chapter_path):
@@ -683,36 +708,46 @@ def validate_generation_activation(
     checks.append(
         _check(
             "manifest_metadata_hash_matches_stage",
-            not metadata_text or manifest.metadata_hash in ("", _sha256_utf8(metadata_text)),
-            "manifest.metadata_hash does not match staged metadata.json",
+            bool(metadata_text)
+            and bool(manifest.metadata_hash)
+            and manifest.metadata_hash == _sha256_utf8(metadata_text),
+            "manifest.metadata_hash is empty or does not match staged metadata.json",
         )
     )
     checks.append(
         _check(
             "manifest_index_hash_matches_stage",
-            not chapter_index_text or manifest.chapter_index_hash in ("", _sha256_utf8(chapter_index_text)),
-            "manifest.chapter_index_hash does not match staged chapter_index.json",
+            bool(chapter_index_text)
+            and bool(manifest.chapter_index_hash)
+            and manifest.chapter_index_hash == _sha256_utf8(chapter_index_text),
+            "manifest.chapter_index_hash is empty or does not match staged chapter_index.json",
         )
     )
     checks.append(
         _check(
             "manifest_source_state_hash_matches_stage",
-            not source_state_text or manifest.source_state_hash in ("", _sha256_utf8(source_state_text)),
-            "manifest.source_state_hash does not match staged source_state.json",
+            bool(source_state_text)
+            and bool(manifest.source_state_hash)
+            and manifest.source_state_hash == _sha256_utf8(source_state_text),
+            "manifest.source_state_hash is empty or does not match staged source_state.json",
         )
     )
 
-    seen_chapter_ids = set(manifest.chapter_ids or [])
+    # Reconcile manifest.chapter_ids against the *physical* bundles only;
+    # seeding the seen-set with the manifest ids made the old check a
+    # tautology that could never fail.
+    physical_ids_in_index: set[str] = set()
     if isinstance(chapter_index, list):
         for entry in chapter_index:
-            if isinstance(entry, dict):
-                cid = entry.get("id") or entry.get("chapter_id")
-                if isinstance(cid, str) and cid:
-                    seen_chapter_ids.add(cid)
+            if not isinstance(entry, dict):
+                continue
+            cid = _index_entry_logical_id(entry)
+            if cid and cid in physical_chapter_ids:
+                physical_ids_in_index.add(cid)
     checks.append(
         _check(
             "manifest_chapter_ids_reconcile_with_files",
-            seen_chapter_ids.issuperset(set(manifest.chapter_ids or [])),
+            set(manifest.chapter_ids or []).issubset(physical_ids_in_index),
             "manifest.chapter_ids include chapters that have no physical bundle",
         )
     )

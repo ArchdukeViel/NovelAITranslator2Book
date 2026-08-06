@@ -306,8 +306,23 @@ def restore_from_checkpoint(
     try:
         checkpoint_data = json.loads(self._read_text(checkpoint_file))
 
+        # Section 10/11: raw checkpoint restores are refused while a
+        # generation snapshot is active — the snapshot's ``chapters/``
+        # tree is byte-immutable and the canonical raw layout. The
+        # translated overlay and chapter state may still be restored.
+        raw_restore_refused = False
+        if checkpoint_data.get("raw_chapter") and self.get_active_generation(novel_id) is not None:
+            raw_restore_refused = True
+            logger.warning(
+                "Refusing raw restore for %s/%s from checkpoint %r: "
+                "active generation snapshot is the authoritative raw layout",
+                novel_id,
+                safe_chapter_id,
+                safe_checkpoint_name,
+            )
+
         # Restore raw chapter
-        if checkpoint_data.get("raw_chapter"):
+        if checkpoint_data.get("raw_chapter") and not raw_restore_refused:
             raw_chapter = checkpoint_data["raw_chapter"]
             self.save_chapter(
                 novel_id,
@@ -395,13 +410,18 @@ def rollback_to_state(self: Any, novel_id: str, chapter_id: str, target_state: C
 
     # Delete files for states beyond target
     if target_idx < state_order.index(ChapterState.TRANSLATED):
-        chapter_payload = self._load_chapter_bundle(novel_id, safe_chapter_id)
-        if chapter_payload and "translation_versions" in chapter_payload:
-            chapter_payload.pop("translation_versions", None)
-            chapter_payload.pop("active_translation_version_id", None)
-            chapter_payload.pop("edit_history", None)
-            self._persist_chapter_bundle(novel_id, safe_chapter_id, chapter_payload)
-            logger.debug(f"Deleted translated chapter {safe_chapter_id}")
+        # Section 11: the bundle-pop branch only applies to the legacy
+        # layout (no active generation). With an active generation the raw
+        # bundle is byte-immutable and translation state lives in the
+        # overlay; deleting the legacy ``translated/`` file is still safe.
+        if self.get_active_generation(novel_id) is None:
+            chapter_payload = self._load_chapter_bundle(novel_id, safe_chapter_id)
+            if chapter_payload and "translation_versions" in chapter_payload:
+                chapter_payload.pop("translation_versions", None)
+                chapter_payload.pop("active_translation_version_id", None)
+                chapter_payload.pop("edit_history", None)
+                self._persist_chapter_bundle(novel_id, safe_chapter_id, chapter_payload)
+                logger.debug(f"Deleted translated chapter {safe_chapter_id}")
         translated_path = self._novel_dir(novel_id) / "translated" / f"{_physical_stem(safe_chapter_id)}.json"
         if self._path_exists(translated_path):
             self._unlink_path(translated_path)

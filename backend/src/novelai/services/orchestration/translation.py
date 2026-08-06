@@ -835,6 +835,7 @@ async def translate_chapters(
     resolved = resolve_chapter_selection(meta, chapters)
     _chapter_by_id = {record.chapter_id: record for record in resolved}
     selected_numbers = [record.sequence_number for record in resolved]
+    selected_chapter_ids = [record.chapter_id for record in resolved]
     normalized_threshold = max(0.0, min(1.0, confidence_threshold))
 
     preflight_issues = self._preflight_translation(
@@ -858,7 +859,7 @@ async def translate_chapters(
     cp_mgr = _init_checkpoint_manager(
         self,
         novel_id=novel_id,
-        selected_numbers=selected_numbers,
+        selected_chapter_ids=selected_chapter_ids,
         force=force,
     )
 

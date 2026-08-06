@@ -532,20 +532,13 @@ async def _scrape_chapters_impl(
         meta.setdefault("input_adapter_key", "web")
         meta.setdefault("context_group_id", novel_id)
         meta = await _translate_and_mark_metadata(self, meta)
-        # Section 5: the legacy ``save_metadata`` write is kept only as a
-        # safety projection so other legacy callers still see something
-        # during the run. The authoritative metadata is staged into the
-        # generation snapshot below and the active pointer is the source of
-        # truth after activation; a partial stage is rolled back without
-        # touching the legacy file.
-        self.storage.save_metadata(novel_id, meta)
-        safely_refresh_catalog_projection_after_storage_write(
-            novel_id,
-            self.storage,
-            context="scrape_chapters_metadata",
-        )
-        # Replacement metadata may have changed discovered total.
-        best_effort_invalidate()
+        # Section 3: the legacy ``save_metadata`` live projection is NOT
+        # written here. It is deferred until after ``commit_generation``
+        # swaps the active pointer so a partial or failed run can never
+        # expose half-committed metadata. The authoritative metadata is
+        # staged into the generation snapshot below; the active pointer is
+        # the source of truth after activation, and a failed stage is
+        # rolled back without touching the legacy file.
     else:
         meta = self.storage.load_metadata(novel_id)
         if not meta:
@@ -914,7 +907,6 @@ async def _scrape_chapters_impl(
             metadata=meta,
             scraped_chapters=scraped_chapters_for_state,
         )
-        self.storage.save_source_state(novel_id, new_source_state)
         # Stage the source-state / chapter-index / metadata snapshots so the
         # committed generation is a complete, reproducible record of the run.
         self.storage.stage_generation_source_state(novel_id, generation_id, new_source_state)
@@ -933,6 +925,36 @@ async def _scrape_chapters_impl(
             reused_chapters=skipped,
             failed_chapters=failed,
         )
+
+        # Section 3: live legacy projections (novel-root metadata.json and
+        # source_state.json) are written ONLY after the active pointer has
+        # swapped. A partial or failed run can never expose half-committed
+        # state through the legacy layout. These writes are best-effort and
+        # never roll back the already-committed generation: the committed
+        # snapshot remains the authoritative record.
+        try:
+            if mode == "full":
+                self.storage.save_metadata(novel_id, meta)
+                safely_refresh_catalog_projection_after_storage_write(
+                    novel_id,
+                    self.storage,
+                    context="scrape_chapters_metadata",
+                )
+                # Replacement metadata may have changed discovered total.
+                best_effort_invalidate(context="scrape_chapters_metadata")
+            self.storage.save_source_state(novel_id, new_source_state)
+            safely_refresh_catalog_projection_after_storage_write(
+                novel_id,
+                self.storage,
+                context="scrape_chapters_source_state",
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(
+                "Post-commit legacy projection refresh failed for %s/%s: %s",
+                source_key,
+                novel_id,
+                exc,
+            )
 
         _emit(
             STAGE_RECONCILIATION,

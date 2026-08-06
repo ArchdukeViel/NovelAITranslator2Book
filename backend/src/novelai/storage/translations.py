@@ -367,6 +367,13 @@ def load_translated_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[s
         metadata_source: dict[str, Any] = {}
     else:
         metadata_source = payload if isinstance(payload, dict) else {}
+    # Section 11: mutable OCR state lives in the novel-root media overlay;
+    # it must win over the committed snapshot's fields when both exist.
+    media_overlay = self._load_media_overlay(novel_id, chapter_id)
+    if media_overlay is not None:
+        for key in ("ocr_required", "ocr_text", "ocr_status", "reembed_status"):
+            if key in media_overlay:
+                metadata_source[key] = media_overlay[key]
 
     metadata = self.load_metadata(novel_id) if hasattr(self, "load_metadata") else None
     snapshot = _resolve_glossary_snapshot_from_metadata(metadata)

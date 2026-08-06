@@ -89,20 +89,25 @@ def _init_checkpoint_manager(
     self: Any,
     *,
     novel_id: str,
-    selected_numbers: list[int],
+    selected_chapter_ids: list[str],
     force: bool,
 ) -> CheckpointManager:
     """Initialize CheckpointManager for segment-level resume (REQ-2).
 
     When ``force`` is True, resets all selected chapters to PENDING and
     deletes existing checkpoints (REQ-3.4, Task 5.2).
+
+    ``selected_chapter_ids`` must be the *stable* chapter ids (never
+    positional sequence numbers): checkpoint files and DB state rows are
+    keyed by chapter id, so deleting by sequence number would miss the
+    actual checkpoints for non-numeric ids (e.g. Kakuyomu).
     """
     cp_mgr = CheckpointManager(self.storage._get_checkpoints_dir(novel_id))
 
     if force:
-        for cn in selected_numbers:
-            _update_db_translation_state(novel_id, str(cn), TranslationState.PENDING)
-            cp_mgr.delete(str(cn))
-        logger.info("Force mode: reset %d chapters to PENDING", len(selected_numbers))
+        for chapter_id in selected_chapter_ids:
+            _update_db_translation_state(novel_id, chapter_id, TranslationState.PENDING)
+            cp_mgr.delete(chapter_id)
+        logger.info("Force mode: reset %d chapters to PENDING", len(selected_chapter_ids))
 
     return cp_mgr
