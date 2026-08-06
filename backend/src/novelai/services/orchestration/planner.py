@@ -1,4 +1,4 @@
-"""Incremental crawl planner and source state management (DEBT-CRAWL-01, DEBT-STATE-01)."""
+"""Incremental crawl planner and source state management (DEBT-CRAWL-01, DEBT-STATE-01, Section 10)."""
 
 from __future__ import annotations
 
@@ -200,11 +200,36 @@ def update_source_state(
     metadata: dict[str, Any],
     scraped_chapters: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Build updated source state dict preserving existing episodes and updating scraped ones."""
+    """Build updated source state dict preserving existing episodes.
+
+    Section 10 contract: persists ``ordered_episode_ids`` matching the
+    current complete index, and per-episode ``source_availability`` /
+    ``first_seen_at`` / ``last_seen_at`` / ``missing_since``. Episodes
+    absent from the current index are marked ``missing_from_current_index``
+    rather than deleted; raw and translated history is retained.
+    """
     state = dict(existing_state) if existing_state else {}
     episode_map: dict[str, Any] = dict(state.get("episode_map") or {})
 
     now_iso = _utc_now_iso()
+
+    chapters_list = metadata.get("chapters") if isinstance(metadata, dict) else None
+    if not isinstance(chapters_list, list):
+        chapters_list = []
+
+    current_episode_ids: list[str] = []
+    for chapter in chapters_list:
+        if not isinstance(chapter, dict):
+            continue
+        ep_id = str(
+            chapter.get("source_episode_id")
+            or chapter.get("id")
+            or chapter.get("chapter_id")
+            or chapter.get("num")
+            or ""
+        )
+        if ep_id:
+            current_episode_ids.append(ep_id)
 
     for ch in scraped_chapters:
         ch_id = str(ch.get("id") or ch.get("chapter_id") or ch.get("num") or "")
@@ -214,15 +239,38 @@ def update_source_state(
 
         prev_ep = episode_map.get(episode_id) or {}
         index_date = ch.get("source_update_date") or ch.get("date_added")
-
+        first_seen = prev_ep.get("first_seen_at") or prev_ep.get("scraped_at") or now_iso
         episode_map[episode_id] = {
             "chapter_id": ch_id,
             "source_episode_id": episode_id,
             "source_update_date": index_date,
             "content_hash": ch.get("content_hash") or prev_ep.get("content_hash"),
+            "structure_hash": ch.get("structure_hash") or prev_ep.get("structure_hash"),
             "scraped_at": now_iso,
+            "first_seen_at": first_seen,
+            "last_seen_at": now_iso,
             "last_updated_at": index_date or prev_ep.get("last_updated_at") or now_iso,
+            "source_availability": "active",
+            "missing_since": None,
         }
+
+    for ep_id, prev_ep in episode_map.items():
+        if ep_id not in current_episode_ids:
+            if prev_ep.get("source_availability") != "missing_from_current_index":
+                episode_map[ep_id] = {
+                    **prev_ep,
+                    "source_availability": "missing_from_current_index",
+                    "missing_since": prev_ep.get("missing_since") or now_iso,
+                    "last_seen_at": prev_ep.get("last_seen_at") or now_iso,
+                }
+        else:
+            if prev_ep.get("source_availability") == "missing_from_current_index":
+                episode_map[ep_id] = {
+                    **prev_ep,
+                    "source_availability": "active",
+                    "missing_since": None,
+                    "last_seen_at": now_iso,
+                }
 
     return {
         "novel_id": novel_id,
@@ -232,4 +280,5 @@ def update_source_state(
         "scraped_chapter_count": len(episode_map),
         "last_scraped_at": now_iso,
         "episode_map": episode_map,
+        "ordered_episode_ids": current_episode_ids,
     }
