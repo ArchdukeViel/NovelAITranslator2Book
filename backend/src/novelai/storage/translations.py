@@ -271,6 +271,7 @@ def save_translated_chapter(
         prompt_template_version=None,
         glossary_hash=None,
     )
+    overlay["chapter_id"] = chapter_id
     versions = list(overlay.get("translation_versions") or [])
     created_at = _utc_now_iso()
     translated_payload: dict[str, Any] = {
@@ -304,6 +305,7 @@ def save_translated_chapter(
         translated_payload["base_version_id"] = base_version_id.strip()
     versions.append(translated_payload)
     overlay["translation_versions"] = versions
+    overlay["chapter_id"] = chapter_id
     overlay["prompt_template_version"] = translated_payload.get(
         "prompt_template_version", overlay.get("prompt_template_version", "")
     )
@@ -570,11 +572,12 @@ def save_edited_translation(
         edited_payload["glossary_qa"] = glossary_qa
     versions.append(edited_payload)
     overlay["translation_versions"] = versions
+    overlay["chapter_id"] = chapter_id
     overlay["active_translation_version_id"] = edited_payload["version_id"]
     history = list(overlay.get("edit_history") or [])
     history.append(
         {
-            "id": str(len(history) + 1),
+            "id": f"e{len(history) + 1}",
             "action": ChapterVersionKind.MANUAL_EDIT.value,
             "version_id": edited_payload["version_id"],
             "previous_version_id": previous_id,
@@ -656,7 +659,7 @@ def activate_translated_chapter_version(
         history = list(overlay.get("edit_history") or [])
         history.append(
             {
-                "id": str(len(history) + 1),
+                "id": f"e{len(history) + 1}",
                 "action": ChapterVersionKind.ROLLBACK.value,
                 "version_id": version_id,
                 "previous_version_id": previous_id,
@@ -696,7 +699,7 @@ def activate_translated_chapter_version(
     history = list(payload.get("edit_history") or [])
     history.append(
         {
-            "id": str(len(history) + 1),
+            "id": f"e{len(history) + 1}",
             "action": ChapterVersionKind.ROLLBACK.value,
             "version_id": version_id,
             "previous_version_id": previous_version_id,
