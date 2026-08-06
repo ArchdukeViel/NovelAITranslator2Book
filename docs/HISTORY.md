@@ -569,3 +569,64 @@ above. Remaining non-blocking debt:
   has not been authored.
 - Frontend lint / typecheck / test / build, full-backend extended shards,
   and the e2e suite were not executed locally this round.
+
+## 2026-08-06 PR-41 Audit Follow-up Fixes (S3–S7, S9–S11)
+
+Closed the remaining PR-41 audit findings on the same branch
+(`feat/pipeline-upgrade-phases-1-8`); commit `5ec13b5`, hooks enabled
+(trim, EOF, ruff check, ruff format, graphify background rebuild).
+
+- **S3 — deferred projections**: the crawler no longer writes live
+  `metadata.json` / `source_state.json` (or their projections) before
+  `commit_generation` succeeds; full-mode writes are deferred into a
+  post-commit best-effort block so a failed or cancelled crawl leaves the
+  live layout untouched.
+- **S4 — non-tautological activation validation**: `source_state_present`
+  now requires a real staged source-state file; metadata / index /
+  source-state hash checks require a non-empty manifest hash that exactly
+  matches the staged bytes; `manifest_chapter_ids_reconcile_with_files`
+  checks membership against the *physical* bundles instead of seeding the
+  seen-set with the manifest ids. Index ids are normalized exactly like
+  `resolve_chapter_selection` (string passthrough, int → str) so raw
+  adapter spellings (e.g. DummySource integer ids) validate against
+  stringified logical bundle ids; integer index ids without a bundle still
+  fail `every_index_entry_resolved`.
+- **S5 — force-reset by stable id**: `_init_checkpoint_manager` takes
+  `selected_chapter_ids` (stable ids, never positional sequence numbers)
+  so force-mode checkpoint deletion / DB reset reaches Kakuyomu-style
+  ids.
+- **S6 — overlay key spellings**: `is_translation_valid` reads
+  `source_hash` / `prompt_template_version` with legacy fallbacks
+  (`source_text_hash` / `source_content_hash` / `prompt_version`).
+- **S7 — cache acceptance provenance**: `CacheEntry` gains `accepted_at`
+  and `qa_status`; `CacheFlushStage` stamps both at flush time.
+- **S9 — throttle / redirect attribution**: `DomainThrottle._domain`
+  keys on `host:effective_port`; `FetchService` preserves
+  origin-stripped credentials across same-origin hops in a redirect chain
+  and attributes the per-hop throttle accounting to the host that returned
+  the redirect.
+- **S10/S11 — media overlay + raw immutability**: mutable OCR /
+  re-embedding state moved to a novel-root `media/` overlay
+  (`media_overlay_v1`, encoded stem keys); `save_chapter_media_state`
+  writes the overlay only and `load_chapter_media_state`,
+  `load_chapter`, and `load_translated_chapter` compose it over the
+  committed bundle; `resolve_asset_path` no longer falls back when an
+  active generation exists; `_persist_chapter_bundle`,
+  `jobs.restore_from_checkpoint` (raw section), the rollback bundle-pop
+  branch, and `importer.import_document` refuse raw writes while a
+  generation snapshot is active.
+- **Test/CI robustness**: 17 new regression tests
+  (`test_pr41_audit_fixes.py`); e2e pipeline suite green again;
+  `test_chapter_parallelization` REQ-4.1 uses an overhead-invariant
+  total-overlap assertion (the old wall-clock bound was miscalibrated on
+  every platform) and its fixture DB runs WAL mode to cut Windows
+  per-commit fsync costs; `actions/dependency-review-action` pinned to
+  the v4.9.0 commit SHA.
+
+Validation:
+
+- `tools/pytest.ps1 backend/tests` (full backend suite incl. e2e):
+  **2941 passed, 26 skipped, 0 failed** in 514.94s.
+- `tools/ruff.ps1 check backend/src backend/tests`: All checks passed.
+- `tools/pyright.ps1`: 0 errors, 0 warnings.
+- `graphify update . --no-cluster` (pre-commit hook rebuild): success.
