@@ -304,7 +304,10 @@ def load_chapter(self: Any, novel_id: str, chapter_id: str) -> dict[str, Any] | 
 def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
     """Return sorted chapter IDs that have raw or translated data on disk.
 
-    Reads only the current unified ``chapters/`` directory.
+    Reads the raw ``chapters/`` directory (legacy merged payloads plus
+    active-generation bundles) and the per-novel translation overlay
+    directory so chapter ids surface regardless of whether translation
+    data lives in the bundle or in the overlay.
     """
     ids: set[str] = set()
     chapter_dir = self._content_root(novel_id) / self.CHAPTERS_DIRNAME
@@ -317,14 +320,33 @@ def list_stored_chapters(self: Any, novel_id: str) -> list[str]:
                 continue
             if not isinstance(payload, dict):
                 continue
-            validate_storage_schema_version(
-                payload,
-                current_version=self.SCHEMA_VERSION,
-                artifact_type="chapter bundle",
-            )
+            try:
+                validate_storage_schema_version(
+                    payload,
+                    current_version=self.SCHEMA_VERSION,
+                    artifact_type="chapter bundle",
+                )
+            except Exception:
+                logger.debug("Skipping chapter with invalid schema_version %s.", chapter_path)
+                continue
             has_translation_versions = bool(self._translation_versions_from_payload_compat(payload))
             if isinstance(payload.get("raw"), dict) or has_translation_versions:
                 ids.add(self.logical_id_from_stem(chapter_path.stem))
+
+    overlay_dir = self._novel_dir(novel_id) / "translations"
+    if self._is_dir_present(overlay_dir):
+        for overlay_path in self._glob(overlay_dir, "*.json"):
+            if overlay_path.stem == "active":
+                continue
+            try:
+                payload = json.loads(self._read_text(overlay_path))
+            except (json.JSONDecodeError, OSError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            chapter_id = payload.get("chapter_id") or self.logical_id_from_stem(overlay_path.stem)
+            if isinstance(chapter_id, str) and chapter_id:
+                ids.add(chapter_id)
 
     return sorted(ids)
 
