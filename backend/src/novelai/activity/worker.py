@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from novelai.activity.queue import ActivityQueueService
+from novelai.activity.queue import ActivityQueueService, normalize_crawl_result
 from novelai.core.errors import ProviderError
 from novelai.core.platform import CrawlJobKind, JobStatus, TranslationJobKind
 from novelai.services.glossary_diagnostics import aggregate_glossary_diagnostics
@@ -451,17 +451,15 @@ class ActivityWorkerService:
         try:
             if activity.get("type") == "crawl":
                 result_metadata = await self._run_crawl_activity(activity)
-                # Blocker E: count/terminal-status live under
-                # ``crawl_result``, not at the top of ``result_metadata``.
-                # Reading from the top silently treats every crawl as clean,
-                # so record_source_health never sees partial-failure crawls.
-                crawl_result_meta: dict[str, Any] | None = None
-                if isinstance(result_metadata, dict):
-                    inner = result_metadata.get("crawl_result")
-                    if isinstance(inner, dict):
-                        crawl_result_meta = inner
+                # Section 10: accept either the nested ``crawl_result`` envelope
+                # or a direct flat dict with succeeded/failed/terminal_status.
+                # normalize_crawl_result picks the right one; missing fields
+                # fall back to a clean-success interpretation.
+                crawl_result_meta = normalize_crawl_result(
+                    result_metadata if isinstance(result_metadata, dict) else None
+                )
                 has_errors = crawl_result_meta is not None and (
-                    crawl_result_meta.get("failed", 0) > 0
+                    int(crawl_result_meta.get("failed", 0) or 0) > 0
                     or crawl_result_meta.get("terminal_status") in ("failed", "completed_with_errors")
                 )
                 if has_errors:

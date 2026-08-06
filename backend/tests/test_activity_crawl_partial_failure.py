@@ -6,6 +6,11 @@ or result_metadata.get("terminal_status") in (...)`` while ``_run_crawl_activity
 returns ``{"chapters": [...], "crawl_result": {...}}``; the path silently produced
 ``has_errors == False`` for every crawl so partial-failure crawls were never
 recorded as source-health failures.
+
+Section 10 extends the contract: both the nested envelope and a direct
+flat dict with the same fields must produce the same source-health
+result.  Each terminal status (``completed``, ``completed_with_warnings``,
+``completed_with_errors``, ``failed``) is exercised below.
 """
 
 from __future__ import annotations
@@ -168,3 +173,106 @@ async def test_clean_crawl_records_source_health_success(activity_env) -> None:
     assert health is not None
     assert health.get("success_count", 0) == 1
     assert health.get("failure_count", 0) == 0
+
+
+def _stub_for_orchestrator(crawl_result: dict[str, Any]):
+    """Build an _run_crawl_activity stub returning the given inner dict
+    using the nested ``crawl_result`` envelope."""
+
+    async def _stub(self, activity: dict[str, Any]) -> dict[str, Any]:
+        return {"chapters": activity.get("chapters"), "crawl_result": crawl_result}
+
+    return _stub
+
+
+def _stub_direct(crawl_result: dict[str, Any]):
+    """Build an _run_crawl_activity stub returning a direct flat dict (no
+    nested ``crawl_result`` envelope) — Section 10 alternative format."""
+
+    async def _stub(self, activity: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "chapters": activity.get("chapters"),
+            **crawl_result,
+        }
+
+    return _stub
+
+
+async def _drive_crawl_with_stub(activity_env: dict[str, Any], source_key: str, stub) -> None:
+    """Drive one crawl activity with the supplied stub; restore on exit."""
+    worker = activity_env["worker"]
+    log_store = activity_env["log_store"]
+    activity = _create_crawl_activity(log_store)
+    _original_method = ActivityWorkerService._run_crawl_activity
+    ActivityWorkerService._run_crawl_activity = stub  # type: ignore[method-assign]
+    try:
+        await worker.run_activity(activity["activity_id"])
+    finally:
+        ActivityWorkerService._run_crawl_activity = _original_method  # type: ignore[method-assign]
+
+
+@pytest.mark.parametrize(
+    "terminal_status,failed,image_failures,expected_success,expected_failure",
+    [
+        ("completed", 0, 0, 1, 0),
+        ("completed_with_warnings", 0, 3, 1, 0),
+        ("completed_with_errors", 3, 0, 0, 1),
+        ("failed", 3, 0, 0, 1),
+    ],
+)
+@pytest.mark.parametrize("format_kind", ["nested", "direct"])
+@pytest.mark.asyncio
+async def test_section_10_terminal_status_direct_and_nested(
+    activity_env,
+    terminal_status,
+    failed,
+    image_failures,
+    expected_success,
+    expected_failure,
+    format_kind,
+) -> None:
+    """Section 10: every terminal_status is correctly recognized in both
+    the nested ``crawl_result`` envelope and the direct flat dict.
+    Image-only warnings must not be recorded as chapter failures.
+    """
+    crawl_result = {
+        "succeeded": 7,
+        "skipped": 0,
+        "failed": failed,
+        "failures": [],
+        "image_download_failures": image_failures,
+        "terminal_status": terminal_status,
+    }
+    if format_kind == "nested":
+        stub = _stub_for_orchestrator(crawl_result)
+    else:
+        stub = _stub_direct(crawl_result)
+
+    source_key = f"stub_{format_kind}_{terminal_status}"
+    # Use the configured log_store/source_key pair so the source health
+    # record lands on the expected key.
+    log_store = activity_env["log_store"]
+    activity = log_store.create_crawl_activity(
+        novel_id="novel-1",
+        source_key=source_key,
+        kind=CrawlJobKind.CHAPTERS,
+        chapters="1",
+    )
+    worker = activity_env["worker"]
+    _original_method = ActivityWorkerService._run_crawl_activity
+    ActivityWorkerService._run_crawl_activity = stub  # type: ignore[method-assign]
+    try:
+        await worker.run_activity(activity["activity_id"])
+    finally:
+        ActivityWorkerService._run_crawl_activity = _original_method  # type: ignore[method-assign]
+
+    health = _read_source_health(log_store, source_key)
+    assert health is not None
+    assert health.get("success_count", 0) == expected_success
+    assert health.get("failure_count", 0) == expected_failure
+    if expected_failure:
+        last_error = health.get("last_error")
+        assert isinstance(last_error, str) and "3 failed chapters" in last_error
+    else:
+        # Success path: image-only warnings must not surface as failure.
+        assert not health.get("last_error")
