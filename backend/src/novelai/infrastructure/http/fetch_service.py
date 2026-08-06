@@ -237,8 +237,6 @@ class FetchService:
 
         elapsed = perf_counter() - started
         final_url = validate_safe_url(fetched.final_url)
-        await self._throttle.after_response(final_url, fetched.status_code)
-
         if fetched.status_code == 304:
             cached = self._cache.get(source_key, requested_url, profile=profile)
             if cached is None:
