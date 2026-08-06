@@ -22,7 +22,9 @@ class TranslationRunManifest:
     committed_at: str | None = None
     status: str = "completed"
     prompt_version: str | None = None
+    prompt_template_version: str | None = None
     qa_policy_version: str | None = None
+    qa_policy_fingerprint: str | None = None
     glossary_hash: str | None = None
     glossary_revision: int | None = None
     provider_key: str | None = None
@@ -55,7 +57,9 @@ class TranslationRunManifest:
             committed_at=data.get("committed_at"),
             status=str(data.get("status", "completed")),
             prompt_version=data.get("prompt_version"),
+            prompt_template_version=data.get("prompt_template_version") or data.get("prompt_version"),
             qa_policy_version=data.get("qa_policy_version"),
+            qa_policy_fingerprint=data.get("qa_policy_fingerprint"),
             glossary_hash=data.get("glossary_hash"),
             glossary_revision=data.get("glossary_revision"),
             provider_key=data.get("provider_key"),

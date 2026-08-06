@@ -144,9 +144,7 @@ class GlossaryTerm:
         notes = self.notes.strip() if isinstance(self.notes, str) and self.notes.strip() else None
         status = str(self.status).strip().lower() or "approved"
         if status not in TERM_STATUSES:
-            raise ValueError(
-                "Glossary term status must be one of: pending, approved, ignored, translated."
-            )
+            raise ValueError("Glossary term status must be one of: pending, approved, ignored, translated.")
         context_history = _normalize_context_history(self.context_history)
         context_summary = (
             self.context_summary.strip()
@@ -311,5 +309,36 @@ def extract_candidate_glossary_terms(
             ).normalized()
         )
 
-    ranked_terms.sort(key=lambda item: (-item.occurrence_count, item.source.casefold(), item.source))
-    return ranked_terms[:max_terms]
+        ranked_terms.sort(key=lambda item: (-item.occurrence_count, item.source.casefold(), item.source))
+        return ranked_terms[:max_terms]
+
+
+def canonical_glossary_hash(entries: Any) -> str:
+    """Deterministic SHA-256 hash over a canonical glossary serialization.
+
+    Section 9 contract: glossary hashing must use a canonical stable
+    serialization of the normalized glossary entries (not ``hash_text(str(...))``
+    which is order/format dependent). The hashing is identical for entries
+    with the same normalized source/target/status/locked/notes regardless of
+    dict ordering.
+    """
+    import hashlib
+    import json
+
+    normalized = normalize_glossary_entries(entries)
+    payload = json.dumps(
+        [
+            {
+                "source": term.source,
+                "target": term.target,
+                "status": term.status,
+                "locked": bool(term.locked),
+                "notes": term.notes or "",
+            }
+            for term in sorted(normalized, key=lambda term: (term.source.casefold(), term.source))
+        ],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
